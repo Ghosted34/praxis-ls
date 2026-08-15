@@ -38,16 +38,30 @@ import * as api from "@/lib/careers-api";
 const shell = "mx-auto w-full max-w-3xl px-4 py-10 sm:px-6";
 
 function Chip({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-md bg-[rgb(var(--ink)/0.06)] px-2 py-0.5 text-xs text-muted-foreground">{children}</span>;
+  return (
+    <span className="rounded-md bg-[rgb(var(--ink)/0.06)] px-2 py-0.5 text-xs text-muted-foreground">
+      {children}
+    </span>
+  );
 }
 
-function Masthead({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+function Masthead({
+  name,
+  logoUrl,
+}: {
+  name: string;
+  logoUrl?: string | null;
+}) {
   return (
     <header className="border-b">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-4 sm:px-6">
-        {logoUrl
-          ? <img src={logoUrl} alt={name} className="h-8 w-auto" />
-          : <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">{name.charAt(0)}</span>}
+        {logoUrl ? (
+          <img src={logoUrl} alt={name} className="h-8 w-auto" />
+        ) : (
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+            {name.charAt(0)}
+          </span>
+        )}
         <div>
           <p className="text-sm font-semibold text-foreground">{name}</p>
           <p className="text-xs text-muted-foreground">Careers</p>
@@ -67,7 +81,13 @@ function Facts({ v }: { v: api.PublicVacancy }) {
     band,
   ].filter(Boolean);
   if (!facts.length) return null;
-  return <div className="mt-2 flex flex-wrap gap-1.5">{facts.map((f) => <Chip key={String(f)}>{f}</Chip>)}</div>;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {facts.map((f) => (
+        <Chip key={String(f)}>{f}</Chip>
+      ))}
+    </div>
+  );
 }
 
 /* ── The index ───────────────────────────────────────────────────────────── */
@@ -78,19 +98,31 @@ function VacancyList() {
 
   React.useEffect(() => {
     let live = true;
-    api.listVacancies()
+    api
+      .listVacancies()
       .then((r) => live && setRows(r))
-      .catch((e) => live && setError(e instanceof Error ? e.message : "Could not load our open roles."));
-    return () => { live = false; };
+      .catch(
+        (e) =>
+          live &&
+          setError(
+            e instanceof Error ? e.message : "Could not load our open roles.",
+          ),
+      );
+    return () => {
+      live = false;
+    };
   }, []);
 
   if (error) return <p className="text-sm text-[rgb(var(--bad))]">{error}</p>;
-  if (!rows) return <p className="text-sm text-muted-foreground">Loading open roles…</p>;
+  if (!rows)
+    return <p className="text-sm text-muted-foreground">Loading open roles…</p>;
   if (!rows.length) {
     return (
       <div className="rounded-xl border p-8 text-center">
         <p className="font-medium text-foreground">No open roles right now</p>
-        <p className="mt-1 text-sm text-muted-foreground">Please check back — this page is kept up to date.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Please check back — this page is kept up to date.
+        </p>
       </div>
     );
   }
@@ -115,14 +147,26 @@ function VacancyList() {
 /* ── The apply form ──────────────────────────────────────────────────────── */
 
 type FormState = {
-  full_name: string; email: string; phone: string; address: string;
-  skills: string; experience_years: string; expected_salary: string;
-  portfolio_url: string; cover_note: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  skills: string;
+  experience_years: string;
+  expected_salary: string;
+  portfolio_url: string;
+  cover_note: string;
 };
 const EMPTY: FormState = {
-  full_name: "", email: "", phone: "", address: "",
-  skills: "", experience_years: "", expected_salary: "",
-  portfolio_url: "", cover_note: "",
+  full_name: "",
+  email: "",
+  phone: "",
+  address: "",
+  skills: "",
+  experience_years: "",
+  expected_salary: "",
+  portfolio_url: "",
+  cover_note: "",
 };
 
 const field = "w-full rounded-lg border bg-background px-3 py-2 text-sm";
@@ -130,8 +174,11 @@ const label = "block text-sm font-medium text-foreground";
 
 function ApplyForm({ token }: { token: string }) {
   const [f, setF] = React.useState(EMPTY);
-  const set = (k: keyof FormState, v: string) => setF((s) => ({ ...s, [k]: v }));
-  const [cv, setCv] = React.useState<{ dataUrl: string; name: string } | null>(null);
+  const set = (k: keyof FormState, v: string) =>
+    setF((s) => ({ ...s, [k]: v }));
+  const [cv, setCv] = React.useState<{ dataUrl: string; name: string } | null>(
+    null,
+  );
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<api.ApplyResult | null>(null);
@@ -147,33 +194,51 @@ function ApplyForm({ token }: { token: string }) {
       // application and finds out later that it did not is a candidate lost.
       setCv(null);
       e.target.value = "";
-      setError(err instanceof Error ? err.message : "That file could not be read.");
+      setError(
+        err instanceof Error ? err.message : "That file could not be read.",
+      );
     }
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      setDone(await api.apply(token, {
-        full_name: f.full_name.trim(),
-        email: f.email.trim(),
-        phone: f.phone.trim() || undefined,
-        address: f.address.trim() || undefined,
-        // Split here rather than asking the candidate to produce an array. The
-        // scorer matches these against the role's required skills, so the
-        // splitting has to happen somewhere; a comma is what people type.
-        skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean),
-        experience_years: f.experience_years ? Number(f.experience_years) : undefined,
-        expected_salary: f.expected_salary ? Number(f.expected_salary) : undefined,
-        portfolio_url: f.portfolio_url.trim() || undefined,
-        cover_note: f.cover_note.trim() || undefined,
-        cv_data_url: cv?.dataUrl,
-        cv_filename: cv?.name,
-      }));
+      setDone(
+        await api.apply(token, {
+          full_name: f.full_name.trim(),
+          email: f.email.trim(),
+          phone: f.phone.trim() || undefined,
+          address: f.address.trim() || undefined,
+          // Split here rather than asking the candidate to produce an array. The
+          // scorer matches these against the role's required skills, so the
+          // splitting has to happen somewhere; a comma is what people type.
+          skills: f.skills
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          experience_years: f.experience_years
+            ? Number(f.experience_years)
+            : undefined,
+          expected_salary: f.expected_salary
+            ? Number(f.expected_salary)
+            : undefined,
+          portfolio_url: f.portfolio_url.trim() || undefined,
+          cover_note: f.cover_note.trim() || undefined,
+          cv_data_url: cv?.dataUrl,
+          cv_filename: cv?.name,
+        }),
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong sending your application.");
-    } finally { setBusy(false); }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong sending your application.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (done) {
@@ -181,8 +246,11 @@ function ApplyForm({ token }: { token: string }) {
       <div className="rounded-xl border p-6" role="status">
         <p className="font-medium text-foreground">Application received</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Your reference is <span className="num font-semibold text-foreground">{done.reference}</span>. Quote it if you
-          get in touch about this application.
+          Your reference is{" "}
+          <span className="num font-semibold text-foreground">
+            {done.reference}
+          </span>
+          . Quote it if you get in touch about this application.
         </p>
         {/* Answered plainly because the server records the application even when
             the upload fails — so "we got you but not your file" is a real state
@@ -196,7 +264,8 @@ function ApplyForm({ token }: { token: string }) {
     );
   }
 
-  const canSubmit = f.full_name.trim().length > 1 && /.+@.+\..+/.test(f.email) && !busy;
+  const canSubmit =
+    f.full_name.trim().length > 1 && /.+@.+\..+/.test(f.email) && !busy;
 
   return (
     <form className="space-y-4" onSubmit={submit}>
@@ -204,57 +273,150 @@ function ApplyForm({ token }: { token: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className={label} htmlFor="c-name">Full name</label>
-          <input id="c-name" required className={field} value={f.full_name} onChange={(e) => set("full_name", e.target.value)} />
+          <label className={label} htmlFor="c-name">
+            Full name
+          </label>
+          <input
+            id="c-name"
+            required
+            className={field}
+            value={f.full_name}
+            onChange={(e) => set("full_name", e.target.value)}
+          />
         </div>
         <div>
-          <label className={label} htmlFor="c-email">Email</label>
-          <input id="c-email" required type="email" className={field} value={f.email} onChange={(e) => set("email", e.target.value)} />
+          <label className={label} htmlFor="c-email">
+            Email
+          </label>
+          <input
+            id="c-email"
+            required
+            type="email"
+            className={field}
+            value={f.email}
+            onChange={(e) => set("email", e.target.value)}
+          />
         </div>
         <div>
-          <label className={label} htmlFor="c-phone">Phone</label>
-          <input id="c-phone" className={field} value={f.phone} onChange={(e) => set("phone", e.target.value)} />
+          <label className={label} htmlFor="c-phone">
+            Phone
+          </label>
+          <input
+            id="c-phone"
+            className={field}
+            value={f.phone}
+            onChange={(e) => set("phone", e.target.value)}
+          />
         </div>
         <div>
-          <label className={label} htmlFor="c-addr">Where you live</label>
-          <input id="c-addr" className={field} value={f.address} onChange={(e) => set("address", e.target.value)} />
+          <label className={label} htmlFor="c-addr">
+            Where you live
+          </label>
+          <input
+            id="c-addr"
+            className={field}
+            value={f.address}
+            onChange={(e) => set("address", e.target.value)}
+          />
         </div>
       </div>
 
       <div>
-        <label className={label} htmlFor="c-skills">Skills</label>
-        <input id="c-skills" className={field} placeholder="Customs clearance, French, forklift" value={f.skills} onChange={(e) => set("skills", e.target.value)} />
-        <p className="mt-1 text-xs text-muted-foreground">Separate with commas.</p>
+        <label className={label} htmlFor="c-skills">
+          Skills
+        </label>
+        <input
+          id="c-skills"
+          className={field}
+          placeholder="Customs clearance, French, forklift"
+          value={f.skills}
+          onChange={(e) => set("skills", e.target.value)}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Separate with commas.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className={label} htmlFor="c-exp">Years of experience</label>
-          <input id="c-exp" type="number" min="0" max="70" step="0.5" className={field} value={f.experience_years} onChange={(e) => set("experience_years", e.target.value)} />
+          <label className={label} htmlFor="c-exp">
+            Years of experience
+          </label>
+          <input
+            id="c-exp"
+            type="number"
+            min="0"
+            max="70"
+            step="0.5"
+            className={field}
+            value={f.experience_years}
+            onChange={(e) => set("experience_years", e.target.value)}
+          />
         </div>
         <div>
-          <label className={label} htmlFor="c-sal">Salary expectation</label>
-          <input id="c-sal" type="number" min="0" className={field} value={f.expected_salary} onChange={(e) => set("expected_salary", e.target.value)} />
+          <label className={label} htmlFor="c-sal">
+            Salary expectation
+          </label>
+          <input
+            id="c-sal"
+            type="number"
+            min="0"
+            className={field}
+            value={f.expected_salary}
+            onChange={(e) => set("expected_salary", e.target.value)}
+          />
         </div>
       </div>
 
       <div>
-        <label className={label} htmlFor="c-port">Portfolio or LinkedIn</label>
-        <input id="c-port" type="url" className={field} placeholder="https://…" value={f.portfolio_url} onChange={(e) => set("portfolio_url", e.target.value)} />
+        <label className={label} htmlFor="c-port">
+          Portfolio or LinkedIn
+        </label>
+        <input
+          id="c-port"
+          type="url"
+          className={field}
+          placeholder="https://…"
+          value={f.portfolio_url}
+          onChange={(e) => set("portfolio_url", e.target.value)}
+        />
       </div>
 
       <div>
-        <label className={label} htmlFor="c-cv">CV</label>
-        <input id="c-cv" type="file" accept={api.CV_ACCEPT} className={field} onChange={pickCv} />
-        <p className="mt-1 text-xs text-muted-foreground">PDF, PNG or JPEG, up to 8 MB.{cv ? ` Attached: ${cv.name}` : ""}</p>
+        <label className={label} htmlFor="c-cv">
+          CV
+        </label>
+        <input
+          id="c-cv"
+          type="file"
+          accept={api.CV_ACCEPT}
+          className={field}
+          onChange={pickCv}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          PDF, PNG or JPEG, up to 8 MB.{cv ? ` Attached: ${cv.name}` : ""}
+        </p>
       </div>
 
       <div>
-        <label className={label} htmlFor="c-note">Anything else you would like us to know</label>
-        <textarea id="c-note" rows={5} maxLength={5000} className={field} value={f.cover_note} onChange={(e) => set("cover_note", e.target.value)} />
+        <label className={label} htmlFor="c-note">
+          Anything else you would like us to know
+        </label>
+        <textarea
+          id="c-note"
+          rows={5}
+          maxLength={5000}
+          className={field}
+          value={f.cover_note}
+          onChange={(e) => set("cover_note", e.target.value)}
+        />
       </div>
 
-      {error && <p className="text-sm text-[rgb(var(--bad))]" role="alert">{error}</p>}
+      {error && (
+        <p className="text-sm text-[rgb(var(--bad))]" role="alert">
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"
@@ -275,20 +437,32 @@ function VacancyDetail({ token }: { token: string }) {
 
   React.useEffect(() => {
     let live = true;
-    setV(null); setError(null);
-    api.getVacancy(token)
+    setV(null);
+    setError(null);
+    api
+      .getVacancy(token)
       .then((r) => live && setV(r))
       // The server answers 404 identically for closed, unpublished and
       // never-existed, so this message must not speculate about which.
-      .catch(() => live && setError("This role is no longer accepting applications."));
-    return () => { live = false; };
+      .catch(
+        () =>
+          live && setError("This role is no longer accepting applications."),
+      );
+    return () => {
+      live = false;
+    };
   }, [token]);
 
   if (error) {
     return (
       <div className="rounded-xl border p-8 text-center">
         <p className="font-medium text-foreground">{error}</p>
-        <Link to="/careers" className="mt-2 inline-block text-sm text-primary-ink underline">See our other open roles</Link>
+        <Link
+          to="/careers"
+          className="mt-2 inline-block text-sm text-primary-ink underline"
+        >
+          See our other open roles
+        </Link>
       </div>
     );
   }
@@ -297,20 +471,36 @@ function VacancyDetail({ token }: { token: string }) {
   return (
     <article className="space-y-8">
       <div>
-        <Link to="/careers" className="text-sm text-muted-foreground underline">← All roles</Link>
-        <h1 className="mt-3 text-2xl font-semibold text-foreground">{v.title}</h1>
+        <Link to="/careers" className="text-sm text-muted-foreground underline">
+          ← All roles
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold text-foreground">
+          {v.title}
+        </h1>
         <Facts v={v} />
-        {v.closes_on && <p className="mt-2 text-xs text-muted-foreground">Applications close {v.closes_on}</p>}
+        {v.closes_on && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Applications close {v.closes_on}
+          </p>
+        )}
       </div>
 
       {v.description && (
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{v.description}</div>
+        <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+          {v.description}
+        </div>
       )}
 
       {v.skills_required.length > 0 && (
         <div>
-          <h2 className="mb-2 text-base font-semibold text-foreground">What we are looking for</h2>
-          <div className="flex flex-wrap gap-1.5">{v.skills_required.map((s) => <Chip key={s}>{s}</Chip>)}</div>
+          <h2 className="mb-2 text-base font-semibold text-foreground">
+            What we are looking for
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {v.skills_required.map((s) => (
+              <Chip key={s}>{s}</Chip>
+            ))}
+          </div>
         </div>
       )}
 
@@ -328,10 +518,16 @@ export function CareersPage() {
     <div className="min-h-screen bg-background">
       <Masthead name={name} logoUrl={branding.logoUrl} />
       <main className={shell}>
-        {token ? <VacancyDetail token={token} /> : (
+        {token ? (
+          <VacancyDetail token={token} />
+        ) : (
           <>
-            <h1 className="text-2xl font-semibold text-foreground">Open roles</h1>
-            <p className="mb-6 mt-1 text-sm text-muted-foreground">Everything we are hiring for right now.</p>
+            <h1 className="text-2xl font-semibold text-foreground">
+              Open roles
+            </h1>
+            <p className="mb-6 mt-1 text-sm text-muted-foreground">
+              Everything we are hiring for right now.
+            </p>
             <VacancyList />
           </>
         )}

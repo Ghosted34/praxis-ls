@@ -63,7 +63,8 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new ApiError("FILE_READ_FAILED", "Could not read that file.", 0));
+    reader.onerror = () =>
+      reject(new ApiError("FILE_READ_FAILED", "Could not read that file.", 0));
     reader.readAsDataURL(file);
   });
 }
@@ -79,15 +80,20 @@ export function readFileAsDataUrl(file: File): Promise<string> {
 export async function openVaultDoc(id: string): Promise<void> {
   const token = tokenStore.getAccess();
   const res = await fetch(`/api/tenant/documents/${id}/download`, {
-    headers: { "X-Praxis-Env": tokenStore.getEnv(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      "X-Praxis-Env": tokenStore.getEnv(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (!res.ok) {
     // ApiError so `errMsg` shows these rather than flattening them to
     // "Something went wrong." — a 409 in particular is not a fault to report,
     // it means the file is not there yet.
     const message =
-      res.status === 409 ? "This document hasn't been rendered yet."
-        : res.status === 404 ? "That file is no longer in the vault."
+      res.status === 409
+        ? "This document hasn't been rendered yet."
+        : res.status === 404
+          ? "That file is no longer in the vault."
           : "Download failed.";
     throw new ApiError("DOWNLOAD_FAILED", message, res.status);
   }

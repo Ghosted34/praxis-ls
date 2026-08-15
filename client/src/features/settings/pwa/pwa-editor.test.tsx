@@ -27,11 +27,27 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
 
-import { applyPwaDocument, effectivePwa, EMPTY_PWA_CONFIG, iconLayout, type PwaConfig } from "@/lib/pwa-config";
-import { escapesSafeZone, iconWarnings, splashWarnings, manifestWarnings } from "./validation";
+import {
+  applyPwaDocument,
+  effectivePwa,
+  EMPTY_PWA_CONFIG,
+  iconLayout,
+  type PwaConfig,
+} from "@/lib/pwa-config";
+import {
+  escapesSafeZone,
+  iconWarnings,
+  splashWarnings,
+  manifestWarnings,
+} from "./validation";
 import { AppIcon } from "./previews";
 
-const BRAND = { name: "Acme Freight", primary: "#1188ff", logoUrl: "/media/tenant_acme/branding/logo.png", theme: "dark" as const };
+const BRAND = {
+  name: "Acme Freight",
+  primary: "#1188ff",
+  logoUrl: "/media/tenant_acme/branding/logo.png",
+  theme: "dark" as const,
+};
 
 /* ── the preview draws from the shared resolver ───────────────────────────── */
 
@@ -59,7 +75,10 @@ describe("AppIcon — positioned by the same function the server composites with
   });
 
   it("renders the monogram fallback when there is no artwork, like the server does", () => {
-    const cfg = effectivePwa(null, { name: "Zenith Cargo", primary: "#1188ff" });
+    const cfg = effectivePwa(null, {
+      name: "Zenith Cargo",
+      primary: "#1188ff",
+    });
     const { container } = render(<AppIcon cfg={cfg} size={64} />);
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toBe("Z");
@@ -92,10 +111,15 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
     document.documentElement.removeAttribute("style");
   });
 
-  const themeColor = () => document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content;
+  const themeColor = () =>
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!
+      .content;
   const iosTitle = () =>
-    document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')!.content;
-  const cssVar = (n: string) => document.documentElement.style.getPropertyValue(n);
+    document.querySelector<HTMLMetaElement>(
+      'meta[name="apple-mobile-web-app-title"]',
+    )!.content;
+  const cssVar = (n: string) =>
+    document.documentElement.style.getPropertyValue(n);
 
   it("replaces the static placeholder with the resolved title bar colour", () => {
     expect(themeColor()).toBe("#f4f7fb"); // the bug, before
@@ -124,8 +148,12 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
    * per-user light/dark choice is for the page to say which one it is.
    */
   it("points the manifest at the live theme", () => {
-    document.head.insertAdjacentHTML("beforeend", '<link rel="manifest" href="/manifest.webmanifest">');
-    const href = () => document.querySelector('link[rel="manifest"]')!.getAttribute("href");
+    document.head.insertAdjacentHTML(
+      "beforeend",
+      '<link rel="manifest" href="/manifest.webmanifest">',
+    );
+    const href = () =>
+      document.querySelector('link[rel="manifest"]')!.getAttribute("href");
 
     applyPwaDocument(effectivePwa(null, BRAND));
     expect(href()).toBe("/manifest.webmanifest?theme=light");
@@ -141,7 +169,14 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
   });
 
   it("uses explicit custom colours, one per theme", () => {
-    const cfg = effectivePwa({ titlebarMode: "custom", titlebarLight: "#eeeeee", titlebarDark: "#101010" }, BRAND);
+    const cfg = effectivePwa(
+      {
+        titlebarMode: "custom",
+        titlebarLight: "#eeeeee",
+        titlebarDark: "#101010",
+      },
+      BRAND,
+    );
     applyPwaDocument(cfg);
     expect(themeColor()).toBe("#eeeeee");
     document.documentElement.classList.add("dark");
@@ -159,9 +194,18 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
 
   it("publishes the artwork layer as CSS custom properties", () => {
     applyPwaDocument(
-      effectivePwa({ titlebarImageUrl: "/media/tenant_acme/branding/bar.png", titlebarImageOpacity: 25, titlebarBlur: 4 }, BRAND),
+      effectivePwa(
+        {
+          titlebarImageUrl: "/media/tenant_acme/branding/bar.png",
+          titlebarImageOpacity: 25,
+          titlebarBlur: 4,
+        },
+        BRAND,
+      ),
     );
-    expect(cssVar("--titlebar-image")).toBe('url("/media/tenant_acme/branding/bar.png")');
+    expect(cssVar("--titlebar-image")).toBe(
+      'url("/media/tenant_acme/branding/bar.png")',
+    );
     expect(cssVar("--titlebar-image-opacity")).toBe("0.25");
     expect(cssVar("--titlebar-image-blur")).toBe("4px");
   });
@@ -177,7 +221,12 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
     // outcome. Asserting `not.toContain("--evil")` would be asserting the wrong
     // thing and would pass just as well on a value that had been silently
     // truncated.
-    applyPwaDocument(effectivePwa({ titlebarImageUrl: '/x.png") ;--evil:1;background:url("y' }, BRAND));
+    applyPwaDocument(
+      effectivePwa(
+        { titlebarImageUrl: '/x.png") ;--evil:1;background:url("y' },
+        BRAND,
+      ),
+    );
     const value = cssVar("--titlebar-image");
 
     expect(value.startsWith('url("')).toBe(true);
@@ -208,10 +257,16 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
   });
 
   it("repaints on every call, and never stacks a second meta tag", () => {
-    applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#111111" }, BRAND));
-    applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#222222" }, BRAND));
+    applyPwaDocument(
+      effectivePwa({ titlebarMode: "custom", titlebarLight: "#111111" }, BRAND),
+    );
+    applyPwaDocument(
+      effectivePwa({ titlebarMode: "custom", titlebarLight: "#222222" }, BRAND),
+    );
     expect(themeColor()).toBe("#222222");
-    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
+    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(
+      1,
+    );
   });
 });
 
@@ -238,7 +293,11 @@ describe("applyPwaDocument — making the first write survive a refresh", () => 
   async function recordHeadChanges(run: () => void): Promise<string[]> {
     const seen: string[] = [];
     const hit = (list: NodeList) =>
-      Array.from(list).some((n) => n.nodeName === "META" && (n as Element).getAttribute("name") === "theme-color");
+      Array.from(list).some(
+        (n) =>
+          n.nodeName === "META" &&
+          (n as Element).getAttribute("name") === "theme-color",
+      );
     const observer = new MutationObserver((records) => {
       for (const r of records) {
         if (hit(r.removedNodes)) seen.push("removed");
@@ -262,27 +321,49 @@ describe("applyPwaDocument — making the first write survive a refresh", () => 
   it("re-inserts the theme-color tag once after load, so the window frame repaints", async () => {
     document.documentElement.classList.add("dark");
 
-    const seen = await recordHeadChanges(() => applyPwaDocument(effectivePwa(null, BRAND)));
+    const seen = await recordHeadChanges(() =>
+      applyPwaDocument(effectivePwa(null, BRAND)),
+    );
 
     // Removal then insertion — a real transition, not a repeat of a value the
     // browser has already dismissed.
     expect(seen).toEqual(["removed", "added"]);
     // And it ends up back in the document, carrying the dark surface.
-    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
-    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#12161e");
+    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(
+      1,
+    );
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!
+        .content,
+    ).toBe("#12161e");
   });
 
   it("does it once, not on every branding tick — a repaint per keystroke is a flicker", async () => {
-    const first = await recordHeadChanges(() => applyPwaDocument(effectivePwa(null, BRAND)));
+    const first = await recordHeadChanges(() =>
+      applyPwaDocument(effectivePwa(null, BRAND)),
+    );
     expect(first).toEqual(["removed", "added"]); // the poke this test is about NOT repeating
 
     const seen = await recordHeadChanges(() => {
-      applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#333333" }, BRAND));
-      applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#444444" }, BRAND));
+      applyPwaDocument(
+        effectivePwa(
+          { titlebarMode: "custom", titlebarLight: "#333333" },
+          BRAND,
+        ),
+      );
+      applyPwaDocument(
+        effectivePwa(
+          { titlebarMode: "custom", titlebarLight: "#444444" },
+          BRAND,
+        ),
+      );
     });
 
     expect(seen).toEqual([]);
-    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#444444");
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!
+        .content,
+    ).toBe("#444444");
   });
 });
 
@@ -298,24 +379,36 @@ describe("escapesSafeZone", () => {
   });
 
   it("fires when a nudge walks it off centre", () => {
-    expect(escapesSafeZone(effectivePwa({ iconOffsetX: 25 }, BRAND))).toBe(true);
+    expect(escapesSafeZone(effectivePwa({ iconOffsetX: 25 }, BRAND))).toBe(
+      true,
+    );
   });
 
   it("is quiet again once the padding is raised to compensate", () => {
-    expect(escapesSafeZone(effectivePwa({ iconZoom: 130, maskablePadding: 35 }, BRAND))).toBe(false);
+    expect(
+      escapesSafeZone(
+        effectivePwa({ iconZoom: 130, maskablePadding: 35 }, BRAND),
+      ),
+    ).toBe(false);
   });
 });
 
 describe("warnings — each one has to be actionable", () => {
   it("reports the actual pixel dimensions of a non-square source", () => {
-    const w = iconWarnings(effectivePwa(null, BRAND), { width: 400, height: 120 });
+    const w = iconWarnings(effectivePwa(null, BRAND), {
+      width: 400,
+      height: 120,
+    });
     const notSquare = w.find((x) => x.id === "not-square")!;
     expect(notSquare.tone).toBe("warn");
     expect(notSquare.detail).toContain("400×120");
   });
 
   it("flags a source too small for the install prompt", () => {
-    const w = iconWarnings(effectivePwa(null, BRAND), { width: 256, height: 256 });
+    const w = iconWarnings(effectivePwa(null, BRAND), {
+      width: 256,
+      height: 256,
+    });
     expect(w.map((x) => x.id)).toContain("too-small");
   });
 
@@ -326,7 +419,9 @@ describe("warnings — each one has to be actionable", () => {
   });
 
   it("warns when the brand colour disappears into the splash background", () => {
-    const w = splashWarnings(effectivePwa({ splashBackground: "#1188ff" }, BRAND));
+    const w = splashWarnings(
+      effectivePwa({ splashBackground: "#1188ff" }, BRAND),
+    );
     expect(w.map((x) => x.id)).toContain("splash-accent");
   });
 
@@ -336,7 +431,10 @@ describe("warnings — each one has to be actionable", () => {
   });
 
   it("stays quiet on a well-formed configuration", () => {
-    const cfg = effectivePwa({ splashBackground: "#0b0f10", splashDuration: 600 }, BRAND);
+    const cfg = effectivePwa(
+      { splashBackground: "#0b0f10", splashDuration: 600 },
+      BRAND,
+    );
     expect(splashWarnings(cfg)).toHaveLength(0);
     expect(manifestWarnings(cfg)).toHaveLength(0);
   });
@@ -344,21 +442,31 @@ describe("warnings — each one has to be actionable", () => {
 
 /* ── the page itself ──────────────────────────────────────────────────────── */
 
-const saveSpy = vi.fn(async (patch: Partial<PwaConfig>) => ({ ...EMPTY_PWA_CONFIG, ...patch }));
+const saveSpy = vi.fn(async (patch: Partial<PwaConfig>) => ({
+  ...EMPTY_PWA_CONFIG,
+  ...patch,
+}));
 
 vi.mock("@/lib/pwa-config", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/pwa-config")>("@/lib/pwa-config");
+  const actual =
+    await vi.importActual<typeof import("@/lib/pwa-config")>(
+      "@/lib/pwa-config",
+    );
   return {
     ...actual,
     fetchPwaConfig: vi.fn(async () => actual.EMPTY_PWA_CONFIG),
     savePwaConfig: (patch: Partial<PwaConfig>) => saveSpy(patch),
-    uploadAppIcon: vi.fn(async () => ({ iconUrl: "/media/tenant_acme/branding/appicon_x.png" })),
+    uploadAppIcon: vi.fn(async () => ({
+      iconUrl: "/media/tenant_acme/branding/appicon_x.png",
+    })),
   };
 });
 
 vi.mock("@/app/branding/branding-context", async () => {
   const { effectivePwa: resolve, EMPTY_PWA_CONFIG: empty } =
-    await vi.importActual<typeof import("@/lib/pwa-config")>("@/lib/pwa-config");
+    await vi.importActual<typeof import("@/lib/pwa-config")>(
+      "@/lib/pwa-config",
+    );
   return {
     useBranding: () => ({
       branding: BRAND,
@@ -368,7 +476,9 @@ vi.mock("@/app/branding/branding-context", async () => {
       pwaConfig: empty,
       setPwaConfig: vi.fn(),
     }),
-    BrandingProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    BrandingProvider: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
   };
 });
 
@@ -431,15 +541,22 @@ describe("PwaPage", () => {
   it("surfaces the safe-zone warning next to the preview that shows it", async () => {
     renderPage();
     // Default framing is clean, so the warning must not be shown by default.
-    expect(screen.queryByText(/outside the maskable safe zone/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/outside the maskable safe zone/i),
+    ).not.toBeInTheDocument();
 
     const zoom = screen.getByLabelText("Zoom");
     // fireEvent-style set: a range input is dragged, not typed into.
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
     setter.call(zoom, "190");
     zoom.dispatchEvent(new Event("input", { bubbles: true }));
 
-    expect(await screen.findByText(/outside the maskable safe zone/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/outside the maskable safe zone/i),
+    ).toBeInTheDocument();
   });
 
   it("is free of accessibility violations on every tab", async () => {

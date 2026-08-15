@@ -18,11 +18,25 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..", "..");
-const SEED = path.join(root, "migrations", "seeds", "9091_seed_milestone_templates.sql");
-const REPUBLISH = path.join(root, "migrations", "tenant", "0680_publish_shipped_milestone_chain.sql");
+const SEED = path.join(
+  root,
+  "migrations",
+  "seeds",
+  "9091_seed_milestone_templates.sql",
+);
+const REPUBLISH = path.join(
+  root,
+  "migrations",
+  "tenant",
+  "0680_publish_shipped_milestone_chain.sql",
+);
 
 /** The three the sandbox seeds a demo chain for, and therefore the three 0680 carries. */
-const SHARED = ["SEA_FREIGHT_IMPORT", "AIR_FREIGHT_IMPORT", "HINTERLAND_TRANSIT"];
+const SHARED = [
+  "SEA_FREIGHT_IMPORT",
+  "AIR_FREIGHT_IMPORT",
+  "HINTERLAND_TRANSIT",
+];
 
 /**
  * Pull the stage tuples out of a migration.
@@ -40,8 +54,14 @@ const SHARED = ["SEA_FREIGHT_IMPORT", "AIR_FREIGHT_IMPORT", "HINTERLAND_TRANSIT"
 function stageRows(file, marker, services) {
   const wanted = new Set(services);
   const lines = fs.readFileSync(file, "utf8").split("\n");
-  const starts = lines.reduce((acc, l, i) => (l.includes(marker) ? [...acc, i] : acc), []);
-  if (!starts.length) throw new Error(`${path.basename(file)}: no "${marker}" — the scanner is out of date`);
+  const starts = lines.reduce(
+    (acc, l, i) => (l.includes(marker) ? [...acc, i] : acc),
+    [],
+  );
+  if (!starts.length)
+    throw new Error(
+      `${path.basename(file)}: no "${marker}" — the scanner is out of date`,
+    );
 
   const out = [];
   // EVERY block, not just the first: 9091 writes one INSERT per service type, so a
@@ -89,16 +109,27 @@ describe("0680 carries 9091's stages unchanged", () => {
     // destruction 9091 was careful to avoid.
     const all = stageRows(REPUBLISH, REPUBLISH_MARKER, [
       ...SHARED,
-      "SEA_FREIGHT_EXPORT", "AIR_FREIGHT_EXPORT", "INLAND_TRANSPORTATION",
-      "WAREHOUSING", "CUSTOMS_BROKERAGE", "BUSINESS_REPRESENTATION",
-      "END_TO_END_SEA_FREIGHT", "END_TO_END_AIR_FREIGHT", "PROJECT_CARGO",
+      "SEA_FREIGHT_EXPORT",
+      "AIR_FREIGHT_EXPORT",
+      "INLAND_TRANSPORTATION",
+      "WAREHOUSING",
+      "CUSTOMS_BROKERAGE",
+      "BUSINESS_REPRESENTATION",
+      "END_TO_END_SEA_FREIGHT",
+      "END_TO_END_AIR_FREIGHT",
+      "PROJECT_CARGO",
     ]);
-    expect([...new Set(all.map((r) => r.svc))].sort()).toEqual([...SHARED].sort());
+    expect([...new Set(all.map((r) => r.svc))].sort()).toEqual(
+      [...SHARED].sort(),
+    );
   });
 });
 
 describe("the sandbox signature 0680 matches on", () => {
-  const sandbox = fs.readFileSync(path.join(root, "scripts", "tenant", "seed-sandbox.sql"), "utf8");
+  const sandbox = fs.readFileSync(
+    path.join(root, "scripts", "tenant", "seed-sandbox.sql"),
+    "utf8",
+  );
   const republish = fs.readFileSync(REPUBLISH, "utf8");
 
   /**
@@ -110,7 +141,10 @@ describe("the sandbox signature 0680 matches on", () => {
   test.each([
     ["v_mt,", ["ARRIVAL", "BOOKING", "CUSTOMS", "DELIVERY", "DEPARTURE"]],
     ["v_mt_air,", ["ARRIVAL", "BOOKING", "CUSTOMS", "DELIVERY", "DEPARTURE"]],
-    ["v_mt_transit,", ["ARRIVAL", "BORDER", "DISCHARGE", "ESCORT", "T1_LODGED"]],
+    [
+      "v_mt_transit,",
+      ["ARRIVAL", "BORDER", "DISCHARGE", "ESCORT", "T1_LODGED"],
+    ],
   ])("%s still has the codes the migration looks for", (marker, expected) => {
     const codes = sandbox
       .split("\n")
@@ -129,7 +163,9 @@ describe("the sandbox signature 0680 matches on", () => {
   test("the demo chain is five stages, which is why it is recognisable", () => {
     // If the sandbox grew its chain to fourteen this migration would be pointless,
     // and leaving it in place would be confusing rather than harmful.
-    const lines = sandbox.split("\n").filter((l) => /^\s*\(v_mt(_air|_transit)?,\d+,'/.test(l));
+    const lines = sandbox
+      .split("\n")
+      .filter((l) => /^\s*\(v_mt(_air|_transit)?,\d+,'/.test(l));
     expect(lines).toHaveLength(15);
   });
 });

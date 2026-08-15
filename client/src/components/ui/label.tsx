@@ -10,10 +10,15 @@ import { cn } from "@/lib/cn";
  * had no association at all (audit F4) — and `Field`'s own contract test asserts
  * it, which is the check that actually guards this.
  */
-export const Label = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(
-  ({ className, ...props }, ref) => (
-    // eslint-disable-next-line jsx-a11y/label-has-associated-control
-    <label ref={ref} className={cn("text-sm font-medium text-foreground", className)} {...props} />
-  ),
-);
+export const Label = React.forwardRef<
+  HTMLLabelElement,
+  React.LabelHTMLAttributes<HTMLLabelElement>
+>(({ className, ...props }, ref) => (
+  // eslint-disable-next-line jsx-a11y/label-has-associated-control
+  <label
+    ref={ref}
+    className={cn("text-sm font-medium text-foreground", className)}
+    {...props}
+  />
+));
 Label.displayName = "Label";

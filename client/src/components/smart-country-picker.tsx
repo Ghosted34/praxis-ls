@@ -25,7 +25,8 @@ export function flagOf(code?: string | null): string {
 }
 
 /** The E.164 calling code (bare digits) for a country, or "". */
-export const dialCodeOf = (code?: string | null): string => countries.phoneCodeFor(code || "");
+export const dialCodeOf = (code?: string | null): string =>
+  countries.phoneCodeFor(code || "");
 
 export function SmartCountryPicker({
   value,
@@ -55,7 +56,11 @@ export function SmartCountryPicker({
   const filtered = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return CATALOGUE;
-    return CATALOGUE.filter((c) => c.name.toLowerCase().includes(needle) || c.code.toLowerCase() === needle);
+    return CATALOGUE.filter(
+      (c) =>
+        c.name.toLowerCase().includes(needle) ||
+        c.code.toLowerCase() === needle,
+    );
   }, [q]);
 
   const pick = (code: string) => {
@@ -67,7 +72,10 @@ export function SmartCountryPicker({
   return (
     <Popover
       open={open}
-      onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setQ("");
+      }}
       align="start"
       label={label}
       className="w-[min(22rem,90vw)] p-0"
@@ -89,7 +97,9 @@ export function SmartCountryPicker({
               <span className="text-muted-foreground">Select a country…</span>
             )}
           </span>
-          <span aria-hidden className="text-muted-foreground">▾</span>
+          <span aria-hidden className="text-muted-foreground">
+            ▾
+          </span>
         </button>
       }
     >
@@ -103,16 +113,26 @@ export function SmartCountryPicker({
           className="h-8 w-full rounded-md border bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
-      <div className="max-h-64 overflow-auto p-1" role="listbox" aria-label={label}>
+      <div
+        className="max-h-64 overflow-auto p-1"
+        role="listbox"
+        aria-label={label}
+      >
         {allowEmpty && (
           <PopoverClose asChild>
-            <button type="button" onClick={() => pick("")} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted">
+            <button
+              type="button"
+              onClick={() => pick("")}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted"
+            >
               — None
             </button>
           </PopoverClose>
         )}
         {filtered.length === 0 ? (
-          <div className="px-2 py-4 text-center text-sm text-muted-foreground">No match.</div>
+          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+            No match.
+          </div>
         ) : (
           filtered.map((c) => (
             <button
@@ -123,13 +143,21 @@ export function SmartCountryPicker({
               onClick={() => pick(c.code)}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                c.code === current ? "bg-primary/10 text-foreground" : "text-foreground",
+                c.code === current
+                  ? "bg-primary/10 text-foreground"
+                  : "text-foreground",
               )}
             >
-              <span aria-hidden className="w-5 text-center">{flagOf(c.code)}</span>
+              <span aria-hidden className="w-5 text-center">
+                {flagOf(c.code)}
+              </span>
               <span className="min-w-0 flex-1 truncate">{c.name}</span>
               <span className="text-muted-foreground">+{c.phone}</span>
-              {c.code === current && <span aria-hidden className="text-primary-ink">✓</span>}
+              {c.code === current && (
+                <span aria-hidden className="text-primary-ink">
+                  ✓
+                </span>
+              )}
             </button>
           ))
         )}

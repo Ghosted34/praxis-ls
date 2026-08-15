@@ -36,7 +36,12 @@ function displayToIso(display: string): string {
   const year = Number(m[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1) return "";
   const dt = new Date(year, month - 1, day);
-  if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return "";
+  if (
+    dt.getFullYear() !== year ||
+    dt.getMonth() !== month - 1 ||
+    dt.getDate() !== day
+  )
+    return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${year}-${pad(month)}-${pad(day)}`;
 }
@@ -77,7 +82,9 @@ export function DateField({
   // operator is part-way through a date, `value` is still "" and clobbering the
   // box would delete their keystrokes.
   React.useEffect(() => {
-    setText((prev) => (displayToIso(prev) === value ? prev : isoToDisplay(value)));
+    setText((prev) =>
+      displayToIso(prev) === value ? prev : isoToDisplay(value),
+    );
   }, [value]);
 
   function onText(raw: string) {
@@ -87,7 +94,8 @@ export function DateField({
   }
 
   function openPicker() {
-    const el = nativeRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    const el = nativeRef.current as
+      (HTMLInputElement & { showPicker?: () => void }) | null;
     if (!el) return;
     // showPicker() is the only way to surface the native calendar for a control
     // the operator drives by text; where it is unavailable, focusing the hidden

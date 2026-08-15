@@ -124,7 +124,12 @@ export function DropdownItem({
   destructive?: boolean;
   className?: string;
 }) {
-  const cls = cn(ITEM_CLASS, destructive && "text-[rgb(var(--bad))] data-[highlighted]:text-[rgb(var(--bad))]", className);
+  const cls = cn(
+    ITEM_CLASS,
+    destructive &&
+      "text-[rgb(var(--bad))] data-[highlighted]:text-[rgb(var(--bad))]",
+    className,
+  );
 
   if (to) {
     return (
@@ -141,12 +146,24 @@ export function DropdownItem({
 }
 
 /** A non-interactive heading above a group of items. */
-export function DropdownLabel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <RadixMenu.Label className={cn("px-3 py-1.5", className)}>{children}</RadixMenu.Label>;
+export function DropdownLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <RadixMenu.Label className={cn("px-3 py-1.5", className)}>
+      {children}
+    </RadixMenu.Label>
+  );
 }
 
 export function DropdownSeparator({ className }: { className?: string }) {
-  return <RadixMenu.Separator className={cn("my-1.5 h-px bg-border", className)} />;
+  return (
+    <RadixMenu.Separator className={cn("my-1.5 h-px bg-border", className)} />
+  );
 }
 
 /** Escape hatch for arbitrary non-interactive content (an account summary
@@ -182,9 +199,20 @@ export function DropdownCheckboxItem({
       onSelect={(e) => e.preventDefault()}
       className={cn(ITEM_CLASS, className)}
     >
-      <span aria-hidden className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[3px] border border-input">
+      <span
+        aria-hidden
+        className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[3px] border border-input"
+      >
         <RadixMenu.ItemIndicator>
-          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </RadixMenu.ItemIndicator>
@@ -241,17 +269,27 @@ export function DropdownRadioItem({
   className?: string;
 }) {
   return (
-    <RadixMenu.RadioItem value={value} className={cn(ITEM_CLASS, "items-start", className)}>
+    <RadixMenu.RadioItem
+      value={value}
+      className={cn(ITEM_CLASS, "items-start", className)}
+    >
       {/* The indicator slot is reserved whether or not it is filled, so the
           labels stay on one left edge instead of shifting as the choice moves. */}
-      <span aria-hidden className="mt-[3px] grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-input">
+      <span
+        aria-hidden
+        className="mt-[3px] grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-input"
+      >
         <RadixMenu.ItemIndicator>
           <span className="block h-1.5 w-1.5 rounded-full bg-primary" />
         </RadixMenu.ItemIndicator>
       </span>
       <span className="min-w-0">
         <span className="block">{children}</span>
-        {hint && <span className="block text-micro normal-case text-muted-foreground">{hint}</span>}
+        {hint && (
+          <span className="block text-micro normal-case text-muted-foreground">
+            {hint}
+          </span>
+        )}
       </span>
     </RadixMenu.RadioItem>
   );

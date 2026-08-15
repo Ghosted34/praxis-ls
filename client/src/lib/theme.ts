@@ -149,7 +149,8 @@ function mix(c: Rgb, target: Rgb, t: number): Rgb {
 function toAccessibleInk(colour: Rgb, surfaces: Rgb[], ratio = AA_NORMAL): Rgb {
   const clears = (c: Rgb) => surfaces.every((s) => contrast(c, s) >= ratio);
   if (clears(colour)) return colour;
-  const target: Rgb = luminance(surfaces[0]) > 0.5 ? [0, 0, 0] : [255, 255, 255];
+  const target: Rgb =
+    luminance(surfaces[0]) > 0.5 ? [0, 0, 0] : [255, 255, 255];
   for (let t = 0.02; t <= 1; t += 0.02) {
     const next = mix(colour, target, t);
     if (clears(next)) return next;
@@ -163,7 +164,9 @@ function toAccessibleInk(colour: Rgb, surfaces: Rgb[], ratio = AA_NORMAL): Rgb {
  * browser does and that `scripts/check-contrast.mjs` does for the static tokens.
  */
 function pillGround(colour: Rgb, surface: Rgb): Rgb {
-  return colour.map((c, i) => Math.round(c * PILL_TINT + surface[i] * (1 - PILL_TINT))) as Rgb;
+  return colour.map((c, i) =>
+    Math.round(c * PILL_TINT + surface[i] * (1 - PILL_TINT)),
+  ) as Rgb;
 }
 
 const rgbCss = ([r, g, b]: Rgb) => `rgb(${r} ${g} ${b})`;
@@ -201,9 +204,20 @@ export function applyBrand(brand: Brand) {
      * the value is computed at runtime for a tenant's own colour, where no gate
      * can ever see it, so getting it right in the derivation is the only lever.
      */
-    const surfaces = (base: Rgb, card: Rgb): Rgb[] => [base, card, pillGround(accent, base), pillGround(accent, card)];
-    r.style.setProperty("--primary-ink-light", rgbCss(toAccessibleInk(accent, surfaces(LIGHT_SURFACE, LIGHT_CARD))));
-    r.style.setProperty("--primary-ink-dark", rgbCss(toAccessibleInk(accent, surfaces(DARK_SURFACE, DARK_CARD))));
+    const surfaces = (base: Rgb, card: Rgb): Rgb[] => [
+      base,
+      card,
+      pillGround(accent, base),
+      pillGround(accent, card),
+    ];
+    r.style.setProperty(
+      "--primary-ink-light",
+      rgbCss(toAccessibleInk(accent, surfaces(LIGHT_SURFACE, LIGHT_CARD))),
+    );
+    r.style.setProperty(
+      "--primary-ink-dark",
+      rgbCss(toAccessibleInk(accent, surfaces(DARK_SURFACE, DARK_CARD))),
+    );
   }
 
   // Brand-mark gradient stops (raw triplets in index.css).

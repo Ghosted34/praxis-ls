@@ -18,14 +18,21 @@ export function PipelineStagesPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Pipeline stages" description="The CRM opportunity pipeline stages. Read-only — stage editing is not yet exposed by the backend." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Pipeline stages"
+        description="The CRM opportunity pipeline stages. Read-only — stage editing is not yet exposed by the backend."
+      />
 
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No stages" hint="Pipeline stages are seeded per tenant." />
+        <EmptyState
+          title="No stages"
+          hint="Pipeline stages are seeded per tenant."
+        />
       ) : (
         <Table>
           <THead>
@@ -42,7 +49,9 @@ export function PipelineStagesPage() {
                 <TD className="num text-sm">{cell(r.sort_order)}</TD>
                 <TD className="text-sm font-medium">{cell(r.code)}</TD>
                 <TD className="text-sm">{cell(r.name)}</TD>
-                <TD className="num text-sm">{cell(r.default_probability ?? r.probability)}</TD>
+                <TD className="num text-sm">
+                  {cell(r.default_probability ?? r.probability)}
+                </TD>
               </TR>
             ))}
           </TBody>

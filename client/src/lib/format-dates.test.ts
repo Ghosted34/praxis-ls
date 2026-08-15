@@ -40,18 +40,24 @@ describe("toDateInput", () => {
   it("does not move the day in a timezone behind UTC", () => {
     // The regression a naive `new Date(s)` round-trip introduces: UTC midnight
     // is the previous evening in New York, so the control would offer the 20th.
-    expect(withTz("America/New_York", () => toDateInput("2021-09-21"))).toBe("2021-09-21");
+    expect(withTz("America/New_York", () => toDateInput("2021-09-21"))).toBe(
+      "2021-09-21",
+    );
   });
 
   it("does not move the day in a timezone ahead of UTC", () => {
-    expect(withTz("Africa/Douala", () => toDateInput("2021-09-21"))).toBe("2021-09-21");
+    expect(withTz("Africa/Douala", () => toDateInput("2021-09-21"))).toBe(
+      "2021-09-21",
+    );
   });
 
   it("recovers the calendar day from a legacy timestamp response", () => {
     // What the API sent before pg-date-types: 21 Sept stored, serialised from
     // the server's local midnight. Slicing the first ten characters would rewind
     // it to the 20th; resolving the instant locally reads it back correctly.
-    expect(withTz("Africa/Douala", () => toDateInput("2021-09-20T23:00:00.000Z"))).toBe("2021-09-21");
+    expect(
+      withTz("Africa/Douala", () => toDateInput("2021-09-20T23:00:00.000Z")),
+    ).toBe("2021-09-21");
   });
 
   it("accepts a Date object", () => {
@@ -59,7 +65,14 @@ describe("toDateInput", () => {
   });
 
   it("returns '' for blanks and rubbish, so a date input stays empty rather than invalid", () => {
-    for (const v of [null, undefined, "", "not a date", Number.NaN, new Date("nope")]) {
+    for (const v of [
+      null,
+      undefined,
+      "",
+      "not a date",
+      Number.NaN,
+      new Date("nope"),
+    ]) {
       expect(toDateInput(v)).toBe("");
     }
   });
@@ -73,13 +86,19 @@ describe("dateFmt", () => {
   it("renders a calendar date as itself, whatever the reader's timezone", () => {
     // `new Date("2021-09-21")` is midnight UTC — the 20th in every negative
     // offset, which is what this used to print for a date column.
-    expect(withTz("America/New_York", () => dateFmt("2021-09-21"))).toBe("21 Sept 2021");
-    expect(withTz("Africa/Douala", () => dateFmt("2021-09-21"))).toBe("21 Sept 2021");
+    expect(withTz("America/New_York", () => dateFmt("2021-09-21"))).toBe(
+      "21 Sept 2021",
+    );
+    expect(withTz("Africa/Douala", () => dateFmt("2021-09-21"))).toBe(
+      "21 Sept 2021",
+    );
     expect(dateFmt("2021-09-21")).toBe("21 Sept 2021");
   });
 
   it("still renders a timestamp as an instant in the reader's timezone", () => {
-    expect(withTz("Africa/Douala", () => dateFmt("2021-09-20T23:00:00.000Z"))).toBe("21 Sept 2021");
+    expect(
+      withTz("Africa/Douala", () => dateFmt("2021-09-20T23:00:00.000Z")),
+    ).toBe("21 Sept 2021");
   });
 
   it("renders blanks and unparseable values as an em dash", () => {

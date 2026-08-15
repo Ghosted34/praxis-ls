@@ -24,10 +24,20 @@ const TABS = [
 
 export function CommsHub() {
   const { section } = useParams();
-  const page = section === "setup" ? <SetupPage /> : section === "mail" ? <MailPage /> : <TeamChatPage />;
+  const page =
+    section === "setup" ? (
+      <SetupPage />
+    ) : section === "mail" ? (
+      <MailPage />
+    ) : (
+      <TeamChatPage />
+    );
   return (
     <section className="animate-fade-in">
-      <nav className="mb-4 flex items-end gap-1 border-b border-border" aria-label="Comms sections">
+      <nav
+        className="mb-4 flex items-end gap-1 border-b border-border"
+        aria-label="Comms sections"
+      >
         {TABS.map((t) => (
           <NavLink
             key={t.to}
@@ -36,7 +46,9 @@ export function CommsHub() {
             className={({ isActive }) =>
               cn(
                 "-mb-px border-b-2 px-3 pb-2 pt-1 text-sm font-medium transition-colors",
-                isActive ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                isActive
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
               )
             }
           >

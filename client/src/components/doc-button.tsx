@@ -26,7 +26,12 @@ export function DocButton({
     <Button
       size={size}
       variant={variant}
-      onClick={(e) => { e.stopPropagation(); navigate(`/documents/${docType}/${id}${title ? `?title=${encodeURIComponent(title)}` : ""}`); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        navigate(
+          `/documents/${docType}/${id}${title ? `?title=${encodeURIComponent(title)}` : ""}`,
+        );
+      }}
     >
       {label}
     </Button>

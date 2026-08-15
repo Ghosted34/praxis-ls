@@ -10,7 +10,18 @@ import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
 
 const ClockIcon = (p: React.SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20} aria-hidden {...p}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width={20}
+    height={20}
+    aria-hidden
+    {...p}
+  >
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7v5l3 2" />
   </svg>
@@ -30,15 +41,27 @@ export function useClockPunch() {
   const [punch, setPunch] = React.useState<api.AttendanceRow | null>(null);
   const [canPunch, setCanPunch] = React.useState(true); // false = no employee linked
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState<{ text: string; bad?: boolean } | null>(null);
+  const [msg, setMsg] = React.useState<{ text: string; bad?: boolean } | null>(
+    null,
+  );
 
-  React.useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 15000);
+    return () => clearInterval(id);
+  }, []);
   React.useEffect(() => {
     let live = true;
-    api.openPunch()
-      .then((p) => { if (live) setPunch(p); })
-      .catch(() => { if (live) setCanPunch(false); }); // not linked to an employee
-    return () => { live = false; };
+    api
+      .openPunch()
+      .then((p) => {
+        if (live) setPunch(p);
+      })
+      .catch(() => {
+        if (live) setCanPunch(false);
+      }); // not linked to an employee
+    return () => {
+      live = false;
+    };
   }, []);
 
   const clockedIn = canPunch && !!punch && !punch.clock_out_at;
@@ -49,7 +72,8 @@ export function useClockPunch() {
       setTimeout(() => setMsg(null), 4000);
       return;
     }
-    setBusy(true); setMsg(null);
+    setBusy(true);
+    setMsg(null);
     let fix: api.Fix | null = null;
     let fixFailed = false;
     try {
@@ -69,7 +93,9 @@ export function useClockPunch() {
     }
     try {
       if (clockedIn) {
-        await api.clockOut(fix ? { latitude: fix.latitude, longitude: fix.longitude } : {});
+        await api.clockOut(
+          fix ? { latitude: fix.latitude, longitude: fix.longitude } : {},
+        );
         setPunch(null);
         setMsg({
           text: fixFailed ? "Clocked out · no location" : "Clocked out",
@@ -82,7 +108,10 @@ export function useClockPunch() {
         // punching and cannot punch without being on it. The server puts the
         // row down first and refuses second, so a refused punch still leaves a
         // dated device for a manager to approve.
-        const row = await api.clockIn({ ...(fix || {}), device: api.deviceInfo() });
+        const row = await api.clockIn({
+          ...(fix || {}),
+          device: api.deviceInfo(),
+        });
         setPunch(row);
         const noLoc = fixFailed || row.within_geofence === null;
         const offSite = row.within_geofence === false;
@@ -98,10 +127,15 @@ export function useClockPunch() {
       setTimeout(() => setMsg(null), 4000);
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "Failed", bad: true });
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const timeStr = now.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const label = msg ? msg.text : clockedIn ? "On the clock" : timeStr;
   const action = canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time";
 
@@ -123,12 +157,15 @@ export function useClockPunch() {
  * the dot and the icon still carry on-shift/off-shift at every width.
  */
 export function ClockPunchChip() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg } = useClockPunch();
+  const { label, action, clockedIn, canPunch, busy, toggle, msg } =
+    useClockPunch();
 
   return (
     <button
       type="button"
-      onClick={() => { void toggle(); }}
+      onClick={() => {
+        void toggle();
+      }}
       disabled={busy}
       title={`${action} · ${label}`}
       // Named with the state, not just the verb: a screen-reader user should
@@ -152,17 +189,25 @@ export function ClockPunchChip() {
           />
         )}
       </span>
-      <span className="hidden text-[11px] font-semibold tabular-nums lg:inline">{label}</span>
+      <span className="hidden text-[11px] font-semibold tabular-nums lg:inline">
+        {label}
+      </span>
     </button>
   );
 }
 
 export function ClockPunch() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg } = useClockPunch();
+  const { label, action, clockedIn, canPunch, busy, toggle, msg } =
+    useClockPunch();
 
   return (
     <div className="flex items-center gap-2 animate-fade-in">
-      <span className={cn("rounded-md border bg-popover px-2 py-1 text-xs font-medium tabular-nums shadow-md", msg?.bad ? "text-[rgb(var(--bad))]" : "text-foreground")}>
+      <span
+        className={cn(
+          "rounded-md border bg-popover px-2 py-1 text-xs font-medium tabular-nums shadow-md",
+          msg?.bad ? "text-[rgb(var(--bad))]" : "text-foreground",
+        )}
+      >
         {label}
       </span>
       <button
@@ -174,7 +219,12 @@ export function ClockPunch() {
       >
         <ClockIcon />
         {canPunch && (
-          <span className={cn("absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full ring-2 ring-background", clockedIn ? "bg-ok-fill" : "bg-[rgb(var(--ink-3)/0.4)]")} />
+          <span
+            className={cn(
+              "absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full ring-2 ring-background",
+              clockedIn ? "bg-ok-fill" : "bg-[rgb(var(--ink-3)/0.4)]",
+            )}
+          />
         )}
       </button>
     </div>

@@ -17,7 +17,7 @@ import { tenant } from "./api-client";
 
 export type TreasuryCategory = {
   treasury_category_id: string;
-  code: string;                       // 'BANK' | 'CASH' | 'PETTY_CASH' | 'MTN_MOMO' | 'ORANGE_MONEY' | tenant-added
+  code: string; // 'BANK' | 'CASH' | 'PETTY_CASH' | 'MTN_MOMO' | 'ORANGE_MONEY' | tenant-added
   label: string;
   legacy_kind: "BANK" | "CASH" | "MOMO";
   coa_parent_code: string;
@@ -41,11 +41,13 @@ export const createCategory = (body: {
   requires_custodian?: boolean;
   is_bank_identity?: boolean;
   is_momo_identity?: boolean;
-}) => tenant<TreasuryCategory>("/treasury-categories", { method: "POST", body });
+}) =>
+  tenant<TreasuryCategory>("/treasury-categories", { method: "POST", body });
 
 export const setCategoryActive = (id: string, active: boolean) =>
   tenant<TreasuryCategory>(`/treasury-categories/${id}/active`, {
-    method: "POST", body: { active },
+    method: "POST",
+    body: { active },
   });
 
 /* ─────────────── treasury account (wide, with category join) ─────────────── */
@@ -102,13 +104,22 @@ export type TreasuryAccountRich = {
   updated_at?: string;
 };
 
-export const listAccounts = (params: { entity_id?: string; category_id?: string; is_active?: boolean } = {}) => {
+export const listAccounts = (
+  params: {
+    entity_id?: string;
+    category_id?: string;
+    is_active?: boolean;
+  } = {},
+) => {
   const qs = new URLSearchParams();
   if (params.entity_id) qs.set("entity_id", params.entity_id);
   if (params.category_id) qs.set("category_id", params.category_id);
-  if (params.is_active !== undefined) qs.set("is_active", String(params.is_active));
+  if (params.is_active !== undefined)
+    qs.set("is_active", String(params.is_active));
   const s = qs.toString();
-  return tenant<TreasuryAccountRich[]>("/treasury-accounts" + (s ? "?" + s : ""));
+  return tenant<TreasuryAccountRich[]>(
+    "/treasury-accounts" + (s ? "?" + s : ""),
+  );
 };
 
 export const getAccount = (id: string) =>
@@ -119,33 +130,55 @@ export type CreateAccountBody = {
   category_id: string;
   label: string;
   currency?: string;
-  bank_name?: string; branch?: string; account_number?: string;
-  iban?: string; swift_bic?: string; routing_code?: string; holder_name?: string;
-  opening_balance?: number; opening_date?: string; statement_day?: number;
-  custodian_user_id?: string; location?: string; float_limit?: number;
-  momo_number?: string; momo_till?: string; momo_agent?: string;
-  momo_network?: string; momo_fee_account?: string;
+  bank_name?: string;
+  branch?: string;
+  account_number?: string;
+  iban?: string;
+  swift_bic?: string;
+  routing_code?: string;
+  holder_name?: string;
+  opening_balance?: number;
+  opening_date?: string;
+  statement_day?: number;
+  custodian_user_id?: string;
+  location?: string;
+  float_limit?: number;
+  momo_number?: string;
+  momo_till?: string;
+  momo_agent?: string;
+  momo_network?: string;
+  momo_fee_account?: string;
 };
 
 export const createAccount = (body: CreateAccountBody) =>
   tenant<TreasuryAccountRich>("/treasury-accounts", { method: "POST", body });
 
 export const updateAccount = (id: string, patch: Partial<CreateAccountBody>) =>
-  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}`, { method: "PATCH", body: patch });
+  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}`, {
+    method: "PATCH",
+    body: patch,
+  });
 
 export const setAccountActive = (id: string, active: boolean) =>
   tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/active`, {
-    method: "POST", body: { active },
+    method: "POST",
+    body: { active },
   });
 
 export const setAccountPrimary = (id: string) =>
-  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/primary`, { method: "POST" });
+  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/primary`, {
+    method: "POST",
+  });
 
 export const verifyAccount = (id: string) =>
-  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/verify`, { method: "POST" });
+  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/verify`, {
+    method: "POST",
+  });
 
 export const unverifyAccount = (id: string) =>
-  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/unverify`, { method: "POST" });
+  tenant<TreasuryAccountRich>(`/treasury-accounts/${id}/unverify`, {
+    method: "POST",
+  });
 
 /* ─────────────── 360 dossier ─────────────── */
 
@@ -183,33 +216,64 @@ export type MonthlyPoint = {
   net: number;
 };
 
-export type ReadinessItem = { key: string; label: string; ok: boolean; hint: string | null };
-export type Readiness = { items: ReadinessItem[]; done: number; total: number; percent: number };
+export type ReadinessItem = {
+  key: string;
+  label: string;
+  ok: boolean;
+  hint: string | null;
+};
+export type Readiness = {
+  items: ReadinessItem[];
+  done: number;
+  total: number;
+  percent: number;
+};
 
 export type Dossier = {
   account: TreasuryAccountRich;
   category: TreasuryCategory | null;
   coa_leaf: {
-    code: string; parent_code: string; label_fr: string; label_en: string;
-    class: number; is_postable: boolean; is_active: boolean;
+    code: string;
+    parent_code: string;
+    label_fr: string;
+    label_en: string;
+    class: number;
+    is_postable: boolean;
+    is_active: boolean;
   } | null;
-  custodian: { user_id: string; full_name: string; email: string | null; phone: string | null; is_active: boolean } | null;
+  custodian: {
+    user_id: string;
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+  } | null;
   verifier: { user_id: string; full_name: string; email: string | null } | null;
   kpis: Kpis;
   last_debit: {
-    amount: string | number; entry_date: string; description: string | null;
-    entry_no: number; journal_code: string;
+    amount: string | number;
+    entry_date: string;
+    description: string | null;
+    entry_no: number;
+    journal_code: string;
   } | null;
   last_credit: {
-    amount: string | number; entry_date: string; description: string | null;
-    entry_no: number; journal_code: string;
+    amount: string | number;
+    entry_date: string;
+    description: string | null;
+    entry_no: number;
+    journal_code: string;
   } | null;
   monthly_series: MonthlyPoint[];
   recent_lines: MovementLine[];
   documents: unknown[];
   timeline: {
-    audit_id: string; action: string; actor_user_id: string | null;
-    before_snapshot: unknown; after_snapshot: unknown; occurred_at: string;
+    audit_id: string;
+    action: string;
+    actor_user_id: string | null;
+    before_snapshot: unknown;
+    after_snapshot: unknown;
+    occurred_at: string;
   }[];
   readiness: Readiness;
 };

@@ -28,13 +28,31 @@
  * module; modules are the authorisation surface, and that is the thing the
  * ribbon is partitioning.
  */
-import { AREAS, areaRoute, sectionRoute, type Area, type AreaSection } from "./areas";
+import {
+  AREAS,
+  areaRoute,
+  sectionRoute,
+  type Area,
+  type AreaSection,
+} from "./areas";
 import { moduleForRoute } from "@/app/screen-registry";
 import type { NavAccess } from "@/lib/nav-access";
 import { PraxisMark } from "@/components/ai/icons";
 import {
-  AREA_ICON, CommsIcon, GodModeIcon, HrIcon, MasterIcon, OperationsIcon, PaletteIcon, SalesIcon,
-  SettingsIcon, SupportIcon, TowerIcon, VaultIcon, WorkspaceIcon, type IP,
+  AREA_ICON,
+  CommsIcon,
+  GodModeIcon,
+  HrIcon,
+  MasterIcon,
+  OperationsIcon,
+  PaletteIcon,
+  SalesIcon,
+  SettingsIcon,
+  SupportIcon,
+  TowerIcon,
+  VaultIcon,
+  WorkspaceIcon,
+  type IP,
 } from "./nav-icons";
 import type * as React from "react";
 
@@ -153,7 +171,11 @@ export function buildRibbon(access: NavAccess): RibbonFamily[] {
       const best = votes.get(family) ?? -1;
       // Catalogue order breaks a tie, so the placement does not depend on the
       // order the votes happened to be counted in.
-      if (n > best || (n === best && (rank.get(verb) ?? 99) < (rank.get(family) ?? 99))) family = verb;
+      if (
+        n > best ||
+        (n === best && (rank.get(verb) ?? 99) < (rank.get(family) ?? 99))
+      )
+        family = verb;
     }
 
     // Within the area, everything readable shows — including a section whose
@@ -191,11 +213,17 @@ export function locate(
   let best = -1;
   for (const family of families) {
     for (const area of family.areas) {
-      const routes = [areaRoute(area.area), ...area.sections.map((s) => sectionRoute(area.area, s))];
+      const routes = [
+        areaRoute(area.area),
+        ...area.sections.map((s) => sectionRoute(area.area, s)),
+      ];
       for (const route of routes) {
         // The Control Tower's route is "/", which prefix-matches everything —
         // it only counts on an exact hit.
-        const match = route === "/" ? pathname === "/" : pathname === route || pathname.startsWith(route + "/");
+        const match =
+          route === "/"
+            ? pathname === "/"
+            : pathname === route || pathname.startsWith(route + "/");
         // Longest match wins, so /finance/invoices resolves to Finance rather
         // than to whichever area happens to be listed first.
         if (match && route.length > best) {

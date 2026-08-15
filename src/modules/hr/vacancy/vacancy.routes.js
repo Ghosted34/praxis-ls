@@ -32,6 +32,32 @@ router.post("/", requirePermission(M, "create"), validator.create, controller.cr
 // Literal paths BEFORE /:id, or `/talent-pool` is read as a vacancy id and the
 // id guard rejects it as a malformed uuid.
 router.get("/talent-pool", requirePermission(M, "view"), controller.searchPool);
+
+/* ── The drafting interview (0526) ────────────────────────────────────────
+ *
+ * "New vacancy" is an interview, not a form: the recruiter answers a handful of
+ * questions and the model writes the advert, infers the department and
+ * employment type and proposes a salary band, grounded in the hiring corporate
+ * entity.
+ *
+ * `/intake/questions` is `view` — it returns a static list and the entity's
+ * currency, and gating a question set behind `create` would mean a recruiter
+ * could not see what they were about to be asked.
+ *
+ * `/intake/follow-ups` and `/draft` are `create`: both spend a model call
+ * against the tenant's AI budget, and `/draft` inserts a DRAFT vacancy — the
+ * work has to survive a closed tab after a four-minute interview, so it is
+ * saved rather than previewed.
+ */
+router.get("/intake/questions", requirePermission(M, "view"), controller.intakeQuestions);
+router.post("/intake/follow-ups", requirePermission(M, "create"), validator.intake, controller.intakeFollowUps);
+router.post("/draft", requirePermission(M, "create"), validator.intake, controller.draftVacancy);
+/* Voice answers. Lives here rather than on the AI module because the intake
+ * wizard is its only caller today and a general `/ai/transcribe` would need a
+ * permission model of its own; when the second caller appears (an applicant's
+ * covering note, a meeting note) it should move and this should become a
+ * re-export rather than a copy. */
+router.post("/intake/transcribe", requirePermission(M, "create"), validator.transcribe, controller.transcribe);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.get("/:id/applicants", requirePermission(M, "view"), controller.listApplicants);
 

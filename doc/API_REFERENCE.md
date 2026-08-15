@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1015 |
-| Modules mounted | 109 |
+| Routes | 1047 |
+| Modules mounted | 110 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1015 mounted routes, grouped by path prefix.
+All 1047 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -290,7 +290,11 @@ All 1015 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/attendance/absence` | — |
 | POST | `/api/tenant/attendance/clock-in` | — |
 | POST | `/api/tenant/attendance/clock-out` | — |
+| GET | `/api/tenant/attendance/devices` | — |
+| POST | `/api/tenant/attendance/devices` | — |
+| PATCH | `/api/tenant/attendance/devices/:deviceId` | — |
 | GET | `/api/tenant/attendance/open` | — |
+| GET | `/api/tenant/attendance/place-search` | — |
 | GET | `/api/tenant/attendance/work-sites` | — |
 | POST | `/api/tenant/attendance/work-sites` | — |
 | PATCH | `/api/tenant/attendance/work-sites/:siteId` | — |
@@ -380,6 +384,14 @@ All 1015 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/capabilities/:id` | — |
 | GET | `/api/tenant/capabilities/users/:userId` | — |
 | PUT | `/api/tenant/capabilities/users/:userId` | — |
+
+### `tenant/careers`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/careers/` | — |
+| GET | `/api/tenant/careers/:token` | — |
+| POST | `/api/tenant/careers/:token/apply` | — |
 
 ### `tenant/cash-requests`
 
@@ -984,7 +996,16 @@ All 1015 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/meetings/` | — |
 | POST | `/api/tenant/meetings/` | — |
 | GET | `/api/tenant/meetings/:id` | — |
+| PATCH | `/api/tenant/meetings/:id` | — |
+| GET | `/api/tenant/meetings/:id/discovery` | — |
+| PUT | `/api/tenant/meetings/:id/discovery/:sectionKey` | — |
+| POST | `/api/tenant/meetings/:id/discovery/:sectionKey/dictate` | — |
 | POST | `/api/tenant/meetings/:id/notes` | — |
+| GET | `/api/tenant/meetings/discovery/client/:clientId` | — |
+| GET | `/api/tenant/meetings/discovery/lead/:leadId` | — |
+| GET | `/api/tenant/meetings/discovery/prompts` | — |
+| POST | `/api/tenant/meetings/discovery/prompts` | — |
+| PATCH | `/api/tenant/meetings/discovery/prompts/:promptId` | — |
 
 ### `tenant/milestones`
 
@@ -1635,7 +1656,23 @@ All 1015 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/vacancies/:id/applicants` | — |
 | POST | `/api/tenant/vacancies/:id/applicants` | — |
 | PATCH | `/api/tenant/vacancies/:id/applicants/:applicantId` | — |
+| GET | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
+| POST | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
+| POST | `/api/tenant/vacancies/:id/applicants/:applicantId/score` | — |
+| GET | `/api/tenant/vacancies/:id/criteria` | — |
+| POST | `/api/tenant/vacancies/:id/criteria` | — |
+| DELETE | `/api/tenant/vacancies/:id/criteria/:criterionId` | — |
+| POST | `/api/tenant/vacancies/:id/publish` | — |
+| GET | `/api/tenant/vacancies/:id/questions` | — |
+| POST | `/api/tenant/vacancies/:id/questions` | — |
+| DELETE | `/api/tenant/vacancies/:id/questions/:questionId` | — |
+| POST | `/api/tenant/vacancies/:id/questions/generate` | — |
 | POST | `/api/tenant/vacancies/:id/status` | — |
+| POST | `/api/tenant/vacancies/draft` | — |
+| POST | `/api/tenant/vacancies/intake/follow-ups` | — |
+| GET | `/api/tenant/vacancies/intake/questions` | — |
+| POST | `/api/tenant/vacancies/intake/transcribe` | — |
+| GET | `/api/tenant/vacancies/talent-pool` | — |
 
 ### `tenant/vehicle-compliance`
 

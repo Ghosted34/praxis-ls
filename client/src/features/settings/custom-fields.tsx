@@ -20,14 +20,36 @@ import { PageError } from "./shared";
 import { type Entry } from "./store-shared";
 import { slug } from "./store-shared";
 
-const FIELD_TYPES = ["text", "number", "boolean", "date", "select", "multiselect"];
-type FieldDef = { field_key: string; label: string; field_type: string; required: boolean };
+const FIELD_TYPES = [
+  "text",
+  "number",
+  "boolean",
+  "date",
+  "select",
+  "multiselect",
+];
+type FieldDef = {
+  field_key: string;
+  label: string;
+  field_type: string;
+  required: boolean;
+};
 
 function blankField(): FieldDef {
   return { field_key: "", label: "", field_type: "text", required: false };
 }
 
-function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; editing: Entry | null; onClose: () => void; onSaved: () => void }) {
+function CustomFieldForm({
+  open,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Entry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [entityKey, setEntityKey] = React.useState("");
   const [fields, setFields] = React.useState<FieldDef[]>([blankField()]);
   const [busy, setBusy] = React.useState(false);
@@ -36,13 +58,17 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
   React.useEffect(() => {
     if (!open) return;
     setEntityKey(editing?.key ?? "");
-    const arr = Array.isArray(editing?.value) ? (editing?.value as unknown as Row[]) : [];
+    const arr = Array.isArray(editing?.value)
+      ? (editing?.value as unknown as Row[])
+      : [];
     setFields(
       arr.length
         ? arr.map((d) => ({
             field_key: String(d.field_key ?? ""),
             label: String(d.label ?? ""),
-            field_type: FIELD_TYPES.includes(String(d.field_type)) ? String(d.field_type) : "text",
+            field_type: FIELD_TYPES.includes(String(d.field_type))
+              ? String(d.field_type)
+              : "text",
             required: d.required === true,
           }))
         : [blankField()],
@@ -54,14 +80,20 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
     setFields((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
-  const canSubmit = !!entityKey.trim() && fields.some((f) => f.field_key.trim()) && !busy;
+  const canSubmit =
+    !!entityKey.trim() && fields.some((f) => f.field_key.trim()) && !busy;
 
   async function submit() {
     setBusy(true);
     setError(null);
     const clean = fields
       .filter((f) => f.field_key.trim())
-      .map((f) => ({ field_key: slug(f.field_key), label: f.label.trim() || f.field_key.trim(), field_type: f.field_type, required: f.required }));
+      .map((f) => ({
+        field_key: slug(f.field_key),
+        label: f.label.trim() || f.field_key.trim(),
+        field_type: f.field_type,
+        required: f.required,
+      }));
     const keys = new Set<string>();
     for (const f of clean) {
       if (keys.has(f.field_key)) {
@@ -72,7 +104,10 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
       keys.add(f.field_key);
     }
     try {
-      await tenant(`/settings/custom_field/${encodeURIComponent(slug(entityKey))}`, { method: "PUT", body: { value: clean } });
+      await tenant(
+        `/settings/custom_field/${encodeURIComponent(slug(entityKey))}`,
+        { method: "PUT", body: { value: clean } },
+      );
       onSaved();
       onClose();
     } catch (e) {
@@ -83,24 +118,61 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? `Fields — ${editing.key}` : "New custom fields"} description="Extra field definitions for an entity type (client, supplier, dossier…)." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? `Fields — ${editing.key}` : "New custom fields"}
+      description="Extra field definitions for an entity type (client, supplier, dossier…)."
+      size="xl"
+    >
       <div className="space-y-4">
-        <Field label="Entity type" hint={editing ? "Locked after creation" : "e.g. client, supplier, operations_file"}>
-          <Input value={entityKey} onChange={(e) => setEntityKey(e.target.value)} placeholder="client" disabled={!!editing} />
+        <Field
+          label="Entity type"
+          hint={
+            editing
+              ? "Locked after creation"
+              : "e.g. client, supplier, operations_file"
+          }
+        >
+          <Input
+            value={entityKey}
+            onChange={(e) => setEntityKey(e.target.value)}
+            placeholder="client"
+            disabled={!!editing}
+          />
         </Field>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Fields</p>
-            <Button size="sm" variant="ghost" onClick={() => setFields((f) => [...f, blankField()])}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setFields((f) => [...f, blankField()])}
+            >
               + Field
             </Button>
           </div>
           {fields.map((f, i) => (
-            <div key={i} className="grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto_auto_auto]">
-              <Input value={f.field_key} onChange={(e) => setField(i, { field_key: e.target.value })} placeholder="field key" />
-              <Input value={f.label} onChange={(e) => setField(i, { label: e.target.value })} placeholder="Label" />
-              <Select aria-label={`Field type, row ${i + 1}`} value={f.field_type} onChange={(e) => setField(i, { field_type: e.target.value })}>
+            <div
+              key={i}
+              className="grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto_auto_auto]"
+            >
+              <Input
+                value={f.field_key}
+                onChange={(e) => setField(i, { field_key: e.target.value })}
+                placeholder="field key"
+              />
+              <Input
+                value={f.label}
+                onChange={(e) => setField(i, { label: e.target.value })}
+                placeholder="Label"
+              />
+              <Select
+                aria-label={`Field type, row ${i + 1}`}
+                value={f.field_type}
+                onChange={(e) => setField(i, { field_type: e.target.value })}
+              >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -108,10 +180,20 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
                 ))}
               </Select>
               <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <input type="checkbox" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={f.required}
+                  onChange={(e) => setField(i, { required: e.target.checked })}
+                />
                 req
               </label>
-              <Button size="sm" variant="ghost" onClick={() => setFields((rs) => rs.filter((_, idx) => idx !== i))}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setFields((rs) => rs.filter((_, idx) => idx !== i))
+                }
+              >
                 ✕
               </Button>
             </div>
@@ -146,7 +228,9 @@ export function CustomFieldsPage() {
     setRowBusy(key);
     setRowError(null);
     try {
-      await tenant(`/settings/custom_field/${encodeURIComponent(key)}`, { method: "DELETE" });
+      await tenant(`/settings/custom_field/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -157,7 +241,12 @@ export function CustomFieldsPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Custom fields" description="Per-entity field definitions — extra fields a consuming module can render and store." action={<Button onClick={() => edit(null)}>New definition</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Custom fields"
+        description="Per-entity field definitions — extra fields a consuming module can render and store."
+        action={<Button onClick={() => edit(null)}>New definition</Button>}
+      />
 
       <PageError message={rowError} />
 
@@ -166,7 +255,10 @@ export function CustomFieldsPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No custom fields yet" hint="Define extra fields for an entity type." />
+        <EmptyState
+          title="No custom fields yet"
+          hint="Define extra fields for an entity type."
+        />
       ) : (
         <Table>
           <THead>
@@ -183,13 +275,24 @@ export function CustomFieldsPage() {
               return (
                 <TR key={key}>
                   <TD className="num text-sm font-medium">{key}</TD>
-                  <TD className="text-sm text-muted-foreground">{arr.length} field{arr.length === 1 ? "" : "s"}</TD>
+                  <TD className="text-sm text-muted-foreground">
+                    {arr.length} field{arr.length === 1 ? "" : "s"}
+                  </TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => edit({ key, value: r.value as Row })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => edit({ key, value: r.value as Row })}
+                      >
                         Edit
                       </Button>
-                      <Button size="sm" variant="ghost" loading={rowBusy === key} onClick={() => del(key)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={rowBusy === key}
+                        onClick={() => del(key)}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -201,7 +304,12 @@ export function CustomFieldsPage() {
         </Table>
       )}
 
-      <CustomFieldForm open={open} editing={editing} onClose={() => setOpen(false)} onSaved={reload} />
+      <CustomFieldForm
+        open={open}
+        editing={editing}
+        onClose={() => setOpen(false)}
+        onSaved={reload}
+      />
     </section>
   );
 }

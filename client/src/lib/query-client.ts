@@ -46,7 +46,12 @@ export function makeQueryClient(): QueryClient {
         refetchOnWindowFocus: true,
         retry: (failureCount, error) => {
           // 4xx is a decision the server has already made — do not re-ask.
-          if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+          if (
+            error instanceof ApiError &&
+            error.status >= 400 &&
+            error.status < 500
+          )
+            return false;
           return failureCount < 1;
         },
       },
@@ -84,4 +89,5 @@ export const TENANT_KEY = "tenant" as const;
  * Order matters: `[TENANT_KEY, env, path]` keeps `useRefresh()` — which
  * invalidates the whole `[TENANT_KEY]` prefix — working for both envs.
  */
-export const tenantKey = (path: string) => [TENANT_KEY, tokenStore.getEnv(), path] as const;
+export const tenantKey = (path: string) =>
+  [TENANT_KEY, tokenStore.getEnv(), path] as const;

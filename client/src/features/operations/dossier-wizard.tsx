@@ -54,11 +54,18 @@ const STEPS = ["Who & what", "The details", "Cargo & documents"] as const;
 /** The field carrying the CARRIER role, if this service type defines one. */
 function carrierFieldOf(form: api.DetailForm | null) {
   if (!form) return null;
-  for (const g of form.groups) for (const f of g.fields) if (f.facet_role === "CARRIER") return f;
+  for (const g of form.groups)
+    for (const f of g.fields) if (f.facet_role === "CARRIER") return f;
   return null;
 }
 
-export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export function DossierWizard({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { rows: entities } = useList<Entity>("/entities");
   const { rows: clients } = useList<Client>("/clients");
   const { rows: serviceTypes } = useList<api.ServiceType>("/service-types");
@@ -88,7 +95,11 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
    */
   const [values, setValues] = React.useState<DetailValues>({});
   const [displays, setDisplays] = React.useState<DetailDisplays>({});
-  const [addCarrier, setAddCarrier] = React.useState<{ key: string; term: string; kinds: string[] } | null>(null);
+  const [addCarrier, setAddCarrier] = React.useState<{
+    key: string;
+    term: string;
+    kinds: string[];
+  } | null>(null);
 
   /** The draft, once step 1 has been confirmed. Null until then. */
   const [draftId, setDraftId] = React.useState<string | null>(null);
@@ -97,13 +108,19 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
 
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string[]> | null>(null);
+  const [fieldErrors, setFieldErrors] = React.useState<Record<
+    string,
+    string[]
+  > | null>(null);
 
   const form = useResource<api.DetailForm | null>(
-    () => (serviceTypeId ? api.getDetailForm(serviceTypeId) : Promise.resolve(null)),
+    () =>
+      serviceTypeId ? api.getDetailForm(serviceTypeId) : Promise.resolve(null),
     [serviceTypeId],
   );
-  const chosen = (serviceTypes || []).find((s) => s.service_type_id === serviceTypeId);
+  const chosen = (serviceTypes || []).find(
+    (s) => s.service_type_id === serviceTypeId,
+  );
   const carrierField = carrierFieldOf(form.data ?? null);
   const capturesContainers = form.data?.containers?.enabled === true;
 
@@ -119,7 +136,9 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     !entityId && "an entity",
     !clientId && "a client",
     !serviceTypeId && "a service type",
-    carrierField && !values[carrierField.key] && carrierField.label.toLowerCase(),
+    carrierField &&
+      !values[carrierField.key] &&
+      carrierField.label.toLowerCase(),
   ].filter(Boolean) as string[];
 
   // Step 2 blocks only on what the service type marked required, minus the
@@ -139,7 +158,9 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
         title: title || undefined,
         // The carrier was answered in step 1 and belongs to the service type's
         // form, so it travels as a detail like every other field.
-        details: carrierField ? { [carrierField.key]: values[carrierField.key] } : {},
+        details: carrierField
+          ? { [carrierField.key]: values[carrierField.key] }
+          : {},
       } as api.DossierInput);
       setDraftId(row.dossier_id);
       setStep(1);
@@ -169,7 +190,10 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     } catch (e) {
       // `.fields` is the canonical shape (API F-2); `.details` is the deprecated
       // alias, still read so an older server's reply is not dropped on the floor.
-      const err = e as { fields?: Record<string, string[]>; details?: Record<string, string[]> };
+      const err = e as {
+        fields?: Record<string, string[]>;
+        details?: Record<string, string[]>;
+      };
       const detail = err?.fields ?? err?.details;
       if (detail && typeof detail === "object") {
         setFieldErrors(detail);
@@ -216,7 +240,10 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Entity" required>
-              <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+              <Select
+                value={entityId}
+                onChange={(e) => setEntityId(e.target.value)}
+              >
                 <option value="">—</option>
                 {(entities || []).map((en) => (
                   <option key={en.entity_id} value={en.entity_id}>
@@ -226,7 +253,10 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
               </Select>
             </Field>
             <Field label="Client" required>
-              <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <Select
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+              >
                 <option value="">—</option>
                 {(clients || []).map((c) => (
                   <option key={c.client_id} value={c.client_id}>
@@ -241,45 +271,73 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
               className="sm:col-span-2"
               hint="Decides which details this file captures, and its milestone chain."
             >
-              <Select value={serviceTypeId} onChange={(e) => setServiceTypeId(e.target.value)}>
+              <Select
+                value={serviceTypeId}
+                onChange={(e) => setServiceTypeId(e.target.value)}
+              >
                 <option value="">—</option>
                 {(serviceTypes || []).map((s) => (
                   <option key={s.service_type_id} value={s.service_type_id}>
                     {s.name_en || s.name_fr}
-                    {s.has_active_template === false ? " (no milestone template)" : ""}
+                    {s.has_active_template === false
+                      ? " (no milestone template)"
+                      : ""}
                   </option>
                 ))}
               </Select>
             </Field>
           </div>
 
-          {serviceTypeId && form.loading && <Skeleton className="h-20 w-full" />}
+          {serviceTypeId && form.loading && (
+            <Skeleton className="h-20 w-full" />
+          )}
           {/* The hoisted carrier — rendered from the service type's OWN
               definition, so it is labelled and scoped per mode. */}
           {carrierField && (
             <DetailFieldGroups
-              groups={[{ code: "CARRIER", label: "Carrier", seq: 0, fields: [{ ...carrierField, is_required: true }] }]}
+              groups={[
+                {
+                  code: "CARRIER",
+                  label: "Carrier",
+                  seq: 0,
+                  fields: [{ ...carrierField, is_required: true }],
+                },
+              ]}
               values={values}
               displays={displays}
               onChange={setValue}
-              onCreateCarrier={canAddCarrier ? (key, term, kinds) => setAddCarrier({ key, term, kinds }) : undefined}
+              onCreateCarrier={
+                canAddCarrier
+                  ? (key, term, kinds) => setAddCarrier({ key, term, kinds })
+                  : undefined
+              }
               errors={fieldErrors}
               disabled={busy}
             />
           )}
           {form.data && !form.data.field_set && (
             <Callout tone="warn" title="No detail form yet">
-              {chosen?.name_en || chosen?.name_fr || "This service type"} has no shipment-detail form. Add one under
-              Service types → Details; until then this file records only the fields above.
+              {chosen?.name_en || chosen?.name_fr || "This service type"} has no
+              shipment-detail form. Add one under Service types → Details; until
+              then this file records only the fields above.
             </Callout>
           )}
 
-          <Field label="Title" hint="Optional — a short name people will recognise the file by.">
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Bolloré — coffee export" />
+          <Field
+            label="Title"
+            hint="Optional — a short name people will recognise the file by."
+          >
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Bolloré — coffee export"
+            />
           </Field>
 
           {step1Missing.length > 0 && (
-            <p className="micro text-muted-foreground">Still needed: {step1Missing.join(", ")}.</p>
+            <p className="micro text-muted-foreground">
+              Still needed: {step1Missing.join(", ")}.
+            </p>
           )}
         </div>
       )}
@@ -295,7 +353,11 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
               values={values}
               displays={displays}
               onChange={setValue}
-              onCreateCarrier={canAddCarrier ? (key, term, kinds) => setAddCarrier({ key, term, kinds }) : undefined}
+              onCreateCarrier={
+                canAddCarrier
+                  ? (key, term, kinds) => setAddCarrier({ key, term, kinds })
+                  : undefined
+              }
               errors={fieldErrors}
               disabled={busy}
               // Already answered in step 1 — asking twice is how the two come to
@@ -318,15 +380,22 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
             <section className="space-y-2">
               <h3 className="text-sm font-medium text-foreground">Equipment</h3>
               <p className="micro text-muted-foreground">
-                What is moving, by type and count. Marks &amp; numbers are generated from this.
+                What is moving, by type and count. Marks &amp; numbers are
+                generated from this.
               </p>
-              <Button type="button" size="sm" variant="outline" onClick={() => setContainersOpen(true)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setContainersOpen(true)}
+              >
                 Containers on this file
               </Button>
             </section>
           ) : (
             <p className="micro text-muted-foreground">
-              This service type does not track containers, so there is no equipment to record.
+              This service type does not track containers, so there is no
+              equipment to record.
             </p>
           )}
 
@@ -350,22 +419,41 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
         </Button>
         <div className="flex gap-2">
           {step > 0 && (
-            <Button type="button" variant="outline" onClick={() => setStep((s) => s - 1)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setStep((s) => s - 1)}
+              disabled={busy}
+            >
               Back
             </Button>
           )}
           {step === 0 && (
-            <Button type="button" loading={busy} disabled={step1Missing.length > 0 || busy} onClick={startDraft}>
+            <Button
+              type="button"
+              loading={busy}
+              disabled={step1Missing.length > 0 || busy}
+              onClick={startDraft}
+            >
               Continue
             </Button>
           )}
           {step === 1 && (
-            <Button type="button" disabled={detailsMissing.length > 0 || busy} onClick={() => setStep(2)}>
+            <Button
+              type="button"
+              disabled={detailsMissing.length > 0 || busy}
+              onClick={() => setStep(2)}
+            >
               Continue
             </Button>
           )}
           {step === 2 && (
-            <Button type="button" loading={busy} disabled={busy} onClick={finish}>
+            <Button
+              type="button"
+              loading={busy}
+              disabled={busy}
+              onClick={finish}
+            >
               Create file
             </Button>
           )}

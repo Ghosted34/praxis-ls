@@ -20,7 +20,10 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 }
 
 const pushSupported = () =>
-  typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  typeof window !== "undefined" &&
+  "serviceWorker" in navigator &&
+  "PushManager" in window &&
+  "Notification" in window;
 
 export function PushOptIn() {
   const [supported] = React.useState(pushSupported());
@@ -28,7 +31,9 @@ export function PushOptIn() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [unavailable, setUnavailable] = React.useState(false); // VAPID not configured
-  const [denied, setDenied] = React.useState(typeof Notification !== "undefined" && Notification.permission === "denied");
+  const [denied, setDenied] = React.useState(
+    typeof Notification !== "undefined" && Notification.permission === "denied",
+  );
 
   // Reflect any existing subscription on mount.
   React.useEffect(() => {
@@ -52,7 +57,9 @@ export function PushOptIn() {
     setBusy(true);
     setError(null);
     try {
-      const { public_key } = await tenant<{ public_key: string | null }>("/notifications/push/public-key");
+      const { public_key } = await tenant<{ public_key: string | null }>(
+        "/notifications/push/public-key",
+      );
       if (!public_key) {
         setUnavailable(true);
         return;
@@ -60,7 +67,11 @@ export function PushOptIn() {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setDenied(permission === "denied");
-        setError(permission === "denied" ? "Notifications are blocked in your browser settings." : "Permission wasn't granted.");
+        setError(
+          permission === "denied"
+            ? "Notifications are blocked in your browser settings."
+            : "Permission wasn't granted.",
+        );
         return;
       }
       const reg = await navigator.serviceWorker.ready;
@@ -68,10 +79,15 @@ export function PushOptIn() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(public_key),
       });
-      await tenant("/notifications/push/subscribe", { method: "POST", body: { subscription: sub.toJSON() } });
+      await tenant("/notifications/push/subscribe", {
+        method: "POST",
+        body: { subscription: sub.toJSON() },
+      });
       setSubscribed(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't enable push notifications.");
+      setError(
+        e instanceof Error ? e.message : "Couldn't enable push notifications.",
+      );
     } finally {
       setBusy(false);
     }
@@ -84,12 +100,19 @@ export function PushOptIn() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await tenant("/notifications/push/subscribe", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {});
+        await tenant("/notifications/push/subscribe", {
+          method: "DELETE",
+          body: { endpoint: sub.endpoint },
+        }).catch(() => {});
         await sub.unsubscribe();
       }
       setSubscribed(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't turn off push notifications.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't turn off push notifications.",
+      );
     } finally {
       setBusy(false);
     }
@@ -98,7 +121,8 @@ export function PushOptIn() {
   if (!supported) {
     return (
       <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-        Push notifications aren't supported in this browser. Install the app or use a modern browser to enable them.
+        Push notifications aren't supported in this browser. Install the app or
+        use a modern browser to enable them.
       </div>
     );
   }
@@ -106,7 +130,9 @@ export function PushOptIn() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground">Push notifications on this device</p>
+        <p className="text-sm font-semibold text-foreground">
+          Push notifications on this device
+        </p>
         <p className="text-[13px] text-muted-foreground">
           {unavailable
             ? "Not available yet — your administrator hasn't configured push delivery."
@@ -116,7 +142,9 @@ export function PushOptIn() {
                 ? "You'll get alerts here even when the app is closed."
                 : "Get alerts on this device even when the app is closed."}
         </p>
-        {error && <p className="mt-1 text-[13px] text-[rgb(var(--bad))]">{error}</p>}
+        {error && (
+          <p className="mt-1 text-[13px] text-[rgb(var(--bad))]">{error}</p>
+        )}
       </div>
       <button
         type="button"

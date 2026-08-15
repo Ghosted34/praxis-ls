@@ -19,7 +19,11 @@
 export type BeStatus = "ready" | "partial" | "readonly" | "none";
 export type AiKind = "read" | "write" | "assist";
 export type AiAction = { label: string; kind: AiKind; describe: string };
-export type ScreenTab = { label: string; columns?: string[]; actions?: string[] };
+export type ScreenTab = {
+  label: string;
+  columns?: string[];
+  actions?: string[];
+};
 export type ScreenSpec = {
   path: string;
   area: string;
@@ -39,12 +43,19 @@ export const SPECS: ScreenSpec[] = [
     path: "workspace",
     area: "Overview",
     title: "My Workspace",
-    purpose: "Your personal home: tasks assigned to you, approvals awaiting your decision, and files you touched recently.",
+    purpose:
+      "Your personal home: tasks assigned to you, approvals awaiting your decision, and files you touched recently.",
     module: "MOD-workspace",
     status: "readonly",
     tabs: [
-      { label: "My tasks", columns: ["Item", "Type", "Linked to", "Due", "Status"] },
-      { label: "My approvals", columns: ["Request", "Amount", "Requested by", "Age", "Action"] },
+      {
+        label: "My tasks",
+        columns: ["Item", "Type", "Linked to", "Due", "Status"],
+      },
+      {
+        label: "My approvals",
+        columns: ["Request", "Amount", "Requested by", "Age", "Action"],
+      },
       { label: "Recent", columns: ["Item", "Type", "Opened", "Last activity"] },
     ],
   },
@@ -52,7 +63,8 @@ export const SPECS: ScreenSpec[] = [
     path: "godmode",
     area: "Overview",
     title: "Godmode Console",
-    purpose: "Platform superadmin surface (cross-tenant). Separate from the tenant app — provision, suspend, capacity. Superadmin only.",
+    purpose:
+      "Platform superadmin surface (cross-tenant). Separate from the tenant app — provision, suspend, capacity. Superadmin only.",
     module: "platform",
     status: "none",
     columns: ["Tenant", "Plan", "Status", "Users", "Capacity", "Actions"],
@@ -64,61 +76,133 @@ export const SPECS: ScreenSpec[] = [
     path: "commercial/quotations",
     area: "Commercial",
     title: "Quotations",
-    purpose: "Client quotations with a pricing workbench: build lines + totals, simulate margin and extra charges before sending.",
+    purpose:
+      "Client quotations with a pricing workbench: build lines + totals, simulate margin and extra charges before sending.",
     module: "MOD-27",
     status: "ready",
     tabs: [
-      { label: "Quotations", columns: ["Ref", "Client", "Dossier", "Status", "Total", "Valid until"], actions: ["New quotation", "Send", "Accept"] },
-      { label: "Lines & totals", columns: ["Service", "Qty", "Unit price", "Tax", "Line total"] },
-      { label: "Margin simulation", columns: ["Service", "Revenue", "Cost", "Margin", "Margin %"] },
-      { label: "Extra-charge simulation", columns: ["Charge", "Tier", "Days", "Rate", "Estimate"] },
+      {
+        label: "Quotations",
+        columns: ["Ref", "Client", "Dossier", "Status", "Total", "Valid until"],
+        actions: ["New quotation", "Send", "Accept"],
+      },
+      {
+        label: "Lines & totals",
+        columns: ["Service", "Qty", "Unit price", "Tax", "Line total"],
+      },
+      {
+        label: "Margin simulation",
+        columns: ["Service", "Revenue", "Cost", "Margin", "Margin %"],
+      },
+      {
+        label: "Extra-charge simulation",
+        columns: ["Charge", "Tier", "Days", "Rate", "Estimate"],
+      },
     ],
     ai: [
-      { label: "List quotations", kind: "read", describe: "List quotations (filter status/client/dossier)." },
-      { label: "Draft quotation", kind: "write", describe: "Draft a quotation with lines + totals." },
-      { label: "Send / accept quotation", kind: "write", describe: "Transition or accept a quotation (optionally convert to a final invoice)." },
+      {
+        label: "List quotations",
+        kind: "read",
+        describe: "List quotations (filter status/client/dossier).",
+      },
+      {
+        label: "Draft quotation",
+        kind: "write",
+        describe: "Draft a quotation with lines + totals.",
+      },
+      {
+        label: "Send / accept quotation",
+        kind: "write",
+        describe:
+          "Transition or accept a quotation (optionally convert to a final invoice).",
+      },
     ],
   },
   {
     path: "commercial/margin-simulation",
     area: "Commercial",
     title: "Margin simulation",
-    purpose: "What-if margin workbench — margin is computed on services only (débours excluded, KB §6.7).",
+    purpose:
+      "What-if margin workbench — margin is computed on services only (débours excluded, KB §6.7).",
     module: "MOD-27",
     status: "ready",
-    columns: ["Ref", "Dossier", "Revenue", "Service cost", "Margin", "Margin %", "Created"],
+    columns: [
+      "Ref",
+      "Dossier",
+      "Revenue",
+      "Service cost",
+      "Margin",
+      "Margin %",
+      "Created",
+    ],
     actions: ["New simulation"],
     ai: [
-      { label: "List margin simulations", kind: "read", describe: "List margin simulations." },
-      { label: "Compute margin simulation", kind: "write", describe: "Compute + persist a margin simulation (margin on services only)." },
+      {
+        label: "List margin simulations",
+        kind: "read",
+        describe: "List margin simulations.",
+      },
+      {
+        label: "Compute margin simulation",
+        kind: "write",
+        describe:
+          "Compute + persist a margin simulation (margin on services only).",
+      },
     ],
   },
   {
     path: "commercial/extra-charge-simulation",
     area: "Commercial",
     title: "Extra-charge simulation",
-    purpose: "Tiered demurrage / detention estimator — model the cost of delay before it lands.",
+    purpose:
+      "Tiered demurrage / detention estimator — model the cost of delay before it lands.",
     module: "MOD-28",
     status: "ready",
     columns: ["Ref", "Type", "Free days", "Tiers", "Estimate", "Created"],
     actions: ["New simulation"],
     ai: [
-      { label: "List extra-charge simulations", kind: "read", describe: "List demurrage/detention simulations." },
-      { label: "Compute estimate", kind: "write", describe: "Compute + persist a tiered demurrage/detention estimate." },
+      {
+        label: "List extra-charge simulations",
+        kind: "read",
+        describe: "List demurrage/detention simulations.",
+      },
+      {
+        label: "Compute estimate",
+        kind: "write",
+        describe: "Compute + persist a tiered demurrage/detention estimate.",
+      },
     ],
   },
   {
     path: "commercial/pricing-variance",
     area: "Commercial",
     title: "Pricing variance",
-    purpose: "Quote-vs-actual-cost variance with an R/Y/G flag. Sales sees the flag + quote; only Finance sees raw cost.",
+    purpose:
+      "Quote-vs-actual-cost variance with an R/Y/G flag. Sales sees the flag + quote; only Finance sees raw cost.",
     module: "MOD-56",
     status: "ready",
-    columns: ["Dossier", "Quote", "Actual cost", "Variance", "Variance %", "Flag"],
+    columns: [
+      "Dossier",
+      "Quote",
+      "Actual cost",
+      "Variance",
+      "Variance %",
+      "Flag",
+    ],
     actions: ["Compute variance"],
     ai: [
-      { label: "List pricing variance", kind: "read", describe: "Sales pricing-variance list (R/Y/G flag + quote; never raw cost)." },
-      { label: "Compute pricing variance", kind: "assist", describe: "Finance: compute + persist a dossier's pricing variance (quote vs actual cost)." },
+      {
+        label: "List pricing variance",
+        kind: "read",
+        describe:
+          "Sales pricing-variance list (R/Y/G flag + quote; never raw cost).",
+      },
+      {
+        label: "Compute pricing variance",
+        kind: "assist",
+        describe:
+          "Finance: compute + persist a dossier's pricing variance (quote vs actual cost).",
+      },
     ],
   },
 
@@ -131,106 +215,209 @@ export const SPECS: ScreenSpec[] = [
     path: "sales/leads",
     area: "Sales & CRM",
     title: "Leads & intake",
-    purpose: "BUILT. Sales lead capture and qualification, with inbound enquiry + partnership intake folded in as a tab — the top of the funnel.",
+    purpose:
+      "BUILT. Sales lead capture and qualification, with inbound enquiry + partnership intake folded in as a tab — the top of the funnel.",
     module: "sales/lead",
     status: "ready",
     tabs: [
-      { label: "Leads", columns: ["Name", "Company", "Source", "Status", "Owner", "Created"], actions: ["Capture lead", "Advance", "Convert to client"] },
-      { label: "Inbound intake", columns: ["Contact", "Subject", "Channel", "Status", "Received"], actions: ["Triage"] },
+      {
+        label: "Leads",
+        columns: ["Name", "Company", "Source", "Status", "Owner", "Created"],
+        actions: ["Capture lead", "Advance", "Convert to client"],
+      },
+      {
+        label: "Inbound intake",
+        columns: ["Contact", "Subject", "Channel", "Status", "Received"],
+        actions: ["Triage"],
+      },
     ],
     ai: [
-      { label: "List leads", kind: "read", describe: "List sales leads (filter status/owner)." },
+      {
+        label: "List leads",
+        kind: "read",
+        describe: "List sales leads (filter status/owner).",
+      },
       { label: "Capture lead", kind: "write", describe: "Capture a new lead." },
-      { label: "Advance / convert lead", kind: "write", describe: "Advance a lead (contacted/qualified/lost) or convert a qualified lead into a client." },
-      { label: "Triage inbound enquiry", kind: "assist", describe: "Triage an enquiry (optionally convert to a lead)." },
+      {
+        label: "Advance / convert lead",
+        kind: "write",
+        describe:
+          "Advance a lead (contacted/qualified/lost) or convert a qualified lead into a client.",
+      },
+      {
+        label: "Triage inbound enquiry",
+        kind: "assist",
+        describe: "Triage an enquiry (optionally convert to a lead).",
+      },
     ],
   },
   {
     path: "sales/inbound-intake",
     area: "Sales & CRM",
     title: "Inbound intake",
-    purpose: "Contact enquiries and partnership requests captured from the website/email, triaged into leads.",
+    purpose:
+      "Contact enquiries and partnership requests captured from the website/email, triaged into leads.",
     module: "sales/inbound_intake",
     status: "ready",
     tabs: [
-      { label: "Enquiries", columns: ["Contact", "Subject", "Channel", "Status", "Received"], actions: ["Triage → lead"] },
-      { label: "Partnership requests", columns: ["Organisation", "Type", "Status", "Received"], actions: ["Review"] },
+      {
+        label: "Enquiries",
+        columns: ["Contact", "Subject", "Channel", "Status", "Received"],
+        actions: ["Triage → lead"],
+      },
+      {
+        label: "Partnership requests",
+        columns: ["Organisation", "Type", "Status", "Received"],
+        actions: ["Review"],
+      },
     ],
-    ai: [{ label: "Triage enquiry", kind: "assist", describe: "Triage an enquiry (optionally convert to a lead)." }],
+    ai: [
+      {
+        label: "Triage enquiry",
+        kind: "assist",
+        describe: "Triage an enquiry (optionally convert to a lead).",
+      },
+    ],
   },
   {
     path: "sales/opportunities",
     area: "Sales & CRM",
     title: "Opportunities",
-    purpose: "The CRM pipeline — a Kanban board of open opportunities by stage, with weighted value forecasting.",
+    purpose:
+      "The CRM pipeline — a Kanban board of open opportunities by stage, with weighted value forecasting.",
     module: "MOD-24",
     status: "ready",
     tabs: [
-      { label: "Pipeline board", columns: ["Stage", "Opportunities", "Value", "Weighted value"], actions: ["New opportunity"] },
-      { label: "List", columns: ["Name", "Client", "Stage", "Value", "Probability", "Owner"], actions: ["Move stage", "Win", "Lose"] },
+      {
+        label: "Pipeline board",
+        columns: ["Stage", "Opportunities", "Value", "Weighted value"],
+        actions: ["New opportunity"],
+      },
+      {
+        label: "List",
+        columns: ["Name", "Client", "Stage", "Value", "Probability", "Owner"],
+        actions: ["Move stage", "Win", "Lose"],
+      },
     ],
     ai: [
-      { label: "Pipeline board", kind: "read", describe: "Stage counts + weighted value for the open pipeline." },
-      { label: "Create / move opportunity", kind: "write", describe: "Create an opportunity or move it to another stage." },
-      { label: "Win / lose", kind: "write", describe: "Mark an opportunity won (optionally open a dossier) or lost." },
+      {
+        label: "Pipeline board",
+        kind: "read",
+        describe: "Stage counts + weighted value for the open pipeline.",
+      },
+      {
+        label: "Create / move opportunity",
+        kind: "write",
+        describe: "Create an opportunity or move it to another stage.",
+      },
+      {
+        label: "Win / lose",
+        kind: "write",
+        describe:
+          "Mark an opportunity won (optionally open a dossier) or lost.",
+      },
     ],
   },
   {
     path: "sales/proposals",
     area: "Sales & CRM",
     title: "Proposals",
-    purpose: "Formal proposals with an AI-drafted narrative + line items; always human-reviewed before send.",
+    purpose:
+      "Formal proposals with an AI-drafted narrative + line items; always human-reviewed before send.",
     module: "sales/proposal",
     status: "ready",
     columns: ["Ref", "Client", "Status", "Value", "Created"],
     actions: ["Draft with AI", "Send", "Accept"],
     ai: [
-      { label: "Draft proposal", kind: "assist", describe: "Draft a proposal (AI-assisted; human review before send)." },
-      { label: "Send / accept proposal", kind: "write", describe: "Review/send/reject, or accept a sent proposal (optionally create a quotation)." },
+      {
+        label: "Draft proposal",
+        kind: "assist",
+        describe: "Draft a proposal (AI-assisted; human review before send).",
+      },
+      {
+        label: "Send / accept proposal",
+        kind: "write",
+        describe:
+          "Review/send/reject, or accept a sent proposal (optionally create a quotation).",
+      },
     ],
   },
   {
     path: "sales/meetings",
     area: "Sales & CRM",
     title: "Meetings",
-    purpose: "Meeting scheduling and minutes against a lead or client — the CRM activity log.",
+    purpose:
+      "Meeting scheduling and minutes against a lead or client — the CRM activity log.",
     module: "sales/meeting",
     status: "ready",
     columns: ["Title", "With", "Date", "Owner", "Notes"],
     actions: ["Schedule meeting", "Add minutes"],
     ai: [
-      { label: "Schedule meeting", kind: "write", describe: "Schedule a meeting." },
-      { label: "Add note / minutes", kind: "write", describe: "Add a note or minutes to a meeting." },
+      {
+        label: "Schedule meeting",
+        kind: "write",
+        describe: "Schedule a meeting.",
+      },
+      {
+        label: "Add note / minutes",
+        kind: "write",
+        describe: "Add a note or minutes to a meeting.",
+      },
     ],
   },
   {
     path: "sales/campaigns",
     area: "Sales & CRM",
     title: "Marketing campaigns",
-    purpose: "Outbound campaigns and newsletter audiences — create, activate, pause, measure.",
+    purpose:
+      "Outbound campaigns and newsletter audiences — create, activate, pause, measure.",
     module: "sales/marketing_campaign",
     status: "ready",
     tabs: [
-      { label: "Campaigns", columns: ["Name", "Channel", "Status", "Audience", "Start"], actions: ["New campaign", "Activate / pause"] },
-      { label: "Subscribers", columns: ["Email", "Segment", "Subscribed", "Status"] },
+      {
+        label: "Campaigns",
+        columns: ["Name", "Channel", "Status", "Audience", "Start"],
+        actions: ["New campaign", "Activate / pause"],
+      },
+      {
+        label: "Subscribers",
+        columns: ["Email", "Segment", "Subscribed", "Status"],
+      },
     ],
     ai: [
-      { label: "Create campaign", kind: "write", describe: "Create a marketing campaign." },
-      { label: "List subscribers", kind: "read", describe: "List active newsletter subscribers." },
+      {
+        label: "Create campaign",
+        kind: "write",
+        describe: "Create a marketing campaign.",
+      },
+      {
+        label: "List subscribers",
+        kind: "read",
+        describe: "List active newsletter subscribers.",
+      },
     ],
   },
   {
     path: "sales/success-stories",
     area: "Sales & CRM",
     title: "Success stories",
-    purpose: "Portfolio case studies — AI-drafted from a dossier, signed off, then published.",
+    purpose:
+      "Portfolio case studies — AI-drafted from a dossier, signed off, then published.",
     module: "sales/success_story",
     status: "ready",
     columns: ["Title", "Client", "Status", "Published"],
     actions: ["Draft with AI", "Publish"],
     ai: [
-      { label: "Draft success story", kind: "assist", describe: "Draft a success story (AI-assisted)." },
-      { label: "Publish", kind: "write", describe: "Publish a signed-off success story." },
+      {
+        label: "Draft success story",
+        kind: "assist",
+        describe: "Draft a success story (AI-assisted).",
+      },
+      {
+        label: "Publish",
+        kind: "write",
+        describe: "Publish a signed-off success story.",
+      },
     ],
   },
 
@@ -239,25 +426,51 @@ export const SPECS: ScreenSpec[] = [
     path: "operations/files",
     area: "Operations",
     title: "Operations files (dossiers)",
-    purpose: "The freight-forwarding file is the operational hub — milestones, transit orders and delivery notes hang off it.",
+    purpose:
+      "The freight-forwarding file is the operational hub — milestones, transit orders and delivery notes hang off it.",
     module: "operations/operations_file",
     status: "ready",
     tabs: [
-      { label: "Dossiers", columns: ["Ref", "Client", "Service", "Status", "Opened"], actions: ["Open dossier", "Advance"] },
-      { label: "Milestones", columns: ["Milestone", "Due", "Owner", "Status"], actions: ["Add milestone", "Complete"] },
-      { label: "Transit orders", columns: ["Ref", "Mode", "Carrier", "Status"], actions: ["New transit order"] },
-      { label: "Delivery notes", columns: ["Ref", "Consignee", "Status", "Date"], actions: ["New delivery note"] },
+      {
+        label: "Dossiers",
+        columns: ["Ref", "Client", "Service", "Status", "Opened"],
+        actions: ["Open dossier", "Advance"],
+      },
+      {
+        label: "Milestones",
+        columns: ["Milestone", "Due", "Owner", "Status"],
+        actions: ["Add milestone", "Complete"],
+      },
+      {
+        label: "Transit orders",
+        columns: ["Ref", "Mode", "Carrier", "Status"],
+        actions: ["New transit order"],
+      },
+      {
+        label: "Delivery notes",
+        columns: ["Ref", "Consignee", "Status", "Date"],
+        actions: ["New delivery note"],
+      },
     ],
     ai: [
-      { label: "List / get dossiers", kind: "read", describe: "List operation files (dossiers) or fetch one." },
-      { label: "Open / advance dossier", kind: "write", describe: "Open a dossier, update it, or advance its status." },
+      {
+        label: "List / get dossiers",
+        kind: "read",
+        describe: "List operation files (dossiers) or fetch one.",
+      },
+      {
+        label: "Open / advance dossier",
+        kind: "write",
+        describe: "Open a dossier, update it, or advance its status.",
+      },
     ],
   },
   {
     path: "operations/milestones",
     area: "Operations",
     title: "Milestones",
-    purpose: "Shipment milestones across all dossiers — the operational timeline / SLA tracker.",
+    purpose:
+      "Shipment milestones across all dossiers — the operational timeline / SLA tracker.",
     module: "operations/milestone",
     status: "ready",
     columns: ["Dossier", "Milestone", "Due", "Owner", "Status"],
@@ -277,12 +490,14 @@ export const SPECS: ScreenSpec[] = [
       {
         label: "List service types",
         kind: "read",
-        describe: "List the service taxonomy and which service types have an active milestone template.",
+        describe:
+          "List the service taxonomy and which service types have an active milestone template.",
       },
       {
         label: "Get service type 360",
         kind: "read",
-        describe: "Full dossier for one service type: templates, dictionary items, dossiers, margin sims, money rollup.",
+        describe:
+          "Full dossier for one service type: templates, dictionary items, dossiers, margin sims, money rollup.",
       },
     ],
   },
@@ -290,7 +505,8 @@ export const SPECS: ScreenSpec[] = [
     path: "operations/transit-orders",
     area: "Operations",
     title: "Transit orders",
-    purpose: "Transport instructions to carriers — own register, also surfaced as a dossier tab.",
+    purpose:
+      "Transport instructions to carriers — own register, also surfaced as a dossier tab.",
     module: "operations/transit_order",
     status: "ready",
     columns: ["Ref", "Dossier", "Mode", "Carrier", "Status", "Created"],
@@ -300,7 +516,8 @@ export const SPECS: ScreenSpec[] = [
     path: "operations/delivery-notes",
     area: "Operations",
     title: "Delivery notes",
-    purpose: "Proof-of-delivery documents — own register, also surfaced as a dossier tab.",
+    purpose:
+      "Proof-of-delivery documents — own register, also surfaced as a dossier tab.",
     module: "operations/delivery_note",
     status: "ready",
     columns: ["Ref", "Dossier", "Consignee", "Status", "Date"],
@@ -312,7 +529,8 @@ export const SPECS: ScreenSpec[] = [
     path: "procurement/purchase-requests",
     area: "Procurement",
     title: "Purchase requests",
-    purpose: "Internal purchase requisitions with their own approval workflow — the start of procure-to-pay.",
+    purpose:
+      "Internal purchase requisitions with their own approval workflow — the start of procure-to-pay.",
     module: "procurement/purchase_request",
     status: "ready",
     columns: ["Ref", "Requester", "Department", "Status", "Amount", "Date"],
@@ -322,7 +540,8 @@ export const SPECS: ScreenSpec[] = [
     path: "procurement/purchase-orders",
     area: "Procurement",
     title: "Purchase orders",
-    purpose: "Supplier POs raised from approved requests — the commitment leg of procure-to-pay.",
+    purpose:
+      "Supplier POs raised from approved requests — the commitment leg of procure-to-pay.",
     module: "procurement/purchase_order",
     status: "ready",
     columns: ["Ref", "Supplier", "Status", "Total", "Date"],
@@ -332,7 +551,8 @@ export const SPECS: ScreenSpec[] = [
     path: "procurement/goods-received",
     area: "Procurement",
     title: "Goods received (GRN)",
-    purpose: "Goods-receipt notes against a PO — the delivery leg feeding the three-way match.",
+    purpose:
+      "Goods-receipt notes against a PO — the delivery leg feeding the three-way match.",
     module: "procurement/goods_received",
     status: "ready",
     columns: ["Ref", "PO", "Received by", "Status", "Date"],
@@ -342,17 +562,37 @@ export const SPECS: ScreenSpec[] = [
     path: "procurement/supplier-invoices",
     area: "Procurement",
     title: "Supplier invoices",
-    purpose: "AP invoices with a PR↔PO↔GRN↔invoice three-way match, WHT handling, and GL posting (KB §8.5).",
+    purpose:
+      "AP invoices with a PR↔PO↔GRN↔invoice three-way match, WHT handling, and GL posting (KB §8.5).",
     module: "procurement/supplier_invoice",
     status: "ready",
     tabs: [
-      { label: "Invoices", columns: ["Ref", "Supplier", "Amount", "WHT", "Status", "Date"], actions: ["New invoice", "Post"] },
-      { label: "Three-way match", columns: ["Document", "PR", "PO", "GRN", "Match"] },
+      {
+        label: "Invoices",
+        columns: ["Ref", "Supplier", "Amount", "WHT", "Status", "Date"],
+        actions: ["New invoice", "Post"],
+      },
+      {
+        label: "Three-way match",
+        columns: ["Document", "PR", "PO", "GRN", "Match"],
+      },
     ],
     ai: [
-      { label: "List supplier invoices", kind: "read", describe: "List supplier invoices or fetch one with lines." },
-      { label: "Run three-way match", kind: "assist", describe: "Run the three-way match (PR↔PO↔GRN↔invoice)." },
-      { label: "Post to GL", kind: "write", describe: "Post to GL (Dr expense+VAT / Cr supplier net of WHT + WHT)." },
+      {
+        label: "List supplier invoices",
+        kind: "read",
+        describe: "List supplier invoices or fetch one with lines.",
+      },
+      {
+        label: "Run three-way match",
+        kind: "assist",
+        describe: "Run the three-way match (PR↔PO↔GRN↔invoice).",
+      },
+      {
+        label: "Post to GL",
+        kind: "write",
+        describe: "Post to GL (Dr expense+VAT / Cr supplier net of WHT + WHT).",
+      },
     ],
   },
 
@@ -361,59 +601,112 @@ export const SPECS: ScreenSpec[] = [
     path: "costing/costing",
     area: "Costing",
     title: "Dossier costing",
-    purpose: "Job-costing sheet per dossier — budget, expected margin (débours excluded, §6.7).",
+    purpose:
+      "Job-costing sheet per dossier — budget, expected margin (débours excluded, §6.7).",
     module: "MOD-46",
     status: "ready",
     tabs: [
-      { label: "Costing sheet", columns: ["Dossier", "Budget", "Expected margin", "Status"], actions: ["New costing", "Validate", "Approve"] },
-      { label: "Cost tracking", columns: ["Line", "Budget", "Actual", "Variance"] },
+      {
+        label: "Costing sheet",
+        columns: ["Dossier", "Budget", "Expected margin", "Status"],
+        actions: ["New costing", "Validate", "Approve"],
+      },
+      {
+        label: "Cost tracking",
+        columns: ["Line", "Budget", "Actual", "Variance"],
+      },
     ],
     ai: [
-      { label: "List / get costing", kind: "read", describe: "List dossier costings or fetch one with lines + computed margin." },
-      { label: "Create / advance costing", kind: "write", describe: "Create a DRAFT costing, edit it, or advance (validate/approve/reject)." },
+      {
+        label: "List / get costing",
+        kind: "read",
+        describe:
+          "List dossier costings or fetch one with lines + computed margin.",
+      },
+      {
+        label: "Create / advance costing",
+        kind: "write",
+        describe:
+          "Create a DRAFT costing, edit it, or advance (validate/approve/reject).",
+      },
     ],
   },
   {
     path: "costing/cost-tracking",
     area: "Costing",
     title: "Cost tracking",
-    purpose: "Actuals vs the costing sheet — record real costs and reconcile budget variance per dossier.",
+    purpose:
+      "Actuals vs the costing sheet — record real costs and reconcile budget variance per dossier.",
     module: "MOD-47",
     status: "ready",
     columns: ["Dossier", "Budget", "Actual", "Variance", "Variance %"],
     actions: ["Record cost"],
     ai: [
-      { label: "Reconcile dossier", kind: "assist", describe: "Budget vs actual reconciliation for a dossier." },
-      { label: "Record cost", kind: "write", describe: "Record an actual dossier cost and post it to the ledger (débours→4731)." },
+      {
+        label: "Reconcile dossier",
+        kind: "assist",
+        describe: "Budget vs actual reconciliation for a dossier.",
+      },
+      {
+        label: "Record cost",
+        kind: "write",
+        describe:
+          "Record an actual dossier cost and post it to the ledger (débours→4731).",
+      },
     ],
   },
   {
     path: "costing/cash-requests",
     area: "Costing",
     title: "Cash requests",
-    purpose: "Disbursement requests with their own approval + justification cycle (issues a régie advance).",
+    purpose:
+      "Disbursement requests with their own approval + justification cycle (issues a régie advance).",
     module: "MOD-49",
     status: "ready",
     columns: ["Ref", "Requester", "Amount", "Status", "Date"],
     actions: ["New request", "Submit", "Approve", "Disburse", "Justify"],
     ai: [
-      { label: "List / get cash requests", kind: "read", describe: "List cash requests / disbursals or fetch one with lines + payments." },
-      { label: "Draft / transition request", kind: "write", describe: "Create, edit, submit/approve/reject a cash request." },
-      { label: "Disburse / justify", kind: "write", describe: "Disburse (Dr 581 / Cr treasury) or record spend and close (JUSTIFIED)." },
+      {
+        label: "List / get cash requests",
+        kind: "read",
+        describe:
+          "List cash requests / disbursals or fetch one with lines + payments.",
+      },
+      {
+        label: "Draft / transition request",
+        kind: "write",
+        describe: "Create, edit, submit/approve/reject a cash request.",
+      },
+      {
+        label: "Disburse / justify",
+        kind: "write",
+        describe:
+          "Disburse (Dr 581 / Cr treasury) or record spend and close (JUSTIFIED).",
+      },
     ],
   },
   {
     path: "costing/regie",
     area: "Costing",
     title: "Régie d'avances",
-    purpose: "Cash-advance register — issue advances to holders, age unjustified ones back to receivable (KB §6.8).",
+    purpose:
+      "Cash-advance register — issue advances to holders, age unjustified ones back to receivable (KB §6.8).",
     module: "MOD-49",
     status: "ready",
     columns: ["Holder", "Advance", "Justified", "Outstanding", "Status"],
     actions: ["Issue advance", "Age advances"],
     ai: [
-      { label: "List régie advances", kind: "read", describe: "List regie d'avances (cash advances)." },
-      { label: "Issue / age advance", kind: "write", describe: "Issue a cash advance (Dr 581 / Cr 521) or reclassify unjustified advances past their window." },
+      {
+        label: "List régie advances",
+        kind: "read",
+        describe: "List regie d'avances (cash advances).",
+      },
+      {
+        label: "Issue / age advance",
+        kind: "write",
+        describe:
+          "Issue a cash advance (Dr 581 / Cr 521) or reclassify unjustified advances past their window.",
+      },
     ],
   },
 
@@ -422,14 +715,25 @@ export const SPECS: ScreenSpec[] = [
     path: "finance/debt",
     area: "Finance",
     title: "Financing & debt",
-    purpose: "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance. BE basePath /financing (full CRUD + drawdown/repay).",
+    purpose:
+      "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance. BE basePath /financing (full CRUD + drawdown/repay).",
     module: "MOD-53",
     status: "ready",
     columns: ["Lender", "Type", "Principal", "Outstanding", "Rate", "Status"],
     actions: ["Record engagement", "Drawdown", "Repay"],
     ai: [
-      { label: "List / get debt", kind: "read", describe: "List debt engagements or fetch one with repayments + outstanding." },
-      { label: "Create / drawdown / repay", kind: "write", describe: "Record an engagement, post a drawdown (Dr treasury / Cr 162) or a repayment (Dr 162 + interest / Cr treasury)." },
+      {
+        label: "List / get debt",
+        kind: "read",
+        describe:
+          "List debt engagements or fetch one with repayments + outstanding.",
+      },
+      {
+        label: "Create / drawdown / repay",
+        kind: "write",
+        describe:
+          "Record an engagement, post a drawdown (Dr treasury / Cr 162) or a repayment (Dr 162 + interest / Cr treasury).",
+      },
     ],
   },
 
@@ -438,7 +742,8 @@ export const SPECS: ScreenSpec[] = [
     path: "master/clients",
     area: "Master data",
     title: "Clients",
-    purpose: "Client master — the customer registry referenced across sales, operations and receivables.",
+    purpose:
+      "Client master — the customer registry referenced across sales, operations and receivables.",
     module: "master/client_master",
     status: "ready",
     columns: ["Code", "Name", "NIU", "Segment", "Status"],
@@ -448,7 +753,8 @@ export const SPECS: ScreenSpec[] = [
     path: "master/suppliers",
     area: "Master data",
     title: "Suppliers",
-    purpose: "Supplier master — the vendor registry referenced across procurement and payables.",
+    purpose:
+      "Supplier master — the vendor registry referenced across procurement and payables.",
     module: "master/supplier_master",
     status: "ready",
     columns: ["Code", "Name", "NIU", "Category", "Status"],
@@ -458,7 +764,8 @@ export const SPECS: ScreenSpec[] = [
     path: "master/corporate-entities",
     area: "Master data",
     title: "Corporate entities",
-    purpose: "The legal entities the tenant operates — used by treasury, tax and document numbering.",
+    purpose:
+      "The legal entities the tenant operates — used by treasury, tax and document numbering.",
     module: "MOD-01",
     status: "ready",
     columns: ["Code", "Legal name", "NIU", "RCCM", "Country", "Status"],
@@ -468,17 +775,25 @@ export const SPECS: ScreenSpec[] = [
     path: "master/expense-rates",
     area: "Master data",
     title: "Expense rates",
-    purpose: "Rate cards per financial dictionary item — scoped to a shipping line, airline or authority, and by container type — read by costing and the extra-charges simulator.",
+    purpose:
+      "Rate cards per financial dictionary item — scoped to a shipping line, airline or authority, and by container type — read by costing and the extra-charges simulator.",
     module: "master/expense_rate",
     status: "ready",
-    columns: ["Item", "Carrier / authority", "Container type", "Rate", "Effective from"],
+    columns: [
+      "Item",
+      "Carrier / authority",
+      "Container type",
+      "Rate",
+      "Effective from",
+    ],
     actions: ["Set rate", "Add carrier"],
   },
   {
     path: "master/financial-dictionary",
     area: "Master data",
     title: "Financial dictionary",
-    purpose: "Business term → account/mapping lookups that drive account determination and reporting labels.",
+    purpose:
+      "Business term → account/mapping lookups that drive account determination and reporting labels.",
     module: "master/financial_dictionary",
     status: "ready",
     columns: ["Term", "Account", "Mapping", "Notes"],
@@ -490,12 +805,21 @@ export const SPECS: ScreenSpec[] = [
     path: "vault/documents",
     area: "Vault",
     title: "Document vault",
-    purpose: "Central document store with hashes for tamper-evidence. Read-only today — upload/delete are a BE gap.",
+    purpose:
+      "Central document store with hashes for tamper-evidence. Read-only today — upload/delete are a BE gap.",
     module: "vault/document_vault",
     status: "readonly",
     tabs: [
-      { label: "Documents", columns: ["Name", "Type", "Entity", "Uploaded", "Hash"], actions: ["Upload"] },
-      { label: "Signatures", columns: ["Document", "Signer", "Status", "Signed at"], actions: ["Request signature"] },
+      {
+        label: "Documents",
+        columns: ["Name", "Type", "Entity", "Uploaded", "Hash"],
+        actions: ["Upload"],
+      },
+      {
+        label: "Signatures",
+        columns: ["Document", "Signer", "Status", "Signed at"],
+        actions: ["Request signature"],
+      },
     ],
   },
   {
@@ -512,18 +836,27 @@ export const SPECS: ScreenSpec[] = [
     path: "vault/verification",
     area: "Vault",
     title: "Document verification",
-    purpose: "QR/hash tamper check for issued documents. Backend module is incomplete (repo/validator missing).",
+    purpose:
+      "QR/hash tamper check for issued documents. Backend module is incomplete (repo/validator missing).",
     module: "vault/document_verification",
     status: "partial",
     columns: ["Doc ID", "Entity ref", "Hash", "Result", "Checked"],
     actions: ["Verify document"],
-    ai: [{ label: "Verify document", kind: "assist", describe: "Verify a document by doc_id/entity_ref + hash (QR tamper check)." }],
+    ai: [
+      {
+        label: "Verify document",
+        kind: "assist",
+        describe:
+          "Verify a document by doc_id/entity_ref + hash (QR tamper check).",
+      },
+    ],
   },
   {
     path: "vault/compliance-flags",
     area: "Vault",
     title: "Compliance flags",
-    purpose: "Compliance issues raised against entities/dossiers, with severity and resolution tracking.",
+    purpose:
+      "Compliance issues raised against entities/dossiers, with severity and resolution tracking.",
     module: "vault/compliance_flag",
     status: "ready",
     columns: ["Entity", "Flag", "Severity", "Raised", "Status"],
@@ -533,16 +866,30 @@ export const SPECS: ScreenSpec[] = [
     path: "vault/reports",
     area: "Vault",
     title: "Reports",
-    purpose: "The reporting catalogue — run OHADA statements and operational reports, save and pin them to the dashboard.",
+    purpose:
+      "The reporting catalogue — run OHADA statements and operational reports, save and pin them to the dashboard.",
     module: "MOD-63",
     status: "ready",
     tabs: [
-      { label: "Catalogue", columns: ["Report", "Description", "Run"], actions: ["Run report"] },
-      { label: "Saved", columns: ["Name", "Report", "Owner", "Created"], actions: ["Save current"] },
+      {
+        label: "Catalogue",
+        columns: ["Report", "Description", "Run"],
+        actions: ["Run report"],
+      },
+      {
+        label: "Saved",
+        columns: ["Name", "Report", "Owner", "Created"],
+        actions: ["Save current"],
+      },
       { label: "Dashboard tiles", columns: ["Tile", "Position", "Visible"] },
     ],
     ai: [
-      { label: "Report catalogue", kind: "read", describe: "List available reports and run one by key (statements, ageing, dossier 360…)." },
+      {
+        label: "Report catalogue",
+        kind: "read",
+        describe:
+          "List available reports and run one by key (statements, ageing, dossier 360…).",
+      },
     ],
   },
 
@@ -551,17 +898,38 @@ export const SPECS: ScreenSpec[] = [
     path: "comms",
     area: "Communication",
     title: "Smart Comms",
-    purpose: "Corporate messaging — channels (department/project/dossier/client), DMs, presence, certified export.",
+    purpose:
+      "Corporate messaging — channels (department/project/dossier/client), DMs, presence, certified export.",
     module: "smartcomm",
     status: "ready",
     tabs: [
-      { label: "Channels", columns: ["Channel", "Type", "Members", "Unread", "Last activity"], actions: ["New channel"] },
-      { label: "Direct", columns: ["With", "Unread", "Last activity"], actions: ["New message"] },
+      {
+        label: "Channels",
+        columns: ["Channel", "Type", "Members", "Unread", "Last activity"],
+        actions: ["New channel"],
+      },
+      {
+        label: "Direct",
+        columns: ["With", "Unread", "Last activity"],
+        actions: ["New message"],
+      },
     ],
     ai: [
-      { label: "My channels / unread", kind: "read", describe: "Channels the user belongs to, with unread counts." },
-      { label: "Search messages", kind: "assist", describe: "Search messages across the user's channels." },
-      { label: "Post message", kind: "write", describe: "Post a message to a channel." },
+      {
+        label: "My channels / unread",
+        kind: "read",
+        describe: "Channels the user belongs to, with unread counts.",
+      },
+      {
+        label: "Search messages",
+        kind: "assist",
+        describe: "Search messages across the user's channels.",
+      },
+      {
+        label: "Post message",
+        kind: "write",
+        describe: "Post a message to a channel.",
+      },
     ],
   },
 
@@ -570,7 +938,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/catalogue",
     area: "Settings",
     title: "Module catalogue",
-    purpose: "The module registry that feeds the permission grant-matrix. Read-only reference.",
+    purpose:
+      "The module registry that feeds the permission grant-matrix. Read-only reference.",
     module: "MOD-67",
     status: "readonly",
     columns: ["Module", "Group", "Code", "Sort"],
@@ -579,12 +948,17 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/business-setup",
     area: "Settings",
     title: "Business setup",
-    purpose: "Company profile, financial identity (NIU/RCCM), fiscal year and operational policies per corporate entity.",
+    purpose:
+      "Company profile, financial identity (NIU/RCCM), fiscal year and operational policies per corporate entity.",
     module: "MOD-01",
     status: "partial",
     tabs: [
       { label: "Profile", columns: ["Field", "Value"], actions: ["Edit"] },
-      { label: "Financial identity", columns: ["Field", "Value"], actions: ["Edit"] },
+      {
+        label: "Financial identity",
+        columns: ["Field", "Value"],
+        actions: ["Edit"],
+      },
       { label: "Fiscal year", columns: ["Field", "Value"], actions: ["Edit"] },
       { label: "Policies", columns: ["Policy", "Value"], actions: ["Edit"] },
     ],
@@ -593,7 +967,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/business-policies",
     area: "Settings",
     title: "Business policies",
-    purpose: "Privacy, refund, QMS, terms and similar policy documents. No backend endpoint yet — BE dev to build.",
+    purpose:
+      "Privacy, refund, QMS, terms and similar policy documents. No backend endpoint yet — BE dev to build.",
     module: "—",
     status: "none",
     columns: ["Policy", "Version", "Effective", "Updated"],
@@ -603,7 +978,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/custom-fields",
     area: "Settings",
     title: "Custom fields",
-    purpose: "Per-entity custom field definitions. No backend endpoint yet — BE dev to build.",
+    purpose:
+      "Per-entity custom field definitions. No backend endpoint yet — BE dev to build.",
     module: "—",
     status: "none",
     columns: ["Entity", "Field", "Type", "Required", "Default"],
@@ -613,7 +989,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/factory-languages",
     area: "Settings",
     title: "Factory languages",
-    purpose: "No-code translation manager for factory screens (FR/EN). No backend endpoint yet — BE dev to build.",
+    purpose:
+      "No-code translation manager for factory screens (FR/EN). No backend endpoint yet — BE dev to build.",
     module: "—",
     status: "none",
     columns: ["Key", "Screen", "FR", "EN"],
@@ -623,7 +1000,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/document-templates",
     area: "Settings",
     title: "Document templates",
-    purpose: "Invoice/PO/receipt/contract letterhead templates. Only milestone/smartcomm templates exist today — BE gap.",
+    purpose:
+      "Invoice/PO/receipt/contract letterhead templates. Only milestone/smartcomm templates exist today — BE gap.",
     module: "—",
     status: "none",
     columns: ["Template", "Type", "Entity", "Updated"],
@@ -633,7 +1011,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/email-signatures",
     area: "Settings",
     title: "Email signatures",
-    purpose: "Per-staff email signature HTML. Endpoint exists per-user (app_user) but is admin-gated with no self-service route yet.",
+    purpose:
+      "Per-staff email signature HTML. Endpoint exists per-user (app_user) but is admin-gated with no self-service route yet.",
     module: "MOD-67",
     status: "partial",
     columns: ["User", "Signature", "Updated"],
@@ -643,7 +1022,8 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/help-center",
     area: "Settings",
     title: "Help center",
-    purpose: "In-app guides and FAQs. No backend endpoint yet — BE dev to build (or static content).",
+    purpose:
+      "In-app guides and FAQs. No backend endpoint yet — BE dev to build (or static content).",
     module: "—",
     status: "none",
     columns: ["Guide", "Category", "Updated"],
@@ -652,18 +1032,43 @@ export const SPECS: ScreenSpec[] = [
     path: "portal/access",
     area: "Settings",
     title: "Portal access",
-    purpose: "Grant scoped external access — clients see their dossiers/invoices, investors a board terminal, auditors a time-boxed view.",
+    purpose:
+      "Grant scoped external access — clients see their dossiers/invoices, investors a board terminal, auditors a time-boxed view.",
     module: "portal",
     status: "ready",
     tabs: [
-      { label: "Grants", columns: ["Party", "Type", "Scope", "Expires", "Status"], actions: ["Grant access", "Revoke"] },
-      { label: "Client view", columns: ["Dossier", "Invoices", "Receivables ageing"] },
-      { label: "Investor terminal", columns: ["Income statement", "Cash position"] },
+      {
+        label: "Grants",
+        columns: ["Party", "Type", "Scope", "Expires", "Status"],
+        actions: ["Grant access", "Revoke"],
+      },
+      {
+        label: "Client view",
+        columns: ["Dossier", "Invoices", "Receivables ageing"],
+      },
+      {
+        label: "Investor terminal",
+        columns: ["Income statement", "Cash position"],
+      },
     ],
     ai: [
-      { label: "List grants", kind: "read", describe: "List active portal access grants (client/investor/auditor)." },
-      { label: "Grant access", kind: "write", describe: "Grant a client/investor/auditor portal access (auditor time-boxed)." },
-      { label: "Client / investor view", kind: "read", describe: "A client's scoped dossiers/invoices/ageing, or the investor income-statement + cash terminal." },
+      {
+        label: "List grants",
+        kind: "read",
+        describe: "List active portal access grants (client/investor/auditor).",
+      },
+      {
+        label: "Grant access",
+        kind: "write",
+        describe:
+          "Grant a client/investor/auditor portal access (auditor time-boxed).",
+      },
+      {
+        label: "Client / investor view",
+        kind: "read",
+        describe:
+          "A client's scoped dossiers/invoices/ageing, or the investor income-statement + cash terminal.",
+      },
     ],
   },
 
@@ -672,96 +1077,177 @@ export const SPECS: ScreenSpec[] = [
     path: "hr/employees",
     area: "People & HR",
     title: "Employees",
-    purpose: "Employee profile 360 — record + HR history (contracts, payslips, attendance, leave, appraisals) with active/suspend lifecycle.",
+    purpose:
+      "Employee profile 360 — record + HR history (contracts, payslips, attendance, leave, appraisals) with active/suspend lifecycle.",
     module: "MOD-16",
     status: "ready",
     ai: [
-      { label: "List / get employees", kind: "read", describe: "List employees or open one profile (contract, payslips, attendance, leave)." },
-      { label: "Suspend / activate employee", kind: "write", describe: "Set an employee active or suspended (drives payroll, contract and dispatch eligibility)." },
+      {
+        label: "List / get employees",
+        kind: "read",
+        describe:
+          "List employees or open one profile (contract, payslips, attendance, leave).",
+      },
+      {
+        label: "Suspend / activate employee",
+        kind: "write",
+        describe:
+          "Set an employee active or suspended (drives payroll, contract and dispatch eligibility).",
+      },
     ],
   },
   {
     path: "hr/payroll",
     area: "People & HR",
     title: "Payroll",
-    purpose: "Run workstation — OPEN → Compute → Submit → Approve → Validate (posts GL) → Disburse, with segregation of duties.",
+    purpose:
+      "Run workstation — OPEN → Compute → Submit → Approve → Validate (posts GL) → Disburse, with segregation of duties.",
     module: "MOD-17",
     status: "ready",
     ai: [
-      { label: "List runs / payslips", kind: "read", describe: "List payroll runs or drill into a run's payslips." },
-      { label: "Run payroll", kind: "write", describe: "Create a run, compute payslips, then submit / approve / validate (posts GL) / disburse." },
+      {
+        label: "List runs / payslips",
+        kind: "read",
+        describe: "List payroll runs or drill into a run's payslips.",
+      },
+      {
+        label: "Run payroll",
+        kind: "write",
+        describe:
+          "Create a run, compute payslips, then submit / approve / validate (posts GL) / disburse.",
+      },
     ],
   },
   {
     path: "hr/vacancies",
     area: "People & HR",
     title: "Vacancies",
-    purpose: "Recruitment kanban — applicant pipeline across stages, with a DRAFT → OPEN → CLOSED vacancy head.",
+    purpose:
+      "Recruitment kanban — applicant pipeline across stages, with a DRAFT → OPEN → CLOSED vacancy head.",
     module: "MOD-18",
     status: "ready",
     ai: [
-      { label: "List vacancies / applicants", kind: "read", describe: "List vacancies or an applicant pipeline." },
-      { label: "Advance applicant", kind: "write", describe: "Add an applicant or move them across stages (shortlist / interview / hire / reject)." },
+      {
+        label: "List vacancies / applicants",
+        kind: "read",
+        describe: "List vacancies or an applicant pipeline.",
+      },
+      {
+        label: "Advance applicant",
+        kind: "write",
+        describe:
+          "Add an applicant or move them across stages (shortlist / interview / hire / reject).",
+      },
     ],
   },
   {
     path: "hr/contracts",
     area: "People & HR",
     title: "Contracts",
-    purpose: "Contract lifecycle — issue a contract and move it DRAFT → ISSUED → SIGNED → ENDED.",
+    purpose:
+      "Contract lifecycle — issue a contract and move it DRAFT → ISSUED → SIGNED → ENDED.",
     module: "MOD-19",
     status: "ready",
     ai: [
-      { label: "List contracts", kind: "read", describe: "List employment contracts or fetch one." },
-      { label: "Issue / advance contract", kind: "write", describe: "Issue a contract or move it DRAFT → ISSUED → SIGNED → ENDED." },
+      {
+        label: "List contracts",
+        kind: "read",
+        describe: "List employment contracts or fetch one.",
+      },
+      {
+        label: "Issue / advance contract",
+        kind: "write",
+        describe:
+          "Issue a contract or move it DRAFT → ISSUED → SIGNED → ENDED.",
+      },
     ],
   },
   {
     path: "hr/appraisals",
     area: "People & HR",
     title: "Appraisals",
-    purpose: "Performance review + reward — score KPIs and recommend a performance reward that feeds the next payroll run.",
+    purpose:
+      "Performance review + reward — score KPIs and recommend a performance reward that feeds the next payroll run.",
     module: "MOD-20",
     status: "ready",
     ai: [
-      { label: "List appraisals", kind: "read", describe: "List performance appraisals or fetch one." },
-      { label: "Record appraisal / reward", kind: "write", describe: "Score an appraisal or recommend a performance reward (a PENDING payroll earning)." },
+      {
+        label: "List appraisals",
+        kind: "read",
+        describe: "List performance appraisals or fetch one.",
+      },
+      {
+        label: "Record appraisal / reward",
+        kind: "write",
+        describe:
+          "Score an appraisal or recommend a performance reward (a PENDING payroll earning).",
+      },
     ],
   },
   {
     path: "hr/attendance",
     area: "People & HR",
     title: "Attendance",
-    purpose: "Time-clock manager view — the day's geofenced clock-ins with lateness + on-site status, absences and worksite geofences.",
+    purpose:
+      "Time-clock manager view — the day's geofenced clock-ins with lateness + on-site status, absences and worksite geofences.",
     module: "MOD-21",
     status: "ready",
     ai: [
-      { label: "Attendance overview", kind: "read", describe: "The day's clock-ins, lateness, on-site status and who's absent." },
-      { label: "Log / correct a punch", kind: "write", describe: "Record or correct a clock-in / clock-out (geofence-checked)." },
+      {
+        label: "Attendance overview",
+        kind: "read",
+        describe:
+          "The day's clock-ins, lateness, on-site status and who's absent.",
+      },
+      {
+        label: "Log / correct a punch",
+        kind: "write",
+        describe:
+          "Record or correct a clock-in / clock-out (geofence-checked).",
+      },
     ],
   },
   {
     path: "hr/leave",
     area: "People & HR",
     title: "Leave & allowances",
-    purpose: "Request queue — leave / advance / mission requests come in REQUESTED and are decided once (approve / reject); balances.",
+    purpose:
+      "Request queue — leave / advance / mission requests come in REQUESTED and are decided once (approve / reject); balances.",
     module: "MOD-15",
     status: "ready",
     ai: [
-      { label: "List leave requests / balances", kind: "read", describe: "List leave, advance and mission requests, or a person's balances." },
-      { label: "Decide / raise request", kind: "write", describe: "Approve or reject a request, or raise a new one." },
+      {
+        label: "List leave requests / balances",
+        kind: "read",
+        describe:
+          "List leave, advance and mission requests, or a person's balances.",
+      },
+      {
+        label: "Decide / raise request",
+        kind: "write",
+        describe: "Approve or reject a request, or raise a new one.",
+      },
     ],
   },
   {
     path: "hr/trainings",
     area: "People & HR",
     title: "Trainings",
-    purpose: "Session + roster — schedule a session (SCHEDULED → DONE | CANCELLED) and manage its attendance roster.",
+    purpose:
+      "Session + roster — schedule a session (SCHEDULED → DONE | CANCELLED) and manage its attendance roster.",
     module: "MOD-22",
     status: "ready",
     ai: [
-      { label: "List sessions / rosters", kind: "read", describe: "List training sessions or a session's attendee roster." },
-      { label: "Schedule / mark training", kind: "write", describe: "Schedule a session, advance it, or mark who attended." },
+      {
+        label: "List sessions / rosters",
+        kind: "read",
+        describe: "List training sessions or a session's attendee roster.",
+      },
+      {
+        label: "Schedule / mark training",
+        kind: "write",
+        describe: "Schedule a session, advance it, or mark who attended.",
+      },
     ],
   },
 
@@ -770,84 +1256,151 @@ export const SPECS: ScreenSpec[] = [
     path: "fleet/vehicles",
     area: "Fleet & Vehicles",
     title: "Vehicles",
-    purpose: "Vehicle 360 — registry card + status ladder (Active ⇄ Inactive → Disposed) and maintenance / dispatch / compliance / fuel / incident history.",
+    purpose:
+      "Vehicle 360 — registry card + status ladder (Active ⇄ Inactive → Disposed) and maintenance / dispatch / compliance / fuel / incident history.",
     module: "MOD-23",
     status: "ready",
     ai: [
-      { label: "List / get vehicles", kind: "read", describe: "List vehicles or open one 360 (compliance, work orders, dispatch, fuel, incidents)." },
-      { label: "Set vehicle status", kind: "write", describe: "Move a vehicle Active ⇄ Inactive → Disposed." },
+      {
+        label: "List / get vehicles",
+        kind: "read",
+        describe:
+          "List vehicles or open one 360 (compliance, work orders, dispatch, fuel, incidents).",
+      },
+      {
+        label: "Set vehicle status",
+        kind: "write",
+        describe: "Move a vehicle Active ⇄ Inactive → Disposed.",
+      },
     ],
   },
   {
     path: "fleet/compliance",
     area: "Fleet & Vehicles",
     title: "Vehicle compliance",
-    purpose: "Expiry board — insurance and visite-technique records flagged valid / due-soon / expired, with one-click Renew.",
+    purpose:
+      "Expiry board — insurance and visite-technique records flagged valid / due-soon / expired, with one-click Renew.",
     module: "MOD-23",
     status: "ready",
     ai: [
-      { label: "List compliance / expiries", kind: "read", describe: "Insurance and visite-technique records flagged by expiry." },
-      { label: "Renew compliance", kind: "write", describe: "Push a compliance record's expiry forward." },
+      {
+        label: "List compliance / expiries",
+        kind: "read",
+        describe: "Insurance and visite-technique records flagged by expiry.",
+      },
+      {
+        label: "Renew compliance",
+        kind: "write",
+        describe: "Push a compliance record's expiry forward.",
+      },
     ],
   },
   {
     path: "fleet/work-orders",
     area: "Fleet & Vehicles",
     title: "Work orders",
-    purpose: "Maintenance workstation — OPEN → IN_PROGRESS → DONE with parts logged line by line and cost rolled up.",
+    purpose:
+      "Maintenance workstation — OPEN → IN_PROGRESS → DONE with parts logged line by line and cost rolled up.",
     module: "MOD-24",
     status: "ready",
     ai: [
-      { label: "List work orders / parts", kind: "read", describe: "List work orders or a job's parts and cost." },
-      { label: "Open / advance work order", kind: "write", describe: "Open a work order, add parts, or move OPEN → IN_PROGRESS → DONE." },
+      {
+        label: "List work orders / parts",
+        kind: "read",
+        describe: "List work orders or a job's parts and cost.",
+      },
+      {
+        label: "Open / advance work order",
+        kind: "write",
+        describe:
+          "Open a work order, add parts, or move OPEN → IN_PROGRESS → DONE.",
+      },
     ],
   },
   {
     path: "fleet/dispatch",
     area: "Fleet & Vehicles",
     title: "Dispatch",
-    purpose: "Dispatch board — assign vehicle + driver, then check out / check in (odometer) through ASSIGNED → OUT → RETURNED.",
+    purpose:
+      "Dispatch board — assign vehicle + driver, then check out / check in (odometer) through ASSIGNED → OUT → RETURNED.",
     module: "MOD-24",
     status: "ready",
     ai: [
-      { label: "List dispatches", kind: "read", describe: "List dispatch assignments and their status." },
-      { label: "Dispatch a vehicle", kind: "write", describe: "Assign vehicle + driver, then check out / check in (odometer)." },
+      {
+        label: "List dispatches",
+        kind: "read",
+        describe: "List dispatch assignments and their status.",
+      },
+      {
+        label: "Dispatch a vehicle",
+        kind: "write",
+        describe:
+          "Assign vehicle + driver, then check out / check in (odometer).",
+      },
     ],
   },
   {
     path: "fleet/fuel",
     area: "Fleet & Vehicles",
     title: "Fuel log",
-    purpose: "Fuel capture + efficiency — log fills (odometer-guarded) and a vehicle's L/100km consumption stats.",
+    purpose:
+      "Fuel capture + efficiency — log fills (odometer-guarded) and a vehicle's L/100km consumption stats.",
     module: "MOD-24",
     status: "ready",
     ai: [
-      { label: "Fuel / efficiency", kind: "read", describe: "List fills or a vehicle's litres / cost / distance / L-100km stats." },
-      { label: "Log a fill", kind: "write", describe: "Record a fuel fill (odometer-guarded from going backwards)." },
+      {
+        label: "Fuel / efficiency",
+        kind: "read",
+        describe:
+          "List fills or a vehicle's litres / cost / distance / L-100km stats.",
+      },
+      {
+        label: "Log a fill",
+        kind: "write",
+        describe: "Record a fuel fill (odometer-guarded from going backwards).",
+      },
     ],
   },
   {
     path: "fleet/drivers",
     area: "Fleet & Vehicles",
     title: "Driver licences",
-    purpose: "Licence expiry board — driver licences and certs flagged valid / due-soon / expired, with one-click Renew.",
+    purpose:
+      "Licence expiry board — driver licences and certs flagged valid / due-soon / expired, with one-click Renew.",
     module: "MOD-23",
     status: "ready",
     ai: [
-      { label: "List licences / expiries", kind: "read", describe: "Driver licences and certs flagged by expiry." },
-      { label: "Renew licence", kind: "write", describe: "Push a licence's expiry forward." },
+      {
+        label: "List licences / expiries",
+        kind: "read",
+        describe: "Driver licences and certs flagged by expiry.",
+      },
+      {
+        label: "Renew licence",
+        kind: "write",
+        describe: "Push a licence's expiry forward.",
+      },
     ],
   },
   {
     path: "fleet/incidents",
     area: "Fleet & Vehicles",
     title: "Incidents",
-    purpose: "Incident workflow — report an incident against a vehicle/driver and move it OPEN → UNDER_REVIEW → CLOSED (claims attach to a reviewed incident).",
+    purpose:
+      "Incident workflow — report an incident against a vehicle/driver and move it OPEN → UNDER_REVIEW → CLOSED (claims attach to a reviewed incident).",
     module: "MOD-24",
     status: "ready",
     ai: [
-      { label: "List incidents", kind: "read", describe: "List fleet incidents or fetch one." },
-      { label: "Report / advance incident", kind: "write", describe: "Report an incident or move it OPEN → UNDER_REVIEW → CLOSED." },
+      {
+        label: "List incidents",
+        kind: "read",
+        describe: "List fleet incidents or fetch one.",
+      },
+      {
+        label: "Report / advance incident",
+        kind: "write",
+        describe: "Report an incident or move it OPEN → UNDER_REVIEW → CLOSED.",
+      },
     ],
   },
 
@@ -856,72 +1409,132 @@ export const SPECS: ScreenSpec[] = [
     path: "wms/locations",
     area: "Warehouse",
     title: "Locations",
-    purpose: "Location 360 — slots grouped by zone; open one for its stock, parked equipment, cycle-count history and capacity utilisation.",
+    purpose:
+      "Location 360 — slots grouped by zone; open one for its stock, parked equipment, cycle-count history and capacity utilisation.",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "List / get locations", kind: "read", describe: "List warehouse slots or open one (stock, equipment, counts, utilisation)." },
-      { label: "Create location", kind: "write", describe: "Add a zone / aisle / rack / bin slot." },
+      {
+        label: "List / get locations",
+        kind: "read",
+        describe:
+          "List warehouse slots or open one (stock, equipment, counts, utilisation).",
+      },
+      {
+        label: "Create location",
+        kind: "write",
+        describe: "Add a zone / aisle / rack / bin slot.",
+      },
     ],
   },
   {
     path: "wms/inventory",
     area: "Warehouse",
     title: "Inventory",
-    purpose: "Stock ledger — on-hand by item/location with Move (receive / issue / transfer / adjust), state transitions and the append-only movement journal.",
+    purpose:
+      "Stock ledger — on-hand by item/location with Move (receive / issue / transfer / adjust), state transitions and the append-only movement journal.",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "Stock on-hand / movements", kind: "read", describe: "On-hand by item/location or the movement journal." },
-      { label: "Move stock", kind: "write", describe: "Receive / issue / transfer / adjust, or change stock state (QA hold, damaged)." },
+      {
+        label: "Stock on-hand / movements",
+        kind: "read",
+        describe: "On-hand by item/location or the movement journal.",
+      },
+      {
+        label: "Move stock",
+        kind: "write",
+        describe:
+          "Receive / issue / transfer / adjust, or change stock state (QA hold, damaged).",
+      },
     ],
   },
   {
     path: "wms/inbound",
     area: "Warehouse",
     title: "Inbound / GRN",
-    purpose: "Receiving + QA gate — a goods-received note opens on HOLD; QA passes it (choosing putaway) or rejects it.",
+    purpose:
+      "Receiving + QA gate — a goods-received note opens on HOLD; QA passes it (choosing putaway) or rejects it.",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "List GRNs", kind: "read", describe: "List goods-received notes or fetch one." },
-      { label: "QA a GRN", kind: "write", describe: "Pass a GRN (choose a putaway location) or reject it." },
+      {
+        label: "List GRNs",
+        kind: "read",
+        describe: "List goods-received notes or fetch one.",
+      },
+      {
+        label: "QA a GRN",
+        kind: "write",
+        describe: "Pass a GRN (choose a putaway location) or reject it.",
+      },
     ],
   },
   {
     path: "wms/outbound",
     area: "Warehouse",
     title: "Outbound",
-    purpose: "Pick / pack / dispatch workstation — CREATED → Picking → Packed → Dispatched with lines picked and packed item by item.",
+    purpose:
+      "Pick / pack / dispatch workstation — CREATED → Picking → Packed → Dispatched with lines picked and packed item by item.",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "List orders / lines", kind: "read", describe: "List outbound orders or an order's pick lines." },
-      { label: "Pick / pack / dispatch", kind: "write", describe: "Add lines, mark picked / packed, or move CREATED → PICKING → PACKED → DISPATCHED." },
+      {
+        label: "List orders / lines",
+        kind: "read",
+        describe: "List outbound orders or an order's pick lines.",
+      },
+      {
+        label: "Pick / pack / dispatch",
+        kind: "write",
+        describe:
+          "Add lines, mark picked / packed, or move CREATED → PICKING → PACKED → DISPATCHED.",
+      },
     ],
   },
   {
     path: "wms/equipment",
     area: "Warehouse",
     title: "Equipment",
-    purpose: "Allocation board — handling equipment grouped by status; check out to an operator, return, send to maintenance or retire.",
+    purpose:
+      "Allocation board — handling equipment grouped by status; check out to an operator, return, send to maintenance or retire.",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "List equipment", kind: "read", describe: "Handling equipment grouped by status (available / in-use / maintenance)." },
-      { label: "Allocate equipment", kind: "write", describe: "Check out to an operator, return, send to maintenance, or retire." },
+      {
+        label: "List equipment",
+        kind: "read",
+        describe:
+          "Handling equipment grouped by status (available / in-use / maintenance).",
+      },
+      {
+        label: "Allocate equipment",
+        kind: "write",
+        describe:
+          "Check out to an operator, return, send to maintenance, or retire.",
+      },
     ],
   },
   {
     path: "wms/cycle-counts",
     area: "Warehouse",
     title: "Cycle counts",
-    purpose: "Count sheet — pick a location, count each item against expected on-hand, see variance live, submit (a discrepancy raises the reconciliation).",
+    purpose:
+      "Count sheet — pick a location, count each item against expected on-hand, see variance live, submit (a discrepancy raises the reconciliation).",
     module: "MOD-25",
     status: "ready",
     ai: [
-      { label: "List cycle counts", kind: "read", describe: "List cycle counts or a count's result." },
-      { label: "Run a count", kind: "write", describe: "Start a count, enter counted vs expected, submit (raises a discrepancy to reconcile)." },
+      {
+        label: "List cycle counts",
+        kind: "read",
+        describe: "List cycle counts or a count's result.",
+      },
+      {
+        label: "Run a count",
+        kind: "write",
+        describe:
+          "Start a count, enter counted vs expected, submit (raises a discrepancy to reconcile).",
+      },
     ],
   },
 ];

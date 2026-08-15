@@ -105,7 +105,7 @@ const GENERIC_SERVICE_CODE = "OP";
  *
  * These are not arbitrary — they are the codes on the legacy references the
  * business has been reading for years (`SL6721864SM` is a sea import). Kept in
- * step with migration 0681's seed by
+ * step with migration 0682's seed by
  * tests/unit/operation-reference-service-code.test.js, which reads both files.
  */
 const DEFAULT_SERVICE_CODES = {
@@ -207,7 +207,7 @@ function parseOperationReference(value) {
  * something has to be able to tell them apart:
  *
  *   LEGACY_RANDOM      SL6721864SM           the PHP system's references
- *   MODERN_SEQUENTIAL  SLAS-OPS-2026-0142    `numbering.allocate()`, pre-0681
+ *   MODERN_SEQUENTIAL  SLAS-OPS-2026-0142    `numbering.allocate()`, pre-0682
  *   MODERN_OPAQUE      SL7Z3K9QW2M4XBSM      this allocator
  *
  * Derived from the value rather than stored in a column. A `reference_scheme`
@@ -238,7 +238,7 @@ function classifyReference(value) {
  * Punctuation becomes a space FIRST, while "É" is still one letter, and only
  * then is the string NFD-normalised and stripped to ASCII. The other order
  * turns the combining accent into a separator and splits "Étoile" into "E" and
- * "toile". Migration 0681 does the same two passes in SQL — see the note there.
+ * "toile". Migration 0682 does the same two passes in SQL — see the note there.
  */
 function words(name) {
   return str(name)
@@ -268,7 +268,7 @@ const derivePrefix = (name) => initials(name);
  *
  * A preference, not a decision: it may return a code another service already
  * holds, and it may return the reserved `OP`. Both are settled by the candidate
- * walk in `assignMarker`, which is also where migration 0681's seed settles
+ * walk in `assignMarker`, which is also where migration 0682's seed settles
  * them — one rule, applied in two places, rather than two rules that agree
  * today. (A `OP` → `OX` special case here looked tidier and made the JS and the
  * SQL hand different codes to the same key.)
@@ -378,7 +378,7 @@ async function assignMarker(client, { target, id, preferred, reserved }) {
 
 /**
  * This entity's two-character prefix, assigning one from its name if it has
- * none. Migration 0681 seeds every row that existed; this covers entities
+ * none. Migration 0682 seeds every row that existed; this covers entities
  * created since, and any tenant whose seed left a row unassigned.
  */
 async function entityPrefix(client, entityId) {

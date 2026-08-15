@@ -36,15 +36,48 @@ const repoRoot = join(clientRoot, "..");
 
 /** Tailwind's default palette. `white`/`black`/`transparent`/`current` are fine. */
 const PALETTE = [
-  "slate", "gray", "zinc", "neutral", "stone",
-  "red", "orange", "amber", "yellow", "lime", "green", "emerald", "teal",
-  "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "pink", "rose",
+  "slate",
+  "gray",
+  "zinc",
+  "neutral",
+  "stone",
+  "red",
+  "orange",
+  "amber",
+  "yellow",
+  "lime",
+  "green",
+  "emerald",
+  "teal",
+  "cyan",
+  "sky",
+  "blue",
+  "indigo",
+  "violet",
+  "purple",
+  "fuchsia",
+  "pink",
+  "rose",
 ];
 
 /** Utilities that take a colour. */
 const UTILITIES = [
-  "bg", "text", "border", "ring", "ring-offset", "outline", "divide", "accent",
-  "caret", "decoration", "shadow", "fill", "stroke", "from", "to", "via",
+  "bg",
+  "text",
+  "border",
+  "ring",
+  "ring-offset",
+  "outline",
+  "divide",
+  "accent",
+  "caret",
+  "decoration",
+  "shadow",
+  "fill",
+  "stroke",
+  "from",
+  "to",
+  "via",
 ];
 
 const RE = new RegExp(
@@ -59,22 +92,23 @@ const RE = new RegExp(
  * same statement.
  */
 const GUIDANCE = {
-  emerald: "--ok / <Pill tone=\"ok\"> / text-ok",
-  green: "--ok / <Pill tone=\"ok\"> / text-ok",
-  lime: "--ok / <Pill tone=\"ok\">",
+  emerald: '--ok / <Pill tone="ok"> / text-ok',
+  green: '--ok / <Pill tone="ok"> / text-ok',
+  lime: '--ok / <Pill tone="ok">',
   teal: "--ok, or --primary if it is the brand accent",
-  amber: "--warn / <Pill tone=\"warn\"> / text-warn",
-  yellow: "--warn / <Pill tone=\"warn\">",
-  orange: "--primary / --brand-orange (NEVER a literal — this is the tenant's brand)",
-  red: "--bad / <Pill tone=\"bad\"> / text-destructive",
-  rose: "--bad / <Pill tone=\"bad\"> / text-destructive",
+  amber: '--warn / <Pill tone="warn"> / text-warn',
+  yellow: '--warn / <Pill tone="warn">',
+  orange:
+    "--primary / --brand-orange (NEVER a literal — this is the tenant's brand)",
+  red: '--bad / <Pill tone="bad"> / text-destructive',
+  rose: '--bad / <Pill tone="bad"> / text-destructive',
   pink: "--bad, or a brand token",
-  sky: "--brand-blue / <Pill tone=\"blue\">",
-  blue: "--brand-blue / <Pill tone=\"blue\">",
-  cyan: "--brand-blue / <Pill tone=\"blue\">",
+  sky: '--brand-blue / <Pill tone="blue">',
+  blue: '--brand-blue / <Pill tone="blue">',
+  cyan: '--brand-blue / <Pill tone="blue">',
   indigo: "--brand-blue, or --primary",
-  violet: "--brand-violet / <Pill tone=\"violet\">",
-  purple: "--brand-violet / <Pill tone=\"violet\">",
+  violet: '--brand-violet / <Pill tone="violet">',
+  purple: '--brand-violet / <Pill tone="violet">',
   fuchsia: "--brand-violet",
   slate: "--muted-foreground / --border / --card (surface + ink tokens)",
   gray: "--muted-foreground / --border / --card",
@@ -124,7 +158,9 @@ const ALLOW = [
  * trailing comment is much cheaper than a false positive on a className.
  */
 function stripComments(text) {
-  const blanked = text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  const blanked = text.replace(/\/\*[\s\S]*?\*\//g, (m) =>
+    m.replace(/[^\n]/g, " "),
+  );
   return blanked
     .split("\n")
     .map((line) => (/^\s*(\/\/|\*)/.test(line) ? "" : line))
@@ -151,7 +187,15 @@ function stripComments(text) {
 function sources() {
   const out = execFileSync(
     "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "client"],
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "client",
+    ],
     { cwd: repoRoot, encoding: "utf8" },
   );
   return out
@@ -171,19 +215,31 @@ for (const file of sources()) {
   lines.forEach((line, i) => {
     for (const hit of line.matchAll(RE)) {
       const family = PALETTE.find((p) => hit[0].includes(`-${p}-`));
-      violations.push({ file: rel, line: i + 1, token: hit[0], family, src: line.trim() });
+      violations.push({
+        file: rel,
+        line: i + 1,
+        token: hit[0],
+        family,
+        src: line.trim(),
+      });
     }
   });
 }
 
 if (violations.length === 0) {
-  console.warn("Raw-palette gate: clean — every colour comes from a semantic token.");
+  console.warn(
+    "Raw-palette gate: clean — every colour comes from a semantic token.",
+  );
   process.exit(0);
 }
 
 console.error(`\nRaw Tailwind palette colours found: ${violations.length}\n`);
-console.error("Each one breaks tenant white-labelling: it stays that hue when the");
-console.error("tenant's brand is something else. Use the semantic token instead.\n");
+console.error(
+  "Each one breaks tenant white-labelling: it stays that hue when the",
+);
+console.error(
+  "tenant's brand is something else. Use the semantic token instead.\n",
+);
 
 let lastFile = "";
 for (const v of violations) {
@@ -192,7 +248,9 @@ for (const v of violations) {
     lastFile = v.file;
   }
   const fix = GUIDANCE[v.family] ?? "a semantic token from src/index.css";
-  console.error(`    ${String(v.line).padStart(5)}  ${v.token.padEnd(24)} → ${fix}`);
+  console.error(
+    `    ${String(v.line).padStart(5)}  ${v.token.padEnd(24)} → ${fix}`,
+  );
   console.error(`           ${v.src.slice(0, 110)}`);
 }
 console.error("\nTokens live in client/src/index.css. Pills: <Pill tone=…>.\n");

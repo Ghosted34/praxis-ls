@@ -13,21 +13,31 @@ import { tenant } from "./api-client";
  * route for someone who can't sign in at all.
  */
 export const changePassword = (currentPassword: string, newPassword: string) =>
-  tenant<{ changed: boolean; sessions_signed_out: number }>("/auth/change-password", {
-    method: "POST",
-    // Default 401-refresh-and-retry left ON: a form the user spent a minute
-    // filling in is exactly when the access token expires, and the server
-    // answers a WRONG current password with 403, never 401 — so the retry path
-    // can only ever be about the session, not about the credential.
-    body: { current_password: currentPassword, new_password: newPassword },
-  });
+  tenant<{ changed: boolean; sessions_signed_out: number }>(
+    "/auth/change-password",
+    {
+      method: "POST",
+      // Default 401-refresh-and-retry left ON: a form the user spent a minute
+      // filling in is exactly when the access token expires, and the server
+      // answers a WRONG current password with 403, never 401 — so the retry path
+      // can only ever be about the session, not about the credential.
+      body: { current_password: currentPassword, new_password: newPassword },
+    },
+  );
 
 export type TotpSetup = { secret: string; otpauth_url: string };
-export const setupTotp = () => tenant<TotpSetup>("/auth/2fa/setup", { method: "POST" });
+export const setupTotp = () =>
+  tenant<TotpSetup>("/auth/2fa/setup", { method: "POST" });
 export const enableTotp = (code: string) =>
-  tenant<{ is_2fa_enabled: boolean }>("/auth/2fa/enable", { method: "POST", body: { code } });
+  tenant<{ is_2fa_enabled: boolean }>("/auth/2fa/enable", {
+    method: "POST",
+    body: { code },
+  });
 export const disableTotp = (code: string) =>
-  tenant<{ is_2fa_enabled: boolean }>("/auth/2fa/disable", { method: "POST", body: { code } });
+  tenant<{ is_2fa_enabled: boolean }>("/auth/2fa/disable", {
+    method: "POST",
+    body: { code },
+  });
 
 export type PinDeviceRow = {
   device_id: string;
@@ -38,4 +48,6 @@ export type PinDeviceRow = {
 };
 export const listPinDevices = () => tenant<PinDeviceRow[]>("/auth/pin/devices");
 export const revokePinDevice = (deviceId: string) =>
-  tenant<{ revoked: boolean }>(`/auth/pin/devices/${deviceId}`, { method: "DELETE" });
+  tenant<{ revoked: boolean }>(`/auth/pin/devices/${deviceId}`, {
+    method: "DELETE",
+  });

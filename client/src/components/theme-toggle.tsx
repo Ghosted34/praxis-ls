@@ -11,7 +11,9 @@ import { SunIcon, MoonIcon } from "@/components/ui/icons";
 
 export function ThemeToggle() {
   // Track the concrete appearance (light|dark), resolving "system" via the OS.
-  const [dark, setDark] = React.useState<boolean>(() => resolved(getMode()) === "dark");
+  const [dark, setDark] = React.useState<boolean>(
+    () => resolved(getMode()) === "dark",
+  );
 
   function toggle() {
     const next = dark ? "light" : "dark";

@@ -27,13 +27,20 @@ const jsonResponse = (status: number, body: unknown) =>
  * the failure. Narrowing once here keeps the tests reading as prose rather than
  * as a run of casts.
  */
-const failure = (p: Promise<unknown>): Promise<ApiError> => p.then(() => null, (e) => e) as Promise<ApiError>;
+const failure = (p: Promise<unknown>): Promise<ApiError> =>
+  p.then(
+    () => null,
+    (e) => e,
+  ) as Promise<ApiError>;
 
 beforeEach(() => {
   __resetConnectionForTests();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
-  Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+  Object.defineProperty(navigator, "onLine", {
+    value: true,
+    configurable: true,
+  });
 });
 
 afterEach(() => {
@@ -67,7 +74,9 @@ describe("a rejected fetch", () => {
 
 describe("a server that answered", () => {
   it("keeps the connection ONLINE on a 500", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(500, { error: { code: "BOOM", message: "Internal error" } }));
+    fetchMock.mockResolvedValue(
+      jsonResponse(500, { error: { code: "BOOM", message: "Internal error" } }),
+    );
 
     const err = await failure(tenant("/entities"));
 
@@ -79,7 +88,12 @@ describe("a server that answered", () => {
 
   it("keeps a 403's real message and does not treat it as offline", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(403, { error: { code: "FORBIDDEN", message: "You don't have permission to do this." } }),
+      jsonResponse(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "You don't have permission to do this.",
+        },
+      }),
     );
 
     const err = await failure(tenant("/entities"));
@@ -92,7 +106,11 @@ describe("a server that answered", () => {
   it("treats a 503 from the gateway as a connection failure", async () => {
     // Our proxy answered, the app behind it did not. Same user experience, same
     // recovery — but the real status survives on the error for support.
-    fetchMock.mockResolvedValue(jsonResponse(503, { error: { code: "UNAVAILABLE", message: "upstream" } }));
+    fetchMock.mockResolvedValue(
+      jsonResponse(503, {
+        error: { code: "UNAVAILABLE", message: "upstream" },
+      }),
+    );
 
     const err = await failure(tenant("/entities"));
 
@@ -118,7 +136,9 @@ describe("an aborted request", () => {
     // A cancelled query or an unmounted screen aborts in flight. Reporting that
     // as a drop would put the app on the offline screen every time somebody
     // navigated away from a slow list.
-    fetchMock.mockRejectedValue(new DOMException("The operation was aborted.", "AbortError"));
+    fetchMock.mockRejectedValue(
+      new DOMException("The operation was aborted.", "AbortError"),
+    );
 
     const err: unknown = await tenant("/entities").catch((e: unknown) => e);
 

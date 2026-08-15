@@ -45,7 +45,12 @@ type Draft = {
   units: { container_no: string; seal_no: string }[];
 };
 
-const blank = (): Draft => ({ container_type_ref_id: "", load_mode_ref_id: "", qty: "1", units: [] });
+const blank = (): Draft => ({
+  container_type_ref_id: "",
+  load_mode_ref_id: "",
+  qty: "1",
+  units: [],
+});
 
 export function ContainerEditor({
   dossierId,
@@ -58,9 +63,15 @@ export function ContainerEditor({
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const types = useResource<DictRef[]>(() => listDictRefs("CONTAINER_TYPE"), []);
+  const types = useResource<DictRef[]>(
+    () => listDictRefs("CONTAINER_TYPE"),
+    [],
+  );
   const modes = useResource<DictRef[]>(() => listDictRefs("LOAD_MODE"), []);
-  const loaded = useResource<api.ContainerBlock>(() => api.getDossierContainers(dossierId), [dossierId]);
+  const loaded = useResource<api.ContainerBlock>(
+    () => api.getDossierContainers(dossierId),
+    [dossierId],
+  );
 
   const [rows, setRows] = React.useState<Draft[] | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -73,7 +84,10 @@ export function ContainerEditor({
         container_type_ref_id: l.container_type_ref_id,
         load_mode_ref_id: l.load_mode_ref_id || "",
         qty: String(l.qty),
-        units: (l.units || []).map((u) => ({ container_no: u.container_no || "", seal_no: u.seal_no || "" })),
+        units: (l.units || []).map((u) => ({
+          container_no: u.container_no || "",
+          seal_no: u.seal_no || "",
+        })),
       })),
     );
   }, [loaded.data]);
@@ -81,11 +95,24 @@ export function ContainerEditor({
   if (loaded.error) return <ErrorState message={loaded.error} />;
 
   const set = (i: number, patch: Partial<Draft>) =>
-    setRows((s) => (s || []).map((r, ix) => (ix === i ? { ...r, ...patch } : r)));
-  const setUnit = (i: number, u: number, patch: Partial<{ container_no: string; seal_no: string }>) =>
+    setRows((s) =>
+      (s || []).map((r, ix) => (ix === i ? { ...r, ...patch } : r)),
+    );
+  const setUnit = (
+    i: number,
+    u: number,
+    patch: Partial<{ container_no: string; seal_no: string }>,
+  ) =>
     setRows((s) =>
       (s || []).map((r, ix) =>
-        ix === i ? { ...r, units: r.units.map((x, ux) => (ux === u ? { ...x, ...patch } : x)) } : r,
+        ix === i
+          ? {
+              ...r,
+              units: r.units.map((x, ux) =>
+                ux === u ? { ...x, ...patch } : x,
+              ),
+            }
+          : r,
       ),
     );
 
@@ -101,10 +128,14 @@ export function ContainerEditor({
     { boxes: 0, teu: 0 },
   );
 
-  const complete = (rows || []).every((r) => r.container_type_ref_id && Number(r.qty) > 0);
+  const complete = (rows || []).every(
+    (r) => r.container_type_ref_id && Number(r.qty) > 0,
+  );
   // A row may carry at most `qty` container numbers — the server refuses more,
   // and catching it here says which row rather than failing the whole save.
-  const overfilled = (rows || []).findIndex((r) => r.units.filter((u) => u.container_no.trim()).length > Number(r.qty));
+  const overfilled = (rows || []).findIndex(
+    (r) => r.units.filter((u) => u.container_no.trim()).length > Number(r.qty),
+  );
 
   async function save() {
     setBusy(true);
@@ -119,7 +150,10 @@ export function ContainerEditor({
           qty: Number(r.qty),
           units: r.units
             .filter((u) => u.container_no.trim() || u.seal_no.trim())
-            .map((u) => ({ container_no: u.container_no.trim() || null, seal_no: u.seal_no.trim() || null })),
+            .map((u) => ({
+              container_no: u.container_no.trim() || null,
+              seal_no: u.seal_no.trim() || null,
+            })),
         })),
       );
       onSaved?.();
@@ -152,12 +186,21 @@ export function ContainerEditor({
           {rows.map((r, i) => {
             const t = byId.get(r.container_type_ref_id);
             return (
-              <div key={i} className="space-y-2 rounded-md border border-border p-3">
+              <div
+                key={i}
+                className="space-y-2 rounded-md border border-border p-3"
+              >
                 <div className="grid gap-3 sm:grid-cols-12">
-                  <Field label="Container type" required className="sm:col-span-6">
+                  <Field
+                    label="Container type"
+                    required
+                    className="sm:col-span-6"
+                  >
                     <Select
                       value={r.container_type_ref_id}
-                      onChange={(e) => set(i, { container_type_ref_id: e.target.value })}
+                      onChange={(e) =>
+                        set(i, { container_type_ref_id: e.target.value })
+                      }
                     >
                       <option value="">—</option>
                       {groupTypes(typeList).map(([family, list]) => (
@@ -175,11 +218,18 @@ export function ContainerEditor({
                     <Input
                       inputMode="numeric"
                       value={r.qty}
-                      onChange={(e) => set(i, { qty: e.target.value.replace(/[^\d]/g, "") })}
+                      onChange={(e) =>
+                        set(i, { qty: e.target.value.replace(/[^\d]/g, "") })
+                      }
                     />
                   </Field>
                   <Field label="Load mode" className="sm:col-span-3">
-                    <Select value={r.load_mode_ref_id} onChange={(e) => set(i, { load_mode_ref_id: e.target.value })}>
+                    <Select
+                      value={r.load_mode_ref_id}
+                      onChange={(e) =>
+                        set(i, { load_mode_ref_id: e.target.value })
+                      }
+                    >
                       <option value="">—</option>
                       {(modes.data || []).map((m) => (
                         <option key={m.ref_id} value={m.ref_id}>
@@ -194,12 +244,21 @@ export function ContainerEditor({
                   <div className="space-y-2 border-t border-border pt-2">
                     <div className="flex items-center justify-between">
                       <p className="micro text-muted-foreground">
-                        Container numbers ({r.units.filter((u) => u.container_no.trim()).length} of {r.qty || 0})
+                        Container numbers (
+                        {r.units.filter((u) => u.container_no.trim()).length} of{" "}
+                        {r.qty || 0})
                       </p>
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => set(i, { units: [...r.units, { container_no: "", seal_no: "" }] })}
+                        onClick={() =>
+                          set(i, {
+                            units: [
+                              ...r.units,
+                              { container_no: "", seal_no: "" },
+                            ],
+                          })
+                        }
                       >
                         + Container
                       </Button>
@@ -211,20 +270,30 @@ export function ContainerEditor({
                           placeholder="MSKU1234567"
                           aria-label={`Container number ${ux + 1}`}
                           value={u.container_no}
-                          onChange={(e) => setUnit(i, ux, { container_no: e.target.value.toUpperCase() })}
+                          onChange={(e) =>
+                            setUnit(i, ux, {
+                              container_no: e.target.value.toUpperCase(),
+                            })
+                          }
                         />
                         <Input
                           className="sm:col-span-5"
                           placeholder="Seal"
                           aria-label={`Seal number ${ux + 1}`}
                           value={u.seal_no}
-                          onChange={(e) => setUnit(i, ux, { seal_no: e.target.value })}
+                          onChange={(e) =>
+                            setUnit(i, ux, { seal_no: e.target.value })
+                          }
                         />
                         <Button
                           className="sm:col-span-2"
                           size="sm"
                           variant="ghost"
-                          onClick={() => set(i, { units: r.units.filter((_, x) => x !== ux) })}
+                          onClick={() =>
+                            set(i, {
+                              units: r.units.filter((_, x) => x !== ux),
+                            })
+                          }
                         >
                           Remove
                         </Button>
@@ -235,9 +304,15 @@ export function ContainerEditor({
 
                 <div className="flex items-center justify-between">
                   <p className="micro text-muted-foreground">
-                    {t?.extra?.teu ? `${(Number(r.qty) || 0) * Number(t.extra.teu)} TEU` : ""}
+                    {t?.extra?.teu
+                      ? `${(Number(r.qty) || 0) * Number(t.extra.teu)} TEU`
+                      : ""}
                   </p>
-                  <Button size="sm" variant="ghost" onClick={() => setRows(rows.filter((_, x) => x !== i))}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRows(rows.filter((_, x) => x !== i))}
+                  >
                     Remove line
                   </Button>
                 </div>
@@ -245,19 +320,31 @@ export function ContainerEditor({
             );
           })}
 
-          <Button size="sm" variant="outline" onClick={() => setRows([...rows, blank()])}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setRows([...rows, blank()])}
+          >
             + Line
           </Button>
 
           {overfilled >= 0 && (
-            <Callout tone="warn" title="More container numbers than the quantity allows">
-              Line {overfilled + 1} lists more numbers than its quantity. Raise the quantity or remove a number.
+            <Callout
+              tone="warn"
+              title="More container numbers than the quantity allows"
+            >
+              Line {overfilled + 1} lists more numbers than its quantity. Raise
+              the quantity or remove a number.
             </Callout>
           )}
 
           <p className="text-sm text-foreground">
-            <span className="num font-medium">{totals.boxes}</span> box{totals.boxes === 1 ? "" : "es"} ·{" "}
-            <span className="num font-medium">{Math.round(totals.teu * 100) / 100}</span> TEU
+            <span className="num font-medium">{totals.boxes}</span> box
+            {totals.boxes === 1 ? "" : "es"} ·{" "}
+            <span className="num font-medium">
+              {Math.round(totals.teu * 100) / 100}
+            </span>{" "}
+            TEU
           </p>
 
           {error && <ErrorState message={error} />}
@@ -265,7 +352,11 @@ export function ContainerEditor({
             <Button variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={save} loading={busy} disabled={busy || !complete || overfilled >= 0}>
+            <Button
+              onClick={save}
+              loading={busy}
+              disabled={busy || !complete || overfilled >= 0}
+            >
               Save containers
             </Button>
           </div>

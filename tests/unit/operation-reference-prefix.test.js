@@ -214,7 +214,7 @@ describe("assigning a prefix to an entity", () => {
  */
 describe("uniqueness is scoped to the tenant, not the fleet", () => {
   const sql = fs.readFileSync(
-    path.join(__dirname, "..", "..", "migrations", "tenant", "0681_operation_reference.sql"),
+    path.join(__dirname, "..", "..", "migrations", "tenant", "0682_operation_reference.sql"),
     "utf8",
   );
 

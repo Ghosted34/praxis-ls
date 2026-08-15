@@ -35,7 +35,13 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
-export function RowActions({ children, className }: { children: React.ReactNode; className?: string }) {
+export function RowActions({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
     <div

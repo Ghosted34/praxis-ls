@@ -46,7 +46,10 @@ describe("appearance-cache", () => {
     expect(readCachedPwaConfig()).toBeNull();
     // A representative slice — the cache stores whatever the server returned as
     // JSON, so the exact field set does not matter to what is under test here.
-    const cfg = { offlineText: "Ops is offline", splashEnabled: true } as PwaConfig;
+    const cfg = {
+      offlineText: "Ops is offline",
+      splashEnabled: true,
+    } as PwaConfig;
     writeCachedPwaConfig(cfg);
     expect(readCachedPwaConfig()).toEqual(cfg);
   });

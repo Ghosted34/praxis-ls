@@ -17,7 +17,10 @@ import { supplierMaster, partyCommon, partyConfig, countries } from "@shared";
 import type { z } from "zod";
 
 /** Supplier create/edit form schemas — the API validates with these exact ones. */
-export const supplierForm = { create: supplierMaster.create, update: supplierMaster.update };
+export const supplierForm = {
+  create: supplierMaster.create,
+  update: supplierMaster.update,
+};
 
 /** Nested-resource schemas (contact, address, bank, document, registration, owner). */
 export const nestedForms = partyCommon;

@@ -33,12 +33,18 @@ describe("Callout", () => {
     unmount();
 
     render(<Callout tone="bad">Hash mismatch.</Callout>);
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "assertive");
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "aria-live",
+      "assertive",
+    );
   });
 
   it("warns assertively too — a warning nobody hears is the audit's own theme", () => {
     render(<Callout tone="warn">Rate limit close.</Callout>);
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "assertive");
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "aria-live",
+      "assertive",
+    );
   });
 
   /**
@@ -47,7 +53,11 @@ describe("Callout", () => {
    * announcing "check mark" adds nothing to "Saved."
    */
   it("does not carry meaning by colour alone, and does not announce the glyph", () => {
-    const { container } = render(<Callout tone="ok" title="Verified">No tampering.</Callout>);
+    const { container } = render(
+      <Callout tone="ok" title="Verified">
+        No tampering.
+      </Callout>,
+    );
     const svg = container.querySelector("svg");
     expect(svg).toBeTruthy();
     expect(svg).toHaveAttribute("aria-hidden");
@@ -57,7 +67,11 @@ describe("Callout", () => {
   it("renders an action when one is given", async () => {
     const onRetry = vi.fn();
     render(
-      <Callout tone="bad" title="Test failed" action={<button onClick={onRetry}>Retry</button>}>
+      <Callout
+        tone="bad"
+        title="Test failed"
+        action={<button onClick={onRetry}>Retry</button>}
+      >
         The key was rejected.
       </Callout>,
     );
@@ -68,7 +82,9 @@ describe("Callout", () => {
   it("has no axe violations in any tone", async () => {
     for (const tone of ["ok", "warn", "bad", "info"] as const) {
       const { container, unmount } = render(
-        <Callout tone={tone} title="Result">Something happened.</Callout>,
+        <Callout tone={tone} title="Result">
+          Something happened.
+        </Callout>,
       );
       expect(await axe(container)).toHaveNoViolations();
       unmount();

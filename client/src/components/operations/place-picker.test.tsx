@@ -18,13 +18,22 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
-import { apiClientMock, authContextMock, fixtures, renderScreen } from "@/test/screen-harness";
+import {
+  apiClientMock,
+  authContextMock,
+  fixtures,
+  renderScreen,
+} from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 import { PlacePicker } from "./place-picker";
-import type { GeoPlace, PlaceSearchResult, PlaceSuggestion } from "@/lib/operations-api";
+import type {
+  GeoPlace,
+  PlaceSearchResult,
+  PlaceSuggestion,
+} from "@/lib/operations-api";
 
 const DOUALA: GeoPlace = {
   geo_place_id: "gp-douala",
@@ -71,10 +80,17 @@ const CONFIRMED: GeoPlace = {
   verified_at: "2026-08-14T00:00:00.000Z",
 };
 
-const searchResult = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult => ({
+const searchResult = (
+  over: Partial<PlaceSearchResult> = {},
+): PlaceSearchResult => ({
   places: [],
   has_exact: false,
-  provider: { requested: false, status: "NOT_REQUESTED", message: null, results: [] },
+  provider: {
+    requested: false,
+    status: "NOT_REQUESTED",
+    message: null,
+    results: [],
+  },
   ...over,
 });
 
@@ -88,14 +104,20 @@ const searchResult = (over: Partial<PlaceSearchResult> = {}): PlaceSearchResult 
  */
 let routes: Record<string, unknown> = {};
 
-function withCatalogue(places: GeoPlace[], over: Partial<PlaceSearchResult> = {}) {
+function withCatalogue(
+  places: GeoPlace[],
+  over: Partial<PlaceSearchResult> = {},
+) {
   routes = { "/geo-places/search": searchResult({ places, ...over }) };
 }
 
 const onSelect = vi.fn();
 
 function renderPicker(props: Partial<Parameters<typeof PlacePicker>[0]> = {}) {
-  return renderScreen(<PlacePicker label="Port of loading" onSelect={onSelect} {...props} />, { routes });
+  return renderScreen(
+    <PlacePicker label="Port of loading" onSelect={onSelect} {...props} />,
+    { routes },
+  );
 }
 
 /** Open the combobox and wait for the first catalogue response to land. */
@@ -116,7 +138,11 @@ describe("it will not accept free text", () => {
     renderPicker();
     const input = await open(user);
     await user.type(input, "Doula");
-    await waitFor(() => expect(screen.getByText(/no places matched|nothing in the catalogue/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no places matched|nothing in the catalogue/i),
+      ).toBeInTheDocument(),
+    );
 
     // The old control rendered a “Use “Doula”” action here. Nothing may.
     expect(screen.queryByText(/use “/i)).not.toBeInTheDocument();
@@ -135,7 +161,11 @@ describe("it will not accept free text", () => {
     void container;
     const input = await open(user);
     await user.type(input, "zone industrielle bassa");
-    await waitFor(() => expect(screen.getByRole("button", { name: /search worldwide/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /search worldwide/i }),
+      ).toBeInTheDocument(),
+    );
     // No provider request was needed to reach that state: the button IS the ask.
     expect(calls).toEqual([]);
   });
@@ -181,11 +211,20 @@ describe("picking from the catalogue", () => {
 
   it("marks a reference point as one", async () => {
     const user = userEvent.setup();
-    withCatalogue([{ ...DOUALA, name: "Carrefour Ndokoti", is_reference_point: true, kind: "ADDRESS" }]);
+    withCatalogue([
+      {
+        ...DOUALA,
+        name: "Carrefour Ndokoti",
+        is_reference_point: true,
+        kind: "ADDRESS",
+      },
+    ]);
     renderPicker();
     const input = await open(user);
     await user.type(input, "ndokoti");
-    expect(await screen.findByRole("option", { name: /Carrefour/ })).toHaveTextContent("Reference");
+    expect(
+      await screen.findByRole("option", { name: /Carrefour/ }),
+    ).toHaveTextContent("Reference");
   });
 });
 
@@ -198,7 +237,10 @@ describe("the keyboard", () => {
     await user.type(input, "dou");
     await screen.findAllByRole("option");
     await user.keyboard("{ArrowDown}{Enter}");
-    expect(onSelect).toHaveBeenCalledWith({ name: "Douala Airport", place: DOUALA_AIRPORT });
+    expect(onSelect).toHaveBeenCalledWith({
+      name: "Douala Airport",
+      place: DOUALA_AIRPORT,
+    });
   });
 
   it("Down wraps rather than sticking at the end", async () => {
@@ -219,7 +261,11 @@ describe("the keyboard", () => {
     const input = await open(user);
     await user.type(input, "dou");
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Port of loading" })).toHaveFocus());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Port of loading" }),
+      ).toHaveFocus(),
+    );
     void input;
   });
 
@@ -229,7 +275,9 @@ describe("the keyboard", () => {
     renderPicker();
     const input = await open(user);
     await user.type(input, "dou");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 catalogue place"));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("1 catalogue place"),
+    );
   });
 });
 
@@ -237,12 +285,19 @@ describe("the worldwide search", () => {
   it("is offered only once the catalogue has come up short", async () => {
     const user = userEvent.setup();
     // Four hits is above the "thin" threshold, so the catalogue is answering.
-    withCatalogue([DOUALA, DOUALA_AIRPORT, { ...DOUALA, geo_place_id: "c", name: "Douala Port Terminal" }, { ...DOUALA, geo_place_id: "d", name: "Douala Yard" }]);
+    withCatalogue([
+      DOUALA,
+      DOUALA_AIRPORT,
+      { ...DOUALA, geo_place_id: "c", name: "Douala Port Terminal" },
+      { ...DOUALA, geo_place_id: "d", name: "Douala Yard" },
+    ]);
     renderPicker();
     const input = await open(user);
     await user.type(input, "dou");
     await screen.findAllByRole("option");
-    expect(screen.queryByRole("button", { name: /search worldwide/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /search worldwide/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("is not offered when the catalogue has an exact answer", async () => {
@@ -252,7 +307,9 @@ describe("the worldwide search", () => {
     const input = await open(user);
     await user.type(input, "douala");
     await screen.findAllByRole("option");
-    expect(screen.queryByRole("button", { name: /search worldwide/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /search worldwide/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("returns suggestions in their own labelled group, not mixed into the catalogue", async () => {
@@ -261,16 +318,25 @@ describe("the worldwide search", () => {
     renderPicker();
     const input = await open(user);
     await user.type(input, "zone industrielle bassa");
-    const worldwide = await screen.findByRole("button", { name: /search worldwide/i });
+    const worldwide = await screen.findByRole("button", {
+      name: /search worldwide/i,
+    });
 
     fixtures.current.routes!["/geo-places/search"] = searchResult({
       places: [],
-      provider: { requested: true, status: "OK", message: null, results: [SUGGESTION] },
+      provider: {
+        requested: true,
+        status: "OK",
+        message: null,
+        results: [SUGGESTION],
+      },
     });
     await user.click(worldwide);
 
     expect(await screen.findByText(/confirm to use/i)).toBeInTheDocument();
-    expect(await screen.findByRole("option", { name: /Zone Industrielle Bassa/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /Zone Industrielle Bassa/ }),
+    ).toBeInTheDocument();
   });
 
   it("reports WHY it found nothing, differently for each cause", async () => {
@@ -279,7 +345,9 @@ describe("the worldwide search", () => {
     renderPicker();
     const input = await open(user);
     await user.type(input, "zone industrielle bassa");
-    const worldwide = await screen.findByRole("button", { name: /search worldwide/i });
+    const worldwide = await screen.findByRole("button", {
+      name: /search worldwide/i,
+    });
 
     fixtures.current.routes!["/geo-places/search"] = searchResult({
       places: [],
@@ -320,7 +388,9 @@ describe("pressing inside the control never closes it", () => {
   /** A press that really is elsewhere on the page. */
   async function pressOutside() {
     await act(async () => {
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      document.body.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true }),
+      );
     });
   }
 
@@ -350,7 +420,10 @@ describe("pressing inside the control never closes it", () => {
       .spyOn(document, "addEventListener")
       .mockImplementation((type, listener, options) => {
         if (type === "mousedown") {
-          captured.push(options === true || (typeof options === "object" && options?.capture === true));
+          captured.push(
+            options === true ||
+              (typeof options === "object" && options?.capture === true),
+          );
         }
         return original(type, listener, options as AddEventListenerOptions);
       });
@@ -374,9 +447,13 @@ describe("pressing inside the control never closes it", () => {
 
     await pressOutside();
 
-    expect(screen.queryByRole("combobox", { name: "Port of loading" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Port of loading" }),
+    ).not.toBeInTheDocument();
     // …and back to the trigger, with nothing committed.
-    expect(screen.getByRole("button", { name: "Port of loading" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Port of loading" }),
+    ).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -410,19 +487,30 @@ describe("confirming a suggestion", () => {
     renderPicker();
     const input = await open(user);
     await user.type(input, "zone industrielle bassa");
-    const worldwide = await screen.findByRole("button", { name: /search worldwide/i });
+    const worldwide = await screen.findByRole("button", {
+      name: /search worldwide/i,
+    });
     fixtures.current.routes!["/geo-places/search"] = searchResult({
-      provider: { requested: true, status: "OK", message: null, results: [SUGGESTION] },
+      provider: {
+        requested: true,
+        status: "OK",
+        message: null,
+        results: [SUGGESTION],
+      },
     });
     await user.click(worldwide);
-    await user.click(await screen.findByRole("option", { name: /Zone Industrielle Bassa/ }));
+    await user.click(
+      await screen.findByRole("option", { name: /Zone Industrielle Bassa/ }),
+    );
     return screen.findByText(/confirm this place/i);
   }
 
   it("shows exactly what is about to be saved before saving it", async () => {
     const user = userEvent.setup();
     await reachConfirmStep(user);
-    expect(screen.getByText("Zone Industrielle Bassa, Douala, Cameroon")).toBeInTheDocument();
+    expect(
+      screen.getByText("Zone Industrielle Bassa, Douala, Cameroon"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/84% provider confidence/)).toBeInTheDocument();
     // Nothing has been stored — a suggestion is not a place until confirmed.
     expect(onSelect).not.toHaveBeenCalled();
@@ -435,17 +523,25 @@ describe("confirming a suggestion", () => {
     await user.click(screen.getByRole("button", { name: /use this place/i }));
     await waitFor(() =>
       // The DISAMBIGUATED name the server chose, not the provider's fragment.
-      expect(onSelect).toHaveBeenCalledWith({ name: "Zone Industrielle Bassa, Douala", place: CONFIRMED }),
+      expect(onSelect).toHaveBeenCalledWith({
+        name: "Zone Industrielle Bassa, Douala",
+        place: CONFIRMED,
+      }),
     );
   });
 
   it("offers the nearby-reference-point answer right where it is needed", async () => {
     const user = userEvent.setup();
     await reachConfirmStep(user);
-    const toggle = screen.getByRole("checkbox", { name: /near the real place, not the exact spot/i });
+    const toggle = screen.getByRole("checkbox", {
+      name: /near the real place, not the exact spot/i,
+    });
     expect(toggle).toBeInTheDocument();
     await user.click(toggle);
-    fixtures.current.routes!["/geo-places/confirm"] = { ...CONFIRMED, is_reference_point: true };
+    fixtures.current.routes!["/geo-places/confirm"] = {
+      ...CONFIRMED,
+      is_reference_point: true,
+    };
     await user.click(screen.getByRole("button", { name: /use this place/i }));
     await waitFor(() => expect(onSelect).toHaveBeenCalled());
     expect(onSelect.mock.calls[0][0].place.is_reference_point).toBe(true);
@@ -458,13 +554,16 @@ describe("confirming a suggestion", () => {
       __error: {
         status: 409,
         code: "PLACE_SUGGESTION_EXPIRED",
-        message: "That suggestion is no longer in the provider's results. Search again and pick it from the new list.",
+        message:
+          "That suggestion is no longer in the provider's results. Search again and pick it from the new list.",
       },
     };
     await user.click(screen.getByRole("button", { name: /use this place/i }));
     // The reason must SURVIVE the automatic re-search that follows it, or the
     // operator watches the list reload with no idea why nothing was saved.
-    expect(await screen.findByText(/no longer in the provider/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no longer in the provider/i),
+    ).toBeInTheDocument();
     expect(await screen.findByRole("listbox")).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -485,7 +584,9 @@ describe("adding a place by hand", () => {
     renderPicker({ canCreate: true });
     const input = await open(user);
     await user.type(input, "entrepot bonaberi");
-    expect(await screen.findByRole("button", { name: /add .*by hand/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /add .*by hand/i }),
+    ).toBeInTheDocument();
   });
 
   it("is not offered without the grant — an affordance that always 403s is worse than none", async () => {
@@ -494,8 +595,14 @@ describe("adding a place by hand", () => {
     renderPicker({ canCreate: false });
     const input = await open(user);
     await user.type(input, "entrepot bonaberi");
-    await waitFor(() => expect(screen.getByText(/no places matched|nothing in the catalogue/i)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /by hand/i })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no places matched|nothing in the catalogue/i),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: /by hand/i }),
+    ).not.toBeInTheDocument();
     // …and the operator is told who can do it, rather than left at a dead end.
     expect(screen.getByText(/someone with permission/i)).toBeInTheDocument();
   });
@@ -506,7 +613,9 @@ describe("adding a place by hand", () => {
     renderPicker({ canCreate: true });
     const input = await open(user);
     await user.type(input, "entrepot bonaberi");
-    await user.click(await screen.findByRole("button", { name: /add .*by hand/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /add .*by hand/i }),
+    );
 
     const dialog = await screen.findByRole("dialog");
     const save = within(dialog).getByRole("button", { name: /add place/i });
@@ -533,7 +642,9 @@ describe("adding a place by hand", () => {
     await waitFor(() => expect(latitude).toHaveFocus());
     await user.keyboard("999");
 
-    expect(await within(dialog).findByText(/between -90 and 90/i)).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText(/between -90 and 90/i),
+    ).toBeInTheDocument();
     expect(save).toBeDisabled();
   });
 });
@@ -553,7 +664,9 @@ describe("a value that is already on the file", () => {
   });
 
   it("shows an unverified value as such, with what to do about it", async () => {
-    withCatalogue([{ ...DOUALA, name: "Kribi Depot", verified_at: null, source: "GEOAPIFY" }]);
+    withCatalogue([
+      { ...DOUALA, name: "Kribi Depot", verified_at: null, source: "GEOAPIFY" },
+    ]);
     renderPicker({ value: "Kribi Depot" });
     expect(await screen.findByText("Unverified")).toBeInTheDocument();
     expect(screen.getByText(/never confirmed/i)).toBeInTheDocument();

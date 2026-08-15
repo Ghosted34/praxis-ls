@@ -26,14 +26,21 @@ function PeriodStatusPill({ status }: { status: string }) {
       : s === "FROZEN"
         ? "bg-[rgb(var(--warn)/0.15)] text-[rgb(var(--warn))]"
         : "bg-muted text-muted-foreground";
-  return <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tone)}>{s}</span>;
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tone)}>
+      {s}
+    </span>
+  );
 }
 
 function PeriodsPanel() {
   const [periods, setPeriods] = React.useState<Period[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [nonce, setNonce] = React.useState(0);
-  const [pending, setPending] = React.useState<{ period: Period; to: "FROZEN" | "CLOSED" } | null>(null);
+  const [pending, setPending] = React.useState<{
+    period: Period;
+    to: "FROZEN" | "CLOSED";
+  } | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const reload = () => setNonce((n) => n + 1);
@@ -42,12 +49,17 @@ function PeriodsPanel() {
     let live = true;
     setPeriods(null);
     setError(null);
-    fin.listPeriods()
+    fin
+      .listPeriods()
       .then((d) => live && setPeriods(d.periods || []))
       .catch((e) => {
         if (!live) return;
-        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view accounting periods.");
-        else setError(e instanceof ApiError ? e.message : "Failed to load periods.");
+        if (e instanceof ApiError && e.status === 403)
+          setError("You don't have permission to view accounting periods.");
+        else
+          setError(
+            e instanceof ApiError ? e.message : "Failed to load periods.",
+          );
       });
     return () => {
       live = false;
@@ -59,7 +71,10 @@ function PeriodsPanel() {
     setBusy(true);
     setActionError(null);
     try {
-      await fin.closePeriod({ period_id: pending.period.period_id, to: pending.to });
+      await fin.closePeriod({
+        period_id: pending.period.period_id,
+        to: pending.to,
+      });
       setPending(null);
       reload();
     } catch (e) {
@@ -76,7 +91,10 @@ function PeriodsPanel() {
       ) : periods === null ? (
         <SkeletonTable />
       ) : periods.length === 0 ? (
-        <EmptyState title="No accounting periods" hint="Periods are provisioned per entity fiscal calendar." />
+        <EmptyState
+          title="No accounting periods"
+          hint="Periods are provisioned per entity fiscal calendar."
+        />
       ) : (
         <Table>
           <THead>
@@ -102,16 +120,32 @@ function PeriodsPanel() {
                   <TD>
                     <div className="flex gap-2">
                       {s === "OPEN" && (
-                        <Button size="sm" variant="outline" onClick={() => setPending({ period: p, to: "FROZEN" })}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setPending({ period: p, to: "FROZEN" })
+                          }
+                        >
                           Freeze
                         </Button>
                       )}
                       {(s === "OPEN" || s === "FROZEN") && (
-                        <Button size="sm" variant="destructive" onClick={() => setPending({ period: p, to: "CLOSED" })}>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() =>
+                            setPending({ period: p, to: "CLOSED" })
+                          }
+                        >
                           Close
                         </Button>
                       )}
-                      {s === "CLOSED" && <span className="text-xs text-muted-foreground">locked</span>}
+                      {s === "CLOSED" && (
+                        <span className="text-xs text-muted-foreground">
+                          locked
+                        </span>
+                      )}
                     </div>
                   </TD>
                 </TR>
@@ -138,7 +172,11 @@ function PeriodsPanel() {
           </p>
           {actionError && <ErrorState message={actionError} />}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
+            <Button
+              variant="outline"
+              onClick={() => setPending(null)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button
@@ -161,12 +199,20 @@ export const StatementsPage = () => (
     periodMode="period_id"
     tabs={[
       { key: "tb", label: "Trial balance", path: "/statements/trial-balance" },
-      { key: "is", label: "Compte de résultat", path: "/statements/income-statement" },
+      {
+        key: "is",
+        label: "Compte de résultat",
+        path: "/statements/income-statement",
+      },
       { key: "bs", label: "Bilan", path: "/statements/balance-sheet" },
       { key: "gl", label: "Grand livre", path: "/statements/grand-livre" },
       { key: "cf", label: "Cash flow", path: "/statements/cash-flow" },
       { key: "notes", label: "Notes", path: "/statements/notes" },
-      { key: "periods", label: "Periods / close", render: () => <PeriodsPanel /> },
+      {
+        key: "periods",
+        label: "Periods / close",
+        render: () => <PeriodsPanel />,
+      },
     ]}
   />
 );

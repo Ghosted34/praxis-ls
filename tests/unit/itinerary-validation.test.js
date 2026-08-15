@@ -43,7 +43,11 @@ const CATALOGUE = new Map([
  * lookup, the service type's template, the DELETE and the INSERT. Throws on
  * anything else, so a new query cannot silently return nothing.
  */
-function fakeClient({ template = [], failOnInsertSeq = null, known = CATALOGUE } = {}) {
+function fakeClient({
+  template = [],
+  failOnInsertSeq = null,
+  known = CATALOGUE,
+} = {}) {
   const state = { sql: [], inserted: [], deleted: 0, tx: [], rows: [] };
   return {
     state,
@@ -59,7 +63,14 @@ function fakeClient({ template = [], failOnInsertSeq = null, known = CATALOGUE }
         return {
           rows: params[0]
             .filter((k) => known.has(k))
-            .map((k) => ({ geo_place_id: `gp-${k}`, query_key: k, name: known.get(k), latitude: "4.0", longitude: "9.7", verified_at: "2026-01-01T00:00:00.000Z" })),
+            .map((k) => ({
+              geo_place_id: `gp-${k}`,
+              query_key: k,
+              name: known.get(k),
+              latitude: "4.0",
+              longitude: "9.7",
+              verified_at: "2026-01-01T00:00:00.000Z",
+            })),
         };
       }
       if (/itinerary_template FROM dossier/i.test(s)) {
@@ -73,12 +84,36 @@ function fakeClient({ template = [], failOnInsertSeq = null, known = CATALOGUE }
       if (/^INSERT INTO dossier_itinerary_leg/i.test(s)) {
         const seq = params[1];
         if (failOnInsertSeq !== null && seq === failOnInsertSeq) {
-          const err = new Error('new row for relation "dossier_itinerary_leg" violates check constraint');
+          const err = new Error(
+            'new row for relation "dossier_itinerary_leg" violates check constraint',
+          );
           err.code = "23514";
           throw err;
         }
-        state.inserted.push({ seq, leg_type: params[2], mode: params[3], origin: params[4], destination: params[5], origin_place_id: params[6], destination_place_id: params[7], source: params[16] });
-        state.rows.push({ itinerary_leg_id: `l-${seq}`, dossier_id: params[0], seq, leg_type: params[2], mode: params[3], origin: params[4], destination: params[5], origin_place_id: params[6], destination_place_id: params[7], status: params[12], source: params[16], is_optional: params[15] });
+        state.inserted.push({
+          seq,
+          leg_type: params[2],
+          mode: params[3],
+          origin: params[4],
+          destination: params[5],
+          origin_place_id: params[6],
+          destination_place_id: params[7],
+          source: params[16],
+        });
+        state.rows.push({
+          itinerary_leg_id: `l-${seq}`,
+          dossier_id: params[0],
+          seq,
+          leg_type: params[2],
+          mode: params[3],
+          origin: params[4],
+          destination: params[5],
+          origin_place_id: params[6],
+          destination_place_id: params[7],
+          status: params[12],
+          source: params[16],
+          is_optional: params[15],
+        });
         return { rows: [] };
       }
       if (/FROM dossier_itinerary_leg l/i.test(s)) return { rows: state.rows };
@@ -87,7 +122,13 @@ function fakeClient({ template = [], failOnInsertSeq = null, known = CATALOGUE }
   };
 }
 
-const leg = (over = {}) => ({ leg_type: "MAIN_CARRIAGE", mode: "SEA", origin: "Shanghai", destination: "Douala", ...over });
+const leg = (over = {}) => ({
+  leg_type: "MAIN_CARRIAGE",
+  mode: "SEA",
+  origin: "Shanghai",
+  destination: "Douala",
+  ...over,
+});
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -105,7 +146,9 @@ describe("places on a leg", () => {
 
   test("a typo is REFUSED, keyed to the leg it is on", async () => {
     const c = fakeClient();
-    const err = await itinerary.replace(c, "d-1", [leg(), leg({ origin: "Doula" })]).catch((e) => e);
+    const err = await itinerary
+      .replace(c, "d-1", [leg(), leg({ origin: "Doula" })])
+      .catch((e) => e);
     expect(err.code).toBe("ITINERARY_INVALID");
     expect(err.status).toBe(422);
     // The index is what lets the editor mark the offending row rather than
@@ -115,21 +158,32 @@ describe("places on a leg", () => {
 
   test("nothing is written when a place is unverified", async () => {
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg({ origin: "Doula" })]).catch(() => {});
+    await itinerary
+      .replace(c, "d-1", [leg({ origin: "Doula" })])
+      .catch(() => {});
     expect(c.state.deleted).toBe(0);
     expect(c.state.inserted).toEqual([]);
   });
 
   test("a blank location is fine — an unplanned leg is not an invalid one", async () => {
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg({ leg_type: "CUSTOMS", mode: "OTHER", origin: null, destination: null })]);
+    await itinerary.replace(c, "d-1", [
+      leg({
+        leg_type: "CUSTOMS",
+        mode: "OTHER",
+        origin: null,
+        destination: null,
+      }),
+    ]);
     expect(c.state.inserted).toHaveLength(1);
   });
 
   test("an explicit place reference is proof in itself", async () => {
     // The editor sends both the id and the name; the id came from the picker.
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg({ origin: "Somewhere New", origin_place_id: "gp-new" })]);
+    await itinerary.replace(c, "d-1", [
+      leg({ origin: "Somewhere New", origin_place_id: "gp-new" }),
+    ]);
     expect(c.state.inserted[0].origin_place_id).toBe("gp-new");
   });
 
@@ -142,13 +196,17 @@ describe("places on a leg", () => {
 
   test("a movement leg with one end is refused, naming the missing end", async () => {
     const c = fakeClient();
-    const err = await itinerary.replace(c, "d-1", [leg({ destination: null })]).catch((e) => e);
+    const err = await itinerary
+      .replace(c, "d-1", [leg({ destination: null })])
+      .catch((e) => e);
     expect(err.details["legs.0.destination"][0]).toMatch(/both ends/);
   });
 
   test("…but an activity leg happens at ONE place by nature", async () => {
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg({ leg_type: "WAREHOUSE", mode: "OTHER", destination: null })]);
+    await itinerary.replace(c, "d-1", [
+      leg({ leg_type: "WAREHOUSE", mode: "OTHER", destination: null }),
+    ]);
     expect(c.state.inserted).toHaveLength(1);
   });
 });
@@ -157,7 +215,9 @@ describe("dates", () => {
   test("planned arrival cannot precede planned departure", async () => {
     const c = fakeClient();
     const err = await itinerary
-      .replace(c, "d-1", [leg({ planned_departure: "2026-07-20", planned_arrival: "2026-07-01" })])
+      .replace(c, "d-1", [
+        leg({ planned_departure: "2026-07-20", planned_arrival: "2026-07-01" }),
+      ])
       .catch((e) => e);
     expect(err.details["legs.0.planned_arrival"]).toBeTruthy();
   });
@@ -165,7 +225,9 @@ describe("dates", () => {
   test("actual arrival cannot precede actual departure", async () => {
     const c = fakeClient();
     const err = await itinerary
-      .replace(c, "d-1", [leg({ actual_departure: "2026-07-20", actual_arrival: "2026-07-01" })])
+      .replace(c, "d-1", [
+        leg({ actual_departure: "2026-07-20", actual_arrival: "2026-07-01" }),
+      ])
       .catch((e) => e);
     expect(err.details["legs.0.actual_arrival"]).toBeTruthy();
   });
@@ -173,7 +235,11 @@ describe("dates", () => {
   test("an actual date earlier than the plan is not an error — that is just early", async () => {
     const c = fakeClient();
     await itinerary.replace(c, "d-1", [
-      leg({ planned_departure: "2026-07-20", actual_departure: "2026-07-18", actual_arrival: "2026-07-25" }),
+      leg({
+        planned_departure: "2026-07-20",
+        actual_departure: "2026-07-18",
+        actual_arrival: "2026-07-25",
+      }),
     ]);
     expect(c.state.inserted).toHaveLength(1);
   });
@@ -188,7 +254,14 @@ describe("the service type's structural legs", () => {
   test("a required leg cannot be removed, and the message says which", async () => {
     const c = fakeClient({ template: SEA_TEMPLATE });
     const err = await itinerary
-      .replace(c, "d-1", [leg({ leg_type: "FINAL_DELIVERY", mode: "LAND", origin: "Douala", destination: "Yaoundé" })])
+      .replace(c, "d-1", [
+        leg({
+          leg_type: "FINAL_DELIVERY",
+          mode: "LAND",
+          origin: "Douala",
+          destination: "Yaoundé",
+        }),
+      ])
       .catch((e) => e);
     expect(err.code).toBe("ITINERARY_LEG_REQUIRED");
     expect(err.message).toContain("Main carriage");
@@ -207,7 +280,14 @@ describe("the service type's structural legs", () => {
     // Project Cargo is configurable by design; Business Representation has no
     // route at all. Insisting on a shape neither declares would be us deciding.
     const c = fakeClient({ template: [] });
-    await itinerary.replace(c, "d-1", [leg({ leg_type: "OTHER", mode: "OTHER", origin: null, destination: null })]);
+    await itinerary.replace(c, "d-1", [
+      leg({
+        leg_type: "OTHER",
+        mode: "OTHER",
+        origin: null,
+        destination: null,
+      }),
+    ]);
     expect(c.state.inserted).toHaveLength(1);
   });
 
@@ -215,7 +295,8 @@ describe("the service type's structural legs", () => {
     const c = fakeClient({ template: SEA_TEMPLATE });
     const original = c.query.bind(c);
     c.query = async (sql, params) => {
-      if (/itinerary_template/i.test(String(sql))) throw new Error("column does not exist");
+      if (/itinerary_template/i.test(String(sql)))
+        throw new Error("column does not exist");
       return original(sql, params);
     };
     await expect(itinerary.replace(c, "d-1", [leg()])).resolves.toBeTruthy();
@@ -226,19 +307,36 @@ describe("ordering", () => {
   test("seq comes from array position, not from the caller", async () => {
     const c = fakeClient();
     await itinerary.replace(c, "d-1", [
-      leg({ seq: 99, leg_type: "PICKUP", mode: "LAND", origin: "Douala", destination: "Yaoundé" }),
+      leg({
+        seq: 99,
+        leg_type: "PICKUP",
+        mode: "LAND",
+        origin: "Douala",
+        destination: "Yaoundé",
+      }),
       leg({ seq: 4 }),
     ]);
     // Array order IS the itinerary's order. Honouring a client's own numbering is
     // how you get two legs numbered 3 and a UNIQUE violation reported as a
     // database error.
     expect(c.state.inserted.map((l) => l.seq)).toEqual([1, 2]);
-    expect(c.state.inserted.map((l) => l.leg_type)).toEqual(["PICKUP", "MAIN_CARRIAGE"]);
+    expect(c.state.inserted.map((l) => l.leg_type)).toEqual([
+      "PICKUP",
+      "MAIN_CARRIAGE",
+    ]);
   });
 
   test("reordering is a rewrite, so a swap cannot collide on seq", async () => {
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg(), leg({ leg_type: "PICKUP", mode: "LAND", origin: "Douala", destination: "Yaoundé" })]);
+    await itinerary.replace(c, "d-1", [
+      leg(),
+      leg({
+        leg_type: "PICKUP",
+        mode: "LAND",
+        origin: "Douala",
+        destination: "Yaoundé",
+      }),
+    ]);
     expect(c.state.deleted).toBe(1);
     expect(c.state.inserted).toHaveLength(2);
   });
@@ -257,14 +355,24 @@ describe("the transaction", () => {
     // whole itinerary and reported a save error that said nothing about it.
     const c = fakeClient({ failOnInsertSeq: 2 });
     await expect(
-      itinerary.replace(c, "d-1", [leg(), leg({ leg_type: "PICKUP", mode: "LAND", origin: "Douala", destination: "Yaoundé" })]),
+      itinerary.replace(c, "d-1", [
+        leg(),
+        leg({
+          leg_type: "PICKUP",
+          mode: "LAND",
+          origin: "Douala",
+          destination: "Yaoundé",
+        }),
+      ]),
     ).rejects.toThrow(/check constraint/);
     expect(c.state.tx).toEqual(["BEGIN", "ROLLBACK"]);
   });
 
   test("an invalid leg type is refused before any transaction opens", async () => {
     const c = fakeClient();
-    await expect(itinerary.replace(c, "d-1", [leg({ leg_type: "TELEPORT" })])).rejects.toThrow(/leg type/);
+    await expect(
+      itinerary.replace(c, "d-1", [leg({ leg_type: "TELEPORT" })]),
+    ).rejects.toThrow(/leg type/);
     expect(c.state.tx).toEqual([]);
   });
 });
@@ -309,14 +417,18 @@ describe("the read projection", () => {
   });
 
   test("one end unresolved is NOT plottable — half a route is a fabrication", () => {
-    const leg = itinerary.projectLeg(row({ destination_latitude: null, destination_longitude: null }));
+    const leg = itinerary.projectLeg(
+      row({ destination_latitude: null, destination_longitude: null }),
+    );
     expect(leg.plottable).toBe(false);
     expect(leg.needs_location).toBe(true);
     expect(leg.destination_endpoint.state).toBe("unknown");
   });
 
   test("a reference point reports itself as one", () => {
-    const leg = itinerary.projectLeg(row({ destination_is_reference_point: true }));
+    const leg = itinerary.projectLeg(
+      row({ destination_is_reference_point: true }),
+    );
     expect(leg.destination_endpoint.state).toBe("reference");
   });
 
@@ -365,11 +477,21 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
   ];
 
   /** Just the geography, so a failure reads as a route rather than a diff. */
-  const route = (legs) => legs.map((l) => `${l.leg_type}: ${l.origin || "—"} → ${l.destination || "—"}`);
+  const route = (legs) =>
+    legs.map(
+      (l) => `${l.leg_type}: ${l.origin || "—"} → ${l.destination || "—"}`,
+    );
 
   test("the main carriage inherits the file's verified POL and POD", () => {
-    const legs = itinerary.legsFromTemplate(SEA_IMPORT, { pol: "Shanghai", pod: "Douala" });
-    expect(legs[0]).toMatchObject({ origin: "Shanghai", destination: "Douala", source: "TEMPLATE" });
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: "Shanghai",
+      pod: "Douala",
+    });
+    expect(legs[0]).toMatchObject({
+      origin: "Shanghai",
+      destination: "Douala",
+      source: "TEMPLATE",
+    });
   });
 
   test("a sea import's delivery leg runs from the port to the place of delivery", () => {
@@ -408,8 +530,15 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
     // half a leg cannot be drawn or planned against. A sea import whose consignee
     // collects at the quay is a normal file, and its optional delivery leg is
     // simply empty.
-    const legs = itinerary.legsFromTemplate(SEA_IMPORT, { pol: "Shanghai", pod: "Douala" });
-    expect(legs[2]).toMatchObject({ leg_type: "FINAL_DELIVERY", origin: null, destination: null });
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: "Shanghai",
+      pod: "Douala",
+    });
+    expect(legs[2]).toMatchObject({
+      leg_type: "FINAL_DELIVERY",
+      origin: null,
+      destination: null,
+    });
   });
 
   test("a leg that moves nothing gets no places — no line drawn twice", () => {
@@ -458,7 +587,11 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
       pod: "Douala",
       place_delivery: "Yaoundé",
     });
-    expect(legs[1]).toMatchObject({ leg_type: "CUSTOMS", origin: "Douala", destination: null });
+    expect(legs[1]).toMatchObject({
+      leg_type: "CUSTOMS",
+      origin: "Douala",
+      destination: null,
+    });
     // The cursor did not advance: the delivery leg still starts at the port.
     expect(legs[2].origin).toBe("Douala");
   });
@@ -466,7 +599,9 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
   test("a file with no geography yet produces legs with no places, not guesses", () => {
     const legs = itinerary.legsFromTemplate(END_TO_END_SEA, {});
     expect(legs).toHaveLength(4);
-    expect(legs.every((l) => l.origin === null && l.destination === null)).toBe(true);
+    expect(legs.every((l) => l.origin === null && l.destination === null)).toBe(
+      true,
+    );
   });
 
   test("whitespace is trimmed, so a padded value cannot look like a different place", () => {
@@ -475,7 +610,10 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
       pod: "Douala",
       place_delivery: "  Douala  ",
     });
-    expect(legs[0]).toMatchObject({ origin: "Shanghai", destination: "Douala" });
+    expect(legs[0]).toMatchObject({
+      origin: "Shanghai",
+      destination: "Douala",
+    });
     // …and the delivery leg is still recognised as going nowhere.
     expect(legs[2]).toMatchObject({ origin: null, destination: null });
   });
@@ -487,14 +625,24 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
   });
 
   test("template legs are marked as such, so the required-leg rule can act", () => {
-    const legs = itinerary.legsFromTemplate([{ leg_type: "CUSTOMS", mode: "OTHER", is_optional: true }], {});
+    const legs = itinerary.legsFromTemplate(
+      [{ leg_type: "CUSTOMS", mode: "OTHER", is_optional: true }],
+      {},
+    );
     expect(legs[0]).toMatchObject({ source: "TEMPLATE", is_optional: true });
   });
 
   test("an unknown leg type in a template is carried but left placeless", () => {
-    const legs = itinerary.legsFromTemplate([{ leg_type: "WAREHOUSE", mode: "OTHER" }], { pol: "Douala" });
+    const legs = itinerary.legsFromTemplate(
+      [{ leg_type: "WAREHOUSE", mode: "OTHER" }],
+      { pol: "Douala" },
+    );
     // WAREHOUSE is an activity leg, so it pins to the cargo's position.
-    expect(legs[0]).toMatchObject({ leg_type: "WAREHOUSE", origin: "Douala", destination: null });
+    expect(legs[0]).toMatchObject({
+      leg_type: "WAREHOUSE",
+      origin: "Douala",
+      destination: null,
+    });
   });
 
   test("what the template produces passes its own validation", async () => {
@@ -515,7 +663,9 @@ describe("legsFromTemplate builds the journey from the file's own places", () =>
 describe("normalisation agrees with the catalogue", () => {
   test("the keys looked up are the ones 0675 seeded", async () => {
     const c = fakeClient();
-    await itinerary.replace(c, "d-1", [leg({ origin: "  SHANGHAI ", destination: "Yaoundé" })]);
+    await itinerary.replace(c, "d-1", [
+      leg({ origin: "  SHANGHAI ", destination: "Yaoundé" }),
+    ]);
     expect(repo.normalise("  SHANGHAI ")).toBe("shanghai");
     expect(repo.normalise("Yaoundé")).toBe("yaounde");
     expect(c.state.inserted[0].origin_place_id).toBe("gp-shanghai");

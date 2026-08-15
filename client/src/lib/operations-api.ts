@@ -60,9 +60,12 @@ export type DossierInput = {
   rate_provider_id?: string | null;
 };
 export const listDossiers = () => tenant<Dossier[]>("/operations");
-export const getDossier = (id: string) => tenant<Dossier & { lines?: unknown[] }>(`/operations/${id}`);
-export const dossier360 = (id: string) => tenant<Record<string, unknown>>(`/operations/${id}/360`);
-export const createDossier = (body: DossierInput) => tenant<Dossier>("/operations", { method: "POST", body });
+export const getDossier = (id: string) =>
+  tenant<Dossier & { lines?: unknown[] }>(`/operations/${id}`);
+export const dossier360 = (id: string) =>
+  tenant<Record<string, unknown>>(`/operations/${id}/360`);
+export const createDossier = (body: DossierInput) =>
+  tenant<Dossier>("/operations", { method: "POST", body });
 /**
  * The creation wizard's two halves.
  *
@@ -79,11 +82,20 @@ export const createDossier = (body: DossierInput) => tenant<Dossier>("/operation
  */
 export const createDossierDraft = (body: DossierInput) =>
   tenant<Dossier>("/operations/drafts", { method: "POST", body });
-export const promoteDossier = (id: string, body: Partial<DossierInput> & { details?: Record<string, unknown> }) =>
-  tenant<Dossier>(`/operations/${id}/promote`, { method: "POST", body });
-export const updateDossier = (id: string, body: Partial<DossierInput>) => tenant<Dossier>(`/operations/${id}`, { method: "PATCH", body });
-export const transitionDossier = (id: string, to: "IN_PROGRESS" | "COMPLETED" | "CANCELLED") =>
-  tenant<Dossier>(`/operations/${id}/transition`, { method: "POST", body: { to } });
+export const promoteDossier = (
+  id: string,
+  body: Partial<DossierInput> & { details?: Record<string, unknown> },
+) => tenant<Dossier>(`/operations/${id}/promote`, { method: "POST", body });
+export const updateDossier = (id: string, body: Partial<DossierInput>) =>
+  tenant<Dossier>(`/operations/${id}`, { method: "PATCH", body });
+export const transitionDossier = (
+  id: string,
+  to: "IN_PROGRESS" | "COMPLETED" | "CANCELLED",
+) =>
+  tenant<Dossier>(`/operations/${id}/transition`, {
+    method: "POST",
+    body: { to },
+  });
 
 /* ── Transit orders(/transit-orders) ── */
 export type TransitOrder = {
@@ -104,12 +116,22 @@ export type TransitOrderInput = {
   service_direction?: string;
   declared_value?: number;
   submitted_docs?: unknown[];
-  lines?: { inventory_item_id: string; label?: string; packages?: number; weight?: string }[];
+  lines?: {
+    inventory_item_id: string;
+    label?: string;
+    packages?: number;
+    weight?: string;
+  }[];
   date?: string;
 };
-export const listTransitOrders = () => tenant<TransitOrder[]>("/transit-orders");
-export const createTransitOrder = (body: TransitOrderInput) => tenant<TransitOrder>("/transit-orders", { method: "POST", body });
-export const updateTransitOrder = (id: string, body: Partial<TransitOrderInput>) => tenant<TransitOrder>(`/transit-orders/${id}`, { method: "PATCH", body });
+export const listTransitOrders = () =>
+  tenant<TransitOrder[]>("/transit-orders");
+export const createTransitOrder = (body: TransitOrderInput) =>
+  tenant<TransitOrder>("/transit-orders", { method: "POST", body });
+export const updateTransitOrder = (
+  id: string,
+  body: Partial<TransitOrderInput>,
+) => tenant<TransitOrder>(`/transit-orders/${id}`, { method: "PATCH", body });
 
 /* ── Delivery notes(/delivery-notes) ── */
 export type DeliveryNote = {
@@ -132,8 +154,10 @@ export type DeliveryNoteInput = {
   lines?: { inventory_item_id: string; label?: string; qty?: number }[];
   date?: string;
 };
-export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");
-export const createDeliveryNote = (body: DeliveryNoteInput) => tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
+export const listDeliveryNotes = () =>
+  tenant<DeliveryNote[]>("/delivery-notes");
+export const createDeliveryNote = (body: DeliveryNoteInput) =>
+  tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
 
 /* ── Service taxonomy (/service-types) ────────────────────────────────────────
  * "Services as DATA, not code" (0310_operations.sql:7). Had no module until
@@ -179,7 +203,9 @@ export const TERRITORIES = [
   "OTHER",
 ] as const;
 
-export const listServiceTypes = (opts: { q?: string; includeInactive?: boolean } = {}) => {
+export const listServiceTypes = (
+  opts: { q?: string; includeInactive?: boolean } = {},
+) => {
   const p = new URLSearchParams();
   if (opts.q) p.set("q", opts.q);
   if (opts.includeInactive) p.set("includeInactive", "1");
@@ -270,8 +296,17 @@ export type ServiceTypeInvoiceRow = {
   client_name?: string | null;
 };
 export type ServiceTypeMoneyRollup = {
-  planned: { currency: string; planned_total: number | string; planned_disbursement: number | string }[];
-  billed: { currency: string; billed_ttc: number | string; revenue_ht: number | string; invoice_count: number }[];
+  planned: {
+    currency: string;
+    planned_total: number | string;
+    planned_disbursement: number | string;
+  }[];
+  billed: {
+    currency: string;
+    billed_ttc: number | string;
+    revenue_ht: number | string;
+    invoice_count: number;
+  }[];
   actual_total: number;
   masked: boolean;
 };
@@ -314,7 +349,10 @@ export type ServiceTypeDossier = {
    *  whichever one is live. */
   field_sets?: ServiceTypeFieldSet[];
   field_set?: (ServiceTypeFieldSet & { fields: ServiceTypeField[] }) | null;
-  containers?: { captures_containers: boolean; container_detail_mode: "GROUPED" | "PER_BOX" };
+  containers?: {
+    captures_containers: boolean;
+    container_detail_mode: "GROUPED" | "PER_BOX";
+  };
 };
 
 export const getServiceTypeDossier = (id: string) =>
@@ -336,13 +374,26 @@ export type ServiceTypeTierLink = {
   tier: Tier;
   sort_order?: number;
 };
-export const setServiceTypeDictionaryTier = (serviceTypeId: string, itemId: string, tier: Tier) =>
-  tenant<ServiceTypeTierLink>(`/service-types/${serviceTypeId}/dictionary/${itemId}`, {
-    method: "PUT",
-    body: { tier },
-  });
-export const removeServiceTypeDictionaryTier = (serviceTypeId: string, itemId: string) =>
-  tenant<ServiceTypeTierLink>(`/service-types/${serviceTypeId}/dictionary/${itemId}`, { method: "DELETE" });
+export const setServiceTypeDictionaryTier = (
+  serviceTypeId: string,
+  itemId: string,
+  tier: Tier,
+) =>
+  tenant<ServiceTypeTierLink>(
+    `/service-types/${serviceTypeId}/dictionary/${itemId}`,
+    {
+      method: "PUT",
+      body: { tier },
+    },
+  );
+export const removeServiceTypeDictionaryTier = (
+  serviceTypeId: string,
+  itemId: string,
+) =>
+  tenant<ServiceTypeTierLink>(
+    `/service-types/${serviceTypeId}/dictionary/${itemId}`,
+    { method: "DELETE" },
+  );
 
 /**
  * Publish a NEW active milestone-template version for a service type.
@@ -362,7 +413,11 @@ export const removeServiceTypeDictionaryTier = (serviceTypeId: string, itemId: s
 export const publishMilestoneTemplate = (body: {
   service_type_id: string;
   stages: MilestoneStage[];
-}) => tenant<MilestoneTemplate[]>("/milestones/templates", { method: "POST", body });
+}) =>
+  tenant<MilestoneTemplate[]>("/milestones/templates", {
+    method: "POST",
+    body,
+  });
 
 /* ── Places (/geo-places) — the verified place catalogue behind every location
       field on a file: POL/POD, airports, inland terminals, custody sites ──── */
@@ -489,7 +544,9 @@ export const searchGeoPlaces = (params: {
   if (params.limit) qs.set("limit", String(params.limit));
   if (params.provider) qs.set("provider", "true");
   const query = qs.toString();
-  return tenant<PlaceSearchResult>(`/geo-places/search${query ? `?${query}` : ""}`);
+  return tenant<PlaceSearchResult>(
+    `/geo-places/search${query ? `?${query}` : ""}`,
+  );
 };
 
 /**
@@ -522,8 +579,15 @@ export const createGeoPlace = (body: {
 /* ── Milestones(/milestones) — templates + per-dossier instances ── */
 
 /** Who a stage's delay is charged to when it slips (0650). */
-export type OwnerTier = "INTERNAL" | "CARRIER" | "TERMINAL" | "AUTHORITY" | "CLIENT";
-export const OWNER_TIERS: OwnerTier[] = ["INTERNAL", "CARRIER", "TERMINAL", "AUTHORITY", "CLIENT"];
+export type OwnerTier =
+  "INTERNAL" | "CARRIER" | "TERMINAL" | "AUTHORITY" | "CLIENT";
+export const OWNER_TIERS: OwnerTier[] = [
+  "INTERNAL",
+  "CARRIER",
+  "TERMINAL",
+  "AUTHORITY",
+  "CLIENT",
+];
 
 /** Human labels — never render the SCREAMING_ENUM (FRONTEND_GUIDE §5). */
 export const OWNER_TIER_LABEL: Record<OwnerTier, string> = {
@@ -534,7 +598,13 @@ export const OWNER_TIER_LABEL: Record<OwnerTier, string> = {
   CLIENT: "Client",
 };
 
-export const CADENCES = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export const CADENCES = [
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "QUARTERLY",
+  "ANNUAL",
+] as const;
 export type Cadence = (typeof CADENCES)[number];
 
 /**
@@ -627,21 +697,32 @@ export const MILESTONE_HEALTH_LABEL: Record<string, string> = {
   BLOCKED: "Blocked",
 };
 
-export const milestoneHealthTone = (health?: string | null): "ok" | "warn" | "bad" | "orange" | "mute" => {
+export const milestoneHealthTone = (
+  health?: string | null,
+): "ok" | "warn" | "bad" | "orange" | "mute" => {
   switch (String(health || "").toUpperCase()) {
-    case "DONE": return "ok";
-    case "DUE": return "warn";
-    case "AT_RISK": return "orange";
+    case "DONE":
+      return "ok";
+    case "DUE":
+      return "warn";
+    case "AT_RISK":
+      return "orange";
     case "DELAYED":
-    case "BREACH_FORECAST": return "bad";
-    case "BLOCKED": return "mute";
-    default: return "ok";
+    case "BREACH_FORECAST":
+      return "bad";
+    case "BLOCKED":
+      return "mute";
+    default:
+      return "ok";
   }
 };
 
 /** Un-complete a milestone marked DONE in error. The reason is the point. */
 export const reopenMilestone = (id: string, reason: string) =>
-  tenant<MilestoneInstance>(`/milestones/${id}/reopen`, { method: "POST", body: { reason } });
+  tenant<MilestoneInstance>(`/milestones/${id}/reopen`, {
+    method: "POST",
+    body: { reason },
+  });
 
 /** Insert a stage into a LIVE chain, between two existing ones. */
 export const addDossierMilestone = (
@@ -656,16 +737,25 @@ export const addDossierMilestone = (
     owner_tier?: OwnerTier;
     is_client_visible?: boolean;
   },
-) => tenant<MilestoneInstance>(`/milestones/dossier/${dossierId}/stages`, { method: "POST", body });
+) =>
+  tenant<MilestoneInstance>(`/milestones/dossier/${dossierId}/stages`, {
+    method: "POST",
+    body,
+  });
 
 /** Force a re-baseline — used after a promised date changes. */
 export const recalculateMilestones = (dossierId: string) =>
-  tenant<{ changed: number; meta: unknown }>(`/milestones/dossier/${dossierId}/recalculate`, {
-    method: "POST",
-    body: { trigger: "MANUAL" },
-  });
-export const listMilestoneTemplates = () => tenant<MilestoneTemplate[]>("/milestones/templates");
-export const milestonesByDossier = (dossierId: string) => tenant<MilestoneInstance[]>(`/milestones/dossier/${dossierId}`);
+  tenant<{ changed: number; meta: unknown }>(
+    `/milestones/dossier/${dossierId}/recalculate`,
+    {
+      method: "POST",
+      body: { trigger: "MANUAL" },
+    },
+  );
+export const listMilestoneTemplates = () =>
+  tenant<MilestoneTemplate[]>("/milestones/templates");
+export const milestonesByDossier = (dossierId: string) =>
+  tenant<MilestoneInstance[]>(`/milestones/dossier/${dossierId}`);
 export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "BLOCKED";
 
 /**
@@ -682,7 +772,9 @@ export const MILESTONE_TRANSITIONS: Record<string, MilestoneStatus[]> = {
 };
 
 /** The forward step for a status — PENDING → IN_PROGRESS → DONE. Null when done. */
-export const nextMilestoneStatus = (status?: string | null): MilestoneStatus | null => {
+export const nextMilestoneStatus = (
+  status?: string | null,
+): MilestoneStatus | null => {
   const s = String(status || "PENDING").toUpperCase();
   if (s === "PENDING" || s === "BLOCKED") return "IN_PROGRESS";
   if (s === "IN_PROGRESS") return "DONE";
@@ -707,7 +799,12 @@ export const advanceMilestone = (
 ) =>
   tenant<MilestoneInstance>(`/milestones/${id}/advance`, {
     method: "POST",
-    body: { to: body.to, ...(body.evidence_vault_id ? { evidence_vault_id: body.evidence_vault_id } : {}) },
+    body: {
+      to: body.to,
+      ...(body.evidence_vault_id
+        ? { evidence_vault_id: body.evidence_vault_id }
+        : {}),
+    },
   });
 
 /**
@@ -723,7 +820,11 @@ export const advanceMilestone = (
  * has no active template, which is the case worth surfacing to the user: the
  * fix is to publish a template, not to retry.
  */
-export const instantiateMilestones = (body: { dossierId: string; serviceTypeId: string; baseDate?: string | null }) =>
+export const instantiateMilestones = (body: {
+  dossierId: string;
+  serviceTypeId: string;
+  baseDate?: string | null;
+}) =>
   tenant<MilestoneInstance[]>("/milestones/instantiate", {
     method: "POST",
     // base_date is `.optional()` and NOT `.nullable()` in the validator, so an
@@ -738,13 +839,33 @@ export const instantiateMilestones = (body: { dossierId: string; serviceTypeId: 
 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {
-  dossier: { dossier_id: string; ref: string; status: string; client_id?: string | null; service_type_id?: string | null };
+  dossier: {
+    dossier_id: string;
+    ref: string;
+    status: string;
+    client_id?: string | null;
+    service_type_id?: string | null;
+  };
   /** Lifecycle readiness — powers the "ready to complete / fully collected" prompt. */
-  readiness?: { milestones_complete: boolean; fully_collected: boolean; ready_to_complete: boolean } | null;
+  readiness?: {
+    milestones_complete: boolean;
+    fully_collected: boolean;
+    ready_to_complete: boolean;
+  } | null;
   costing: { count: number; planned_cost?: number | null };
   costs: { actual_cost?: number | null; gl_entries: number };
-  invoicing: { count: number; invoiced_ttc?: number | null; billed_ttc?: number | null; outstanding?: number | null };
-  economics?: { billed_ttc?: number | null; actual_cost?: number | null; gross_margin?: number | null; margin_percent?: number | null } | null;
+  invoicing: {
+    count: number;
+    invoiced_ttc?: number | null;
+    billed_ttc?: number | null;
+    outstanding?: number | null;
+  };
+  economics?: {
+    billed_ttc?: number | null;
+    actual_cost?: number | null;
+    gross_margin?: number | null;
+    margin_percent?: number | null;
+  } | null;
   /** Money breakdown; margin keys arrive nulled for roles masked on dossier.margin. */
   money?: {
     service_ht?: number | null;
@@ -758,25 +879,70 @@ export type DossierOverview = {
     actual_cost?: number | null;
     dossier_margin?: number | null;
     margin_percent?: number | null;
-    budget?: { budget?: number | null; actual?: number | null; variance?: number | null; variance_percent?: number | null; over_budget?: boolean | null } | null;
+    budget?: {
+      budget?: number | null;
+      actual?: number | null;
+      variance?: number | null;
+      variance_percent?: number | null;
+      over_budget?: boolean | null;
+    } | null;
   } | null;
   /** SoD chain on the latest costing + latest locked final invoice. */
   people?: {
-    costing?: { doc_number?: string | null; status?: string | null; validator: OverviewPerson; approver: OverviewPerson } | null;
-    invoice?: { doc_number?: string | null; status?: string | null; issuer: OverviewPerson; validator: OverviewPerson; approver: OverviewPerson } | null;
+    costing?: {
+      doc_number?: string | null;
+      status?: string | null;
+      validator: OverviewPerson;
+      approver: OverviewPerson;
+    } | null;
+    invoice?: {
+      doc_number?: string | null;
+      status?: string | null;
+      issuer: OverviewPerson;
+      validator: OverviewPerson;
+      approver: OverviewPerson;
+    } | null;
   } | null;
   milestones: Record<string, number>;
   procurement: { po_count: number; po_total?: number | null };
   documents: { transit_orders: number; delivery_notes: number };
   document_rows?: {
-    invoices?: { invoice_id: string; ref?: string | null; status?: string | null; total_ttc?: number | null; type?: string | null; created_at?: string }[];
-    transit: { transit_order_id: string; ref?: string | null; customs_regime?: string | null; service_direction?: string | null; declared_value?: number | null; created_at?: string }[];
-    delivery: { delivery_note_id: string; ref?: string | null; consignee?: string | null; city_zone?: string | null; created_at?: string }[];
-    vault: { doc_id: string; doc_type?: string | null; status?: string | null; entity_ref?: string | null; version_no?: number | null; created_at?: string }[];
+    invoices?: {
+      invoice_id: string;
+      ref?: string | null;
+      status?: string | null;
+      total_ttc?: number | null;
+      type?: string | null;
+      created_at?: string;
+    }[];
+    transit: {
+      transit_order_id: string;
+      ref?: string | null;
+      customs_regime?: string | null;
+      service_direction?: string | null;
+      declared_value?: number | null;
+      created_at?: string;
+    }[];
+    delivery: {
+      delivery_note_id: string;
+      ref?: string | null;
+      consignee?: string | null;
+      city_zone?: string | null;
+      created_at?: string;
+    }[];
+    vault: {
+      doc_id: string;
+      doc_type?: string | null;
+      status?: string | null;
+      entity_ref?: string | null;
+      version_no?: number | null;
+      created_at?: string;
+    }[];
   } | null;
 };
 /** 360° rollup for one operation file; money fields are role-masked server-side. */
-export const getOverview = (id: string) => tenant<DossierOverview>(`/operations/${id}/360`);
+export const getOverview = (id: string) =>
+  tenant<DossierOverview>(`/operations/${id}/360`);
 
 /* ── The Shared Shipment/Service Detail Component (SSDC) ────────────────────
  *
@@ -804,19 +970,54 @@ export const getOverview = (id: string) => tenant<DossierOverview>(`/operations/
  * them silently wins.
  */
 export type FacetRole =
-  | "TRANSPORT_REF" | "CONVEYANCE" | "CARRIER" | "ORIGIN" | "DESTINATION" | "ROUTE_VIA"
-  | "COLLECTION" | "FINAL_DELIVERY"
-  | "DEPARTURE_DATE" | "ARRIVAL_DATE" | "DELIVERY_DATE"
-  | "CARGO_DESC" | "CARGO_WEIGHT" | "CARGO_VOLUME" | "CARGO_PACKAGES" | "CARGO_MARKS"
-  | "CUSTODY_LOCATION" | "CUSTODY_STATUS" | "CUSTODY_IN" | "CUSTODY_OUT"
-  | "INCOTERM" | "CUSTOMS_REF" | "CUSTOMS_REGIME"
-  | "SCOPE_SUMMARY" | "COUNTERPARTY" | "PERIOD_START" | "PERIOD_END";
+  | "TRANSPORT_REF"
+  | "CONVEYANCE"
+  | "CARRIER"
+  | "ORIGIN"
+  | "DESTINATION"
+  | "ROUTE_VIA"
+  | "COLLECTION"
+  | "FINAL_DELIVERY"
+  | "DEPARTURE_DATE"
+  | "ARRIVAL_DATE"
+  | "DELIVERY_DATE"
+  | "CARGO_DESC"
+  | "CARGO_WEIGHT"
+  | "CARGO_VOLUME"
+  | "CARGO_PACKAGES"
+  | "CARGO_MARKS"
+  | "CUSTODY_LOCATION"
+  | "CUSTODY_STATUS"
+  | "CUSTODY_IN"
+  | "CUSTODY_OUT"
+  | "INCOTERM"
+  | "CUSTOMS_REF"
+  | "CUSTOMS_REGIME"
+  | "SCOPE_SUMMARY"
+  | "COUNTERPARTY"
+  | "PERIOD_START"
+  | "PERIOD_END";
 
 export type FieldDataType =
-  | "TEXT" | "TEXTAREA" | "NUMBER" | "INTEGER" | "DATE" | "DATETIME" | "BOOLEAN"
-  | "SELECT" | "MULTISELECT" | "GEO_PLACE" | "RATE_PROVIDER" | "REF" | "CURRENCY";
+  | "TEXT"
+  | "TEXTAREA"
+  | "NUMBER"
+  | "INTEGER"
+  | "DATE"
+  | "DATETIME"
+  | "BOOLEAN"
+  | "SELECT"
+  | "MULTISELECT"
+  | "GEO_PLACE"
+  | "RATE_PROVIDER"
+  | "REF"
+  | "CURRENCY";
 
-export type FieldOption = { value: string; label_fr: string; label_en?: string };
+export type FieldOption = {
+  value: string;
+  label_fr: string;
+  label_en?: string;
+};
 
 /** One field as the FORM renders it (definitions, no values). */
 export type DetailFieldDef = {
@@ -827,7 +1028,13 @@ export type DetailFieldDef = {
   data_type: FieldDataType;
   options?: FieldOption[];
   ref_kind?: string | null;
-  validation?: { min?: number; max?: number; min_length?: number; max_length?: number; pattern?: string };
+  validation?: {
+    min?: number;
+    max?: number;
+    min_length?: number;
+    max_length?: number;
+    pattern?: string;
+  };
   default_value?: unknown;
   is_required: boolean;
   is_client_visible: boolean;
@@ -839,20 +1046,42 @@ export type DetailFieldDef = {
   column_name: string | null;
   width: "THIRD" | "HALF" | "FULL";
 };
-export type DetailGroupDef = { code: string; label: string; seq: number; fields: DetailFieldDef[] };
+export type DetailGroupDef = {
+  code: string;
+  label: string;
+  seq: number;
+  fields: DetailFieldDef[];
+};
 
 export type DetailForm = {
-  field_set: { service_type_field_set_id: string; version: number; name?: string | null } | null;
+  field_set: {
+    service_type_field_set_id: string;
+    version: number;
+    name?: string | null;
+  } | null;
   groups: DetailGroupDef[];
   containers: { enabled: boolean; mode: "GROUPED" | "PER_BOX" } | null;
 };
 
 /** One field as the PANEL renders it (definition + the file's value). */
-export type DetailFieldValue = Omit<DetailFieldDef, "help" | "placeholder" | "options" | "ref_kind" | "validation" | "default_value"> & {
+export type DetailFieldValue = Omit<
+  DetailFieldDef,
+  | "help"
+  | "placeholder"
+  | "options"
+  | "ref_kind"
+  | "validation"
+  | "default_value"
+> & {
   value: unknown;
   display: string | null;
 };
-export type DetailGroupValue = { code: string; label: string; seq: number; fields: DetailFieldValue[] };
+export type DetailGroupValue = {
+  code: string;
+  label: string;
+  seq: number;
+  fields: DetailFieldValue[];
+};
 
 /** A canonical fact about the file. `parts` names the fields behind it, so a
  *  panel can show "MSC ARUSHI / 128W" and still explain which is which. */
@@ -890,7 +1119,12 @@ export type ContainerLine = {
   container_type_code?: string;
   container_type_en?: string;
   container_type_fr?: string;
-  container_type_extra?: { teu?: number; size?: string; family?: string; special?: boolean };
+  container_type_extra?: {
+    teu?: number;
+    size?: string;
+    family?: string;
+    special?: boolean;
+  };
   load_mode_code?: string | null;
   load_mode_en?: string | null;
 };
@@ -913,7 +1147,12 @@ export type ShipmentDetails = {
     service_type_key?: string | null;
     service_type_name?: string | null;
   };
-  field_set: { service_type_field_set_id: string; version: number; is_active: boolean; is_stale: boolean } | null;
+  field_set: {
+    service_type_field_set_id: string;
+    version: number;
+    is_active: boolean;
+    is_stale: boolean;
+  } | null;
   /** Only the roles this service type actually defines AND has a value for —
    *  absent, never blank, so a warehousing file renders no "Vessel: —". */
   facets: Partial<Record<FacetRole, Facet>>;
@@ -923,9 +1162,13 @@ export type ShipmentDetails = {
   groups: DetailGroupValue[];
   containers: ContainerBlock;
   completeness: {
-    total: number; filled: number; percent: number;
-    required_total: number; required_filled: number;
-    missing_required: string[]; is_complete: boolean;
+    total: number;
+    filled: number;
+    percent: number;
+    required_total: number;
+    required_filled: number;
+    missing_required: string[];
+    is_complete: boolean;
   };
 };
 
@@ -943,7 +1186,13 @@ export type LegType = (typeof LEG_TYPES)[number];
 export const LEG_MODES = ["AIR", "SEA", "LAND", "OTHER"] as const;
 export type LegMode = (typeof LEG_MODES)[number];
 
-export const LEG_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "BLOCKED", "CANCELLED"] as const;
+export const LEG_STATUSES = [
+  "PLANNED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "BLOCKED",
+  "CANCELLED",
+] as const;
 export type LegStatus = (typeof LEG_STATUSES)[number];
 
 /**
@@ -996,17 +1245,32 @@ export type ItineraryLeg = {
   plottable?: boolean;
   needs_location?: boolean;
 };
-export const getItinerary = (dossierId: string) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`);
-export const replaceItinerary = (dossierId: string, legs: ItineraryLeg[]) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`, { method: "PUT", body: { legs } });
+export const getItinerary = (dossierId: string) =>
+  tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`);
+export const replaceItinerary = (dossierId: string, legs: ItineraryLeg[]) =>
+  tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`, {
+    method: "PUT",
+    body: { legs },
+  });
 
 export const getShipmentDetails = (dossierId: string, lang?: string) =>
-  tenant<ShipmentDetails>(`/operations/${dossierId}/shipment-details${lang ? `?lang=${lang}` : ""}`);
+  tenant<ShipmentDetails>(
+    `/operations/${dossierId}/shipment-details${lang ? `?lang=${lang}` : ""}`,
+  );
 export const getDetailForm = (serviceTypeId: string, lang?: string) =>
-  tenant<DetailForm>(`/service-types/${serviceTypeId}/detail-form${lang ? `?lang=${lang}` : ""}`);
+  tenant<DetailForm>(
+    `/service-types/${serviceTypeId}/detail-form${lang ? `?lang=${lang}` : ""}`,
+  );
 export const getDossierContainers = (dossierId: string) =>
   tenant<ContainerBlock>(`/operations/${dossierId}/containers`);
-export const putDossierContainers = (dossierId: string, lines: ContainerLine[]) =>
-  tenant<ContainerBlock>(`/operations/${dossierId}/containers`, { method: "PUT", body: { lines } });
+export const putDossierContainers = (
+  dossierId: string,
+  lines: ContainerLine[],
+) =>
+  tenant<ContainerBlock>(`/operations/${dossierId}/containers`, {
+    method: "PUT",
+    body: { lines },
+  });
 
 /* ── SSDC configuration (Service Types → Details) ─────────────────────────── */
 
@@ -1055,25 +1319,63 @@ export type ServiceTypeFieldSet = {
 export const listFieldSets = (serviceTypeId: string) =>
   tenant<ServiceTypeFieldSet[]>(`/service-types/${serviceTypeId}/field-sets`);
 export const getFieldSet = (serviceTypeId: string, setId: string) =>
-  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets/${setId}`);
+  tenant<ServiceTypeFieldSet>(
+    `/service-types/${serviceTypeId}/field-sets/${setId}`,
+  );
 /** Start a new draft — by default a clone of the live version, which is what
  *  "edit the form" means: a published version is never mutated in place. */
-export const createFieldSetVersion = (serviceTypeId: string, body: { from?: string; name?: string } = {}) =>
-  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets`, { method: "POST", body });
+export const createFieldSetVersion = (
+  serviceTypeId: string,
+  body: { from?: string; name?: string } = {},
+) =>
+  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets`, {
+    method: "POST",
+    body,
+  });
 export const publishFieldSet = (serviceTypeId: string, setId: string) =>
-  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets/${setId}/publish`, { method: "POST", body: {} });
-export const addFieldToSet = (serviceTypeId: string, setId: string, body: Partial<ServiceTypeField> & { key: string; label_fr: string }) =>
-  tenant<ServiceTypeField>(`/service-types/${serviceTypeId}/field-sets/${setId}/fields`, { method: "POST", body });
-export const updateFieldInSet = (serviceTypeId: string, setId: string, fieldId: string, body: Partial<ServiceTypeField>) =>
-  tenant<ServiceTypeField>(`/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`, { method: "PATCH", body });
-export const removeFieldFromSet = (serviceTypeId: string, setId: string, fieldId: string) =>
+  tenant<ServiceTypeFieldSet>(
+    `/service-types/${serviceTypeId}/field-sets/${setId}/publish`,
+    { method: "POST", body: {} },
+  );
+export const addFieldToSet = (
+  serviceTypeId: string,
+  setId: string,
+  body: Partial<ServiceTypeField> & { key: string; label_fr: string },
+) =>
+  tenant<ServiceTypeField>(
+    `/service-types/${serviceTypeId}/field-sets/${setId}/fields`,
+    { method: "POST", body },
+  );
+export const updateFieldInSet = (
+  serviceTypeId: string,
+  setId: string,
+  fieldId: string,
+  body: Partial<ServiceTypeField>,
+) =>
+  tenant<ServiceTypeField>(
+    `/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`,
+    { method: "PATCH", body },
+  );
+export const removeFieldFromSet = (
+  serviceTypeId: string,
+  setId: string,
+  fieldId: string,
+) =>
   tenant<{ removed: boolean; deactivated: boolean }>(
-    `/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`, { method: "DELETE" });
+    `/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`,
+    { method: "DELETE" },
+  );
 export const configureServiceTypeContainers = (
   serviceTypeId: string,
-  body: { captures_containers?: boolean; container_detail_mode?: "GROUPED" | "PER_BOX" },
-) => tenant<{ captures_containers: boolean; container_detail_mode: "GROUPED" | "PER_BOX" }>(
-  `/service-types/${serviceTypeId}/containers`, { method: "PUT", body });
+  body: {
+    captures_containers?: boolean;
+    container_detail_mode?: "GROUPED" | "PER_BOX";
+  },
+) =>
+  tenant<{
+    captures_containers: boolean;
+    container_detail_mode: "GROUPED" | "PER_BOX";
+  }>(`/service-types/${serviceTypeId}/containers`, { method: "PUT", body });
 
 /* The container-type registry is `dictionary_ref` kind CONTAINER_TYPE, already
  * exposed by `masterdata-api.listDictRefs` and already priced against by expense

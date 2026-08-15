@@ -9,10 +9,16 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { fetchActionOptions, type AiActionRun, type AiFieldMeta, type AiOption } from "@/lib/ai-api";
+import {
+  fetchActionOptions,
+  type AiActionRun,
+  type AiFieldMeta,
+  type AiOption,
+} from "@/lib/ai-api";
 
 const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
-const inputCls = "w-full rounded-lg border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary";
+const inputCls =
+  "w-full rounded-lg border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary";
 
 type Options = Record<string, AiOption[]>;
 type Loading = Record<string, boolean>;
@@ -62,10 +68,17 @@ function Field({
     return (
       <div>
         {label}
-        <select id={id} value={str} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+        <select
+          id={id}
+          value={str}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputCls}
+        >
           <option value="">Select…</option>
           {m.options.map((o) => (
-            <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
+            <option key={String(o.value)} value={String(o.value)}>
+              {o.label}
+            </option>
           ))}
         </select>
       </div>
@@ -74,28 +87,59 @@ function Field({
 
   if (m.widget === "select" && m.ref) {
     const opts = options[m.ref];
-    if (loading[m.ref]) return <div>{label}<div className="micro px-1 py-1.5 text-muted-foreground">Loading options…</div></div>;
+    if (loading[m.ref])
+      return (
+        <div>
+          {label}
+          <div className="micro px-1 py-1.5 text-muted-foreground">
+            Loading options…
+          </div>
+        </div>
+      );
     if (opts && opts.length) {
       return (
         <div>
           {label}
-          <select id={id} value={str} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+          <select
+            id={id}
+            value={str}
+            onChange={(e) => onChange(e.target.value)}
+            className={inputCls}
+          >
             <option value="">Select…</option>
             {opts.map((o) => (
-              <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
+              <option key={String(o.value)} value={String(o.value)}>
+                {o.label}
+              </option>
             ))}
           </select>
         </div>
       );
     }
-    return <div>{label}<input id={id} value={str} onChange={(e) => onChange(e.target.value)} placeholder="No options found — enter a value" className={inputCls} /></div>;
+    return (
+      <div>
+        {label}
+        <input
+          id={id}
+          value={str}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="No options found — enter a value"
+          className={inputCls}
+        />
+      </div>
+    );
   }
 
   if (m.widget === "boolean") {
     return (
       <div>
         {label}
-        <select id={id} value={str} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+        <select
+          id={id}
+          value={str}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputCls}
+        >
           <option value="">—</option>
           <option value="true">Yes</option>
           <option value="false">No</option>
@@ -107,7 +151,13 @@ function Field({
   return (
     <div>
       {label}
-      <input id={id} type={m.widget === "number" ? "number" : "text"} value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      <input
+        id={id}
+        type={m.widget === "number" ? "number" : "text"}
+        value={str}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputCls}
+      />
     </div>
   );
 }
@@ -131,14 +181,18 @@ function ArrayField({
   const itemFields = m.item_fields || {};
   const keys = Object.keys(itemFields);
   const singular = m.label.replace(/s$/, "");
-  const setCell = (i: number, f: string, v: unknown) => setRows(rows.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)));
+  const setCell = (i: number, f: string, v: unknown) =>
+    setRows(rows.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)));
 
   return (
     <div>
       <div className="micro mb-0.5 text-foreground">{m.label}</div>
       <div className="space-y-2">
         {rows.map((row, i) => (
-          <div key={i} className="space-y-1.5 rounded-lg border border-border p-2">
+          <div
+            key={i}
+            className="space-y-1.5 rounded-lg border border-border p-2"
+          >
             {keys.map((f) => (
               <Field
                 key={f}
@@ -150,13 +204,21 @@ function ArrayField({
                 loading={loading}
               />
             ))}
-            <button type="button" onClick={() => setRows(rows.filter((_, idx) => idx !== i))} className="micro text-bad hover:underline">
+            <button
+              type="button"
+              onClick={() => setRows(rows.filter((_, idx) => idx !== i))}
+              className="micro text-bad hover:underline"
+            >
               Remove
             </button>
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => setRows([...rows, {}])} className="mt-1.5 micro text-primary-ink hover:underline">
+      <button
+        type="button"
+        onClick={() => setRows([...rows, {}])}
+        className="mt-1.5 micro text-primary-ink hover:underline"
+      >
         + Add {singular.toLowerCase()}
       </button>
     </div>
@@ -177,9 +239,14 @@ export function ActionForm({
   // field set is fixed for the lifetime of a run, which is what the original
   // `[action.action_run_id]` dep was expressing — it just had nothing stable to
   // express it against.
-  const meta = React.useMemo(() => action.field_meta || {}, [action.field_meta]);
+  const meta = React.useMemo(
+    () => action.field_meta || {},
+    [action.field_meta],
+  );
   const fields = React.useMemo(() => Object.keys(meta), [meta]);
-  const [values, setValues] = React.useState<Record<string, unknown>>(() => ({ ...(action.payload || {}) }));
+  const [values, setValues] = React.useState<Record<string, unknown>>(() => ({
+    ...(action.payload || {}),
+  }));
   const [options, setOptions] = React.useState<Options>({});
   const [loading, setLoading] = React.useState<Loading>({});
 
@@ -195,22 +262,28 @@ export function ActionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action.action_run_id]);
 
-  const setVal = (k: string, v: unknown) => setValues((s) => ({ ...s, [k]: v }));
+  const setVal = (k: string, v: unknown) =>
+    setValues((s) => ({ ...s, [k]: v }));
 
   // Required check only covers scalar fields (arrays/booleans are optional here).
-  const missing = fields.filter((f) => meta[f].required && meta[f].widget !== "array" && isEmpty(values[f]));
+  const missing = fields.filter(
+    (f) => meta[f].required && meta[f].widget !== "array" && isEmpty(values[f]),
+  );
 
   function submit() {
     const payload: Record<string, unknown> = { ...(action.payload || {}) };
     for (const f of fields) {
       const m = meta[f];
       if (m.widget === "array") {
-        const rows = Array.isArray(values[f]) ? (values[f] as Record<string, unknown>[]) : [];
+        const rows = Array.isArray(values[f])
+          ? (values[f] as Record<string, unknown>[])
+          : [];
         const itemFields = m.item_fields || {};
         const clean = rows
           .map((row) => {
             const o: Record<string, unknown> = {};
-            for (const k of Object.keys(itemFields)) if (!isEmpty(row[k])) o[k] = coerce(itemFields[k], row[k]);
+            for (const k of Object.keys(itemFields))
+              if (!isEmpty(row[k])) o[k] = coerce(itemFields[k], row[k]);
             return o;
           })
           .filter((o) => Object.keys(o).length > 0);
@@ -230,18 +303,53 @@ export function ActionForm({
 
   return (
     <div className="mt-2 space-y-2 border-t border-border pt-2">
-      <div className="micro text-muted-foreground">{action.action_key.replace(/_/g, " ")}</div>
+      <div className="micro text-muted-foreground">
+        {action.action_key.replace(/_/g, " ")}
+      </div>
       {fields.map((f) => {
         const m = meta[f];
         if (m.widget === "array") {
-          const rows = Array.isArray(values[f]) ? (values[f] as Record<string, unknown>[]) : [];
-          return <ArrayField key={f} fieldKey={`${action.action_run_id}-${f}`} m={m} rows={rows} setRows={(r) => setVal(f, r)} options={options} loading={loading} />;
+          const rows = Array.isArray(values[f])
+            ? (values[f] as Record<string, unknown>[])
+            : [];
+          return (
+            <ArrayField
+              key={f}
+              fieldKey={`${action.action_run_id}-${f}`}
+              m={m}
+              rows={rows}
+              setRows={(r) => setVal(f, r)}
+              options={options}
+              loading={loading}
+            />
+          );
         }
-        return <Field key={f} id={`${action.action_run_id}-${f}`} m={m} value={values[f]} onChange={(v) => setVal(f, v)} options={options} loading={loading} />;
+        return (
+          <Field
+            key={f}
+            id={`${action.action_run_id}-${f}`}
+            m={m}
+            value={values[f]}
+            onChange={(v) => setVal(f, v)}
+            options={options}
+            loading={loading}
+          />
+        );
       })}
       <div className="flex items-center justify-between gap-2 pt-1">
-        <span className="micro text-muted-foreground">{missing.length ? `${missing.length} required field${missing.length > 1 ? "s" : ""} left` : "Ready"}</span>
-        <Button size="sm" loading={busy} disabled={missing.length > 0} onClick={submit}>Confirm</Button>
+        <span className="micro text-muted-foreground">
+          {missing.length
+            ? `${missing.length} required field${missing.length > 1 ? "s" : ""} left`
+            : "Ready"}
+        </span>
+        <Button
+          size="sm"
+          loading={busy}
+          disabled={missing.length > 0}
+          onClick={submit}
+        >
+          Confirm
+        </Button>
       </div>
     </div>
   );

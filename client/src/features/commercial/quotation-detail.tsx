@@ -19,7 +19,21 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { DocButton } from "@/components/doc-button";
 import { entityLabelOf, entityText, qLineTotal } from "./quotation-forms";
 
-export function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, onEdit }: { quotation: Row | null; entities: Row[] | null; clientName: Map<string, string>; onClose: () => void; onChanged: () => void; onEdit: (q: Row) => void }) {
+export function QuotationDetail({
+  quotation,
+  entities,
+  clientName,
+  onClose,
+  onChanged,
+  onEdit,
+}: {
+  quotation: Row | null;
+  entities: Row[] | null;
+  clientName: Map<string, string>;
+  onClose: () => void;
+  onChanged: () => void;
+  onEdit: (q: Row) => void;
+}) {
   const open = !!quotation;
   const [data, setData] = React.useState<Row | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -60,11 +74,30 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
       setBusy(false);
     }
   }
-  const transitionTo = (to: string, entity?: string) => run(() => tenant(`/quotations/${id}/transition`, { method: "POST", body: { to, entity_id: entity } }));
-  const doAccept = () => run(() => tenant(`/quotations/${id}/accept`, { method: "POST", body: { convert } }));
+  const transitionTo = (to: string, entity?: string) =>
+    run(() =>
+      tenant(`/quotations/${id}/transition`, {
+        method: "POST",
+        body: { to, entity_id: entity },
+      }),
+    );
+  const doAccept = () =>
+    run(() =>
+      tenant(`/quotations/${id}/accept`, { method: "POST", body: { convert } }),
+    );
 
   return (
-    <Modal open={open} onClose={onClose} title={quotation && quotation.doc_number ? `Quotation ${cell(quotation.doc_number)}` : "Quotation (draft)"} description="Review, then move it through its lifecycle." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={
+        quotation && quotation.doc_number
+          ? `Quotation ${cell(quotation.doc_number)}`
+          : "Quotation (draft)"
+      }
+      description="Review, then move it through its lifecycle."
+      size="xl"
+    >
       <div className="space-y-4">
         {error && <ErrorState message={error} />}
         {data === null && !error ? (
@@ -73,9 +106,27 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
           <>
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill status={status || "DRAFT"} />
-              {data?.client_id ? <span className="text-xs text-muted-foreground">{clientName.get(String(data.client_id)) ?? "Client"}</span> : null}
-              {data?.valid_until ? <span className="text-xs text-muted-foreground">valid until {dateFmt(data.valid_until)}</span> : null}
-              <span className="ml-auto"><DocButton docType="QUOTATION" id={id} title={quotation?.doc_number ? String(quotation.doc_number) : "Quotation"} /></span>
+              {data?.client_id ? (
+                <span className="text-xs text-muted-foreground">
+                  {clientName.get(String(data.client_id)) ?? "Client"}
+                </span>
+              ) : null}
+              {data?.valid_until ? (
+                <span className="text-xs text-muted-foreground">
+                  valid until {dateFmt(data.valid_until)}
+                </span>
+              ) : null}
+              <span className="ml-auto">
+                <DocButton
+                  docType="QUOTATION"
+                  id={id}
+                  title={
+                    quotation?.doc_number
+                      ? String(quotation.doc_number)
+                      : "Quotation"
+                  }
+                />
+              </span>
             </div>
 
             {lines.length > 0 && (
@@ -87,26 +138,45 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
                   <span className="w-28 text-right">Total</span>
                 </div>
                 {lines.map((l) => (
-                  <div key={String(l.quotation_line_id)} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm">
+                  <div
+                    key={String(l.quotation_line_id)}
+                    className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm"
+                  >
                     <span>
                       {cell(l.label)}
-                      {l.is_disbursement ? <span className="ml-1 text-xs text-muted-foreground">(débours)</span> : null}
+                      {l.is_disbursement ? (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          (débours)
+                        </span>
+                      ) : null}
                     </span>
                     <span className="w-12 text-right">{cell(l.qty)}</span>
-                    <span className="w-24 text-right">{money(l.unit_price, data?.currency)}</span>
-                    <span className="w-28 text-right">{money(qLineTotal(l), data?.currency)}</span>
+                    <span className="w-24 text-right">
+                      {money(l.unit_price, data?.currency)}
+                    </span>
+                    <span className="w-28 text-right">
+                      {money(qLineTotal(l), data?.currency)}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
             <div className="flex flex-col items-end gap-0.5 text-sm">
-              <span className="text-muted-foreground">Total HT: {money(data?.total_ht, data?.currency)}</span>
-              <span className="font-semibold">Total TTC: {money(data?.total_ttc, data?.currency)}</span>
+              <span className="text-muted-foreground">
+                Total HT: {money(data?.total_ht, data?.currency)}
+              </span>
+              <span className="font-semibold">
+                Total TTC: {money(data?.total_ttc, data?.currency)}
+              </span>
             </div>
 
             {action === "send" && (
               <div className="rounded-lg border bg-muted/30 p-3">
-                <Field label="Entity" hint="Numbers the quotation on send" required>
+                <Field
+                  label="Entity"
+                  hint="Numbers the quotation on send"
+                  required
+                >
                   <SearchSelect
                     path="/entities"
                     value={entityLabelOf(entities, entityId)}
@@ -117,10 +187,20 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
                   />
                 </Field>
                 <div className="mt-2 flex justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setAction(null)} disabled={busy}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAction(null)}
+                    disabled={busy}
+                  >
                     Cancel
                   </Button>
-                  <Button size="sm" loading={busy} disabled={!entityId} onClick={() => transitionTo("SENT", entityId)}>
+                  <Button
+                    size="sm"
+                    loading={busy}
+                    disabled={!entityId}
+                    onClick={() => transitionTo("SENT", entityId)}
+                  >
                     Confirm send
                   </Button>
                 </div>
@@ -129,11 +209,20 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
             {action === "accept" && (
               <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={convert} onChange={(e) => setConvert(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={convert}
+                    onChange={(e) => setConvert(e.target.checked)}
+                  />
                   Convert to a final-invoice draft
                 </label>
                 <div className="flex justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setAction(null)} disabled={busy}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAction(null)}
+                    disabled={busy}
+                  >
                     Cancel
                   </Button>
                   <Button size="sm" loading={busy} onClick={doAccept}>
@@ -150,11 +239,17 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
                 </Button>
                 {status === "DRAFT" && (
                   <>
-                    <Button variant="outline" onClick={() => onEdit(data ?? (quotation as Row))}>
+                    <Button
+                      variant="outline"
+                      onClick={() => onEdit(data ?? (quotation as Row))}
+                    >
                       Edit
                     </Button>
                     {data?.entity_id ? (
-                      <Button loading={busy} onClick={() => transitionTo("SENT")}>
+                      <Button
+                        loading={busy}
+                        onClick={() => transitionTo("SENT")}
+                      >
                         Send
                       </Button>
                     ) : (
@@ -164,10 +259,18 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
                 )}
                 {status === "SENT" && (
                   <>
-                    <Button variant="ghost" loading={busy} onClick={() => transitionTo("EXPIRED")}>
+                    <Button
+                      variant="ghost"
+                      loading={busy}
+                      onClick={() => transitionTo("EXPIRED")}
+                    >
                       Expire
                     </Button>
-                    <Button variant="ghost" loading={busy} onClick={() => transitionTo("REJECTED")}>
+                    <Button
+                      variant="ghost"
+                      loading={busy}
+                      onClick={() => transitionTo("REJECTED")}
+                    >
                       Reject
                     </Button>
                     <Button onClick={() => setAction("accept")}>Accept…</Button>

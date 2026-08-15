@@ -20,31 +20,31 @@ exactly one of these classes. The **marker** column is what a reviewer looks
 for to know a silent catch was deliberate — the lint rule (§Enforcement below)
 refuses any silent catch without one.
 
-| Class | Definition | Toast | Report | Marker |
-|---|---|---|---|---|
-| **A · Storage** | `localStorage` / `sessionStorage` write or read that fails on quota or private mode | none | none | `/* @silent:storage */` |
-| **B · Parse fallback** | Non-JSON body, malformed cache entry, unparseable draft — a defined fallback exists | none | none | `/* @silent:parse */` |
-| **C · Teardown** | Closing a socket/connection already gone; the original error is the useful one | none | none | `/* @silent:teardown */` |
-| **D · Best-effort background** | Fire-and-forget the user did not initiate: read receipts, push cleanup, telemetry | none | **`notice`** | `onError: "notice"` |
-| **E · Degraded read** | A read that failed where partial UI is acceptable — but the user must see the degradation | inline note | **`notice`** | `onError: "notice"` + visible marker |
-| **F · Mutation** | Anything that changes server state | **always** | `warning`+ if unexpected | never silent |
-| **G · Config** | A prerequisite is unset (SMTP, API key, geofence policy) | **callout with fix-it link** | **never** | `CONFIG_MISSING` (424) |
+| Class                          | Definition                                                                                | Toast                        | Report                   | Marker                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | ---------------------------- | ------------------------ | ------------------------------------ |
+| **A · Storage**                | `localStorage` / `sessionStorage` write or read that fails on quota or private mode       | none                         | none                     | `/* @silent:storage */`              |
+| **B · Parse fallback**         | Non-JSON body, malformed cache entry, unparseable draft — a defined fallback exists       | none                         | none                     | `/* @silent:parse */`                |
+| **C · Teardown**               | Closing a socket/connection already gone; the original error is the useful one            | none                         | none                     | `/* @silent:teardown */`             |
+| **D · Best-effort background** | Fire-and-forget the user did not initiate: read receipts, push cleanup, telemetry         | none                         | **`notice`**             | `onError: "notice"`                  |
+| **E · Degraded read**          | A read that failed where partial UI is acceptable — but the user must see the degradation | inline note                  | **`notice`**             | `onError: "notice"` + visible marker |
+| **F · Mutation**               | Anything that changes server state                                                        | **always**                   | `warning`+ if unexpected | never silent                         |
+| **G · Config**                 | A prerequisite is unset (SMTP, API key, geofence policy)                                  | **callout with fix-it link** | **never**                | `CONFIG_MISSING` (424)               |
 
 ### Worked examples from the code
 
-| Site | Class | Action |
-|---|---|---|
-| `api-client.ts:378` `/* non-JSON body — keep the status text */` | B | Correct; mark `@silent:parse` |
-| `form-draft.ts:166` `/* still full; the draft is lost but the form is not */` | A | Correct; mark `@silent:storage` |
-| `nav-access-cache.ts:92` `/* private mode … falls back to the skeleton */` | A | Correct; mark `@silent:storage` |
-| `mail-idle.js:81` `try { await imap.logout(); } catch { /* noop */ }` | C | Correct; mark `@silent:teardown` |
-| `mail.tsx:49` `markThreadRead(id).catch(() => {})` | D | `onError: "notice"` |
-| `turn.tsx:516,534` AI feedback ping | D | `onError: "notice"` |
-| `push-opt-in.tsx:87` subscription cleanup | D | `onError: "notice"` |
-| `invoices.tsx:42` name resolution best-effort | E | `notice` + show ids unresolved |
-| `masterdata-api.ts:978` `listSalesTaxCodes` | **F** | Fixed in this PR (B1) |
-| `new-account-modal.tsx:135` `/* soft */` | **F** | Fixed in this PR (B2) |
-| `clock-punch.tsx:54` location fix | **G** | Fixed in this PR (B3) |
+| Site                                                                          | Class | Action                           |
+| ----------------------------------------------------------------------------- | ----- | -------------------------------- |
+| `api-client.ts:378` `/* non-JSON body — keep the status text */`              | B     | Correct; mark `@silent:parse`    |
+| `form-draft.ts:166` `/* still full; the draft is lost but the form is not */` | A     | Correct; mark `@silent:storage`  |
+| `nav-access-cache.ts:92` `/* private mode … falls back to the skeleton */`    | A     | Correct; mark `@silent:storage`  |
+| `mail-idle.js:81` `try { await imap.logout(); } catch { /* noop */ }`         | C     | Correct; mark `@silent:teardown` |
+| `mail.tsx:49` `markThreadRead(id).catch(() => {})`                            | D     | `onError: "notice"`              |
+| `turn.tsx:516,534` AI feedback ping                                           | D     | `onError: "notice"`              |
+| `push-opt-in.tsx:87` subscription cleanup                                     | D     | `onError: "notice"`              |
+| `invoices.tsx:42` name resolution best-effort                                 | E     | `notice` + show ids unresolved   |
+| `masterdata-api.ts:978` `listSalesTaxCodes`                                   | **F** | Fixed in this PR (B1)            |
+| `new-account-modal.tsx:135` `/* soft */`                                      | **F** | Fixed in this PR (B2)            |
+| `clock-punch.tsx:54` location fix                                             | **G** | Fixed in this PR (B3)            |
 
 ## The mutation envelope
 
@@ -56,11 +56,11 @@ Successful mutations return one of:
 ```
 
 `ok:false` is never returned — failures throw and are handled by
-`middleware/error-handler.js`. `changed` answers *"did server state actually
-move?"* — `changed:false` is the case that made the session-kill bug look like
+`middleware/error-handler.js`. `changed` answers _"did server state actually
+move?"_ — `changed:false` is the case that made the session-kill bug look like
 nothing happened: the second click to revoke an already-revoked session
 succeeds with a 200 whose body says the row was unchanged. The client renders
-that as *"That session was already revoked"*, not silence.
+that as _"That session was already revoked"_, not silence.
 
 **Why not 409.** An already-revoked session is not a conflict, and the server
 comment says so correctly. Making idempotent success a 4xx would break the
@@ -84,7 +84,10 @@ const revoke = useAction(
   {
     success: "Session revoked",
     idle: "That session was already revoked",
-    onSuccess: () => { mine.reload(); all.reload(); },
+    onSuccess: () => {
+      mine.reload();
+      all.reload();
+    },
   },
 );
 ```

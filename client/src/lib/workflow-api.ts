@@ -24,11 +24,16 @@ export type Workflow = {
   created_at?: string | null;
 };
 export const listWorkflows = () => tenant<Workflow[]>("/workflows");
-export const getWorkflow = (id: string) => tenant<Workflow & { steps?: WorkflowStep[] }>(`/workflows/${id}`);
-export const createWorkflow = (body: { event_type_key: string; name: string }) =>
-  tenant<Workflow>("/workflows", { method: "POST", body });
-export const updateWorkflow = (id: string, body: { name?: string; is_active?: boolean }) =>
-  tenant<Workflow>(`/workflows/${id}`, { method: "PATCH", body });
+export const getWorkflow = (id: string) =>
+  tenant<Workflow & { steps?: WorkflowStep[] }>(`/workflows/${id}`);
+export const createWorkflow = (body: {
+  event_type_key: string;
+  name: string;
+}) => tenant<Workflow>("/workflows", { method: "POST", body });
+export const updateWorkflow = (
+  id: string,
+  body: { name?: string; is_active?: boolean },
+) => tenant<Workflow>(`/workflows/${id}`, { method: "PATCH", body });
 
 export type WorkflowStep = {
   workflow_step_id: string;
@@ -40,7 +45,8 @@ export type WorkflowStep = {
   min_amount_xaf?: number | null;
   max_amount_xaf?: number | null;
 };
-export const listSteps = (id: string) => tenant<WorkflowStep[]>(`/workflows/${id}/steps`);
+export const listSteps = (id: string) =>
+  tenant<WorkflowStep[]>(`/workflows/${id}/steps`);
 export const addStep = (
   id: string,
   // `role_id` and `scope_id` are what the executor's eligibility check binds to —
@@ -58,4 +64,6 @@ export const addStep = (
   },
 ) => tenant<WorkflowStep>(`/workflows/${id}/steps`, { method: "POST", body });
 export const removeStep = (id: string, stepId: string) =>
-  tenant<{ ok: boolean }>(`/workflows/${id}/steps/${stepId}`, { method: "DELETE" });
+  tenant<{ ok: boolean }>(`/workflows/${id}/steps/${stepId}`, {
+    method: "DELETE",
+  });

@@ -29,7 +29,10 @@ const keyLabel = (k: string): string => {
 };
 
 function ReportTable({ rows }: { rows: Record<string, unknown>[] }) {
-  if (rows.length === 0) return <EmptyState title="Nothing to show" hint="The report returned no rows." />;
+  if (rows.length === 0)
+    return (
+      <EmptyState title="Nothing to show" hint="The report returned no rows." />
+    );
   const cols = Object.keys(rows[0]).slice(0, 8);
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -57,12 +60,23 @@ function ReportTable({ rows }: { rows: Record<string, unknown>[] }) {
   );
 }
 
-function KVCard({ title, entries }: { title?: string; entries: [string, unknown][] }) {
+function KVCard({
+  title,
+  entries,
+}: {
+  title?: string;
+  entries: [string, unknown][];
+}) {
   return (
     <div className="lux-card divide-y">
-      {title && <div className="px-5 py-2.5 text-sm font-semibold">{title}</div>}
+      {title && (
+        <div className="px-5 py-2.5 text-sm font-semibold">{title}</div>
+      )}
       {entries.map(([k, v]) => (
-        <div key={k} className="flex items-center justify-between gap-4 px-5 py-3">
+        <div
+          key={k}
+          className="flex items-center justify-between gap-4 px-5 py-3"
+        >
           <span className="text-sm text-muted-foreground">{keyLabel(k)}</span>
           <span className="num text-sm font-medium">{smartCell(v)}</span>
         </div>
@@ -77,23 +91,48 @@ function KVCard({ title, entries }: { title?: string; entries: [string, unknown]
  *  part properly — line items as tables, nested groups as their own card —
  *  instead of collapsing them to "5 items" / truncated pairs. */
 function Report({ data }: { data: unknown }) {
-  if (Array.isArray(data)) return <ReportTable rows={data as Record<string, unknown>[]} />;
-  const entries = data && typeof data === "object" ? Object.entries(data as Record<string, unknown>) : [];
-  if (entries.length === 0) return <EmptyState title="No data" hint="The report returned nothing for this period." />;
+  if (Array.isArray(data))
+    return <ReportTable rows={data as Record<string, unknown>[]} />;
+  const entries =
+    data && typeof data === "object"
+      ? Object.entries(data as Record<string, unknown>)
+      : [];
+  if (entries.length === 0)
+    return (
+      <EmptyState
+        title="No data"
+        hint="The report returned nothing for this period."
+      />
+    );
 
-  const arrays = entries.filter((e): e is [string, Record<string, unknown>[]] => Array.isArray(e[1]));
-  const objects = entries.filter((e): e is [string, Record<string, unknown>] => !!e[1] && typeof e[1] === "object" && !Array.isArray(e[1]));
+  const arrays = entries.filter((e): e is [string, Record<string, unknown>[]] =>
+    Array.isArray(e[1]),
+  );
+  const objects = entries.filter(
+    (e): e is [string, Record<string, unknown>] =>
+      !!e[1] && typeof e[1] === "object" && !Array.isArray(e[1]),
+  );
   const scalars = entries.filter(([, v]) => !v || typeof v !== "object");
 
   return (
     <div className="space-y-4">
       {arrays.map(([k, rows]) => (
         <div key={k}>
-          {arrays.length + objects.length + scalars.length > 1 && <div className="micro mb-2 uppercase tracking-wide">{keyLabel(k)}</div>}
-          {rows.length && typeof rows[0] === "object" && !Array.isArray(rows[0]) ? (
+          {arrays.length + objects.length + scalars.length > 1 && (
+            <div className="micro mb-2 uppercase tracking-wide">
+              {keyLabel(k)}
+            </div>
+          )}
+          {rows.length &&
+          typeof rows[0] === "object" &&
+          !Array.isArray(rows[0]) ? (
             <ReportTable rows={rows} />
           ) : (
-            <span className="micro">{rows.length ? rows.map((x) => smartCell(x)).join(" · ") : "No rows."}</span>
+            <span className="micro">
+              {rows.length
+                ? rows.map((x) => smartCell(x)).join(" · ")
+                : "No rows."}
+            </span>
           )}
         </div>
       ))}
@@ -105,8 +144,20 @@ function Report({ data }: { data: unknown }) {
   );
 }
 
-type Params = { entity_id: string; period_code: string; period_id: string; from: string; to: string };
-const EMPTY_PARAMS: Params = { entity_id: "", period_code: "", period_id: "", from: "", to: "" };
+type Params = {
+  entity_id: string;
+  period_code: string;
+  period_id: string;
+  from: string;
+  to: string;
+};
+const EMPTY_PARAMS: Params = {
+  entity_id: "",
+  period_code: "",
+  period_id: "",
+  from: "",
+  to: "",
+};
 
 function toQuery(p: Params): string {
   const qs = new URLSearchParams();
@@ -119,7 +170,12 @@ function toQuery(p: Params): string {
   const s = qs.toString();
   return s ? `?${s}` : "";
 }
-type Tab = { key: string; label: string; path?: string; render?: () => React.ReactNode };
+type Tab = {
+  key: string;
+  label: string;
+  path?: string;
+  render?: () => React.ReactNode;
+};
 
 export function ReportTabs({
   title,
@@ -147,7 +203,8 @@ export function ReportTabs({
   React.useEffect(() => {
     if (periodMode !== "period_id") return;
     let live = true;
-    fin.listPeriods()
+    fin
+      .listPeriods()
       .then((d) => live && setPeriods(d.periods || []))
       .catch(() => {
         /* dropdown just stays empty; from/to still work */
@@ -156,7 +213,9 @@ export function ReportTabs({
       live = false;
     };
   }, [periodMode]);
-  const periodOptions = periods.filter((p) => !draft.entity_id || !p.entity_id || p.entity_id === draft.entity_id);
+  const periodOptions = periods.filter(
+    (p) => !draft.entity_id || !p.entity_id || p.entity_id === draft.entity_id,
+  );
 
   const activeTab = tabs.find((t) => t.key === active)!;
   const isCustom = !!activeTab.render;
@@ -172,8 +231,10 @@ export function ReportTabs({
       .then((d) => live && setData(d))
       .catch((err) => {
         if (!live) return;
-        if (err instanceof ApiError && err.status === 403) setError("You don't have permission to view this.");
-        else setError(err instanceof ApiError ? err.message : "Failed to load.");
+        if (err instanceof ApiError && err.status === 403)
+          setError("You don't have permission to view this.");
+        else
+          setError(err instanceof ApiError ? err.message : "Failed to load.");
       })
       .finally(() => live && setLoading(false));
     return () => {
@@ -183,7 +244,11 @@ export function ReportTabs({
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title={title} description={description} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title={title}
+        description={description}
+      />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b">
         {tabs.map((t) => (
@@ -208,7 +273,12 @@ export function ReportTabs({
         <>
           <div className="lux-card mb-4 flex flex-wrap items-end gap-3 p-4">
             <Field label="Entity" className="min-w-[12rem]">
-              <Select value={draft.entity_id} onChange={(e) => setDraft({ ...draft, entity_id: e.target.value })}>
+              <Select
+                value={draft.entity_id}
+                onChange={(e) =>
+                  setDraft({ ...draft, entity_id: e.target.value })
+                }
+              >
                 <option value="">All entities</option>
                 {entities.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -219,7 +289,12 @@ export function ReportTabs({
             </Field>
             {periodMode === "period_id" ? (
               <Field label="Period" className="min-w-[11rem]">
-                <Select value={draft.period_id} onChange={(e) => setDraft({ ...draft, period_id: e.target.value })}>
+                <Select
+                  value={draft.period_id}
+                  onChange={(e) =>
+                    setDraft({ ...draft, period_id: e.target.value })
+                  }
+                >
                   <option value="">All periods</option>
                   {periodOptions.map((p) => (
                     <option key={p.period_id} value={p.period_id}>
@@ -230,21 +305,43 @@ export function ReportTabs({
                 </Select>
               </Field>
             ) : (
-              <Field label="Period code" hint="YYYY or YYYY-MM" className="w-32">
-                <Input value={draft.period_code} onChange={(e) => setDraft({ ...draft, period_code: e.target.value })} placeholder="2026-06" />
+              <Field
+                label="Period code"
+                hint="YYYY or YYYY-MM"
+                className="w-32"
+              >
+                <Input
+                  value={draft.period_code}
+                  onChange={(e) =>
+                    setDraft({ ...draft, period_code: e.target.value })
+                  }
+                  placeholder="2026-06"
+                />
               </Field>
             )}
             <Field label="From" className="w-40">
-              <Input type="date" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+              <Input
+                type="date"
+                value={draft.from}
+                onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+              />
             </Field>
             <Field label="To" className="w-40">
-              <Input type="date" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+              <Input
+                type="date"
+                value={draft.to}
+                onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+              />
             </Field>
             <div className="flex gap-2">
               <Button onClick={() => setParams(draft)} loading={loading}>
                 Apply
               </Button>
-              {(params.entity_id || params.period_code || params.period_id || params.from || params.to) && (
+              {(params.entity_id ||
+                params.period_code ||
+                params.period_id ||
+                params.from ||
+                params.to) && (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -258,7 +355,13 @@ export function ReportTabs({
             </div>
           </div>
 
-          {error ? <ErrorState message={error} /> : loading ? <SkeletonTable /> : <Report data={data} />}
+          {error ? (
+            <ErrorState message={error} />
+          ) : loading ? (
+            <SkeletonTable />
+          ) : (
+            <Report data={data} />
+          )}
         </>
       )}
     </section>

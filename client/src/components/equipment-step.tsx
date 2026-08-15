@@ -34,7 +34,11 @@ import { getDossierContainers } from "@/lib/operations-api";
 /** `label` rides along so the calling form can show what was picked without
  *  loading the whole registry a second time — the duplicate fetch this step
  *  exists to remove. */
-export type EquipmentPick = { container_type_ref_id: string; qty: number; label: string };
+export type EquipmentPick = {
+  container_type_ref_id: string;
+  qty: number;
+  label: string;
+};
 
 export function EquipmentStep({
   dossierId,
@@ -53,7 +57,10 @@ export function EquipmentStep({
   /** The charge being priced, so the step says what it is a step of. */
   itemLabel?: string;
 }) {
-  const types = useResource<DictRef[]>(() => listDictRefs("CONTAINER_TYPE"), []);
+  const types = useResource<DictRef[]>(
+    () => listDictRefs("CONTAINER_TYPE"),
+    [],
+  );
   // Resolves to null with no dossier — the step then renders the plain list
   // rather than waiting on a request it was never going to make.
   const onFile = useResource(
@@ -65,7 +72,10 @@ export function EquipmentStep({
     () => (types.data || []).filter((t) => t.is_active !== false),
     [types.data],
   );
-  const byId = React.useMemo(() => new Map(active.map((t) => [t.ref_id, t])), [active]);
+  const byId = React.useMemo(
+    () => new Map(active.map((t) => [t.ref_id, t])),
+    [active],
+  );
 
   // Pre-fill once, when both the registry and the file have landed. Guarded on
   // `value.length` so re-opening the step does not discard what was ticked.
@@ -77,15 +87,23 @@ export function EquipmentStep({
     const lines = onFile.data?.lines || [];
     const merged = new Map<string, number>();
     for (const l of lines) {
-      if (!l.container_type_ref_id || !byId.has(l.container_type_ref_id)) continue;
+      if (!l.container_type_ref_id || !byId.has(l.container_type_ref_id))
+        continue;
       // A file may hold the same type on two lines (different load modes); the
       // charge cares only about the type, so the counts add.
-      merged.set(l.container_type_ref_id, (merged.get(l.container_type_ref_id) || 0) + (Number(l.qty) || 0));
+      merged.set(
+        l.container_type_ref_id,
+        (merged.get(l.container_type_ref_id) || 0) + (Number(l.qty) || 0),
+      );
     }
     if (merged.size) {
-      onChange([...merged].map(([id, qty]) => ({
-        container_type_ref_id: id, qty: qty || 1, label: typeLabel(byId.get(id)!),
-      })));
+      onChange(
+        [...merged].map(([id, qty]) => ({
+          container_type_ref_id: id,
+          qty: qty || 1,
+          label: typeLabel(byId.get(id)!),
+        })),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [types.loading, onFile.loading, byId]);
@@ -93,15 +111,25 @@ export function EquipmentStep({
   const picked = new Map(value.map((p) => [p.container_type_ref_id, p.qty]));
 
   const toggle = (id: string) => {
-    if (picked.has(id)) onChange(value.filter((p) => p.container_type_ref_id !== id));
-    else onChange([...value, { container_type_ref_id: id, qty: 1, label: typeLabel(byId.get(id)!) }]);
+    if (picked.has(id))
+      onChange(value.filter((p) => p.container_type_ref_id !== id));
+    else
+      onChange([
+        ...value,
+        { container_type_ref_id: id, qty: 1, label: typeLabel(byId.get(id)!) },
+      ]);
   };
   const setQty = (id: string, qty: string) => {
     const n = Number(qty.replace(/[^\d]/g, ""));
-    onChange(value.map((p) => (p.container_type_ref_id === id ? { ...p, qty: n } : p)));
+    onChange(
+      value.map((p) => (p.container_type_ref_id === id ? { ...p, qty: n } : p)),
+    );
   };
 
-  const totalTeu = value.reduce((s, p) => s + teuOf(byId.get(p.container_type_ref_id)) * (p.qty || 0), 0);
+  const totalTeu = value.reduce(
+    (s, p) => s + teuOf(byId.get(p.container_type_ref_id)) * (p.qty || 0),
+    0,
+  );
   const valid = value.length > 0 && value.every((p) => p.qty > 0);
 
   if (types.error) return <ErrorState message={types.error} />;
@@ -124,25 +152,38 @@ export function EquipmentStep({
           <Skeleton className="h-32 w-full" />
         ) : active.length === 0 ? (
           <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-            No container types are active. Add one under Dictionary settings → Container types.
+            No container types are active. Add one under Dictionary settings →
+            Container types.
           </div>
         ) : (
           groupTypes(active).map(([family, list]) => (
             <fieldset key={family} className="mb-1">
-              <legend className="px-2 py-1 micro uppercase tracking-wide text-muted-foreground">{family}</legend>
+              <legend className="px-2 py-1 micro uppercase tracking-wide text-muted-foreground">
+                {family}
+              </legend>
               {list.map((t) => {
                 const on = picked.has(t.ref_id);
                 return (
-                  <div key={t.ref_id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted">
+                  <div
+                    key={t.ref_id}
+                    className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted"
+                  >
                     <input
                       type="checkbox"
                       id={`eq-${t.ref_id}`}
                       checked={on}
                       onChange={() => toggle(t.ref_id)}
                     />
-                    <label htmlFor={`eq-${t.ref_id}`} className="min-w-0 flex-1 truncate text-sm text-foreground">
+                    <label
+                      htmlFor={`eq-${t.ref_id}`}
+                      className="min-w-0 flex-1 truncate text-sm text-foreground"
+                    >
                       {typeLabel(t)}
-                      {t.extra?.teu ? <span className="ml-1 micro text-muted-foreground">{t.extra.teu} TEU</span> : null}
+                      {t.extra?.teu ? (
+                        <span className="ml-1 micro text-muted-foreground">
+                          {t.extra.teu} TEU
+                        </span>
+                      ) : null}
                     </label>
                     <Input
                       className="num w-16 text-right"
@@ -167,8 +208,12 @@ export function EquipmentStep({
             : `${value.length} line${value.length === 1 ? "" : "s"}${totalTeu ? ` · ${Math.round(totalTeu * 100) / 100} TEU` : ""}`}
         </p>
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant="ghost" onClick={onBack}>Back</Button>
-          <Button type="button" size="sm" disabled={!valid} onClick={onConfirm}>Add lines</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+          <Button type="button" size="sm" disabled={!valid} onClick={onConfirm}>
+            Add lines
+          </Button>
         </div>
       </div>
     </div>

@@ -61,7 +61,8 @@ function escapeCell(raw: unknown): string {
 
 export function toCsv<T>(columns: CsvColumn<T>[], rows: T[]): string {
   const lines = [columns.map((c) => escapeCell(c.header)).join(",")];
-  for (const r of rows) lines.push(columns.map((c) => escapeCell(c.value(r))).join(","));
+  for (const r of rows)
+    lines.push(columns.map((c) => escapeCell(c.value(r))).join(","));
   // CRLF is what RFC 4180 specifies and what Excel is least surprised by.
   return lines.join("\r\n");
 }

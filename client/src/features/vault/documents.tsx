@@ -63,7 +63,15 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function UploadDocumentForm({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+function UploadDocumentForm({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [file, setFile] = React.useState<File | null>(null);
   const [docType, setDocType] = React.useState("");
   const [entityRef, setEntityRef] = React.useState("");
@@ -107,7 +115,13 @@ function UploadDocumentForm({ open, onClose, onSaved }: { open: boolean; onClose
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Upload document" description="Stored in the confidential vault with a SHA-256 fingerprint (max 25 MB)." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Upload document"
+      description="Stored in the confidential vault with a SHA-256 fingerprint (max 25 MB)."
+      size="lg"
+    >
       <div className="space-y-4">
         <Field label="File" required>
           <input
@@ -119,10 +133,17 @@ function UploadDocumentForm({ open, onClose, onSaved }: { open: boolean; onClose
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Document type" hint="e.g. invoice, bill_of_lading">
-            <Input value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="invoice" />
+            <Input
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              placeholder="invoice"
+            />
           </Field>
           <Field label="File context">
-            <Select value={fileContext} onChange={(e) => setFileContext(e.target.value)}>
+            <Select
+              value={fileContext}
+              onChange={(e) => setFileContext(e.target.value)}
+            >
               {FILE_CONTEXTS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -130,8 +151,16 @@ function UploadDocumentForm({ open, onClose, onSaved }: { open: boolean; onClose
               ))}
             </Select>
           </Field>
-          <Field label="Reference" hint="Optional business key (entity_ref)" className="sm:col-span-2">
-            <Input value={entityRef} onChange={(e) => setEntityRef(e.target.value)} placeholder="DOSSIER-2026-0042" />
+          <Field
+            label="Reference"
+            hint="Optional business key (entity_ref)"
+            className="sm:col-span-2"
+          >
+            <Input
+              value={entityRef}
+              onChange={(e) => setEntityRef(e.target.value)}
+              placeholder="DOSSIER-2026-0042"
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}
@@ -174,15 +203,24 @@ export function DocumentsPage() {
       setRowBusy(null);
     }
   }
-  const archive = (id: string) => withRow(id, async () => { await tenant(`/documents/${id}`, { method: "DELETE" }); reload(); });
+  const archive = (id: string) =>
+    withRow(id, async () => {
+      await tenant(`/documents/${id}`, { method: "DELETE" });
+      reload();
+    });
   const download = (id: string) => withRow(id, () => downloadDocument(id));
 
   const shown = React.useMemo(() => {
     const term = q.trim().toLowerCase();
     return (rows || []).filter((r) => {
-      if (filter && String(r.status ?? "").toUpperCase() !== filter) return false;
+      if (filter && String(r.status ?? "").toUpperCase() !== filter)
+        return false;
       if (!term) return true;
-      return [r.doc_type, r.entity_ref, r.folder_ref].some((v) => String(v ?? "").toLowerCase().includes(term));
+      return [r.doc_type, r.entity_ref, r.folder_ref].some((v) =>
+        String(v ?? "")
+          .toLowerCase()
+          .includes(term),
+      );
     });
   }, [rows, filter, q]);
 
@@ -192,13 +230,25 @@ export function DocumentsPage() {
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Documents"
         description="The confidential document vault — uploaded evidence with tamper-evident fingerprints."
-        action={<Button onClick={() => setUploadOpen(true)}>Upload document</Button>}
+        action={
+          <Button onClick={() => setUploadOpen(true)}>Upload document</Button>
+        }
       />
       <HubTabs />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Chips label="Filter documents by status" value={filter} options={DOC_FILTERS} onChange={setFilter} />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search type / reference…" className="max-w-xs" />
+        <Chips
+          label="Filter documents by status"
+          value={filter}
+          options={DOC_FILTERS}
+          onChange={setFilter}
+        />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search type / reference…"
+          className="max-w-xs"
+        />
       </div>
 
       {rowError && (
@@ -212,7 +262,14 @@ export function DocumentsPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : shown.length === 0 ? (
-        <EmptyState title={rows.length ? "No documents match" : "No documents yet"} hint={rows.length ? "Try another filter." : "Upload a document to the vault."} />
+        <EmptyState
+          title={rows.length ? "No documents match" : "No documents yet"}
+          hint={
+            rows.length
+              ? "Try another filter."
+              : "Upload a document to the vault."
+          }
+        />
       ) : (
         <Table>
           <THead>
@@ -228,7 +285,8 @@ export function DocumentsPage() {
           <TBody>
             {shown.map((r) => {
               const id = String(r.doc_id);
-              const archived = String(r.status ?? "").toUpperCase() === "ARCHIVED";
+              const archived =
+                String(r.status ?? "").toUpperCase() === "ARCHIVED";
               return (
                 <TR key={id}>
                   <TD className="text-sm font-medium">{cell(r.doc_type)}</TD>
@@ -240,11 +298,21 @@ export function DocumentsPage() {
                   <TD className="text-sm">{dateFmt(r.created_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => download(id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={rowBusy === id}
+                        onClick={() => download(id)}
+                      >
                         Download
                       </Button>
                       {!archived && (
-                        <Button size="sm" variant="ghost" loading={rowBusy === id} onClick={() => archive(id)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={rowBusy === id}
+                          onClick={() => archive(id)}
+                        >
                           Archive
                         </Button>
                       )}
@@ -257,7 +325,11 @@ export function DocumentsPage() {
         </Table>
       )}
 
-      <UploadDocumentForm open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={reload} />
+      <UploadDocumentForm
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSaved={reload}
+      />
     </section>
   );
 }

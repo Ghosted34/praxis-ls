@@ -54,10 +54,10 @@ drawn as a shipping lane.
 
 ## Three layers, and the counts add up
 
-| Layer | What is in it | Where |
-|---|---|---|
-| Movement | Files with endpoints or a transport leg | The map |
-| Activity | Files that record work at a place | "Not on the map" |
+| Layer            | What is in it                             | Where                              |
+| ---------------- | ----------------------------------------- | ---------------------------------- |
+| Movement         | Files with endpoints or a transport leg   | The map                            |
+| Activity         | Files that record work at a place         | "Not on the map"                   |
 | Needs a location | Files naming a place that is not verified | "Not on the map", exceptions first |
 
 All three are computed **server-side over the whole filtered set**, not from the
@@ -85,30 +85,30 @@ header say 12 above a list of 3.
 
 Three modes, three fixed hues, from three declared tokens:
 
-| Mode | Colour | Token |
-|---|---|---|
-| Sea | Green | `--mode-sea` |
-| Air | Blue | `--mode-air` |
+| Mode | Colour | Token         |
+| ---- | ------ | ------------- |
+| Sea  | Green  | `--mode-sea`  |
+| Air  | Blue   | `--mode-air`  |
 | Road | Orange | `--mode-road` |
 
 They are their own tokens rather than borrowed ones, and that is a fix. Sea was
 `--brand-blue-bright` and air was `--brand-blue` — the same hue two steps apart,
 which on a 2px dashed line at this zoom is not a distinction: on the deployed map a
 vessel leg and a flight leg drew as one colour. Road was `--primary`, so the third
-was a function of the *tenant's* brand, and a tenant with a blue brand would have
+was a function of the _tenant's_ brand, and a tenant with a blue brand would have
 lost road onto air as well while the legend went on naming three colours the map
 drew as two. A mode is not decoration and it is not brand — it is what the cargo is
 on.
 
 **Two glyph vocabularies, because there are two questions.**
 
-| Marker | Shows | Vocabulary |
-|---|---|---|
-| The one **travelling** the lane | What the cargo is *on* | Ship / plane / truck, by mode, turned along the path so it also shows direction |
-| The **fixed endpoint** | What kind of place it is | Ship for a seaport, plane for an airport, rooftops for a city, warehouse for a terminal, gate for a border post |
+| Marker                          | Shows                    | Vocabulary                                                                                                      |
+| ------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| The one **travelling** the lane | What the cargo is _on_   | Ship / plane / truck, by mode, turned along the path so it also shows direction                                 |
+| The **fixed endpoint**          | What kind of place it is | Ship for a seaport, plane for an airport, rooftops for a city, warehouse for a terminal, gate for a border post |
 
 A port is a port whichever leg touches it, and a port that ends a sea leg and starts
-a road leg cannot be given one mode without picking a side — its *kind* is
+a road leg cannot be given one mode without picking a side — its _kind_ is
 unambiguous. So a road leg's endpoints are cities and addresses rather than trucks,
 which is right: the truck is the thing moving between them.
 
@@ -122,12 +122,12 @@ Shape and fill are two separate axes on the same marker. Shape says what kind of
 place; **fill says whether the coordinate is trusted**, and adding shape did not
 cost that:
 
-| Drawn as | Means |
-|---|---|
-| Solid glyph | A verified place at a confirmed coordinate |
-| **Hollow** glyph | A **reference point** — verified, and explicitly not the exact address |
+| Drawn as                    | Means                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Solid glyph                 | A verified place at a confirmed coordinate                                                                                                                                            |
+| **Hollow** glyph            | A **reference point** — verified, and explicitly not the exact address                                                                                                                |
 | Larger **circle** with `+n` | A cluster. It keeps the circle deliberately: it stands for several places of possibly different kinds, and stamping the first one's shape on the group would claim they are all ports |
-| Not drawn at all | No verified coordinate. It is in the exception list instead |
+| Not drawn at all            | No verified coordinate. It is in the exception list instead                                                                                                                           |
 
 Clustering is **off below 24 endpoints**. Collapsing four ports at the mouth of one
 river loses information, and on a five-file map there is room to draw all four.
@@ -158,12 +158,12 @@ portals to `document.body`, where the z-index means what it says.
 ### They start below the title bar, by geometry
 
 `top: var(--titlebar-h)`, not `inset-0`. The title bar carries the window controls
-and *is* the draggable region in the desktop build — an overlay across it leaves no
+and _is_ the draggable region in the desktop build — an overlay across it leaves no
 way to move or close the window. `--titlebar-h` is the composed height
 (density-linked, widened by `env(titlebar-area-height)` under Window Controls
 Overlay), so this survives a density change and macOS's taller strip.
 
-Geometry rather than z-order because an overlay that merely sits *behind* the title
+Geometry rather than z-order because an overlay that merely sits _behind_ the title
 bar still paints its own background under it and the two surfaces fight. Starting
 below it leaves nothing to resolve.
 
@@ -247,7 +247,7 @@ FINAL_DELIVERY: Douala   → Yaoundé      (pod → place_delivery)
 The wizard used to carry its own "collect from the shipper" and "deliver to the
 consignee" pickers, which **appended** PICKUP and FINAL_DELIVERY legs after
 promotion. Every freight template has declared both legs since 0673 — so the
-toggles produced a *second* one each. Two delivery legs, two identical lines
+toggles produced a _second_ one each. Two delivery legs, two identical lines
 between the same two places, and the delivery address stored twice with nothing
 keeping the copies in step, while the `place_delivery` field sat on the very same
 form asking the same question.
@@ -261,7 +261,7 @@ The wizard now asks nothing extra, and creating a file is one call.
   whose consignee collects at the quay is a normal file, and its optional delivery
   leg is simply empty rather than a dangling origin.
 - **A leg that moves nothing gets no places.** Checked against where the cargo
-  *is*, not against the leg's own two ends — a hinterland file's inland transit
+  _is_, not against the leg's own two ends — a hinterland file's inland transit
   already reaches the final destination, so filling its optional delivery leg from
   the same pair would put a second identical line on the map.
 

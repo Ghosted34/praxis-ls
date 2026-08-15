@@ -39,7 +39,13 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon, DownloadIcon, XIcon } from "@/components/ui/icons";
 import { screenByRoute } from "@/app/screen-registry";
-import { CopyIcon, DocIcon, LineageIcon, RecordIcon, TableIcon } from "@/components/ai/icons";
+import {
+  CopyIcon,
+  DocIcon,
+  LineageIcon,
+  RecordIcon,
+  TableIcon,
+} from "@/components/ai/icons";
 import type { AiSource, AiTable } from "@/components/ai/grounding";
 import { downloadAiTables } from "@/lib/ai-api";
 import { errMsg } from "@/lib/use-resource";
@@ -65,7 +71,11 @@ export const EMPTY_PANE: PaneState = {
   sources: [],
 };
 
-const TABS: { value: PaneTab; label: string; Icon: (p: { width?: number; height?: number }) => React.JSX.Element }[] = [
+const TABS: {
+  value: PaneTab;
+  label: string;
+  Icon: (p: { width?: number; height?: number }) => React.JSX.Element;
+}[] = [
   { value: "canvas", label: "Canvas", Icon: DocIcon },
   { value: "table", label: "Table", Icon: TableIcon },
   { value: "record", label: "Record", Icon: RecordIcon },
@@ -103,12 +113,19 @@ export function AiRightPane({
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-        <div role="tablist" aria-label="Answer views" className="flex min-w-0 flex-1 items-center gap-0.5">
+        <div
+          role="tablist"
+          aria-label="Answer views"
+          className="flex min-w-0 flex-1 items-center gap-0.5"
+        >
           {TABS.map(({ value, label, Icon }) => {
             const on = state.tab === value;
             const can = enabled[value];
             return (
-              <Tooltip key={value} content={can ? label : `${label} — nothing here yet`}>
+              <Tooltip
+                key={value}
+                content={can ? label : `${label} — nothing here yet`}
+              >
                 <button
                   type="button"
                   role="tab"
@@ -123,8 +140,10 @@ export function AiRightPane({
                     const d = e.key === "ArrowRight" ? 1 : -1;
                     const i = order.indexOf(state.tab);
                     for (let n = 1; n <= order.length; n++) {
-                      const cand = order[(i + d * n + order.length * n) % order.length];
-                      if (enabled[cand]) return onChange({ ...state, tab: cand });
+                      const cand =
+                        order[(i + d * n + order.length * n) % order.length];
+                      if (enabled[cand])
+                        return onChange({ ...state, tab: cand });
                     }
                   }}
                   className={cn(
@@ -155,7 +174,9 @@ export function AiRightPane({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {state.tab === "canvas" && <CanvasView artifact={state.output.artifact} />}
+        {state.tab === "canvas" && (
+          <CanvasView artifact={state.output.artifact} />
+        )}
         {state.tab === "table" && <TableView tables={state.output.tables} />}
         {state.tab === "record" && <RecordView source={state.record} />}
         {state.tab === "sources" && (
@@ -174,7 +195,9 @@ function PaneEmpty({ title, body }: { title: string; body: string }) {
   return (
     <div className="px-5 py-10 text-center">
       <p className="text-label font-semibold text-foreground">{title}</p>
-      <p className="micro mx-auto mt-1 max-w-[24rem] text-muted-foreground">{body}</p>
+      <p className="micro mx-auto mt-1 max-w-[24rem] text-muted-foreground">
+        {body}
+      </p>
     </div>
   );
 }
@@ -188,7 +211,11 @@ function PaneEmpty({ title, body }: { title: string; body: string }) {
  * and download are the two things that make a draft useful today, and neither
  * pretends to be more than it is.
  */
-function CanvasView({ artifact }: { artifact: { title: string; text: string } | null }) {
+function CanvasView({
+  artifact,
+}: {
+  artifact: { title: string; text: string } | null;
+}) {
   const [copied, setCopied] = React.useState(false);
   if (!artifact) {
     return (
@@ -212,7 +239,9 @@ function CanvasView({ artifact }: { artifact: { title: string; text: string } | 
 
   function download() {
     if (!artifact) return;
-    const blob = new Blob([artifact.text], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([artifact.text], {
+      type: "text/markdown;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -224,7 +253,9 @@ function CanvasView({ artifact }: { artifact: { title: string; text: string } | 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">{artifact.title}</h3>
+        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">
+          {artifact.title}
+        </h3>
         <Tooltip content={copied ? "Copied" : "Copy"}>
           <button
             type="button"
@@ -321,7 +352,13 @@ function TableView({ tables }: { tables: AiTable[] }) {
         <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">
           {tables.length} table{tables.length === 1 ? "" : "s"}
         </h3>
-        <Tooltip content={tables.length === 1 ? "Export to Excel" : `Export all ${tables.length} as one workbook`}>
+        <Tooltip
+          content={
+            tables.length === 1
+              ? "Export to Excel"
+              : `Export all ${tables.length} as one workbook`
+          }
+        >
           <button
             type="button"
             onClick={exportWorkbook}
@@ -336,7 +373,10 @@ function TableView({ tables }: { tables: AiTable[] }) {
       </div>
 
       {err && (
-        <p className="border-b border-bad/30 bg-bad-fill/8 px-4 py-2 text-micro text-bad" role="alert">
+        <p
+          className="border-b border-bad/30 bg-bad-fill/8 px-4 py-2 text-micro text-bad"
+          role="alert"
+        >
           {err}
         </p>
       )}
@@ -364,7 +404,9 @@ function TableView({ tables }: { tables: AiTable[] }) {
  * read as a total printed `**Total revenue (HT)**` with its asterisks showing.
  */
 function OneTable({ table, index }: { table: AiTable; index: number }) {
-  const [sort, setSort] = React.useState<{ col: number; dir: 1 | -1 } | null>(null);
+  const [sort, setSort] = React.useState<{ col: number; dir: 1 | -1 } | null>(
+    null,
+  );
 
   const rows = React.useMemo(() => {
     if (!sort) return table.rows;
@@ -383,9 +425,14 @@ function OneTable({ table, index }: { table: AiTable; index: number }) {
   }, [table.rows, sort]);
 
   function exportCsv() {
-    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-    const csv = [table.header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const esc = (v: string) =>
+      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = [table.header, ...rows]
+      .map((r) => r.map(esc).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    );
     const a = document.createElement("a");
     a.href = url;
     a.download = `${slug(table.title) || `table-${index + 1}`}.csv`;
@@ -396,7 +443,9 @@ function OneTable({ table, index }: { table: AiTable; index: number }) {
   return (
     <section className="border-b border-border last:border-b-0">
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-4 py-2">
-        <h4 className="min-w-0 flex-1 truncate text-label font-semibold text-foreground">{table.title}</h4>
+        <h4 className="min-w-0 flex-1 truncate text-label font-semibold text-foreground">
+          {table.title}
+        </h4>
         <span className="micro shrink-0 text-muted-foreground">
           {table.rows.length} row{table.rows.length === 1 ? "" : "s"}
         </span>
@@ -417,16 +466,35 @@ function OneTable({ table, index }: { table: AiTable; index: number }) {
           <THead>
             <TR>
               {table.header.map((h, i) => (
-                <TH key={i} aria-sort={sort?.col === i ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+                <TH
+                  key={i}
+                  aria-sort={
+                    sort?.col === i
+                      ? sort.dir === 1
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
                   <button
                     type="button"
                     onClick={() =>
-                      setSort((s) => (s?.col === i ? { col: i, dir: s.dir === 1 ? -1 : 1 } : { col: i, dir: 1 }))
+                      setSort((s) =>
+                        s?.col === i
+                          ? { col: i, dir: s.dir === 1 ? -1 : 1 }
+                          : { col: i, dir: 1 },
+                      )
                     }
                     className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
                   >
                     {renderInline(h, `h${i}`)}
-                    <span aria-hidden className={cn("text-[9px]", sort?.col === i ? "opacity-100" : "opacity-30")}>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "text-[9px]",
+                        sort?.col === i ? "opacity-100" : "opacity-30",
+                      )}
+                    >
                       {sort?.col === i && sort.dir === -1 ? "▼" : "▲"}
                     </span>
                   </button>
@@ -438,7 +506,12 @@ function OneTable({ table, index }: { table: AiTable; index: number }) {
             {rows.map((r, i) => (
               <TR key={i}>
                 {r.map((c, j) => (
-                  <TD key={j} className={j === 0 ? "font-medium text-foreground" : undefined}>
+                  <TD
+                    key={j}
+                    className={
+                      j === 0 ? "font-medium text-foreground" : undefined
+                    }
+                  >
                     {renderInline(c, `c${i}-${j}`)}
                   </TD>
                 ))}
@@ -493,21 +566,29 @@ function RecordView({ source }: { source: AiSource | null }) {
 
   const external = source.kind === "external";
   // Longest registry match, so /finance/invoices/8f2c resolves to Invoices.
-  const screen =
-    !external
-      ? screenByRoute(source.href) ?? screenByRoute(source.href.replace(/\/[^/]+$/, "")) ?? undefined
-      : undefined;
+  const screen = !external
+    ? (screenByRoute(source.href) ??
+      screenByRoute(source.href.replace(/\/[^/]+$/, "")) ??
+      undefined)
+    : undefined;
 
   return (
     <div className="px-4 py-4">
       <div className="rounded-lg border border-border p-4">
         <div className="flex items-start gap-3">
-          <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-blue/12 text-brand-blue-ink">
+          <span
+            aria-hidden
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-blue/12 text-brand-blue-ink"
+          >
             <RecordIcon width={17} height={17} />
           </span>
           <div className="min-w-0">
-            <h3 className="break-words font-display text-title font-semibold leading-tight">{source.label}</h3>
-            <p className="micro mt-1 font-mono text-muted-foreground">{source.href}</p>
+            <h3 className="break-words font-display text-title font-semibold leading-tight">
+              {source.label}
+            </h3>
+            <p className="micro mt-1 font-mono text-muted-foreground">
+              {source.href}
+            </p>
           </div>
         </div>
 
@@ -519,7 +600,9 @@ function RecordView({ source }: { source: AiSource | null }) {
             </div>
             {screen.purpose && (
               <div>
-                <dt className="micro text-muted-foreground">What that screen is for</dt>
+                <dt className="micro text-muted-foreground">
+                  What that screen is for
+                </dt>
                 <dd className="text-sm text-foreground">{screen.purpose}</dd>
               </div>
             )}
@@ -557,7 +640,13 @@ function RecordView({ source }: { source: AiSource | null }) {
  * conversation has touched, which is the view you want when you are about to
  * act on it. Deduplicated across turns, newest first.
  */
-function SourcesView({ sources, onPreview }: { sources: AiSource[]; onPreview: (s: AiSource) => void }) {
+function SourcesView({
+  sources,
+  onPreview,
+}: {
+  sources: AiSource[];
+  onPreview: (s: AiSource) => void;
+}) {
   if (!sources.length) {
     return (
       <PaneEmpty
@@ -569,8 +658,8 @@ function SourcesView({ sources, onPreview }: { sources: AiSource[]; onPreview: (
   return (
     <div className="px-3 py-3">
       <p className="micro mb-2 px-1 text-muted-foreground">
-        {sources.length} reference{sources.length === 1 ? "" : "s"} across this conversation. Everything here was read
-        under your own permissions.
+        {sources.length} reference{sources.length === 1 ? "" : "s"} across this
+        conversation. Everything here was read under your own permissions.
       </p>
       <ul className="space-y-0.5">
         {sources.map((s) => (
@@ -584,14 +673,20 @@ function SourcesView({ sources, onPreview }: { sources: AiSource[]; onPreview: (
                 aria-hidden
                 className={cn(
                   "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded",
-                  s.kind === "report" ? "bg-brand-blue/12 text-brand-blue-ink" : "bg-muted text-muted-foreground",
+                  s.kind === "report"
+                    ? "bg-brand-blue/12 text-brand-blue-ink"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
                 <RecordIcon width={11} height={11} />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-sm text-foreground">{s.label}</span>
-                <span className="micro block truncate font-mono text-muted-foreground">{s.href}</span>
+                <span className="block truncate text-sm text-foreground">
+                  {s.label}
+                </span>
+                <span className="micro block truncate font-mono text-muted-foreground">
+                  {s.href}
+                </span>
               </span>
             </button>
           </li>

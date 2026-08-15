@@ -1,8 +1,15 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import {
-  PlusIcon, TrashIcon, DownloadIcon, PencilIcon, CheckIcon,
-  SearchIcon, FilterIcon, RefreshIcon, SendIcon,
+  PlusIcon,
+  TrashIcon,
+  DownloadIcon,
+  PencilIcon,
+  CheckIcon,
+  SearchIcon,
+  FilterIcon,
+  RefreshIcon,
+  SendIcon,
 } from "@/components/ui/icons";
 
 type Variant = "default" | "outline" | "ghost" | "destructive";
@@ -13,7 +20,10 @@ type Size = "default" | "sm" | "lg" | "icon";
 // explicit `icon` prop always wins, and `icon={null}` opts out.
 type IconCmp = React.ComponentType<React.SVGProps<SVGSVGElement>>;
 const ACTION_ICONS: { re: RegExp; Icon: IconCmp }[] = [
-  { re: /^(new|add|create|grant|register|invite|generate|issue|assign|record)\b/i, Icon: PlusIcon },
+  {
+    re: /^(new|add|create|grant|register|invite|generate|issue|assign|record)\b/i,
+    Icon: PlusIcon,
+  },
   { re: /^(delete|remove|revoke|archive|purge)\b/i, Icon: TrashIcon },
   { re: /^(export|download)\b/i, Icon: DownloadIcon },
   { re: /^(edit|rename)\b/i, Icon: PencilIcon },
@@ -52,9 +62,26 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "default", loading, disabled, children, icon, ...props }, ref) => {
-    const Auto = icon === undefined && size !== "icon" ? inferIcon(children) : null;
-    const leading = loading ? null : icon !== undefined ? icon : Auto ? <Auto width={16} height={16} /> : null;
+  (
+    {
+      className,
+      variant = "default",
+      size = "default",
+      loading,
+      disabled,
+      children,
+      icon,
+      ...props
+    },
+    ref,
+  ) => {
+    const Auto =
+      icon === undefined && size !== "icon" ? inferIcon(children) : null;
+    const leading = loading ? null : icon !== undefined ? (
+      icon
+    ) : Auto ? (
+      <Auto width={16} height={16} />
+    ) : null;
     return (
       <button
         ref={ref}
@@ -70,7 +97,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+          <span
+            className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+            aria-hidden
+          />
         )}
         {leading}
         {children}

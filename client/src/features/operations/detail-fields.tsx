@@ -25,7 +25,11 @@ import { useResource } from "@/lib/use-resource";
 import { useCanUseModule } from "@/lib/route-access";
 import { listCurrencies } from "@/lib/masterdata-api";
 import { PLACE_KINDS, type PlaceKind } from "@/lib/operations-api";
-import type { DetailFieldDef, DetailGroupDef, DetailForm } from "@/lib/operations-api";
+import type {
+  DetailFieldDef,
+  DetailGroupDef,
+  DetailForm,
+} from "@/lib/operations-api";
 
 /** Values keyed by field key, exactly as the API takes them under `details`. */
 export type DetailValues = Record<string, unknown>;
@@ -40,7 +44,8 @@ const COL: Record<DetailFieldDef["width"], string> = {
   FULL: "sm:col-span-6",
 };
 
-const asString = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+const asString = (v: unknown) =>
+  v === null || v === undefined ? "" : String(v);
 
 /**
  * The carrier picker for a `RATE_PROVIDER` field.
@@ -82,11 +87,18 @@ function RateProviderControl({
   const shown = picked ?? (value ? display || asString(value) : null);
 
   const kinds = React.useMemo(
-    () => (field.ref_kind || "").split(",").map((k) => k.trim().toUpperCase()).filter(Boolean),
+    () =>
+      (field.ref_kind || "")
+        .split(",")
+        .map((k) => k.trim().toUpperCase())
+        .filter(Boolean),
     [field.ref_kind],
   );
   const filter = React.useMemo(
-    () => (kinds.length ? (r: Row) => kinds.includes(String(r.kind).toUpperCase()) : undefined),
+    () =>
+      kinds.length
+        ? (r: Row) => kinds.includes(String(r.kind).toUpperCase())
+        : undefined,
     [kinds],
   );
 
@@ -118,12 +130,24 @@ function RateProviderControl({
  * "dollars", "USD " and "usd" as three different values. The list is short and
  * fixed, so a native select beats a typeahead.
  */
-function CurrencyControl({ field, value, onChange, ...aria }: {
-  field: DetailFieldDef; value: unknown; onChange: (v: unknown) => void;
+function CurrencyControl({
+  field,
+  value,
+  onChange,
+  ...aria
+}: {
+  field: DetailFieldDef;
+  value: unknown;
+  onChange: (v: unknown) => void;
 } & React.AriaAttributes & { id?: string }) {
   const currencies = useResource(() => listCurrencies(), []);
   return (
-    <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label} {...aria}>
+    <Select
+      value={asString(value)}
+      onChange={(e) => onChange(e.target.value || null)}
+      aria-label={field.label}
+      {...aria}
+    >
       <option value="">—</option>
       {(currencies.data || [])
         .filter((c) => c.is_active !== false)
@@ -179,7 +203,11 @@ function GeneratedControl({
   return (
     <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-1.5">
       <span className="min-w-0 truncate text-sm text-foreground">
-        {asString(value) || <span className="text-muted-foreground">Generated from the containers on this file</span>}
+        {asString(value) || (
+          <span className="text-muted-foreground">
+            Generated from the containers on this file
+          </span>
+        )}
       </span>
       <button
         type="button"
@@ -205,7 +233,9 @@ function placeKindsOf(field: DetailFieldDef): PlaceKind[] | undefined {
   const declared = String(field.ref_kind || "")
     .split(",")
     .map((k) => k.trim().toUpperCase())
-    .filter((k): k is PlaceKind => (PLACE_KINDS as readonly string[]).includes(k));
+    .filter((k): k is PlaceKind =>
+      (PLACE_KINDS as readonly string[]).includes(k),
+    );
   return declared.length ? declared : undefined;
 }
 
@@ -255,7 +285,15 @@ function Control({
    */
   // Checked before the type switch: "the system fills this in" is a fact about
   // the field, not about what kind of value it holds.
-  if (field.is_readonly) return <GeneratedControl field={field} value={value} onChange={onChange} {...aria} />;
+  if (field.is_readonly)
+    return (
+      <GeneratedControl
+        field={field}
+        value={value}
+        onChange={onChange}
+        {...aria}
+      />
+    );
   switch (field.data_type) {
     case "TEXTAREA":
       return (
@@ -282,7 +320,12 @@ function Control({
       );
     case "SELECT":
       return (
-        <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label} {...aria}>
+        <Select
+          value={asString(value)}
+          onChange={(e) => onChange(e.target.value || null)}
+          aria-label={field.label}
+          {...aria}
+        >
           <option value="">—</option>
           {(field.options || []).map((o) => (
             <option key={o.value} value={o.value}>
@@ -302,10 +345,21 @@ function Control({
         // field it is almost always an example date in whatever format the seed
         // author had in mind, and it would displace the one hint that matters
         // here — the format the box actually expects.
-        <DateField value={asString(value).slice(0, 10)} onChange={(iso) => onChange(iso || null)} {...aria} />
+        <DateField
+          value={asString(value).slice(0, 10)}
+          onChange={(iso) => onChange(iso || null)}
+          {...aria}
+        />
       );
     case "DATETIME":
-      return <Input type="datetime-local" value={asString(value)} onChange={(e) => onChange(e.target.value || null)} {...aria} />;
+      return (
+        <Input
+          type="datetime-local"
+          value={asString(value)}
+          onChange={(e) => onChange(e.target.value || null)}
+          {...aria}
+        />
+      );
     case "NUMBER":
     case "INTEGER":
       return (
@@ -347,12 +401,22 @@ function Control({
           value={value}
           display={display}
           onChange={onChange}
-          onCreate={onCreateCarrier && ((term, kinds) => onCreateCarrier(field.key, term, kinds))}
+          onCreate={
+            onCreateCarrier &&
+            ((term, kinds) => onCreateCarrier(field.key, term, kinds))
+          }
           {...aria}
         />
       );
     case "CURRENCY":
-      return <CurrencyControl field={field} value={value} onChange={onChange} {...aria} />;
+      return (
+        <CurrencyControl
+          field={field}
+          value={value}
+          onChange={onChange}
+          {...aria}
+        />
+      );
     case "REF":
       // Nothing seeds a REF field yet, so there is no storage convention to
       // honour and guessing one would be the wrong kind of certainty. It falls
@@ -428,7 +492,9 @@ export function DetailFieldGroups({
     <div className="space-y-5">
       {shown.map((g) => (
         <fieldset key={g.code} disabled={disabled} className="space-y-3">
-          <legend className="text-sm font-medium text-foreground">{g.label}</legend>
+          <legend className="text-sm font-medium text-foreground">
+            {g.label}
+          </legend>
           <div className="grid gap-4 sm:grid-cols-6">
             {g.fields.map((f) => (
               <Field
@@ -465,9 +531,13 @@ export function DetailFieldGroups({
  * everything else is captured progressively and reported as completeness on the
  * file itself.
  */
-export function missingRequired(form: DetailForm | null, values: DetailValues): DetailFieldDef[] {
+export function missingRequired(
+  form: DetailForm | null,
+  values: DetailValues,
+): DetailFieldDef[] {
   if (!form) return [];
-  const blank = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+  const blank = (v: unknown) =>
+    v === null || v === undefined || (typeof v === "string" && v.trim() === "");
   return form.groups
     .flatMap((g) => g.fields)
     .filter((f) => f.is_required && blank(values[f.key]));
@@ -480,9 +550,13 @@ export function missingRequired(form: DetailForm | null, values: DetailValues): 
  * value), so the edit form is populated by the same rule the panel displays by —
  * there is no second place that decides where a field's value lives.
  */
-export function valuesFromDetails(groups: { fields: { key: string; value: unknown }[] }[]): DetailValues {
+export function valuesFromDetails(
+  groups: { fields: { key: string; value: unknown }[] }[],
+): DetailValues {
   const out: DetailValues = {};
-  for (const g of groups) for (const f of g.fields) if (f.value !== null && f.value !== undefined) out[f.key] = f.value;
+  for (const g of groups)
+    for (const f of g.fields)
+      if (f.value !== null && f.value !== undefined) out[f.key] = f.value;
   return out;
 }
 
@@ -500,6 +574,7 @@ export function displaysFromDetails(
   groups: { fields: { key: string; display?: string | null }[] }[],
 ): DetailDisplays {
   const out: DetailDisplays = {};
-  for (const g of groups) for (const f of g.fields) if (f.display) out[f.key] = f.display;
+  for (const g of groups)
+    for (const f of g.fields) if (f.display) out[f.key] = f.display;
   return out;
 }

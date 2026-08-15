@@ -24,14 +24,22 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 
-import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harness";
+import {
+  apiClientMock,
+  authContextMock,
+  renderScreen,
+} from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 import { SuppliersPage } from "./suppliers";
 
-const SUPPLIER = { supplier_id: "s1", name: "Total Energies", is_active: true } as const;
+const SUPPLIER = {
+  supplier_id: "s1",
+  name: "Total Energies",
+  is_active: true,
+} as const;
 
 /** Shape of the supplier 360 the server actually returns — note: no `dossiers`. */
 const SUPPLIER_360 = {
@@ -90,18 +98,26 @@ describe("Master data · Suppliers", () => {
     });
 
     // The list rendered the supplier row (top-of-page assertion) …
-    expect(await screen.findByRole("button", { name: /Total Energies/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /Total Energies/i }),
+    ).toBeInTheDocument();
 
     // … and the dossier settled onto its tab bar (proves `d.dossiers.length`
     // did not throw — a throw would land the ErrorBoundary fallback below).
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^Documents/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Documents/i }),
+      ).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /^Banks/i })).toBeInTheDocument();
     // Suppliers have no Operations tab (dossiers are a client concept).
-    expect(screen.queryByRole("button", { name: /^Operations/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Operations/i }),
+    ).not.toBeInTheDocument();
 
     // Guard: the screen-level ErrorBoundary must not have fired.
-    expect(screen.queryByText(/This screen couldn't be displayed/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/This screen couldn't be displayed/i),
+    ).not.toBeInTheDocument();
   });
 });

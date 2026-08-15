@@ -52,14 +52,23 @@ export type ApplyInput = {
 /** Deliberately thin: a reference to quote and whether the CV landed. The
  *  server never echoes the created applicant — it now carries an AI score, and
  *  handing a candidate the machine's opinion of them would be indefensible. */
-export type ApplyResult = { received: boolean; reference: string; cv_attached: boolean };
+export type ApplyResult = {
+  received: boolean;
+  reference: string;
+  cv_attached: boolean;
+};
 
 const opts = { auth: false } as const;
 
 export const listVacancies = () => tenant<PublicVacancy[]>("/careers", opts);
-export const getVacancy = (token: string) => tenant<PublicVacancy>(`/careers/${encodeURIComponent(token)}`, opts);
+export const getVacancy = (token: string) =>
+  tenant<PublicVacancy>(`/careers/${encodeURIComponent(token)}`, opts);
 export const apply = (token: string, body: ApplyInput) =>
-  tenant<ApplyResult>(`/careers/${encodeURIComponent(token)}/apply`, { ...opts, method: "POST", body });
+  tenant<ApplyResult>(`/careers/${encodeURIComponent(token)}/apply`, {
+    ...opts,
+    method: "POST",
+    body,
+  });
 
 /** Matches CV_MAX_BYTES in careers.service. Checked here too so an 8 MB scan is
  *  refused before it is base64-encoded and pushed over a phone connection. */
@@ -71,10 +80,19 @@ export const CV_ACCEPT = "application/pdf,image/png,image/jpeg";
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (file.size > CV_MAX_BYTES) {
-      return reject(new Error(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 8 MB.`));
+      return reject(
+        new Error(
+          `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 8 MB.`,
+        ),
+      );
     }
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("That file could not be read. Try saving it again, or pick another."));
+    reader.onerror = () =>
+      reject(
+        new Error(
+          "That file could not be read. Try saving it again, or pick another.",
+        ),
+      );
     reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(file);
   });

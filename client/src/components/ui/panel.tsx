@@ -59,8 +59,14 @@ export function Panel({
     <Card className={cn("p-5", className)}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <Tag className="text-title font-semibold leading-tight tracking-tight">{title}</Tag>
-          {subtitle && <div className="mt-0.5 text-micro uppercase text-muted-foreground">{subtitle}</div>}
+          <Tag className="text-title font-semibold leading-tight tracking-tight">
+            {title}
+          </Tag>
+          {subtitle && (
+            <div className="mt-0.5 text-micro uppercase text-muted-foreground">
+              {subtitle}
+            </div>
+          )}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>

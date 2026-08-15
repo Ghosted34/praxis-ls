@@ -4,7 +4,7 @@
  *
  * THE PARITY TEST IS THE POINT OF THIS FILE. The shipped codes are written down
  * twice: once as `DEFAULT_SERVICE_CODES` in the allocator, and once as the seed
- * in migration 0681 that gives every existing tenant its codes. Two copies of a
+ * in migration 0682 that gives every existing tenant its codes. Two copies of a
  * mapping is exactly the drift this repo keeps paying for — the transport-
  * reference normaliser was written three times and had already diverged before
  * anyone noticed — so this reads BOTH FILES and fails when they stop agreeing.
@@ -23,7 +23,7 @@ const {
   GENERIC_SERVICE_CODE,
 } = require("../../src/services/documents/operation-reference");
 
-const MIGRATION = path.join(__dirname, "..", "..", "migrations", "tenant", "0681_operation_reference.sql");
+const MIGRATION = path.join(__dirname, "..", "..", "migrations", "tenant", "0682_operation_reference.sql");
 
 describe("the shipped codes", () => {
   it("cover the twelve service types the taxonomy ships with", () => {
@@ -43,7 +43,7 @@ describe("the shipped codes", () => {
     expect(Object.values(DEFAULT_SERVICE_CODES)).not.toContain(GENERIC_SERVICE_CODE);
   });
 
-  it("match migration 0681's seed, key for key", () => {
+  it("match migration 0682's seed, key for key", () => {
     const sql = fs.readFileSync(MIGRATION, "utf8");
     const seeded = {};
     for (const [, key, code] of sql.matchAll(/'([A-Z][A-Z0-9_]+)',\s*'([A-Z0-9]{2})'/g)) {

@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0681 — operation-file references stop being guessable.
+-- 0682 — operation-file references stop being guessable.
 --
 -- ── THE DEFECT ──────────────────────────────────────────────────────────────
 --

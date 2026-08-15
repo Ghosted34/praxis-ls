@@ -46,12 +46,17 @@ async function loadLandRings(): Promise<Ring[]> {
       // feature() yields either a Feature or a FeatureCollection depending on
       // the object type — normalise to a list of geometries before walking.
       const geoms: unknown[] =
-        geo.type === "FeatureCollection" ? geo.features.map((f: any) => f.geometry) : [geo.geometry];
+        geo.type === "FeatureCollection"
+          ? geo.features.map((f: any) => f.geometry)
+          : [geo.geometry];
       geoms.forEach((g) => {
         const geom = g as any;
         if (!geom || !geom.coordinates) return;
-        const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
-        (polys as Ring[][]).forEach((poly) => poly.forEach((r) => rings.push(r)));
+        const polys =
+          geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+        (polys as Ring[][]).forEach((poly) =>
+          poly.forEach((r) => rings.push(r)),
+        );
       });
       if (!rings.length) throw new Error("decoded 0 rings");
     } catch (err) {

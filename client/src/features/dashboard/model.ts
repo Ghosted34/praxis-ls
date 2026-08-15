@@ -17,7 +17,8 @@ import type { Tone } from "@/components/ui/pill";
 
 export type Row = Record<string, unknown>;
 
-export const str = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
+export const str = (v: unknown): string =>
+  v === null || v === undefined ? "" : String(v);
 export const numOrNull = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 
@@ -52,7 +53,11 @@ const MODE_FROM_SERVER: Record<string, ShipmentMode> = {
  * names, so it falls through to the "sea" default and the Douala→N'Djamena
  * corridor was drawn as a shipping lane. That is exactly why the key wins.
  */
-export function shipmentMode(s: Row, vessel: string, lane: string): ShipmentMode {
+export function shipmentMode(
+  s: Row,
+  vessel: string,
+  lane: string,
+): ShipmentMode {
   // The server's own answer wins outright when it is there. It is derived from
   // the file's itinerary — the main carriage's actual mode — which is the only
   // source that gets PROJECT_CARGO right: the key heuristic below had to put it
@@ -62,12 +67,16 @@ export function shipmentMode(s: Row, vessel: string, lane: string): ShipmentMode
   const fromServer = MODE_FROM_SERVER[str(s.mode).toUpperCase()];
   if (fromServer) return fromServer;
   const key = str(s.service_key).toUpperCase();
-  if (/WAREHOUS|CUSTOMS_BROKERAGE|BUSINESS_REPRESENTATION/.test(key)) return "other";
+  if (/WAREHOUS|CUSTOMS_BROKERAGE|BUSINESS_REPRESENTATION/.test(key))
+    return "other";
   if (/AIR/.test(key)) return "air";
   if (/ROAD|TRANSIT|HINTERLAND|TRUCK|INLAND/.test(key)) return "road";
   if (/SEA|OCEAN|MARITIME/.test(key)) return "sea";
   if (/air|flight|mawb|cdg|airport/i.test(`${vessel} ${lane}`)) return "air";
-  if (/road|truck|corridor|transit/i.test(`${str(s.service ?? s.mode)} ${lane}`)) return "road";
+  if (
+    /road|truck|corridor|transit/i.test(`${str(s.service ?? s.mode)} ${lane}`)
+  )
+    return "road";
   return "sea";
 }
 
@@ -135,7 +144,10 @@ export function toLiveShipment(s: Row): LiveShipment {
   const origin = str(s.origin ?? s.pol);
   const destination = str(s.destination ?? s.pod);
   const route = str(s.route ?? s.lane);
-  const parts = route.split(/→|->|—|-|to/i).map((p) => p.trim()).filter(Boolean);
+  const parts = route
+    .split(/→|->|—|-|to/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
   const from = origin || parts[0] || "";
   const to = destination || parts[1] || "";
   const vessel = str(s.vessel ?? s.vessel_flight);
@@ -146,7 +158,8 @@ export function toLiveShipment(s: Row): LiveShipment {
   return {
     dossierId: str(s.dossier_id) || str(s.ref) || "",
     ref: str(s.ref ?? s.dossier_ref ?? s.reference) || "—",
-    serviceName: str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
+    serviceName:
+      str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
     isMovement: s.is_movement !== false,
     needsLocation: s.needs_location === true,
     mode: shipmentMode(s, vessel, lane),
@@ -216,7 +229,10 @@ const finite = (v: unknown): number | null => {
 };
 
 /** A leg endpoint from the API's itinerary projection. */
-function waypointOf(raw: Row | null | undefined, fallbackName: string): Waypoint | null {
+function waypointOf(
+  raw: Row | null | undefined,
+  fallbackName: string,
+): Waypoint | null {
   if (!raw) return null;
   const lat = finite(raw.latitude);
   const lng = finite(raw.longitude);
@@ -257,7 +273,10 @@ export function toLanes(rawShipments: Row[]): Lane[] {
         // `*_endpoint` is the nested projection; `origin`/`destination` stay the
         // plain text so a leg can be read and written back unchanged.
         const from = waypointOf(leg.origin_endpoint as Row, str(leg.origin));
-        const to = waypointOf(leg.destination_endpoint as Row, str(leg.destination));
+        const to = waypointOf(
+          leg.destination_endpoint as Row,
+          str(leg.destination),
+        );
         if (!from || !to) return;
         const seq = finite(leg.seq) ?? i + 1;
         out.push({
@@ -349,14 +368,18 @@ export function toItineraryLeg(raw: Row, index: number): ItineraryLeg {
     providerName: raw.provider_name ? str(raw.provider_name) : null,
     notes: raw.notes ? str(raw.notes) : null,
     origin: endpointOf(raw.origin_endpoint ?? { name: raw.origin }),
-    destination: endpointOf(raw.destination_endpoint ?? { name: raw.destination }),
+    destination: endpointOf(
+      raw.destination_endpoint ?? { name: raw.destination },
+    ),
     plottable: raw.plottable === true,
     needsLocation: raw.needs_location === true,
   };
 }
 
 /** Every file's legs, keyed by dossier id — what the itinerary panel indexes. */
-export function legsByFile(rawShipments: Row[]): Record<string, ItineraryLeg[]> {
+export function legsByFile(
+  rawShipments: Row[],
+): Record<string, ItineraryLeg[]> {
   const out: Record<string, ItineraryLeg[]> = {};
   rawShipments.forEach((s, i) => {
     const key = str(s.dossier_id) || str(s.ref) || `row-${i}`;
@@ -413,18 +436,27 @@ export function toActivityRecords(rawShipments: Row[]): ActivityRecord[] {
       out.push(activityOf(s, i, "needs-location", legs));
       return;
     }
-    out.push(activityOf(s, i, needsLocation ? "needs-location" : "activity", legs));
+    out.push(
+      activityOf(s, i, needsLocation ? "needs-location" : "activity", legs),
+    );
   });
   return out;
 }
 
-function activityOf(s: Row, i: number, reason: ActivityRecord["reason"], legs: Row[]): ActivityRecord {
+function activityOf(
+  s: Row,
+  i: number,
+  reason: ActivityRecord["reason"],
+  legs: Row[],
+): ActivityRecord {
   const mapped = toLiveShipment(s);
   // A warehousing file's custody location is a real, verified point when the
   // operator picked one — so it earns a facility pin rather than nothing.
   let facility: Waypoint | null = null;
   for (const leg of legs) {
-    facility = waypointOf(leg.origin_endpoint as Row, str(leg.origin)) || waypointOf(leg.destination_endpoint as Row, str(leg.destination));
+    facility =
+      waypointOf(leg.origin_endpoint as Row, str(leg.origin)) ||
+      waypointOf(leg.destination_endpoint as Row, str(leg.destination));
     if (facility) break;
   }
   if (!facility) {
@@ -434,7 +466,8 @@ function activityOf(s: Row, i: number, reason: ActivityRecord["reason"], legs: R
   return {
     dossierId: str(s.dossier_id) || str(s.ref) || `row-${i}`,
     ref: mapped.ref,
-    serviceName: str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
+    serviceName:
+      str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
     status: mapped.status,
     tone: mapped.tone,
     stage: mapped.stage,
@@ -459,7 +492,9 @@ export function greeting(now: Date, firstName?: string | null): string {
 
 /** First name from the display name, falling back to the email local part.
  *  A bare "Good evening" reads fine; an invented name does not. */
-export function firstNameOf(user: { display_name?: string | null; email?: string | null } | null): string {
+export function firstNameOf(
+  user: { display_name?: string | null; email?: string | null } | null,
+): string {
   const display = str(user?.display_name).trim();
   if (display) return display.split(/\s+/)[0];
   const email = str(user?.email);
@@ -467,12 +502,17 @@ export function firstNameOf(user: { display_name?: string | null; email?: string
 }
 
 /** Grouped integer, e.g. 84 600 000. Money figures with no cents. */
-export const grouped = (n: number): string => new Intl.NumberFormat("fr-FR").format(Math.round(n));
+export const grouped = (n: number): string =>
+  new Intl.NumberFormat("fr-FR").format(Math.round(n));
 
 /** Compact millions for the KPI headline: 84 600 000 → "84.6". */
 export const millions = (n: number): string => (n / 1e6).toFixed(1);
 
-export const LOCKED_FINAL_STATUSES = ["ISSUED_LOCKED", "APPROVED_LOCKED", "POSTED_LOCKED"];
+export const LOCKED_FINAL_STATUSES = [
+  "ISSUED_LOCKED",
+  "APPROVED_LOCKED",
+  "POSTED_LOCKED",
+];
 
 export const isLockedFinal = (r: Row): boolean =>
   str(r.type).toUpperCase() === "FINAL" &&

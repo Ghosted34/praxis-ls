@@ -94,18 +94,31 @@ export type UseAiThread = {
   doneActions: Record<string, boolean>;
 };
 
-export function useAiThread(start: ThreadStart, initialConversationId?: string | null): UseAiThread {
+export function useAiThread(
+  start: ThreadStart,
+  initialConversationId?: string | null,
+): UseAiThread {
   const [turns, setTurns] = React.useState<AiTurn[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
-  const [conversationId, setConversationId] = React.useState<string | null>(initialConversationId ?? null);
-  const [conversations, setConversations] = React.useState<AiConversationMeta[]>([]);
+  const [conversationId, setConversationId] = React.useState<string | null>(
+    initialConversationId ?? null,
+  );
+  const [conversations, setConversations] = React.useState<
+    AiConversationMeta[]
+  >([]);
   const [loadingConversations, setLoadingConversations] = React.useState(false);
   const [confirming, setConfirming] = React.useState<string | null>(null);
-  const [doneActions, setDoneActions] = React.useState<Record<string, boolean>>({});
+  const [doneActions, setDoneActions] = React.useState<Record<string, boolean>>(
+    {},
+  );
 
   // The last thing asked, so `retry` can re-ask it without the caller holding it.
-  const lastAsk = React.useRef<{ text: string; scope?: string; mode?: AiMode } | null>(null);
+  const lastAsk = React.useRef<{
+    text: string;
+    scope?: string;
+    mode?: AiMode;
+  } | null>(null);
 
   /** Load a stored transcript into the thread. Shared by restore and switch. */
   const load = React.useCallback((id?: string) => {
@@ -183,7 +196,13 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
       const assistantTurnId = nextId();
       setTurns((t) => [
         ...t,
-        { id: userTurnId, role: "user", text: q, scope: opts?.scope, mode: opts?.mode },
+        {
+          id: userTurnId,
+          role: "user",
+          text: q,
+          scope: opts?.scope,
+          mode: opts?.mode,
+        },
         { id: assistantTurnId, role: "assistant", text: "" },
       ]);
       setBusy(true);
@@ -197,7 +216,12 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
         let accTrace: string[] | undefined;
 
         try {
-          for await (const event of askPraxisStream(q, conversationId || undefined, { scope: opts?.scope, mode: opts?.mode }, abort.signal)) {
+          for await (const event of askPraxisStream(
+            q,
+            conversationId || undefined,
+            { scope: opts?.scope, mode: opts?.mode },
+            abort.signal,
+          )) {
             if (abort.signal.aborted) return;
 
             if (event.type === "delta") {
@@ -208,43 +232,90 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
               // description left standing under a finished answer reads as if
               // the assistant is still working.
               const snap = accText;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap, status: undefined } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId
+                    ? { ...x, text: snap, status: undefined }
+                    : x,
+                ),
+              );
             } else if (event.type === "status") {
               // REPLACED, not appended. This is one line saying what is
               // happening now, not a log — appending is how the last version
               // ended up showing the model's whole train of thought.
               const step = event.text;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, status: step } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId ? { ...x, status: step } : x,
+                ),
+              );
             } else if (event.type === "reset") {
               // The server began an answer optimistically and then reached for a
               // tool, which means what we rendered was a preamble. Take it back
               // rather than leaving "Let me check that…" sitting above the real
               // reply forever.
               accText = "";
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: "" } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId ? { ...x, text: "" } : x,
+                ),
+              );
             } else if (event.type === "answer") {
               accText = event.text || accText;
               const snap = accText;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap, status: undefined } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId
+                    ? { ...x, text: snap, status: undefined }
+                    : x,
+                ),
+              );
             } else if (event.type === "actions") {
               accActions = event.actions;
               accBatchId = event.batch_id;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, actions: accActions, batchId: accBatchId } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId
+                    ? { ...x, actions: accActions, batchId: accBatchId }
+                    : x,
+                ),
+              );
             } else if (event.type === "sources") {
               accSources = event.sources;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, sources: accSources } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId ? { ...x, sources: accSources } : x,
+                ),
+              );
             } else if (event.type === "trace") {
               accTrace = event.trace;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, trace: accTrace } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId ? { ...x, trace: accTrace } : x,
+                ),
+              );
             } else if (event.type === "done") {
-              if (event.conversation_id) setConversationId(event.conversation_id);
+              if (event.conversation_id)
+                setConversationId(event.conversation_id);
             } else if (event.type === "error") {
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: event.message, failed: true } : x)));
+              setTurns((t) =>
+                t.map((x) =>
+                  x.id === assistantTurnId
+                    ? { ...x, text: event.message, failed: true }
+                    : x,
+                ),
+              );
             }
           }
         } catch (e) {
           if (!abort.signal.aborted) {
-            setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: errMsg(e), failed: true } : x)));
+            setTurns((t) =>
+              t.map((x) =>
+                x.id === assistantTurnId
+                  ? { ...x, text: errMsg(e), failed: true }
+                  : x,
+              ),
+            );
           }
         } finally {
           if (!abort.signal.aborted) {
@@ -252,7 +323,11 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
             // A status line is a claim that work is in progress. However the
             // stream ended — cleanly, in error, or by giving up — it is not, so
             // the line must not survive the turn.
-            setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, status: undefined } : x)));
+            setTurns((t) =>
+              t.map((x) =>
+                x.id === assistantTurnId ? { ...x, status: undefined } : x,
+              ),
+            );
           }
           if (streamAbort.current === abort) streamAbort.current = null;
         }
@@ -322,31 +397,39 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
    * collapses them one at a time as each is confirmed, so the user can take two
    * of the three and leave the last.
    */
-  const confirmAction = React.useCallback((run: AiActionRun, payload: Record<string, unknown>) => {
-    setConfirming(run.action_run_id);
-    confirmAiAction(run.action_run_id, payload)
-      .then((r) => {
-        setDoneActions((s) => ({ ...s, [run.action_run_id]: true }));
-        // The recap + auto-proposed next actions. `next_actions` is the snooze
-        // fix: after confirming one step, the server auto-proposes the next one
-        // instead of asking "shall I proceed?". The user sees the narration and
-        // the new action card together — one click to confirm the next step.
-        const nextActions = r.next_actions;
-        if (r.message || nextActions?.length) {
+  const confirmAction = React.useCallback(
+    (run: AiActionRun, payload: Record<string, unknown>) => {
+      setConfirming(run.action_run_id);
+      confirmAiAction(run.action_run_id, payload)
+        .then((r) => {
+          setDoneActions((s) => ({ ...s, [run.action_run_id]: true }));
+          // The recap + auto-proposed next actions. `next_actions` is the snooze
+          // fix: after confirming one step, the server auto-proposes the next one
+          // instead of asking "shall I proceed?". The user sees the narration and
+          // the new action card together — one click to confirm the next step.
+          const nextActions = r.next_actions;
+          if (r.message || nextActions?.length) {
+            setTurns((t) => [
+              ...t,
+              {
+                id: nextId(),
+                role: "assistant",
+                text: (r.message as string) || "",
+                actions: nextActions?.length ? nextActions : undefined,
+              },
+            ]);
+          }
+        })
+        .catch((e) =>
           setTurns((t) => [
             ...t,
-            {
-              id: nextId(),
-              role: "assistant",
-              text: (r.message as string) || "",
-              actions: nextActions?.length ? nextActions : undefined,
-            },
-          ]);
-        }
-      })
-      .catch((e) => setTurns((t) => [...t, { id: nextId(), role: "assistant", text: errMsg(e), failed: true }]))
-      .finally(() => setConfirming(null));
-  }, []);
+            { id: nextId(), role: "assistant", text: errMsg(e), failed: true },
+          ]),
+        )
+        .finally(() => setConfirming(null));
+    },
+    [],
+  );
 
   return {
     turns,
@@ -373,19 +456,31 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
  * the 14th; they remember it was "the other day". Empty buckets are dropped so
  * the rail never shows a heading with nothing under it.
  */
-export function groupConversations(list: AiConversationMeta[]): { heading: string; items: AiConversationMeta[] }[] {
+export function groupConversations(
+  list: AiConversationMeta[],
+): { heading: string; items: AiConversationMeta[] }[] {
   const now = Date.now();
   const DAY = 86_400_000;
-  const buckets: { heading: string; max: number; items: AiConversationMeta[] }[] = [
+  const buckets: {
+    heading: string;
+    max: number;
+    items: AiConversationMeta[];
+  }[] = [
     { heading: "Today", max: DAY, items: [] },
     { heading: "Yesterday", max: 2 * DAY, items: [] },
     { heading: "Previous 7 days", max: 7 * DAY, items: [] },
     { heading: "Previous 30 days", max: 30 * DAY, items: [] },
     { heading: "Older", max: Infinity, items: [] },
   ];
-  for (const c of [...list].sort((a, b) => +new Date(b.last_at) - +new Date(a.last_at))) {
+  for (const c of [...list].sort(
+    (a, b) => +new Date(b.last_at) - +new Date(a.last_at),
+  )) {
     const age = now - +new Date(c.last_at);
-    (buckets.find((b) => age < b.max) ?? buckets[buckets.length - 1]).items.push(c);
+    (
+      buckets.find((b) => age < b.max) ?? buckets[buckets.length - 1]
+    ).items.push(c);
   }
-  return buckets.filter((b) => b.items.length).map(({ heading, items }) => ({ heading, items }));
+  return buckets
+    .filter((b) => b.items.length)
+    .map(({ heading, items }) => ({ heading, items }));
 }

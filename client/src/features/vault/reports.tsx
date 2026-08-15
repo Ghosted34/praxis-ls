@@ -26,8 +26,18 @@ import { isGated } from "./shared";
 /* ═══════════════════════════════════ REPORTS ═══════════════════════════════════ */
 
 const REPORTS_AI: AiAction[] = [
-  { label: "Run a report", kind: "read", describe: "Run any catalogue report and summarise the result in plain language." },
-  { label: "Explain a movement", kind: "assist", describe: "Explain a change in a report (e.g. why receivables ageing shifted)." },
+  {
+    label: "Run a report",
+    kind: "read",
+    describe:
+      "Run any catalogue report and summarise the result in plain language.",
+  },
+  {
+    label: "Explain a movement",
+    kind: "assist",
+    describe:
+      "Explain a change in a report (e.g. why receivables ageing shifted).",
+  },
 ];
 
 const PARAM_FIELDS: { key: string; label: string; placeholder: string }[] = [
@@ -38,7 +48,15 @@ const PARAM_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: "dossier_id", label: "Dossier id", placeholder: "uuid (dossier_360)" },
 ];
 
-function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onClose: () => void; onSaved: () => void }) {
+function RunReportModal({
+  report,
+  onClose,
+  onSaved,
+}: {
+  report: Row | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const open = !!report;
   const key = report ? String(report.report_key) : "";
   const [params, setParams] = React.useState<Record<string, string>>({});
@@ -58,7 +76,8 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
     setShared(false);
   }, [report]);
 
-  const filled = () => Object.fromEntries(Object.entries(params).filter(([, v]) => v.trim()));
+  const filled = () =>
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v.trim()));
 
   async function run() {
     setRunning(true);
@@ -77,7 +96,15 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
     setSaving(true);
     setError(null);
     try {
-      await tenant("/reports/saved", { method: "POST", body: { name: saveName.trim() || key, report_key: key, params: filled(), is_shared: shared } });
+      await tenant("/reports/saved", {
+        method: "POST",
+        body: {
+          name: saveName.trim() || key,
+          report_key: key,
+          params: filled(),
+          is_shared: shared,
+        },
+      });
       onSaved();
       onClose();
     } catch (e) {
@@ -92,19 +119,34 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
     setError(null);
     try {
       const qs = new URLSearchParams({ ...filled(), format }).toString();
-      await tenantDownload(`/reports/run/${key}/export?${qs}`, `${key}.${format}`);
+      await tenantDownload(
+        `/reports/run/${key}/export?${qs}`,
+        `${key}.${format}`,
+      );
     } catch (e) {
       setError(errMsg(e));
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Run — ${key}`} description={report ? String(report.describe) : ""} size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Run — ${key}`}
+      description={report ? String(report.describe) : ""}
+      size="xl"
+    >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           {PARAM_FIELDS.map((f) => (
             <Field key={f.key} label={f.label}>
-              <Input value={params[f.key] ?? ""} onChange={(e) => setParams((p) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} />
+              <Input
+                value={params[f.key] ?? ""}
+                onChange={(e) =>
+                  setParams((p) => ({ ...p, [f.key]: e.target.value }))
+                }
+                placeholder={f.placeholder}
+              />
             </Field>
           ))}
         </div>
@@ -112,28 +154,55 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
           <Button onClick={run} loading={running}>
             Run report
           </Button>
-          <Button variant="outline" onClick={() => exportAs("csv")} disabled={running}>
+          <Button
+            variant="outline"
+            onClick={() => exportAs("csv")}
+            disabled={running}
+          >
             Export CSV
           </Button>
-          <Button variant="outline" onClick={() => exportAs("xlsx")} disabled={running}>
+          <Button
+            variant="outline"
+            onClick={() => exportAs("xlsx")}
+            disabled={running}
+          >
             Export XLSX
           </Button>
-          <span className="text-xs text-muted-foreground">Leave params blank for report defaults.</span>
+          <span className="text-xs text-muted-foreground">
+            Leave params blank for report defaults.
+          </span>
         </div>
 
         {error && <ErrorState message={error} />}
         {result !== undefined && (
           <div className="space-y-3">
-            <DataView data={result} emptyTitle="This report returned no rows" emptyHint="Adjust the parameters above and run it again." />
+            <DataView
+              data={result}
+              emptyTitle="This report returned no rows"
+              emptyHint="Adjust the parameters above and run it again."
+            />
             <div className="flex flex-wrap items-end gap-2 border-t pt-3">
               <Field label="Save as" className="flex-1">
-                <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="My Q1 income statement" />
+                <Input
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  placeholder="My Q1 income statement"
+                />
               </Field>
               <label className="flex items-center gap-2 pb-2 text-sm">
-                <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={shared}
+                  onChange={(e) => setShared(e.target.checked)}
+                />
                 Share with team
               </label>
-              <Button variant="outline" onClick={save} loading={saving} disabled={saving}>
+              <Button
+                variant="outline"
+                onClick={save}
+                loading={saving}
+                disabled={saving}
+              >
                 Save report
               </Button>
             </div>
@@ -144,7 +213,17 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
   );
 }
 
-function ResultModal({ open, title, path, onClose }: { open: boolean; title: string; path: string; onClose: () => void }) {
+function ResultModal({
+  open,
+  title,
+  path,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  path: string;
+  onClose: () => void;
+}) {
   const [data, setData] = React.useState<unknown>(undefined);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -154,7 +233,13 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
     setData(undefined);
     setError(null);
     tenant<Row>(path)
-      .then((r) => live && setData(r && typeof r === "object" && "data" in r ? (r as Row).data : r))
+      .then(
+        (r) =>
+          live &&
+          setData(
+            r && typeof r === "object" && "data" in r ? (r as Row).data : r,
+          ),
+      )
       .catch((e) => live && setError(errMsg(e)));
     return () => {
       live = false;
@@ -162,9 +247,24 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
   }, [open, path]);
 
   return (
-    <Modal open={open} onClose={onClose} title={title} description="Report result." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description="Report result."
+      size="xl"
+    >
       <div className="space-y-4">
-        {error ? <ErrorState message={error} /> : data === undefined ? <LoadingRow label="Running…" /> : <DataView data={data} emptyTitle="This saved report returned no rows" />}
+        {error ? (
+          <ErrorState message={error} />
+        ) : data === undefined ? (
+          <LoadingRow label="Running…" />
+        ) : (
+          <DataView
+            data={data}
+            emptyTitle="This saved report returned no rows"
+          />
+        )}
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>
             Close
@@ -176,21 +276,34 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
 }
 
 export function ReportsPage() {
-  const [tab, setTab] = React.useState<"catalogue" | "saved" | "tiles">("catalogue");
+  const [tab, setTab] = React.useState<"catalogue" | "saved" | "tiles">(
+    "catalogue",
+  );
   const reload = useRefresh();
   // Was one hand-rolled useEffect + Promise.all keyed on a local nonce, which
   // refetched all three lists on every mount with no cache (F8). As three
   // useList calls they are deduplicated, cached and revalidated independently —
   // and /reports/catalogue is now shared with every other screen that reads it.
-  const { rows: catalogue, error: catalogueError, errorCode: catalogueCode } = useList<Row>("/reports/catalogue");
-  const { rows: saved, error: savedError, errorCode: savedCode } = useList<Row>("/reports/saved");
+  const {
+    rows: catalogue,
+    error: catalogueError,
+    errorCode: catalogueCode,
+  } = useList<Row>("/reports/catalogue");
+  const {
+    rows: saved,
+    error: savedError,
+    errorCode: savedCode,
+  } = useList<Row>("/reports/saved");
   // Tiles are optional: the endpoint 403s for roles without dashboard config,
   // and that must not blank the page. The original swallowed it with
   // `.catch(() => [])`; here its error is simply not surfaced.
   const { rows: tiles } = useList<Row>("/reports/tiles");
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState<Row | null>(null);
-  const [savedResult, setSavedResult] = React.useState<{ title: string; path: string } | null>(null);
+  const [savedResult, setSavedResult] = React.useState<{
+    title: string;
+    path: string;
+  } | null>(null);
   const [tileBusy, setTileBusy] = React.useState<string | null>(null);
 
   const error = actionError ?? catalogueError ?? savedError;
@@ -207,16 +320,25 @@ export function ReportsPage() {
   }
 
   // Tile map keyed by tile_key (== report_key) for quick lookup of dashboard state.
-  const tileByKey = React.useMemo(() => new Map((tiles || []).map((t) => [String(t.tile_key), t])), [tiles]);
+  const tileByKey = React.useMemo(
+    () => new Map((tiles || []).map((t) => [String(t.tile_key), t])),
+    [tiles],
+  );
 
-  async function setTile(tileKey: string, patch: { position?: number; is_visible?: boolean }) {
+  async function setTile(
+    tileKey: string,
+    patch: { position?: number; is_visible?: boolean },
+  ) {
     setTileBusy(tileKey);
     setError(null);
     const existing = tileByKey.get(tileKey);
     const body = {
       tile_key: tileKey,
-      position: patch.position ?? (existing ? Number(existing.position) || 0 : (tiles || []).length),
-      is_visible: patch.is_visible ?? (existing ? existing.is_visible !== false : true),
+      position:
+        patch.position ??
+        (existing ? Number(existing.position) || 0 : (tiles || []).length),
+      is_visible:
+        patch.is_visible ?? (existing ? existing.is_visible !== false : true),
       config: existing?.config ?? {},
     };
     try {
@@ -237,7 +359,7 @@ export function ReportsPage() {
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Reports"
         description="Run finance, receivables and cross-module reports; save the ones you use."
-        action={(
+        action={
           <Segmented
             label="Reports section"
             value={tab}
@@ -248,13 +370,16 @@ export function ReportsPage() {
               { value: "tiles", label: "Dashboard tiles" },
             ]}
           />
-        )}
+        }
       />
       <HubTabs />
 
       {error ? (
         isGated(errorCode) ? (
-          <EmptyState title="Reporting isn't enabled for this tenant" hint="The reporting feature flag is off. Enable it in the developer dashboard to run reports." />
+          <EmptyState
+            title="Reporting isn't enabled for this tenant"
+            hint="The reporting feature flag is off. Enable it in the developer dashboard to run reports."
+          />
         ) : (
           <ErrorState message={error} />
         )
@@ -262,17 +387,27 @@ export function ReportsPage() {
         <SkeletonTable />
       ) : tab === "tiles" ? (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Choose which reports appear as tiles on your Control Tower, toggle their visibility and order.</p>
+          <p className="text-xs text-muted-foreground">
+            Choose which reports appear as tiles on your Control Tower, toggle
+            their visibility and order.
+          </p>
           {catalogue.map((r) => {
             const key = String(r.report_key);
             const t = tileByKey.get(key);
             const on = !!t;
             const visible = t ? t.is_visible !== false : false;
             return (
-              <div key={key} className="lux-card flex flex-wrap items-center gap-3 p-3">
+              <div
+                key={key}
+                className="lux-card flex flex-wrap items-center gap-3 p-3"
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{key}</p>
-                  <p className="truncate text-xs text-muted-foreground">{cell(r.describe)}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {key}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {cell(r.describe)}
+                  </p>
                 </div>
                 {on && (
                   <label className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -282,12 +417,19 @@ export function ReportsPage() {
                       min="0"
                       className="num h-8 w-16 text-right"
                       defaultValue={String(Number(t?.position) || 0)}
-                      onBlur={(e) => setTile(key, { position: Number(e.target.value) || 0 })}
+                      onBlur={(e) =>
+                        setTile(key, { position: Number(e.target.value) || 0 })
+                      }
                     />
                   </label>
                 )}
                 {on && (
-                  <Button size="sm" variant="ghost" disabled={tileBusy === key} onClick={() => setTile(key, { is_visible: !visible })}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={tileBusy === key}
+                    onClick={() => setTile(key, { is_visible: !visible })}
+                  >
                     {visible ? "Hide" : "Show"}
                   </Button>
                 )}
@@ -295,7 +437,9 @@ export function ReportsPage() {
                   size="sm"
                   variant={on ? "outline" : "default"}
                   disabled={tileBusy === key}
-                  onClick={() => setTile(key, { is_visible: on ? false : true })}
+                  onClick={() =>
+                    setTile(key, { is_visible: on ? false : true })
+                  }
                 >
                   {on ? (visible ? "On dashboard" : "Hidden") : "Add tile"}
                 </Button>
@@ -306,11 +450,22 @@ export function ReportsPage() {
       ) : tab === "catalogue" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {catalogue.map((r) => (
-            <div key={String(r.report_key)} className="lux-card flex flex-col p-4">
-              <p className="text-sm font-semibold text-foreground">{cell(r.report_key)}</p>
-              <p className="mt-1 flex-1 text-xs text-muted-foreground">{cell(r.describe)}</p>
+            <div
+              key={String(r.report_key)}
+              className="lux-card flex flex-col p-4"
+            >
+              <p className="text-sm font-semibold text-foreground">
+                {cell(r.report_key)}
+              </p>
+              <p className="mt-1 flex-1 text-xs text-muted-foreground">
+                {cell(r.describe)}
+              </p>
               <div className="mt-3">
-                <Button size="sm" variant="outline" onClick={() => setRunning(r)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRunning(r)}
+                >
                   Run
                 </Button>
               </div>
@@ -318,22 +473,45 @@ export function ReportsPage() {
           ))}
         </div>
       ) : (saved || []).length === 0 ? (
-        <EmptyState title="No saved reports" hint="Run a report from the catalogue and save it to pin it here." />
+        <EmptyState
+          title="No saved reports"
+          hint="Run a report from the catalogue and save it to pin it here."
+        />
       ) : (
         <div className="space-y-2">
           {(saved || []).map((s) => (
-            <div key={String(s.saved_report_id)} className="lux-card flex items-center gap-3 p-3">
+            <div
+              key={String(s.saved_report_id)}
+              className="lux-card flex items-center gap-3 p-3"
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">{cell(s.name)}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {cell(s.name)}
+                  </p>
                   {s.is_shared ? <StatusPill status="shared" /> : null}
                 </div>
-                <p className="truncate text-xs text-muted-foreground">{cell(s.report_key)} · {dateFmt(s.created_at)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {cell(s.report_key)} · {dateFmt(s.created_at)}
+                </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setSavedResult({ title: String(s.name), path: `/reports/saved/${String(s.saved_report_id)}/run` })}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setSavedResult({
+                    title: String(s.name),
+                    path: `/reports/saved/${String(s.saved_report_id)}/run`,
+                  })
+                }
+              >
                 Run
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => del(String(s.saved_report_id))}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => del(String(s.saved_report_id))}
+              >
                 Delete
               </Button>
             </div>
@@ -343,8 +521,17 @@ export function ReportsPage() {
 
       <AiActions actions={REPORTS_AI} />
 
-      <RunReportModal report={running} onClose={() => setRunning(null)} onSaved={reload} />
-      <ResultModal open={!!savedResult} title={savedResult?.title ?? ""} path={savedResult?.path ?? ""} onClose={() => setSavedResult(null)} />
+      <RunReportModal
+        report={running}
+        onClose={() => setRunning(null)}
+        onSaved={reload}
+      />
+      <ResultModal
+        open={!!savedResult}
+        title={savedResult?.title ?? ""}
+        path={savedResult?.path ?? ""}
+        onClose={() => setSavedResult(null)}
+      />
     </section>
   );
 }

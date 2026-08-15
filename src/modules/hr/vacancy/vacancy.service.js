@@ -7,6 +7,8 @@ const repo = require("./vacancy.repo");
 const events = require("./vacancy.events");
 const scoring = require("./vacancy.scoring");
 const questions = require("./vacancy.questions");
+const drafting = require("./vacancy.draft");
+const transcription = require("../../../services/ai/transcription.service");
 
 // Recruitment: vacancy head + applicant pipeline. Vacancy lifecycle
 // DRAFT → OPEN → CLOSED; applicants move through their own status pipeline.
@@ -90,6 +92,102 @@ module.exports = {
       await audit(client, { actorUserId: actor.user_id, action: "employee_provisioned", moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, after: { employee_id: employeeId, full_name: row.full_name, source: "vacancy_hire" } });
       return { ...row, provisioned_employee_id: employeeId };
     }
+    return row;
+  },
+
+  /* ── Drafting a vacancy from an interview (0526) ─────────────────────────
+   *
+   * Two calls, because the interview is adaptive: the wizard asks the fixed
+   * questions, sends what it has, gets the follow-ups the model wants to ask
+   * about THIS role, then sends everything for the draft. Splitting it is what
+   * makes the later questions specific ("what level of experience for a Junior
+   * Stylist?") rather than generic. */
+
+  /** Resolve the entity the advert speaks for: the one asked for, or the sole
+   *  active one. Null is allowed — the draft simply has less to ground on. */
+  async draftEntity(client, entityId) {
+    return (await repo.getEntity(client, entityId)) || (await repo.soleEntity(client));
+  },
+
+  /** The fixed questions, plus the entity so the wizard can label the salary
+   *  inputs in the right currency before anything has been answered. */
+  async intakeQuestions(client, { entityId = null } = {}) {
+    const entity = await this.draftEntity(client, entityId);
+    return {
+      questions: drafting.BASE_QUESTIONS,
+      total: drafting.TOTAL_QUESTIONS,
+      currency: (entity && entity.default_currency) || "XAF",
+      entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.name } : null,
+    };
+  },
+
+  /**
+   * Turn a spoken answer into text.
+   *
+   * NOT wrapped in `req.tenantDb` by its controller, and that is deliberate:
+   * this is a Whisper call of several seconds with no database work in it at
+   * all, and holding a pooled connection across it is how one slow provider
+   * takes a tenant's whole pool with it on a 12-connection ceiling.
+   *
+   * Throws when no provider is configured rather than returning empty text —
+   * a mic button that silently does nothing is worse than one that says voice
+   * input is not set up, because the person keeps pressing it.
+   */
+  async transcribeAnswer(dataUrl) {
+    const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
+    if (!m) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
+    const audio = Buffer.from(m[2], "base64");
+    if (!audio.length) throw new AppError("EMPTY_AUDIO", "Nothing was recorded — try holding the button a little longer", 422);
+    try {
+      const { text } = await transcription.transcribe({ audio, mimeType: m[1].toLowerCase() });
+      return { text: String(text || "").trim() };
+    } catch (err) {
+      // The service throws a clear "not configured" for a missing key; anything
+      // else is the provider failing. Both are the operator's problem, and both
+      // must reach the user as something they can act on rather than a 500.
+      throw new AppError(
+        "TRANSCRIPTION_UNAVAILABLE",
+        /not configured/i.test(err.message || "")
+          ? "Voice input isn't set up on this workspace — type your answer, or ask your administrator to configure it."
+          : "Couldn't transcribe that recording. Try again, or type your answer.",
+        502,
+      );
+    }
+  },
+
+  /** The generated follow-ups. Model call — outside a transaction. */
+  async intakeFollowUps(client, { entityId = null, answers = {} }) {
+    const entity = await this.draftEntity(client, entityId);
+    return { questions: await drafting.followUpQuestions(client, { entity, answers }) };
+  },
+
+  /**
+   * Draft and SAVE, as a DRAFT vacancy.
+   *
+   * Saved rather than returned-for-preview because the recruiter has just spent
+   * four minutes answering questions: the work must survive a closed tab. The
+   * lifecycle already has a DRAFT state that is invisible to the careers page,
+   * so nothing is published by drafting it — the editor opens on a real row
+   * they can leave and come back to.
+   */
+  async draftVacancy(client, { entityId = null, answers = {}, actor = {} }) {
+    const entity = await this.draftEntity(client, entityId);
+    const drafted = await drafting.draft(client, { entity, answers });
+    const { ai_provider, ...fields } = drafted;
+
+    const row = await repo.insert(client, {
+      ...fields,
+      status: "DRAFT",
+      ai_generated: ai_provider !== "template",
+      ai_provider,
+      entity_id: entity ? entity.entity_id : null,
+      headcount: Math.max(1, Math.round(Number(answers.headcount) || 1)),
+      // Verbatim, so the draft can be regenerated without re-interviewing.
+      intake_json: answers,
+    });
+    const entityRef = `vacancy:${row.vacancy_id}`;
+    await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null, payload: { drafted_by: ai_provider } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef, after: row });
     return row;
   },
 

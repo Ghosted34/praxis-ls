@@ -10,13 +10,21 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { portalToken, portalMe, type PortalMe } from "@/lib/portal-api";
-import { AuditorTerminal, ClientTerminal, InvestorTerminal } from "./portal-terminals";
+import {
+  AuditorTerminal,
+  ClientTerminal,
+  InvestorTerminal,
+} from "./portal-terminals";
 import { PortalFrame, msg } from "./portal-chrome";
 import { PortalLogin, PortalSetPassword } from "./portal-auth";
 
 const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"] as const;
 type PortalKind = (typeof PORTALS)[number];
-const TAB_LABEL: Record<PortalKind, string> = { CLIENT: "Shipments", INVESTOR: "Financials", AUDITOR: "Audit room" };
+const TAB_LABEL: Record<PortalKind, string> = {
+  CLIENT: "Shipments",
+  INVESTOR: "Financials",
+  AUDITOR: "Audit room",
+};
 
 function PortalHome() {
   const [me, setMe] = React.useState<PortalMe | null>(null);
@@ -37,8 +45,18 @@ function PortalHome() {
     };
   }, []);
 
-  if (error) return <PortalFrame wide><ErrorState message={error} /></PortalFrame>;
-  if (!me) return <PortalFrame wide><SkeletonTable /></PortalFrame>;
+  if (error)
+    return (
+      <PortalFrame wide>
+        <ErrorState message={error} />
+      </PortalFrame>
+    );
+  if (!me)
+    return (
+      <PortalFrame wide>
+        <SkeletonTable />
+      </PortalFrame>
+    );
 
   const allowed = PORTALS.filter((p) => me.grants[p]?.allowed);
 
@@ -47,7 +65,10 @@ function PortalHome() {
   if (!tab) {
     return (
       <PortalFrame wide>
-        <EmptyState title="No active access" hint="Your access has expired or been withdrawn. Please contact your account manager." />
+        <EmptyState
+          title="No active access"
+          hint="Your access has expired or been withdrawn. Please contact your account manager."
+        />
       </PortalFrame>
     );
   }
@@ -62,7 +83,9 @@ function PortalHome() {
               type="button"
               onClick={() => setTab(t)}
               className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-                tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                tab === t
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {TAB_LABEL[t]}
@@ -70,7 +93,13 @@ function PortalHome() {
           ))}
         </div>
       ) : null}
-      {tab === "CLIENT" ? <ClientTerminal me={me} /> : tab === "INVESTOR" ? <InvestorTerminal me={me} /> : <AuditorTerminal me={me} />}
+      {tab === "CLIENT" ? (
+        <ClientTerminal me={me} />
+      ) : tab === "INVESTOR" ? (
+        <InvestorTerminal me={me} />
+      ) : (
+        <AuditorTerminal me={me} />
+      )}
     </PortalFrame>
   );
 }

@@ -67,7 +67,12 @@ export function BootGate({ children }: { children: React.ReactNode }) {
     <>
       {children}
       {mounted && pwa.splashEnabled && (
-        <SplashScreen cfg={pwa} ready={brandingReady} progress={progress} fading={fading} />
+        <SplashScreen
+          cfg={pwa}
+          ready={brandingReady}
+          progress={progress}
+          fading={fading}
+        />
       )}
     </>
   );

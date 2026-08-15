@@ -16,7 +16,10 @@ export function money(amount: unknown, currency: unknown = "XAF"): string {
   if (amount === null || amount === undefined || amount === "") return "—";
   const n = typeof amount === "number" ? amount : Number(amount);
   if (!Number.isFinite(n)) return "—";
-  const cur = currency === null || currency === undefined || currency === "" ? "XAF" : String(currency);
+  const cur =
+    currency === null || currency === undefined || currency === ""
+      ? "XAF"
+      : String(currency);
   return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
 }
 
@@ -44,7 +47,10 @@ export function amount(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export function num(value: number | string | null | undefined): string {
@@ -67,7 +73,11 @@ export function dateFmt(d: unknown): string {
   if (!d) return "—";
   const dt = d instanceof Date ? d : parseLoose(String(d));
   if (!dt || Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return dt.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 /** `YYYY-MM-DD`, optionally with a time part after it. */
@@ -124,7 +134,13 @@ export function dateTimeFmt(d: string | Date | null | undefined): string {
   if (!d) return "—";
   const dt = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return dt.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /**
@@ -150,8 +166,14 @@ export function humanizeEvent(key?: string | null): string {
   // imports types from features/dashboard/use-my-audit-feed which itself imports
   // from lib. A dynamic-shape row is enough — humanize reads only .action,
   // .entity_ref and .metadata off it.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { humanize } = require("./audit-humanize") as typeof import("./audit-humanize");
+  /* eslint-disable @typescript-eslint/no-require-imports --
+     A BLOCK disable, not disable-next-line: the statement below is long enough
+     that the formatter breaks it after the `=`, which moves the `require()`
+     off the guarded line and leaves the directive pointing at nothing. A block
+     is not line-anchored, so it survives a reflow. */
+  const { humanize } =
+    require("./audit-humanize") as typeof import("./audit-humanize");
+  /* eslint-enable @typescript-eslint/no-require-imports */
   const row = {
     ledger_id: 0,
     created_at: "",
@@ -334,12 +356,17 @@ const DOMAIN_LABEL: Record<string, string> = {
  * module codes DOMAIN_LABEL overrides (see above) — every other module_key
  * resolves from MODULE_LABEL alone, same as before.
  */
-export function friendlyModule(moduleKey?: string | null, action?: string | null): string {
+export function friendlyModule(
+  moduleKey?: string | null,
+  action?: string | null,
+): string {
   if (!moduleKey) return "Activity";
   const s = String(moduleKey).trim();
   if (!s) return "Activity";
 
-  const domain = action ? String(action).split(".")[0]?.trim().toLowerCase() : "";
+  const domain = action
+    ? String(action).split(".")[0]?.trim().toLowerCase()
+    : "";
   if (domain && DOMAIN_LABEL[domain]) return DOMAIN_LABEL[domain];
 
   const upper = s.toUpperCase();
@@ -399,7 +426,8 @@ export function enumLabel(v?: string | null): string {
     const spaced = s.replace(/_/g, " ").toLowerCase();
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
-  if (/^[A-Z][A-Z0-9]{3,}$/.test(s)) return s.charAt(0) + s.slice(1).toLowerCase();
+  if (/^[A-Z][A-Z0-9]{3,}$/.test(s))
+    return s.charAt(0) + s.slice(1).toLowerCase();
   return s;
 }
 
@@ -410,8 +438,30 @@ export function enumLabel(v?: string | null): string {
  * "Total TTC" tells an accountant the screen was not built for them.
  */
 const ACRONYMS = new Set([
-  "ttc", "ht", "tva", "niu", "rccm", "coa", "xaf", "fx", "po", "kyc", "ai", "api",
-  "url", "id", "hr", "vat", "iban", "bic", "cnps", "irpp", "sms", "pdf", "csv", "eta",
+  "ttc",
+  "ht",
+  "tva",
+  "niu",
+  "rccm",
+  "coa",
+  "xaf",
+  "fx",
+  "po",
+  "kyc",
+  "ai",
+  "api",
+  "url",
+  "id",
+  "hr",
+  "vat",
+  "iban",
+  "bic",
+  "cnps",
+  "irpp",
+  "sms",
+  "pdf",
+  "csv",
+  "eta",
 ]);
 
 /**
@@ -433,16 +483,21 @@ export function fieldLabel(key: string): string {
     .split(/[_\-\s.]+/)
     .filter(Boolean);
   // A trailing "_id" is plumbing: "client_id" is the Client column.
-  if (words.length > 1 && words[words.length - 1].toLowerCase() === "id") words.pop();
+  if (words.length > 1 && words[words.length - 1].toLowerCase() === "id")
+    words.pop();
   // "created_at" / "updated_at" read better without the preposition.
-  if (words.length > 1 && words[words.length - 1].toLowerCase() === "at") words.pop();
+  if (words.length > 1 && words[words.length - 1].toLowerCase() === "at")
+    words.pop();
   if (!words.length) return String(key);
-  const out = words.map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase()));
+  const out = words.map((w) =>
+    ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase(),
+  );
   out[0] = out[0].charAt(0).toUpperCase() + out[0].slice(1);
   return out.join(" ");
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -457,12 +512,29 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function smartCell(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length === 1 ? "" : "s"}` : "—";
+  if (typeof v === "number")
+    return Number.isInteger(v)
+      ? v.toLocaleString("en-US")
+      : v.toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+  if (Array.isArray(v))
+    return v.length ? `${v.length} item${v.length === 1 ? "" : "s"}` : "—";
   if (typeof v === "object") {
-    const pairs = Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== null && x !== undefined && x !== "");
+    const pairs = Object.entries(v as Record<string, unknown>).filter(
+      ([, x]) => x !== null && x !== undefined && x !== "",
+    );
     if (!pairs.length) return "—";
-    return pairs.slice(0, 4).map(([k, x]) => `${k.replace(/_/g, " ")}: ${typeof x === "object" ? "…" : String(x)}`).join(" · ") + (pairs.length > 4 ? " · …" : "");
+    return (
+      pairs
+        .slice(0, 4)
+        .map(
+          ([k, x]) =>
+            `${k.replace(/_/g, " ")}: ${typeof x === "object" ? "…" : String(x)}`,
+        )
+        .join(" · ") + (pairs.length > 4 ? " · …" : "")
+    );
   }
   const s = String(v);
   if (ISO_DATETIME_RE.test(s)) return dateTimeFmt(s);
@@ -472,7 +544,11 @@ export function smartCell(v: unknown): string {
   // strings stay raw: they may be account codes, period years or doc numbers.
   if (/^-?\d+\.\d+$/.test(s)) {
     const n = Number(s);
-    if (Number.isFinite(n)) return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (Number.isFinite(n))
+      return n.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
   }
   if (/^[A-Z][A-Z0-9_]*_[A-Z0-9_]+$/.test(s)) return enumLabel(s);
   return s;
@@ -494,7 +570,8 @@ export function cell(v: unknown): string {
   // (settings/config-pages.tsx:26, now deleted) had this and the canonical one
   // did not, so a `recipients` or `formats` column showed `["a@b.com"]` with the
   // brackets and quotes on some screens and not others (F6).
-  if (Array.isArray(v)) return v.length ? v.map((x) => cell(x)).join(", ") : "—";
+  if (Array.isArray(v))
+    return v.length ? v.map((x) => cell(x)).join(", ") : "—";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

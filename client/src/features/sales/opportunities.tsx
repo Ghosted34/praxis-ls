@@ -29,9 +29,24 @@ import { OpportunityForm, WinModal } from "./opportunity-forms";
 /* ═══════════════════════════════ OPPORTUNITIES ═══════════════════════════════ */
 
 const OPP_AI: AiAction[] = [
-  { label: "Pipeline health", kind: "read", describe: "Summarise the open pipeline — stage counts, weighted value and stalled deals." },
-  { label: "Move / create opportunity", kind: "write", describe: "Create an opportunity or move it to another stage (human-confirmed)." },
-  { label: "Win / lose", kind: "write", describe: "Mark an opportunity won (optionally open a delivery dossier) or lost." },
+  {
+    label: "Pipeline health",
+    kind: "read",
+    describe:
+      "Summarise the open pipeline — stage counts, weighted value and stalled deals.",
+  },
+  {
+    label: "Move / create opportunity",
+    kind: "write",
+    describe:
+      "Create an opportunity or move it to another stage (human-confirmed).",
+  },
+  {
+    label: "Win / lose",
+    kind: "write",
+    describe:
+      "Mark an opportunity won (optionally open a delivery dossier) or lost.",
+  },
 ];
 
 export function OpportunitiesPage() {
@@ -51,22 +66,53 @@ export function OpportunitiesPage() {
   const [dragId, setDragId] = React.useState<string | null>(null);
   const [dragOver, setDragOver] = React.useState<string | null>(null);
 
-  const clientName = React.useMemo(() => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])), [clients]);
-  const leadName = React.useMemo(() => new Map((leads || []).map((l) => [String(l.lead_id), cell(l.company_name)])), [leads]);
+  const clientName = React.useMemo(
+    () =>
+      new Map(
+        (clients || []).map((c) => [
+          String(c.client_id),
+          cell(c.name ?? c.legal_name),
+        ]),
+      ),
+    [clients],
+  );
+  const leadName = React.useMemo(
+    () =>
+      new Map(
+        (leads || []).map((l) => [String(l.lead_id), cell(l.company_name)]),
+      ),
+    [leads],
+  );
   function withLabel(o: Row): string {
     if (o.client_id) return clientName.get(String(o.client_id)) ?? "Client";
     if (o.lead_id) return leadName.get(String(o.lead_id)) ?? "Lead";
     return "—";
   }
 
-  const openOpps = React.useMemo(() => (opps || []).filter((o) => String(o.status) === "OPEN"), [opps]);
+  const openOpps = React.useMemo(
+    () => (opps || []).filter((o) => String(o.status) === "OPEN"),
+    [opps],
+  );
   const forecast = React.useMemo(() => {
-    const value = openOpps.reduce((a, o) => a + (Number(o.estimated_value) || 0), 0);
-    const weighted = openOpps.reduce((a, o) => a + ((Number(o.estimated_value) || 0) * (Number(o.probability) || 0)) / 100, 0);
+    const value = openOpps.reduce(
+      (a, o) => a + (Number(o.estimated_value) || 0),
+      0,
+    );
+    const weighted = openOpps.reduce(
+      (a, o) =>
+        a +
+        ((Number(o.estimated_value) || 0) * (Number(o.probability) || 0)) / 100,
+      0,
+    );
     const won = (opps || []).filter((o) => String(o.status) === "WON").length;
     const lost = (opps || []).filter((o) => String(o.status) === "LOST").length;
     const winRate = won + lost ? Math.round((won / (won + lost)) * 100) : null;
-    return { value, weighted: Math.round(weighted), open: openOpps.length, winRate };
+    return {
+      value,
+      weighted: Math.round(weighted),
+      open: openOpps.length,
+      winRate,
+    };
   }, [openOpps, opps]);
 
   async function act(id: string, fn: () => Promise<unknown>) {
@@ -81,8 +127,17 @@ export function OpportunitiesPage() {
       setRowBusy(null);
     }
   }
-  const move = (id: string, stageId: string) => act(id, () => tenant(`/opportunities/${id}/move`, { method: "POST", body: { pipeline_stage_id: stageId } }));
-  const lose = (id: string) => act(id, () => tenant(`/opportunities/${id}/lose`, { method: "POST", body: {} }));
+  const move = (id: string, stageId: string) =>
+    act(id, () =>
+      tenant(`/opportunities/${id}/move`, {
+        method: "POST",
+        body: { pipeline_stage_id: stageId },
+      }),
+    );
+  const lose = (id: string) =>
+    act(id, () =>
+      tenant(`/opportunities/${id}/lose`, { method: "POST", body: {} }),
+    );
 
   function onDrop(stageId: string) {
     setDragOver(null);
@@ -103,36 +158,43 @@ export function OpportunitiesPage() {
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Opportunities"
         description="The sales pipeline — drag deals across stages; value × probability is the weighted forecast."
-        action={(
-        <div className="flex items-center gap-3">
-          <Segmented
-            label="Opportunity layout"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "board", label: "Board" },
-              { value: "list", label: "List" },
-            ]}
-          />
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            New opportunity
-          </Button>
-        </div>
-        )}
+        action={
+          <div className="flex items-center gap-3">
+            <Segmented
+              label="Opportunity layout"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "board", label: "Board" },
+                { value: "list", label: "List" },
+              ]}
+            />
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              New opportunity
+            </Button>
+          </div>
+        }
       />
       <HubTabs />
 
       {/* Forecast strip (Pixie "Today" metric row) */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Open pipeline" value={money(forecast.value)} />
-        <Stat label="Weighted forecast" value={money(forecast.weighted)} tone="accent" />
+        <Stat
+          label="Weighted forecast"
+          value={money(forecast.weighted)}
+          tone="accent"
+        />
         <Stat label="Open deals" value={String(forecast.open)} />
-        <Stat label="Win rate" value={forecast.winRate === null ? "—" : `${forecast.winRate}%`} />
+        <Stat
+          label="Win rate"
+          value={forecast.winRate === null ? "—" : `${forecast.winRate}%`}
+        />
       </div>
 
       {rowError && (
@@ -146,7 +208,10 @@ export function OpportunitiesPage() {
       ) : loading ? (
         <SkeletonTable />
       ) : (stages || []).length === 0 ? (
-        <EmptyState title="No pipeline stages configured" hint="Add pipeline stages in Settings → Pipeline stages, then deals can flow across them." />
+        <EmptyState
+          title="No pipeline stages configured"
+          hint="Add pipeline stages in Settings → Pipeline stages, then deals can flow across them."
+        />
       ) : view === "board" ? (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {(stages || []).map((s) => {
@@ -154,8 +219,15 @@ export function OpportunitiesPage() {
             // Group by stage across ALL opps (not just OPEN) so a won deal lands
             // in the Won column — filtering to OPEN left won/lost stages empty and
             // out of sync with the List view. Lost deals are dropped from the board.
-            const cards = (opps || []).filter((o) => String(o.pipeline_stage_id) === sid && String(o.status) !== "LOST");
-            const colValue = cards.reduce((a, o) => a + (Number(o.estimated_value) || 0), 0);
+            const cards = (opps || []).filter(
+              (o) =>
+                String(o.pipeline_stage_id) === sid &&
+                String(o.status) !== "LOST",
+            );
+            const colValue = cards.reduce(
+              (a, o) => a + (Number(o.estimated_value) || 0),
+              0,
+            );
             const won = s.is_won === true;
             const lost = s.is_lost === true;
             return (
@@ -175,15 +247,25 @@ export function OpportunitiesPage() {
               >
                 <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${won ? "bg-ok-fill" : lost ? "bg-bad-fill" : "bg-primary"}`} />
-                    <span className="text-sm font-semibold text-foreground">{cell(s.name)}</span>
-                    <span className="text-xs text-muted-foreground">{cards.length}</span>
+                    <span
+                      className={`h-2 w-2 rounded-full ${won ? "bg-ok-fill" : lost ? "bg-bad-fill" : "bg-primary"}`}
+                    />
+                    <span className="text-sm font-semibold text-foreground">
+                      {cell(s.name)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {cards.length}
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{money(colValue)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {money(colValue)}
+                  </span>
                 </div>
                 <div className="flex min-h-[8rem] flex-1 flex-col gap-2 p-2">
                   {cards.length === 0 ? (
-                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">Drop deals here</p>
+                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                      Drop deals here
+                    </p>
                   ) : (
                     cards.map((o) => {
                       const id = String(o.opportunity_id);
@@ -203,16 +285,38 @@ export function OpportunitiesPage() {
                           className={`lux-card cursor-grab p-3 active:cursor-grabbing ${rowBusy === id ? "opacity-50" : ""}`}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-medium text-foreground">{cell(o.name)}</p>
-                            {o.probability != null && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">{cell(o.probability)}%</span>}
+                            <p className="text-sm font-medium text-foreground">
+                              {cell(o.name)}
+                            </p>
+                            {o.probability != null && (
+                              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">
+                                {cell(o.probability)}%
+                              </span>
+                            )}
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{withLabel(o)}</p>
-                          <p className="mt-1 text-xs font-semibold text-foreground">{money(o.estimated_value, o.currency)}</p>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {withLabel(o)}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-foreground">
+                            {money(o.estimated_value, o.currency)}
+                          </p>
                           <div className="mt-2 flex flex-wrap gap-1">
-                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id} onClick={() => setWinning(o)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              disabled={rowBusy === id}
+                              onClick={() => setWinning(o)}
+                            >
                               Win
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id} onClick={() => lose(id)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              disabled={rowBusy === id}
+                              onClick={() => lose(id)}
+                            >
                               Lose
                             </Button>
                             <Button
@@ -232,15 +336,27 @@ export function OpportunitiesPage() {
                             <DropdownMenu
                               label={`Move ${cell(o.name)} to stage`}
                               trigger={
-                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={rowBusy === id}
+                                >
                                   Move
                                 </Button>
                               }
                             >
                               {(stages || [])
-                                .filter((t) => String(t.pipeline_stage_id) !== sid)
+                                .filter(
+                                  (t) => String(t.pipeline_stage_id) !== sid,
+                                )
                                 .map((t) => (
-                                  <DropdownItem key={String(t.pipeline_stage_id)} onSelect={() => move(id, String(t.pipeline_stage_id))}>
+                                  <DropdownItem
+                                    key={String(t.pipeline_stage_id)}
+                                    onSelect={() =>
+                                      move(id, String(t.pipeline_stage_id))
+                                    }
+                                  >
                                     {cell(t.name)}
                                   </DropdownItem>
                                 ))}
@@ -259,23 +375,34 @@ export function OpportunitiesPage() {
         /* List view */
         <div className="space-y-2">
           {(opps || []).length === 0 ? (
-            <EmptyState title="No opportunities yet" hint="Create the first opportunity, or convert a qualified lead." />
+            <EmptyState
+              title="No opportunities yet"
+              hint="Create the first opportunity, or convert a qualified lead."
+            />
           ) : (
             (opps || []).map((o) => {
               const id = String(o.opportunity_id);
               const settled = String(o.status) !== "OPEN";
               return (
-                <div key={id} className="lux-card flex flex-wrap items-center gap-3 p-3">
+                <div
+                  key={id}
+                  className="lux-card flex flex-wrap items-center gap-3 p-3"
+                >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">{cell(o.name)}</p>
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {cell(o.name)}
+                      </p>
                       <StatusPill status={String(o.status || "OPEN")} />
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {withLabel(o)} · {cell(o.stage_name)} · {o.probability != null ? `${cell(o.probability)}%` : "—"}
+                      {withLabel(o)} · {cell(o.stage_name)} ·{" "}
+                      {o.probability != null ? `${cell(o.probability)}%` : "—"}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">{money(o.estimated_value, o.currency)}</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {money(o.estimated_value, o.currency)}
+                  </span>
                   {!settled && (
                     <div className="flex items-center gap-2">
                       <Select
@@ -285,15 +412,28 @@ export function OpportunitiesPage() {
                         disabled={rowBusy === id}
                       >
                         {(stages || []).map((s) => (
-                          <option key={String(s.pipeline_stage_id)} value={String(s.pipeline_stage_id)}>
+                          <option
+                            key={String(s.pipeline_stage_id)}
+                            value={String(s.pipeline_stage_id)}
+                          >
                             {cell(s.name)}
                           </option>
                         ))}
                       </Select>
-                      <Button size="sm" variant="outline" disabled={rowBusy === id} onClick={() => setWinning(o)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={rowBusy === id}
+                        onClick={() => setWinning(o)}
+                      >
                         Win
                       </Button>
-                      <Button size="sm" variant="ghost" disabled={rowBusy === id} onClick={() => lose(id)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={rowBusy === id}
+                        onClick={() => lose(id)}
+                      >
                         Lose
                       </Button>
                       <Button
@@ -317,8 +457,21 @@ export function OpportunitiesPage() {
 
       <AiActions actions={OPP_AI} />
 
-      <OpportunityForm open={formOpen} editing={editing} stages={stages} leads={leads} clients={clients} onClose={() => setFormOpen(false)} onSaved={reload} />
-      <WinModal opp={winning} entities={entities} onClose={() => setWinning(null)} onDone={reload} />
+      <OpportunityForm
+        open={formOpen}
+        editing={editing}
+        stages={stages}
+        leads={leads}
+        clients={clients}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+      />
+      <WinModal
+        opp={winning}
+        entities={entities}
+        onClose={() => setWinning(null)}
+        onDone={reload}
+      />
     </section>
   );
 }

@@ -140,7 +140,9 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   const [pwaConfig, setPwaState] = React.useState<PwaConfig>(
     () => readCachedPwaConfig() ?? EMPTY_PWA_CONFIG,
   );
-  const [userAppearance, setUserState] = React.useState<UserAppearance>(EMPTY_USER_APPEARANCE);
+  const [userAppearance, setUserState] = React.useState<UserAppearance>(
+    EMPTY_USER_APPEARANCE,
+  );
   const [ready, setReady] = React.useState(false);
 
   // Each setter repaints BOTH layers, so each needs the other's current value.
@@ -223,7 +225,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   // against the TENANT's branding, not the merged per-user layer: an installed
   // app's icon and splash are the company's identity, and one user's font
   // choice does not change what the operating system shows on a home screen.
-  const pwa = React.useMemo(() => effectivePwa(pwaConfig, brandSource(branding)), [pwaConfig, branding]);
+  const pwa = React.useMemo(
+    () => effectivePwa(pwaConfig, brandSource(branding)),
+    [pwaConfig, branding],
+  );
 
   /**
    * The installed app's document-level identity — the title-bar colour, its
@@ -241,7 +246,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     applyPwaDocument(pwa);
     const observer = new MutationObserver(() => applyPwaDocument(pwa));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
     return () => observer.disconnect();
   }, [pwa]);
 
@@ -252,8 +260,26 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   // setter below is a stable useCallback so this identity changes only when the
   // branding, appearance or PWA state actually does.
   const value = React.useMemo(
-    () => ({ branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig }),
-    [branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig],
+    () => ({
+      branding,
+      setBranding,
+      userAppearance,
+      setUserAppearance,
+      ready,
+      pwa,
+      pwaConfig,
+      setPwaConfig,
+    }),
+    [
+      branding,
+      setBranding,
+      userAppearance,
+      setUserAppearance,
+      ready,
+      pwa,
+      pwaConfig,
+      setPwaConfig,
+    ],
   );
 
   return <BrandingCtx.Provider value={value}>{children}</BrandingCtx.Provider>;

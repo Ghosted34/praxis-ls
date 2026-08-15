@@ -54,7 +54,9 @@ export function ManualPlaceDialog({
   onCreated: (place: api.GeoPlace) => void;
 }) {
   const [name, setName] = React.useState(defaults?.name || "");
-  const [kind, setKind] = React.useState<api.PlaceKind>(defaults?.kind || "ADDRESS");
+  const [kind, setKind] = React.useState<api.PlaceKind>(
+    defaults?.kind || "ADDRESS",
+  );
   const [country, setCountry] = React.useState(defaults?.country || "");
   const [lat, setLat] = React.useState("");
   const [lng, setLng] = React.useState("");
@@ -80,10 +82,19 @@ export function ManualPlaceDialog({
 
   const latNum = Number(lat);
   const lngNum = Number(lng);
-  const latOk = lat.trim() !== "" && Number.isFinite(latNum) && latNum >= -90 && latNum <= 90;
-  const lngOk = lng.trim() !== "" && Number.isFinite(lngNum) && lngNum >= -180 && lngNum <= 180;
+  const latOk =
+    lat.trim() !== "" &&
+    Number.isFinite(latNum) &&
+    latNum >= -90 &&
+    latNum <= 90;
+  const lngOk =
+    lng.trim() !== "" &&
+    Number.isFinite(lngNum) &&
+    lngNum >= -180 &&
+    lngNum <= 180;
   const countryOk = country === "" || /^[A-Za-z]{2}$/.test(country.trim());
-  const canSave = name.trim().length > 0 && latOk && lngOk && countryOk && !busy;
+  const canSave =
+    name.trim().length > 0 && latOk && lngOk && countryOk && !busy;
 
   async function save() {
     setBusy(true);
@@ -117,10 +128,20 @@ export function ManualPlaceDialog({
       description="For a terminal, warehouse or address that the catalogue and the worldwide search both miss."
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            disabled={busy}
+          >
             Cancel
           </Button>
-          <Button type="button" onClick={save} disabled={!canSave} loading={busy}>
+          <Button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            loading={busy}
+          >
             Add place
           </Button>
         </>
@@ -128,9 +149,9 @@ export function ManualPlaceDialog({
     >
       <div className="space-y-4">
         <Callout tone="info" title="This becomes reference data">
-          Everyone on this tenant can pick it on future files, and it will not be overwritten by an
-          automatic lookup. Name it the way an operator would search for it — including the town
-          usually does it.
+          Everyone on this tenant can pick it on future files, and it will not
+          be overwritten by an automatic lookup. Name it the way an operator
+          would search for it — including the town usually does it.
         </Callout>
 
         <Field
@@ -138,12 +159,20 @@ export function ManualPlaceDialog({
           required
           hint="What people will type to find it, e.g. “Entrepôt Bonabéri, Douala”."
         >
-          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={160} />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={160}
+          />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Kind">
-            <Select value={kind} onChange={(e) => setKind(e.target.value as api.PlaceKind)} aria-label="Kind">
+            <Select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as api.PlaceKind)}
+              aria-label="Kind"
+            >
               {api.PLACE_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {api.PLACE_KIND_LABEL[k]}
@@ -170,7 +199,11 @@ export function ManualPlaceDialog({
             label="Latitude"
             required
             hint={COORD_HINT}
-            error={lat.trim() === "" || latOk ? undefined : "Must be a number between -90 and 90."}
+            error={
+              lat.trim() === "" || latOk
+                ? undefined
+                : "Must be a number between -90 and 90."
+            }
           >
             <Input
               inputMode="decimal"
@@ -182,7 +215,11 @@ export function ManualPlaceDialog({
           <Field
             label="Longitude"
             required
-            error={lng.trim() === "" || lngOk ? undefined : "Must be a number between -180 and 180."}
+            error={
+              lng.trim() === "" || lngOk
+                ? undefined
+                : "Must be a number between -180 and 180."
+            }
           >
             <Input
               inputMode="decimal"
@@ -197,7 +234,11 @@ export function ManualPlaceDialog({
           label="Address or description"
           hint="Optional. Gate number, landmark, whatever the driver needs."
         >
-          <Input value={formatted} onChange={(e) => setFormatted(e.target.value)} maxLength={500} />
+          <Input
+            value={formatted}
+            onChange={(e) => setFormatted(e.target.value)}
+            maxLength={500}
+          />
         </Field>
 
         <Checkbox
@@ -206,9 +247,10 @@ export function ManualPlaceDialog({
           label="This is a nearby reference point, not the exact spot"
         />
         <p className="micro text-muted-foreground">
-          Tick this when the coordinate is a junction or landmark you agreed to use because the real
-          address cannot be pinned. The file still carries your delivery instructions; the map just
-          stops claiming a precision nobody promised.
+          Tick this when the coordinate is a junction or landmark you agreed to
+          use because the real address cannot be pinned. The file still carries
+          your delivery instructions; the map just stops claiming a precision
+          nobody promised.
         </p>
 
         {error && <ErrorState message={error} />}

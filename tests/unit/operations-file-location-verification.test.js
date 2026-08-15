@@ -72,7 +72,11 @@ function fakeClient({ fields, known = KNOWN } = {}) {
       const s = String(sql).replace(/\s+/g, " ").trim();
       state.sql.push(s);
       if (/FROM service_type_field_set/i.test(s)) {
-        return { rows: [{ service_type_field_set_id: "fs-1", version: 1, is_active: true }] };
+        return {
+          rows: [
+            { service_type_field_set_id: "fs-1", version: 1, is_active: true },
+          ],
+        };
       }
       if (/FROM service_type_field\b/i.test(s)) return { rows: fields };
       if (/FROM geo_place WHERE query_key = ANY/i.test(s)) {
@@ -80,7 +84,15 @@ function fakeClient({ fields, known = KNOWN } = {}) {
         return {
           rows: params[0]
             .filter((k) => known.has(k))
-            .map((k) => ({ geo_place_id: `gp-${k}`, query_key: k, name: known.get(k), latitude: "4.0", longitude: "9.7", verified_at: "2026-01-01T00:00:00.000Z", is_active: true })),
+            .map((k) => ({
+              geo_place_id: `gp-${k}`,
+              query_key: k,
+              name: known.get(k),
+              latitude: "4.0",
+              longitude: "9.7",
+              verified_at: "2026-01-01T00:00:00.000Z",
+              is_active: true,
+            })),
         };
       }
       throw new Error("fakeClient: unmodelled SQL: " + s.slice(0, 140));
@@ -141,9 +153,19 @@ describe("opening a movement file", () => {
 
   test("several unverified places are reported together, not one per attempt", async () => {
     const c = fakeClient({
-      fields: [field(), field({ key: "pod", label_en: "Port of discharge (POD)", facet_role: "DESTINATION", column_name: "pod" })],
+      fields: [
+        field(),
+        field({
+          key: "pod",
+          label_en: "Port of discharge (POD)",
+          facet_role: "DESTINATION",
+          column_name: "pod",
+        }),
+      ],
     });
-    const err = await apply(c, { pol: "Doula", pod: "Antwerpen" }).catch((e) => e);
+    const err = await apply(c, { pol: "Doula", pod: "Antwerpen" }).catch(
+      (e) => e,
+    );
     expect(Object.keys(err.details).sort()).toEqual(["pod", "pol"]);
     expect(err.message).toContain("Port of loading (POL)");
     expect(err.message).toContain("Port of discharge (POD)");
@@ -152,20 +174,50 @@ describe("opening a movement file", () => {
   test("a place confirmed from a provider search satisfies the gate", async () => {
     // Exactly what geo_place.service.confirmSuggestion stores for a confirmed
     // Geoapify result: the disambiguated label, normalised into the key.
-    const c = fakeClient({ fields: [field({ key: "place_receipt", facet_role: "ORIGIN", column_name: "place_receipt", label_en: "Place of collection" })] });
-    await expect(apply(c, { place_receipt: "Zone Industrielle Bassa, Douala" })).resolves.toBeTruthy();
+    const c = fakeClient({
+      fields: [
+        field({
+          key: "place_receipt",
+          facet_role: "ORIGIN",
+          column_name: "place_receipt",
+          label_en: "Place of collection",
+        }),
+      ],
+    });
+    await expect(
+      apply(c, { place_receipt: "Zone Industrielle Bassa, Douala" }),
+    ).resolves.toBeTruthy();
   });
 
   test("a value stored in details_json rather than a column is checked too", async () => {
-    const c = fakeClient({ fields: [field({ key: "entry_port", facet_role: "ROUTE_VIA", column_name: null })] });
-    await expect(apply(c, { entry_port: "Nowhere" })).rejects.toMatchObject({ code: "UNVERIFIED_PLACE" });
+    const c = fakeClient({
+      fields: [
+        field({
+          key: "entry_port",
+          facet_role: "ROUTE_VIA",
+          column_name: null,
+        }),
+      ],
+    });
+    await expect(apply(c, { entry_port: "Nowhere" })).rejects.toMatchObject({
+      code: "UNVERIFIED_PLACE",
+    });
   });
 
   test("a custody location is a place too — a warehousing file names a real site", async () => {
     const c = fakeClient({
-      fields: [field({ key: "warehouse_location", facet_role: "CUSTODY_LOCATION", column_name: null, label_en: "Warehouse" })],
+      fields: [
+        field({
+          key: "warehouse_location",
+          facet_role: "CUSTODY_LOCATION",
+          column_name: null,
+          label_en: "Warehouse",
+        }),
+      ],
     });
-    await expect(apply(c, { warehouse_location: "Shed 9" })).rejects.toMatchObject({ code: "UNVERIFIED_PLACE" });
+    await expect(
+      apply(c, { warehouse_location: "Shed 9" }),
+    ).rejects.toMatchObject({ code: "UNVERIFIED_PLACE" });
   });
 
   /*
@@ -179,16 +231,32 @@ describe("opening a movement file", () => {
    */
   test("a collection address is gated — it is where the itinerary starts", async () => {
     const c = fakeClient({
-      fields: [field({ key: "place_receipt", facet_role: "COLLECTION", column_name: "place_receipt", label_en: "Place of collection" })],
+      fields: [
+        field({
+          key: "place_receipt",
+          facet_role: "COLLECTION",
+          column_name: "place_receipt",
+          label_en: "Place of collection",
+        }),
+      ],
     });
-    await expect(apply(c, { place_receipt: "the yard behind the mill" })).rejects.toMatchObject({
+    await expect(
+      apply(c, { place_receipt: "the yard behind the mill" }),
+    ).rejects.toMatchObject({
       code: "UNVERIFIED_PLACE",
     });
   });
 
   test("a delivery address is gated, and names itself in the refusal", async () => {
     const c = fakeClient({
-      fields: [field({ key: "place_delivery", facet_role: "FINAL_DELIVERY", column_name: "place_delivery", label_en: "Place of delivery" })],
+      fields: [
+        field({
+          key: "place_delivery",
+          facet_role: "FINAL_DELIVERY",
+          column_name: "place_delivery",
+          label_en: "Place of delivery",
+        }),
+      ],
     });
     const err = await apply(c, { place_delivery: "Yaonde" }).catch((e) => e);
     expect(err.code).toBe("UNVERIFIED_PLACE");
@@ -201,15 +269,33 @@ describe("opening a movement file", () => {
     // word apart. Only the second is a place, and a gate that confused them would
     // refuse to open every file with a delivery date on it.
     const c = fakeClient({
-      fields: [field({ key: "estimated_delivery_date", data_type: "DATE", facet_role: "DELIVERY_DATE", column_name: "promised_delivery_date", label_en: "Estimated Project Delivery Date", is_required: false })],
+      fields: [
+        field({
+          key: "estimated_delivery_date",
+          data_type: "DATE",
+          facet_role: "DELIVERY_DATE",
+          column_name: "promised_delivery_date",
+          label_en: "Estimated Project Delivery Date",
+          is_required: false,
+        }),
+      ],
     });
-    await expect(apply(c, { estimated_delivery_date: "2026-09-25" })).resolves.toBeTruthy();
+    await expect(
+      apply(c, { estimated_delivery_date: "2026-09-25" }),
+    ).resolves.toBeTruthy();
     expect(c.state.keysAsked).toEqual([]);
   });
 
   test("a verified delivery address passes and is rewritten to the catalogue's spelling", async () => {
     const c = fakeClient({
-      fields: [field({ key: "place_delivery", facet_role: "FINAL_DELIVERY", column_name: "place_delivery", label_en: "Place of delivery" })],
+      fields: [
+        field({
+          key: "place_delivery",
+          facet_role: "FINAL_DELIVERY",
+          column_name: "place_delivery",
+          label_en: "Place of delivery",
+        }),
+      ],
     });
     const { patch } = await apply(c, { place_delivery: "kribi" });
     expect(patch.place_delivery).toBe("Kribi");
@@ -225,16 +311,35 @@ describe("what is deliberately NOT checked", () => {
 
   test("a non-geographic field is never place-checked", async () => {
     const c = fakeClient({
-      fields: [field({ key: "cargo_desc", data_type: "TEXT", facet_role: "CARGO_DESC", column_name: null, is_required: false })],
+      fields: [
+        field({
+          key: "cargo_desc",
+          data_type: "TEXT",
+          facet_role: "CARGO_DESC",
+          column_name: null,
+          is_required: false,
+        }),
+      ],
     });
-    await expect(apply(c, { cargo_desc: "40 pallets of sorghum" })).resolves.toBeTruthy();
+    await expect(
+      apply(c, { cargo_desc: "40 pallets of sorghum" }),
+    ).resolves.toBeTruthy();
   });
 
   test("a GEO_PLACE field with no geographic role is not gated", async () => {
     // Defensive: a tenant could define a GEO_PLACE field for reference without
     // it being the file's origin or destination. Blocking that would be us
     // deciding what their form means.
-    const c = fakeClient({ fields: [field({ key: "nearest_town", facet_role: null, column_name: null, is_required: false })] });
+    const c = fakeClient({
+      fields: [
+        field({
+          key: "nearest_town",
+          facet_role: null,
+          column_name: null,
+          is_required: false,
+        }),
+      ],
+    });
     await expect(apply(c, { nearest_town: "Somewhere" })).resolves.toBeTruthy();
   });
 
@@ -242,13 +347,27 @@ describe("what is deliberately NOT checked", () => {
     // 0676 converts the seeded ones. A tenant who deliberately reverted a field
     // to free text has said they want free text, and this is not the layer that
     // argues with them.
-    const c = fakeClient({ fields: [field({ data_type: "TEXT", key: "final_destination", column_name: null })] });
-    await expect(apply(c, { final_destination: "the usual yard" })).resolves.toBeTruthy();
+    const c = fakeClient({
+      fields: [
+        field({
+          data_type: "TEXT",
+          key: "final_destination",
+          column_name: null,
+        }),
+      ],
+    });
+    await expect(
+      apply(c, { final_destination: "the usual yard" }),
+    ).resolves.toBeTruthy();
   });
 
   test("EDITING an existing file is never blocked by an unverified legacy value", async () => {
     const c = fakeClient({ fields: [field()] });
-    const { patch } = await apply(c, { pol: "Doula" }, { enforceRequired: false });
+    const { patch } = await apply(
+      c,
+      { pol: "Doula" },
+      { enforceRequired: false },
+    );
     expect(patch.pol).toBe("Doula");
     // …and nothing was even looked up, so the edit path costs no extra query.
     expect(c.state.keysAsked).toEqual([]);
@@ -270,11 +389,17 @@ describe("the gate stays local", () => {
       fields: [
         field(),
         field({ key: "pod", facet_role: "DESTINATION", column_name: "pod" }),
-        field({ key: "entry_port", facet_role: "ROUTE_VIA", column_name: null }),
+        field({
+          key: "entry_port",
+          facet_role: "ROUTE_VIA",
+          column_name: null,
+        }),
       ],
     });
     await apply(c, { pol: "Douala", pod: "Antwerp", entry_port: "Kribi" });
-    expect(c.state.sql.filter((s) => /query_key = ANY/.test(s))).toHaveLength(1);
+    expect(c.state.sql.filter((s) => /query_key = ANY/.test(s))).toHaveLength(
+      1,
+    );
   });
 
   test("the keys asked for are the normalised forms, matching what 0675 seeded", async () => {

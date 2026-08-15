@@ -365,7 +365,18 @@ async function assess(client, { vacancy, applicant, criteria = [] }) {
 
   return {
     ai_score: overall,
-    ai_breakdown: { ...dims, criteria: scoredCriteria, cv_read: !!cvText },
+    ai_breakdown: {
+      ...dims,
+      criteria: scoredCriteria,
+      // One key per line, and `cv_read` in particular must stay at the start of
+      // one. check-response-contract.js discovers server-emitted JSON keys with
+      // a line-anchored regex (`/^\s*([a-z][a-z0-9_]*)\s*:/gm`), so a key folded
+      // into a single-line object literal is invisible to it — and because
+      // `cv_read` lives inside a jsonb column rather than being a column of its
+      // own, the schema scan cannot find it either. Collapse this object and the
+      // client's `AiBreakdown.cv_read` is reported as drift.
+      cv_read: !!cvText,
+    },
     ai_summary: out.summary ? String(out.summary).slice(0, 2000) : null,
     ai_provisional: false,
     ai_model: provider || null,

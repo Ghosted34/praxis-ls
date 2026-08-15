@@ -58,7 +58,8 @@
 import * as React from "react";
 
 /** Anything that can hold focus inside a cell. */
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]), [data-roving]';
+const FOCUSABLE =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"]), [data-roving]';
 
 export function useRovingRows(rowCount: number, enabled: boolean) {
   const bodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -96,7 +97,12 @@ export function useRovingRows(rowCount: number, enabled: boolean) {
       if (!enabled || rowCount === 0) return;
       // Let a text input inside a cell (inline edit) own its own arrow keys.
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      if (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable
+      )
+        return;
 
       const move = (next: number) => {
         e.preventDefault();

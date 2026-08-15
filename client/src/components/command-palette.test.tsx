@@ -22,7 +22,10 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
 import type { NavAccess } from "@/lib/nav-access";
-import { ShellContext, type ShellContextValue } from "@/app/layout/shell-context";
+import {
+  ShellContext,
+  type ShellContextValue,
+} from "@/app/layout/shell-context";
 import { EMPTY_SHELL_PREFS } from "@/lib/preferences";
 import { CommandPalette } from "./command-palette";
 
@@ -37,11 +40,20 @@ const GROUPS = [
       { to: "/finance/receivables", label: "Receivables" },
     ],
   },
-  { heading: "Warehouse", items: [{ to: "/wms/inventory", label: "Inventory" }] },
+  {
+    heading: "Warehouse",
+    items: [{ to: "/wms/inventory", label: "Inventory" }],
+  },
 ];
 
 function shell(modules: string[], resolved = true): ShellContextValue {
-  const access: NavAccess = { modules, groups: [], byGroup: {}, isCeo: false, version: "v" };
+  const access: NavAccess = {
+    modules,
+    groups: [],
+    byGroup: {},
+    isCeo: false,
+    version: "v",
+  };
   return {
     access,
     ready: resolved,
@@ -64,7 +76,9 @@ function open(value: ShellContextValue) {
 }
 
 const labels = () =>
-  within(screen.getByRole("dialog")).getAllByRole("button").map((b) => b.textContent?.trim() ?? "");
+  within(screen.getByRole("dialog"))
+    .getAllByRole("button")
+    .map((b) => b.textContent?.trim() ?? "");
 
 beforeEach(() => {
   window.HTMLElement.prototype.scrollIntoView = () => {};

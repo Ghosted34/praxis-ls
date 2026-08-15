@@ -34,12 +34,16 @@ import * as api from "@/lib/operations-api";
 /** Whole days between two ISO dates — how a user reads a slip. */
 function dayGap(a?: string | null, b?: string | null) {
   if (!a || !b) return 0;
-  const ms = new Date(String(b).slice(0, 10)).getTime() - new Date(String(a).slice(0, 10)).getTime();
+  const ms =
+    new Date(String(b).slice(0, 10)).getTime() -
+    new Date(String(a).slice(0, 10)).getTime();
   return Math.round(ms / 86400000);
 }
 
 const gapLabel = (n: number) =>
-  n === 0 ? "" : `${Math.abs(n)} ${Math.abs(n) === 1 ? "day" : "days"} ${n > 0 ? "later" : "earlier"}`;
+  n === 0
+    ? ""
+    : `${Math.abs(n)} ${Math.abs(n) === 1 ? "day" : "days"} ${n > 0 ? "later" : "earlier"}`;
 
 /** Reopening is governed — a reason is required, so it gets its own dialog. */
 function ReopenDialog({
@@ -77,13 +81,25 @@ function ReopenDialog({
       description="Completing a stage freezes its dates and records how late it ran. Reopening discards that measurement and re-forecasts everything after it, so it is recorded with a reason."
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} loading={busy} disabled={busy || reason.trim().length < 3}>Reopen</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={busy || reason.trim().length < 3}
+          >
+            Reopen
+          </Button>
         </>
       }
     >
       <Field label="Why is this being reopened?" required>
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Marked complete on the wrong file" />
+        <Input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Marked complete on the wrong file"
+        />
       </Field>
       {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
     </Modal>
@@ -141,41 +157,84 @@ function InsertDialog({
       description="For something this file needs that the template did not anticipate. Everything after it is re-forecast."
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} loading={busy} disabled={busy || !code.trim() || !label.trim()}>Insert stage</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={busy || !code.trim() || !label.trim()}
+          >
+            Insert stage
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <Field label="Code" required>
-          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="CUSTOMS_QUERY" />
+          <Input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="CUSTOMS_QUERY"
+          />
         </Field>
         <Field label="Label" required>
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Réserve douanière à lever" />
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Réserve douanière à lever"
+          />
         </Field>
         <Field label="Owner" hint="Who a delay on this stage is attributed to.">
-          <Select value={owner} onChange={(e) => setOwner(e.target.value as api.OwnerTier)}>
+          <Select
+            value={owner}
+            onChange={(e) => setOwner(e.target.value as api.OwnerTier)}
+          >
             {api.OWNER_TIERS.map((t) => (
-              <option key={t} value={t}>{api.OWNER_TIER_LABEL[t]}</option>
+              <option key={t} value={t}>
+                {api.OWNER_TIER_LABEL[t]}
+              </option>
             ))}
           </Select>
         </Field>
-        <Field label="Minimum duration (hours)" hint="The floor this stage cannot be compressed below.">
-          <Input value={hours} onChange={(e) => setHours(e.target.value.replace(/[^0-9]/g, ""))} className="num" />
+        <Field
+          label="Minimum duration (hours)"
+          hint="The floor this stage cannot be compressed below."
+        >
+          <Input
+            value={hours}
+            onChange={(e) => setHours(e.target.value.replace(/[^0-9]/g, ""))}
+            className="num"
+          />
         </Field>
-        <Checkbox checked={visible} onCheckedChange={setVisible} label="Visible to the client on the portal" />
+        <Checkbox
+          checked={visible}
+          onCheckedChange={setVisible}
+          label="Visible to the client on the portal"
+        />
         {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
       </div>
     </Modal>
   );
 }
 
-export function MilestoneChain({ dossierId, compact = false }: { dossierId: string; compact?: boolean }) {
-  const chain = useResource(() => api.milestonesByDossier(dossierId), [dossierId]);
+export function MilestoneChain({
+  dossierId,
+  compact = false,
+}: {
+  dossierId: string;
+  compact?: boolean;
+}) {
+  const chain = useResource(
+    () => api.milestonesByDossier(dossierId),
+    [dossierId],
+  );
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [reopening, setReopening] = React.useState<api.MilestoneInstance | null>(null);
-  const [inserting, setInserting] = React.useState<api.MilestoneInstance | null>(null);
+  const [reopening, setReopening] =
+    React.useState<api.MilestoneInstance | null>(null);
+  const [inserting, setInserting] =
+    React.useState<api.MilestoneInstance | null>(null);
 
   const rows = React.useMemo(() => chain.data || [], [chain.data]);
 
@@ -227,21 +286,30 @@ export function MilestoneChain({ dossierId, compact = false }: { dossierId: stri
     <div className="space-y-3">
       {breaching && (
         <Callout tone="bad" title="Forecast to miss the committed date">
-          What remains will not fit before the SLA date even at each stage&apos;s minimum duration.
-          The commitment is unchanged — this is the warning that it is now at risk.
+          What remains will not fit before the SLA date even at each
+          stage&apos;s minimum duration. The commitment is unchanged — this is
+          the warning that it is now at risk.
         </Callout>
       )}
       {provisional && !breaching && (
         <Callout tone="info" title="Schedule is provisional">
-          Dates after {anchor?.label_fr || anchor?.label || anchor?.code} are estimates until it actually
-          happens; the rest of the chain re-forecasts from the real event.
+          Dates after {anchor?.label_fr || anchor?.label || anchor?.code} are
+          estimates until it actually happens; the rest of the chain
+          re-forecasts from the real event.
         </Callout>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="micro">{done} of {rows.length} complete</span>
+        <span className="micro">
+          {done} of {rows.length} complete
+        </span>
         {!compact && (
-          <Button size="sm" variant="outline" onClick={recalc} loading={busyId === "all"}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={recalc}
+            loading={busyId === "all"}
+          >
             Re-forecast
           </Button>
         )}
@@ -255,7 +323,10 @@ export function MilestoneChain({ dossierId, compact = false }: { dossierId: stri
           const slip = dayGap(committed, forecast);
           const next = api.nextMilestoneStatus(m.status);
           return (
-            <li key={m.milestone_instance_id} className="rounded-md border border-border px-3 py-2">
+            <li
+              key={m.milestone_instance_id}
+              className="rounded-md border border-border px-3 py-2"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -267,7 +338,10 @@ export function MilestoneChain({ dossierId, compact = false }: { dossierId: stri
                   </div>
                   <span className="micro">
                     {m.owner_tier ? api.OWNER_TIER_LABEL[m.owner_tier] : "—"}
-                    {m.status === "DONE" && m.attributed_to && m.variance_hours != null && m.variance_hours > 0
+                    {m.status === "DONE" &&
+                    m.attributed_to &&
+                    m.variance_hours != null &&
+                    m.variance_hours > 0
                       ? ` · ${Math.round(m.variance_hours)}h late, charged to ${api.OWNER_TIER_LABEL[m.attributed_to]}`
                       : ""}
                     {m.reopen_reason ? ` · reopened: ${m.reopen_reason}` : ""}
@@ -280,23 +354,37 @@ export function MilestoneChain({ dossierId, compact = false }: { dossierId: stri
                     {/* The forecast appears only when it disagrees with the promise —
                         two identical dates on every row is noise. */}
                     {slip !== 0 && (
-                      <div className={`micro ${slip > 0 ? "text-[rgb(var(--bad))]" : ""}`}>
+                      <div
+                        className={`micro ${slip > 0 ? "text-[rgb(var(--bad))]" : ""}`}
+                      >
                         forecast {dateFmt(forecast)} · {gapLabel(slip)}
                       </div>
                     )}
                   </div>
                   <Pill tone={api.milestoneHealthTone(m.health || m.status)}>
-                    {api.MILESTONE_HEALTH_LABEL[String(m.health || m.status)] || m.status}
+                    {api.MILESTONE_HEALTH_LABEL[String(m.health || m.status)] ||
+                      m.status}
                   </Pill>
                   {!compact && (
                     <div className="flex items-center gap-1">
                       {next && (
-                        <Button size="sm" variant="outline" loading={busyId === m.milestone_instance_id} onClick={() => advance(m)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={busyId === m.milestone_instance_id}
+                          onClick={() => advance(m)}
+                        >
                           {api.milestoneAdvanceLabel(m.status)}
                         </Button>
                       )}
                       {m.status === "DONE" && (
-                        <Button size="sm" variant="ghost" onClick={() => setReopening(m)}>Reopen</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setReopening(m)}
+                        >
+                          Reopen
+                        </Button>
                       )}
                       <button
                         type="button"
@@ -318,13 +406,22 @@ export function MilestoneChain({ dossierId, compact = false }: { dossierId: stri
       {error && <ErrorState message={error} />}
 
       {reopening && (
-        <ReopenDialog milestone={reopening} onClose={() => setReopening(null)} onDone={chain.reload} />
+        <ReopenDialog
+          milestone={reopening}
+          onClose={() => setReopening(null)}
+          onDone={chain.reload}
+        />
       )}
       {inserting && (
         <InsertDialog
           dossierId={dossierId}
           afterSeq={Number(inserting.stage_seq || 0)}
-          afterLabel={inserting.label_fr || inserting.label || inserting.code || "this stage"}
+          afterLabel={
+            inserting.label_fr ||
+            inserting.label ||
+            inserting.code ||
+            "this stage"
+          }
           onClose={() => setInserting(null)}
           onDone={chain.reload}
         />

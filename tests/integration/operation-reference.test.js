@@ -12,7 +12,7 @@
  *    can fail the way the savepoints exist to survive.
  *
  * 2. THAT THE SQL SEED AND THE JS DERIVATION AGREE. The prefix rule is written
- *    twice — as plpgsql in migration 0681, for the rows that already exist, and
+ *    twice — as plpgsql in migration 0682, for the rows that already exist, and
  *    as `derivePrefix` here, for everything created afterwards. That is the
  *    exact shape of drift this repo keeps paying for (the transport-reference
  *    normaliser was written three times and had already diverged). No amount of
@@ -28,7 +28,7 @@ const d = hasDb ? describe : describe.skip;
 
 const opsRef = require("../../src/services/documents/operation-reference");
 
-/** Migration 0681's derivation, isolated so it can be run on the same inputs. */
+/** Migration 0682's derivation, isolated so it can be run on the same inputs. */
 const SEED_DERIVATION = `
   SELECT upper(
     COALESCE(NULLIF(substr(COALESCE(w[1], ''), 1, 1), ''), 'X') ||
@@ -137,7 +137,7 @@ d("operation references (real Postgres)", () => {
     expect(opsRef.classifyReference(before)).toBeTruthy();
   });
 
-  it("derives prefixes exactly as migration 0681's seed does", async () => {
+  it("derives prefixes exactly as migration 0682's seed does", async () => {
     const names = [
       "Smart Logistics", "Base Cameroon Limited", "Praxis", "Bolloré",
       "Étoile Logistique", "Société Générale de Transit", "Smart-Logistics",

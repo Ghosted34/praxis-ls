@@ -93,7 +93,23 @@ function scanSilentCatches(file) {
 
     const line = src.slice(0, m.index).split("\n").length;
     const snippet = src.slice(m.index, i + 1).replace(/\s+/g, " ").slice(0, 120);
-    violations.push({ file: path.relative(ROOT, file), line, snippet });
+    /*
+     * POSIX separators, ALWAYS — the baseline key is `file:line`.
+     *
+     * `path.relative` is platform-native, so this yielded
+     * `src\jobs\mail-idle.js` on Windows while the committed baseline (written
+     * on a Linux runner) holds `src/jobs/mail-idle.js`. Every one of the 45
+     * grandfathered sites therefore missed its key and was reported as NEW —
+     * the ratchet appearing to have slipped by 45 notches, on a checkout where
+     * nothing had changed.
+     *
+     * That failure is the wrong way round for a guard: it is green where the
+     * baseline was written and red everywhere else, so the platform that sees
+     * the false alarm is the one that cannot tell it is false. Normalising here
+     * also keeps `--update` from rewriting the whole baseline into backslashes
+     * the moment somebody re-blesses it from Windows.
+     */
+    violations.push({ file: path.relative(ROOT, file).split(path.sep).join("/"), line, snippet });
   }
   return violations;
 }

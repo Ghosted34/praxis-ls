@@ -71,10 +71,12 @@ import { useShell } from "@/app/layout/shell-context";
  * this is called for every row of the palette on every keystroke; re-sorting it
  * per call would be the palette's dominant cost.
  */
-const BY_LENGTH: { route: string; module: string | null }[] = SCREENS.map((s) => ({
-  route: s.route,
-  module: s.module_key,
-})).sort((a, b) => b.route.length - a.route.length);
+const BY_LENGTH: { route: string; module: string | null }[] = SCREENS.map(
+  (s) => ({
+    route: s.route,
+    module: s.module_key,
+  }),
+).sort((a, b) => b.route.length - a.route.length);
 
 /**
  * Which module gates a PATH, as opposed to a registered route.
@@ -91,7 +93,10 @@ const BY_LENGTH: { route: string; module: string | null }[] = SCREENS.map((s) =>
 export function moduleForPath(pathname: string): string | null | undefined {
   const path = pathname.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
   if (path === "/") return BY_LENGTH.find((s) => s.route === "/")?.module;
-  const hit = BY_LENGTH.find((s) => s.route !== "/" && (path === s.route || path.startsWith(s.route + "/")));
+  const hit = BY_LENGTH.find(
+    (s) =>
+      s.route !== "/" && (path === s.route || path.startsWith(s.route + "/")),
+  );
   return hit ? hit.module : undefined;
 }
 
@@ -169,5 +174,7 @@ export function useCanOpenRoute(): (pathname: string) => boolean {
 export function useCanUseModule(moduleKey: string): boolean {
   const { access, resolved } = useShell();
   if (!resolved || access.isCeo) return true;
-  return access.modules.some((k) => String(k).toUpperCase() === moduleKey.toUpperCase());
+  return access.modules.some(
+    (k) => String(k).toUpperCase() === moduleKey.toUpperCase(),
+  );
 }

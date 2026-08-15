@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
 import * as fin from "@/lib/finance-api";
 import type { CreditNote } from "@/lib/finance-api";
-import { CreditNoteCreateForm, CreditNoteEditForm, CreditNotePostForm } from "./credit-note-forms";
+import {
+  CreditNoteCreateForm,
+  CreditNoteEditForm,
+  CreditNotePostForm,
+} from "./credit-note-forms";
 
 export function CreditNotesPage() {
   const [rows, setRows] = React.useState<CreditNote[] | null>(null);
@@ -31,11 +35,13 @@ export function CreditNotesPage() {
     let live = true;
     setRows(null);
     setError(null);
-    fin.listCreditNotes()
+    fin
+      .listCreditNotes()
       .then((d) => live && setRows(Array.isArray(d) ? d : []))
       .catch((e) => {
         if (!live) return;
-        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view this.");
+        if (e instanceof ApiError && e.status === 403)
+          setError("You don't have permission to view this.");
         else setError(e instanceof ApiError ? e.message : "Failed to load.");
       });
     return () => {
@@ -50,18 +56,75 @@ export function CreditNotesPage() {
 
   const list = rows ?? [];
   const columns: Column<CreditNote>[] = [
-    { key: "ref", label: "Number", render: (r) => <span className="num font-medium text-foreground">{smartCell(r.doc_number ?? "— (draft)")}</span> },
-    { key: "status", label: "Status", render: (r) => { const s = String(r.status ?? ""); return s ? <Pill tone={/POSTED|LOCKED/i.test(s) ? "ok" : /DRAFT/i.test(s) ? "mute" : "blue"}>{enumLabel(s)}</Pill> : <Pill tone="mute">Draft</Pill>; } },
-    { key: "total", label: "Total TTC", className: "num text-right", render: (r) => moneyFmt(r.total_ttc as number | string | null) },
-    { key: "created", label: "Created", render: (r) => dateFmt(r.created_at as string | null) },
     {
-      key: "_a", label: "", render: (r) => (
+      key: "ref",
+      label: "Number",
+      render: (r) => (
+        <span className="num font-medium text-foreground">
+          {smartCell(r.doc_number ?? "— (draft)")}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) => {
+        const s = String(r.status ?? "");
+        return s ? (
+          <Pill
+            tone={
+              /POSTED|LOCKED/i.test(s)
+                ? "ok"
+                : /DRAFT/i.test(s)
+                  ? "mute"
+                  : "blue"
+            }
+          >
+            {enumLabel(s)}
+          </Pill>
+        ) : (
+          <Pill tone="mute">Draft</Pill>
+        );
+      },
+    },
+    {
+      key: "total",
+      label: "Total TTC",
+      className: "num text-right",
+      render: (r) => moneyFmt(r.total_ttc as number | string | null),
+    },
+    {
+      key: "created",
+      label: "Created",
+      render: (r) => dateFmt(r.created_at as string | null),
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (r) => (
         <div className="flex justify-end gap-2">
-          <DocButton docType="CREDIT_NOTE" id={String(r.invoice_id ?? r.credit_note_id ?? "")} title={r.doc_number ? String(r.doc_number) : "Credit note"} label="View" />
+          <DocButton
+            docType="CREDIT_NOTE"
+            id={String(r.invoice_id ?? r.credit_note_id ?? "")}
+            title={r.doc_number ? String(r.doc_number) : "Credit note"}
+            label="View"
+          />
           {isDraft(r) && (
             <>
-              <Button size="sm" variant="ghost" onClick={() => setEditId(String(r.credit_note_id))}>Edit</Button>
-              <Button size="sm" variant="outline" onClick={() => setPostTarget(r)}>Post</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditId(String(r.credit_note_id))}
+              >
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPostTarget(r)}
+              >
+                Post
+              </Button>
             </>
           )}
         </div>
@@ -75,7 +138,9 @@ export function CreditNotesPage() {
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Credit notes"
         description="Reverse a finalised invoice — draft, then post the contra entry."
-        action={<Button onClick={() => setCreateOpen(true)}>New credit note</Button>}
+        action={
+          <Button onClick={() => setCreateOpen(true)}>New credit note</Button>
+        }
       />
       <KpiRow>
         <KpiTile label="Credit notes" value={String(list.length)} />
@@ -87,12 +152,27 @@ export function CreditNotesPage() {
         loading={rows === null}
         error={error}
         rowKey={(r) => String(r.credit_note_id)}
-        empty={{ title: "No credit notes yet", hint: "Create one to reverse a finalised invoice." }}
+        empty={{
+          title: "No credit notes yet",
+          hint: "Create one to reverse a finalised invoice.",
+        }}
       />
 
-      <CreditNoteCreateForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} />
-      <CreditNoteEditForm creditNoteId={editId} onClose={() => setEditId(null)} onSaved={reload} />
-      <CreditNotePostForm creditNote={postTarget} onClose={() => setPostTarget(null)} onPosted={reload} />
+      <CreditNoteCreateForm
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={reload}
+      />
+      <CreditNoteEditForm
+        creditNoteId={editId}
+        onClose={() => setEditId(null)}
+        onSaved={reload}
+      />
+      <CreditNotePostForm
+        creditNote={postTarget}
+        onClose={() => setPostTarget(null)}
+        onPosted={reload}
+      />
     </section>
   );
 }

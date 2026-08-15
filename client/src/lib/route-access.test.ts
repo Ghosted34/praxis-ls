@@ -19,7 +19,11 @@
  * can actually fail in production.
  */
 import { describe, it, expect } from "vitest";
-import { canOpenRoute, gatingModulesForPath, moduleForPath } from "./route-access";
+import {
+  canOpenRoute,
+  gatingModulesForPath,
+  moduleForPath,
+} from "./route-access";
 import { AREAS } from "@/app/layout/areas";
 import type { NavAccess } from "./nav-access";
 
@@ -37,7 +41,9 @@ describe("moduleForPath", () => {
   });
 
   it("resolves a DETAIL path under a registered screen", () => {
-    expect(moduleForPath("/finance/invoices/8f2c1d40-0000-4000-8000-000000000000")).toBe("MOD-51");
+    expect(
+      moduleForPath("/finance/invoices/8f2c1d40-0000-4000-8000-000000000000"),
+    ).toBe("MOD-51");
   });
 
   it("prefers the longest registered prefix", () => {
@@ -121,9 +127,9 @@ describe("a hub landing page is gated by its sections, not by one module", () =>
     // a hub anyone can open, and the way that happens is not malice — it is one
     // new hub whose sections nobody added to the registry, which is the same
     // omission that made all thirteen of them open before this.
-    const wideOpen = AREAS.filter((a) => a.basePath && gatingModulesForPath(a.basePath).length === 0).map(
-      (a) => a.basePath,
-    );
+    const wideOpen = AREAS.filter(
+      (a) => a.basePath && gatingModulesForPath(a.basePath).length === 0,
+    ).map((a) => a.basePath);
     expect(wideOpen).toEqual([]);
   });
 });
@@ -138,7 +144,9 @@ describe("canOpenRoute", () => {
   });
 
   it("refuses the detail page too, not only the list", () => {
-    expect(canOpenRoute(user(["MOD-33"]), "/finance/invoices/8f2c")).toBe(false);
+    expect(canOpenRoute(user(["MOD-33"]), "/finance/invoices/8f2c")).toBe(
+      false,
+    );
   });
 
   it("lets a CEO with no grant rows through, because rbac.js does", () => {

@@ -15,23 +15,42 @@ import { BulkBar } from "@/components/ui/table-controls";
  */
 describe("PageHeader", () => {
   it("renders an h1 when a description is present (the common case)", () => {
-    render(<PageHeader title="Invoices" description="Every money event posts to the ledger." />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Invoices");
-    expect(screen.getByText("Every money event posts to the ledger.")).toBeInTheDocument();
+    render(
+      <PageHeader
+        title="Invoices"
+        description="Every money event posts to the ledger."
+      />,
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Invoices",
+    );
+    expect(
+      screen.getByText("Every money event posts to the ledger."),
+    ).toBeInTheDocument();
   });
 
   it("renders an h1 when there is no description", () => {
     render(<PageHeader title="Settings" />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Settings",
+    );
   });
 
   it("renders exactly one h1 — never two competing page headings", () => {
-    render(<PageHeader title="Fleet" description="Vehicles and dispatch." eyebrow={<span>Hub</span>} />);
+    render(
+      <PageHeader
+        title="Fleet"
+        description="Vehicles and dispatch."
+        eyebrow={<span>Hub</span>}
+      />,
+    );
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("has no axe violations", async () => {
-    const { container } = render(<PageHeader title="Invoices" description="Ledger-backed." />);
+    const { container } = render(
+      <PageHeader title="Invoices" description="Ledger-backed." />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -55,8 +74,17 @@ describe("DataList states", () => {
   });
 
   it("shows the error state in preference to rows", () => {
-    render(<DataList {...base} rows={rows} error="You don't have permission to view this." loading={false} />);
-    expect(screen.getByText("You don't have permission to view this.")).toBeInTheDocument();
+    render(
+      <DataList
+        {...base}
+        rows={rows}
+        error="You don't have permission to view this."
+        loading={false}
+      />,
+    );
+    expect(
+      screen.getByText("You don't have permission to view this."),
+    ).toBeInTheDocument();
     expect(screen.queryByText("SBX-2026-0001")).not.toBeInTheDocument();
   });
 
@@ -67,16 +95,23 @@ describe("DataList states", () => {
         rows={[]}
         error={null}
         loading={false}
-        empty={{ title: "No invoices", hint: "Issue one from an approved costing." }}
+        empty={{
+          title: "No invoices",
+          hint: "Issue one from an approved costing.",
+        }}
       />,
     );
     expect(screen.getByText("No invoices")).toBeInTheDocument();
-    expect(screen.getByText("Issue one from an approved costing.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Issue one from an approved costing."),
+    ).toBeInTheDocument();
   });
 
   it("renders rows in a real table with column headers", () => {
     render(<DataList {...base} rows={rows} error={null} loading={false} />);
-    expect(screen.getByRole("columnheader", { name: "Reference" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Reference" }),
+    ).toBeInTheDocument();
     // Rows render twice (table + mobile card fallback), so scope to the table.
     const table = screen.getByRole("table");
     expect(table).toHaveTextContent("SBX-2026-0001");
@@ -84,7 +119,9 @@ describe("DataList states", () => {
   });
 
   it("populated table has no axe violations", async () => {
-    const { container } = render(<DataList {...base} rows={rows} error={null} loading={false} />);
+    const { container } = render(
+      <DataList {...base} rows={rows} error={null} loading={false} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -99,7 +136,12 @@ describe("DataList states", () => {
  * across every screen, so it is the one worth pinning.
  */
 describe("DataList row activation", () => {
-  const base = { columns, rowKey: (r: Row) => r.id, error: null, loading: false };
+  const base = {
+    columns,
+    rowKey: (r: Row) => r.id,
+    error: null,
+    loading: false,
+  };
 
   it("exposes a real, focusable, NAMED control per row — not a clickable div", () => {
     render(<DataList {...base} rows={rows} onRowClick={() => {}} />);
@@ -111,7 +153,9 @@ describe("DataList row activation", () => {
   it("activates by keyboard alone", async () => {
     const seen: Row[] = [];
     render(<DataList {...base} rows={rows} onRowClick={(r) => seen.push(r)} />);
-    const activator = screen.getAllByRole("button", { name: "SBX-2026-0002" })[0];
+    const activator = screen.getAllByRole("button", {
+      name: "SBX-2026-0002",
+    })[0];
     activator.focus();
     expect(activator).toHaveFocus();
     await userEvent.keyboard("{Enter}");
@@ -124,7 +168,9 @@ describe("DataList row activation", () => {
     // would bubble to the row's own handler and navigate twice.
     const seen: Row[] = [];
     render(<DataList {...base} rows={rows} onRowClick={(r) => seen.push(r)} />);
-    await userEvent.click(screen.getAllByRole("button", { name: "SBX-2026-0001" })[0]);
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "SBX-2026-0001" })[0],
+    );
     expect(seen).toHaveLength(1);
   });
 
@@ -138,11 +184,15 @@ describe("DataList row activation", () => {
 
   it("adds no buttons when the list is not clickable", () => {
     render(<DataList {...base} rows={rows} />);
-    expect(screen.queryByRole("button", { name: "SBX-2026-0001" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "SBX-2026-0001" }),
+    ).not.toBeInTheDocument();
   });
 
   it("a clickable list has no axe violations", async () => {
-    const { container } = render(<DataList {...base} rows={rows} onRowClick={() => {}} />);
+    const { container } = render(
+      <DataList {...base} rows={rows} onRowClick={() => {}} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -156,7 +206,12 @@ describe("DataList row activation", () => {
  * that it did not buy that by dropping table semantics.
  */
 describe("DataList keyboard row navigation", () => {
-  const base = { columns, rowKey: (r: Row) => r.id, error: null, loading: false };
+  const base = {
+    columns,
+    rowKey: (r: Row) => r.id,
+    error: null,
+    loading: false,
+  };
   const many: Row[] = Array.from({ length: 5 }, (_, i) => ({
     id: String(i),
     ref: `SBX-2026-000${i}`,
@@ -240,45 +295,70 @@ describe("DataList keyboard row navigation", () => {
  * reason this block grew is that only one of them existed.
  */
 describe("DataList selection", () => {
-  const base = { columns, rowKey: (r: Row) => r.id, error: null, loading: false };
+  const base = {
+    columns,
+    rowKey: (r: Row) => r.id,
+    error: null,
+    loading: false,
+  };
 
   function Harness({ clickable }: { clickable?: (r: Row) => void } = {}) {
     const sel = useRowSelection(rows, (r: Row) => r.id);
-    return <DataList {...base} rows={rows} selection={sel} onRowClick={clickable} />;
+    return (
+      <DataList {...base} rows={rows} selection={sel} onRowClick={clickable} />
+    );
   }
 
   /** The `hidden sm:block` half — a real <table>. */
-  const table = () => within(screen.getByRole("table").closest("div.hidden") as HTMLElement);
+  const table = () =>
+    within(screen.getByRole("table").closest("div.hidden") as HTMLElement);
   /** The `sm:hidden` half — the phone cards. */
-  const cards = () => within(document.querySelector("div.sm\\:hidden") as HTMLElement);
+  const cards = () =>
+    within(document.querySelector("div.sm\\:hidden") as HTMLElement);
 
   it("adds a checkbox column NAMED BY THE RECORD, not 'row 2'", () => {
     render(<Harness />);
-    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeInTheDocument();
-    expect(table().getByRole("checkbox", { name: /select all rows/i })).toBeInTheDocument();
+    expect(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    ).toBeInTheDocument();
+    expect(
+      table().getByRole("checkbox", { name: /select all rows/i }),
+    ).toBeInTheDocument();
   });
 
   it("select-all ticks every row, and untick clears them", async () => {
     render(<Harness />);
     const all = table().getByRole("checkbox", { name: /select all rows/i });
     await userEvent.click(all);
-    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeChecked();
-    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0002" })).toBeChecked();
+    expect(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    ).toBeChecked();
+    expect(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0002" }),
+    ).toBeChecked();
     await userEvent.click(all);
-    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).not.toBeChecked();
+    expect(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    ).not.toBeChecked();
   });
 
   it("reports MIXED when only some rows are selected", async () => {
     render(<Harness />);
-    await userEvent.click(table().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    await userEvent.click(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    );
     // aria-checked="mixed" is a fact a tick glyph cannot express.
-    expect(table().getByRole("checkbox", { name: /select all rows/i })).toHaveAttribute("aria-checked", "mixed");
+    expect(
+      table().getByRole("checkbox", { name: /select all rows/i }),
+    ).toHaveAttribute("aria-checked", "mixed");
   });
 
   it("clicking a checkbox does not also fire the row's navigation", async () => {
     const seen: Row[] = [];
     render(<Harness clickable={(r) => seen.push(r)} />);
-    await userEvent.click(table().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    await userEvent.click(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    );
     expect(seen).toHaveLength(0);
   });
 
@@ -293,27 +373,37 @@ describe("DataList selection", () => {
     // The checkbox lived in a <th>, so multi-select simply did not exist below
     // 640px: forty records meant forty taps and no bulk action.
     render(<Harness />);
-    expect(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeInTheDocument();
+    expect(
+      cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    ).toBeInTheDocument();
   });
 
   it("the card list has its own select-all, since it has no header row", async () => {
     render(<Harness />);
     const all = cards().getByRole("checkbox", { name: "Select all" });
     await userEvent.click(all);
-    expect(cards().getByRole("checkbox", { name: "Select SBX-2026-0002" })).toBeChecked();
+    expect(
+      cards().getByRole("checkbox", { name: "Select SBX-2026-0002" }),
+    ).toBeChecked();
   });
 
   it("selecting a card does not also open the record", async () => {
     const seen: Row[] = [];
     render(<Harness clickable={(r) => seen.push(r)} />);
-    await userEvent.click(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    await userEvent.click(
+      cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    );
     expect(seen).toHaveLength(0);
   });
 
   it("the two branches share one selection — they are views, not copies", async () => {
     render(<Harness />);
-    await userEvent.click(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
-    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeChecked();
+    await userEvent.click(
+      cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    );
+    expect(
+      table().getByRole("checkbox", { name: "Select SBX-2026-0001" }),
+    ).toBeChecked();
   });
 
   it("a selectable table has no axe violations", async () => {
@@ -327,23 +417,46 @@ describe("DataList selection", () => {
  */
 describe("BulkBar", () => {
   it("announces the selection rather than appearing silently", () => {
-    render(<BulkBar count={3} noun="invoice" onClear={() => {}} actions={<button>Approve</button>} />);
+    render(
+      <BulkBar
+        count={3}
+        noun="invoice"
+        onClear={() => {}}
+        actions={<button>Approve</button>}
+      />,
+    );
     const bar = screen.getByRole("status");
     expect(bar).toHaveAttribute("aria-live", "polite");
     expect(bar).toHaveTextContent("3 invoices selected");
   });
 
   it("uses the singular for one, and an irregular plural when given one", () => {
-    const { rerender } = render(<BulkBar count={1} noun="invoice" onClear={() => {}} actions={null} />);
+    const { rerender } = render(
+      <BulkBar count={1} noun="invoice" onClear={() => {}} actions={null} />,
+    );
     expect(screen.getByRole("status")).toHaveTextContent("1 invoice selected");
-    rerender(<BulkBar count={2} noun="entry" nounPlural="entries" onClear={() => {}} actions={null} />);
+    rerender(
+      <BulkBar
+        count={2}
+        noun="entry"
+        nounPlural="entries"
+        onClear={() => {}}
+        actions={null}
+      />,
+    );
     expect(screen.getByRole("status")).toHaveTextContent("2 entries selected");
   });
 
   it("UNMOUNTS at zero rather than hiding", () => {
     // A live region that stays mounted announces its own emptiness on every
     // selection change.
-    render(<BulkBar count={0} onClear={() => {}} actions={<button>Approve</button>} />);
+    render(
+      <BulkBar
+        count={0}
+        onClear={() => {}}
+        actions={<button>Approve</button>}
+      />,
+    );
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

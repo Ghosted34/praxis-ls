@@ -24,12 +24,27 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { DataView } from "@/components/ui/data-view";
 
 const PORTAL_AI: AiAction[] = [
-  { label: "Review access", kind: "read", describe: "Summarise who currently has portal access and when grants expire." },
+  {
+    label: "Review access",
+    kind: "read",
+    describe:
+      "Summarise who currently has portal access and when grants expire.",
+  },
 ];
 
 const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"];
 
-function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; clients: Row[] | null; onClose: () => void; onSaved: () => void }) {
+function GrantModal({
+  open,
+  clients,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  clients: Row[] | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [portal, setPortal] = React.useState("CLIENT");
   const [email, setEmail] = React.useState("");
   const [clientId, setClientId] = React.useState("");
@@ -86,7 +101,9 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
             method: "POST",
             body: { email: email.trim() },
           });
-          if (!r.emailed) problem = "Access granted, but the invitation email could not be sent. Use Resend on the row.";
+          if (!r.emailed)
+            problem =
+              "Access granted, but the invitation email could not be sent. Use Resend on the row.";
         } catch (e) {
           problem = `Access granted, but the invitation could not be sent (${errMsg(e)}). Use Resend on the row.`;
         }
@@ -103,10 +120,19 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
     }
   }
 
-  const clientLabel = (() => { const c = (clients || []).find((x) => String(x.client_id) === clientId); return c ? cell(c.name ?? c.legal_name) : null; })();
+  const clientLabel = (() => {
+    const c = (clients || []).find((x) => String(x.client_id) === clientId);
+    return c ? cell(c.name ?? c.legal_name) : null;
+  })();
 
   return (
-    <Modal open={open} onClose={onClose} title="Grant portal access" description="Give an external party a scoped, read-only view." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Grant portal access"
+      description="Give an external party a scoped, read-only view."
+      size="lg"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Portal" required>
@@ -119,10 +145,19 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
             </Select>
           </Field>
           <Field label="Subject email" required>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cfo@acme.cm" />
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="cfo@acme.cm"
+            />
           </Field>
           {portal === "CLIENT" && (
-            <Field label="Client scope" hint="They only ever see this client" required>
+            <Field
+              label="Client scope"
+              hint="They only ever see this client"
+              required
+            >
               <SearchSelect
                 path="/clients"
                 value={clientLabel}
@@ -134,7 +169,11 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
             </Field>
           )}
           <Field label="Expires at" hint="Optional — recommended for auditors">
-            <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            <Input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
           </Field>
         </div>
 
@@ -142,11 +181,17 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
             and the credentials live in portal_user. On by default for that
             reason; turn it off only when the person already has a sign-in. */}
         <label className="flex items-start gap-2 text-sm text-foreground">
-          <input type="checkbox" className="mt-0.5" checked={invite} onChange={(e) => setInvite(e.target.checked)} />
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={invite}
+            onChange={(e) => setInvite(e.target.checked)}
+          />
           <span>
             Email them a link to set a password
             <span className="block text-xs text-muted-foreground">
-              Without a sign-in, a grant alone doesn't let anyone in. Leave this on unless they already have one.
+              Without a sign-in, a grant alone doesn't let anyone in. Leave this
+              on unless they already have one.
             </span>
           </span>
         </label>
@@ -161,7 +206,11 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {notice ? "Close" : "Cancel"}
           </Button>
-          <Button onClick={submit} loading={busy} disabled={!email.trim() || busy}>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={!email.trim() || busy}
+          >
             Grant access
           </Button>
         </div>
@@ -170,7 +219,17 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
   );
 }
 
-function PreviewModal({ open, title, path, onClose }: { open: boolean; title: string; path: string; onClose: () => void }) {
+function PreviewModal({
+  open,
+  title,
+  path,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  path: string;
+  onClose: () => void;
+}) {
   const [data, setData] = React.useState<unknown>(undefined);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -187,14 +246,24 @@ function PreviewModal({ open, title, path, onClose }: { open: boolean; title: st
     };
   }, [open, path]);
 
-  const gated = error && /feature|not enabled|disabled|forbidden|permission/i.test(error);
+  const gated =
+    error && /feature|not enabled|disabled|forbidden|permission/i.test(error);
 
   return (
-    <Modal open={open} onClose={onClose} title={title} description="Exactly what this grantee would see." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description="Exactly what this grantee would see."
+      size="xl"
+    >
       <div className="space-y-4">
         {error ? (
           gated ? (
-            <EmptyState title="This portal view isn't enabled" hint="The portal.* feature flag for this view is off. Enable it to preview the external scope." />
+            <EmptyState
+              title="This portal view isn't enabled"
+              hint="The portal.* feature flag for this view is off. Enable it to preview the external scope."
+            />
           ) : (
             <ErrorState message={error} />
           )
@@ -228,14 +297,32 @@ export function PortalAccessPage() {
   // join is exactly the trap that broke TEST-mode writes for fourteen sessions.
   const { rows: portalUsers } = useList("/portal/users");
   const [grantOpen, setGrantOpen] = React.useState(false);
-  const [preview, setPreview] = React.useState<{ title: string; path: string } | null>(null);
+  const [preview, setPreview] = React.useState<{
+    title: string;
+    path: string;
+  } | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [rowNotice, setRowNotice] = React.useState<string | null>(null);
 
-  const clientName = React.useMemo(() => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])), [clients]);
+  const clientName = React.useMemo(
+    () =>
+      new Map(
+        (clients || []).map((c) => [
+          String(c.client_id),
+          cell(c.name ?? c.legal_name),
+        ]),
+      ),
+    [clients],
+  );
   const loginByEmail = React.useMemo(
-    () => new Map((portalUsers || []).map((u) => [String(u.email || "").toLowerCase(), u])),
+    () =>
+      new Map(
+        (portalUsers || []).map((u) => [
+          String(u.email || "").toLowerCase(),
+          u,
+        ]),
+      ),
     [portalUsers],
   );
 
@@ -245,10 +332,13 @@ export function PortalAccessPage() {
     setRowError(null);
     setRowNotice(null);
     try {
-      const r = await tenant<{ emailed: boolean; created: boolean }>("/portal/users/invite", {
-        method: "POST",
-        body: { email },
-      });
+      const r = await tenant<{ emailed: boolean; created: boolean }>(
+        "/portal/users/invite",
+        {
+          method: "POST",
+          body: { email },
+        },
+      );
       setRowNotice(
         r.emailed
           ? `Invitation sent to ${email}.`
@@ -266,7 +356,10 @@ export function PortalAccessPage() {
     setRowBusy(id);
     setRowError(null);
     try {
-      await tenant(`/portals/access/${id}/revoke`, { method: "POST", body: {} });
+      await tenant(`/portals/access/${id}/revoke`, {
+        method: "POST",
+        body: {},
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -281,13 +374,33 @@ export function PortalAccessPage() {
         eyebrow={<HubCrumb area="Portal" to="/portal/access" />}
         title="Portal access"
         description="Grant and revoke external read-access — client, investor and auditor portals."
-        action={(
+        action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => setPreview({ title: "Investor portal preview", path: "/portals/investor" })}>Preview investor</Button>
-            <Button variant="outline" onClick={() => setPreview({ title: "Auditor portal preview", path: "/portals/auditor" })}>Preview auditor</Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setPreview({
+                  title: "Investor portal preview",
+                  path: "/portals/investor",
+                })
+              }
+            >
+              Preview investor
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setPreview({
+                  title: "Auditor portal preview",
+                  path: "/portals/auditor",
+                })
+              }
+            >
+              Preview auditor
+            </Button>
             <Button onClick={() => setGrantOpen(true)}>Grant access</Button>
           </div>
-        )}
+        }
       />
 
       {rowError && (
@@ -296,7 +409,9 @@ export function PortalAccessPage() {
         </div>
       )}
       {rowNotice && (
-        <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">{rowNotice}</div>
+        <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+          {rowNotice}
+        </div>
       )}
 
       {error ? (
@@ -304,7 +419,10 @@ export function PortalAccessPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No active grants" hint="Grant a client, investor or auditor scoped read-access to get started." />
+        <EmptyState
+          title="No active grants"
+          hint="Grant a client, investor or auditor scoped read-access to get started."
+        />
       ) : (
         <div className="space-y-2">
           {rows.map((g) => {
@@ -317,27 +435,54 @@ export function PortalAccessPage() {
             const login = loginByEmail.get(email);
             const signedInBefore = !!(login && login.last_login_at);
             return (
-              <div key={id} className="lux-card flex flex-wrap items-center gap-3 p-3">
+              <div
+                key={id}
+                className="lux-card flex flex-wrap items-center gap-3 p-3"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">{cell(g.subject_email)}</p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">{portal.toLowerCase()}</span>
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {cell(g.subject_email)}
+                    </p>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">
+                      {portal.toLowerCase()}
+                    </span>
                     {!login ? (
                       <span className="rounded-full bg-[hsl(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--warn))]">
                         no sign-in
                       </span>
                     ) : !signedInBefore ? (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">invited</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        invited
+                      </span>
                     ) : null}
-                    {g.expires_at ? <span className="text-xs text-muted-foreground">expires {dateFmt(g.expires_at)}</span> : null}
+                    {g.expires_at ? (
+                      <span className="text-xs text-muted-foreground">
+                        expires {dateFmt(g.expires_at)}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
-                    {g.client_id ? `Scope: ${clientName.get(String(g.client_id)) ?? "client"} · ` : ""}granted {dateFmt(g.created_at)}
-                    {signedInBefore ? ` · last signed in ${dateFmt(login.last_login_at)}` : ""}
+                    {g.client_id
+                      ? `Scope: ${clientName.get(String(g.client_id)) ?? "client"} · `
+                      : ""}
+                    granted {dateFmt(g.created_at)}
+                    {signedInBefore
+                      ? ` · last signed in ${dateFmt(login.last_login_at)}`
+                      : ""}
                   </p>
                 </div>
                 {portal === "CLIENT" && !!g.client_id && (
-                  <Button size="sm" variant="ghost" onClick={() => setPreview({ title: `Client portal — ${clientName.get(String(g.client_id)) ?? ""}`, path: `/portals/client?client_id=${String(g.client_id)}` })}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setPreview({
+                        title: `Client portal — ${clientName.get(String(g.client_id)) ?? ""}`,
+                        path: `/portals/client?client_id=${String(g.client_id)}`,
+                      })
+                    }
+                  >
                     Preview
                   </Button>
                 )}
@@ -346,11 +491,20 @@ export function PortalAccessPage() {
                   variant={login ? "ghost" : "outline"}
                   loading={rowBusy === email}
                   onClick={() => invite(email)}
-                  title={login ? "Send a fresh set-password link" : "Create the sign-in and email a set-password link"}
+                  title={
+                    login
+                      ? "Send a fresh set-password link"
+                      : "Create the sign-in and email a set-password link"
+                  }
                 >
                   {login ? "Resend invite" : "Create sign-in"}
                 </Button>
-                <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => revoke(id)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={rowBusy === id}
+                  onClick={() => revoke(id)}
+                >
                   Revoke
                 </Button>
               </div>
@@ -361,8 +515,18 @@ export function PortalAccessPage() {
 
       <AiActions actions={PORTAL_AI} />
 
-      <GrantModal open={grantOpen} clients={clients} onClose={() => setGrantOpen(false)} onSaved={reload} />
-      <PreviewModal open={!!preview} title={preview?.title ?? ""} path={preview?.path ?? ""} onClose={() => setPreview(null)} />
+      <GrantModal
+        open={grantOpen}
+        clients={clients}
+        onClose={() => setGrantOpen(false)}
+        onSaved={reload}
+      />
+      <PreviewModal
+        open={!!preview}
+        title={preview?.title ?? ""}
+        path={preview?.path ?? ""}
+        onClose={() => setPreview(null)}
+      />
     </section>
   );
 }

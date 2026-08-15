@@ -17,11 +17,14 @@ import { milestonePct } from "./shared";
  * bar at "0%", which reads as broken rather than as untracked.
  */
 export function MilestoneCell({ row }: { row: api.Dossier }) {
-  if (!row.milestone_total) return <span className="micro">No milestones yet</span>;
+  if (!row.milestone_total)
+    return <span className="micro">No milestones yet</span>;
   const pct = milestonePct(row);
   return (
     <div className="min-w-[9rem] max-w-[12rem]">
-      <div className="micro mb-1 truncate">{row.current_milestone || (pct >= 100 ? "All milestones done" : "—")}</div>
+      <div className="micro mb-1 truncate">
+        {row.current_milestone || (pct >= 100 ? "All milestones done" : "—")}
+      </div>
       <div className="flex items-center gap-2">
         <div
           className="h-1.5 flex-1 rounded-full bg-[rgb(var(--ink-3)/0.15)]"
@@ -31,7 +34,10 @@ export function MilestoneCell({ row }: { row: api.Dossier }) {
           aria-valuemin={0}
           aria-valuemax={100}
         >
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
         </div>
         <span className="num text-micro text-muted-foreground">{pct}%</span>
       </div>
@@ -53,14 +59,28 @@ export function MoneyRow({
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
-      <span className={`text-sm ${strong ? "font-medium text-foreground" : "text-muted-foreground"}`}>{label}</span>
-      <span className={`num text-sm ${toneCls || (strong ? "font-medium text-foreground" : "text-foreground")}`}>{value}</span>
+      <span
+        className={`text-sm ${strong ? "font-medium text-foreground" : "text-muted-foreground"}`}
+      >
+        {label}
+      </span>
+      <span
+        className={`num text-sm ${toneCls || (strong ? "font-medium text-foreground" : "text-foreground")}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
 /** Role → person row for the 360° modal's people tab. */
-export function PersonRow({ role, p }: { role: string; p: api.OverviewPerson | undefined }) {
+export function PersonRow({
+  role,
+  p,
+}: {
+  role: string;
+  p: api.OverviewPerson | undefined;
+}) {
   const initials = (p?.name || "?")
     .split(/\s+/)
     .map((w) => w[0])
@@ -72,10 +92,15 @@ export function PersonRow({ role, p }: { role: string; p: api.OverviewPerson | u
       <span className="micro uppercase tracking-wide">{role}</span>
       {p ? (
         <span className="flex items-center gap-2">
-          <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-micro font-semibold text-primary-ink">
+          <span
+            aria-hidden
+            className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-micro font-semibold text-primary-ink"
+          >
             {initials}
           </span>
-          <span className="text-sm text-foreground">{p.name || p.user_id.slice(0, 8)}</span>
+          <span className="text-sm text-foreground">
+            {p.name || p.user_id.slice(0, 8)}
+          </span>
         </span>
       ) : (
         <span className="micro">—</span>
@@ -115,7 +140,13 @@ export function DocGroup<T>({
 }
 
 /** One row inside a DocGroup — identifier on the left, metadata on the right. */
-export function DocRow({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+export function DocRow({
+  label,
+  children,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-1.5">
       {label}

@@ -50,7 +50,9 @@ export function useActionError() {
   const [message, setMessage] = React.useState<string | null>(current);
   React.useEffect(() => {
     listeners.add(setMessage);
-    return () => { listeners.delete(setMessage); };
+    return () => {
+      listeners.delete(setMessage);
+    };
   }, []);
   return message;
 }

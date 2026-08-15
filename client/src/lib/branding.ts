@@ -62,7 +62,8 @@ export type LoginConfig = {
 
 // ── Appearance ──
 /** Public — resolved by Host, no auth. Brands the login pre-auth. */
-export const fetchBranding = () => tenant<Branding>("/branding", { auth: false });
+export const fetchBranding = () =>
+  tenant<Branding>("/branding", { auth: false });
 
 /** Gated(edit). Upserts only the provided fields; returns the merged result. */
 export const saveBranding = (patch: Partial<Branding>) =>
@@ -70,14 +71,18 @@ export const saveBranding = (patch: Partial<Branding>) =>
 
 /** Gated(edit). Uploads a base64 image data URL; returns its /media URL. */
 export const uploadImage = (dataUrl: string) =>
-  tenant<{ logoUrl: string }>("/branding/logo", { method: "POST", body: { dataUrl } });
+  tenant<{ logoUrl: string }>("/branding/logo", {
+    method: "POST",
+    body: { dataUrl },
+  });
 
 /** @deprecated alias kept for existing callers — use uploadImage. */
 export const uploadLogo = uploadImage;
 
 // ── Login screen ──
 /** Public — the login page reads this pre-auth. */
-export const fetchLogin = () => tenant<LoginConfig>("/branding/login", { auth: false });
+export const fetchLogin = () =>
+  tenant<LoginConfig>("/branding/login", { auth: false });
 
 /** Gated(edit). */
 export const saveLogin = (patch: Partial<LoginConfig>) =>
@@ -85,4 +90,7 @@ export const saveLogin = (patch: Partial<LoginConfig>) =>
 
 /** Gated(edit). Uploads a base64 login background; returns its /media URL. */
 export const uploadLoginBackground = (dataUrl: string) =>
-  tenant<{ backgroundUrl: string }>("/branding/login/background", { method: "POST", body: { dataUrl } });
+  tenant<{ backgroundUrl: string }>("/branding/login/background", {
+    method: "POST",
+    body: { dataUrl },
+  });

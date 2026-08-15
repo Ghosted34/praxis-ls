@@ -16,7 +16,10 @@ type PdfDocument = {
   numPages: number;
   getPage: (n: number) => Promise<{
     getViewport: (opts: { scale: number }) => { width: number; height: number };
-    render: (opts: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }) => {
+    render: (opts: {
+      canvasContext: CanvasRenderingContext2D;
+      viewport: { width: number; height: number };
+    }) => {
       promise: Promise<void>;
       cancel: () => void;
     };
@@ -46,7 +49,9 @@ export function PdfPreview({
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [page, setPage] = React.useState(1);
   const [pageCount, setPageCount] = React.useState(0);
-  const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = React.useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -56,7 +61,8 @@ export function PdfPreview({
   React.useEffect(() => {
     let live = true;
     let pdf: PdfDocument | null = null;
-    let renderTask: { promise: Promise<void>; cancel: () => void } | null = null;
+    let renderTask: { promise: Promise<void>; cancel: () => void } | null =
+      null;
 
     async function draw() {
       setStatus("loading");
@@ -90,10 +96,17 @@ export function PdfPreview({
 
         const unscaled = pdfPage.getViewport({ scale: 1 });
         const targetH = full ? Math.min(window.innerHeight * 0.7, 900) : 112;
-        const targetW = full ? Math.min(canvas.parentElement?.clientWidth || 720, 860) : 280;
-        const fit = Math.min(targetW / unscaled.width, targetH / unscaled.height);
+        const targetW = full
+          ? Math.min(canvas.parentElement?.clientWidth || 720, 860)
+          : 280;
+        const fit = Math.min(
+          targetW / unscaled.width,
+          targetH / unscaled.height,
+        );
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const viewport = pdfPage.getViewport({ scale: Math.max(fit, 0.15) * dpr });
+        const viewport = pdfPage.getViewport({
+          scale: Math.max(fit, 0.15) * dpr,
+        });
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -106,14 +119,22 @@ export function PdfPreview({
       } catch (err) {
         if (!live) return;
         setStatus("error");
-        setError(err instanceof Error && err.message ? err.message : "Could not render this PDF.");
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Could not render this PDF.",
+        );
       }
     }
 
     void draw();
     return () => {
       live = false;
-      try { renderTask?.cancel(); } catch { /* @silent:teardown */ }
+      try {
+        renderTask?.cancel();
+      } catch {
+        /* @silent:teardown */
+      }
       void pdf?.destroy();
     };
   }, [file, full, page]);
@@ -129,7 +150,11 @@ export function PdfPreview({
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label={pageCount ? `PDF preview, page ${Math.min(page, pageCount)} of ${pageCount}` : "PDF preview"}
+        aria-label={
+          pageCount
+            ? `PDF preview, page ${Math.min(page, pageCount)} of ${pageCount}`
+            : "PDF preview"
+        }
         className={cn(
           "max-w-full rounded-md bg-white",
           full ? "max-h-[70vh]" : "max-h-28",
@@ -137,18 +162,32 @@ export function PdfPreview({
         )}
       />
       {status === "loading" && (
-        <div className={cn("flex w-full items-center justify-center rounded-md border text-sm text-muted-foreground", full ? "h-[70vh]" : "h-28")}>
+        <div
+          className={cn(
+            "flex w-full items-center justify-center rounded-md border text-sm text-muted-foreground",
+            full ? "h-[70vh]" : "h-28",
+          )}
+        >
           Rendering preview…
         </div>
       )}
       {status === "error" && (
-        <div className={cn("flex w-full flex-col items-center justify-center gap-2 rounded-md border px-3 text-center", full ? "h-[40vh]" : "h-28")}>
+        <div
+          className={cn(
+            "flex w-full flex-col items-center justify-center gap-2 rounded-md border px-3 text-center",
+            full ? "h-[40vh]" : "h-28",
+          )}
+        >
           <p className="text-sm text-muted-foreground">
             {error && /password|encrypted/i.test(error)
               ? "This PDF is password-protected, so it cannot be previewed here."
               : "Could not render this PDF in the page."}
           </p>
-          <button type="button" className="text-sm text-primary-ink underline" onClick={openTab}>
+          <button
+            type="button"
+            className="text-sm text-primary-ink underline"
+            onClick={openTab}
+          >
             Open in a new tab
           </button>
         </div>

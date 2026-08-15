@@ -27,7 +27,10 @@ const { isRateLimiter } = require("../../src/shared/http/rate-limit");
  * 404 so nothing can be enumerated) and careers.validator (every field bounded).
  */
 const PUBLIC_BY_DESIGN = new Map([
-  ["hr/careers", "Public job adverts + applications. Callers have no accounts by definition."],
+  [
+    "hr/careers",
+    "Public job adverts + applications. Callers have no accounts by definition.",
+  ],
 ]);
 
 /**
@@ -157,8 +160,16 @@ describe("every tenant module router is authenticated (no anonymous surface)", (
       // first — and so the expectation reads as "nothing is unlimited" rather
       // than depending on a regex to tell `limited` from `UNLIMITED`.
       const unlimited = routes
-        .filter((route) => !(route.stack || []).some((h) => isRateLimiter(h.handle) || isRateLimiter(h)))
-        .map((route) => `${Object.keys(route.methods).join("/").toUpperCase()} ${route.path}`);
+        .filter(
+          (route) =>
+            !(route.stack || []).some(
+              (h) => isRateLimiter(h.handle) || isRateLimiter(h),
+            ),
+        )
+        .map(
+          (route) =>
+            `${Object.keys(route.methods).join("/").toUpperCase()} ${route.path}`,
+        );
       expect(unlimited).toEqual([]);
     });
   });

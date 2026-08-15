@@ -81,7 +81,9 @@ export type SelectOption = {
  * ungrouped list yields exactly one ungrouped run, so the rendered output is
  * byte-identical to what it was before grouping existed.
  */
-function runs(options: SelectOption[]): { group?: string; options: SelectOption[] }[] {
+function runs(
+  options: SelectOption[],
+): { group?: string; options: SelectOption[] }[] {
   const out: { group?: string; options: SelectOption[] }[] = [];
   for (const o of options) {
     const last = out[out.length - 1];
@@ -105,7 +107,11 @@ function renderItem(o: SelectOption) {
     >
       <span className="min-w-0 flex-1">
         <RadixSelect.ItemText>{o.label}</RadixSelect.ItemText>
-        {o.hint && <span className="mt-0.5 block text-xs text-muted-foreground">{o.hint}</span>}
+        {o.hint && (
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {o.hint}
+          </span>
+        )}
       </span>
       <RadixSelect.ItemIndicator>
         <CheckIcon className="text-primary-ink" />
@@ -133,7 +139,11 @@ export function Select({
   className?: string;
 } & React.AriaAttributes) {
   return (
-    <RadixSelect.Root value={value || undefined} onValueChange={onValueChange} disabled={disabled}>
+    <RadixSelect.Root
+      value={value || undefined}
+      onValueChange={onValueChange}
+      disabled={disabled}
+    >
       <RadixSelect.Trigger
         id={id}
         {...aria}

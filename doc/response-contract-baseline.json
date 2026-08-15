@@ -1,5 +1,12 @@
 {
-  "_note": "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason; remove it when the underlying source of truth is fixed.",
+  "_note": "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason in _reasons; remove it when the underlying source of truth is fixed.",
+  "_reasons": {
+    "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime — no literal key exists to find. Sibling of the already-listed estimated_count.",
+    "committed_count": "Same computed key as actual_count. Emitted, but only ever as a template literal.",
+    "client_scoped": "DOCUMENT_TYPE config stored inside a dictionary_item jsonb blob, so it is not a column and never will be. Sibling of the already-listed client_visible.",
+    "exclude_id": "Input, not output: read as req.body.exclude_id by master/_shared/actions.js. DedupeInput is a request shape.",
+    "field_type": "Custom-field definitions live inside a `setting` jsonb blob (security/setting/setting.rules.js), so no column backs them."
+  },
   "tables": [
     "ageing",
     "app_role",
@@ -14,9 +21,12 @@
   ],
   "allow": [
     "actor_email_snapshot",
+    "actual_count",
     "advance_open",
+    "client_scoped",
     "client_visible",
     "coa_aux_account",
+    "committed_count",
     "container_type_label",
     "credit_note_id",
     "cv_read",
@@ -30,7 +40,9 @@
     "earning_lines",
     "entity_label",
     "estimated_count",
+    "exclude_id",
     "failed_jurisdictions",
+    "field_type",
     "gl_parity",
     "hard_block_reason",
     "hard_blocked_at",

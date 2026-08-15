@@ -30,24 +30,84 @@ export const NAV: NavGroup[] = [
       { to: "/godmode", label: "God mode" },
     ],
   },
-  { heading: "Commercial", prefix: "/commercial", items: [{ to: "/commercial", label: "Commercial" }] },
-  { heading: "Sales & CRM", prefix: "/sales", items: [{ to: "/sales", label: "Sales & CRM" }] },
-  { heading: "Operations", prefix: "/operations", items: [{ to: "/operations", label: "Operations" }] },
-  { heading: "Procurement", prefix: "/procurement", items: [{ to: "/procurement", label: "Procurement" }] },
-  { heading: "Costing", prefix: "/costing", items: [{ to: "/costing", label: "Costing" }] },
-  { heading: "Finance", prefix: "/finance", items: [{ to: "/finance", label: "Finance" }] },
-  { heading: "Warehouse", prefix: "/wms", items: [{ to: "/wms", label: "Warehouse" }] },
-  { heading: "Fleet", prefix: "/fleet", items: [{ to: "/fleet", label: "Fleet" }] },
-  { heading: "People & HR", prefix: "/hr", items: [{ to: "/hr", label: "People & HR" }] },
-  { heading: "Master data", prefix: "/master", items: [{ to: "/master", label: "Master data" }] },
-  { heading: "Vault", prefix: "/vault", items: [{ to: "/vault", label: "Vault & compliance" }] },
-  { heading: "Comms", prefix: "/comms", items: [
-    { to: "/comms", label: "Smart Comms" },
-    { to: "/comms/mail", label: "Mailbox" },
-  ] },
-  { heading: "Security & Access", prefix: "/security", items: [{ to: "/security", label: "Security & access" }] },
-  { heading: "Governance", prefix: "/governance", items: [{ to: "/governance", label: "Governance" }] },
-  { heading: "Settings & Admin", prefix: "/settings", items: [{ to: "/settings", label: "Settings & admin" }] },
+  {
+    heading: "Commercial",
+    prefix: "/commercial",
+    items: [{ to: "/commercial", label: "Commercial" }],
+  },
+  {
+    heading: "Sales & CRM",
+    prefix: "/sales",
+    items: [{ to: "/sales", label: "Sales & CRM" }],
+  },
+  {
+    heading: "Operations",
+    prefix: "/operations",
+    items: [{ to: "/operations", label: "Operations" }],
+  },
+  {
+    heading: "Procurement",
+    prefix: "/procurement",
+    items: [{ to: "/procurement", label: "Procurement" }],
+  },
+  {
+    heading: "Costing",
+    prefix: "/costing",
+    items: [{ to: "/costing", label: "Costing" }],
+  },
+  {
+    heading: "Finance",
+    prefix: "/finance",
+    items: [{ to: "/finance", label: "Finance" }],
+  },
+  {
+    heading: "Warehouse",
+    prefix: "/wms",
+    items: [{ to: "/wms", label: "Warehouse" }],
+  },
+  {
+    heading: "Fleet",
+    prefix: "/fleet",
+    items: [{ to: "/fleet", label: "Fleet" }],
+  },
+  {
+    heading: "People & HR",
+    prefix: "/hr",
+    items: [{ to: "/hr", label: "People & HR" }],
+  },
+  {
+    heading: "Master data",
+    prefix: "/master",
+    items: [{ to: "/master", label: "Master data" }],
+  },
+  {
+    heading: "Vault",
+    prefix: "/vault",
+    items: [{ to: "/vault", label: "Vault & compliance" }],
+  },
+  {
+    heading: "Comms",
+    prefix: "/comms",
+    items: [
+      { to: "/comms", label: "Smart Comms" },
+      { to: "/comms/mail", label: "Mailbox" },
+    ],
+  },
+  {
+    heading: "Security & Access",
+    prefix: "/security",
+    items: [{ to: "/security", label: "Security & access" }],
+  },
+  {
+    heading: "Governance",
+    prefix: "/governance",
+    items: [{ to: "/governance", label: "Governance" }],
+  },
+  {
+    heading: "Settings & Admin",
+    prefix: "/settings",
+    items: [{ to: "/settings", label: "Settings & admin" }],
+  },
 ];
 
 /**

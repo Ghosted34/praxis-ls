@@ -22,7 +22,17 @@ import { PageError } from "./shared";
 import { type Entry, entryValue } from "./store-shared";
 import { slug } from "./store-shared";
 
-function PolicyForm({ open, editing, onClose, onSaved }: { open: boolean; editing: Entry | null; onClose: () => void; onSaved: () => void }) {
+function PolicyForm({
+  open,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Entry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = React.useState("");
   const [key, setKey] = React.useState("");
   const [body, setBody] = React.useState("");
@@ -45,7 +55,10 @@ function PolicyForm({ open, editing, onClose, onSaved }: { open: boolean; editin
     setError(null);
     const k = editing?.key || slug(key || name);
     try {
-      await tenant(`/settings/policy/${encodeURIComponent(k)}`, { method: "PUT", body: { value: { name: name.trim(), body_html: body } } });
+      await tenant(`/settings/policy/${encodeURIComponent(k)}`, {
+        method: "PUT",
+        body: { value: { name: name.trim(), body_html: body } },
+      });
       onSaved();
       onClose();
     } catch (e) {
@@ -56,18 +69,43 @@ function PolicyForm({ open, editing, onClose, onSaved }: { open: boolean; editin
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit policy" : "New policy"} description="A named policy document — privacy, refund, QMS, terms and the like." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit policy" : "New policy"}
+      description="A named policy document — privacy, refund, QMS, terms and the like."
+      size="xl"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Privacy policy" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Privacy policy"
+            />
           </Field>
-          <Field label="Key" hint={editing ? "Locked after creation" : "e.g. privacy, refund, terms"}>
-            <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="privacy" disabled={!!editing} />
+          <Field
+            label="Key"
+            hint={
+              editing ? "Locked after creation" : "e.g. privacy, refund, terms"
+            }
+          >
+            <Input
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="privacy"
+              disabled={!!editing}
+            />
           </Field>
         </div>
         <Field label="Body (HTML or text)">
-          <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="Your policy text…" />
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={10}
+            placeholder="Your policy text…"
+          />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -98,7 +136,9 @@ export function BusinessPoliciesPage() {
     setRowBusy(key);
     setRowError(null);
     try {
-      await tenant(`/settings/policy/${encodeURIComponent(key)}`, { method: "DELETE" });
+      await tenant(`/settings/policy/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -109,7 +149,12 @@ export function BusinessPoliciesPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Business policies" description="Named policy documents — privacy, refund, QMS, terms and more." action={<Button onClick={() => edit(null)}>New policy</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Business policies"
+        description="Named policy documents — privacy, refund, QMS, terms and more."
+        action={<Button onClick={() => edit(null)}>New policy</Button>}
+      />
 
       <PageError message={rowError} />
 
@@ -118,7 +163,10 @@ export function BusinessPoliciesPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No policies yet" hint="Add a privacy, refund or terms policy." />
+        <EmptyState
+          title="No policies yet"
+          hint="Add a privacy, refund or terms policy."
+        />
       ) : (
         <Table>
           <THead>
@@ -138,10 +186,19 @@ export function BusinessPoliciesPage() {
                   <TD className="num text-sm">{key}</TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => edit({ key, value: v })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => edit({ key, value: v })}
+                      >
                         Edit
                       </Button>
-                      <Button size="sm" variant="ghost" loading={rowBusy === key} onClick={() => del(key)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={rowBusy === key}
+                        onClick={() => del(key)}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -153,7 +210,12 @@ export function BusinessPoliciesPage() {
         </Table>
       )}
 
-      <PolicyForm open={open} editing={editing} onClose={() => setOpen(false)} onSaved={reload} />
+      <PolicyForm
+        open={open}
+        editing={editing}
+        onClose={() => setOpen(false)}
+        onSaved={reload}
+      />
     </section>
   );
 }

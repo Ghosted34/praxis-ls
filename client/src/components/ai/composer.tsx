@@ -35,16 +35,38 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Tooltip } from "@/components/ui/tooltip";
-import { DropdownMenu, DropdownLabel, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownLabel,
+  DropdownRadioGroup,
+  DropdownRadioItem,
+} from "@/components/ui/dropdown-menu";
 import { XIcon } from "@/components/ui/icons";
-import { AI_MODES, scopeByKey, useAiScopes, type AiMode, type AiScope, type ScreenContext } from "./context";
+import {
+  AI_MODES,
+  scopeByKey,
+  useAiScopes,
+  type AiMode,
+  type AiScope,
+  type ScreenContext,
+} from "./context";
 import { MicIcon, PraxisMark, ScopeIcon } from "./icons";
 import { useDictation } from "./speech";
 
 /** Send — an upward arrow in a filled disc, matching the reference ERP. */
 function SendArrow() {
   return (
-    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" />
     </svg>
   );
@@ -165,7 +187,11 @@ export function AiComposer({
           rows={1}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault();
               submit();
             }
@@ -180,18 +206,35 @@ export function AiComposer({
 
         {/* Controls row. Scope and mode on the left because they qualify what
             you are about to say; send on the right because it ends it. */}
-        <div className={cn("flex items-center gap-1.5 px-2", hero ? "pb-2 pt-1.5" : "pb-1.5 pt-1")}>
-          <ScopePicker scopes={scopes} value={scope} onChange={(k) => onValueChange({ ...value, scope: k })} />
-          <ModeChips value={value.mode} onChange={(m) => onValueChange({ ...value, mode: m })} compact={!hero} />
+        <div
+          className={cn(
+            "flex items-center gap-1.5 px-2",
+            hero ? "pb-2 pt-1.5" : "pb-1.5 pt-1",
+          )}
+        >
+          <ScopePicker
+            scopes={scopes}
+            value={scope}
+            onChange={(k) => onValueChange({ ...value, scope: k })}
+          />
+          <ModeChips
+            value={value.mode}
+            onChange={(m) => onValueChange({ ...value, mode: m })}
+            compact={!hero}
+          />
 
           <span className="flex-1" />
 
           {dictation.supported && (
-            <Tooltip content={dictation.listening ? "Stop dictating" : "Dictate"}>
+            <Tooltip
+              content={dictation.listening ? "Stop dictating" : "Dictate"}
+            >
               <button
                 type="button"
                 onClick={dictation.toggle}
-                aria-label={dictation.listening ? "Stop dictating" : "Dictate a question"}
+                aria-label={
+                  dictation.listening ? "Stop dictating" : "Dictate a question"
+                }
                 aria-pressed={dictation.listening}
                 className={cn(
                   "tap-24 relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors",
@@ -205,7 +248,10 @@ export function AiComposer({
                     carrying meaning: the microphone is live. Suppressed under
                     prefers-reduced-motion globally (index.css). */}
                 {dictation.listening && (
-                  <span aria-hidden className="absolute h-8 w-8 animate-ping rounded-md bg-bad-fill/20" />
+                  <span
+                    aria-hidden
+                    className="absolute h-8 w-8 animate-ping rounded-md bg-bad-fill/20"
+                  />
                 )}
               </button>
             </Tooltip>
@@ -262,7 +308,11 @@ function ScopePicker({
               : "text-muted-foreground hover:bg-accent hover:text-foreground",
           )}
         >
-          {scoped ? <Icon width={12} height={12} /> : <ScopeIcon width={12} height={12} />}
+          {scoped ? (
+            <Icon width={12} height={12} />
+          ) : (
+            <ScopeIcon width={12} height={12} />
+          )}
           <span className="truncate">{value.label}</span>
         </button>
       }
@@ -297,7 +347,15 @@ function ScopePicker({
  * on tap. Four chips plus a scope plus a mic does not fit a 360px composer, and
  * wrapping the row is worse than cycling.
  */
-function ModeChips({ value, onChange, compact }: { value: AiMode; onChange: (m: AiMode) => void; compact?: boolean }) {
+function ModeChips({
+  value,
+  onChange,
+  compact,
+}: {
+  value: AiMode;
+  onChange: (m: AiMode) => void;
+  compact?: boolean;
+}) {
   const idx = AI_MODES.findIndex((m) => m.value === value);
   return (
     <div
@@ -319,11 +377,15 @@ function ModeChips({ value, onChange, compact }: { value: AiMode; onChange: (m: 
                 if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
                 e.preventDefault();
                 const d = e.key === "ArrowRight" ? 1 : -1;
-                onChange(AI_MODES[(idx + d + AI_MODES.length) % AI_MODES.length].value);
+                onChange(
+                  AI_MODES[(idx + d + AI_MODES.length) % AI_MODES.length].value,
+                );
               }}
               className={cn(
                 "tap-24 h-7 rounded-md px-2 text-micro font-medium transition-colors",
-                on ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+                on
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {m.label}
@@ -336,7 +398,13 @@ function ModeChips({ value, onChange, compact }: { value: AiMode; onChange: (m: 
 }
 
 /** The compact cycling variant, for a drawer on a phone. */
-export function ModeChipCompact({ value, onChange }: { value: AiMode; onChange: (m: AiMode) => void }) {
+export function ModeChipCompact({
+  value,
+  onChange,
+}: {
+  value: AiMode;
+  onChange: (m: AiMode) => void;
+}) {
   const idx = AI_MODES.findIndex((m) => m.value === value);
   const mode = AI_MODES[idx === -1 ? 0 : idx];
   return (

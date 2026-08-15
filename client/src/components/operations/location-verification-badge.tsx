@@ -15,7 +15,11 @@
  */
 import { Pill, type Tone } from "@/components/ui/pill";
 import type { GeoPlace } from "@/lib/operations-api";
-import { VERIFICATION_COPY, verificationOf, type VerificationState } from "./place-meta";
+import {
+  VERIFICATION_COPY,
+  verificationOf,
+  type VerificationState,
+} from "./place-meta";
 
 const TONE: Record<VerificationState, Tone> = {
   verified: "ok",

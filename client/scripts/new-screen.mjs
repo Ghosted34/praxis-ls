@@ -63,7 +63,9 @@ if (!area || !name) {
   process.exit(2);
 }
 if (!["wide", "standard", "reading", "full"].includes(width)) {
-  console.error(`\n--width must be one of wide | standard | reading | full (got "${width}")\n`);
+  console.error(
+    `\n--width must be one of wide | standard | reading | full (got "${width}")\n`,
+  );
   process.exit(2);
 }
 
@@ -72,7 +74,10 @@ const kebab = name
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/^-|-$/g, "");
-const pascal = kebab.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+const pascal = kebab
+  .split("-")
+  .map((w) => w[0].toUpperCase() + w.slice(1))
+  .join("");
 const apiPath = opt("path") ?? `/${kebab}`;
 const singular = name.trim().toLowerCase().replace(/s$/, "");
 
@@ -83,7 +88,9 @@ if (!existsSync(areaDir)) {
   process.exit(2);
 }
 if (existsSync(file) && !force) {
-  console.error(`\n${kebab}.tsx already exists in src/features/${area}. Pass --force to overwrite.\n`);
+  console.error(
+    `\n${kebab}.tsx already exists in src/features/${area}. Pass --force to overwrite.\n`,
+  );
   process.exit(2);
 }
 
@@ -279,11 +286,19 @@ const registerEntry = `      {
 
 console.warn(`\n✓ Created src/features/${area}/${kebab}.tsx\n`);
 console.warn("Two things this deliberately did NOT edit for you.\n");
-console.warn("1. The route, in src/app/app.tsx — lazy, like every other one:\n");
+console.warn(
+  "1. The route, in src/app/app.tsx — lazy, like every other one:\n",
+);
 console.warn(route);
-console.warn(`\n   import { ${pascal}Page } from "@/features/${area}/${kebab}";  (via the lazy() wrapper)\n`);
-console.warn("2. The axe register, in src/features/screens.axe.test.tsx. This is");
-console.warn("   what gates the screen on every CI run — four states, axe-clean,");
+console.warn(
+  `\n   import { ${pascal}Page } from "@/features/${area}/${kebab}";  (via the lazy() wrapper)\n`,
+);
+console.warn(
+  "2. The axe register, in src/features/screens.axe.test.tsx. This is",
+);
+console.warn(
+  "   what gates the screen on every CI run — four states, axe-clean,",
+);
 console.warn("   exactly one <h1>:\n");
 console.warn(registerEntry);
 console.warn(`

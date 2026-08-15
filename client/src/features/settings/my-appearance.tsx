@@ -16,7 +16,11 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useBranding } from "@/app/branding/branding-context";
-import { saveUserAppearance, resetUserAppearance, type UserAppearance } from "@/lib/preferences";
+import {
+  saveUserAppearance,
+  resetUserAppearance,
+  type UserAppearance,
+} from "@/lib/preferences";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -37,7 +41,10 @@ export function MyAppearancePage() {
 
   const [draft, setDraft] = React.useState<UserAppearance>(userAppearance);
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = React.useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
 
   // The context resolves asynchronously (UserAppearanceSync fetches after auth),
   // so this screen can mount before the user's saved values arrive. Re-seed when
@@ -65,9 +72,16 @@ export function MyAppearancePage() {
       setUserAppearance(saved); // repaints the whole app immediately
       dirty.current = false;
       setDraft(saved);
-      setMsg({ kind: "ok", text: "Saved. Your fonts are applied across the app." });
+      setMsg({
+        kind: "ok",
+        text: "Saved. Your fonts are applied across the app.",
+      });
     } catch (err) {
-      setMsg({ kind: "err", text: err instanceof ApiError ? err.message : "Couldn't save. Try again." });
+      setMsg({
+        kind: "err",
+        text:
+          err instanceof ApiError ? err.message : "Couldn't save. Try again.",
+      });
     } finally {
       setBusy(false);
     }
@@ -81,9 +95,16 @@ export function MyAppearancePage() {
       setUserAppearance(saved);
       dirty.current = false;
       setDraft(saved);
-      setMsg({ kind: "ok", text: "Cleared. You're back on the workspace fonts." });
+      setMsg({
+        kind: "ok",
+        text: "Cleared. You're back on the workspace fonts.",
+      });
     } catch (err) {
-      setMsg({ kind: "err", text: err instanceof ApiError ? err.message : "Couldn't reset. Try again." });
+      setMsg({
+        kind: "err",
+        text:
+          err instanceof ApiError ? err.message : "Couldn't reset. Try again.",
+      });
     } finally {
       setBusy(false);
     }
@@ -121,105 +142,120 @@ export function MyAppearancePage() {
 
       <div className="mt-2 grid gap-6 lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
-        <SettingsCard
-          title="Typography"
-          desc="Fifteen self-hosted families. Leave a field on the workspace default to keep following your organisation's brand."
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Display font">
-              <FontPicker
-                slot="display"
-                aria-label="Display font"
-                value={draft.fontDisplay || ""}
-                onChange={(v) => set("fontDisplay", v)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Workspace default: {inheritedLabel(branding.fontDisplay)}
-              </p>
-            </Field>
-            <Field label="Body font">
-              <FontPicker
-                slot="body"
-                aria-label="Body font"
-                value={draft.fontBody || ""}
-                onChange={(v) => set("fontBody", v)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Workspace default: {inheritedLabel(branding.fontBody)}
-              </p>
-            </Field>
-            <Field label="Mono font">
-              <FontPicker
-                slot="mono"
-                aria-label="Mono font"
-                value={draft.fontMono || ""}
-                onChange={(v) => set("fontMono", v)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Workspace default: {inheritedLabel(branding.fontMono)}
-              </p>
-            </Field>
-          </div>
-        </SettingsCard>
-
-        {msg && (
-          <p
-            className={
-              msg.kind === "ok"
-                ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
-                : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-            }
+          <SettingsCard
+            title="Typography"
+            desc="Fifteen self-hosted families. Leave a field on the workspace default to keep following your organisation's brand."
           >
-            {msg.text}
-          </p>
-        )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Display font">
+                <FontPicker
+                  slot="display"
+                  aria-label="Display font"
+                  value={draft.fontDisplay || ""}
+                  onChange={(v) => set("fontDisplay", v)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Workspace default: {inheritedLabel(branding.fontDisplay)}
+                </p>
+              </Field>
+              <Field label="Body font">
+                <FontPicker
+                  slot="body"
+                  aria-label="Body font"
+                  value={draft.fontBody || ""}
+                  onChange={(v) => set("fontBody", v)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Workspace default: {inheritedLabel(branding.fontBody)}
+                </p>
+              </Field>
+              <Field label="Mono font">
+                <FontPicker
+                  slot="mono"
+                  aria-label="Mono font"
+                  value={draft.fontMono || ""}
+                  onChange={(v) => set("fontMono", v)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Workspace default: {inheritedLabel(branding.fontMono)}
+                </p>
+              </Field>
+            </div>
+          </SettingsCard>
 
-        {/* Same column as Typography, and for the same reason: both are personal
+          {msg && (
+            <p
+              className={
+                msg.kind === "ok"
+                  ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+                  : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+              }
+            >
+              {msg.text}
+            </p>
+          )}
+
+          {/* Same column as Typography, and for the same reason: both are personal
             display preferences that persist through /me/preferences, so they
             belong together rather than in the tenant's brand editor. It saves on
             change rather than on this page's Save button — a pinned shortcut is
             a single toggle, and a toggle that needs confirming is a toggle that
             gets left half-set. */}
-        <RailCard />
+          <RailCard />
 
-        {/* The Control Tower's Applications grid, edited. Directly below the
+          {/* The Control Tower's Applications grid, edited. Directly below the
             rail picker because the two are the same concept applied to two
             surfaces — rail down the left, tower on the home screen. Both save
             immediately for the same reason. */}
-        <TowerCard />
+          <TowerCard />
         </div>
 
         {/* The preview column. Sticky, so it stays in view while the pickers are
             worked — the whole point of choosing a typeface is watching real
             copy re-set in it. */}
         <div className="lg:sticky lg:top-4 lg:self-start">
-        <SettingsCard title="Preview" desc="How the app will read for you once saved.">
-          <div className="space-y-2 rounded-lg border p-4">
-            <div className="text-lg font-semibold" style={{ fontFamily: effective.display || "var(--font-display)" }}>
-              Consignment SLAS-2026-0142 cleared
+          <SettingsCard
+            title="Preview"
+            desc="How the app will read for you once saved."
+          >
+            <div className="space-y-2 rounded-lg border p-4">
+              <div
+                className="text-lg font-semibold"
+                style={{
+                  fontFamily: effective.display || "var(--font-display)",
+                }}
+              >
+                Consignment SLAS-2026-0142 cleared
+              </div>
+              <p
+                className="text-sm opacity-80"
+                style={{ fontFamily: effective.body || "var(--font-body)" }}
+              >
+                Body text as you will read it all day. The quick brown fox
+                clears customs at Douala and continues to Yaoundé — 12 pallets,
+                4,800 kg, delivered against a signed waybill.
+              </p>
+              <code
+                className="block text-xs opacity-80"
+                style={{ fontFamily: effective.mono || "var(--font-mono)" }}
+              >
+                INV-2026-0142 · 12,000,000 XAF · 0O1lI
+              </code>
             </div>
-            <p className="text-sm opacity-80" style={{ fontFamily: effective.body || "var(--font-body)" }}>
-              Body text as you will read it all day. The quick brown fox clears customs at Douala and continues to
-              Yaoundé — 12 pallets, 4,800 kg, delivered against a signed waybill.
-            </p>
-            <code className="block text-xs opacity-80" style={{ fontFamily: effective.mono || "var(--font-mono)" }}>
-              INV-2026-0142 · 12,000,000 XAF · 0O1lI
-            </code>
-          </div>
-        </SettingsCard>
+          </SettingsCard>
 
-        <div className="mt-5 flex items-center justify-end gap-3">
-          {/* Only offered when there is something to clear — a reset button that
+          <div className="mt-5 flex items-center justify-end gap-3">
+            {/* Only offered when there is something to clear — a reset button that
               does nothing is a button that teaches people not to trust buttons. */}
-          {hasOverrides && (
-            <Button variant="ghost" onClick={onReset} disabled={busy}>
-              Reset to workspace fonts
+            {hasOverrides && (
+              <Button variant="ghost" onClick={onReset} disabled={busy}>
+                Reset to workspace fonts
+              </Button>
+            )}
+            <Button loading={busy} onClick={onSave}>
+              {busy ? "Saving…" : "Save changes"}
             </Button>
-          )}
-          <Button loading={busy} onClick={onSave}>
-            {busy ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
+          </div>
         </div>
       </div>
     </section>

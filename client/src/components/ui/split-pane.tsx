@@ -75,7 +75,10 @@ export function SplitPane({
   const paneId = React.useId();
   const collapsed = collapsedFrom !== null;
 
-  const clamp = React.useCallback((n: number) => Math.min(max, Math.max(min, n)), [min, max]);
+  const clamp = React.useCallback(
+    (n: number) => Math.min(max, Math.max(min, n)),
+    [min, max],
+  );
 
   const commit = React.useCallback(
     (n: number) => {
@@ -145,8 +148,13 @@ export function SplitPane({
       // panes stack; at lg the three-column template takes over. The width is a
       // live number, so it arrives as a custom property — a Tailwind arbitrary
       // value cannot hold one.
-      style={{ "--split-w": `${collapsed ? 0 : size}px` } as React.CSSProperties}
-      className={cn("grid gap-5 lg:grid-cols-[var(--split-w)_auto_minmax(0,1fr)] lg:gap-0", className)}
+      style={
+        { "--split-w": `${collapsed ? 0 : size}px` } as React.CSSProperties
+      }
+      className={cn(
+        "grid gap-5 lg:grid-cols-[var(--split-w)_auto_minmax(0,1fr)] lg:gap-0",
+        className,
+      )}
     >
       {/* overflow-hidden so a collapsed 0px pane clips rather than spilling its
           content across the detail. */}

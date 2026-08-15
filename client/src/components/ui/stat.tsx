@@ -58,8 +58,12 @@ export function Stat({
   return (
     <div className={cn("rounded-lg border bg-card px-3.5 py-2.5", className)}>
       <div className="text-micro uppercase text-muted-foreground">{label}</div>
-      <div className={cn("num mt-0.5 text-title font-semibold", TONE[tone])}>{value}</div>
-      {hint && <div className="mt-0.5 text-micro text-muted-foreground">{hint}</div>}
+      <div className={cn("num mt-0.5 text-title font-semibold", TONE[tone])}>
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-0.5 text-micro text-muted-foreground">{hint}</div>
+      )}
     </div>
   );
 }

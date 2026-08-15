@@ -49,7 +49,11 @@ type ToastApi = {
 const ToastContext = React.createContext<ToastApi | null>(null);
 
 /** Errors linger: a failure needs reading, a confirmation does not. */
-const TIMEOUT: Record<ToastTone, number> = { success: 4000, info: 5000, error: 8000 };
+const TIMEOUT: Record<ToastTone, number> = {
+  success: 4000,
+  info: 5000,
+  error: 8000,
+};
 
 const TONE_CLASS: Record<ToastTone, string> = {
   success: "border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok-fill)/0.12)]",
@@ -75,7 +79,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (tone: ToastTone, message: string) => {
       const id = nextId.current++;
       setToasts((t) => [...t, { id, tone, message }]);
-      timers.current.set(id, setTimeout(() => dismiss(id), TIMEOUT[tone]));
+      timers.current.set(
+        id,
+        setTimeout(() => dismiss(id), TIMEOUT[tone]),
+      );
     },
     [dismiss],
   );
@@ -116,7 +123,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               TONE_CLASS[t.tone],
             )}
           >
-            <p className="min-w-0 flex-1 text-sm text-foreground">{t.message}</p>
+            <p className="min-w-0 flex-1 text-sm text-foreground">
+              {t.message}
+            </p>
             <button
               type="button"
               onClick={() => dismiss(t.id)}
@@ -134,6 +143,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 export function useToast(): ToastApi {
   const ctx = React.useContext(ToastContext);
-  if (!ctx) throw new Error("useToast must be used inside <ToastProvider>. Mount it once near the app root.");
+  if (!ctx)
+    throw new Error(
+      "useToast must be used inside <ToastProvider>. Mount it once near the app root.",
+    );
   return ctx;
 }

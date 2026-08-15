@@ -77,7 +77,22 @@ export function ClientForm({ row, onClose, onSaved }: { row: (api.Client & Parti
   // Country drives the dynamic registration IDs (§2.2). Registrations and the
   // primary contact/address are local state, merged into the payload on submit —
   // the service writes them as their own rows.
+
+  // Sync legal_name / trading_name back to the hidden `name` field so the client-side
+  // schema doesn't block the submit on a missing required field before onSubmit is even called.
+  const legalName = form.watch("legal_name");
+  const tradingName = form.watch("trading_name");
+  React.useEffect(() => {
+    const derived = (legalName || "").trim() || (tradingName || "").trim();
+    if (derived) {
+      form.setValue("name", derived, { shouldValidate: true });
+    } else {
+      form.setValue("name", "", { shouldValidate: true });
+    }
+  }, [legalName, tradingName, form]);
+
   const country = String(form.watch("country_code") ?? "");
+
   const reqs = useCountryRegistrations(country);
   const [regs, setRegs] = React.useState<RegValues>(() => ({ NIU: row?.niu ?? "", RCCM: row?.rccm ?? "" }));
   const [contact, setContact] = React.useState({ name: "", email: "", phone: "" });

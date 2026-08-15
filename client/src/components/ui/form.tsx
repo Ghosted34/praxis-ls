@@ -84,32 +84,68 @@ export function Form<TFieldValues extends FieldValues>({
   children: React.ReactNode;
   className?: string;
 }) {
-  const submit = form.handleSubmit(async (values) => {
-    try {
-      await onSubmit(values);
-    } catch (e) {
-      /**
-       * The API returns 422 with `details` as `{ field: [message] }` (see
-       * `AppError("VALIDATION_ERROR", …, 422, p.error.flatten().fieldErrors)`).
-       * Routing those to the fields is the half of F12 that the errMsg
-       * consolidation in PR1 could not do from a helper — it needs the form.
-       */
-      if (e instanceof ApiError && e.status === 422 && e.fields && typeof e.fields === "object") {
-        let routed = false;
-        for (const [name, messages] of Object.entries(e.fields as Record<string, string[] | string>)) {
-          const message = Array.isArray(messages) ? messages.join(", ") : String(messages);
-          // Only fields the form actually has; anything else falls through to
-          // the banner rather than being silently dropped.
-          if (name in form.getValues()) {
-            form.setError(name as Path<TFieldValues>, { type: "server", message });
-            routed = true;
+  const submit = form.handleSubmit(
+    async (values) => {
+      form.clearErrors("root.serverError");
+      try {
+        await onSubmit(values);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 422 && e.fields && typeof e.fields === "object") {
+          let routed = false;
+          for (const [name, messages] of Object.entries(e.fields as Record<string, string[] | string>)) {
+            const message = Array.isArray(messages) ? messages.join(", ") : String(messages);
+            if (name in form.getValues()) {
+              form.setError(name as Path<TFieldValues>, { type: "server", message });
+              routed = true;
+            }
+          }
+          if (routed) return;
+        }
+        form.setError("root.serverError", { type: "server", message: errMsg(e) });
+      }
+    },
+    (errors) => {
+      // Audit fix: silent fails. When validation blocks submit, print the errors
+      // to the form root so the user isn't left guessing, and try to focus the first field.
+      let firstFocusable: HTMLElement | null = null;
+      const unrendered: string[] = [];
+
+      for (const [path, error] of Object.entries(errors)) {
+        const msg = (error as any)?.message || "Invalid";
+
+        // Escape the path for the selector (in case of array paths like "items[0].name")
+        const selectorPath = path.replace(/"/g, '\\"');
+        const el = document.querySelector(`[name="${selectorPath}"]`) as HTMLElement;
+
+        if (el) {
+          if (!firstFocusable) firstFocusable = el;
+        } else {
+          // Field not in DOM. It's a hidden/derived field.
+          unrendered.push(`${path}: ${msg}`);
+
+          // Fallbacks for known derived fields if the primary is hidden
+          if (path === "name" && !firstFocusable) {
+            const fallback = document.querySelector(`[name="legal_name"]`) as HTMLElement;
+            if (fallback) firstFocusable = fallback;
           }
         }
-        if (routed) return;
       }
-      form.setError("root.serverError", { type: "server", message: errMsg(e) });
+
+      if (firstFocusable) {
+        firstFocusable.focus();
+        firstFocusable.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      // If there are errors on fields that aren't visible, surface them to the banner
+      // so it doesn't fail silently.
+      if (unrendered.length > 0) {
+        form.setError("root.serverError", {
+          type: "client",
+          message: `Please fix issues in hidden or derived fields: ${unrendered.join(" | ")}`
+        });
+      }
     }
-  });
+  );
 
   return (
     <form onSubmit={submit} noValidate className={className}>

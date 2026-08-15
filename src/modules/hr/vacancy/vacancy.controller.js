@@ -44,6 +44,21 @@ module.exports = {
     res.json({ data: row });
   }),
 
+  /* ── Drafting from an interview (0526) ── */
+  intakeQuestions: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.intakeQuestions(c, { entityId: req.query.entity_id || null })) })),
+  intakeFollowUps: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.intakeFollowUps(c, { entityId: req.body.entity_id || null, answers: req.body.answers })) })),
+  // No `req.tenantDb`: a Whisper call with no database work in it. See the
+  // service — holding a pooled connection across it is how a slow provider
+  // takes the tenant's whole pool.
+  transcribe: asyncHandler(async (req, res) =>
+    res.json({ data: await service.transcribeAnswer(req.body.audio_data_url) })),
+  draftVacancy: asyncHandler(async (req, res) =>
+    res.status(201).json({
+      data: await req.tenantDb((c) => service.draftVacancy(c, { entityId: req.body.entity_id || null, answers: req.body.answers, actor: actor(req) })),
+    })),
+
   /* ── AI scoring (0525) ── */
   scoreApplicant: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) =>

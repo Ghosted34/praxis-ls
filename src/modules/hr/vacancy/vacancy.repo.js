@@ -69,6 +69,39 @@ module.exports = {
     return rows;
   },
 
+  /* ── The hiring entity (0526) ──────────────────────────────────────────
+   * Grounding for the drafting wizard. Only the columns an advert can honestly
+   * use — NOT share capital, tax ids or registration numbers, which are on the
+   * record, irrelevant to a job advert, and a disclosure to a third-party model
+   * that nobody asked for. */
+  getEntity(client, entityId) {
+    if (!entityId) return Promise.resolve(null);
+    return client
+      .query(
+        `SELECT entity_id, name, trading_name, description, industry, legal_form,
+                incorporation_place, incorporation_country, headcount, website,
+                default_currency, payroll_country, timezone
+           FROM corporate_entity WHERE entity_id = $1`,
+        [entityId],
+      )
+      .then((r) => r.rows[0] || null);
+  },
+  /** The sole active entity, when a tenant has exactly one — so a single-entity
+   *  workspace is never asked a question with one possible answer. Returns null
+   *  when there are none or several, and the caller then requires a choice. */
+  soleEntity(client) {
+    return client
+      .query(
+        `SELECT entity_id, name, trading_name, description, industry, legal_form,
+                incorporation_place, incorporation_country, headcount, website,
+                default_currency, payroll_country, timezone
+           FROM corporate_entity
+          WHERE COALESCE(registration_status, 'ACTIVE') <> 'INACTIVE'
+          LIMIT 2`,
+      )
+      .then((r) => (r.rows.length === 1 ? r.rows[0] : null));
+  },
+
   /* ── Custom scoring criteria ── */
   listCriteria(client, vacancyId) {
     return client

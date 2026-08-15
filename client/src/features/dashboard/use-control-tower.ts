@@ -16,7 +16,7 @@
  * so those two are tolerant and resolve to null on failure.
  */
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenant } from "@/lib/api-client";
 import { tenantKey } from "@/lib/query-client";
 import { errMsg, useList, useListPaged } from "@/lib/use-resource";
@@ -29,7 +29,19 @@ import {
   type Drill,
   type KpiId,
 } from "./drilldowns";
-import { numOrNull, str, toLanes, toLiveShipment, type Lane, type LiveShipment, type Row } from "./model";
+import {
+  legsByFile,
+  numOrNull,
+  str,
+  toActivityRecords,
+  toLanes,
+  toLiveShipment,
+  type ActivityRecord,
+  type ItineraryLeg,
+  type Lane,
+  type LiveShipment,
+  type Row,
+} from "./model";
 
 export type OverduePayload = {
   total?: number;
@@ -48,7 +60,7 @@ export type ControlTowerKpis = {
 };
 
 export type ControlTowerFilters = {
-  mode?: "AIR" | "SEA" | "LAND";
+  mode?: "AIR" | "SEA" | "LAND" | "OTHER";
   territory?: string;
   service_type_id?: string;
   date_field?: "created" | "updated" | "arrival" | "delivery";
@@ -57,12 +69,28 @@ export type ControlTowerFilters = {
   limit?: number;
   cursor?: string | null;
   include_completed?: boolean;
+  /** Movement files, or the facility/activity ones. Server-side, so the counts
+   *  and the pager agree with the list. */
+  layer?: "MOVEMENT" | "ACTIVITY";
+  /** Whether every named endpoint resolves to a verified place. */
+  verified?: "VERIFIED" | "UNVERIFIED";
 };
 
 export type ControlTowerData = {
   shipments: LiveShipment[];
+  /** One per plottable itinerary leg, falling back to the parent POL→POD lane. */
   lanes: Lane[];
+  /** Files with no drawable route: facility work, and unverified locations. */
+  activity: ActivityRecord[];
+  /** Each file's legs, keyed by dossier id — what the itinerary panel reads. */
+  legs: Record<string, ItineraryLeg[]>;
+  /** Files by dossier id, for the map's hover card and the panel header. */
+  byId: Record<string, LiveShipment>;
   activeFiles: number;
+  /** Server-side counts over the WHOLE filtered set, not the visible page. */
+  movementFiles: number;
+  activityFiles: number;
+  needsLocation: number;
   approvals: number;
   complianceFlags: number;
   unpostedJournals: number;
@@ -85,7 +113,10 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
   data: ControlTowerData | null;
   error: string | null;
   loading: boolean;
+  /** Refetch on demand — meeting mode's manual button and its pausable timer. */
+  refresh: () => void;
 } {
+  const queryClient = useQueryClient();
   const query = React.useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") p.set(k, String(v)); });
@@ -106,11 +137,24 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
     const raw = Array.isArray(ct.live_shipments) ? (ct.live_shipments as Row[]) : [];
     const shipments = raw.map(toLiveShipment);
     const files = (ct.operation_files as Row) || {};
+    const byId: Record<string, LiveShipment> = {};
+    shipments.forEach((s) => {
+      if (!s.dossierId) return;
+      // A payload key used as a property NAME is remote property injection
+      // (js/remote-property-injection); defineProperty keeps it a value.
+      Object.defineProperty(byId, s.dossierId, { value: s, enumerable: true, writable: true, configurable: true });
+    });
 
     return {
       shipments,
       lanes: toLanes(raw),
+      activity: toActivityRecords(raw),
+      legs: legsByFile(raw),
+      byId,
       activeFiles: Number(files.active ?? files.open ?? shipments.length) || shipments.length,
+      movementFiles: Number(files.movement ?? 0) || 0,
+      activityFiles: Number(files.activity ?? 0) || 0,
+      needsLocation: Number(files.needs_location ?? 0) || 0,
       approvals: Number(ct.approvals_awaiting ?? k.approvals_awaiting ?? 0) || 0,
       complianceFlags: Number(k.open_compliance_flags ?? k.compliance_flags ?? 0) || 0,
       // The repo sends `unposted_journal_entries`; the iframe read
@@ -130,6 +174,14 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
     };
   }, [tower.data, kpis.data, overdue.data]);
 
+  const refresh = React.useCallback(() => {
+    // Invalidate rather than refetch by key: the tower path changes with every
+    // filter, and the two additive queries have their own keys. Invalidating the
+    // tenant scope refreshes whatever is currently mounted without this hook
+    // having to know which paths those are.
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
+
   return {
     data,
     error: tower.error ? errMsg(tower.error) : null,
@@ -137,6 +189,7 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
     // additive ones would hold the whole tower behind a module that may be
     // switched off for this tenant.
     loading: tower.data === undefined && !tower.error,
+    refresh,
   };
 }
 

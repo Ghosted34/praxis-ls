@@ -10,6 +10,7 @@
 "use strict";
 const repo = require("./dashboard.repo");
 const geoPlace = require("../../operations/geo_place/geo_place.service");
+const itinerary = require("../../operations/itinerary/itinerary.service");
 const { logger } = require("../../../config/logger");
 
 /**
@@ -24,10 +25,13 @@ const { logger } = require("../../../config/logger");
 async function withLaneGeometry(client, shipments) {
   if (!Array.isArray(shipments) || !shipments.length) return shipments;
 
-  // Dossiers that used the port picker (0479) already carry exact coordinates
-  // off the FK join — leave those alone. Only the free-text ones need resolving
-  // by name, which is the fuzzy path we're trying to move away from.
-  const needsResolve = shipments.filter((s) => !s.coords);
+  // Dossiers that used the place picker already carry exact coordinates off the
+  // FK join — leave those alone. So does a file whose itinerary has a plottable
+  // leg: it has real geometry, and resolving its parent lane by name would spend
+  // a fuzzy lookup to draw a line the legs already describe better.
+  const needsResolve = shipments.filter(
+    (s) => !s.coords && !(Array.isArray(s.legs) && s.legs.some((l) => l.plottable)),
+  );
   if (!needsResolve.length) return shipments;
 
   const places = [];
@@ -59,10 +63,45 @@ async function withLaneGeometry(client, shipments) {
   });
 }
 
+/**
+ * Attach each file's structured itinerary.
+ *
+ * WHY THE MAP NEEDS THIS AND NOT JUST pol/pod. A dossier's POL and POD describe
+ * the main carriage and nothing else, so an end-to-end file had two of its six
+ * movements recorded anywhere — and the tower drew one line between two ports
+ * while the operator was being chased about the truck that had not collected yet.
+ * With legs, the same file draws pickup, sail, customs, inland and delivery, each
+ * in its own mode's colour.
+ *
+ * ONE QUERY for the whole page (see `itinerary.forDossiers`), not one per file.
+ * Additive and best-effort: a tenant whose 0672 table is missing, or a file with
+ * no legs, keeps every existing field and carries `legs: []`, so the tower falls
+ * back to the parent POL→POD lane exactly as before.
+ */
+async function withItineraries(client, shipments) {
+  if (!Array.isArray(shipments) || !shipments.length) return shipments;
+  const ids = shipments.map((s) => s.dossier_id).filter(Boolean);
+  if (!ids.length) return shipments.map((s) => ({ ...s, legs: [] }));
+
+  let byDossier = new Map();
+  try {
+    byDossier = await itinerary.forDossiers(client, ids);
+  } catch (err) {
+    logger.warn({ err }, "[control-tower] itinerary legs unavailable");
+    return shipments.map((s) => ({ ...s, legs: [] }));
+  }
+  return shipments.map((s) => ({ ...s, legs: byDossier.get(s.dossier_id) || [] }));
+}
+
 module.exports = {
   kpis: (client) => repo.kpis(client),
   async controlTower(client, options = {}) {
     const base = await repo.controlTower(client, options);
-    return { ...base, live_shipments: await withLaneGeometry(client, base.live_shipments) };
+    // Order matters: the legs are attached first so `withLaneGeometry` can see
+    // that a file already has plottable geometry and skip resolving its parent
+    // lane by name — which is the only remaining path that can reach Geoapify
+    // from a dashboard load.
+    const withLegs = await withItineraries(client, base.live_shipments);
+    return { ...base, live_shipments: await withLaneGeometry(client, withLegs) };
   },
 };

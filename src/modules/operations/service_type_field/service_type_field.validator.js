@@ -25,11 +25,23 @@ const DATA_TYPE = z.enum([
   "SELECT", "MULTISELECT", "GEO_PLACE", "RATE_PROVIDER", "REF", "CURRENCY",
 ]);
 
-/** Mirrors chk_stf_facet_role (0660). This is the vocabulary the shared panel
- *  reads; a role outside it renders nowhere, so it is refused on write. */
+/** Mirrors chk_stf_facet_role (0660, widened by 0678). This is the vocabulary the
+ *  shared panel reads; a role outside it renders nowhere, so it is refused on
+ *  write.
+ *
+ *  ORIGIN/DESTINATION describe the MAIN CARRIAGE — the port pair on the bill of
+ *  lading. COLLECTION/FINAL_DELIVERY are the door legs either side of it, and they
+ *  are separate roles rather than a second DESTINATION because the facet map is
+ *  keyed by role: two DESTINATION fields on one sea import would mean one of them
+ *  silently wins. */
 const FACET_ROLE = z.enum([
   "TRANSPORT_REF", "CONVEYANCE", "CARRIER", "ORIGIN", "DESTINATION", "ROUTE_VIA",
+  "COLLECTION", "FINAL_DELIVERY",
   "DEPARTURE_DATE", "ARRIVAL_DATE",
+  // The commitment the milestone chain is scheduled against (0679). Distinct from
+  // ARRIVAL_DATE, which is arrival at the PORT — delivery to the consignee is a
+  // different date, and the facet map is keyed by role.
+  "DELIVERY_DATE",
   "CARGO_DESC", "CARGO_WEIGHT", "CARGO_VOLUME", "CARGO_PACKAGES", "CARGO_MARKS",
   "CUSTODY_LOCATION", "CUSTODY_STATUS", "CUSTODY_IN", "CUSTODY_OUT",
   "INCOTERM", "CUSTOMS_REF", "CUSTOMS_REGIME",

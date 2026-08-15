@@ -50,6 +50,11 @@ const ALLOW_BASE_TABLE = {
     "By dossier_id. The wizard edits its own draft's containers before promotion.",
   "modules/operations/shipment_details/shipment_details.repo.js":
     "dossierFor(dossierId) — the projection the wizard reads its own draft through.",
+  "modules/operations/itinerary/itinerary.service.js":
+    "By dossier_id, to read the service type's itinerary template when validating " +
+    "an edit. The wizard adds a last-mile leg to its own DRAFT before promotion, " +
+    "so the view would return nothing and the required-leg rule would silently " +
+    "not apply to exactly the files being created.",
   "modules/finance/final_invoice/final_invoice.repo.js":
     "Decorates an invoice with its file's ref, by the invoice's own dossier_id.",
   "modules/finance/final_invoice/final_invoice.service.js":

@@ -40,14 +40,32 @@ const { AppError } = require("../../../utils/errors");
  * the template, instantiate later). A dossier that FAILED TO BE CREATED because
  * its milestones couldn't be seeded is not. Never let the tail wag the dog.
  */
+/**
+ * Instantiate the service type's default itinerary on a newly opened file.
+ *
+ * BEST-EFFORT, like the milestone chain beside it: a file must open even if its
+ * service type has no template, or the template is malformed, or 0673's column is
+ * missing on this tenant. The itinerary is editable afterwards from the file, so
+ * a failure here costs a default, not the work.
+ *
+ * The legs go through `itinerary.replace`, which validates them — so a template
+ * naming a place that is not in the catalogue is refused rather than seeding a
+ * route nobody can plot. `legsFromTemplate` only ever puts the file's own
+ * (already verified) POL/POD on the main carriage, so the normal path is clean.
+ */
 async function seedItinerary(client, dossier) {
   if (!dossier || !dossier.service_type_id) return;
   try {
-    const { rows } = await client.query("SELECT itinerary_template, pol, pod, place_receipt, place_delivery FROM dossier d JOIN service_type st ON st.service_type_id = d.service_type_id WHERE d.dossier_id = $1", [dossier.dossier_id]);
-    const template = Array.isArray(rows[0]?.itinerary_template) ? rows[0].itinerary_template : [];
-    const legs = template.map((l) => ({ ...l, origin: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pol || null) : l.origin || null, destination: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pod || null) : l.destination || null }));
+    const { rows } = await client.query(
+      "SELECT st.itinerary_template FROM dossier d " +
+        "JOIN service_type st ON st.service_type_id = d.service_type_id WHERE d.dossier_id = $1",
+      [dossier.dossier_id],
+    );
+    const legs = itinerary.legsFromTemplate(rows[0] && rows[0].itinerary_template, dossier);
     if (legs.length) await itinerary.replace(client, dossier.dossier_id, legs);
-  } catch (err) { logger.warn({ err, dossier: dossier.ref }, "[operations] itinerary defaults not seeded"); }
+  } catch (err) {
+    logger.warn({ err, dossier: dossier.ref }, "[operations] itinerary defaults not seeded");
+  }
 }
 
 async function seedMilestones(client, dossier, actor) {
@@ -305,6 +323,58 @@ async function create(client, { data, actor = {} }) {
   return await resolvePlaces(client, row);
 }
 
+/** The two dates the milestone chain is scheduled against, in the order
+ *  `milestone.resolveTarget` consults them. */
+const TARGET_DATES = ["promised_delivery_date", "eta"];
+
+const sameDay = (a, b) => {
+  const iso = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+  return iso(a) === iso(b);
+};
+
+/**
+ * Re-baseline the chain when the date it is scheduled against moves.
+ *
+ * ── THE GAP THIS CLOSES ─────────────────────────────────────────────────────
+ *
+ * `recalculate` ran on ADVANCE, REOPEN and INSERT, and from a manual button. Its
+ * validator has accepted a `TARGET_CHANGED` trigger since the weighted engine
+ * shipped — and NOTHING EVER SENT ONE. So setting or correcting the promised
+ * delivery date left every downstream stage sitting on dates computed from the
+ * old target, and the only way to make the chain agree with the file was for
+ * somebody to notice and press Recalculate.
+ *
+ * That is the difference between a date the engine reads once at creation and a
+ * date the engine is scheduled against. The second is what was asked for, and it
+ * is what `is_target_lock` needs to mean anything: the lock compresses the
+ * remaining stages toward the committed date, and it cannot do that against a
+ * date it was never told about.
+ *
+ * ── BEST-EFFORT, LIKE THE SEEDING BESIDE IT ─────────────────────────────────
+ *
+ * A file whose ETA was just corrected must save. A chain that could not be
+ * re-planned is recoverable — the dates are stale until the next advance or a
+ * press of Recalculate — whereas a rejected save loses the correction the
+ * operator just made. Logged with the dossier ref so a persistent failure is
+ * findable rather than silent.
+ */
+async function rescheduleOnTargetChange(client, { before, after, actor }) {
+  const moved = TARGET_DATES.filter((k) => !sameDay(before[k], after[k]));
+  if (!moved.length) return;
+  try {
+    await milestones.recalculate(client, {
+      dossierId: after.dossier_id,
+      trigger: "TARGET_CHANGED",
+      actor,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, dossier: after.ref, moved },
+      "[operations] milestone chain not re-planned after a target-date change",
+    );
+  }
+}
+
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
@@ -313,6 +383,11 @@ async function update(client, { id, patch, actor = {} }) {
   const fields = await foldDetails(client, { data: rest, existing: before, enforceRequired: false });
   const row = await repo.update(client, id, fields);
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
+  // The whole chain re-plans when the date it is scheduled against moves. Compared
+  // by DAY, not by value: these are `date` columns that arrive as strings from a
+  // form and as Date objects from pg, and a re-plan on every unrelated save would
+  // rewrite planned dates — and log a rebaseline row — for nothing.
+  await rescheduleOnTargetChange(client, { before, after: row, actor });
   // Edits change ports too — retyping POL clears its id client-side, so this is
   // what re-links it. Safe to call unconditionally: it no-ops when both ids are
   // already set, which is the common case.

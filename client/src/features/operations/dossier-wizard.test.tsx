@@ -27,6 +27,8 @@ vi.mock("@/app/auth/auth-context", async () => authContextMock());
 const createDossierDraft = vi.fn();
 const promoteDossier = vi.fn();
 const getDetailForm = vi.fn();
+const getItinerary = vi.fn();
+const replaceItinerary = vi.fn();
 
 vi.mock("@/lib/operations-api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/operations-api")>("@/lib/operations-api");
@@ -35,6 +37,8 @@ vi.mock("@/lib/operations-api", async () => {
     createDossierDraft: (...a: unknown[]) => createDossierDraft(...a),
     promoteDossier: (...a: unknown[]) => promoteDossier(...a),
     getDetailForm: (...a: unknown[]) => getDetailForm(...a),
+    getItinerary: (...a: unknown[]) => getItinerary(...a),
+    replaceItinerary: (...a: unknown[]) => replaceItinerary(...a),
   };
 });
 
@@ -59,6 +63,30 @@ const SEA_FORM = {
         f({ key: "voyage_no", label: "Voyage No" }),
         f({ key: "pol", label: "Port of loading" }),
         f({ key: "pod", label: "Port of discharge" }),
+      ],
+    },
+  ],
+};
+
+/**
+ * The same form plus the delivery-place field 0678 made a real place field on
+ * every sea service type. It is the only control that asks where the cargo is
+ * delivered — see the "asks for the delivery place once" test.
+ */
+const WITH_DELIVERY_FORM = {
+  ...SEA_FORM,
+  groups: [
+    {
+      ...SEA_FORM.groups[0],
+      fields: [
+        ...SEA_FORM.groups[0].fields,
+        f({
+          key: "place_delivery",
+          label: "Place of delivery",
+          data_type: "GEO_PLACE",
+          facet_role: "FINAL_DELIVERY",
+          column_name: "place_delivery",
+        }),
       ],
     },
   ],
@@ -105,9 +133,13 @@ beforeEach(() => {
   createDossierDraft.mockReset();
   promoteDossier.mockReset();
   getDetailForm.mockReset();
+  getItinerary.mockReset();
+  replaceItinerary.mockReset();
   fixtures.current = { routes: ROUTES };
   getDetailForm.mockResolvedValue(SEA_FORM);
   createDossierDraft.mockResolvedValue({ dossier_id: "d-draft", status: "DRAFT", ref: "DRAFT-abc" });
+  getItinerary.mockResolvedValue([]);
+  replaceItinerary.mockResolvedValue([]);
   promoteDossier.mockResolvedValue({ dossier_id: "d-draft", status: "OPEN", ref: "SLAS-2026-0007" });
 });
 
@@ -242,6 +274,73 @@ describe("the creation wizard", () => {
     // over a form the user can no longer see.
     await waitFor(() => expect(screen.getByLabelText(/Bill of Lading/)).toBeTruthy());
     expect(screen.getByText("required for this service type")).toBeTruthy();
+  });
+
+  /**
+   * The delivery address is ONE fact, and the wizard used to ask for it twice.
+   *
+   * It carried its own "Deliver to the consignee" toggle with a place picker, which
+   * appended a FINAL_DELIVERY leg after promotion — on top of the FINAL_DELIVERY
+   * leg every freight template has declared since 0673. So a sea import ended up
+   * with two delivery legs, two identical lines on the map, and the address stored
+   * both in a leg and in the `place_delivery` field sitting on this very form.
+   *
+   * `itinerary.legsFromTemplate` now builds the legs from the file's own places, so
+   * the field is the only control and promotion is the only call.
+   */
+  it("asks for the delivery place once, in the service type's own field", async () => {
+    const user = userEvent.setup();
+    getDetailForm.mockResolvedValue(WITH_DELIVERY_FORM);
+    view();
+    await completeStep1(user);
+    await user.type(await screen.findByLabelText(/Bill of Lading/), "MAEU123456");
+
+    // The service type's field, rendered as the same verified picker every other
+    // location field uses.
+    expect(screen.getAllByRole("button", { name: "Place of delivery" })).toHaveLength(1);
+    // And nothing else asking the same question.
+    expect(screen.queryByLabelText(/Deliver to the consignee/i)).toBeNull();
+    expect(screen.queryByLabelText(/Collect from the shipper/i)).toBeNull();
+    expect(screen.queryByText(/Door-to-door legs/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Delivery place/ })).toBeNull();
+  });
+
+  it("creating a file is one call — the itinerary comes from promotion", async () => {
+    const user = userEvent.setup();
+    getDetailForm.mockResolvedValue(WITH_DELIVERY_FORM);
+    view();
+    await completeStep1(user);
+    await user.type(await screen.findByLabelText(/Bill of Lading/), "MAEU123456");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Create file" }));
+
+    await waitFor(() => expect(promoteDossier).toHaveBeenCalledTimes(1));
+    // No follow-up itinerary write. Two of them were how the duplicate legs got
+    // there, and a second call after promotion is also a second failure mode on a
+    // file the operator has already been told was created.
+    expect(replaceItinerary).not.toHaveBeenCalled();
+    expect(getItinerary).not.toHaveBeenCalled();
+  });
+
+  it("reads a rejected field from `fields`, the canonical shape", async () => {
+    // API F-2: `.fields` is canonical and `.details` is the deprecated alias. The
+    // wizard read only the alias, so a server sending the current shape had its
+    // per-field messages dropped and the operator got a banner with no field
+    // marked.
+    const user = userEvent.setup();
+    promoteDossier.mockRejectedValue(
+      Object.assign(new Error("Invalid body"), {
+        fields: { place_delivery: ['"Yaonde" is not a place in the catalogue yet.'] },
+      }),
+    );
+    getDetailForm.mockResolvedValue(WITH_DELIVERY_FORM);
+    view();
+    await completeStep1(user);
+    await user.type(await screen.findByLabelText(/Bill of Lading/), "X");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(await screen.findByRole("button", { name: "Create file" }));
+
+    expect(await screen.findByText(/"Yaonde" is not a place in the catalogue yet\./)).toBeTruthy();
   });
 
   it("marks progress so a screen reader can say where you are", async () => {

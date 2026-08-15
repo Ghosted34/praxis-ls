@@ -30,6 +30,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { errMsg, useResource } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
+import { FieldOptionsDialog } from "./field-options-dialog";
+import { optionProblems } from "./field-options";
 
 /* ── The equipment toggle ──────────────────────────────────────────────────── */
 
@@ -163,12 +165,20 @@ function ContainerCapture({
 /* ── The field table ───────────────────────────────────────────────────────── */
 
 const DATA_TYPES: api.FieldDataType[] = [
-  "TEXT", "TEXTAREA", "NUMBER", "INTEGER", "DATE", "DATETIME", "BOOLEAN", "SELECT", "GEO_PLACE", "RATE_PROVIDER",
+  "TEXT", "TEXTAREA", "NUMBER", "INTEGER", "DATE", "DATETIME", "BOOLEAN",
+  "SELECT", "MULTISELECT", "GEO_PLACE", "RATE_PROVIDER",
 ];
+
+/** The types whose whole behaviour is their option list. */
+const NEEDS_OPTIONS = (t: api.FieldDataType) => t === "SELECT" || t === "MULTISELECT";
 
 const FACET_ROLES: (api.FacetRole | "")[] = [
   "", "TRANSPORT_REF", "CONVEYANCE", "CARRIER", "ORIGIN", "DESTINATION", "ROUTE_VIA",
-  "DEPARTURE_DATE", "ARRIVAL_DATE",
+  // The door legs (0678) and the scheduled commitment (0679). They were in the
+  // server's vocabulary and missing from this list, so the three roles the last
+  // two migrations added could not be set from the screen that exists to set them.
+  "COLLECTION", "FINAL_DELIVERY",
+  "DEPARTURE_DATE", "ARRIVAL_DATE", "DELIVERY_DATE",
   "CARGO_DESC", "CARGO_WEIGHT", "CARGO_VOLUME", "CARGO_PACKAGES", "CARGO_MARKS",
   "CUSTODY_LOCATION", "CUSTODY_STATUS", "CUSTODY_IN", "CUSTODY_OUT",
   "INCOTERM", "CUSTOMS_REF", "CUSTOMS_REGIME",
@@ -180,12 +190,16 @@ function FieldRow({
   editable,
   onPatch,
   onRemove,
+  onEditOptions,
   busy,
 }: {
   field: api.ServiceTypeField;
   editable: boolean;
   onPatch: (patch: Partial<api.ServiceTypeField>) => void;
   onRemove: () => void;
+  /** Open the option editor. Available on a live version too, read-only — "what
+   *  regimes does this service offer?" is asked far more often than it changes. */
+  onEditOptions: () => void;
   busy: boolean;
 }) {
   return (
@@ -203,7 +217,27 @@ function FieldRow({
           <span className="text-sm">{field.label_en || field.label_fr}</span>
         )}
       </TD>
-      <TD className="micro">{field.data_type}</TD>
+      <TD className="micro">
+        {field.data_type}
+        {/*
+          The option list hangs off the TYPE, because that is what it belongs to and
+          where somebody looks for it. The count is on the button so a form with an
+          empty dropdown is visible from the table rather than only when a file
+          fails to fill it in.
+        */}
+        {NEEDS_OPTIONS(field.data_type) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-1 h-auto px-1.5 py-0.5"
+            disabled={busy}
+            onClick={onEditOptions}
+          >
+            {(field.options_json || []).length} option{(field.options_json || []).length === 1 ? "" : "s"}
+            {!(field.options_json || []).length && " — none yet"}
+          </Button>
+        )}
+      </TD>
       <TD>
         {editable ? (
           <Select
@@ -265,6 +299,9 @@ export function ServiceTypeFieldsTab({
 }) {
   const sets = useResource<api.ServiceTypeFieldSet[]>(() => api.listFieldSets(serviceTypeId), [serviceTypeId]);
   const [openId, setOpenId] = React.useState<string | null>(null);
+  /** The field whose option list is open, by id — not the field object, so it
+   *  cannot go stale against a reload that happens while the dialog is up. */
+  const [optionsFor, setOptionsFor] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -278,6 +315,7 @@ export function ServiceTypeFieldsTab({
 
   const set = detail.data;
   const editable = !!set && !set.is_active;
+  const optionsField = (set?.fields || []).find((f) => f.service_type_field_id === optionsFor) || null;
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -394,6 +432,7 @@ export function ServiceTypeFieldsTab({
                   onRemove={() =>
                     run(() => api.removeFieldFromSet(serviceTypeId, set.service_type_field_set_id, f.service_type_field_id))
                   }
+                  onEditOptions={() => setOptionsFor(f.service_type_field_id)}
                 />
               ))}
             </TBody>
@@ -410,6 +449,29 @@ export function ServiceTypeFieldsTab({
             <NewFieldForm
               busy={busy}
               onAdd={(body) => run(() => api.addFieldToSet(serviceTypeId, set.service_type_field_set_id, body))}
+            />
+          )}
+
+          {optionsField && (
+            <FieldOptionsDialog
+              open
+              editable={editable}
+              busy={busy}
+              fieldKey={optionsField.key}
+              fieldLabel={optionsField.label_en || optionsField.label_fr}
+              options={optionsField.options_json || []}
+              onClose={() => setOptionsFor(null)}
+              onSave={(options_json) => {
+                setOptionsFor(null);
+                run(() =>
+                  api.updateFieldInSet(
+                    serviceTypeId,
+                    set.service_type_field_set_id,
+                    optionsField.service_type_field_id,
+                    { options_json },
+                  ),
+                );
+              }}
             />
           )}
         </>
@@ -432,9 +494,22 @@ function NewFieldForm({
   const [type, setType] = React.useState<api.FieldDataType>("TEXT");
   const [group, setGroup] = React.useState("DETAILS");
   const [role, setRole] = React.useState<api.FacetRole | "">("");
+  /**
+   * A new dropdown's options, collected BEFORE it is created.
+   *
+   * This form offered SELECT in its type list and sent no options, and the server
+   * refuses a SELECT with an empty list — so adding one always failed with a 422
+   * and there was no way to get past it. A dropdown is its option list; asking for
+   * the list is not an extra step, it is the step that was missing.
+   */
+  const [options, setOptions] = React.useState<api.FieldOption[]>([]);
+  const [optionsOpen, setOptionsOpen] = React.useState(false);
 
   const slug = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  const ok = /^[a-z][a-z0-9_]*$/.test(slug) && slug.length >= 2 && label.trim().length > 0;
+  const optionsNeeded = NEEDS_OPTIONS(type);
+  const optionsOk = !optionsNeeded || optionProblems(options).length === 0;
+  const ok =
+    /^[a-z][a-z0-9_]*$/.test(slug) && slug.length >= 2 && label.trim().length > 0 && optionsOk;
 
   return (
     <div className="space-y-3 rounded-md border border-border p-4">
@@ -468,6 +543,20 @@ function NewFieldForm({
           </Select>
         </Field>
       </div>
+
+      {optionsNeeded && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setOptionsOpen(true)}>
+            {options.length ? `Edit ${options.length} option${options.length === 1 ? "" : "s"}` : "Set the options"}
+          </Button>
+          {!optionsOk && (
+            <span className="micro text-muted-foreground">
+              A dropdown needs its options before it can be added.
+            </span>
+          )}
+        </div>
+      )}
+
       <Button
         size="sm"
         disabled={!ok || busy}
@@ -479,18 +568,35 @@ function NewFieldForm({
             data_type: type,
             group_code: group || "DETAILS",
             facet_role: (role || null) as api.FacetRole | null,
+            ...(optionsNeeded ? { options_json: options } : {}),
           });
           setKey("");
           setLabel("");
           setRole("");
+          setOptions([]);
         }}
       >
         Add field
       </Button>
-      {key && !ok && (
+      {key && !/^[a-z][a-z0-9_]*$/.test(slug) && (
         <p className="micro text-muted-foreground">
           A key is snake_case and at least two characters — “{key}” becomes “{slug || "…"}”.
         </p>
+      )}
+
+      {optionsOpen && (
+        <FieldOptionsDialog
+          open
+          editable
+          fieldKey={slug || "new_field"}
+          fieldLabel={label.trim() || "new field"}
+          options={options}
+          onClose={() => setOptionsOpen(false)}
+          onSave={(next) => {
+            setOptions(next);
+            setOptionsOpen(false);
+          }}
+        />
       )}
     </div>
   );

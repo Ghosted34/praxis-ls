@@ -789,9 +789,20 @@ export const getOverview = (id: string) => tenant<DossierOverview>(`/operations/
 /** What a field MEANS to the shared panel, independent of what it is called on
  *  any particular service type. "Bill of Lading" on sea and "MAWB" on air are
  *  both TRANSPORT_REF. Mirrors chk_stf_facet_role (migration 0660). */
+/**
+ * Mirrors `chk_stf_facet_role` and the server's own enum.
+ *
+ * ORIGIN/DESTINATION are the MAIN CARRIAGE — the port pair on the bill of lading.
+ * COLLECTION/FINAL_DELIVERY are the door legs either side of it (0678), and
+ * DELIVERY_DATE is the commitment the milestone chain is scheduled against (0679),
+ * distinct from ARRIVAL_DATE which is arrival at the port. Each is its own role
+ * because the facet map is keyed by role: two fields sharing one would mean one of
+ * them silently wins.
+ */
 export type FacetRole =
   | "TRANSPORT_REF" | "CONVEYANCE" | "CARRIER" | "ORIGIN" | "DESTINATION" | "ROUTE_VIA"
-  | "DEPARTURE_DATE" | "ARRIVAL_DATE"
+  | "COLLECTION" | "FINAL_DELIVERY"
+  | "DEPARTURE_DATE" | "ARRIVAL_DATE" | "DELIVERY_DATE"
   | "CARGO_DESC" | "CARGO_WEIGHT" | "CARGO_VOLUME" | "CARGO_PACKAGES" | "CARGO_MARKS"
   | "CUSTODY_LOCATION" | "CUSTODY_STATUS" | "CUSTODY_IN" | "CUSTODY_OUT"
   | "INCOTERM" | "CUSTOMS_REF" | "CUSTOMS_REGIME"

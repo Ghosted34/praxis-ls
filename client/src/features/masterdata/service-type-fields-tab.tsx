@@ -174,7 +174,11 @@ const NEEDS_OPTIONS = (t: api.FieldDataType) => t === "SELECT" || t === "MULTISE
 
 const FACET_ROLES: (api.FacetRole | "")[] = [
   "", "TRANSPORT_REF", "CONVEYANCE", "CARRIER", "ORIGIN", "DESTINATION", "ROUTE_VIA",
-  "DEPARTURE_DATE", "ARRIVAL_DATE",
+  // The door legs (0678) and the scheduled commitment (0679). They were in the
+  // server's vocabulary and missing from this list, so the three roles the last
+  // two migrations added could not be set from the screen that exists to set them.
+  "COLLECTION", "FINAL_DELIVERY",
+  "DEPARTURE_DATE", "ARRIVAL_DATE", "DELIVERY_DATE",
   "CARGO_DESC", "CARGO_WEIGHT", "CARGO_VOLUME", "CARGO_PACKAGES", "CARGO_MARKS",
   "CUSTODY_LOCATION", "CUSTODY_STATUS", "CUSTODY_IN", "CUSTODY_OUT",
   "INCOTERM", "CUSTOMS_REF", "CUSTOMS_REGIME",

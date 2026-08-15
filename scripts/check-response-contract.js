@@ -75,8 +75,31 @@ const MIGRATION_DIRS = ["migrations/tenant", "migrations/platform"];
 function extractSchema() {
   const CREATE_TABLE =
     /CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?:(\w+)\.)?(\w+)\s*\(([\s\S]*?)\n\s*\)\s*;/gi;
-  const ADD_COLUMN =
-    /ALTER\s+TABLE\s+(?:\w+\.)?(\w+)\s+ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+(\w+)/gi;
+  /*
+   * ALTER TABLE is read as a WHOLE STATEMENT, then every ADD COLUMN inside it.
+   *
+   * The previous pattern required `ALTER TABLE <name>` immediately before each
+   * `ADD COLUMN`, so on the comma-separated form — which is how nearly every
+   * migration in this repo widens a table —
+   *
+   *     ALTER TABLE party
+   *       ADD COLUMN IF NOT EXISTS default_currency char(3),
+   *       ADD COLUMN IF NOT EXISTS avl_status text,
+   *       ADD COLUMN IF NOT EXISTS score_claims numeric(5,2);
+   *
+   * only `default_currency` was ever recorded. Every other column in the list
+   * was invisible to the schema half of this check, which meant a client type
+   * naming one of them was reported as drift against a column that has existed
+   * since 0511. `avl_status` is how this was found; the same list hides dozens.
+   *
+   * A false alarm is not a harmless one here. The remedy the error message
+   * offers is "add it to the baseline", so each invisible column was an
+   * invitation to permanently exempt a real field — and the baseline is
+   * consulted for EVERY type, so an entry added for one becomes a blind spot
+   * for all of them.
+   */
+  const ALTER_TABLE = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)([\s\S]*?);/gi;
+  const ADD_COLUMN_IN = /ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+(\w+)/gi;
 
   const tables = new Set();
   const columnsByTable = new Map();
@@ -122,8 +145,13 @@ function extractSchema() {
         tables.add(tbl);
         for (const c of readColumns(m[3])) addColumn(tbl, c);
       }
-      for (const m of sql.matchAll(ADD_COLUMN)) {
-        addColumn(m[1], m[2]);
+      // One pass per ALTER TABLE statement, then every ADD COLUMN inside its
+      // body — the comma-separated list, not just its first entry.
+      for (const stmt of sql.matchAll(ALTER_TABLE)) {
+        const tbl = stmt[1];
+        // `matchAll` on a /g regex is safe to re-run per statement; the regex
+        // object carries `lastIndex`, but matchAll clones it internally.
+        for (const col of stmt[2].matchAll(ADD_COLUMN_IN)) addColumn(tbl, col[1]);
       }
     }
   }
@@ -411,7 +439,12 @@ function saveBaseline(baseline) {
   const dir = path.dirname(BASELINE_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const sorted = {
-    _note: baseline._note || "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason; remove it when the underlying source of truth is fixed.",
+    _note: baseline._note || "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason in _reasons; remove it when the underlying source of truth is fixed.",
+    // Carried through, or `--update` silently deletes every justification in
+    // the file — which is how an allow-list stops being reviewable and starts
+    // being a place things go to be forgotten. The `_note` has always asked for
+    // a reason; until now there was nowhere to put one.
+    ...(baseline._reasons ? { _reasons: baseline._reasons } : {}),
     tables: [...new Set(baseline.tables || [])].sort(),
     allow: [...new Set(baseline.allow || [])].sort(),
   };

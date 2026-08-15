@@ -488,6 +488,44 @@ export const setApplicantStatus = (
     body: { status },
   });
 
+/* ── The drafting interview (0526) ───────────────────────────────────────────
+ *
+ * "New vacancy" is an interview, not a form: the recruiter answers questions in
+ * their own words and the model writes the advert. Two calls rather than one,
+ * because the later questions are generated FROM the earlier answers — that is
+ * what makes them specific to the role rather than generic. */
+export type IntakeQuestion = {
+  key: string;
+  /** text | number | textarea | salary — drives which control is rendered. */
+  type: string;
+  question: string;
+  hint?: string | null;
+  optional?: boolean;
+  min?: number;
+  max?: number;
+};
+export type IntakeStart = {
+  questions: IntakeQuestion[];
+  /** Fixed + generated, so the wizard can show "Question 1 of 10" honestly. */
+  total: number;
+  /** The hiring entity's currency — the salary inputs are labelled with it. */
+  currency: string;
+  entity: { entity_id: string; name?: string | null } | null;
+};
+/** Answers are open by shape: the generated questions bring their own keys. */
+export type IntakeAnswers = Record<string, string | number | boolean | null>;
+
+export const intakeQuestions = (entityId?: string) =>
+  tenant<IntakeStart>("/vacancies/intake/questions" + qs({ entity_id: entityId }));
+export const intakeFollowUps = (body: { entity_id?: string | null; answers: IntakeAnswers }) =>
+  tenant<{ questions: IntakeQuestion[] }>("/vacancies/intake/follow-ups", { method: "POST", body });
+/** Drafts AND saves, as a DRAFT vacancy — four minutes of answers must survive
+ *  a closed tab, and DRAFT is invisible to the careers page. */
+export const draftVacancy = (body: { entity_id?: string | null; answers: IntakeAnswers }) =>
+  tenant<Vacancy>("/vacancies/draft", { method: "POST", body });
+export const transcribeAnswer = (audioDataUrl: string) =>
+  tenant<{ text: string }>("/vacancies/intake/transcribe", { method: "POST", body: { audio_data_url: audioDataUrl } });
+
 /* ── AI scoring, criteria, questions, scorecard, publishing (0525) ── */
 
 /** The FULL read — opens the CV and scores it against the JD and criteria.

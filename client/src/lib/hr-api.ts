@@ -493,6 +493,7 @@ export const updateVacancy = (
     salary_min?: number;
     salary_max?: number;
     skills_required?: string[];
+    closes_on?: string;
   },
 ) => tenant<Vacancy>(`/vacancies/${id}`, { method: "PATCH", body: patch });
 export const setVacancyStatus = (id: string, status: string) =>
@@ -502,9 +503,29 @@ export const setVacancyStatus = (id: string, status: string) =>
   });
 export const listApplicants = (vacancyId: string) =>
   tenant<Applicant[]>(`/vacancies/${vacancyId}/applicants`);
+/**
+ * Add a candidate by hand.
+ *
+ * The same shape the public careers form posts, minus the CV upload: somebody
+ * who arrived by referral or walked in should end up as the same KIND of record
+ * as somebody who applied online — the AI scorer reads `skills`,
+ * `expected_salary` and `cover_note`, and a hand-entered applicant that carries
+ * only a name and a phone number is one it can say almost nothing about.
+ */
 export const addApplicant = (
   vacancyId: string,
-  body: { full_name: string; email?: string; phone?: string },
+  body: {
+    full_name: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    skills?: string[];
+    experience_years?: number;
+    expected_salary?: number;
+    portfolio_url?: string;
+    cover_note?: string;
+    source?: string;
+  },
 ) =>
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, {
     method: "POST",

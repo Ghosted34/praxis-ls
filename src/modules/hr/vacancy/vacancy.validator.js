@@ -26,7 +26,7 @@ const createShape = z.object({
   department: z.string().optional(),
   description: z.string().optional(),
   ai_generated: z.boolean().optional(),
-  status: z.enum(["DRAFT", "OPEN", "CLOSED"]).optional(),
+  status: z.enum(["DRAFT", "OPEN", "PAUSED", "CLOSED"]).optional(),
   posted_to_website: z.boolean().optional(),
   // 0525 — the structured shape the scorer compares against. All optional: a
   // vacancy with none of it still works, the scorer simply has fewer dimensions

@@ -24,6 +24,14 @@
  * same `42703` a real one would, rather than a message about the test.
  */
 
+// The service emits and audits through a live client. Neither is what these
+// tests are about, and both would need a real Postgres to look up an event type.
+jest.mock("../../src/shared/events/emit", () => ({
+  resolveActorId: async (_c, id) => id || null,
+  emitEvent: jest.fn().mockResolvedValue(),
+  audit: jest.fn().mockResolvedValue(),
+}));
+
 const fs = require("fs");
 const path = require("path");
 
@@ -199,5 +207,61 @@ describe("vacancy.service — the hiring-entity question (0526)", () => {
     expect(out.questions).toBe(drafting.BASE_QUESTIONS);
     expect(out.currency).toBe("NGN");
     expect(list).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Pausing, and why it is not "unpublish" (0682).
+ *
+ * The lifecycle had no way to say "stop taking applications for a fortnight".
+ * CLOSED is an ending — it is the `approve` transition, and reopening reads as
+ * a new decision — and unpublishing MINTS A NEW TOKEN on the way back, so every
+ * candidate holding the old careers URL loses it permanently because somebody
+ * paused for a week. PAUSED keeps the token; the public reads already require
+ * OPEN, so the role drops off the careers page on its own.
+ */
+describe("vacancy.service — pause and resume (0682)", () => {
+  const service = require("../../src/modules/hr/vacancy/vacancy.service");
+  const repo = require("../../src/modules/hr/vacancy/vacancy.repo");
+  const { AppError } = require("../../src/utils/errors");
+
+  const vacancy = (status) => ({ vacancy_id: "v1", status, public_token: "tok" });
+
+  function stub(from) {
+    jest.spyOn(repo, "findById").mockResolvedValue(vacancy(from));
+    const update = jest
+      .spyOn(repo, "update")
+      .mockImplementation((_c, _id, patch) => Promise.resolve({ ...vacancy(from), ...patch }));
+    return update;
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    ["OPEN", "PAUSED"],
+    ["PAUSED", "OPEN"],
+    ["PAUSED", "CLOSED"],
+  ])("allows %s → %s", async (from, to) => {
+    const update = stub(from);
+    const row = await service.setStatus({}, { id: "v1", status: to, actor: {} });
+    expect(row.status).toBe(to);
+    // The token is never touched by a state change — that is the whole point of
+    // pausing rather than unpublishing.
+    expect(update.mock.calls[0][2]).not.toHaveProperty("public_token");
+    expect(row.public_token).toBe("tok");
+  });
+
+  it("refuses to reopen a closed role — that is a new vacancy, not a state change", async () => {
+    stub("CLOSED");
+    await expect(
+      service.setStatus({}, { id: "v1", status: "OPEN", actor: {} }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("refuses to pause a draft that was never open", async () => {
+    stub("DRAFT");
+    await expect(
+      service.setStatus({}, { id: "v1", status: "PAUSED", actor: {} }),
+    ).rejects.toBeInstanceOf(AppError);
   });
 });

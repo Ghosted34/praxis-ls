@@ -11,10 +11,16 @@ const drafting = require("./vacancy.draft");
 const transcription = require("../../../services/ai/transcription.service");
 
 // Recruitment: vacancy head + applicant pipeline. Vacancy lifecycle
-// DRAFT → OPEN → CLOSED; applicants move through their own status pipeline.
+// DRAFT → OPEN ⇄ PAUSED → CLOSED; applicants move through their own pipeline.
+//
+// PAUSED (0682) is reversible and keeps the careers token, so OPEN ⇄ PAUSED is
+// a round trip and resuming restores the SAME public link. CLOSED is still an
+// ending: nothing leads out of it, and reopening a closed role is a new record
+// rather than a state change.
 const TRANSITIONS = {
   DRAFT: ["OPEN"],
-  OPEN: ["CLOSED"],
+  OPEN: ["PAUSED", "CLOSED"],
+  PAUSED: ["OPEN", "CLOSED"],
   CLOSED: [],
 };
 

@@ -34,6 +34,7 @@ import { Pill } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
 import { ErrorState } from "@/components/ui/states";
 import { Markdown } from "@/components/markdown";
+import { DateField } from "@/components/ui/date-field";
 import {
   DepartmentSelect,
   type DepartmentValue,
@@ -66,6 +67,7 @@ export function VacancyEditor({
     salary_min: num(vacancy.salary_min),
     salary_max: num(vacancy.salary_max),
     skills: (vacancy.skills_required || []).join(", "),
+    closes_on: vacancy.closes_on || "",
     description: vacancy.description || "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -105,6 +107,7 @@ export function VacancyEditor({
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
+          closes_on: f.closes_on || undefined,
         }),
       );
       onClose();
@@ -227,9 +230,17 @@ export function VacancyEditor({
           </Field>
         </div>
 
-        <Field label="Skills" hint="Comma separated. These are what the AI scores applicants against.">
-          <Input value={f.skills} onChange={(e) => set("skills", e.target.value)} />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <Field label="Skills" hint="Comma separated. These are what the AI scores applicants against.">
+            <Input value={f.skills} onChange={(e) => set("skills", e.target.value)} />
+          </Field>
+          <Field label="Closing date" hint="Shown on the careers page.">
+            <DateField
+              value={f.closes_on}
+              onChange={(iso) => set("closes_on", iso)}
+            />
+          </Field>
+        </div>
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">

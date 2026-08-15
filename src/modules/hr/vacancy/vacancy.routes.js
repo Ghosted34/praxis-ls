@@ -1,5 +1,5 @@
 /** Vacancy routes — RBAC-gated (MOD-11) + feature "hr.recruitment".
- * Vacancy lifecycle DRAFT → OPEN → CLOSED via POST /:id/status.
+ * Vacancy lifecycle DRAFT → OPEN ⇄ PAUSED → CLOSED via POST /:id/status.
  * Applicants: GET/POST /:id/applicants, PATCH /:id/applicants/:applicantId. */
 "use strict";
 const express = require("express");
@@ -21,6 +21,9 @@ const M = "MOD-11";
 const TRANSITION_ACTION = {
   DRAFT: "edit",
   OPEN: "edit",
+  // Pausing and resuming are `edit`: both are reversible, neither ends the
+  // record, and the public link survives them (0682). Closing stays `approve`.
+  PAUSED: "edit",
   CLOSED: "approve",
 };
 

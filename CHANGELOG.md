@@ -24,6 +24,28 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Operation-file references stop being guessable.** A dossier reference is the
+  one number in this system a CLIENT holds, and it was sequential:
+  `SLAS-OPS-2026-0142` tells whoever holds it how many files we opened this year,
+  roughly where theirs sits, and that `…-0141` and `…-0143` are worth trying. New
+  files now get `SL7Z3K9QW2M4XBSM` — an entity prefix, a 60-bit
+  `crypto.randomBytes` core in Crockford Base32, and a service-type code — which
+  is the legacy `SL6721864SM` convention modernised rather than discarded. The
+  allocator owns generate → write → retry as one step, so the unique index on
+  `dossier.ref` is the only thing that decides a collision (a savepoint per
+  attempt, because a 23505 otherwise poisons the caller's transaction). References
+  are allocated by the backend alone: `service.create` used to take one from its
+  payload, which three of its four callers — including the AI action registry —
+  could set. Once allocated a reference never changes: updates that carry a
+  different `ref` are refused, and status, service-type and entity changes leave it
+  alone. **Financial and statutory numbering is untouched** — invoices, receipts,
+  journal entries and tax documents keep their gap-free `doc_sequence` numbers,
+  which is what reconciliation needs. Every existing reference stays valid, nothing
+  is rewritten, and search reaches all three schemes (including the display
+  spelling `SL-7Z3K9QW2M4XB-SM`). Entity prefixes and service codes are seeded for
+  existing rows by migration `0682`, editable until the first file uses them, and
+  audited when changed — on the entity dossier and the Service Type form
+  respectively.
 - **Structured client discovery on meetings (MOD-21, Sales & CRM F1).** A
   meeting against a lead is now captured in the three named sections of the
   Client Discovery Framework — business and operations context, pain points,

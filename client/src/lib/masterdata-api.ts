@@ -262,6 +262,13 @@ export type Entity = {
   logo_light_ref?: string | null;
   logo_dark_ref?: string | null;
   doc_prefix?: string | null;
+  /**
+   * The two characters that LEAD this entity's operation-file references
+   * (`SL` in `SL7Z3K9QW2M4XBSM`). Distinct from `doc_prefix`, which leads
+   * invoice numbers: one is seen by clients on a dossier, the other by
+   * accountants on a ledger, and they change for different reasons.
+   */
+  ops_reference_prefix?: string | null;
   default_language?: string | null;
   fiscal_year_start_month?: number | null;
   accounting_framework?: AccountingFramework | null;
@@ -661,6 +668,16 @@ export const setEntityStatus = (
   });
 export const setEntityStructure = (id: string, body: Record<string, unknown>) =>
   tenant<Entity>(`/entities/${id}/structure`, { method: "POST", body });
+/**
+ * Its own endpoint rather than a PATCH field: the prefix is an identifier
+ * clients hold, so the API refuses to change it once an operation file has used
+ * one, and it carries its own audit action.
+ */
+export const setEntityOpsReferencePrefix = (id: string, prefix: string) =>
+  tenant<Entity>(`/entities/${id}/ops-reference-prefix`, {
+    method: "POST",
+    body: { ops_reference_prefix: prefix },
+  });
 
 export const entityLetterhead = (id: string) =>
   tenant<LetterheadBundle>(`/entities/${id}/letterhead`);

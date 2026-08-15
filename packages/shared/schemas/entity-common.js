@@ -607,6 +607,31 @@ exports.setStructure = z.object({
   is_group_parent: z.boolean().optional(),
 });
 
+/**
+ * The entity's operation-reference prefix — `SL` in `SL7Z3K9QW2M4XBSM`.
+ *
+ * DELIBERATELY NOT IN `masterShape`. Every other column there is a fact about
+ * the company that its administrator may correct at will; this one is an
+ * identifier that goes out to clients on documents and then belongs to the
+ * past. It is generated from the entity's name when the entity is created, and
+ * it may only be changed while no operation file has used it — a rule the
+ * generic PATCH has no way to express. Hence its own endpoint
+ * (`POST /entities/:id/ops-reference-prefix`), its own audit action, and its
+ * own schema here.
+ *
+ * Uppercased on the way in: the database CHECK is `^[A-Z0-9]{2}$`, and a
+ * lowercase entry is a typo rather than a different intention.
+ *
+ * Distinct from `doc_prefix`, which leads INVOICE numbers and is free text.
+ */
+exports.opsReferencePrefix = z.object({
+  ops_reference_prefix: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{2}$/, "Two characters, A-Z or 0-9 — e.g. SL"),
+});
+
 // ── AI-facing envelopes ────────────────────────────────────────────────────
 // The assistant calls a tool with a flat payload and no route parameter, so the
 // entity id travels in the body. Composed here rather than in the API validator

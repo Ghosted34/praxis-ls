@@ -23,6 +23,8 @@ import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { LoadingRow } from "@/components/ui/states";
 import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
+import { VacancyWizard } from "./vacancy-wizard";
+import { VacancyEditor } from "./vacancy-editor";
 
 const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = {
@@ -213,9 +215,13 @@ function NewVacancyForm({
 function Pipeline({
   vacancy: initial,
   onChanged,
+  onEdit,
 }: {
   vacancy: api.Vacancy;
   onChanged: () => void;
+  /** Opens the advert itself. The kanban shows a title and a pipeline; the
+   *  description a candidate reads is only reachable through here. */
+  onEdit: () => void;
 }) {
   const [vacancy, setVacancy] = React.useState(initial);
   React.useEffect(() => setVacancy(initial), [initial]);
@@ -368,6 +374,16 @@ function Pipeline({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* On a DRAFT this is the job: a model wrote an advert and nobody has
+              read it yet, so it leads rather than sitting among the outline
+              buttons. */}
+          <Button
+            size="sm"
+            variant={vacancy.status === "DRAFT" ? "default" : "outline"}
+            onClick={onEdit}
+          >
+            {vacancy.status === "DRAFT" ? "Review the draft" : "Edit advert"}
+          </Button>
           {(VAC_TRANSITIONS[vacancy.status] || []).map((s) => (
             <Button
               key={s}
@@ -496,7 +512,12 @@ function Pipeline({
 export function VacanciesPage() {
   const vacancies = useResource(() => api.listVacancies(), []);
   const [selId, setSelId] = React.useState<string | null>(null);
+  // Three ways in, deliberately: the interview (default), the plain form it can
+  // be escaped to, and the editor — which the interview lands in, and which is
+  // reachable again from the vacancy header afterwards.
   const [creating, setCreating] = React.useState(false);
+  const [blankForm, setBlankForm] = React.useState(false);
+  const [editing, setEditing] = React.useState<api.Vacancy | null>(null);
 
   const rows = React.useMemo(() => vacancies.data || [], [vacancies.data]);
   const selected = rows.find((v) => v.vacancy_id === selId) || null;
@@ -540,7 +561,11 @@ export function VacanciesPage() {
             )}
           </div>
           {selected ? (
-            <Pipeline vacancy={selected} onChanged={vacancies.reload} />
+            <Pipeline
+              vacancy={selected}
+              onChanged={vacancies.reload}
+              onEdit={() => setEditing(selected)}
+            />
           ) : (
             <EmptyState
               title="No vacancy selected"
@@ -550,12 +575,36 @@ export function VacanciesPage() {
         </div>
       )}
       {creating && (
-        <NewVacancyForm
+        <VacancyWizard
           onClose={() => setCreating(false)}
+          onBlankForm={() => {
+            setCreating(false);
+            setBlankForm(true);
+          }}
+          // The draft is already saved by the time it gets here, so the editor
+          // opens on a real row: closing it loses nothing.
+          onDrafted={(v) => {
+            setCreating(false);
+            vacancies.reload();
+            setSelId(v.vacancy_id);
+            setEditing(v);
+          }}
+        />
+      )}
+      {blankForm && (
+        <NewVacancyForm
+          onClose={() => setBlankForm(false)}
           onSaved={(v) => {
             vacancies.reload();
             setSelId(v.vacancy_id);
           }}
+        />
+      )}
+      {editing && (
+        <VacancyEditor
+          vacancy={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => vacancies.reload()}
         />
       )}
       <ScreenAi path="hr/vacancies" />

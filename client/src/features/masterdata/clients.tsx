@@ -90,7 +90,27 @@ export function ClientForm({
   // Country drives the dynamic registration IDs (§2.2). Registrations and the
   // primary contact/address are local state, merged into the payload on submit —
   // the service writes them as their own rows.
+
+  /**
+   * `name` is the ONE field `clientMaster` hard-requires, and this form has no
+   * control for it — it collects the legal and trading names and derives `name`
+   * from them on submit (§2.1, below). But `handleSubmit` runs the schema BEFORE
+   * it calls `onSubmit`, so that derivation happened too late to matter: the
+   * schema rejected the empty `name`, submit never ran, and — `name` having no
+   * `<Field>` to render its message — the Save button silently did nothing.
+   *
+   * Deriving it here as well keeps the value the schema sees in step with the
+   * one the payload is built from.
+   */
+  const legalName = form.watch("legal_name");
+  const tradingName = form.watch("trading_name");
+  React.useEffect(() => {
+    const derived = (legalName || "").trim() || (tradingName || "").trim();
+    form.setValue("name", derived, { shouldValidate: true });
+  }, [legalName, tradingName, form]);
+
   const country = String(form.watch("country_code") ?? "");
+
   const reqs = useCountryRegistrations(country);
   const [regs, setRegs] = React.useState<RegValues>(() => ({
     NIU: row?.niu ?? "",

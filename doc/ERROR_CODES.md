@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (303)
+## All codes (306)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -48,6 +48,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ACTION` | 422 | 2× | — |
 | `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
+| `BAD_AUDIO` | 400 | 1× | — |
 | `BAD_CODE` | 422 | 2× | — |
 | `BAD_CONTEXT` | 422 | 1× | — |
 | `BAD_CREDENTIALS` | 401 | 1× | — |
@@ -118,6 +119,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
+| `EMPTY_AUDIO` | 422 | 1× | — |
 | `EMPTY_FILE` | 422 | 1× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
@@ -306,6 +308,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOO_FEW_STAGES` | 422 | 1× | — |
 | `TOO_MANY_STAGES` | 422 | 2× | — |
 | `TOO_MANY_UNITS` | 422 | 1× | — |
+| `TRANSCRIPTION_UNAVAILABLE` | — | 1× | — |
 | `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |

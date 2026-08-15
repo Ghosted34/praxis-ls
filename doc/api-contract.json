@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 109,
-  "route_count": 1014,
+  "modules_mounted": 110,
+  "route_count": 1037,
   "tiers": {
-    "public": 19,
+    "public": 22,
     "self-scoped": 65,
-    "gated": 930
+    "gated": 950
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -489,6 +489,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/vacancies/:id/criteria/:criterionId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/vacancies/:id/questions/:questionId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/vehicle-compliance/:id": {
       "auth": true,
       "rbac": true,
@@ -897,7 +909,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/attendance/devices": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/attendance/open": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/attendance/place-search": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1034,6 +1058,18 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/careers/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/careers/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/cash-requests/": {
       "auth": true,
@@ -2997,6 +3033,36 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/vacancies/:id/applicants/:applicantId/answers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/vacancies/:id/criteria": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/vacancies/:id/questions": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/vacancies/intake/questions": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/vacancies/talent-pool": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/vehicle-compliance/": {
       "auth": true,
       "rbac": true,
@@ -3136,6 +3202,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/attendance/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/attendance/devices/:deviceId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4041,6 +4113,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/attendance/devices": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/attendance/work-sites": {
       "auth": true,
       "rbac": true,
@@ -4214,6 +4292,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "POST /api/tenant/careers/:token/apply": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/cash-requests/": {
       "auth": true,
@@ -5859,7 +5943,61 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/vacancies/:id/applicants/:applicantId/answers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/applicants/:applicantId/score": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/criteria": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/publish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/questions": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/questions/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/vacancies/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/draft": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/intake/follow-ups": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/intake/transcribe": {
       "auth": true,
       "rbac": true,
       "validated": false,

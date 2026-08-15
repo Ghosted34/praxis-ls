@@ -45,7 +45,7 @@ const createShape = z.object({
   // the blank-form path must be able to set it too, not just the wizard.
   entity_id: z.string().uuid().optional().nullable(),
   headcount: z.coerce.number().int().min(1).max(500).optional(),
-  // 0683 — the detail a candidate reads before deciding to apply. All optional
+  // 0684 — the detail a candidate reads before deciding to apply. All optional
   // and all nullish: an advert that says none of it still publishes, and
   // clearing a field is as legitimate an edit as setting one.
   work_mode: z.string().max(40).nullish(),
@@ -103,7 +103,7 @@ const applicant = z.object({
   portfolio_url: z.string().url().max(500).optional(),
   cover_note: z.string().max(5000).optional(),
   source: z.string().max(60).optional(),
-  // 0683 — a CV typed in by hand takes the same road as one uploaded to the
+  // 0684 — a CV typed in by hand takes the same road as one uploaded to the
   // careers page: a base64 data URL, sniffed and size-capped by the vault.
   // Without it a referral can never be scored on more than the fields above,
   // while an online applicant is read in full.

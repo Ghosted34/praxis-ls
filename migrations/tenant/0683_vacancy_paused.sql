@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0682 a vacancy can be paused without losing its link
+-- TENANT DB — 0683 a vacancy can be paused without losing its link
 --
 -- ── WHY ────────────────────────────────────────────────────────────────────
 --

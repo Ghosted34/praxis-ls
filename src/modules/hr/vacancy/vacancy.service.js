@@ -20,7 +20,7 @@ const CV_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 // Recruitment: vacancy head + applicant pipeline. Vacancy lifecycle
 // DRAFT → OPEN ⇄ PAUSED → CLOSED; applicants move through their own pipeline.
 //
-// PAUSED (0682) is reversible and keeps the careers token, so OPEN ⇄ PAUSED is
+// PAUSED (0683) is reversible and keeps the careers token, so OPEN ⇄ PAUSED is
 // a round trip and resuming restores the SAME public link. CLOSED is still an
 // ending: nothing leads out of it, and reopening a closed role is a new record
 // rather than a state change.
@@ -57,7 +57,7 @@ module.exports = {
 
     /*
      * A CV attached by hand takes the SAME road as one uploaded to the careers
-     * page (0683): the vault sniffs the bytes, caps the size and refuses a type
+     * page (0684): the vault sniffs the bytes, caps the size and refuses a type
      * it does not recognise. Without this a referral could never be scored on
      * anything but the typed fields, while an online applicant is read in full
      * — and the score column would quietly mean two different things depending

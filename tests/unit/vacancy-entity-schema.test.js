@@ -211,7 +211,7 @@ describe("vacancy.service — the hiring-entity question (0526)", () => {
 });
 
 /**
- * Pausing, and why it is not "unpublish" (0682).
+ * Pausing, and why it is not "unpublish" (0683).
  *
  * The lifecycle had no way to say "stop taking applications for a fortnight".
  * CLOSED is an ending — it is the `approve` transition, and reopening reads as
@@ -220,7 +220,7 @@ describe("vacancy.service — the hiring-entity question (0526)", () => {
  * paused for a week. PAUSED keeps the token; the public reads already require
  * OPEN, so the role drops off the careers page on its own.
  */
-describe("vacancy.service — pause and resume (0682)", () => {
+describe("vacancy.service — pause and resume (0683)", () => {
   const service = require("../../src/modules/hr/vacancy/vacancy.service");
   const repo = require("../../src/modules/hr/vacancy/vacancy.repo");
   const { AppError } = require("../../src/utils/errors");
@@ -267,7 +267,7 @@ describe("vacancy.service — pause and resume (0682)", () => {
 });
 
 /**
- * Re-scoring everyone, and what a partial failure is allowed to do (0683).
+ * Re-scoring everyone, and what a partial failure is allowed to do (0684).
  *
  * Criteria and the job description are what a score MEANS, and both get edited
  * after applicants have arrived — so without this the column silently mixes
@@ -276,7 +276,7 @@ describe("vacancy.service — pause and resume (0682)", () => {
  * the caller has to be told how many of each, because "12 scored" with three
  * silently missing is how a shortlist gets trusted more than it should be.
  */
-describe("vacancy.service — re-score all (0683)", () => {
+describe("vacancy.service — re-score all (0684)", () => {
   const service = require("../../src/modules/hr/vacancy/vacancy.service");
   const repo = require("../../src/modules/hr/vacancy/vacancy.repo");
   const scoring = require("../../src/modules/hr/vacancy/vacancy.scoring");

@@ -376,7 +376,7 @@ export type Vacancy = {
   /** The public careers credential. NULL = not published. */
   public_token?: string | null;
   published_at?: string | null;
-  // 0683 — the detail a candidate reads before deciding to apply.
+  // 0684 — the detail a candidate reads before deciding to apply.
   work_mode?: string | null;
   working_hours?: string | null;
   days_on_site?: number | null;
@@ -508,7 +508,7 @@ export const updateVacancy = (
     salary_max?: number;
     skills_required?: string[];
     closes_on?: string;
-    // 0683. Nullable, not just optional: clearing a working pattern is as real
+    // 0684. Nullable, not just optional: clearing a working pattern is as real
     // an edit as setting one, and `undefined` would leave the old value.
     work_mode?: string | null;
     working_hours?: string | null;

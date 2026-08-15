@@ -80,7 +80,7 @@ export function VacancyEditor({
     salary_max: num(vacancy.salary_max),
     skills: (vacancy.skills_required || []).join(", "),
     closes_on: vacancy.closes_on || "",
-    // 0683 — the working pattern and the address a candidate actually asks about.
+    // 0684 — the working pattern and the address a candidate actually asks about.
     work_mode: vacancy.work_mode || "",
     working_hours: vacancy.working_hours || "",
     days_on_site: num(vacancy.days_on_site),

@@ -55,7 +55,7 @@ function publicVacancy(v) {
     department: v.department,
     // The written line if there is one, otherwise the structured parts — so a
     // recruiter who filled in city/state/country is not asked to type the
-    // address a second time for the sake of a display string (0683).
+    // address a second time for the sake of a display string (0684).
     location:
       v.location ||
       [v.location_city, v.location_state, v.location_country].filter(Boolean).join(", ") ||
@@ -77,7 +77,7 @@ function publicVacancy(v) {
     // A hidden band is OMITTED, not nulled-in-place and not merely unrendered by
     // the storefront: the row keeps the numbers for payroll and for scoring a
     // candidate's expectation, and this JSON is what the internet sees. A flag
-    // the payload ignored would read as a promise (0683).
+    // the payload ignored would read as a promise (0684).
     ...(v.salary_hidden
       ? { salary_hidden: true }
       : {
@@ -120,7 +120,7 @@ async function apply(client, { token, data, slug }) {
   const vacancy = await vacancyRepo.publishedByToken(client, token);
   if (!vacancy) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
 
-  // What the recruiter marked as required (0683). Enforced HERE and not only in
+  // What the recruiter marked as required (0684). Enforced HERE and not only in
   // the page's own markup, because the endpoint is public: a toggle a curl can
   // walk past is a lie told to whoever set it. Named fields, so the storefront
   // can mark the box rather than showing a bare 422.

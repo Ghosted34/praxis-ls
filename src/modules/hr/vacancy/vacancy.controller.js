@@ -3,6 +3,7 @@ const { makeController } = require("../../../shared/crud/resource");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { withDepartment } = require("../../../shared/rbac/department-scope");
 const service = require("./vacancy.service");
+const geo = require("../../../services/geoapify.service");
 
 const actor = (req) => req.user || { user_id: null };
 const base = makeController(service, "Vacancy");
@@ -51,6 +52,20 @@ module.exports = {
       service.scoreAllApplicants(c, { vacancyId: req.params.id, actor: actor(req) }));
     if (!out) throw new AppError("NOT_FOUND", "Vacancy not found", 404);
     res.json({ data: out });
+  }),
+
+  /**
+   * City search for the advert's address (0684).
+   *
+   * The same Geoapify service the attendance module's worksite picker uses, but
+   * mounted HERE with the recruitment grant: that route is gated on attendance
+   * `edit`, so a recruiter typing a city into a job advert would have been asked
+   * for a permission over the time clock. No `req.tenantDb` — it is an outbound
+   * HTTP call with no database work in it.
+   */
+  placeSearch: asyncHandler(async (req, res) => {
+    const { q, country, limit } = req.validatedQuery;
+    res.json({ data: await geo.searchPlaces(q, { countryCodes: country ? [country] : null, limit }) });
   }),
 
   /* ── Drafting from an interview (0526) ── */

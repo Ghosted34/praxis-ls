@@ -620,6 +620,14 @@ export const intakeQuestions = (entityId?: string) =>
  *  so posting a role does not require the grant to browse the group structure. */
 export const hiringEntities = () =>
   tenant<HiringEntity[]>("/vacancies/hiring-entities");
+/** City lookup for the advert's address. Same Geoapify provider as the worksite
+ *  picker, mounted on the recruitment grant — see the route's comment. Reuses
+ *  `PlaceSearch` / `PLACE_SEARCH_MESSAGE` below, including the reason a search
+ *  came back empty. */
+export const vacancyPlaceSearch = (q: string, limit = 6) =>
+  tenant<PlaceSearch>(
+    "/vacancies/place-search" + qs({ q, limit: String(limit) }),
+  );
 export const intakeFollowUps = (body: { entity_id?: string | null; answers: IntakeAnswers }) =>
   tenant<{ questions: IntakeQuestion[] }>("/vacancies/intake/follow-ups", { method: "POST", body });
 /** Drafts AND saves, as a DRAFT vacancy — four minutes of answers must survive

@@ -57,6 +57,10 @@ router.get("/talent-pool", requirePermission(M, "view"), controller.searchPool);
  * role is not necessarily granted the master-data list — and a create form that
  * cannot name the employer produces vacancies attached to nobody. */
 router.get("/hiring-entities", requirePermission(M, "view"), controller.hiringEntities);
+/* City lookup for the advert's address. `edit`, not `view`, for the same reason
+ * the attendance module's copy is: it spends the tenant's Geoapify quota, and a
+ * read-only grant must not be able to. */
+router.get("/place-search", requirePermission(M, "edit"), validator.placeSearch, controller.placeSearch);
 router.get("/intake/questions", requirePermission(M, "view"), controller.intakeQuestions);
 router.post("/intake/follow-ups", requirePermission(M, "create"), validator.intake, controller.intakeFollowUps);
 router.post("/draft", requirePermission(M, "create"), validator.intake, controller.draftVacancy);

@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1047 |
-| Modules mounted | 110 |
+| Routes | 1057 |
+| Modules mounted | 111 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1047 mounted routes, grouped by path prefix.
+All 1057 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1251,6 +1251,21 @@ All 1047 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/quotations/:id` | — |
 | POST | `/api/tenant/quotations/:id/accept` | — |
 | POST | `/api/tenant/quotations/:id/transition` | — |
+
+### `tenant/quote-requests`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/quote-requests/` | — |
+| POST | `/api/tenant/quote-requests/` | — |
+| GET | `/api/tenant/quote-requests/:id` | — |
+| PATCH | `/api/tenant/quote-requests/:id` | — |
+| GET | `/api/tenant/quote-requests/:id/attachments` | — |
+| POST | `/api/tenant/quote-requests/:id/attachments` | — |
+| DELETE | `/api/tenant/quote-requests/:id/attachments/:attachmentId` | — |
+| POST | `/api/tenant/quote-requests/:id/convert-to-opportunity` | — |
+| POST | `/api/tenant/quote-requests/:id/transition` | — |
+| GET | `/api/tenant/quote-requests/export.csv` | — |
 
 ### `tenant/rate-providers`
 

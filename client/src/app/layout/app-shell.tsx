@@ -5,7 +5,10 @@
  *
  *   `.wco`      the title bar. In an installed window this IS the OS title bar
  *               (Window Controls Overlay); everywhere else it is the utility
- *               strip. Logo, search, environment, theme, alerts, account.
+ *               strip. Logo, search, environment, theme, alerts, account —
+ *               with search and environment present at EVERY width (see the
+ *               strip's own comment) and theme demoted into the account menu
+ *               below `sm` to pay for them.
  *   `<Ribbon>`  navigation and screen commands — the workflow families this
  *               user can see, and the destinations inside the one they are in.
  *   `<IconRail>` a constant strip of shortcuts down the left edge.
@@ -39,6 +42,7 @@ import {
 import { Ribbon } from "@/app/layout/ribbon";
 import { IconRail } from "@/app/layout/icon-rail";
 import { BottomNav } from "@/app/layout/mobile-nav";
+import { EnvChip, SwitchToLiveButton } from "@/app/layout/env-switcher";
 import { RibbonCommandsProvider } from "@/app/layout/shell-providers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";
@@ -46,6 +50,7 @@ import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { getMode, setMode, resolved } from "@/lib/theme-mode";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
@@ -80,13 +85,19 @@ function useVisibleNav(): NavGroup[] {
 
 
 /**
- * LIVE / TEST. Lifted out of the shell's markup when the utility cluster moved
- * into the title bar — it is the one control in there whose colours carry
- * meaning (a sandbox session must never be mistaken for a live one), so it is
- * worth being a named component rather than forty lines inline.
+ * LIVE / TEST, from `sm` up. Lifted out of the shell's markup when the utility
+ * cluster moved into the title bar — it is the one control in there whose
+ * colours carry meaning (a sandbox session must never be mistaken for a live
+ * one), so it is worth being a named component rather than forty lines inline.
  *
  * `--ok` / `--warn` rather than raw emerald/amber: two of the 122 palette
  * bypasses F14 counted were in this exact control, in the shell itself.
+ *
+ * BELOW `sm` THE CONTROL IS `EnvChip` (env-switcher.tsx), not this. Two labelled
+ * cells cost ~100px of a 360px strip, and this component's `hidden` used to mean
+ * a phone had no way INTO the sandbox at all while the sandbox banner offered a
+ * way out of it. Deliberately still single-tap and unconfirmed: that asymmetry
+ * with the phone's confirm-both-ways is argued in env-switcher.tsx's header.
  */
 function EnvToggle({ env, onSwitch }: { env: string; onSwitch: (e: "live" | "sandbox") => void }) {
   return (
@@ -306,7 +317,52 @@ function DensityChoice() {
   );
 }
 
-/** User avatar + dropdown (role · My HR · My security · density · Sign out). */
+/**
+ * Light / dark, in the account menu — the small-screen half of the strip's
+ * `ThemeToggle`.
+ *
+ * WHY IT IS HERE. The toggle is a permanent 36×36 square spent on a preference
+ * a user sets roughly once, ever, and below `sm` that square was the width the
+ * search button and the environment chip needed. So the toggle is `sm:`-gated
+ * and this stands in below it — beside `DensityChoice`, in the same
+ * `DropdownRadioGroup` idiom, so "a display preference I own" is one place and
+ * one pattern rather than two.
+ *
+ * NO "SYSTEM" OPTION, and that is not an omission. `getMode()` falls back to
+ * "system" and `resolved()` follows the OS, but it is the SILENT default before
+ * anyone has chosen — never a state the UI offers, exactly as the `ThemeToggle`
+ * comment says. Listing it here would invent a third selectable state the rest
+ * of the app does not have, and the first click would then be able to select
+ * the state that means "I have not clicked".
+ *
+ * State stays in `lib/theme-mode` (`getMode` / `setMode` / `resolved`) — this
+ * holds only the resolved appearance it is currently drawing, so the radio and
+ * the toggle can never disagree about what is stored.
+ */
+function ThemeChoice() {
+  const [mode, setLocal] = React.useState<"light" | "dark">(() => resolved(getMode()));
+
+  return (
+    <>
+      <DropdownLabel>
+        <span className="micro">Theme</span>
+      </DropdownLabel>
+      <DropdownRadioGroup
+        value={mode}
+        onValueChange={(v) => {
+          if (v !== "light" && v !== "dark") return;
+          setMode(v);
+          setLocal(v);
+        }}
+      >
+        <DropdownRadioItem value="light">Light</DropdownRadioItem>
+        <DropdownRadioItem value="dark">Dark</DropdownRadioItem>
+      </DropdownRadioGroup>
+    </>
+  );
+}
+
+/** User avatar + dropdown (role · My HR · My security · theme · density · Sign out). */
 function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
   const email = user?.email || "";
@@ -325,6 +381,13 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         trigger={
           <button
             type="button"
+            // NAMED EXPLICITLY, because below `sm` it had no name at all: the
+            // initials are `aria-hidden` (they are a picture of the name beside
+            // them) and that name is `hidden … sm:block`, so a phone got a
+            // button announced as "button". That was always wrong; it became
+            // load-bearing when the theme preference moved in here for small
+            // screens, since this is now the only door to it.
+            aria-label={`Account: ${name}`}
             className="flex items-center gap-2 rounded-lg border p-1 pr-2 transition-colors hover:bg-accent/50"
           >
             {user?.avatar_url ? (
@@ -368,6 +431,14 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
           </DropdownItem>
         )}
         <DropdownSeparator />
+        {/* Theme only where the strip's toggle is not. A menu whose contents
+            change with the viewport is a small cost; two live doors to one
+            preference at the same width is a larger one, because the two would
+            have to be kept in step forever and a user who found one would have
+            no way to know the other existed. */}
+        <div className="sm:hidden">
+          <ThemeChoice />
+        </div>
         <DensityChoice />
         <DropdownSeparator />
         <DropdownItem destructive onSelect={onLogout}>
@@ -688,17 +759,48 @@ export function AppShell() {
             gets whatever width is left rather than a fixed amount. */}
         <div className="flex-1" />
         <div className="flex items-center gap-2">
+          {/*
+            ONE SEARCH BUTTON, AT EVERY WIDTH — and it is one button, not two
+            that hand off.
+
+            It was `hidden … lg:flex`, i.e. 1024px and up, while `BottomNav`
+            carried a Search cell inside `.lux-botnav` at `md:hidden`, i.e.
+            below 768px. Between those two numbers NEITHER rendered: every
+            tablet in portrait had no touch path to search at all. ⌘K still
+            worked, which is precisely why the hole survived — it is invisible
+            to anyone testing on a laptop with a keyboard.
+
+            So the icon is unconditional and `lg` reveals the label and the ⌘K
+            badge on top of it: progressive disclosure of a single control,
+            which cannot develop a gap the way two controls with adjacent
+            breakpoints did. From `lg` the button is what it always was, down to
+            the badge; `lg:h-auto` gives back the intrinsic height that
+            `wco-touch` overrides for the thumb below it.
+          */}
           <button
+            type="button"
             onClick={() => setPaletteOpen(true)}
-            className="hidden items-center gap-2 rounded-lg border bg-accent/40 px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground lg:flex"
+            aria-label="Search"
             title="Search (⌘K)"
+            className="wco-touch flex min-w-[40px] items-center justify-center rounded-lg border bg-accent/40 text-muted-foreground transition-colors hover:text-foreground lg:h-auto lg:min-w-0 lg:justify-start lg:gap-2 lg:px-3 lg:py-1.5"
           >
-            <SearchIcon width={14} height={14} />
-            <span className="text-xs">Search…</span>
-            <span className="ml-4 rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
+            <SearchIcon width={16} height={16} />
+            <span className="hidden text-xs lg:inline">Search…</span>
+            <span className="ml-4 hidden rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold lg:inline">⌘K</span>
           </button>
+          {/* Two renderings of one control, split at `sm`: the segmented toggle
+              for a pointer, the chip + sheet + confirmation for a thumb. Only
+              ever one of them is on screen. */}
           <EnvToggle env={env} onSwitch={switchEnv} />
-          <ThemeToggle />
+          <EnvChip env={env} onSwitch={switchEnv} />
+          {/* `sm:` — 36px is a lot of a 360px strip to hold permanently for a
+              preference set once per user, and search and the env chip needed
+              it. Below `sm` the same choice lives in the account menu
+              (`ThemeChoice`), which is where the other display preference this
+              user owns already is. */}
+          <span className="hidden sm:inline-flex">
+            <ThemeToggle />
+          </span>
           <span className="hidden md:inline-flex">
             <QuickActionsMenu badge={unread.messages} />
           </span>
@@ -738,14 +840,17 @@ export function AppShell() {
 
       {/* The single custom scroll container: vertical scrolls, horizontal is
           clipped (pages that need it wrap their own overflow-x-auto region). */}
-      {/* Sandbox warning banner (Lovable mock) — only in TEST mode. */}
+      {/* Sandbox warning banner (Lovable mock) — only in TEST mode.
+          Its way out goes through `SwitchToLiveButton`, which asks first. This
+          used to call `switchEnv("live")` from the onClick, so a phone had two
+          routes between environments and only one of them confirmed — and this
+          was the route a thumb could take by accident while reading the banner
+          that explains why it matters. */}
       {env === "sandbox" && (
         <div className="flex flex-none items-center justify-center gap-2 border-b border-[rgb(var(--warn-fill)_/_0.35)] bg-[rgb(var(--warn-fill)_/_0.14)] px-4 py-2 text-center text-xs font-medium text-[rgb(var(--warn))]">
           <AlertIcon width={14} height={14} className="shrink-0" />
           <span>TEST MODE — you&rsquo;re viewing sandbox data. Changes here don&rsquo;t affect live.</span>
-          <button type="button" onClick={() => switchEnv("live")} className="ml-1 underline underline-offset-2 hover:no-underline">
-            Switch to live
-          </button>
+          <SwitchToLiveButton onSwitch={switchEnv} />
         </div>
       )}
 
@@ -802,8 +907,11 @@ export function AppShell() {
       </div>
 
       {/* `onMenu` is the bar's escape hatch when the permissions read yields no
-          families: the drawer is the complete, unfiltered index. */}
-      <BottomNav onSearch={() => setPaletteOpen(true)} onMenu={() => setSidebarOpen(true)} />
+          families: the drawer is the complete, unfiltered index. It no longer
+          takes `onSearch` — the strip's search button renders at every width
+          now, so the bottom bar's Search cell was a second control for the same
+          palette, and dropping it gives that width back to the families. */}
+      <BottomNav onMenu={() => setSidebarOpen(true)} />
 
       {/* Surfaces row-action failures reported via lib/action-error. Retrofit
           for screens whose handlers had no catch — see

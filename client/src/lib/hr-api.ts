@@ -376,6 +376,20 @@ export type Vacancy = {
   /** The public careers credential. NULL = not published. */
   public_token?: string | null;
   published_at?: string | null;
+  // 0683 — the detail a candidate reads before deciding to apply.
+  work_mode?: string | null;
+  working_hours?: string | null;
+  days_on_site?: number | null;
+  days_off_site?: number | null;
+  days_off?: number | null;
+  probation_months?: number | null;
+  location_city?: string | null;
+  location_state?: string | null;
+  location_country?: string | null;
+  target_start_date?: string | null;
+  /** The band stays on the row; the PUBLIC payload omits it when this is set. */
+  salary_hidden?: boolean | null;
+  apply_config?: { require_cover_letter?: boolean; require_portfolio?: boolean } | null;
   // 0526 — who is hiring, how many, and where the advert came from.
   entity_id?: string | null;
   headcount?: number | null;
@@ -494,6 +508,20 @@ export const updateVacancy = (
     salary_max?: number;
     skills_required?: string[];
     closes_on?: string;
+    // 0683. Nullable, not just optional: clearing a working pattern is as real
+    // an edit as setting one, and `undefined` would leave the old value.
+    work_mode?: string | null;
+    working_hours?: string | null;
+    days_on_site?: number | null;
+    days_off_site?: number | null;
+    days_off?: number | null;
+    probation_months?: number | null;
+    location_city?: string | null;
+    location_state?: string | null;
+    location_country?: string | null;
+    target_start_date?: string | null;
+    salary_hidden?: boolean;
+    apply_config?: { require_cover_letter?: boolean; require_portfolio?: boolean };
   },
 ) => tenant<Vacancy>(`/vacancies/${id}`, { method: "PATCH", body: patch });
 export const setVacancyStatus = (id: string, status: string) =>
@@ -525,6 +553,9 @@ export const addApplicant = (
     portfolio_url?: string;
     cover_note?: string;
     source?: string;
+    /** A CV read into a base64 data URL — the same road the careers form uses. */
+    cv_data_url?: string;
+    cv_filename?: string;
   },
 ) =>
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, {
@@ -605,6 +636,14 @@ export const scoreApplicant = (vacancyId: string, applicantId: string) =>
     method: "POST",
     body: {},
   });
+
+/** Re-score everyone on the vacancy after the criteria or the advert changed.
+ *  Sequential model calls server-side, so this is slow by design and capped. */
+export const scoreAllApplicants = (vacancyId: string) =>
+  tenant<{ scored: number; failed: number; total: number; skipped: number }>(
+    `/vacancies/${vacancyId}/score-all`,
+    { method: "POST", body: {} },
+  );
 
 export const listCriteria = (vacancyId: string) =>
   tenant<VacancyCriterion[]>(`/vacancies/${vacancyId}/criteria`);

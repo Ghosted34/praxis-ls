@@ -90,6 +90,10 @@ router.get("/:id/applicants", requirePermission(M, "view"), controller.listAppli
  *   for good).
  */
 router.post("/:id/applicants/:applicantId/score", requirePermission(M, "edit"), controller.scoreApplicant);
+// Everyone at once, after the criteria or the description changed. Same `edit`
+// gate and the same budget as scoring one, multiplied — which is why the
+// service caps it rather than trusting the caller.
+router.post("/:id/score-all", requirePermission(M, "edit"), controller.scoreAllApplicants);
 
 router.get("/:id/criteria", requirePermission(M, "view"), controller.listCriteria);
 router.post("/:id/criteria", requirePermission(M, "edit"), validator.criterion, controller.addCriterion);

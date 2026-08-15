@@ -265,3 +265,65 @@ describe("vacancy.service — pause and resume (0682)", () => {
     ).rejects.toBeInstanceOf(AppError);
   });
 });
+
+/**
+ * Re-scoring everyone, and what a partial failure is allowed to do (0683).
+ *
+ * Criteria and the job description are what a score MEANS, and both get edited
+ * after applicants have arrived — so without this the column silently mixes
+ * scores taken against three different versions of the role. What matters here
+ * is the failure shape: one unreadable CV must not abandon the other forty, and
+ * the caller has to be told how many of each, because "12 scored" with three
+ * silently missing is how a shortlist gets trusted more than it should be.
+ */
+describe("vacancy.service — re-score all (0683)", () => {
+  const service = require("../../src/modules/hr/vacancy/vacancy.service");
+  const repo = require("../../src/modules/hr/vacancy/vacancy.repo");
+  const scoring = require("../../src/modules/hr/vacancy/vacancy.scoring");
+
+  const APPLICANTS = [
+    { applicant_id: "a1", full_name: "One" },
+    { applicant_id: "a2", full_name: "Two" },
+    { applicant_id: "a3", full_name: "Three" },
+  ];
+
+  beforeEach(() => {
+    jest.spyOn(repo, "findById").mockResolvedValue({ vacancy_id: "v1", title: "Stylist" });
+    jest.spyOn(repo, "listApplicants").mockResolvedValue(APPLICANTS);
+    jest.spyOn(repo, "listCriteria").mockResolvedValue([]);
+    jest.spyOn(repo, "updateApplicant").mockResolvedValue({});
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("scores every applicant and says how many", async () => {
+    jest.spyOn(scoring, "assess").mockResolvedValue({ ai_score: 70 });
+    const out = await service.scoreAllApplicants({}, { vacancyId: "v1" });
+    expect(out).toMatchObject({ scored: 3, failed: 0, total: 3 });
+    expect(repo.updateApplicant).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps going when one candidate fails, and counts it", async () => {
+    jest
+      .spyOn(scoring, "assess")
+      .mockResolvedValueOnce({ ai_score: 70 })
+      .mockRejectedValueOnce(new Error("unreadable CV"))
+      // A null assessment is a failure too — the model answered, unusably.
+      .mockResolvedValueOnce(null);
+
+    const out = await service.scoreAllApplicants({}, { vacancyId: "v1" });
+    expect(out).toMatchObject({ scored: 1, failed: 2, total: 3 });
+    // The one that worked was still written: a partial run is not rolled back.
+    expect(repo.updateApplicant).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps the run rather than looping over a popular role forever", async () => {
+    jest.spyOn(scoring, "assess").mockResolvedValue({ ai_score: 70 });
+    const out = await service.scoreAllApplicants({}, { vacancyId: "v1", limit: 2 });
+    expect(out).toMatchObject({ scored: 2, total: 3, skipped: 1 });
+  });
+
+  it("is a 404, not an empty result, when the vacancy does not exist", async () => {
+    repo.findById.mockResolvedValue(null);
+    expect(await service.scoreAllApplicants({}, { vacancyId: "nope" })).toBeNull();
+  });
+});

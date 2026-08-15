@@ -9,6 +9,13 @@ const scoring = require("./vacancy.scoring");
 const questions = require("./vacancy.questions");
 const drafting = require("./vacancy.draft");
 const transcription = require("../../../services/ai/transcription.service");
+const vault = require("../../vault/document_vault/document_vault.service");
+const { logger } = require("../../../config/logger");
+
+/** Matches the careers form's limits — the same document either way, so a file
+ *  a stranger could upload must not be one a recruiter cannot. */
+const CV_MAX_BYTES = 8 * 1024 * 1024;
+const CV_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 
 // Recruitment: vacancy head + applicant pipeline. Vacancy lifecycle
 // DRAFT → OPEN ⇄ PAUSED → CLOSED; applicants move through their own pipeline.
@@ -47,6 +54,30 @@ module.exports = {
   async addApplicant(client, { vacancyId, data, actor }) {
     const vacancy = await repo.findById(client, vacancyId);
     if (!vacancy) return null;
+
+    /*
+     * A CV attached by hand takes the SAME road as one uploaded to the careers
+     * page (0683): the vault sniffs the bytes, caps the size and refuses a type
+     * it does not recognise. Without this a referral could never be scored on
+     * anything but the typed fields, while an online applicant is read in full
+     * — and the score column would quietly mean two different things depending
+     * on how the candidate happened to arrive.
+     */
+    const { cv_data_url: cvDataUrl, cv_filename: cvFilename, ...fields } = data;
+    if (cvDataUrl && !fields.cv_vault_id) {
+      const doc = await vault.createDocument(client, {
+        dataUrl: cvDataUrl,
+        docType: "CV",
+        entityRef: `vacancy:${vacancyId}`,
+        originalName: cvFilename || null,
+        maxBytes: CV_MAX_BYTES,
+        allowedTypes: CV_TYPES,
+        sniff: true,
+        actor,
+      });
+      fields.cv_vault_id = doc.doc_id;
+    }
+    data = fields;
     /*
      * The provisional score is computed ON INSERT, not on first read.
      *
@@ -144,14 +175,16 @@ module.exports = {
     // Only looked up when the answer is not already settled — a single-entity
     // tenant pays for one query here, not two.
     const rows = entity ? [] : await repo.listHiringEntities(client);
-    const questions =
+    // Not `questions` — that is the interview-question module imported above,
+    // and shadowing it here would read as the wrong thing to the next person.
+    const questionSet =
       rows.length > 1
         ? [drafting.entityQuestion(rows), ...drafting.BASE_QUESTIONS]
         : drafting.BASE_QUESTIONS;
 
     return {
-      questions,
-      total: questions.length + drafting.FOLLOW_UP_COUNT,
+      questions: questionSet,
+      total: questionSet.length + drafting.FOLLOW_UP_COUNT,
       currency: (entity && entity.default_currency) || "XAF",
       entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.legal_name } : null,
     };
@@ -268,6 +301,61 @@ module.exports = {
     const entityRef = `vacancy:${vacancyId}`;
     await audit(client, { actorUserId: actor.user_id || null, action: events.APPLICANT_SCORED, moduleKey: events.MODULE, entityRef, before: applicant, after: row });
     return row;
+  },
+
+  /**
+   * Re-score every applicant on this vacancy.
+   *
+   * WHY IT EXISTS. Criteria and the job description are what a score MEANS, and
+   * both are edited after applicants have already arrived. Without this, the
+   * only way to make a shortlist comparable again is to open every candidate and
+   * press Score — so in practice nobody does, and the column silently mixes
+   * scores taken against three different versions of the role.
+   *
+   * ONE AT A TIME, DELIBERATELY. Each assessment is a model call of several
+   * seconds against a 12-connection-per-tenant ceiling, so this does not fan
+   * out: parallelism here would spend the tenant's pool and its AI budget at the
+   * same time. The cap is the other half of that — an unbounded loop over a
+   * popular role is a request that never returns.
+   *
+   * A FAILURE IS COUNTED, NOT THROWN. One unreadable CV must not abandon the
+   * other forty applicants, and the caller is told how many of each so "12
+   * scored, 3 failed" can be said out loud rather than implied by a spinner
+   * that stopped.
+   */
+  async scoreAllApplicants(client, { vacancyId, actor = {}, limit = 100 }) {
+    const vacancy = await repo.findById(client, vacancyId);
+    if (!vacancy) return null;
+    const applicants = await repo.listApplicants(client, vacancyId);
+    const criteria = await repo.listCriteria(client, vacancyId);
+
+    const queue = applicants.slice(0, limit);
+    let scored = 0;
+    let failed = 0;
+    for (const applicant of queue) {
+      try {
+        const result = await scoring.assess(client, { vacancy, applicant, criteria });
+        if (!result) {
+          failed += 1;
+          continue;
+        }
+        await repo.updateApplicant(client, applicant.applicant_id, { ...result, ai_scored_at: new Date() });
+        scored += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn({ err, applicantId: applicant.applicant_id }, "[vacancy] re-score failed for one applicant — continuing");
+      }
+    }
+
+    const entityRef = `vacancy:${vacancyId}`;
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.APPLICANT_SCORED,
+      moduleKey: events.MODULE,
+      entityRef,
+      after: { scored, failed, total: applicants.length },
+    });
+    return { scored, failed, total: applicants.length, skipped: Math.max(0, applicants.length - queue.length) };
   },
 
   /* ── Custom scoring criteria ── */

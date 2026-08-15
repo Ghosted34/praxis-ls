@@ -9,6 +9,8 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { FileDrop } from "@/components/ui/file-drop";
+import { Callout } from "@/components/ui/callout";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Select } from "@/components/ui/select";
@@ -76,6 +78,9 @@ const FILTERS: {
   { key: "CLOSED", label: "Closed", match: (v) => v.status === "CLOSED" },
 ];
 
+/** Mirrors careers.service + vacancy.service — the same document either way. */
+const CV_MAX_BYTES = 8 * 1024 * 1024;
+
 const ORDER = ["APPLIED", "SHORTLISTED", "INTERVIEWED", "HIRED"];
 const COLUMNS = [...ORDER, "REJECTED", "TALENT_POOL"];
 const COL_LABEL: Record<string, string> = {
@@ -115,12 +120,29 @@ function AddApplicantForm({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
+  // The CV takes the same road as one uploaded to the careers page: read to a
+  // base64 data URL here, sniffed and size-capped by the vault server-side.
+  // Without it a referral can never be scored on more than the typed fields,
+  // while an online applicant is read in full.
+  const [cv, setCv] = React.useState<File | null>(null);
+  const [cvError, setCvError] = React.useState<string | null>(null);
+  const readDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onerror = () => reject(new Error("Couldn't read that file."));
+      r.onload = () => resolve(String(r.result));
+      r.readAsDataURL(file);
+    });
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const cvDataUrl = cv ? await readDataUrl(cv) : undefined;
       await api.addApplicant(vacancyId, {
+        cv_data_url: cvDataUrl,
+        cv_filename: cv?.name,
         full_name: f.full_name,
         email: f.email || undefined,
         phone: f.phone || undefined,
@@ -247,6 +269,26 @@ function AddApplicantForm({
             onChange={(e) => set("skills", e.target.value)}
           />
         </Field>
+        <FileDrop
+          file={cv}
+          onPick={(picked) => {
+            // Refused here as well as server-side, because the alternative is
+            // reading an 80 MB file into memory to be told no afterwards.
+            if (picked && picked.size > CV_MAX_BYTES) {
+              setCvError(
+                "That file is over 8 MB. Send a smaller PDF or photo.",
+              );
+              return;
+            }
+            setCvError(null);
+            setCv(picked);
+          }}
+          accept="application/pdf,image/png,image/jpeg"
+          label="CV"
+          hint="PDF or a photo, up to 8 MB. Without one the AI score stays an estimate."
+          error={cvError}
+          disabled={busy}
+        />
         <Field
           label="Cover note"
           hint="Anything they sent or said — the AI reads it alongside the CV."
@@ -407,6 +449,7 @@ function Pipeline({
   const [openApplicant, setOpenApplicant] =
     React.useState<api.Applicant | null>(null);
   const [copied, setCopied] = React.useState(false);
+  const [rescored, setRescored] = React.useState<string | null>(null);
 
   const paused = vacancy.status === "PAUSED";
   const publicUrl = vacancy.public_token
@@ -446,6 +489,27 @@ function Pipeline({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setError("Couldn't copy — select the link and copy it by hand.");
+    }
+  }
+
+  async function rescoreAll() {
+    setBusy("score-all");
+    setError(null);
+    setRescored(null);
+    try {
+      const r = await api.scoreAllApplicants(vacancy.vacancy_id);
+      applicants.reload();
+      // Said out loud, including the failures: "12 scored" with three silently
+      // missing is how a shortlist gets trusted more than it should be.
+      setRescored(
+        `${r.scored} scored${r.failed ? `, ${r.failed} failed` : ""}${
+          r.skipped ? `, ${r.skipped} not reached` : ""
+        }.`,
+      );
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -581,6 +645,19 @@ function Pipeline({
               {vacancy.public_token ? "Unpublish" : "Publish to careers"}
             </Button>
           )}
+          {/* After the criteria or the advert change, the scores on this board
+              were taken against a different version of the role. This is the
+              only way to make them comparable again without opening every
+              candidate. */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy === "score-all"}
+            disabled={Boolean(busy)}
+            onClick={rescoreAll}
+          >
+            Re-score all with AI
+          </Button>
           <Button size="sm" onClick={() => setAdding(true)}>
             Add applicant
           </Button>
@@ -611,6 +688,11 @@ function Pipeline({
       )}
 
       {error && <ErrorState message={error} />}
+      {rescored && (
+        <Callout tone="info" title="Re-scored">
+          {rescored}
+        </Callout>
+      )}
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNS.map((col) => (

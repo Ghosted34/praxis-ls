@@ -73,12 +73,17 @@ module.exports = {
    * Grounding for the drafting wizard. Only the columns an advert can honestly
    * use — NOT share capital, tax ids or registration numbers, which are on the
    * record, irrelevant to a job advert, and a disclosure to a third-party model
-   * that nobody asked for. */
+   * that nobody asked for.
+   *
+   * The name column is `legal_name` (0100), NOT `name`. Selecting `name` is a
+   * 42703 that the error handler turns into a 500 "A required column is
+   * missing" — which is what the whole drafting interview did on every call,
+   * because both of these run before anything else in it. */
   getEntity(client, entityId) {
     if (!entityId) return Promise.resolve(null);
     return client
       .query(
-        `SELECT entity_id, name, trading_name, description, industry, legal_form,
+        `SELECT entity_id, legal_name, trading_name, description, industry, legal_form,
                 incorporation_place, incorporation_country, headcount, website,
                 default_currency, payroll_country, timezone
            FROM corporate_entity WHERE entity_id = $1`,
@@ -92,7 +97,7 @@ module.exports = {
   soleEntity(client) {
     return client
       .query(
-        `SELECT entity_id, name, trading_name, description, industry, legal_form,
+        `SELECT entity_id, legal_name, trading_name, description, industry, legal_form,
                 incorporation_place, incorporation_country, headcount, website,
                 default_currency, payroll_country, timezone
            FROM corporate_entity

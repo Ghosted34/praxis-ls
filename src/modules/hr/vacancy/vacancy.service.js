@@ -117,7 +117,7 @@ module.exports = {
       questions: drafting.BASE_QUESTIONS,
       total: drafting.TOTAL_QUESTIONS,
       currency: (entity && entity.default_currency) || "XAF",
-      entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.name } : null,
+      entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.legal_name } : null,
     };
   },
 

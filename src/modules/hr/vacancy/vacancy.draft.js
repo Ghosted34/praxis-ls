@@ -51,7 +51,7 @@ const { logger } = require("../../../config/logger");
 function entityContext(entity) {
   if (!entity) return "No entity details on file — write in a neutral, professional voice.";
   const lines = [
-    `Name: ${entity.trading_name || entity.name || "the company"}`,
+    `Name: ${entity.trading_name || entity.legal_name || "the company"}`,
     entity.description && `About: ${entity.description}`,
     entity.industry && `Industry: ${entity.industry}`,
     entity.legal_form && `Legal form: ${entity.legal_form}`,
@@ -280,7 +280,7 @@ function shape(out, { entity, answers }) {
 function templateDraft({ entity, answers }) {
   const a = answers || {};
   const title = String(a.title || "New role").trim();
-  const company = (entity && (entity.trading_name || entity.name)) || "our team";
+  const company = (entity && (entity.trading_name || entity.legal_name)) || "our team";
   const bullets = (text) =>
     String(text || "")
       .split(/\n|;|(?<=\.)\s+/)

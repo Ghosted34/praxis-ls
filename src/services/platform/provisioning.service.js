@@ -358,7 +358,7 @@ async function provisionTenant(input) {
     try {
       await pf.query("ROLLBACK");
     } catch {
-      /* connection already gone; the original error is the useful one */
+      /*  @silent:storage|parse|teardown connection already gone; the original error is the useful one */
     }
     throw err;
   } finally {
@@ -769,6 +769,7 @@ async function wipeSandbox(input) {
     try {
       await cli.query("ROLLBACK");
     } catch {
+       /* @silent:storage|parse|teardown */
       /* connection already gone; the original error is the useful one */
     }
     logger.error(

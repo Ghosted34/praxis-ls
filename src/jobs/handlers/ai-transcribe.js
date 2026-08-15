@@ -58,6 +58,7 @@ async function markFailed(client, target, reason, user) {
       });
     }
   } catch {
+     /* @silent:storage|parse|teardown */
     // Swallowed on purpose, and this is the one place it is right to: the
     // caller is already reporting the real error, and throwing from the
     // error handler would hide it.

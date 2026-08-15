@@ -456,57 +456,79 @@ describe("the icon rail", () => {
 describe("the phone gets the same families, not a scrolled ribbon", () => {
   it("puts every family in the bottom bar", async () => {
     access.current = SIX_TABS;
-    renderChrome(<BottomNav onSearch={() => {}} />, "/");
+    renderChrome(<BottomNav />, "/");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
-    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(7)); // six + Search
+    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(6)); // six families, nothing else
+  });
+
+  /**
+   * THE BAR IS THE FAMILIES AND NOTHING ELSE. Search used to be a seventh cell
+   * here; the title bar's search button is unconditional now (it was `lg:flex`,
+   * which left 768–1023px with no touch path at all), so this cell was a second
+   * door to the same palette taking a seventh of the thumb width to be it.
+   *
+   * Pinned as a COUNT, because the regression is additive: the way this comes
+   * back is somebody re-adding a cell here rather than editing the strip.
+   */
+  it("carries no Search cell — the title bar's button is the one search control", async () => {
+    access.current = SIX_TABS;
+    renderChrome(<BottomNav />, "/");
+    const bar = await screen.findByRole("navigation", { name: "Primary" });
+    await waitFor(() => expect(bar).not.toHaveAttribute("aria-busy"));
+    expect(within(bar).queryByRole("button", { name: /search/i })).toBeNull();
   });
 
   /**
    * THE BAR MUST SAY WHICH OF THREE THINGS HAPPENED. It only read `access`, and
    * `buildRibbon(NO_ACCESS)` is empty — so "still loading", "the read failed"
-   * and "you genuinely have nothing" all rendered one Search button and nothing
-   * else. On a phone the bottom bar IS the navigation, so a bar that looks
-   * finished and is empty is the worst of the three to show.
+   * and "you genuinely have nothing" looked identical. That was already the
+   * worst thing to get wrong on a phone, where the bottom bar IS the
+   * navigation; with the Search cell gone the empty case renders nothing at
+   * all, so the three states carry the whole message.
    */
   it("reads as unfinished while the permissions read is in flight", async () => {
     access.current = SIX_TABS;
     accessPending.current = true;
-    renderChrome(<BottomNav onSearch={() => {}} />, "/");
+    renderChrome(<BottomNav />, "/");
 
     const bar = await screen.findByRole("navigation", { name: "Primary" });
     expect(bar).toHaveAttribute("aria-busy", "true");
-    // Nothing to press but Search — and crucially the placeholders are not
-    // buttons, so a thumb cannot land on a control that does nothing.
-    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+    // Nothing to press at all — and crucially the placeholders are not buttons,
+    // so a thumb cannot land on a control that does nothing.
+    expect(within(bar).queryAllByRole("button")).toHaveLength(0);
     expect(within(bar).getByText("Loading navigation…")).toBeInTheDocument();
   });
 
   it("offers the unfiltered drawer when the read comes back with nothing", async () => {
     // Whether that is a failure or an honest empty answer, stranding a phone
-    // user with one Search button is not an answer. The drawer lists every area
-    // in the product and is not permission-filtered.
+    // user with a blank bar is not an answer. The drawer lists every area in the
+    // product and is not permission-filtered — which is why it is the branch
+    // that had to survive Search leaving: it is the only route out of an empty
+    // permissions read, and it is now the ONLY control in the bar when one
+    // happens.
     const onMenu = vi.fn();
     access.current = grant({});
-    renderChrome(<BottomNav onSearch={() => {}} onMenu={onMenu} />, "/");
+    renderChrome(<BottomNav onMenu={onMenu} />, "/");
 
     const bar = await screen.findByRole("navigation", { name: "Primary" });
     await waitFor(() => expect(bar).not.toHaveAttribute("aria-busy"));
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
     await userEvent.click(within(bar).getByRole("button", { name: /All areas/ }));
     expect(onMenu).toHaveBeenCalled();
   });
 
   it("shows the real bar once the read lands, with no placeholders left", async () => {
     access.current = TWO_TABS;
-    renderChrome(<BottomNav onSearch={() => {}} />, "/");
+    renderChrome(<BottomNav />, "/");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
-    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(3)); // two + Search
+    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(2)); // two families
     expect(bar).not.toHaveAttribute("aria-busy");
     expect(within(bar).queryByText("Loading navigation…")).toBeNull();
   });
 
   it("opens a family into a sheet of its destinations", async () => {
     access.current = TWO_TABS;
-    renderChrome(<BottomNav onSearch={() => {}} />, "/wms");
+    renderChrome(<BottomNav />, "/wms");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
     // The SKELETON nav carries `aria-label="Primary"` too, so findByRole
     // resolves on the loading bar and a synchronous getByRole for a tab races

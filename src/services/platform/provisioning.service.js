@@ -17,6 +17,48 @@ const dbCredentials = require("../tenant/db-credential.service");
 const tenantRoleName = (slug) => `praxis_${slug}`;
 
 /**
+ * Give the tenant's app role the run of ONE schema — existing objects and
+ * future ones.
+ *
+ * WHY THIS IS A FUNCTION AND NOT SIX LINES INSIDE `ensureTenantRole`.
+ *
+ * Schema-level grants and default privileges are attached to the SCHEMA, and
+ * `wipeSandbox` drops the sandbox schema and builds a new one. The new schema
+ * carries none of them, and nothing re-granted — so every sandbox rebuild left
+ * the app role unable to see its own sandbox. The wipe is meant to run on a
+ * CRON (kickoff §6, every 14 days), which means this was not a one-off local
+ * mishap: it silently broke TEST mode for every tenant on a schedule.
+ *
+ * WHAT MADE IT HARD TO SEE. Postgres does not answer "permission denied" for a
+ * schema the caller cannot USE — an inaccessible schema is skipped during name
+ * resolution, so the error is `42P01 relation "feature_state" does not exist`.
+ * The tables were there the whole time, visible to any superuser holding a
+ * psql or pgAdmin session, which is exactly the tool anyone reaches for to
+ * check. The evidence and the symptom pointed in opposite directions.
+ *
+ * Default privileges are attributed to the role that CREATES an object, and
+ * migrations run as the superuser, so they must be declared FOR that role —
+ * otherwise a table added by a LATER migration is unreadable again.
+ */
+async function grantSchemaToRole(cli, { schema, role, superuser }) {
+  await cli.query(`GRANT USAGE ON SCHEMA "${schema}" TO "${role}"`);
+  await cli.query(
+    `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO "${role}"`,
+  );
+  await cli.query(
+    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "${schema}" TO "${role}"`,
+  );
+  await cli.query(
+    `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${role}"`,
+  );
+  await cli.query(
+    `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
+      `GRANT USAGE, SELECT ON SEQUENCES TO "${role}"`,
+  );
+}
+
+/**
  * WS-S2 — give this tenant its own Postgres role and password.
  *
  * Creates (or rotates) a least-privilege role scoped to exactly one tenant
@@ -69,21 +111,7 @@ async function ensureTenantRole(slug, dbName, opts = {}) {
     // migrations run as the superuser, so they must be declared FOR that role.
     const superuser = config.TENANT_DB_SUPERUSER;
     for (const schema of ["live", "sandbox", "public"]) {
-      await cli.query(`GRANT USAGE ON SCHEMA "${schema}" TO "${role}"`);
-      await cli.query(
-        `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO "${role}"`,
-      );
-      await cli.query(
-        `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "${schema}" TO "${role}"`,
-      );
-      await cli.query(
-        `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
-          `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${role}"`,
-      );
-      await cli.query(
-        `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
-          `GRANT USAGE, SELECT ON SEQUENCES TO "${role}"`,
-      );
+      await grantSchemaToRole(cli, { schema, role, superuser });
     }
 
     // WS-S1 PREREQUISITE — bind the live schema to the ROLE, server-side.
@@ -679,6 +707,32 @@ async function wipeSandbox(input) {
       searchPath: "sandbox,public",
       scope: "sandbox-seed",
     });
+    // Re-grant. DROP SCHEMA took the app role's USAGE and the default privileges
+    // with it, and both are attached to the schema rather than the database — so
+    // the rebuilt sandbox was owned by the superuser and invisible to the role
+    // the API connects as. Invisible, not forbidden: Postgres skips a schema the
+    // caller cannot USE during name resolution, so the API reported
+    // `relation "feature_state" does not exist` while pgAdmin showed every table
+    // present. Inside the same transaction as the rebuild, because a sandbox the
+    // application cannot read is not a rebuilt sandbox.
+    //
+    // Guarded on the role EXISTING. A tenant provisioned before WS-S2 has no
+    // per-tenant role and connects as the shared application user; granting to a
+    // role that is not there raises 42704 and would roll back the entire wipe —
+    // turning a missing privilege into a missing sandbox, which is worse than
+    // the bug being fixed.
+    const appRole = tenantRoleName(slug);
+    const roleExists = await cli.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [appRole]);
+    if (roleExists.rows.length) {
+      await grantSchemaToRole(cli, {
+        schema: "sandbox",
+        role: appRole,
+        superuser: config.TENANT_DB_SUPERUSER,
+      });
+    } else {
+      logger.warn({ slug, role: appRole }, "sandbox rebuilt but the tenant has no dedicated DB role — nothing to grant");
+    }
+
     // Repopulate sandbox.app_user — the rebuilt schema has no users, and 60+
     // tenant columns are `REFERENCES app_user(user_id)`. See
     // shared/db/sandbox-user-mirror.js for the full why.

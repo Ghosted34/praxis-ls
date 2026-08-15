@@ -101,8 +101,17 @@ export function VacancyEditor({
     require_portfolio: Boolean(vacancy.apply_config?.require_portfolio),
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  /**
+   * Seeded from the ROW, not from null.
+   *
+   * `scope_id` is the department reference (0490) and it is what record-level
+   * access filters on and what carries onto the employee at hire. Starting it
+   * at null meant every save through this editor sent `scope_id: null` and
+   * silently unassigned the vacancy from its part of the organigramme — for
+   * anybody who edited a salary and never touched the department control.
+   */
   const [dept, setDept] = React.useState<DepartmentValue>({
-    scope_id: null,
+    scope_id: vacancy.scope_id || null,
     department: vacancy.department || null,
   });
   const [preview, setPreview] = React.useState(false);

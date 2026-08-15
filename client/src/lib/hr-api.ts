@@ -376,6 +376,9 @@ export type Vacancy = {
   /** The public careers credential. NULL = not published. */
   public_token?: string | null;
   published_at?: string | null;
+  /** The department REFERENCE (0490); `department` is the display snapshot.
+   *  The editor has to read it back or a save would clear it — see there. */
+  scope_id?: string | null;
   // 0684 — the detail a candidate reads before deciding to apply.
   work_mode?: string | null;
   working_hours?: string | null;

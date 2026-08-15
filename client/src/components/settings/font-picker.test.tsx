@@ -21,13 +21,21 @@ import { FONTS, __resetFontCache } from "@/lib/fonts";
 // "loads once per mount" assertion below measures the whole file.
 beforeEach(() => {
   __resetFontCache();
-  for (const f of FONTS) vi.spyOn(f, "load").mockClear().mockResolvedValue(undefined);
+  for (const f of FONTS)
+    vi.spyOn(f, "load").mockClear().mockResolvedValue(undefined);
 });
 
 const montserrat = FONTS.find((f) => f.id === "montserrat")!;
 
 function setup(value = "", onChange = vi.fn()) {
-  render(<FontPicker slot="body" value={value} onChange={onChange} aria-label="Body font" />);
+  render(
+    <FontPicker
+      slot="body"
+      value={value}
+      onChange={onChange}
+      aria-label="Body font"
+    />,
+  );
   return { onChange };
 }
 
@@ -76,7 +84,9 @@ describe("FontPicker", () => {
 
   it("shows the current family as the selection", () => {
     setup(montserrat.stack);
-    expect(screen.getByRole("combobox", { name: "Body font" })).toHaveTextContent("Montserrat");
+    expect(
+      screen.getByRole("combobox", { name: "Body font" }),
+    ).toHaveTextContent("Montserrat");
   });
 
   /**
@@ -86,7 +96,9 @@ describe("FontPicker", () => {
    */
   it("recognises a hand-typed legacy stack", () => {
     setup('"Montserrat", Georgia, serif');
-    expect(screen.getByRole("combobox", { name: "Body font" })).toHaveTextContent("Montserrat");
+    expect(
+      screen.getByRole("combobox", { name: "Body font" }),
+    ).toHaveTextContent("Montserrat");
   });
 
   /**
@@ -98,39 +110,75 @@ describe("FontPicker", () => {
     const onChange = vi.fn();
     setup('"Acme Grotesk", sans-serif', onChange);
 
-    expect(screen.getByRole("combobox", { name: "Body font" })).toHaveTextContent("Custom");
+    expect(
+      screen.getByRole("combobox", { name: "Body font" }),
+    ).toHaveTextContent("Custom");
     expect(onChange).not.toHaveBeenCalled();
     // The escape hatch is already open, holding the exact stored value.
-    expect(screen.getByLabelText("Custom CSS font-family")).toHaveValue('"Acme Grotesk", sans-serif');
+    expect(screen.getByLabelText("Custom CSS font-family")).toHaveValue(
+      '"Acme Grotesk", sans-serif',
+    );
   });
 
   it("hides the custom field behind a disclosure when the value is a library font", async () => {
     const user = userEvent.setup();
     setup(montserrat.stack);
-    expect(screen.queryByLabelText("Custom CSS font-family")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Custom CSS font-family"),
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /custom font stack/i }));
+    await user.click(
+      screen.getByRole("button", { name: /custom font stack/i }),
+    );
     expect(screen.getByLabelText("Custom CSS font-family")).toBeInTheDocument();
   });
 
   it("loads the library once when it mounts, not once per render", () => {
-    const { rerender } = render(<FontPicker slot="body" value="" onChange={vi.fn()} aria-label="Body font" />);
-    rerender(<FontPicker slot="body" value="Inter" onChange={vi.fn()} aria-label="Body font" />);
+    const { rerender } = render(
+      <FontPicker
+        slot="body"
+        value=""
+        onChange={vi.fn()}
+        aria-label="Body font"
+      />,
+    );
+    rerender(
+      <FontPicker
+        slot="body"
+        value="Inter"
+        onChange={vi.fn()}
+        aria-label="Body font"
+      />,
+    );
     for (const f of FONTS) expect(f.load).toHaveBeenCalledTimes(1);
   });
 
   it("leads with monospace in the mono slot", async () => {
     const user = userEvent.setup();
-    render(<FontPicker slot="mono" value="" onChange={vi.fn()} aria-label="Mono font" />);
+    render(
+      <FontPicker
+        slot="mono"
+        value=""
+        onChange={vi.fn()}
+        aria-label="Mono font"
+      />,
+    );
     await user.click(screen.getByRole("combobox", { name: "Mono font" }));
 
-    const options = within(await screen.findByRole("listbox")).getAllByRole("option");
+    const options = within(await screen.findByRole("listbox")).getAllByRole(
+      "option",
+    );
     expect(options[0]).toHaveTextContent("JetBrains Mono");
   });
 
   it("has no accessibility violations", async () => {
     const { container } = render(
-      <FontPicker slot="body" value={montserrat.stack} onChange={vi.fn()} aria-label="Body font" />,
+      <FontPicker
+        slot="body"
+        value={montserrat.stack}
+        onChange={vi.fn()}
+        aria-label="Body font"
+      />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

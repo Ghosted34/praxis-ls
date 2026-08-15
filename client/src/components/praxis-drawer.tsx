@@ -44,8 +44,18 @@ import { XIcon } from "@/components/ui/icons";
 import { AiComposer, type ComposerValue } from "@/components/ai/composer";
 import { AiThinking, AiTurnView } from "@/components/ai/turn";
 import { useAiThread } from "@/components/ai/thread";
-import { scopeForPath, suggestionsFor, useAiScopes, useScreenContext } from "@/components/ai/context";
-import { ExpandIcon, GripIcon, NewChatIcon, PraxisMark } from "@/components/ai/icons";
+import {
+  scopeForPath,
+  suggestionsFor,
+  useAiScopes,
+  useScreenContext,
+} from "@/components/ai/context";
+import {
+  ExpandIcon,
+  GripIcon,
+  NewChatIcon,
+  PraxisMark,
+} from "@/components/ai/icons";
 
 const WIDTH_KEY = "praxis.ai.drawer.width";
 const MIN_W = 360;
@@ -99,7 +109,10 @@ export function PraxisDrawer() {
     const ceiling = Math.min(MAX_W, window.innerWidth - 80);
     let latest = width;
     const move = (ev: PointerEvent) => {
-      latest = Math.min(Math.max(MIN_W, window.innerWidth - ev.clientX), ceiling);
+      latest = Math.min(
+        Math.max(MIN_W, window.innerWidth - ev.clientX),
+        ceiling,
+      );
       setWidth(latest);
     };
     const up = () => {
@@ -121,7 +134,10 @@ export function PraxisDrawer() {
     const d = e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
     if (!d) return;
     e.preventDefault();
-    const next = Math.min(Math.max(MIN_W, width + d), Math.min(MAX_W, window.innerWidth - 80));
+    const next = Math.min(
+      Math.max(MIN_W, width + d),
+      Math.min(MAX_W, window.innerWidth - 80),
+    );
     setWidth(next);
     try {
       localStorage.setItem(WIDTH_KEY, String(next));
@@ -228,14 +244,24 @@ export function PraxisDrawer() {
             </span>
           </div>
 
-          <DrawerBody key={session} onClose={() => setOpen(false)} initialPrompt={pending} />
+          <DrawerBody
+            key={session}
+            onClose={() => setOpen(false)}
+            initialPrompt={pending}
+          />
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );
 }
 
-function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPrompt: string | null }) {
+function DrawerBody({
+  onClose,
+  initialPrompt,
+}: {
+  onClose: () => void;
+  initialPrompt: string | null;
+}) {
   const navigate = useNavigate();
   const screen = useScreenContext();
   const scopes = useAiScopes();
@@ -254,7 +280,10 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
   const touched = React.useRef(false);
   React.useEffect(() => {
     if (touched.current || !screen) return;
-    setComposer((c) => ({ ...c, scope: scopeForPath(scopes, screen.route).key }));
+    setComposer((c) => ({
+      ...c,
+      scope: scopeForPath(scopes, screen.route).key,
+    }));
   }, [scopes, screen]);
 
   const suggestions = React.useMemo(() => suggestionsFor(screen), [screen]);
@@ -285,7 +314,11 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
 
   return (
     <>
-      <DrawerHeader onNew={thread.newThread} onExpand={expand} busy={thread.busy} />
+      <DrawerHeader
+        onNew={thread.newThread}
+        onExpand={expand}
+        busy={thread.busy}
+      />
 
       <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {empty ? (
@@ -311,13 +344,17 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
             />
           ))
         )}
-        {thread.busy && (() => {
-          // Same rule as the workspace: the generic indicator stands down once
-          // the turn is showing its own text or naming the step it is on.
-          const last = thread.turns[thread.turns.length - 1];
-          const speaking = last && last.role === "assistant" && (last.text.length > 0 || !!last.status);
-          return speaking ? null : <AiThinking compact />;
-        })()}
+        {thread.busy &&
+          (() => {
+            // Same rule as the workspace: the generic indicator stands down once
+            // the turn is showing its own text or naming the step it is on.
+            const last = thread.turns[thread.turns.length - 1];
+            const speaking =
+              last &&
+              last.role === "assistant" &&
+              (last.text.length > 0 || !!last.status);
+            return speaking ? null : <AiThinking compact />;
+          })()}
       </div>
 
       <div className="border-t border-border px-3 pb-2.5 pt-2.5">
@@ -343,15 +380,28 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
   );
 }
 
-function DrawerHeader({ onNew, onExpand, busy }: { onNew: () => void; onExpand: () => void; busy: boolean }) {
+function DrawerHeader({
+  onNew,
+  onExpand,
+  busy,
+}: {
+  onNew: () => void;
+  onExpand: () => void;
+  busy: boolean;
+}) {
   return (
     <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-      <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary-ink">
+      <span
+        aria-hidden
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary-ink"
+      >
         <PraxisMark />
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold leading-tight">Praxis AI</div>
-        <div className="micro truncate text-muted-foreground">Reads freely · writes need your sign-off</div>
+        <div className="micro truncate text-muted-foreground">
+          Reads freely · writes need your sign-off
+        </div>
       </div>
 
       {/* Three controls, and the ORDER is the point: the middle one is expand,
@@ -414,20 +464,25 @@ function DrawerEmptyState({
   return (
     <div className="space-y-4 pt-2">
       <div className="space-y-1.5">
-        <span aria-hidden className="grid h-9 w-9 place-items-center rounded-xl bg-primary/12 text-primary-ink">
+        <span
+          aria-hidden
+          className="grid h-9 w-9 place-items-center rounded-xl bg-primary/12 text-primary-ink"
+        >
           <PraxisMark width={19} height={19} />
         </span>
         <p className="pt-1 text-sm text-foreground">
           {screen ? (
             <>
-              Ask about <span className="font-semibold">{screen.label}</span> — or anything else on your desk.
+              Ask about <span className="font-semibold">{screen.label}</span> —
+              or anything else on your desk.
             </>
           ) : (
             <>Ask about anything on your desk.</>
           )}
         </p>
         <p className="micro text-muted-foreground">
-          I only read and act within your permissions. This is a fresh thread; past conversations are on the full page.
+          I only read and act within your permissions. This is a fresh thread;
+          past conversations are on the full page.
         </p>
       </div>
 

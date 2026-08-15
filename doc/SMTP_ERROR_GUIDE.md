@@ -5,8 +5,8 @@ Status: implemented 2026-08-13 · Scope: tenant client, platform console, backen
 ## Problem
 
 Outbound mail failures (e.g. **`550 Sender verify failed`**) surfaced as raw, truncated
-messages with no guidance: a user seeing *"The mail server rejected the sender address
-(550 Sender verify failed)…"* had no idea which of the four causes applied to them, nor
+messages with no guidance: a user seeing _"The mail server rejected the sender address
+(550 Sender verify failed)…"_ had no idea which of the four causes applied to them, nor
 where to fix it. Support had to hand-hold every case.
 
 ## Design decision
@@ -32,7 +32,7 @@ plus an always-visible condensed card where admins configure mail.**
      the same guide (its Test button lives in the card body so the guide has room).
 4. **Secondary placement — persistent help on the config screens** (`MailTroubleshootingCard`
    in Comms → Setup; an expandable "Why would the Test fail?" in the platform
-   console's Mail fallback card), so guidance is findable *before* anyone hits the
+   console's Mail fallback card), so guidance is findable _before_ anyone hits the
    error. A support person can point an admin at the screen and the steps are there.
 
 ## What each code's guide says (condensed)
@@ -53,20 +53,20 @@ came from.
 
 ## Implementation map
 
-| Layer | File | Change |
-| --- | --- | --- |
-| Backend | `src/modules/mail/smtp-error.map.js` | **new** — shared classifier (`mapSmtpError`, `smtpCodeFromMessage`, `isSmtpError`) extracted from `mail.service.js` |
-| Backend | `src/modules/mail/mail.service.js` | uses the shared classifier; `testConnection` returns `code` on SMTP verdicts |
-| Backend | `src/modules/mail/providers/imapSmtp.provider.js` | SMTP-stage `verify()` returns classified `code` |
-| Backend | `src/services/email.service.js` | `verifyTransport` (Comms → Setup Test) returns `code`; raw message kept for non-SMTP failures |
-| Backend | `src/services/platform/settings.probes.js` | `smtp` probe throws the classified message + `code` |
-| Backend | `src/services/platform/settings.service.js` | `test` result includes `code` |
-| Client | `client/src/lib/smtp-errors.ts` | **new** — guide registry + `smtpCodeFor` (code first, message sniff fallback) |
-| Client | `client/src/components/mail/smtp-guide.tsx` | **new** — `SmtpErrorGuide` (inline, collapsible) + `MailTroubleshootingCard` (persistent) |
-| Client | `client/src/features/comms/setup.tsx` | guide under save/test errors; troubleshooting card beside Credentials |
-| Client | `client/src/features/comms/mail.tsx` | guide under reply/send/connect/test failures |
-| Client | `client/src/lib/mail-api.ts` | `TestResult.code` |
-| Console | `platform-console/src/features/Integrations.tsx` | mail-fallback Test shows the guide; persistent "Why would the Test fail?" block |
+| Layer   | File                                              | Change                                                                                                              |
+| ------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Backend | `src/modules/mail/smtp-error.map.js`              | **new** — shared classifier (`mapSmtpError`, `smtpCodeFromMessage`, `isSmtpError`) extracted from `mail.service.js` |
+| Backend | `src/modules/mail/mail.service.js`                | uses the shared classifier; `testConnection` returns `code` on SMTP verdicts                                        |
+| Backend | `src/modules/mail/providers/imapSmtp.provider.js` | SMTP-stage `verify()` returns classified `code`                                                                     |
+| Backend | `src/services/email.service.js`                   | `verifyTransport` (Comms → Setup Test) returns `code`; raw message kept for non-SMTP failures                       |
+| Backend | `src/services/platform/settings.probes.js`        | `smtp` probe throws the classified message + `code`                                                                 |
+| Backend | `src/services/platform/settings.service.js`       | `test` result includes `code`                                                                                       |
+| Client  | `client/src/lib/smtp-errors.ts`                   | **new** — guide registry + `smtpCodeFor` (code first, message sniff fallback)                                       |
+| Client  | `client/src/components/mail/smtp-guide.tsx`       | **new** — `SmtpErrorGuide` (inline, collapsible) + `MailTroubleshootingCard` (persistent)                           |
+| Client  | `client/src/features/comms/setup.tsx`             | guide under save/test errors; troubleshooting card beside Credentials                                               |
+| Client  | `client/src/features/comms/mail.tsx`              | guide under reply/send/connect/test failures                                                                        |
+| Client  | `client/src/lib/mail-api.ts`                      | `TestResult.code`                                                                                                   |
+| Console | `platform-console/src/features/Integrations.tsx`  | mail-fallback Test shows the guide; persistent "Why would the Test fail?" block                                     |
 
 ## Tests
 

@@ -35,7 +35,16 @@ import { ActionForm } from "@/components/action-form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon } from "@/components/ui/icons";
 import { submitAiFeedback } from "@/lib/ai-api";
-import { artifactTitle, documentBody, extractSources, extractTables, isLongForm, mergeSources, type AiSource, type AiTable } from "./grounding";
+import {
+  artifactTitle,
+  documentBody,
+  extractSources,
+  extractTables,
+  isLongForm,
+  mergeSources,
+  type AiSource,
+  type AiTable,
+} from "./grounding";
 import {
   CanvasIcon,
   CopyIcon,
@@ -76,7 +85,8 @@ export type TurnOutput = {
 };
 
 export function outputFor(turn: AiTurn): TurnOutput {
-  if (turn.role !== "assistant" || turn.failed) return { tables: [], artifact: null };
+  if (turn.role !== "assistant" || turn.failed)
+    return { tables: [], artifact: null };
   return {
     tables: extractTables(turn.text),
     // The canvas gets the DOCUMENT, not the conversation around it. The thread
@@ -155,7 +165,12 @@ function UserTurn({ turn }: { turn: AiTurn }) {
       </div>
       {qualified && (
         <div className="micro text-muted-foreground">
-          {[scoped ? turn.scope : null, mode && mode.value !== "ask" ? mode.label : null].filter(Boolean).join(" · ")}
+          {[
+            scoped ? turn.scope : null,
+            mode && mode.value !== "ask" ? mode.label : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </div>
       )}
     </div>
@@ -188,7 +203,9 @@ function AssistantTurn({
     [turn.text, turn.sources],
   );
   const output = React.useMemo(() => outputFor(turn), [turn]);
-  const pending = (turn.actions ?? []).filter((a) => !doneActions[a.action_run_id]);
+  const pending = (turn.actions ?? []).filter(
+    (a) => !doneActions[a.action_run_id],
+  );
   const done = (turn.actions ?? []).filter((a) => doneActions[a.action_run_id]);
 
   return (
@@ -200,7 +217,9 @@ function AssistantTurn({
           aria-hidden
           className={cn(
             "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md",
-            turn.failed ? "bg-bad-fill/12 text-bad" : "bg-primary/12 text-primary-ink",
+            turn.failed
+              ? "bg-bad-fill/12 text-bad"
+              : "bg-primary/12 text-primary-ink",
           )}
         >
           <PraxisMark width={13} height={13} />
@@ -208,7 +227,9 @@ function AssistantTurn({
       )}
 
       <div className="min-w-0 flex-1">
-        {turn.trace && turn.trace.length > 0 && <TraceDisclosure steps={turn.trace} />}
+        {turn.trace && turn.trace.length > 0 && (
+          <TraceDisclosure steps={turn.trace} />
+        )}
 
         {turn.status && <StatusLine text={turn.status} />}
 
@@ -218,7 +239,8 @@ function AssistantTurn({
           <div
             className={cn(
               "text-sm",
-              turn.failed && "rounded-lg border border-bad/30 bg-bad-fill/8 px-3 py-2 text-bad",
+              turn.failed &&
+                "rounded-lg border border-bad/30 bg-bad-fill/8 px-3 py-2 text-bad",
             )}
           >
             {turn.failed ? turn.text : <Markdown text={turn.text} />}
@@ -241,7 +263,10 @@ function AssistantTurn({
         {done.length > 0 && (
           <div className="mt-2 space-y-1">
             {done.map((a) => (
-              <div key={a.action_run_id} className="flex items-center gap-1.5 text-micro text-ok">
+              <div
+                key={a.action_run_id}
+                className="flex items-center gap-1.5 text-micro text-ok"
+              >
                 <CheckIcon width={12} height={12} />
                 <span>{a.action_key.replace(/_/g, " ")} — done</span>
               </div>
@@ -292,14 +317,28 @@ function TraceDisclosure({ steps }: { steps: string[] }) {
         <span>
           Trace · {steps.length} step{steps.length === 1 ? "" : "s"}
         </span>
-        <svg viewBox="0 0 24 24" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/trace:rotate-90">
+        <svg
+          viewBox="0 0 24 24"
+          width={11}
+          height={11}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="transition-transform group-open/trace:rotate-90"
+        >
           <path d="M9 6l6 6-6 6" />
         </svg>
       </summary>
       <ol className="mt-1.5 space-y-1 border-l border-border pl-3 text-micro text-muted-foreground">
         {steps.map((s, i) => (
           <li key={i} className="relative">
-            <span aria-hidden className="absolute -left-[15px] top-[5px] h-1.5 w-1.5 rounded-full bg-border" />
+            <span
+              aria-hidden
+              className="absolute -left-[15px] top-[5px] h-1.5 w-1.5 rounded-full bg-border"
+            />
             {s}
           </li>
         ))}
@@ -330,8 +369,20 @@ function ActionCard({
   return (
     <div className="overflow-hidden rounded-lg border border-warn/35 bg-warn-fill/[0.06]">
       <div className="flex items-start gap-2 border-b border-warn/25 px-3 py-2">
-        <span aria-hidden className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-warn-fill/20 text-warn">
-          <svg viewBox="0 0 24 24" width={10} height={10} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden>
+        <span
+          aria-hidden
+          className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-warn-fill/20 text-warn"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width={10}
+            height={10}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.6}
+            strokeLinecap="round"
+            aria-hidden
+          >
             <path d="M12 8v5M12 17h.01" />
           </svg>
         </span>
@@ -340,7 +391,8 @@ function ActionCard({
             Praxis wants to {action.action_key.replace(/_/g, " ")}
           </div>
           <p className="micro mt-0.5 text-muted-foreground">
-            Check the values, then confirm. It runs with your permissions, as you.
+            Check the values, then confirm. It runs with your permissions, as
+            you.
           </p>
         </div>
       </div>
@@ -422,7 +474,9 @@ function ToolButton({
         aria-pressed={active}
         className={cn(
           "tap-24 grid h-7 w-7 place-items-center rounded-md transition-colors disabled:opacity-40",
-          active ? "bg-accent text-primary-ink" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          active
+            ? "bg-accent text-primary-ink"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         {children}
@@ -473,7 +527,11 @@ function TurnToolbar({
           : "opacity-0 focus-within:opacity-100 group-hover/turn:opacity-100 max-md:opacity-100",
       )}
     >
-      <ToolButton label={copied ? "Copied" : "Copy"} onClick={copy} active={copied}>
+      <ToolButton
+        label={copied ? "Copied" : "Copy"}
+        onClick={copy}
+        active={copied}
+      >
         {copied ? <CheckIcon width={14} height={14} /> : <CopyIcon />}
       </ToolButton>
 
@@ -488,13 +546,20 @@ function TurnToolbar({
       )}
 
       {onRetry && (
-        <ToolButton label="Ask again" onClick={() => onRetry(turn)} disabled={busy || !isLast}>
+        <ToolButton
+          label="Ask again"
+          onClick={() => onRetry(turn)}
+          disabled={busy || !isLast}
+        >
           <RetryIcon />
         </ToolButton>
       )}
 
       {hasOutput(output) && onOpenCanvas && (
-        <ToolButton label={output.tables.length ? "Open the tables" : "Open in canvas"} onClick={() => onOpenCanvas(turn, output)}>
+        <ToolButton
+          label={output.tables.length ? "Open the tables" : "Open in canvas"}
+          onClick={() => onOpenCanvas(turn, output)}
+        >
           <CanvasIcon />
         </ToolButton>
       )}
@@ -561,13 +626,20 @@ function TurnToolbar({
  */
 function StatusLine({ text }: { text: string }) {
   return (
-    <div className="mb-1.5 flex items-start gap-2" role="status" aria-live="polite">
+    <div
+      className="mb-1.5 flex items-start gap-2"
+      role="status"
+      aria-live="polite"
+    >
       <span aria-hidden className="mt-1 flex shrink-0 gap-0.5">
         {[0, 1, 2].map((i) => (
           <span
             key={i}
             className="h-1 w-1 animate-pulse rounded-full bg-primary/50"
-            style={{ animationDelay: `${i * 160}ms`, animationDuration: "1.1s" }}
+            style={{
+              animationDelay: `${i * 160}ms`,
+              animationDuration: "1.1s",
+            }}
           />
         ))}
       </span>
@@ -587,7 +659,10 @@ export function AiThinking({ compact }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-2.5" role="status">
       {!compact && (
-        <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/12 text-primary-ink">
+        <span
+          aria-hidden
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/12 text-primary-ink"
+        >
           <PraxisMark width={13} height={13} />
         </span>
       )}
@@ -597,7 +672,10 @@ export function AiThinking({ compact }: { compact?: boolean }) {
           <span
             key={i}
             className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50"
-            style={{ animationDelay: `${i * 160}ms`, animationDuration: "1.1s" }}
+            style={{
+              animationDelay: `${i * 160}ms`,
+              animationDuration: "1.1s",
+            }}
           />
         ))}
       </span>

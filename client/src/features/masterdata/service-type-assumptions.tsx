@@ -41,28 +41,47 @@ export type Assumption = {
 const getAssumptions = (serviceTypeId: string) =>
   tenant<Assumption[]>(`/milestones/assumptions/${serviceTypeId}`);
 const putAssumptions = (serviceTypeId: string, assumptions: Assumption[]) =>
-  tenant<Assumption[]>(`/milestones/assumptions/${serviceTypeId}`, { method: "PUT", body: { assumptions } });
+  tenant<Assumption[]>(`/milestones/assumptions/${serviceTypeId}`, {
+    method: "PUT",
+    body: { assumptions },
+  });
 
-const BLANK: Assumption = { code: "", text_fr: "", text_en: "", is_client_visible: true };
+const BLANK: Assumption = {
+  code: "",
+  text_fr: "",
+  text_en: "",
+  is_client_visible: true,
+};
 
-export function ServiceTypeAssumptions({ serviceTypeId }: { serviceTypeId: string }) {
-  const loaded = useResource<Assumption[]>(() => getAssumptions(serviceTypeId), [serviceTypeId]);
+export function ServiceTypeAssumptions({
+  serviceTypeId,
+}: {
+  serviceTypeId: string;
+}) {
+  const loaded = useResource<Assumption[]>(
+    () => getAssumptions(serviceTypeId),
+    [serviceTypeId],
+  );
   const [rows, setRows] = React.useState<Assumption[] | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
-    if (loaded.data) setRows(loaded.data.map((a) => ({ ...a, text_en: a.text_en || "" })));
+    if (loaded.data)
+      setRows(loaded.data.map((a) => ({ ...a, text_en: a.text_en || "" })));
   }, [loaded.data]);
 
   if (loaded.error) return <ErrorState message={loaded.error} />;
   if (!rows) return <p className="micro">Loading the register…</p>;
 
   const set = (i: number, patch: Partial<Assumption>) =>
-    setRows((s) => (s || []).map((r, ix) => (ix === i ? { ...r, ...patch } : r)));
+    setRows((s) =>
+      (s || []).map((r, ix) => (ix === i ? { ...r, ...patch } : r)),
+    );
   const add = () => setRows((s) => [...(s || []), { ...BLANK }]);
-  const remove = (i: number) => setRows((s) => (s || []).filter((_, ix) => ix !== i));
+  const remove = (i: number) =>
+    setRows((s) => (s || []).filter((_, ix) => ix !== i));
 
   const codes = rows.map((r) => r.code.trim().toUpperCase());
   const duplicate = codes.find((c, i) => c && codes.indexOf(c) !== i);
@@ -97,12 +116,16 @@ export function ServiceTypeAssumptions({ serviceTypeId }: { serviceTypeId: strin
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="micro max-w-3xl">
-          What this service&apos;s schedule depends on — the hours of the customs office, the terminal
-          and the carrier, the free time that is not a commitment, and what is excluded as force
-          majeure. The client-visible ones are shown beside the milestone chain on the portal, so a
-          missed date is read together with the conditions it rested on.
+          What this service&apos;s schedule depends on — the hours of the
+          customs office, the terminal and the carrier, the free time that is
+          not a commitment, and what is excluded as force majeure. The
+          client-visible ones are shown beside the milestone chain on the
+          portal, so a missed date is read together with the conditions it
+          rested on.
         </p>
-        <Pill tone="mute">{visible} of {rows.length} shown to clients</Pill>
+        <Pill tone="mute">
+          {visible} of {rows.length} shown to clients
+        </Pill>
       </div>
 
       {rows.length === 0 ? (
@@ -113,11 +136,18 @@ export function ServiceTypeAssumptions({ serviceTypeId }: { serviceTypeId: strin
       ) : (
         <div className="space-y-3">
           {rows.map((a, i) => (
-            <div key={a.service_type_assumption_id || i} className="space-y-2 rounded-lg border border-border p-3">
+            <div
+              key={a.service_type_assumption_id || i}
+              className="space-y-2 rounded-lg border border-border p-3"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={a.code}
-                  onChange={(e) => set(i, { code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
+                  onChange={(e) =>
+                    set(i, {
+                      code: e.target.value.toUpperCase().replace(/\s+/g, "_"),
+                    })
+                  }
                   placeholder="CUSTOMS_HOURS"
                   className="num max-w-[16rem]"
                   aria-label={`Assumption ${i + 1} code`}
@@ -163,12 +193,24 @@ export function ServiceTypeAssumptions({ serviceTypeId }: { serviceTypeId: strin
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={add}>Add an assumption</Button>
-        {duplicate && <span className="text-sm text-[rgb(var(--bad))]">Two entries share the code {duplicate}.</span>}
-        {!complete && rows.length > 0 && <span className="micro">Every entry needs a code and French text.</span>}
+        <Button size="sm" variant="outline" onClick={add}>
+          Add an assumption
+        </Button>
+        {duplicate && (
+          <span className="text-sm text-[rgb(var(--bad))]">
+            Two entries share the code {duplicate}.
+          </span>
+        )}
+        {!complete && rows.length > 0 && (
+          <span className="micro">
+            Every entry needs a code and French text.
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {saved && <Pill tone="ok">Saved</Pill>}
-          <Button onClick={save} loading={busy} disabled={!canSave}>Publish register</Button>
+          <Button onClick={save} loading={busy} disabled={!canSave}>
+            Publish register
+          </Button>
         </div>
       </div>
 

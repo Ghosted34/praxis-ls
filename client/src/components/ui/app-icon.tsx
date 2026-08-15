@@ -67,7 +67,11 @@ export function AppIcon({
   // A plain icon keeps the tenant's corner rounding; a maskable one must be a
   // full square, because the launcher supplies the shape and any rounding we
   // baked in would show as a lighter notch inside the crop.
-  const radius = mask ? MASK_RADIUS[mask] : maskable ? "0%" : `${cfg.iconRadius}%`;
+  const radius = mask
+    ? MASK_RADIUS[mask]
+    : maskable
+      ? "0%"
+      : `${cfg.iconRadius}%`;
 
   return (
     <div

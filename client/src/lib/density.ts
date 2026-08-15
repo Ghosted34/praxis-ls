@@ -104,7 +104,9 @@ export function setDensity(d: Density) {
   // Anything measuring row geometry (the sticky-header offset, a virtualised
   // list) needs to know the row just changed height. A DOM event rather than a
   // subscriber list, because the listeners are in different trees.
-  window.dispatchEvent(new CustomEvent<Density>("praxis:density", { detail: d }));
+  window.dispatchEvent(
+    new CustomEvent<Density>("praxis:density", { detail: d }),
+  );
 }
 
 /** Apply the stored preference. Call once at boot, before first paint. */

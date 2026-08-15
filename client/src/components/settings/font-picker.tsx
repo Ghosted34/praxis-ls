@@ -22,7 +22,12 @@
 import * as React from "react";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { fontByValue, fontGroups, loadAllFonts, type FontSlot } from "@/lib/fonts";
+import {
+  fontByValue,
+  fontGroups,
+  loadAllFonts,
+  type FontSlot,
+} from "@/lib/fonts";
 import { cn } from "@/lib/cn";
 
 /** Sentinel for a stack that matches no library entry. Not a persisted value. */
@@ -67,7 +72,10 @@ export function FontPicker({
           // (Montserrat, Merriweather) only show their character above the 13px
           // the shell runs at.
           label: (
-            <span style={{ fontFamily: font.stack, fontSize: 15 }} className="truncate">
+            <span
+              style={{ fontFamily: font.stack, fontSize: 15 }}
+              className="truncate"
+            >
               {font.name}
             </span>
           ),
@@ -83,7 +91,14 @@ export function FontPicker({
       out.push({
         value: CUSTOM,
         group: "Custom",
-        label: <span style={{ fontFamily: value, fontSize: 15 }} className="truncate">Custom</span>,
+        label: (
+          <span
+            style={{ fontFamily: value, fontSize: 15 }}
+            className="truncate"
+          >
+            Custom
+          </span>
+        ),
         text: "Custom",
         hint: value,
       });
@@ -124,8 +139,8 @@ export function FontPicker({
             className="font-mono text-xs"
           />
           <p className="text-[11px] text-muted-foreground">
-            A raw CSS font-family. Only renders where the font is installed or self-hosted — the library
-            above is guaranteed on every device.
+            A raw CSS font-family. Only renders where the font is installed or
+            self-hosted — the library above is guaranteed on every device.
           </p>
         </div>
       ) : (

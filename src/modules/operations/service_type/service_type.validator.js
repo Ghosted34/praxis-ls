@@ -34,12 +34,30 @@ const TERRITORY = z.enum([
   "OTHER",
 ]);
 
+/**
+ * The two characters that close an operation-file reference (`SM` in
+ * `SL7Z3K9QW2M4XBSM`). Uppercased on the way in, because a lowercase code would
+ * satisfy nothing in the format and only produce a confusing 422 from the
+ * database CHECK.
+ *
+ * Optional on both paths: leaving it blank is the normal case and the service
+ * derives one from the key (`SEA_FREIGHT_IMPORT` → `SM`). It is here at all so
+ * a tenant whose business already uses a particular code on its paperwork can
+ * say so, rather than being given whatever the algorithm picked.
+ */
+const OPS_REFERENCE_CODE = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{2}$/, "Two characters, A-Z or 0-9 — e.g. SM");
+
 const create = z.object({
   key: KEY,
   name_fr: z.string().min(1),
   name_en: z.string().min(1).optional(),
   territory: TERRITORY.optional(),
   is_active: z.boolean().optional(),
+  ops_reference_code: OPS_REFERENCE_CODE.optional(),
 });
 
 // No `key` and no `is_system`: the identifier is immutable (see above), and
@@ -50,6 +68,10 @@ const update = z.object({
   name_en: z.string().min(1).nullable().optional(),
   territory: TERRITORY.nullable().optional(),
   is_active: z.boolean().optional(),
+  // Editable only while no dossier has used it — the service enforces that.
+  // Not nullable: a code can be corrected, never removed, because clearing it
+  // would leave the next file with nothing to close its reference with.
+  ops_reference_code: OPS_REFERENCE_CODE.optional(),
 });
 
 /**

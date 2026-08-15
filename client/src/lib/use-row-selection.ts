@@ -71,7 +71,10 @@ export function useRowSelection<T>(
 
   // The visible order, recomputed whenever the screen's rows change. Ranges and
   // "select all" both resolve against this and nothing else.
-  const present = React.useMemo(() => (rows ?? []).map((r, i) => rowKey(r, i)), [rows, rowKey]);
+  const present = React.useMemo(
+    () => (rows ?? []).map((r, i) => rowKey(r, i)),
+    [rows, rowKey],
+  );
 
   const selectedRows = React.useMemo(
     () => (rows ?? []).filter((r, i) => keys.has(rowKey(r, i))),
@@ -137,7 +140,11 @@ export function useRowSelection<T>(
     toggle,
     toggleAll,
     clear,
-    headerState: allOnScreen ? true : selectedRows.length > 0 ? "indeterminate" : false,
+    headerState: allOnScreen
+      ? true
+      : selectedRows.length > 0
+        ? "indeterminate"
+        : false,
     selectable: present.length > 0,
   };
 }

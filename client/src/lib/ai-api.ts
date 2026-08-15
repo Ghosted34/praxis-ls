@@ -43,7 +43,11 @@ export type AiActionRun = {
  * infers it from the href (an in-app route is a record, an absolute URL is
  * external). See `components/ai/grounding.ts`.
  */
-export type AiSourceLike = { label: string; href: string; kind?: "record" | "external" | "report" };
+export type AiSourceLike = {
+  label: string;
+  href: string;
+  kind?: "record" | "external" | "report";
+};
 
 export type AskResult = {
   answer: string;
@@ -94,7 +98,10 @@ export type AiHistoryMessage = {
   trace?: string[] | null;
   created_at: string;
 };
-export type AiHistory = { conversation_id: string; messages: AiHistoryMessage[] };
+export type AiHistory = {
+  conversation_id: string;
+  messages: AiHistoryMessage[];
+};
 
 /** One row in the history sidebar. `title` falls back to the first user message. */
 export type AiConversationMeta = {
@@ -106,13 +113,17 @@ export type AiConversationMeta = {
 
 /** The current thread, or a specific one by id (the server verifies ownership). */
 export const fetchAiHistory = (conversationId?: string) =>
-  tenant<AiHistory>(`/ai/history${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ""}`);
+  tenant<AiHistory>(
+    `/ai/history${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ""}`,
+  );
 
 /** The caller's past threads for the history sidebar (metadata only, newest first). */
-export const listAiConversations = () => tenant<AiConversationMeta[]>("/ai/conversations");
+export const listAiConversations = () =>
+  tenant<AiConversationMeta[]>("/ai/conversations");
 
 /** Start a fresh thread. The old one is retained, just no longer current. */
-export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { method: "POST" });
+export const clearAiHistory = () =>
+  tenant<AiHistory>("/ai/history/clear", { method: "POST" });
 
 /**
  * How the caller has pointed the assistant: which area of the product the
@@ -127,10 +138,19 @@ export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { met
  */
 export type AskOptions = { scope?: string; mode?: string };
 
-export const askPraxis = (message: string, conversationId?: string, opts?: AskOptions) =>
+export const askPraxis = (
+  message: string,
+  conversationId?: string,
+  opts?: AskOptions,
+) =>
   tenant<AskResult>("/ai/ask", {
     method: "POST",
-    body: { message, conversation_id: conversationId, scope: opts?.scope, mode: opts?.mode },
+    body: {
+      message,
+      conversation_id: conversationId,
+      scope: opts?.scope,
+      mode: opts?.mode,
+    },
   });
 
 /**
@@ -200,7 +220,12 @@ export async function* askPraxisStream(
     response = await fetch("/api/tenant/ai/ask/stream", {
       method: "POST",
       headers,
-      body: JSON.stringify({ message, conversation_id: conversationId, scope: opts?.scope, mode: opts?.mode }),
+      body: JSON.stringify({
+        message,
+        conversation_id: conversationId,
+        scope: opts?.scope,
+        mode: opts?.mode,
+      }),
       signal,
     });
   } catch {
@@ -208,8 +233,14 @@ export async function* askPraxisStream(
     if (signal?.aborted) return;
     const result = await askPraxis(message, conversationId, opts);
     yield { type: "answer", text: result.answer };
-    if (result.actions?.length) yield { type: "actions", actions: result.actions, batch_id: result.batch_id };
-    if (result.sources?.length) yield { type: "sources", sources: result.sources };
+    if (result.actions?.length)
+      yield {
+        type: "actions",
+        actions: result.actions,
+        batch_id: result.batch_id,
+      };
+    if (result.sources?.length)
+      yield { type: "sources", sources: result.sources };
     if (result.trace?.length) yield { type: "trace", trace: result.trace };
     yield { type: "done", conversation_id: result.conversation_id };
     return;
@@ -220,8 +251,14 @@ export async function* askPraxisStream(
     if (response.status === 404 || response.status === 501) {
       const result = await askPraxis(message, conversationId, opts);
       yield { type: "answer", text: result.answer };
-      if (result.actions?.length) yield { type: "actions", actions: result.actions, batch_id: result.batch_id };
-      if (result.sources?.length) yield { type: "sources", sources: result.sources };
+      if (result.actions?.length)
+        yield {
+          type: "actions",
+          actions: result.actions,
+          batch_id: result.batch_id,
+        };
+      if (result.sources?.length)
+        yield { type: "sources", sources: result.sources };
       if (result.trace?.length) yield { type: "trace", trace: result.trace };
       yield { type: "done", conversation_id: result.conversation_id };
       return;
@@ -271,21 +308,33 @@ export async function* askPraxisStream(
  *  is Praxis's step-by-step recap after a successful run. `next_actions` carries
  *  auto-proposed follow-up actions (the snooze fix: the server proposes the next
  *  step instead of asking "shall I proceed?"). */
-export const confirmAiAction = (actionRunId: string, payload?: Record<string, unknown>) =>
-  tenant<{ ok: boolean; result?: unknown; message?: string | null; next_actions?: AiActionRun[] }>(`/ai/actions/${actionRunId}/confirm`, {
+export const confirmAiAction = (
+  actionRunId: string,
+  payload?: Record<string, unknown>,
+) =>
+  tenant<{
+    ok: boolean;
+    result?: unknown;
+    message?: string | null;
+    next_actions?: AiActionRun[];
+  }>(`/ai/actions/${actionRunId}/confirm`, {
     method: "POST",
     body: payload ? { payload } : {},
   });
 
 /** Options for a reference dropdown, from an ai_enabled list-read (RBAC-scoped). */
 export const fetchActionOptions = (ref: string, q?: string) =>
-  tenant<AiOption[]>(`/ai/options?ref=${encodeURIComponent(ref)}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+  tenant<AiOption[]>(
+    `/ai/options?ref=${encodeURIComponent(ref)}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+  );
 
 export const confirmAiBatch = (batchId: string) =>
-  tenant<{ batch_id: string; halted: boolean; executed: number; results: unknown[] }>(
-    `/ai/batches/${batchId}/confirm`,
-    { method: "POST" },
-  );
+  tenant<{
+    batch_id: string;
+    halted: boolean;
+    executed: number;
+    results: unknown[];
+  }>(`/ai/batches/${batchId}/confirm`, { method: "POST" });
 
 /**
  * Export an answer's tables as one Excel workbook — one sheet per table.
@@ -302,7 +351,11 @@ export const confirmAiBatch = (batchId: string) =>
  * amounts arrive as numbers rather than text, which is the difference between a
  * spreadsheet you can sum and one you have to retype.
  */
-export type AiExportTable = { title: string; header: string[]; rows: string[][] };
+export type AiExportTable = {
+  title: string;
+  header: string[];
+  rows: string[][];
+};
 
 /**
  * Record feedback on an AI answer (thumbs up/down).
@@ -320,9 +373,13 @@ export const submitAiFeedback = (feedback: {
   vote: "up" | "down";
   comment?: string;
   action_keys?: string[];
-}) => tenant<{ ok: boolean }>("/ai/feedback", { method: "POST", body: feedback });
+}) =>
+  tenant<{ ok: boolean }>("/ai/feedback", { method: "POST", body: feedback });
 
-export async function downloadAiTables(tables: AiExportTable[], filename?: string): Promise<void> {
+export async function downloadAiTables(
+  tables: AiExportTable[],
+  filename?: string,
+): Promise<void> {
   await downloadPost(
     "/tenant/ai/export/tables",
     { tables },

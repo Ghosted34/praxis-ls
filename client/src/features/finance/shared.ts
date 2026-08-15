@@ -69,7 +69,12 @@ export type InvLine = {
   container_type_label?: string;
 };
 
-export const blankInvLine = (): InvLine => ({ dictionary_item_id: "", amount: "", is_disbursement: false, label: "" });
+export const blankInvLine = (): InvLine => ({
+  dictionary_item_id: "",
+  amount: "",
+  is_disbursement: false,
+  label: "",
+});
 
 /**
  * One pick of an equipment-varying charge becomes one line per container type.

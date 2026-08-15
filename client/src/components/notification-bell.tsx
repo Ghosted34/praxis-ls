@@ -30,13 +30,29 @@ function timeAgo(iso?: string | null): string {
 }
 
 const BellGlyph = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
     <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
     <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
   </svg>
 );
 
-export function NotificationBell({ count = 0, onChange }: { count?: number; onChange?: () => void }) {
+export function NotificationBell({
+  count = 0,
+  onChange,
+}: {
+  count?: number;
+  onChange?: () => void;
+}) {
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState<Notif[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -61,7 +77,15 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
     setBusy(id);
     try {
       await tenant(`/notifications/${id}/read`, { method: "POST" });
-      setRows((r) => (r ? r.map((n) => (n.notification_id === id ? { ...n, read_at: new Date().toISOString() } : n)) : r));
+      setRows((r) =>
+        r
+          ? r.map((n) =>
+              n.notification_id === id
+                ? { ...n, read_at: new Date().toISOString() }
+                : n,
+            )
+          : r,
+      );
       onChange?.();
     } catch {
       /* ignore — next poll reconciles */
@@ -74,7 +98,14 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
     setBusy("__all");
     try {
       await tenant("/notifications/read-all", { method: "POST" });
-      setRows((r) => (r ? r.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })) : r));
+      setRows((r) =>
+        r
+          ? r.map((n) => ({
+              ...n,
+              read_at: n.read_at || new Date().toISOString(),
+            }))
+          : r,
+      );
       onChange?.();
     } catch {
       /* ignore */
@@ -99,7 +130,9 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
         trigger={
           <button
             type="button"
-            aria-label={count > 0 ? `Notifications (${count} unread)` : "Notifications"}
+            aria-label={
+              count > 0 ? `Notifications (${count} unread)` : "Notifications"
+            }
             className="relative hidden h-9 w-9 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground sm:grid"
           >
             <BellGlyph />
@@ -115,7 +148,9 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
         }
       >
         <div className="flex items-center justify-between border-b px-3 py-2.5">
-          <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            Notifications
+          </h2>
           {count > 0 && (
             <button
               type="button"
@@ -130,11 +165,17 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
 
         {/* aria-live so an arriving notification is announced, not just drawn.
             The audit found 3 live regions in ~40,000 lines (F13). */}
-        <div className="max-h-[22rem] overflow-y-auto" aria-live="polite" aria-busy={rows === null}>
+        <div
+          className="max-h-[22rem] overflow-y-auto"
+          aria-live="polite"
+          aria-busy={rows === null}
+        >
           {rows === null ? (
             <LoadingRow />
           ) : rows.length === 0 ? (
-            <div className="px-3 py-8 text-center text-xs text-muted-foreground">You're all caught up.</div>
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+              You're all caught up.
+            </div>
           ) : (
             <ul className="m-0 list-none p-0">
               {rows.map((n) => (
@@ -148,18 +189,30 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
                     <span
                       aria-hidden
                       className={`mt-1.5 h-2 w-2 flex-none rounded-full ${
-                        n.read_at ? "bg-transparent" : String(n.priority).toUpperCase() === "HIGH" ? "bg-[rgb(var(--bad))]" : "bg-[rgb(var(--primary))]"
+                        n.read_at
+                          ? "bg-transparent"
+                          : String(n.priority).toUpperCase() === "HIGH"
+                            ? "bg-[rgb(var(--bad))]"
+                            : "bg-[rgb(var(--primary))]"
                       }`}
                     />
                     <span className="min-w-0 flex-1">
                       {/* The unread state was conveyed by a coloured dot and bold
                           weight only — both invisible to a screen reader. */}
                       {!n.read_at && <span className="sr-only">Unread. </span>}
-                      <span className={`block truncate text-sm ${n.read_at ? "text-muted-foreground" : "font-semibold text-foreground"}`}>
+                      <span
+                        className={`block truncate text-sm ${n.read_at ? "text-muted-foreground" : "font-semibold text-foreground"}`}
+                      >
                         {n.title}
                       </span>
-                      {n.body && <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{n.body}</span>}
-                      <span className="mt-0.5 block text-micro text-muted-foreground">{timeAgo(n.created_at)}</span>
+                      {n.body && (
+                        <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
+                          {n.body}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block text-micro text-muted-foreground">
+                        {timeAgo(n.created_at)}
+                      </span>
                     </span>
                   </button>
                 </li>

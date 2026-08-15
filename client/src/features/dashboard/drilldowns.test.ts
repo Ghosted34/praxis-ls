@@ -8,7 +8,12 @@
  * tenant with more than one API page of invoices.
  */
 import { describe, expect, it } from "vitest";
-import { buildFleetDrill, buildOverdueDrill, buildRevenueDrill, buildSlaDrill } from "./drilldowns";
+import {
+  buildFleetDrill,
+  buildOverdueDrill,
+  buildRevenueDrill,
+  buildSlaDrill,
+} from "./drilldowns";
 
 const NAMES = { c1: "Bolloré Transport", c2: "Sonara" };
 
@@ -20,10 +25,20 @@ const invoice = (client: string, ttc: number, status = "POSTED_LOCKED") => ({
 });
 
 describe("buildRevenueDrill", () => {
-  const rows = [invoice("c1", 11_200_000), invoice("c2", 6_400_000), invoice("c1", 2_400_000)];
+  const rows = [
+    invoice("c1", 11_200_000),
+    invoice("c2", 6_400_000),
+    invoice("c1", 2_400_000),
+  ];
 
   it("counts only LOCKED final invoices", () => {
-    const d = buildRevenueDrill([...rows, invoice("c2", 999, "DRAFT")], NAMES, "XAF", null, 4);
+    const d = buildRevenueDrill(
+      [...rows, invoice("c2", 999, "DRAFT")],
+      NAMES,
+      "XAF",
+      null,
+      4,
+    );
     expect(d.badge.text).toBe("3 locked invoices");
   });
 
@@ -46,7 +61,9 @@ describe("buildRevenueDrill", () => {
   });
 
   it("carries no note when the page IS the whole set", () => {
-    expect(buildRevenueDrill(rows, NAMES, "XAF", 20_000_000, 3).note).toBeUndefined();
+    expect(
+      buildRevenueDrill(rows, NAMES, "XAF", 20_000_000, 3).note,
+    ).toBeUndefined();
   });
 
   it("falls back to the scanned sum when the KPI is unavailable", () => {
@@ -63,9 +80,30 @@ describe("buildRevenueDrill", () => {
 
 describe("buildSlaDrill", () => {
   const dossiers = [
-    { dossier_id: "d1", ref: "OPS-1", pol: "Antwerp", pod: "Douala", eta: "2026-07-01", ata: "2026-07-06" },
-    { dossier_id: "d2", ref: "OPS-2", pol: "Kribi", pod: "Douala", eta: "2026-07-01", ata: "2026-06-30" },
-    { dossier_id: "d3", ref: "OPS-3", pol: "Douala", pod: "Garoua", eta: "2026-07-01", ata: null },
+    {
+      dossier_id: "d1",
+      ref: "OPS-1",
+      pol: "Antwerp",
+      pod: "Douala",
+      eta: "2026-07-01",
+      ata: "2026-07-06",
+    },
+    {
+      dossier_id: "d2",
+      ref: "OPS-2",
+      pol: "Kribi",
+      pod: "Douala",
+      eta: "2026-07-01",
+      ata: "2026-06-30",
+    },
+    {
+      dossier_id: "d3",
+      ref: "OPS-3",
+      pol: "Douala",
+      pod: "Garoua",
+      eta: "2026-07-01",
+      ata: null,
+    },
   ];
 
   it("measures only dossiers with BOTH an ETA and an ATA", () => {
@@ -81,7 +119,9 @@ describe("buildSlaDrill", () => {
   });
 
   it("reports an on-time percentage over the measured set", () => {
-    expect(buildSlaDrill(dossiers).meta.find((m) => m.label === "On time")?.value).toBe("50%");
+    expect(
+      buildSlaDrill(dossiers).meta.find((m) => m.label === "On time")?.value,
+    ).toBe("50%");
   });
 
   it("reports em-dash, not 0%, when nothing is measurable yet", () => {
@@ -96,8 +136,20 @@ describe("buildOverdueDrill", () => {
     count: 2,
     clients: 2,
     invoices: [
-      { invoice_id: "i1", doc_number: "INV-0311", client_id: "c2", outstanding: 6_400_000, days_overdue: 34 },
-      { invoice_id: "i2", doc_number: "INV-0287", client_id: "c1", outstanding: 4_800_000, days_overdue: 12 },
+      {
+        invoice_id: "i1",
+        doc_number: "INV-0311",
+        client_id: "c2",
+        outstanding: 6_400_000,
+        days_overdue: 34,
+      },
+      {
+        invoice_id: "i2",
+        doc_number: "INV-0287",
+        client_id: "c1",
+        outstanding: 4_800_000,
+        days_overdue: 12,
+      },
     ],
   };
 
@@ -108,7 +160,9 @@ describe("buildOverdueDrill", () => {
   });
 
   it("resolves client ids to names", () => {
-    expect(buildOverdueDrill(payload, NAMES, "XAF").rows[0].cells[1]).toBe("Sonara");
+    expect(buildOverdueDrill(payload, NAMES, "XAF").rows[0].cells[1]).toBe(
+      "Sonara",
+    );
   });
 
   it("survives a null payload — the module may be off for this tenant", () => {
@@ -120,8 +174,18 @@ describe("buildOverdueDrill", () => {
 
 describe("buildFleetDrill", () => {
   const vehicles = [
-    { vehicle_id: "v1", registration: "LT-4471", category: "Truck", status: "ACTIVE" },
-    { vehicle_id: "v2", registration: "LT-4429", category: "Truck", status: "WORKSHOP" },
+    {
+      vehicle_id: "v1",
+      registration: "LT-4471",
+      category: "Truck",
+      status: "ACTIVE",
+    },
+    {
+      vehicle_id: "v2",
+      registration: "LT-4429",
+      category: "Truck",
+      status: "WORKSHOP",
+    },
   ];
 
   it("reports utilisation over the register", () => {
@@ -131,6 +195,8 @@ describe("buildFleetDrill", () => {
   });
 
   it("says em-dash rather than dividing by zero on an empty register", () => {
-    expect(buildFleetDrill([]).meta.find((m) => m.label === "Utilisation")?.value).toBe("—");
+    expect(
+      buildFleetDrill([]).meta.find((m) => m.label === "Utilisation")?.value,
+    ).toBe("—");
   });
 });

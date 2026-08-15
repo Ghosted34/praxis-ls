@@ -32,8 +32,24 @@ import { useQuickActions } from "@/components/quick-actions";
 import { cn } from "@/lib/cn";
 
 type IP = React.SVGProps<SVGSVGElement>;
-const s = (p: IP) => ({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, width: 20, height: 20, "aria-hidden": true, ...p });
-const BurstIcon = (p: IP) => (<svg {...s(p)} width={24} height={24}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" /><circle cx="12" cy="12" r="2.5" /></svg>);
+const s = (p: IP) => ({
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  width: 20,
+  height: 20,
+  "aria-hidden": true,
+  ...p,
+});
+const BurstIcon = (p: IP) => (
+  <svg {...s(p)} width={24} height={24}>
+    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" />
+    <circle cx="12" cy="12" r="2.5" />
+  </svg>
+);
 
 export function FloatingActions({ badge = 0 }: { badge?: number }) {
   const [open, setOpen] = React.useState(false);
@@ -43,7 +59,12 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   // Draggable position (FAB top-left, viewport px). null → default bottom-right
   // anchor. Persisted so it stays where the user drops it.
   const [pos, setPos] = React.useState<{ x: number; y: number } | null>(() => {
-    try { const raw = localStorage.getItem("praxis.fab.pos"); return raw ? JSON.parse(raw) : null; } catch { return null; }
+    try {
+      const raw = localStorage.getItem("praxis.fab.pos");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   });
   const posRef = React.useRef(pos);
   posRef.current = pos;
@@ -51,22 +72,46 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
 
   const startDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const dx = e.clientX - rect.left, dy = e.clientY - rect.top;
-    const sx = e.clientX, sy = e.clientY;
-    const FAB = 56, PAD = 8;
+    const dx = e.clientX - rect.left,
+      dy = e.clientY - rect.top;
+    const sx = e.clientX,
+      sy = e.clientY;
+    const FAB = 56,
+      PAD = 8;
     let moved = false;
     const move = (ev: PointerEvent) => {
       if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
-      moved = true; draggedRef.current = true; setOpen(false);
-      const x = Math.min(Math.max(PAD, ev.clientX - dx), window.innerWidth - FAB - PAD);
-      const y = Math.min(Math.max(PAD, ev.clientY - dy), window.innerHeight - FAB - PAD);
-      const p = { x, y }; posRef.current = p; setPos(p);
+      moved = true;
+      draggedRef.current = true;
+      setOpen(false);
+      const x = Math.min(
+        Math.max(PAD, ev.clientX - dx),
+        window.innerWidth - FAB - PAD,
+      );
+      const y = Math.min(
+        Math.max(PAD, ev.clientY - dy),
+        window.innerHeight - FAB - PAD,
+      );
+      const p = { x, y };
+      posRef.current = p;
+      setPos(p);
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (moved && posRef.current) { try { localStorage.setItem("praxis.fab.pos", JSON.stringify(posRef.current)); } catch { /* ignore */ } }
-      setTimeout(() => { draggedRef.current = false; }, 0); // let the click that follows read it, then reset
+      if (moved && posRef.current) {
+        try {
+          localStorage.setItem(
+            "praxis.fab.pos",
+            JSON.stringify(posRef.current),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      setTimeout(() => {
+        draggedRef.current = false;
+      }, 0); // let the click that follows read it, then reset
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -78,21 +123,35 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   // exactly where it was dropped, and the actions still expand up-and-leftward.
   const containerStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     if (!pos) return undefined;
-    const FAB = 56, PAD = 8;
+    const FAB = 56,
+      PAD = 8;
     const x = Math.min(Math.max(PAD, pos.x), window.innerWidth - FAB - PAD);
     const y = Math.min(Math.max(PAD, pos.y), window.innerHeight - FAB - PAD);
-    return { left: "auto", top: "auto", right: window.innerWidth - (x + FAB), bottom: window.innerHeight - (y + FAB) };
+    return {
+      left: "auto",
+      top: "auto",
+      right: window.innerWidth - (x + FAB),
+      bottom: window.innerHeight - (y + FAB),
+    };
   }, [pos]);
 
   // Open on hover (with a short grace delay so moving between buttons doesn't
   // snap it shut); click still toggles for touch/keyboard. Suppressed mid-drag so
   // the cluster doesn't expand while you're moving it.
-  const openNow = () => { if (draggedRef.current) return; if (closeTimer.current) clearTimeout(closeTimer.current); setOpen(true); };
-  const closeSoon = () => { if (closeTimer.current) clearTimeout(closeTimer.current); closeTimer.current = setTimeout(() => setOpen(false), 220); };
+  const openNow = () => {
+    if (draggedRef.current) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const closeSoon = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 220);
+  };
 
   React.useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     }
     document.addEventListener("mousedown", onDown);
     return () => {
@@ -139,8 +198,14 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       {open && (
         <>
           {actions.map((a, i) => (
-            <div key={a.key} className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
-              <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">{a.label}</span>
+            <div
+              key={a.key}
+              className="flex items-center gap-2 animate-fade-in"
+              style={{ animationDelay: `${i * 30}ms` }}
+            >
+              <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">
+                {a.label}
+              </span>
               <button
                 onClick={a.onSelect}
                 title={a.label}
@@ -157,7 +222,10 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       )}
       <button
         onPointerDown={startDrag}
-        onClick={() => { if (draggedRef.current) return; setOpen((o) => !o); }}
+        onClick={() => {
+          if (draggedRef.current) return;
+          setOpen((o) => !o);
+        }}
         aria-label="Quick actions (drag to move)"
         aria-expanded={open}
         className={cn(

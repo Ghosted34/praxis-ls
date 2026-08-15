@@ -37,7 +37,9 @@ function loadPrePaintScript(): string {
   // Grab the first <script>…</script> that references our cache key — that
   // is the pre-paint IIFE. Any other script tag (module tag for main.tsx,
   // future analytics, etc.) is skipped.
-  const match = html.match(/<script>([\s\S]*?praxis\.titlebar[\s\S]*?)<\/script>/);
+  const match = html.match(
+    /<script>([\s\S]*?praxis\.titlebar[\s\S]*?)<\/script>/,
+  );
   if (!match) throw new Error("pre-paint script not found in index.html");
   return match[1];
 }
@@ -58,8 +60,10 @@ function runPrePaint(env: {
 
   const store: Record<string, string> = {};
   if (env.theme != null) store["praxis.theme"] = env.theme;
-  if (env.titlebarDark != null) store["praxis.titlebar.dark"] = env.titlebarDark;
-  if (env.titlebarLight != null) store["praxis.titlebar.light"] = env.titlebarLight;
+  if (env.titlebarDark != null)
+    store["praxis.titlebar.dark"] = env.titlebarDark;
+  if (env.titlebarLight != null)
+    store["praxis.titlebar.light"] = env.titlebarLight;
 
   const fakeLocalStorage = {
     getItem: (k: string) => (k in store ? store[k] : null),
@@ -99,9 +103,12 @@ function runPrePaint(env: {
 
 const themeColor = () =>
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content;
-const cssVar = (n: string) => document.documentElement.style.getPropertyValue(n);
+const cssVar = (n: string) =>
+  document.documentElement.style.getPropertyValue(n);
 const manifestHref = () =>
-  document.querySelector<HTMLLinkElement>('link[rel="manifest"]')!.getAttribute("href");
+  document
+    .querySelector<HTMLLinkElement>('link[rel="manifest"]')!
+    .getAttribute("href");
 
 describe("pre-paint titlebar script (index.html <head>)", () => {
   beforeEach(() => {

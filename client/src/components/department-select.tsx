@@ -20,9 +20,16 @@ import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
 import { useResource } from "@/lib/use-resource";
-import { fetchScopeOptions, buildScopeTree, type ScopeTreeNode } from "@/lib/scope-api";
+import {
+  fetchScopeOptions,
+  buildScopeTree,
+  type ScopeTreeNode,
+} from "@/lib/scope-api";
 
-export type DepartmentValue = { scope_id: string | null; department: string | null };
+export type DepartmentValue = {
+  scope_id: string | null;
+  department: string | null;
+};
 
 export function DepartmentSelect({
   value,
@@ -40,7 +47,11 @@ export function DepartmentSelect({
   // Flattened depth-first so the dropdown reads as a tree.
   const nodes = React.useMemo(() => {
     const out: ScopeTreeNode[] = [];
-    const walk = (ns: ScopeTreeNode[]) => ns.forEach((n) => { out.push(n); walk(n.children); });
+    const walk = (ns: ScopeTreeNode[]) =>
+      ns.forEach((n) => {
+        out.push(n);
+        walk(n.children);
+      });
     walk(buildScopeTree(scopeQ.data || []));
     return out;
   }, [scopeQ.data]);
@@ -52,7 +63,9 @@ export function DepartmentSelect({
       <>
         <Input
           value={value.department || ""}
-          onChange={(e) => onChange({ scope_id: null, department: e.target.value })}
+          onChange={(e) =>
+            onChange({ scope_id: null, department: e.target.value })
+          }
         />
         {scopeQ.error ? (
           <p className="micro mt-1 text-[rgb(var(--bad))]">
@@ -60,7 +73,8 @@ export function DepartmentSelect({
           </p>
         ) : (
           <p className="micro mt-1">
-            No departments defined yet — add them under Security &rsaquo; Scopes and they&rsquo;ll appear here.
+            No departments defined yet — add them under Security &rsaquo; Scopes
+            and they&rsquo;ll appear here.
           </p>
         )}
       </>
@@ -75,7 +89,11 @@ export function DepartmentSelect({
         const node = nodes.find((n) => n.scope_id === id);
         // Send the snapshot with the id. The API re-derives it from the scope
         // anyway, so the two can't disagree even if this list is stale.
-        onChange(id ? { scope_id: id, department: node ? node.name : null } : { scope_id: null, department: null });
+        onChange(
+          id
+            ? { scope_id: id, department: node ? node.name : null }
+            : { scope_id: null, department: null },
+        );
       }}
     >
       <option value="">{placeholder}</option>

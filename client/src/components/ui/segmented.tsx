@@ -86,20 +86,32 @@ export function Segmented<T extends string>({
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"];
+    const keys = [
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowUp",
+      "Home",
+      "End",
+    ];
     if (!keys.includes(e.key)) return;
     e.preventDefault();
     const i = options.findIndex((o) => o.value === value);
     let next: T | undefined;
     if (e.key === "Home") next = step(-1, 1);
     else if (e.key === "End") next = step(options.length, -1);
-    else next = step(i, e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1);
+    else
+      next = step(i, e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1);
     if (next === undefined || next === value) return;
     onChange(next);
     // Selection follows focus in a radio group, so the newly checked segment
     // must also take focus — otherwise the roving tabindex strands the user.
     requestAnimationFrame(() => {
-      ref.current?.querySelector<HTMLButtonElement>(`[data-value="${CSS.escape(next as string)}"]`)?.focus();
+      ref.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-value="${CSS.escape(next as string)}"]`,
+        )
+        ?.focus();
     });
   }
 
@@ -114,7 +126,9 @@ export function Segmented<T extends string>({
       onKeyDown={onKeyDown}
       className={cn(
         "inline-flex flex-wrap",
-        variant === "inset" ? "rounded-lg border bg-accent/40 p-0.5" : "gap-1 rounded-lg border bg-muted p-1",
+        variant === "inset"
+          ? "rounded-lg border bg-accent/40 p-0.5"
+          : "gap-1 rounded-lg border bg-muted p-1",
         className,
       )}
     >

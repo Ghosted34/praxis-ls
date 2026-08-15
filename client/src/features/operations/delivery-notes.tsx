@@ -26,12 +26,28 @@ import * as api from "@/lib/operations-api";
 import { nameMap, tone } from "./shared";
 
 type GoodsLine = { inventory_item_id: string; label: string; qty: string };
-const blankGoods = (): GoodsLine => ({ inventory_item_id: "", label: "", qty: "1" });
+const blankGoods = (): GoodsLine => ({
+  inventory_item_id: "",
+  label: "",
+  qty: "1",
+});
 
-function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function DeliveryForm({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { rows: entities } = useList<Entity>("/entities");
   const { rows: dossiers } = useList<api.Dossier>("/operations");
-  const [f, setF] = React.useState({ entity_id: "", dossier_id: "", consignee: "", city_zone: "", contact_person: "" });
+  const [f, setF] = React.useState({
+    entity_id: "",
+    dossier_id: "",
+    consignee: "",
+    city_zone: "",
+    contact_person: "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [lines, setLines] = React.useState<GoodsLine[]>([blankGoods()]);
   const setLine = (i: number, patch: Partial<GoodsLine>) =>
@@ -46,7 +62,11 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     try {
       const goods = lines
         .filter((l) => l.inventory_item_id)
-        .map((l) => ({ inventory_item_id: l.inventory_item_id, label: l.label, qty: Number(l.qty) || 1 }));
+        .map((l) => ({
+          inventory_item_id: l.inventory_item_id,
+          label: l.label,
+          qty: Number(l.qty) || 1,
+        }));
       await api.createDeliveryNote({
         entity_id: f.entity_id,
         dossier_id: f.dossier_id || undefined,
@@ -65,11 +85,20 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   }
 
   return (
-    <Dialog open onClose={onClose} size="lg" title="New delivery note" description="Proof-of-delivery for a consignee.">
+    <Dialog
+      open
+      onClose={onClose}
+      size="lg"
+      title="New delivery note"
+      description="Proof-of-delivery for a consignee."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Entity" required>
-            <Select value={f.entity_id} onChange={(e) => set("entity_id", e.target.value)}>
+            <Select
+              value={f.entity_id}
+              onChange={(e) => set("entity_id", e.target.value)}
+            >
               <option value="">—</option>
               {(entities || []).map((en) => (
                 <option key={en.entity_id} value={en.entity_id}>
@@ -79,7 +108,10 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </Select>
           </Field>
           <Field label="Dossier">
-            <Select value={f.dossier_id} onChange={(e) => set("dossier_id", e.target.value)}>
+            <Select
+              value={f.dossier_id}
+              onChange={(e) => set("dossier_id", e.target.value)}
+            >
               <option value="">—</option>
               {(dossiers || []).map((d) => (
                 <option key={d.dossier_id} value={d.dossier_id}>
@@ -89,21 +121,38 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </Select>
           </Field>
           <Field label="Consignee" className="sm:col-span-2">
-            <Input value={f.consignee} onChange={(e) => set("consignee", e.target.value)} />
+            <Input
+              value={f.consignee}
+              onChange={(e) => set("consignee", e.target.value)}
+            />
           </Field>
           <Field label="City / zone">
-            <Input value={f.city_zone} onChange={(e) => set("city_zone", e.target.value)} />
+            <Input
+              value={f.city_zone}
+              onChange={(e) => set("city_zone", e.target.value)}
+            />
           </Field>
           <Field label="Contact person">
-            <Input value={f.contact_person} onChange={(e) => set("contact_person", e.target.value)} />
+            <Input
+              value={f.contact_person}
+              onChange={(e) => set("contact_person", e.target.value)}
+            />
           </Field>
         </div>
 
         <div className="space-y-2">
           <div className="micro">Goods delivered</div>
           {lines.map((l, i) => (
-            <div key={i} className="grid grid-cols-[1fr_80px_auto] items-center gap-2">
-              <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, label })} />
+            <div
+              key={i}
+              className="grid grid-cols-[1fr_80px_auto] items-center gap-2"
+            >
+              <InventoryItemSelect
+                value={l.inventory_item_id}
+                onPick={(id, label) =>
+                  setLine(i, { inventory_item_id: id, label })
+                }
+              />
               <Input
                 type="number"
                 min="0"
@@ -119,37 +168,69 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
                 variant="ghost"
                 size="icon"
                 aria-label={`Remove line ${i + 1}`}
-                onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}
+                onClick={() =>
+                  setLines((s) =>
+                    s.length > 1 ? s.filter((_, idx) => idx !== i) : s,
+                  )
+                }
               >
                 <XIcon width={16} height={16} />
               </Button>
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, blankGoods()])}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLines((s) => [...s, blankGoods()])}
+          >
             Add item
           </Button>
         </div>
 
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel="Create note" />
+        <FormButtons
+          busy={busy}
+          disabled={!f.entity_id || busy}
+          onCancel={onClose}
+          saveLabel="Create note"
+        />
       </form>
     </Dialog>
   );
 }
 
 export function DeliveryNotesPage() {
-  const { rows, error, loading, reload } = useList<api.DeliveryNote>("/delivery-notes");
+  const { rows, error, loading, reload } =
+    useList<api.DeliveryNote>("/delivery-notes");
   const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const dref = nameMap(dossiers, "dossier_id", "ref");
 
   const columns: Column<api.DeliveryNote>[] = [
-    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.delivery_note_id.slice(0, 8)}</span> },
-    { key: "dossier_id", label: "Dossier", render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—") },
+    {
+      key: "ref",
+      label: "Ref",
+      render: (r) => (
+        <span className="num font-medium text-foreground">
+          {r.ref || r.delivery_note_id.slice(0, 8)}
+        </span>
+      ),
+    },
+    {
+      key: "dossier_id",
+      label: "Dossier",
+      render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
+    },
     { key: "consignee", label: "Consignee" },
     { key: "city_zone", label: "City / zone" },
     { key: "contact_person", label: "Contact" },
-    { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) =>
+        r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—",
+    },
     {
       key: "_a",
       label: "",

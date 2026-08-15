@@ -20,7 +20,9 @@ import { Stat } from "@/components/ui/stat";
 
 /** "security" → "Security", "master_data" → "Master data". */
 function groupLabel(key: string): string {
-  const s = String(key || "").replace(/[_-]+/g, " ").trim();
+  const s = String(key || "")
+    .replace(/[_-]+/g, " ")
+    .trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "—";
 }
 
@@ -42,21 +44,48 @@ export function ModuleCataloguePage() {
 
   const groups = React.useMemo(() => {
     const seen = new Set((rows || []).map((r) => String(r.group_key || "")));
-    return [{ value: "", label: "All groups" }, ...Array.from(seen).filter(Boolean).sort().map((g) => ({ value: g, label: groupLabel(g) }))];
+    return [
+      { value: "", label: "All groups" },
+      ...Array.from(seen)
+        .filter(Boolean)
+        .sort()
+        .map((g) => ({ value: g, label: groupLabel(g) })),
+    ];
   }, [rows]);
 
   const shown = React.useMemo(() => {
     const term = q.trim().toLowerCase();
     return (rows || [])
       .filter((r) => (group ? String(r.group_key) === group : true))
-      .filter((r) => (term ? [r.module_key, r.name, r.group_key].some((v) => String(v ?? "").toLowerCase().includes(term)) : true))
-      .sort((a, b) => String(a.group_key).localeCompare(String(b.group_key)) || (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+      .filter((r) =>
+        term
+          ? [r.module_key, r.name, r.group_key].some((v) =>
+              String(v ?? "")
+                .toLowerCase()
+                .includes(term),
+            )
+          : true,
+      )
+      .sort(
+        (a, b) =>
+          String(a.group_key).localeCompare(String(b.group_key)) ||
+          (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0),
+      );
   }, [rows, q, group]);
 
   const columns: Column<Module>[] = [
-    { key: "module_key", label: "Module", className: "num font-medium text-foreground", render: (r) => r.module_key },
+    {
+      key: "module_key",
+      label: "Module",
+      className: "num font-medium text-foreground",
+      render: (r) => r.module_key,
+    },
     { key: "name", label: "Name" },
-    { key: "group_key", label: "Group", render: (r) => groupLabel(String(r.group_key)) },
+    {
+      key: "group_key",
+      label: "Group",
+      render: (r) => groupLabel(String(r.group_key)),
+    },
     { key: "sort_order", label: "Order", className: "num text-right" },
   ];
 
@@ -73,14 +102,34 @@ export function ModuleCataloguePage() {
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Stat label="Modules" value={rows === null ? "…" : String(rows.length)} tone="accent" />
-        <Stat label="Groups" value={rows === null ? "…" : String(Math.max(groups.length - 1, 0))} />
-        <Stat label="Showing" value={rows === null ? "…" : String(shown.length)} />
+        <Stat
+          label="Modules"
+          value={rows === null ? "…" : String(rows.length)}
+          tone="accent"
+        />
+        <Stat
+          label="Groups"
+          value={rows === null ? "…" : String(Math.max(groups.length - 1, 0))}
+        />
+        <Stat
+          label="Showing"
+          value={rows === null ? "…" : String(shown.length)}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Chips label="Filter by module group" value={group} options={groups} onChange={setGroup} />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, name or group…" className="max-w-xs" />
+        <Chips
+          label="Filter by module group"
+          value={group}
+          options={groups}
+          onChange={setGroup}
+        />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search code, name or group…"
+          className="max-w-xs"
+        />
       </div>
 
       <DataList<Module>
@@ -89,7 +138,13 @@ export function ModuleCataloguePage() {
         error={error}
         loading={rows === null && !error}
         rowKey={(r) => String(r.module_key)}
-        empty={{ title: rows && rows.length ? "No modules match" : "No modules", hint: rows && rows.length ? "Try another group or search term." : "The catalogue came back empty." }}
+        empty={{
+          title: rows && rows.length ? "No modules match" : "No modules",
+          hint:
+            rows && rows.length
+              ? "Try another group or search term."
+              : "The catalogue came back empty.",
+        }}
       />
     </section>
   );

@@ -70,7 +70,9 @@ export function MapTooltip({
       style={{ left: `${left}%`, top: `${top}%` }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="num truncate text-label font-semibold text-primary-ink">{lane.ref}</span>
+        <span className="num truncate text-label font-semibold text-primary-ink">
+          {lane.ref}
+        </span>
         <Pill tone="mute">{lane.status}</Pill>
       </div>
 
@@ -85,7 +87,11 @@ export function MapTooltip({
         {lane.fromName} → {lane.toName}
       </p>
 
-      {milestone && <p className="mt-1 truncate text-micro normal-case text-muted-foreground">{milestone}</p>}
+      {milestone && (
+        <p className="mt-1 truncate text-micro normal-case text-muted-foreground">
+          {milestone}
+        </p>
+      )}
       {eta && (
         <p className="text-micro normal-case text-muted-foreground">
           Due {dateFmt(eta)}

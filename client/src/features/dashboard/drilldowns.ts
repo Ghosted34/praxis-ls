@@ -69,16 +69,27 @@ export function buildRevenueDrill(
   finals.forEach((r) => {
     const key = str(r.client_id) || "—";
     const prev = byClient.get(key) || { total: 0, count: 0 };
-    byClient.set(key, { total: prev.total + (Number(r.total_ttc) || 0), count: prev.count + 1 });
+    byClient.set(key, {
+      total: prev.total + (Number(r.total_ttc) || 0),
+      count: prev.count + 1,
+    });
   });
-  const scannedTotal = finals.reduce((s, r) => s + (Number(r.total_ttc) || 0), 0);
-  const ranked = [...byClient.entries()].sort((a, b) => b[1].total - a[1].total);
+  const scannedTotal = finals.reduce(
+    (s, r) => s + (Number(r.total_ttc) || 0),
+    0,
+  );
+  const ranked = [...byClient.entries()].sort(
+    (a, b) => b[1].total - a[1].total,
+  );
   const headline = authoritativeTotal ?? scannedTotal;
   const sampled = availableCount > (invoices || []).length;
 
   return {
     title: "Revenue · locked invoices",
-    badge: { tone: "orange", text: `${finals.length} locked invoice${finals.length === 1 ? "" : "s"}` },
+    badge: {
+      tone: "orange",
+      text: `${finals.length} locked invoice${finals.length === 1 ? "" : "s"}`,
+    },
     meta: [
       { label: "Revenue", value: `${grouped(headline)} ${currency}` },
       { label: "Locked invoices", value: String(finals.length) },
@@ -87,14 +98,21 @@ export function buildRevenueDrill(
         ? [{ label: "Top", value: clientName[ranked[0][0]] || "Unattributed" }]
         : []),
     ],
-    columns: [{ label: "Client" }, { label: "Invoices", align: "right" }, { label: currency, align: "right" }, { label: "Share", align: "right" }],
+    columns: [
+      { label: "Client" },
+      { label: "Invoices", align: "right" },
+      { label: currency, align: "right" },
+      { label: "Share", align: "right" },
+    ],
     rows: ranked.slice(0, 8).map(([id, v]) => ({
       key: id,
       cells: [
         clientName[id] || "Unattributed",
         String(v.count),
         grouped(v.total),
-        scannedTotal > 0 ? `${Math.round((v.total / scannedTotal) * 100)}%` : "—",
+        scannedTotal > 0
+          ? `${Math.round((v.total / scannedTotal) * 100)}%`
+          : "—",
       ],
     })),
     note: sampled
@@ -117,8 +135,11 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
     return { d, slip, onTime: slip <= 0 };
   });
   const late = scored.filter((s) => !s.onTime);
-  const pct = measured.length ? Math.round(((measured.length - late.length) / measured.length) * 100) : null;
-  const route = (d: Row) => [str(d.pol), str(d.pod)].filter(Boolean).join(" → ") || "—";
+  const pct = measured.length
+    ? Math.round(((measured.length - late.length) / measured.length) * 100)
+    : null;
+  const route = (d: Row) =>
+    [str(d.pol), str(d.pod)].filter(Boolean).join(" → ") || "—";
 
   return {
     title: "On-time delivery",
@@ -131,8 +152,16 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
       { label: "Measured", value: String(measured.length) },
       { label: "Late", value: String(late.length) },
     ],
-    columns: [{ label: "Dossier" }, { label: "Route" }, { label: "ETA" }, { label: "Result" }],
-    rows: [...late.sort((a, b) => b.slip - a.slip), ...scored.filter((s) => s.onTime)]
+    columns: [
+      { label: "Dossier" },
+      { label: "Route" },
+      { label: "ETA" },
+      { label: "Result" },
+    ],
+    rows: [
+      ...late.sort((a, b) => b.slip - a.slip),
+      ...scored.filter((s) => s.onTime),
+    ]
       .slice(0, 8)
       .map((s) => ({
         key: str(s.d.dossier_id) || str(s.d.ref),
@@ -141,7 +170,9 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
           route(s.d),
           dateFmt(s.d.eta),
           {
-            text: s.onTime ? "On time" : `${s.slip} day${s.slip === 1 ? "" : "s"} late`,
+            text: s.onTime
+              ? "On time"
+              : `${s.slip} day${s.slip === 1 ? "" : "s"} late`,
             tone: (s.onTime ? "ok" : s.slip > 3 ? "bad" : "warn") as Tone,
           },
         ],
@@ -164,7 +195,12 @@ export function buildSlaDrill(dossiers: Row[] | null): Drill {
  * (not), and they could disagree on screen.
  */
 export function buildOverdueDrill(
-  payload: { total?: number; count?: number; clients?: number; invoices?: Row[] } | null,
+  payload: {
+    total?: number;
+    count?: number;
+    clients?: number;
+    invoices?: Row[];
+  } | null,
   clientName: ClientNames,
   currency: string,
 ): Drill {
@@ -175,12 +211,22 @@ export function buildOverdueDrill(
     title: "Receivables · past due",
     badge: { tone: "warn", text: "Outstanding past due date" },
     meta: [
-      { label: "Outstanding", value: `${grouped(Number(payload?.total) || 0)} ${currency}` },
+      {
+        label: "Outstanding",
+        value: `${grouped(Number(payload?.total) || 0)} ${currency}`,
+      },
       { label: "Invoices", value: String(payload?.count ?? invoices.length) },
       { label: "Clients", value: String(payload?.clients ?? 0) },
-      ...(invoices.length ? [{ label: "Oldest", value: `${oldest} days` }] : []),
+      ...(invoices.length
+        ? [{ label: "Oldest", value: `${oldest} days` }]
+        : []),
     ],
-    columns: [{ label: "Invoice" }, { label: "Client" }, { label: currency, align: "right" }, { label: "Age" }],
+    columns: [
+      { label: "Invoice" },
+      { label: "Client" },
+      { label: currency, align: "right" },
+      { label: "Age" },
+    ],
     rows: invoices.slice(0, 8).map((r) => {
       const age = Number(r.days_overdue) || 0;
       return {
@@ -212,7 +258,12 @@ export function buildFleetDrill(vehicles: Row[] | null): Drill {
     meta: [
       { label: "Active", value: String(active.length) },
       { label: "Fleet size", value: String(all.length) },
-      { label: "Utilisation", value: all.length ? `${Math.round((active.length / all.length) * 100)}%` : "—" },
+      {
+        label: "Utilisation",
+        value: all.length
+          ? `${Math.round((active.length / all.length) * 100)}%`
+          : "—",
+      },
     ],
     columns: [{ label: "Vehicle" }, { label: "Category" }, { label: "Status" }],
     rows: all.slice(0, 8).map((v) => ({
@@ -222,7 +273,9 @@ export function buildFleetDrill(vehicles: Row[] | null): Drill {
         str(v.category) || "—",
         {
           text: str(v.status) || "—",
-          tone: (str(v.status).toUpperCase() === "ACTIVE" ? "blue" : "mute") as Tone,
+          tone: (str(v.status).toUpperCase() === "ACTIVE"
+            ? "blue"
+            : "mute") as Tone,
         },
       ],
     })),

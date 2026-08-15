@@ -506,29 +506,29 @@ describe("SSDC — a field definition names a format, never a regex", () => {
   });
 
   it("accepts a value matching a named format", () => {
-    expect(service.coerce(withRule({ format: "EMAIL" }), "ops@example.com")).toBe(
-      "ops@example.com",
-    );
-    expect(service.coerce(withRule({ format: "CONTAINER_NO" }), "MSKU1234567")).toBe(
-      "MSKU1234567",
-    );
+    expect(
+      service.coerce(withRule({ format: "EMAIL" }), "ops@example.com"),
+    ).toBe("ops@example.com");
+    expect(
+      service.coerce(withRule({ format: "CONTAINER_NO" }), "MSKU1234567"),
+    ).toBe("MSKU1234567");
   });
 
   it("rejects one that does not, naming the format in plain words", () => {
     expect(() =>
       service.coerce(withRule({ format: "EMAIL" }), "not-an-email"),
     ).toThrow(/must be an email address/);
-    expect(() => service.coerce(withRule({ format: "CONTAINER_NO" }), "1234")).toThrow(
-      /container number/,
-    );
+    expect(() =>
+      service.coerce(withRule({ format: "CONTAINER_NO" }), "1234"),
+    ).toThrow(/container number/);
   });
 
   it("ignores an unknown format rather than failing the save", () => {
     // A definition written against a format this build does not know is the
     // thing to fix; refusing the user's save is not.
-    expect(service.coerce(withRule({ format: "NOT_A_FORMAT" }), "anything")).toBe(
-      "anything",
-    );
+    expect(
+      service.coerce(withRule({ format: "NOT_A_FORMAT" }), "anything"),
+    ).toBe("anything");
   });
 
   it("never treats a raw pattern as an expression", () => {

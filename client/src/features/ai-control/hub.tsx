@@ -2,7 +2,12 @@ import { Navigate } from "react-router-dom";
 import { TabbedHub } from "@/components/tabbed-hub";
 import { hubTabs } from "@/app/layout/areas";
 import { useAiEnabled } from "@/components/ai-actions";
-import { AiFeaturesPage, AiGrantsPage, AiBudgetPage, AiUsagePage } from "./pages";
+import {
+  AiFeaturesPage,
+  AiGrantsPage,
+  AiBudgetPage,
+  AiUsagePage,
+} from "./pages";
 
 export function AiControlHub() {
   // AI Control governs AI features; with AI off for the tenant there's nothing to

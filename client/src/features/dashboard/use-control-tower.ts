@@ -103,7 +103,10 @@ export type ControlTowerData = {
 function tolerant<T>(path: string) {
   return {
     queryKey: tenantKey(`${path}#tolerant`),
-    queryFn: () => tenant<T>(path).then((d) => d ?? null).catch(() => null),
+    queryFn: () =>
+      tenant<T>(path)
+        .then((d) => d ?? null)
+        .catch(() => null),
   };
 }
 
@@ -119,7 +122,9 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
   const queryClient = useQueryClient();
   const query = React.useMemo(() => {
     const p = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") p.set(k, String(v)); });
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+    });
     return p.toString();
   }, [filters]);
   const towerPath = `/dashboard/control-tower${query ? `?${query}` : ""}`;
@@ -134,7 +139,9 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
     if (!tower.data) return null;
     const ct = tower.data;
     const k = (kpis.data || {}) as Row;
-    const raw = Array.isArray(ct.live_shipments) ? (ct.live_shipments as Row[]) : [];
+    const raw = Array.isArray(ct.live_shipments)
+      ? (ct.live_shipments as Row[])
+      : [];
     const shipments = raw.map(toLiveShipment);
     const files = (ct.operation_files as Row) || {};
     const byId: Record<string, LiveShipment> = {};
@@ -142,7 +149,12 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
       if (!s.dossierId) return;
       // A payload key used as a property NAME is remote property injection
       // (js/remote-property-injection); defineProperty keeps it a value.
-      Object.defineProperty(byId, s.dossierId, { value: s, enumerable: true, writable: true, configurable: true });
+      Object.defineProperty(byId, s.dossierId, {
+        value: s,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     });
 
     return {
@@ -151,18 +163,27 @@ export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
       activity: toActivityRecords(raw),
       legs: legsByFile(raw),
       byId,
-      activeFiles: Number(files.active ?? files.open ?? shipments.length) || shipments.length,
+      activeFiles:
+        Number(files.active ?? files.open ?? shipments.length) ||
+        shipments.length,
       movementFiles: Number(files.movement ?? 0) || 0,
       activityFiles: Number(files.activity ?? 0) || 0,
       needsLocation: Number(files.needs_location ?? 0) || 0,
-      approvals: Number(ct.approvals_awaiting ?? k.approvals_awaiting ?? 0) || 0,
-      complianceFlags: Number(k.open_compliance_flags ?? k.compliance_flags ?? 0) || 0,
+      approvals:
+        Number(ct.approvals_awaiting ?? k.approvals_awaiting ?? 0) || 0,
+      complianceFlags:
+        Number(k.open_compliance_flags ?? k.compliance_flags ?? 0) || 0,
       // The repo sends `unposted_journal_entries`; the iframe read
       // `unposted_journals`, which is not a key the payload has ever carried, so
       // the briefing silently never mentioned unposted journals. Both are read
       // now, real key first.
-      unpostedJournals: Number(k.unposted_journal_entries ?? k.unposted_journals ?? 0) || 0,
-      page: (ct.page as ControlTowerData["page"]) || { limit: 50, has_more: false, next_cursor: null },
+      unpostedJournals:
+        Number(k.unposted_journal_entries ?? k.unposted_journals ?? 0) || 0,
+      page: (ct.page as ControlTowerData["page"]) || {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+      },
       kpis: {
         revenue: numOrNull(k.revenue_final_ttc),
         currency: str(k.revenue_currency) || "XAF",
@@ -210,11 +231,17 @@ export function useKpiDrilldown(
 ): { drill: Drill | null; loading: boolean; error: string | null } {
   const needsClients = id === "revenue" || id === "overdue";
 
-  const invoices = useListPaged<Row>(id === "revenue" ? "/final-invoices" : null, { pageSize: REVENUE_SCAN });
+  const invoices = useListPaged<Row>(
+    id === "revenue" ? "/final-invoices" : null,
+    { pageSize: REVENUE_SCAN },
+  );
   const clients = useList<Row>(needsClients ? "/clients" : null);
   const dossiers = useList<Row>(id === "sla" ? "/operations" : null);
   const vehicles = useList<Row>(id === "fleet" ? "/vehicles" : null);
-  const overdue = useQuery({ ...tolerant<OverduePayload>("/receivables/overdue"), enabled: id === "overdue" });
+  const overdue = useQuery({
+    ...tolerant<OverduePayload>("/receivables/overdue"),
+    enabled: id === "overdue",
+  });
 
   const clientNames = React.useMemo<ClientNames>(() => {
     const m: ClientNames = {};
@@ -232,21 +259,36 @@ export function useKpiDrilldown(
       case "revenue": {
         const error = invoices.error || clients.error;
         if (error) return { drill: null, loading: false, error };
-        if (invoices.loading || clients.loading) return { drill: null, loading: true, error: null };
+        if (invoices.loading || clients.loading)
+          return { drill: null, loading: true, error: null };
         return {
-          drill: buildRevenueDrill(invoices.rows, clientNames, currency, kpis?.revenue ?? null, invoices.total),
+          drill: buildRevenueDrill(
+            invoices.rows,
+            clientNames,
+            currency,
+            kpis?.revenue ?? null,
+            invoices.total,
+          ),
           loading: false,
           error: null,
         };
       }
       case "sla": {
-        if (dossiers.error) return { drill: null, loading: false, error: dossiers.error };
-        if (dossiers.loading) return { drill: null, loading: true, error: null };
-        return { drill: buildSlaDrill(dossiers.rows), loading: false, error: null };
+        if (dossiers.error)
+          return { drill: null, loading: false, error: dossiers.error };
+        if (dossiers.loading)
+          return { drill: null, loading: true, error: null };
+        return {
+          drill: buildSlaDrill(dossiers.rows),
+          loading: false,
+          error: null,
+        };
       }
       case "overdue": {
-        if (clients.error) return { drill: null, loading: false, error: clients.error };
-        if (clients.loading || overdue.isPending) return { drill: null, loading: true, error: null };
+        if (clients.error)
+          return { drill: null, loading: false, error: clients.error };
+        if (clients.loading || overdue.isPending)
+          return { drill: null, loading: true, error: null };
         return {
           drill: buildOverdueDrill(overdue.data ?? null, clientNames, currency),
           loading: false,
@@ -258,12 +300,36 @@ export function useKpiDrilldown(
         // iframe rendered its "All clear" empty state instead, so a user without
         // the fleet grant was told the fleet was fine — a reassuring answer to a
         // question that was never asked.
-        if (vehicles.error) return { drill: null, loading: false, error: vehicles.error };
-        if (vehicles.loading) return { drill: null, loading: true, error: null };
-        return { drill: buildFleetDrill(vehicles.rows), loading: false, error: null };
+        if (vehicles.error)
+          return { drill: null, loading: false, error: vehicles.error };
+        if (vehicles.loading)
+          return { drill: null, loading: true, error: null };
+        return {
+          drill: buildFleetDrill(vehicles.rows),
+          loading: false,
+          error: null,
+        };
       }
       default:
         return { drill: null, loading: false, error: null };
     }
-  }, [id, kpis, invoices.rows, invoices.error, invoices.loading, invoices.total, clients.error, clients.loading, clientNames, dossiers.rows, dossiers.error, dossiers.loading, vehicles.rows, vehicles.error, vehicles.loading, overdue.data, overdue.isPending]);
+  }, [
+    id,
+    kpis,
+    invoices.rows,
+    invoices.error,
+    invoices.loading,
+    invoices.total,
+    clients.error,
+    clients.loading,
+    clientNames,
+    dossiers.rows,
+    dossiers.error,
+    dossiers.loading,
+    vehicles.rows,
+    vehicles.error,
+    vehicles.loading,
+    overdue.data,
+    overdue.isPending,
+  ]);
 }

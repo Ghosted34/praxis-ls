@@ -31,7 +31,11 @@ import type { ShipmentMode } from "../model";
  *  room is never interrupted mid-point, short enough to matter over an hour. */
 const REFRESH_MS = 120_000;
 
-export type MeetingStat = { label: string; value: string; tone?: "ok" | "warn" | "bad" | "mute" };
+export type MeetingStat = {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "bad" | "mute";
+};
 
 export function MeetingMode({
   open,
@@ -90,7 +94,10 @@ export function MeetingMode({
 
   if (!open) return null;
 
-  const refreshed = refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const refreshed = refreshedAt.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <ScreenOverlay label="Operations meeting view" className="gap-3 p-3 sm:p-5">
@@ -103,8 +110,12 @@ export function MeetingMode({
       */}
       <header className="flex flex-none flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-heading font-semibold leading-tight tracking-tight">Operations meeting</h1>
-          <p className="mt-1 text-label text-muted-foreground">{filterSummary}</p>
+          <h1 className="text-heading font-semibold leading-tight tracking-tight">
+            Operations meeting
+          </h1>
+          <p className="mt-1 text-label text-muted-foreground">
+            {filterSummary}
+          </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <span className="text-micro font-semibold normal-case text-muted-foreground">
@@ -148,7 +159,9 @@ export function MeetingMode({
               s.tone === "bad" && "border-destructive/40",
             )}
           >
-            <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">{s.label}</p>
+            <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">
+              {s.label}
+            </p>
             <p
               className={cn(
                 "num mt-0.5 text-heading font-semibold leading-none",

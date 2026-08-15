@@ -25,7 +25,13 @@
  * — so offering them here would spend a slot on a shortcut a user already has
  * in the chrome. Everything else in `pinnableAreas(families)` is fair game.
  */
-import { AREAS, areaRoute, sectionRoute, type Area, type AreaSection } from "@/app/layout/areas";
+import {
+  AREAS,
+  areaRoute,
+  sectionRoute,
+  type Area,
+  type AreaSection,
+} from "@/app/layout/areas";
 import { pinnableAreas } from "@/app/layout/rail-model";
 import type { RibbonFamily } from "@/app/layout/ribbon-model";
 
@@ -88,7 +94,9 @@ const NOT_PINNABLE_IN_TOWER = new Set(["tower", "support"]);
 
 /** The candidate list the picker offers and the set a pin must survive. */
 export function pinnableTowerAreas(families: RibbonFamily[]): Area[] {
-  return pinnableAreas(families).filter((a) => !NOT_PINNABLE_IN_TOWER.has(a.key));
+  return pinnableAreas(families).filter(
+    (a) => !NOT_PINNABLE_IN_TOWER.has(a.key),
+  );
 }
 
 /**
@@ -120,25 +128,38 @@ export function unresolvedFallbackAreas(): Area[] {
  *   - the length is capped at MAX_TOWER_PINS on the way out — a stored list
  *     from a client that ignored the cap must not overflow the grid.
  */
-export function resolveTowerPins(saved: string[] | null | undefined, families: RibbonFamily[]): Area[] {
+export function resolveTowerPins(
+  saved: string[] | null | undefined,
+  families: RibbonFamily[],
+): Area[] {
   const available = pinnableTowerAreas(families);
   const byKey = new Map(available.map((a) => [a.key, a]));
 
   if (saved) {
-    return saved.map((k) => byKey.get(k)).filter((a): a is Area => !!a).slice(0, MAX_TOWER_PINS);
+    return saved
+      .map((k) => byKey.get(k))
+      .filter((a): a is Area => !!a)
+      .slice(0, MAX_TOWER_PINS);
   }
 
-  const defaults = DEFAULT_TOWER_PINS.map((k) => byKey.get(k)).filter((a): a is Area => !!a);
+  const defaults = DEFAULT_TOWER_PINS.map((k) => byKey.get(k)).filter(
+    (a): a is Area => !!a,
+  );
   // A user who can see none of the defaults — a warehouse-only or finance-only
   // role — would otherwise get an empty tower this function exists to
   // prevent. Fall through to whatever they CAN see, in ribbon order.
-  return (defaults.length > 0 ? defaults : available.slice(0, MAX_TOWER_PINS)).slice(0, MAX_TOWER_PINS);
+  return (
+    defaults.length > 0 ? defaults : available.slice(0, MAX_TOWER_PINS)
+  ).slice(0, MAX_TOWER_PINS);
 }
 
 /** The pinnable areas this user has NOT pinned — what the "More" card
  *  reveals. Preserves ribbon order rather than pin order so the expanded
  *  grid reads the same way for everyone. */
-export function unpinnedTowerAreas(pinned: Area[], families: RibbonFamily[]): Area[] {
+export function unpinnedTowerAreas(
+  pinned: Area[],
+  families: RibbonFamily[],
+): Area[] {
   const pinnedKeys = new Set(pinned.map((a) => a.key));
   return pinnableTowerAreas(families).filter((a) => !pinnedKeys.has(a.key));
 }
@@ -178,4 +199,5 @@ export const towerLandingRoute = (area: Area): string => areaRoute(area);
 
 /** Label for a stored key even when the area is not currently visible — the
  *  editor lists what you pinned, not only what you can reach today. */
-export const towerAreaLabel = (key: string): string => AREAS.find((a) => a.key === key)?.label ?? key;
+export const towerAreaLabel = (key: string): string =>
+  AREAS.find((a) => a.key === key)?.label ?? key;

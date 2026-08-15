@@ -41,11 +41,16 @@ import * as api from "@/lib/operations-api";
  */
 function FacetCell({ facet }: { facet: api.Facet }) {
   const provenance =
-    facet.parts.length > 1 ? facet.parts.map((p) => `${p.label}: ${p.value}`).join(" · ") : undefined;
+    facet.parts.length > 1
+      ? facet.parts.map((p) => `${p.label}: ${p.value}`).join(" · ")
+      : undefined;
   return (
     <div className="min-w-0">
       <dt className="micro text-muted-foreground">{facet.label}</dt>
-      <dd className="truncate text-sm font-medium text-foreground" title={provenance || facet.value}>
+      <dd
+        className="truncate text-sm font-medium text-foreground"
+        title={provenance || facet.value}
+      >
         {facet.value}
       </dd>
     </div>
@@ -68,7 +73,9 @@ function CompletenessPill({ c }: { c: api.ShipmentDetails["completeness"] }) {
   return (
     <Pill tone={tone}>
       {c.filled}/{c.total} filled
-      {c.missing_required.length ? ` · ${c.missing_required.length} required missing` : ""}
+      {c.missing_required.length
+        ? ` · ${c.missing_required.length} required missing`
+        : ""}
     </Pill>
   );
 }
@@ -98,12 +105,25 @@ function ContainerSummary({ block }: { block: api.ContainerBlock }) {
         {block.lines.map((l, i) => (
           <li key={l.dossier_container_line_id || i} className="text-sm">
             <span className="num font-medium text-foreground">{l.qty} ×</span>{" "}
-            <span className="text-foreground">{l.container_type_en || l.container_type_fr || l.container_type_code}</span>
-            {l.load_mode_en ? <span className="micro text-muted-foreground"> · {l.load_mode_en}</span> : null}
+            <span className="text-foreground">
+              {l.container_type_en ||
+                l.container_type_fr ||
+                l.container_type_code}
+            </span>
+            {l.load_mode_en ? (
+              <span className="micro text-muted-foreground">
+                {" "}
+                · {l.load_mode_en}
+              </span>
+            ) : null}
             {l.units && l.units.length ? (
               <span className="micro text-muted-foreground">
                 {" "}
-                · {l.units.map((u) => u.container_no).filter(Boolean).join(", ")}
+                ·{" "}
+                {l.units
+                  .map((u) => u.container_no)
+                  .filter(Boolean)
+                  .join(", ")}
               </span>
             ) : null}
           </li>
@@ -122,15 +142,27 @@ function ContainerSummary({ block }: { block: api.ContainerBlock }) {
  */
 function Strip({ data }: { data: api.ShipmentDetails }) {
   const head = data.facet_order
-    .filter((r) => ["TRANSPORT_REF", "CONVEYANCE", "ARRIVAL_DATE", "CARGO_DESC", "CUSTODY_LOCATION"].includes(r))
+    .filter((r) =>
+      [
+        "TRANSPORT_REF",
+        "CONVEYANCE",
+        "ARRIVAL_DATE",
+        "CARGO_DESC",
+        "CUSTODY_LOCATION",
+      ].includes(r),
+    )
     .slice(0, 4)
     .map((r) => data.facets[r]!)
     .filter(Boolean);
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-      <span className="num font-medium text-foreground">{data.dossier.ref}</span>
-      {data.route_label ? <span className="text-foreground">{data.route_label}</span> : null}
+      <span className="num font-medium text-foreground">
+        {data.dossier.ref}
+      </span>
+      {data.route_label ? (
+        <span className="text-foreground">{data.route_label}</span>
+      ) : null}
       {head.map((f) => (
         <span key={f.role} className="text-muted-foreground">
           <span className="micro">{f.label}: </span>
@@ -149,7 +181,10 @@ function Strip({ data }: { data: api.ShipmentDetails }) {
  */
 function Groups({ groups }: { groups: api.DetailGroupValue[] }) {
   const withValues = groups
-    .map((g) => ({ ...g, fields: g.fields.filter((f) => f.display !== null && f.display !== "") }))
+    .map((g) => ({
+      ...g,
+      fields: g.fields.filter((f) => f.display !== null && f.display !== ""),
+    }))
     .filter((g) => g.fields.length);
   if (!withValues.length) return null;
 
@@ -162,7 +197,10 @@ function Groups({ groups }: { groups: api.DetailGroupValue[] }) {
             {g.fields.map((f) => (
               <div key={f.key} className="min-w-0">
                 <dt className="micro text-muted-foreground">{f.label}</dt>
-                <dd className="truncate text-sm text-foreground" title={f.display || undefined}>
+                <dd
+                  className="truncate text-sm text-foreground"
+                  title={f.display || undefined}
+                >
                   {f.display}
                 </dd>
               </div>
@@ -201,7 +239,10 @@ export function ShipmentDetailsPanel({
   className,
 }: ShipmentDetailsPanelProps) {
   const fetched = useResource<api.ShipmentDetails | null>(
-    () => (given || !dossierId ? Promise.resolve(null) : api.getShipmentDetails(dossierId)),
+    () =>
+      given || !dossierId
+        ? Promise.resolve(null)
+        : api.getShipmentDetails(dossierId),
     [dossierId, given],
   );
   const data = given || fetched.data;
@@ -216,7 +257,9 @@ export function ShipmentDetailsPanel({
   const body = (
     <div className="space-y-4">
       {data.route_label ? (
-        <p className="text-sm font-medium text-foreground">{data.route_label}</p>
+        <p className="text-sm font-medium text-foreground">
+          {data.route_label}
+        </p>
       ) : null}
 
       {facets.length ? (

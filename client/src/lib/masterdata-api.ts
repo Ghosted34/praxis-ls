@@ -3,7 +3,12 @@
  * treasury accounts + payment gateways, expense rates, financial dictionary.
  * Routes/fields mirror src/modules/master/*. All calls go through `tenant()`.
  */
-import { tenant, tenantDownload, tenantWithProgress, downloadPost } from "./api-client";
+import {
+  tenant,
+  tenantDownload,
+  tenantWithProgress,
+  downloadPost,
+} from "./api-client";
 
 /* ── Clients(/clients) ──────────────────────────────────────────── */
 export type Client = {
@@ -26,9 +31,24 @@ export type Client = {
 };
 // Country-first form blocks (PR3-B §2) — the service persists these as their
 // own rows (party_registration / *_contact / *_address) in the create tx.
-export type PartyRegistrationInput = { kind: string; number?: string; country_code?: string };
-export type PartyContactInput = { name?: string; email?: string; phone?: string; role_tags?: string[] };
-export type PartyAddressInput = { line1?: string; city?: string; region?: string; postal_code?: string; country_code?: string };
+export type PartyRegistrationInput = {
+  kind: string;
+  number?: string;
+  country_code?: string;
+};
+export type PartyContactInput = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  role_tags?: string[];
+};
+export type PartyAddressInput = {
+  line1?: string;
+  city?: string;
+  region?: string;
+  postal_code?: string;
+  country_code?: string;
+};
 
 export type ClientInput = {
   name: string;
@@ -84,15 +104,43 @@ export type PartyExtras = {
 
 export const listClients = () => tenant<Client[]>("/clients");
 export const getClientCredit = (id: string) =>
-  tenant<{ credit_limit: number | null; outstanding: number; available: number | null }>(`/clients/${id}/credit`);
+  tenant<{
+    credit_limit: number | null;
+    outstanding: number;
+    available: number | null;
+  }>(`/clients/${id}/credit`);
 /* Client 360 rollups — receivables (overdue) + receipts. */
-export type OverdueInvoice = { invoice_id: string; doc_number?: string | null; total_ttc: number; outstanding: number; payment_due_on?: string | null; days_overdue: number };
-export type OverdueResult = { as_of: string; total: number; count: number; invoices: OverdueInvoice[] };
-export const clientOverdue = (clientId: string) => tenant<OverdueResult>(`/receivables/overdue?client_id=${encodeURIComponent(clientId)}`);
-export type Receipt = { receipt_id: string; client_id?: string | null; amount: number | string; method?: string | null; received_on?: string | null; status?: string | null };
-export const clientReceipts = (clientId: string) => tenant<Receipt[]>(`/receivables?client_id=${encodeURIComponent(clientId)}`);
+export type OverdueInvoice = {
+  invoice_id: string;
+  doc_number?: string | null;
+  total_ttc: number;
+  outstanding: number;
+  payment_due_on?: string | null;
+  days_overdue: number;
+};
+export type OverdueResult = {
+  as_of: string;
+  total: number;
+  count: number;
+  invoices: OverdueInvoice[];
+};
+export const clientOverdue = (clientId: string) =>
+  tenant<OverdueResult>(
+    `/receivables/overdue?client_id=${encodeURIComponent(clientId)}`,
+  );
+export type Receipt = {
+  receipt_id: string;
+  client_id?: string | null;
+  amount: number | string;
+  method?: string | null;
+  received_on?: string | null;
+  status?: string | null;
+};
+export const clientReceipts = (clientId: string) =>
+  tenant<Receipt[]>(`/receivables?client_id=${encodeURIComponent(clientId)}`);
 
-export const createClient = (body: ClientInput) => tenant<Client>("/clients", { method: "POST", body });
+export const createClient = (body: ClientInput) =>
+  tenant<Client>("/clients", { method: "POST", body });
 export const updateClient = (id: string, body: Partial<ClientInput>) =>
   tenant<Client>(`/clients/${id}`, { method: "PATCH", body });
 
@@ -128,7 +176,8 @@ export type SupplierInput = {
   address?: string;
   city?: string;
   country_code?: string;
-  payment_method?: "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE" | "BANK_TRANSFER";
+  payment_method?:
+    "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE" | "BANK_TRANSFER";
   momo_network?: string;
   momo_number?: string;
   is_non_resident?: boolean;
@@ -146,7 +195,8 @@ export type SupplierInput = {
   registration_status?: string;
 };
 export const listSuppliers = () => tenant<Supplier[]>("/suppliers");
-export const createSupplier = (body: SupplierInput) => tenant<Supplier>("/suppliers", { method: "POST", body });
+export const createSupplier = (body: SupplierInput) =>
+  tenant<Supplier>("/suppliers", { method: "POST", body });
 export const updateSupplier = (id: string, body: Partial<SupplierInput>) =>
   tenant<Supplier>(`/suppliers/${id}`, { method: "PATCH", body });
 
@@ -160,11 +210,29 @@ export type BankBlock = {
   iban?: string;
   swift?: string;
 };
-export type EntityLifecycle = "DRAFT" | "PENDING_REVIEW" | "ACTIVE" | "SUSPENDED" | "DEACTIVATED" | "ARCHIVED";
-export type AccountingFramework = "OHADA" | "IFRS" | "IFRS_SME" | "US_GAAP" | "FR_PCG" | "UK_GAAP" | "LOCAL_OTHER";
+export type EntityLifecycle =
+  | "DRAFT"
+  | "PENDING_REVIEW"
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "DEACTIVATED"
+  | "ARCHIVED";
+export type AccountingFramework =
+  | "OHADA"
+  | "IFRS"
+  | "IFRS_SME"
+  | "US_GAAP"
+  | "FR_PCG"
+  | "UK_GAAP"
+  | "LOCAL_OTHER";
 export type EntityRelationship =
-  | "HEADQUARTERS" | "SUBSIDIARY" | "BRANCH" | "REPRESENTATIVE_OFFICE"
-  | "JOINT_VENTURE" | "ASSOCIATE" | "SPV";
+  | "HEADQUARTERS"
+  | "SUBSIDIARY"
+  | "BRANCH"
+  | "REPRESENTATIVE_OFFICE"
+  | "JOINT_VENTURE"
+  | "ASSOCIATE"
+  | "SPV";
 
 export type Entity = {
   entity_id: string;
@@ -194,6 +262,13 @@ export type Entity = {
   logo_light_ref?: string | null;
   logo_dark_ref?: string | null;
   doc_prefix?: string | null;
+  /**
+   * The two characters that LEAD this entity's operation-file references
+   * (`SL` in `SL7Z3K9QW2M4XBSM`). Distinct from `doc_prefix`, which leads
+   * invoice numbers: one is seen by clients on a dossier, the other by
+   * accountants on a ledger, and they change for different reasons.
+   */
+  ops_reference_prefix?: string | null;
   default_language?: string | null;
   fiscal_year_start_month?: number | null;
   accounting_framework?: AccountingFramework | null;
@@ -220,8 +295,15 @@ export type EntityInput = Partial<Omit<Entity, "entity_id" | "is_active">> & {
 /* Nested collections owned by an entity. */
 export type EntityPerson = {
   person_id: string;
-  role: "SHAREHOLDER" | "DIRECTOR" | "OFFICER" | "LEGAL_REPRESENTATIVE"
-    | "AUTHORISED_SIGNATORY" | "BENEFICIAL_OWNER" | "STATUTORY_AUDITOR" | "SECRETARY";
+  role:
+    | "SHAREHOLDER"
+    | "DIRECTOR"
+    | "OFFICER"
+    | "LEGAL_REPRESENTATIVE"
+    | "AUTHORISED_SIGNATORY"
+    | "BENEFICIAL_OWNER"
+    | "STATUTORY_AUDITOR"
+    | "SECRETARY";
   holder_type?: "PERSON" | "COMPANY";
   full_name: string;
   title?: string | null;
@@ -257,31 +339,74 @@ export type EntityPerson = {
   redacted?: boolean;
 };
 export type EntityContact = {
-  contact_id: string; name: string; title?: string | null;
-  email?: string | null; phone?: string | null; role_tags?: string[] | null;
-  is_primary?: boolean; language?: string | null; timezone?: string | null; is_active?: boolean;
+  contact_id: string;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  role_tags?: string[] | null;
+  is_primary?: boolean;
+  language?: string | null;
+  timezone?: string | null;
+  is_active?: boolean;
 };
 export type EntityAddress = {
   address_id: string;
-  type: "REGISTERED" | "TRADING" | "BILLING" | "REMITTANCE" | "MAILING" | "WAREHOUSE" | "OTHER";
-  line1?: string | null; line2?: string | null; city?: string | null; region?: string | null;
-  postal_code?: string | null; country_code?: string | null; po_box?: string | null;
-  is_primary?: boolean; is_active?: boolean;
+  type:
+    | "REGISTERED"
+    | "TRADING"
+    | "BILLING"
+    | "REMITTANCE"
+    | "MAILING"
+    | "WAREHOUSE"
+    | "OTHER";
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postal_code?: string | null;
+  country_code?: string | null;
+  po_box?: string | null;
+  is_primary?: boolean;
+  is_active?: boolean;
 };
 export type EntityRegistration = {
-  registration_id: string; country_code?: string | null; kind: string; number?: string | null;
-  issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null;
-  is_primary?: boolean; verified?: boolean; notes?: string | null;
+  registration_id: string;
+  country_code?: string | null;
+  kind: string;
+  number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  is_primary?: boolean;
+  verified?: boolean;
+  notes?: string | null;
 };
 export type EntityEstablishment = {
-  establishment_id: string; code?: string | null; name: string;
-  kind?: "HEAD_OFFICE" | "OFFICE" | "WAREHOUSE" | "TERMINAL" | "WORKSHOP" | "SITE" | "AGENCY" | "OTHER";
-  country_code?: string | null; city?: string | null; address_line?: string | null;
-  tax_office_ref?: string | null; registration_ref?: string | null; customs_office?: string | null;
+  establishment_id: string;
+  code?: string | null;
+  name: string;
+  kind?:
+    | "HEAD_OFFICE"
+    | "OFFICE"
+    | "WAREHOUSE"
+    | "TERMINAL"
+    | "WORKSHOP"
+    | "SITE"
+    | "AGENCY"
+    | "OTHER";
+  country_code?: string | null;
+  city?: string | null;
+  address_line?: string | null;
+  tax_office_ref?: string | null;
+  registration_ref?: string | null;
+  customs_office?: string | null;
   manager_employee_id?: string | null;
   /** Joined from `employee` so the table can print a name, not a uuid. */
   manager_name?: string | null;
-  opened_on?: string | null; closed_on?: string | null; is_active?: boolean;
+  opened_on?: string | null;
+  closed_on?: string | null;
+  is_active?: boolean;
 };
 
 export type EntityDocument = {
@@ -310,7 +435,8 @@ export type EntityDocument = {
   is_active?: boolean;
 };
 
-export type TaxKind = "VAT" | "INCOME" | "WHT" | "PAYROLL" | "CUSTOMS" | "LOCAL" | "OTHER";
+export type TaxKind =
+  "VAT" | "INCOME" | "WHT" | "PAYROLL" | "CUSTOMS" | "LOCAL" | "OTHER";
 export type EntityTaxRegistration = {
   tax_registration_id: string;
   jurisdiction_id?: string | null;
@@ -319,7 +445,8 @@ export type EntityTaxRegistration = {
   tax_kind: TaxKind;
   tax_number?: string | null;
   regime?: string | null;
-  filing_frequency?: "MONTHLY" | "QUARTERLY" | "ANNUAL" | "BIMONTHLY" | "ON_EVENT" | null;
+  filing_frequency?:
+    "MONTHLY" | "QUARTERLY" | "ANNUAL" | "BIMONTHLY" | "ON_EVENT" | null;
   filing_due_day?: number | null;
   currency?: string | null;
   is_withholding_agent?: boolean;
@@ -336,28 +463,47 @@ export type EntityTaxRegistration = {
 };
 
 export type TaxObligation = {
-  tax_calendar_id: string; obligation: string; due_on: string;
+  tax_calendar_id: string;
+  obligation: string;
+  due_on: string;
   status: "PENDING" | "DONE" | "LATE" | "WAIVED" | "SUPERSEDED";
-  period_code?: string | null; tax_kind?: string | null; country_code?: string | null;
+  period_code?: string | null;
+  tax_kind?: string | null;
+  country_code?: string | null;
 };
 
 export type LetterheadConfig = {
   entity_id?: string;
-  show_legal_form: boolean; show_share_capital: boolean; show_registered_address: boolean;
-  show_registrations: boolean; show_contact: boolean; show_bank_block: boolean; show_establishment: boolean;
-  header_note_fr?: string | null; header_note_en?: string | null;
-  footer_note_fr?: string | null; footer_note_en?: string | null;
-  legal_mentions_fr?: string | null; legal_mentions_en?: string | null;
-  brand_color?: string | null; accent_color?: string | null;
+  show_legal_form: boolean;
+  show_share_capital: boolean;
+  show_registered_address: boolean;
+  show_registrations: boolean;
+  show_contact: boolean;
+  show_bank_block: boolean;
+  show_establishment: boolean;
+  header_note_fr?: string | null;
+  header_note_en?: string | null;
+  footer_note_fr?: string | null;
+  footer_note_en?: string | null;
+  legal_mentions_fr?: string | null;
+  legal_mentions_en?: string | null;
+  brand_color?: string | null;
+  accent_color?: string | null;
   logo_position: "LEFT" | "CENTER" | "RIGHT";
   paper_size: "A4" | "LETTER";
-  header_height_mm?: number | null; footer_height_mm?: number | null;
+  header_height_mm?: number | null;
+  footer_height_mm?: number | null;
 };
 
 export type PaymentAccount = {
-  label: string; bank_name?: string | null; branch?: string | null;
-  account_number?: string | null; iban?: string | null; swift_bic?: string | null;
-  currency?: string | null; beneficiary_name?: string | null;
+  label: string;
+  bank_name?: string | null;
+  branch?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  currency?: string | null;
+  beneficiary_name?: string | null;
 };
 
 /** The rendered letterhead — the same shape the invoice renderer consumes. */
@@ -368,16 +514,27 @@ export type LetterheadPreview = {
   brand_color?: string | null;
   accent_color?: string | null;
   header: {
-    logo?: string | null; logo_dark?: string | null; company_line?: string | null;
-    trading_name?: string | null; address_line?: string | null;
-    contact_line?: string | null; note?: string | null;
+    logo?: string | null;
+    logo_dark?: string | null;
+    company_line?: string | null;
+    trading_name?: string | null;
+    address_line?: string | null;
+    contact_line?: string | null;
+    note?: string | null;
   };
   footer: {
-    company_line?: string | null; address_line?: string | null; identifier_line?: string | null;
-    contact_line?: string | null; establishment_line?: string | null;
-    note?: string | null; legal_mentions?: string | null;
+    company_line?: string | null;
+    address_line?: string | null;
+    identifier_line?: string | null;
+    contact_line?: string | null;
+    establishment_line?: string | null;
+    note?: string | null;
+    legal_mentions?: string | null;
   };
-  payment_block: { source: "treasury" | "bank_block_legacy" | "none" | "hidden"; accounts: PaymentAccount[] };
+  payment_block: {
+    source: "treasury" | "bank_block_legacy" | "none" | "hidden";
+    accounts: PaymentAccount[];
+  };
   identifiers: { kind: string; number: string }[];
   empty_blocks: string[];
 };
@@ -392,20 +549,36 @@ export type LetterheadBundle = {
 
 export type RenewalItem = {
   kind: "DOCUMENT" | "REGISTRATION" | "TAX_REGISTRATION";
-  id: string; label: string; type_code?: string | null; country_code?: string | null;
-  expires_on: string; days_remaining: number | null;
+  id: string;
+  label: string;
+  type_code?: string | null;
+  country_code?: string | null;
+  expires_on: string;
+  days_remaining: number | null;
   state: "EXPIRED" | "DUE" | "APPROACHING";
   severity: "INFO" | "WARN" | "ESCALATED" | "SOFT_BLOCK_RECOMMENDATION" | null;
 };
 export type Renewals = {
-  as_of: string; items: RenewalItem[];
+  as_of: string;
+  items: RenewalItem[];
   counts: { expired: number; due: number; approaching: number };
 };
 
-export type CapTableFinding = { code: string; severity: "INFO" | "WARN"; message: string; person_id?: string };
+export type CapTableFinding = {
+  code: string;
+  severity: "INFO" | "WARN";
+  message: string;
+  person_id?: string;
+};
 export type CapTable = {
-  as_of: string; holder_count: number; total_percent: number; total_shares: number;
-  issued_capital: number; balanced: boolean; findings: CapTableFinding[]; redacted?: boolean;
+  as_of: string;
+  holder_count: number;
+  total_percent: number;
+  total_shares: number;
+  issued_capital: number;
+  balanced: boolean;
+  findings: CapTableFinding[];
+  redacted?: boolean;
 };
 
 /** The `/entities/:id/360` aggregation — everything the dossier page renders. */
@@ -417,9 +590,26 @@ export type Entity360 = {
     ownership_percent: number | string | null;
     consolidates: boolean;
     is_group_parent: boolean;
-    ancestors: { entity_id: string; code: string; legal_name: string; country_code?: string | null; depth: number }[];
-    children: (Pick<Entity, "entity_id" | "code" | "legal_name" | "country_code" | "relationship_type"
-      | "ownership_percent" | "consolidates" | "registration_status" | "is_active" | "accounting_framework">)[];
+    ancestors: {
+      entity_id: string;
+      code: string;
+      legal_name: string;
+      country_code?: string | null;
+      depth: number;
+    }[];
+    children: Pick<
+      Entity,
+      | "entity_id"
+      | "code"
+      | "legal_name"
+      | "country_code"
+      | "relationship_type"
+      | "ownership_percent"
+      | "consolidates"
+      | "registration_status"
+      | "is_active"
+      | "accounting_framework"
+    >[];
   };
   people: EntityPerson[];
   contacts: EntityContact[];
@@ -430,7 +620,12 @@ export type Entity360 = {
   treasury_accounts: Treasury[];
   treasury_is_read_only: boolean;
   cap_table: CapTable;
-  usage: { journal_entries: number; employees: number; treasury_accounts: number; subsidiaries: number };
+  usage: {
+    journal_entries: number;
+    employees: number;
+    treasury_accounts: number;
+    subsidiaries: number;
+  };
   documents: EntityDocument[];
   tax_registrations: EntityTaxRegistration[];
   tax_obligations: TaxObligation[];
@@ -439,26 +634,61 @@ export type Entity360 = {
   renewals: Renewals;
   letterhead_source: Record<string, unknown>;
   readiness: { ready: boolean; missing: { field: string; label: string }[] };
-  expiring_registrations: { registration_id: string; kind: string; number?: string | null; expires_on: string; expired: boolean }[];
+  expiring_registrations: {
+    registration_id: string;
+    kind: string;
+    number?: string | null;
+    expires_on: string;
+    expired: boolean;
+  }[];
   can_see_governance: boolean;
 };
 
 export const listEntities = () => tenant<Entity[]>("/entities");
-export const createEntity = (body: EntityInput) => tenant<Entity>("/entities", { method: "POST", body });
+export const createEntity = (body: EntityInput) =>
+  tenant<Entity>("/entities", { method: "POST", body });
 export const updateEntity = (id: string, body: Partial<EntityInput>) =>
   tenant<Entity>(`/entities/${id}`, { method: "PATCH", body });
 export const setEntityActive = (id: string, active: boolean) =>
-  tenant<Entity>(`/entities/${id}/active`, { method: "POST", body: { active } });
+  tenant<Entity>(`/entities/${id}/active`, {
+    method: "POST",
+    body: { active },
+  });
 export const getEntity = (id: string) => tenant<Entity>(`/entities/${id}`);
-export const entityDossier = (id: string) => tenant<Entity360>(`/entities/${id}/360`);
-export const setEntityStatus = (id: string, status: EntityLifecycle, reason?: string) =>
-  tenant<Entity>(`/entities/${id}/status`, { method: "POST", body: { status, reason } });
+export const entityDossier = (id: string) =>
+  tenant<Entity360>(`/entities/${id}/360`);
+export const setEntityStatus = (
+  id: string,
+  status: EntityLifecycle,
+  reason?: string,
+) =>
+  tenant<Entity>(`/entities/${id}/status`, {
+    method: "POST",
+    body: { status, reason },
+  });
 export const setEntityStructure = (id: string, body: Record<string, unknown>) =>
   tenant<Entity>(`/entities/${id}/structure`, { method: "POST", body });
+/**
+ * Its own endpoint rather than a PATCH field: the prefix is an identifier
+ * clients hold, so the API refuses to change it once an operation file has used
+ * one, and it carries its own audit action.
+ */
+export const setEntityOpsReferencePrefix = (id: string, prefix: string) =>
+  tenant<Entity>(`/entities/${id}/ops-reference-prefix`, {
+    method: "POST",
+    body: { ops_reference_prefix: prefix },
+  });
 
-export const entityLetterhead = (id: string) => tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
-export const saveEntityLetterhead = (id: string, body: Record<string, unknown>) =>
-  tenant<LetterheadBundle>(`/entities/${id}/letterhead`, { method: "PUT", body });
+export const entityLetterhead = (id: string) =>
+  tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
+export const saveEntityLetterhead = (
+  id: string,
+  body: Record<string, unknown>,
+) =>
+  tenant<LetterheadBundle>(`/entities/${id}/letterhead`, {
+    method: "PUT",
+    body,
+  });
 /**
  * Renewals and the cap table, both as of a chosen date.
  *
@@ -469,7 +699,8 @@ export const saveEntityLetterhead = (id: string, body: Record<string, unknown>) 
  * passes one. `entityCapTable` had no client function at all; `entityRenewals`
  * existed and was called by nothing.
  */
-const asOfQuery = (asOf?: string | null) => (asOf ? `?as_of=${encodeURIComponent(asOf)}` : "");
+const asOfQuery = (asOf?: string | null) =>
+  asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
 export const entityRenewals = (id: string, asOf?: string | null) =>
   tenant<Renewals>(`/entities/${id}/renewals${asOfQuery(asOf)}`);
 export const entityCapTable = (id: string, asOf?: string | null) =>
@@ -477,17 +708,38 @@ export const entityCapTable = (id: string, asOf?: string | null) =>
 
 /** Generic nested-collection helpers — one implementation for all seven. */
 export type EntityCollection =
-  | "people" | "contacts" | "addresses" | "registrations" | "establishments"
-  | "documents" | "tax-registrations";
-export const addEntityChild = <T,>(id: string, seg: EntityCollection, body: Record<string, unknown>) =>
-  tenant<T>(`/entities/${id}/${seg}`, { method: "POST", body });
-export const updateEntityChild = <T,>(id: string, seg: EntityCollection, childId: string, body: Record<string, unknown>) =>
-  tenant<T>(`/entities/${id}/${seg}/${childId}`, { method: "PATCH", body });
+  | "people"
+  | "contacts"
+  | "addresses"
+  | "registrations"
+  | "establishments"
+  | "documents"
+  | "tax-registrations";
+export const addEntityChild = <T>(
+  id: string,
+  seg: EntityCollection,
+  body: Record<string, unknown>,
+) => tenant<T>(`/entities/${id}/${seg}`, { method: "POST", body });
+export const updateEntityChild = <T>(
+  id: string,
+  seg: EntityCollection,
+  childId: string,
+  body: Record<string, unknown>,
+) => tenant<T>(`/entities/${id}/${seg}/${childId}`, { method: "PATCH", body });
 /** Explicit human approval after a scan has been attached. */
 export const verifyEntityDocument = (entityId: string, documentId: string) =>
-  tenant<EntityDocument>(`/entities/${entityId}/documents/${documentId}/verify`, { method: "POST" });
-export const deleteEntityChild = (id: string, seg: EntityCollection, childId: string) =>
-  tenant<{ deleted: boolean }>(`/entities/${id}/${seg}/${childId}`, { method: "DELETE" });
+  tenant<EntityDocument>(
+    `/entities/${entityId}/documents/${documentId}/verify`,
+    { method: "POST" },
+  );
+export const deleteEntityChild = (
+  id: string,
+  seg: EntityCollection,
+  childId: string,
+) =>
+  tenant<{ deleted: boolean }>(`/entities/${id}/${seg}/${childId}`, {
+    method: "DELETE",
+  });
 /**
  * A row in the document vault (MOD-64), as returned when one is uploaded.
  *
@@ -525,14 +777,22 @@ export const uploadVaultDocument = (
     original_name?: string;
   },
   onProgress?: (percent: number) => void,
-) => onProgress
-  ? tenantWithProgress<VaultDocument>("/documents", body, onProgress)
-  : tenant<VaultDocument>("/documents", { method: "POST", body });
+) =>
+  onProgress
+    ? tenantWithProgress<VaultDocument>("/documents", body, onProgress)
+    : tenant<VaultDocument>("/documents", { method: "POST", body });
 
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
  *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */
-export const uploadEntityLogo = (id: string, dataUrl: string, variant: "light" | "dark" = "light") =>
-  tenant<Entity>(`/entities/${id}/logo`, { method: "POST", body: { data_url: dataUrl, variant } });
+export const uploadEntityLogo = (
+  id: string,
+  dataUrl: string,
+  variant: "light" | "dark" = "light",
+) =>
+  tenant<Entity>(`/entities/${id}/logo`, {
+    method: "POST",
+    body: { data_url: dataUrl, variant },
+  });
 
 /* ── Treasury accounts(/treasury-accounts) ──────────────────────── */
 export type Treasury = {
@@ -556,11 +816,15 @@ export type TreasuryInput = {
   momo_fee_account?: string;
 };
 export const listTreasury = () => tenant<Treasury[]>("/treasury-accounts");
-export const createTreasury = (body: TreasuryInput) => tenant<Treasury>("/treasury-accounts", { method: "POST", body });
+export const createTreasury = (body: TreasuryInput) =>
+  tenant<Treasury>("/treasury-accounts", { method: "POST", body });
 export const updateTreasury = (id: string, body: Partial<TreasuryInput>) =>
   tenant<Treasury>(`/treasury-accounts/${id}`, { method: "PATCH", body });
 export const setTreasuryActive = (id: string, active: boolean) =>
-  tenant<Treasury>(`/treasury-accounts/${id}/active`, { method: "POST", body: { active } });
+  tenant<Treasury>(`/treasury-accounts/${id}/active`, {
+    method: "POST",
+    body: { active },
+  });
 
 /* ── Payment gateways(/payment-gateways) — credentials write-only ── */
 export type Gateway = {
@@ -570,15 +834,29 @@ export type Gateway = {
   has_credentials: boolean;
   updated_at?: string;
 };
-export type GatewayInput = { provider: string; active?: boolean; role?: string | null; credentials?: string };
+export type GatewayInput = {
+  provider: string;
+  active?: boolean;
+  role?: string | null;
+  credentials?: string;
+};
 export const listGateways = () => tenant<Gateway[]>("/payment-gateways");
-export const upsertGateway = (body: GatewayInput) => tenant<Gateway>("/payment-gateways", { method: "POST", body });
+export const upsertGateway = (body: GatewayInput) =>
+  tenant<Gateway>("/payment-gateways", { method: "POST", body });
 export const setGatewayActive = (provider: string, active: boolean) =>
-  tenant<Gateway>(`/payment-gateways/${provider}/active`, { method: "PATCH", body: { active } });
+  tenant<Gateway>(`/payment-gateways/${provider}/active`, {
+    method: "PATCH",
+    body: { active },
+  });
 export const setGatewayRole = (provider: string, role: string) =>
-  tenant<Gateway>(`/payment-gateways/${provider}/role`, { method: "PATCH", body: { role } });
+  tenant<Gateway>(`/payment-gateways/${provider}/role`, {
+    method: "PATCH",
+    body: { role },
+  });
 export const deleteGateway = (provider: string) =>
-  tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, { method: "DELETE" });
+  tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, {
+    method: "DELETE",
+  });
 
 /* ── Rate providers(/rate-providers) — carriers & rate authorities ─────────
  * Shipping lines, airlines, hauliers, rail, and rate-setting authorities
@@ -588,10 +866,24 @@ export const deleteGateway = (provider: string) =>
 // TRUCKING/RAIL/BARGE/COURIER joined at 0666. Before that a subcontracted haul
 // had nowhere to exist, so the haulier field on inland files was free text.
 export type RateProviderKind =
-  | "SHIPPING_LINE" | "AIRLINE" | "TRUCKING" | "RAIL"
-  | "BARGE" | "COURIER" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+  | "SHIPPING_LINE"
+  | "AIRLINE"
+  | "TRUCKING"
+  | "RAIL"
+  | "BARGE"
+  | "COURIER"
+  | "PORT_AUTHORITY"
+  | "CUSTOMS_AUTHORITY"
+  | "OTHER";
 /** The kinds that move cargo, as opposed to the authorities that price it. */
-export const CARRIER_KINDS: RateProviderKind[] = ["SHIPPING_LINE", "AIRLINE", "TRUCKING", "RAIL", "BARGE", "COURIER"];
+export const CARRIER_KINDS: RateProviderKind[] = [
+  "SHIPPING_LINE",
+  "AIRLINE",
+  "TRUCKING",
+  "RAIL",
+  "BARGE",
+  "COURIER",
+];
 export type RateProvider = {
   rate_provider_id: string;
   kind: RateProviderKind;
@@ -603,19 +895,37 @@ export type RateProvider = {
   is_system?: boolean;
   is_active?: boolean;
 };
-export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; country_code?: string | null; sort_order?: number; is_active?: boolean };
+export type RateProviderInput = {
+  kind: RateProviderKind;
+  code: string;
+  name: string;
+  carrier_code?: string | null;
+  country_code?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
+};
 /** `kind` takes one kind or several — an inland picker wants TRUCKING and RAIL. */
-export const listRateProviders = (opts: { kind?: RateProviderKind | RateProviderKind[]; active?: boolean; q?: string } = {}) => {
+export const listRateProviders = (
+  opts: {
+    kind?: RateProviderKind | RateProviderKind[];
+    active?: boolean;
+    q?: string;
+  } = {},
+) => {
   const p = new URLSearchParams();
-  if (opts.kind) p.set("kind", Array.isArray(opts.kind) ? opts.kind.join(",") : opts.kind);
+  if (opts.kind)
+    p.set("kind", Array.isArray(opts.kind) ? opts.kind.join(",") : opts.kind);
   if (opts.active !== undefined) p.set("active", String(opts.active));
   if (opts.q) p.set("q", opts.q);
   const qs = p.toString();
   return tenant<RateProvider[]>(`/rate-providers${qs ? `?${qs}` : ""}`);
 };
-export const createRateProvider = (body: RateProviderInput) => tenant<RateProvider>("/rate-providers", { method: "POST", body });
-export const updateRateProvider = (id: string, body: Partial<RateProviderInput>) =>
-  tenant<RateProvider>(`/rate-providers/${id}`, { method: "PATCH", body });
+export const createRateProvider = (body: RateProviderInput) =>
+  tenant<RateProvider>("/rate-providers", { method: "POST", body });
+export const updateRateProvider = (
+  id: string,
+  body: Partial<RateProviderInput>,
+) => tenant<RateProvider>(`/rate-providers/${id}`, { method: "PATCH", body });
 
 /* ── Expense rates(/expense-rates) ──────────────────────────────── */
 export type ExpenseRate = {
@@ -646,7 +956,9 @@ export type ExpenseRateInput = {
   effective_to?: string | null;
   note?: string | null;
 };
-export const listExpenseRates = (f: { dictionary_item_id?: string; rate_provider_id?: string } = {}) => {
+export const listExpenseRates = (
+  f: { dictionary_item_id?: string; rate_provider_id?: string } = {},
+) => {
   const p = new URLSearchParams();
   if (f.dictionary_item_id) p.set("dictionary_item_id", f.dictionary_item_id);
   if (f.rate_provider_id) p.set("rate_provider_id", f.rate_provider_id);
@@ -655,19 +967,29 @@ export const listExpenseRates = (f: { dictionary_item_id?: string; rate_provider
 };
 export const createExpenseRate = (body: ExpenseRateInput) =>
   tenant<ExpenseRate>("/expense-rates", { method: "POST", body });
-export const updateExpenseRate = (id: string, body: Partial<ExpenseRateInput>) =>
-  tenant<ExpenseRate>(`/expense-rates/${id}`, { method: "PATCH", body });
+export const updateExpenseRate = (
+  id: string,
+  body: Partial<ExpenseRateInput>,
+) => tenant<ExpenseRate>(`/expense-rates/${id}`, { method: "PATCH", body });
 export const deleteExpenseRate = (id: string) =>
   tenant<{ deleted: boolean }>(`/expense-rates/${id}`, { method: "DELETE" });
 /** Resolve the effective rate for an item at a date, cascading from the most
  *  specific (carrier + container type) down to the item's plain default.
  *  Throws (422 NO_RATE / NO_RATE_MATCH) when nothing is eligible — callers
  *  (e.g. costing) should catch this and fall back to a free-typed rate. */
-export const resolveExpenseRate = (opts: { dictionary_item_id: string; date?: string; rate_provider_id?: string; container_type_ref_id?: string }) => {
-  const p = new URLSearchParams({ dictionary_item_id: opts.dictionary_item_id });
+export const resolveExpenseRate = (opts: {
+  dictionary_item_id: string;
+  date?: string;
+  rate_provider_id?: string;
+  container_type_ref_id?: string;
+}) => {
+  const p = new URLSearchParams({
+    dictionary_item_id: opts.dictionary_item_id,
+  });
   if (opts.date) p.set("date", opts.date);
   if (opts.rate_provider_id) p.set("rate_provider_id", opts.rate_provider_id);
-  if (opts.container_type_ref_id) p.set("container_type_ref_id", opts.container_type_ref_id);
+  if (opts.container_type_ref_id)
+    p.set("container_type_ref_id", opts.container_type_ref_id);
   return tenant<ExpenseRate>(`/expense-rates/resolve?${p.toString()}`);
 };
 
@@ -686,13 +1008,15 @@ export type PostingRule = {
   credit_class?: number | null;
 };
 export type Direction = "REVENUE" | "EXPENSE" | "DISBURSEMENT" | "ASSET";
-export type ApplicabilityMode = "SERVICE_SCOPED" | "ANY_OPERATIONS" | "NON_OPERATIONAL";
+export type ApplicabilityMode =
+  "SERVICE_SCOPED" | "ANY_OPERATIONS" | "NON_OPERATIONAL";
 /** FLAT = a rate card resolves the price (the default). FORMULA = the price
  *  depends on a tariff and elapsed time (Demurrage, Storage) — the real
  *  calculation lives in the Extra Charges Simulation module (MOD-28); Expense
  *  Rates still shows a reference/typical rate and deep-links to the simulator. */
 export type PricingMode = "FLAT" | "FORMULA";
-export type ReceiptRequirement = "ALWAYS_REQUIRED" | "CONDITIONALLY_REQUIRED" | "NOT_REQUIRED";
+export type ReceiptRequirement =
+  "ALWAYS_REQUIRED" | "CONDITIONALLY_REQUIRED" | "NOT_REQUIRED";
 export type Tier = "BASIC" | "ADVANCED" | "FULL";
 export type ServiceTier = {
   service_type_id: string;
@@ -750,25 +1074,50 @@ export type DictInput = {
   disbursement_vat_transparent?: boolean;
   pricing_mode?: PricingMode;
   posting_rules: PostingRule[];
-  service_tiers?: { service_type_id: string; service_key?: string | null; tier: Tier; sort_order?: number }[];
+  service_tiers?: {
+    service_type_id: string;
+    service_key?: string | null;
+    tier: Tier;
+    sort_order?: number;
+  }[];
   is_active?: boolean;
 };
-export type DictFull = DictItem & { posting_rules: PostingRule[]; service_tiers: ServiceTier[] };
+export type DictFull = DictItem & {
+  posting_rules: PostingRule[];
+  service_tiers: ServiceTier[];
+};
 export type DictUsage = {
-  costing_lines: number; cash_request_lines: number; purchase_order_items: number;
-  invoice_lines: number; supplier_invoice_lines: number; cost_entries: number; expense_rates: number;
+  costing_lines: number;
+  cash_request_lines: number;
+  purchase_order_items: number;
+  invoice_lines: number;
+  supplier_invoice_lines: number;
+  cost_entries: number;
+  expense_rates: number;
 };
 export type DictCompliance = {
-  requires_justification: boolean; receipt_requirement: ReceiptRequirement; proof_source?: string | null;
-  is_disbursement: boolean; disbursement_vat_transparent: boolean; needs_attention: boolean;
+  requires_justification: boolean;
+  receipt_requirement: ReceiptRequirement;
+  proof_source?: string | null;
+  is_disbursement: boolean;
+  disbursement_vat_transparent: boolean;
+  needs_attention: boolean;
 };
 export type DictDossier = {
-  item: DictFull; posting_rules: PostingRule[]; service_tiers: ServiceTier[];
-  usage: DictUsage; compliance: DictCompliance;
+  item: DictFull;
+  posting_rules: PostingRule[];
+  service_tiers: ServiceTier[];
+  usage: DictUsage;
+  compliance: DictCompliance;
 };
 export type DictListFilter = {
-  q?: string; direction?: Direction; category?: string; applicability_mode?: ApplicabilityMode;
-  service_type_id?: string; tier?: string; include_inactive?: boolean;
+  q?: string;
+  direction?: Direction;
+  category?: string;
+  applicability_mode?: ApplicabilityMode;
+  service_type_id?: string;
+  tier?: string;
+  include_inactive?: boolean;
 };
 export const listDict = (f: DictListFilter = {}) => {
   const p = new URLSearchParams();
@@ -782,7 +1131,8 @@ export const listDict = (f: DictListFilter = {}) => {
   const qs = p.toString();
   return tenant<DictItem[]>(`/financial-dictionary${qs ? `?${qs}` : ""}`);
 };
-export const getDict = (id: string) => tenant<DictFull>(`/financial-dictionary/${id}`);
+export const getDict = (id: string) =>
+  tenant<DictFull>(`/financial-dictionary/${id}`);
 
 /* ── The shared finder (GET /financial-dictionary/search) ──────────────────
  * Fuzzy, server-ranked search behind <DictionaryFinder>. Distinct from
@@ -818,12 +1168,17 @@ export const searchDict = (opts: {
   if (opts.direction) p.set("direction", opts.direction);
   if (opts.service_type_id) p.set("service_type_id", opts.service_type_id);
   if (opts.include_inactive) p.set("include_inactive", "true");
-  return tenant<DictSearchHit[]>(`/financial-dictionary/search?${p.toString()}`);
+  return tenant<DictSearchHit[]>(
+    `/financial-dictionary/search?${p.toString()}`,
+  );
 };
 
-export const dictDossier = (id: string) => tenant<DictDossier>(`/financial-dictionary/${id}/360`);
-export const createDict = (body: DictInput) => tenant<DictFull>("/financial-dictionary", { method: "POST", body });
-export const updateDict = (id: string, body: Partial<DictInput>) => tenant<DictFull>(`/financial-dictionary/${id}`, { method: "PATCH", body });
+export const dictDossier = (id: string) =>
+  tenant<DictDossier>(`/financial-dictionary/${id}/360`);
+export const createDict = (body: DictInput) =>
+  tenant<DictFull>("/financial-dictionary", { method: "POST", body });
+export const updateDict = (id: string, body: Partial<DictInput>) =>
+  tenant<DictFull>(`/financial-dictionary/${id}`, { method: "PATCH", body });
 
 /* ── Spend over a period (GET /financial-dictionary/:id/spend) ─────────────
  * Three lenses, one dense month axis. The headline is `actual` — the only lens
@@ -834,13 +1189,20 @@ export const updateDict = (id: string, body: Partial<DictInput>) => tenant<DictF
 export type SpendLens = "estimated" | "committed" | "actual";
 export type SpendMonth = {
   month: string; // "YYYY-MM"
-  estimated: number; estimated_count: number;
-  committed: number; committed_count: number;
-  actual: number; actual_count: number;
+  estimated: number;
+  estimated_count: number;
+  committed: number;
+  committed_count: number;
+  actual: number;
+  actual_count: number;
 };
 export type SpendTotals = {
-  estimated: number; committed: number; actual: number;
-  estimated_count: number; committed_count: number; actual_count: number;
+  estimated: number;
+  committed: number;
+  actual: number;
+  estimated_count: number;
+  committed_count: number;
+  actual_count: number;
   headline: number;
   variance_committed_actual: number;
   variance_estimated_actual: number;
@@ -860,19 +1222,31 @@ export type SpendDocument = {
 };
 export type SpendPeriod = { from: string; to: string; swapped?: boolean };
 export type DictSpend = {
-  item: { dictionary_item_id: string; code: string; label_fr?: string; label_en?: string | null; currency: string; direction: Direction };
+  item: {
+    dictionary_item_id: string;
+    code: string;
+    label_fr?: string;
+    label_en?: string | null;
+    currency: string;
+    direction: Direction;
+  };
   period: SpendPeriod;
   months: SpendMonth[];
   totals: SpendTotals;
   documents: SpendDocument[];
 };
-export const dictSpend = (id: string, p: { from?: string; to?: string; include_documents?: boolean } = {}) => {
+export const dictSpend = (
+  id: string,
+  p: { from?: string; to?: string; include_documents?: boolean } = {},
+) => {
   const q = new URLSearchParams();
   if (p.from) q.set("from", p.from);
   if (p.to) q.set("to", p.to);
   if (p.include_documents === false) q.set("include_documents", "false");
   const qs = q.toString();
-  return tenant<DictSpend>(`/financial-dictionary/${id}/spend${qs ? `?${qs}` : ""}`);
+  return tenant<DictSpend>(
+    `/financial-dictionary/${id}/spend${qs ? `?${qs}` : ""}`,
+  );
 };
 
 /* ── Cost evolution (GET /financial-dictionary/:id/rate-history) ───────────
@@ -890,8 +1264,12 @@ export type RatePoint = {
   provider_name?: string | null;
 };
 export type RateTrend = {
-  first: number | null; last: number | null; delta: number | null;
-  delta_pct: number | null; direction: "up" | "down" | "flat"; points: number;
+  first: number | null;
+  last: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+  direction: "up" | "down" | "flat";
+  points: number;
 };
 export type RateSeries = {
   key: string;
@@ -907,12 +1285,21 @@ export type RateSeries = {
   trend: RateTrend;
 };
 export type DictRateEvolution = {
-  item: { dictionary_item_id: string; code: string; label_fr?: string; label_en?: string | null; currency: string; provider_kind?: string | null };
+  item: {
+    dictionary_item_id: string;
+    code: string;
+    label_fr?: string;
+    label_en?: string | null;
+    currency: string;
+    provider_kind?: string | null;
+  };
   series: RateSeries[];
   trend: RateTrend;
 };
 export const dictRateHistory = (id: string, asOf?: string) =>
-  tenant<DictRateEvolution>(`/financial-dictionary/${id}/rate-history${asOf ? `?as_of=${asOf}` : ""}`);
+  tenant<DictRateEvolution>(
+    `/financial-dictionary/${id}/rate-history${asOf ? `?as_of=${asOf}` : ""}`,
+  );
 
 /** Amend a rate the only way an effective-dated series may be amended: the
  *  server expires the open row the day before this one opens. Never an edit. */
@@ -928,15 +1315,27 @@ export type RateSupersedeInput = {
   note?: string | null;
 };
 export const supersedeDictRate = (id: string, body: RateSupersedeInput) =>
-  tenant<DictRateEvolution>(`/financial-dictionary/${id}/rates/supersede`, { method: "POST", body });
+  tenant<DictRateEvolution>(`/financial-dictionary/${id}/rates/supersede`, {
+    method: "POST",
+    body,
+  });
 
 /* ── Bulk Excel import ─────────────────────────────────────────────────────
  * Three steps, deliberately separate: download a template built from THIS
  * tenant's accounts and service keys, upload it to see exactly what will be
  * created and what will not, then commit — partially, so 400 good rows are
  * never lost to one typo. */
-export type ImportStagingRow = { row?: number; raw: Record<string, unknown>; data?: Record<string, unknown>; reasons?: string[] };
-export type ImportRejectedRow = { row?: number; reasons: string[]; raw: Record<string, unknown> };
+export type ImportStagingRow = {
+  row?: number;
+  raw: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  reasons?: string[];
+};
+export type ImportRejectedRow = {
+  row?: number;
+  reasons: string[];
+  raw: Record<string, unknown>;
+};
 export type ImportValidateResult = {
   sheet: string;
   parsed: number;
@@ -945,20 +1344,38 @@ export type ImportValidateResult = {
   summary: { total: number; valid: number; rejected: number };
 };
 export type ImportCommitResult = {
-  created: { row?: number; dictionary_item_id: string; code: string; label_fr?: string }[];
+  created: {
+    row?: number;
+    dictionary_item_id: string;
+    code: string;
+    label_fr?: string;
+  }[];
   rejected: ImportRejectedRow[];
   summary: { attempted: number; created: number; rejected: number };
 };
 export const downloadDictImportTemplate = () =>
-  tenantDownload("/financial-dictionary/import/template", "financial-dictionary-template.xlsx");
+  tenantDownload(
+    "/financial-dictionary/import/template",
+    "financial-dictionary-template.xlsx",
+  );
 /** `file` is a base64 data URL (FileReader.readAsDataURL) — the same upload
  *  shape the document vault uses, so there is one convention in the product. */
 export const validateDictImport = (file: string, filename?: string) =>
-  tenant<ImportValidateResult>("/financial-dictionary/import/validate", { method: "POST", body: { file, filename } });
+  tenant<ImportValidateResult>("/financial-dictionary/import/validate", {
+    method: "POST",
+    body: { file, filename },
+  });
 export const commitDictImport = (rows: ImportStagingRow[]) =>
-  tenant<ImportCommitResult>("/financial-dictionary/import/commit", { method: "POST", body: { rows } });
+  tenant<ImportCommitResult>("/financial-dictionary/import/commit", {
+    method: "POST",
+    body: { rows },
+  });
 export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
-  downloadPost("/tenant/financial-dictionary/import/errors", { rows }, "financial-dictionary-rejected.xlsx");
+  downloadPost(
+    "/tenant/financial-dictionary/import/errors",
+    { rows },
+    "financial-dictionary-rejected.xlsx",
+  );
 
 /* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal).
  * CONTAINER_TYPE and LOAD_MODE are managed here too: they were seed-only until
@@ -969,7 +1386,14 @@ export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
 // DOCUMENT_TYPE (0669) is the list a person picks from when attaching a file to
 // an operations file — distinct from `document_vault.types.js`, which governs
 // system-generated documents and doubles as the template key.
-export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE" | "DOCUMENT_TYPE";
+export type DictRefKind =
+  | "SUBCATEGORY"
+  | "UNIT"
+  | "PROOF_SOURCE"
+  | "PROVIDER_KIND"
+  | "CONTAINER_TYPE"
+  | "LOAD_MODE"
+  | "DOCUMENT_TYPE";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
  *  lookup key) and `family`, so the sized variants of one kind group together.
@@ -977,24 +1401,65 @@ export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KI
  *  without them counts as zero TEU and has no rate-card key, and neither
  *  failure raises anything. */
 export type DictRefExtra = {
-  teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[];
+  teu?: number;
+  size?: string;
+  family?: string;
+  special?: boolean;
+  aliases?: string[];
   /** CONTAINER_TYPE only — how the type prints on a marks & numbers line
    *  (`20'RF`). Legacy's vocabulary, because five documents read that string. */
   marks_token?: string;
   /** DOCUMENT_TYPE only. */
-  client_visible?: boolean; client_scoped?: boolean; reusable?: boolean;
+  client_visible?: boolean;
+  client_scoped?: boolean;
+  reusable?: boolean;
 };
-export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; extra?: DictRefExtra; sort_order?: number; is_system?: boolean; is_active?: boolean };
+export type DictRef = {
+  ref_id: string;
+  kind: DictRefKind;
+  code: string;
+  name_fr: string;
+  name_en?: string | null;
+  extra?: DictRefExtra;
+  sort_order?: number;
+  is_system?: boolean;
+  is_active?: boolean;
+};
 export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
-  tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);
-export const createDictRef = (body: { kind: DictRefKind; code: string; name_fr: string; name_en?: string; sort_order?: number; extra?: DictRefExtra }) =>
-  tenant<DictRef>("/financial-dictionary/refs", { method: "POST", body });
+  tenant<DictRef[]>(
+    `/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`,
+  );
+export const createDictRef = (body: {
+  kind: DictRefKind;
+  code: string;
+  name_fr: string;
+  name_en?: string;
+  sort_order?: number;
+  extra?: DictRefExtra;
+}) => tenant<DictRef>("/financial-dictionary/refs", { method: "POST", body });
 /** `extra` REPLACES the stored object — send the whole thing, not a fragment. */
-export const updateDictRef = (id: string, body: Partial<{ name_fr: string; name_en: string; sort_order: number; is_active: boolean; extra: DictRefExtra }>) =>
-  tenant<DictRef>(`/financial-dictionary/refs/${id}`, { method: "PATCH", body });
+export const updateDictRef = (
+  id: string,
+  body: Partial<{
+    name_fr: string;
+    name_en: string;
+    sort_order: number;
+    is_active: boolean;
+    extra: DictRefExtra;
+  }>,
+) =>
+  tenant<DictRef>(`/financial-dictionary/refs/${id}`, {
+    method: "PATCH",
+    body,
+  });
 
 /* ── Currencies(/currencies) — for selects ──────────────────────── */
-export type Currency = { code: string; name?: string; symbol?: string | null; is_active?: boolean };
+export type Currency = {
+  code: string;
+  name?: string;
+  symbol?: string | null;
+  is_active?: boolean;
+};
 export const listCurrencies = () => tenant<Currency[]>("/currencies");
 
 /* ── Tax codes(/tax-jurisdictions/:id/codes) — for line-item pickers ──
@@ -1016,7 +1481,8 @@ export type TaxJurisdiction = {
   currency?: string | null;
   is_active?: boolean;
 };
-export const listTaxJurisdictions = () => tenant<TaxJurisdiction[]>("/tax-jurisdictions");
+export const listTaxJurisdictions = () =>
+  tenant<TaxJurisdiction[]>("/tax-jurisdictions");
 
 /**
  * The sales-applicable VAT codes across every jurisdiction, deduped.
@@ -1049,13 +1515,19 @@ export async function listSalesTaxCodes(): Promise<SalesTaxCodes> {
   const perJur = await Promise.all(
     (jurs || []).map(async (j) => {
       try {
-        const codes = await tenant<TaxCode[]>(`/tax-jurisdictions/${j.jurisdiction_id}/codes`);
+        const codes = await tenant<TaxCode[]>(
+          `/tax-jurisdictions/${j.jurisdiction_id}/codes`,
+        );
         return { ok: true as const, id: j.jurisdiction_id, codes };
       } catch {
         // Class E — degraded read. The user MUST see the degradation
         // (the returned `degraded` flag drives an inline note in the picker),
         // so this is silent to the reporter but never silent to the UI.
-        return { ok: false as const, id: j.jurisdiction_id, codes: [] as TaxCode[] };
+        return {
+          ok: false as const,
+          id: j.jurisdiction_id,
+          codes: [] as TaxCode[],
+        };
       }
     }),
   );
@@ -1070,16 +1542,26 @@ export async function listSalesTaxCodes(): Promise<SalesTaxCodes> {
     seen.add(c.tax_code_id);
     return true;
   });
-  return { codes, degraded: failed_jurisdictions.length > 0, failed_jurisdictions };
+  return {
+    codes,
+    degraded: failed_jurisdictions.length > 0,
+    failed_jurisdictions,
+  };
 }
 
 /* ═══════════════ Party 360° revamp (PR 2) — src/modules/master ═══════════════ */
 
 export type PartyKind = "client" | "supplier";
-const base = (kind: PartyKind) => (kind === "client" ? "/clients" : "/suppliers");
+const base = (kind: PartyKind) =>
+  kind === "client" ? "/clients" : "/suppliers";
 
 /* ── Dynamic registries ─────────────────────────────────────────── */
-export type Registry = { code: string; name: string; is_system?: boolean; is_active?: boolean };
+export type Registry = {
+  code: string;
+  name: string;
+  is_system?: boolean;
+  is_active?: boolean;
+};
 export type ClientType = Registry & { client_type_id: string };
 export type SupplierType = Registry & { supplier_type_id: string };
 export type DocumentType = Registry & {
@@ -1094,21 +1576,51 @@ export type DocumentType = Registry & {
   renewal_lead_days?: number | null;
 };
 export const listClientTypes = () => tenant<ClientType[]>("/client-types");
-export const createClientType = (body: { code: string; name: string }) => tenant<ClientType>("/client-types", { method: "POST", body });
-export const updateClientType = (id: string, body: Partial<ClientType>) => tenant<ClientType>(`/client-types/${id}`, { method: "PATCH", body });
-export const listSupplierTypes = () => tenant<SupplierType[]>("/supplier-types");
-export const createSupplierType = (body: { code: string; name: string }) => tenant<SupplierType>("/supplier-types", { method: "POST", body });
-export const updateSupplierType = (id: string, body: Partial<SupplierType>) => tenant<SupplierType>(`/supplier-types/${id}`, { method: "PATCH", body });
-export const listDocumentTypes = (appliesTo?: "CLIENT" | "SUPPLIER" | "ENTITY") =>
-  tenant<DocumentType[]>(`/party-document-types${appliesTo ? `?applies_to=${appliesTo}` : ""}`);
-export const createDocumentType = (body: { code: string; name: string; applies_to?: string; default_severity?: string }) =>
-  tenant<DocumentType>("/party-document-types", { method: "POST", body });
+export const createClientType = (body: { code: string; name: string }) =>
+  tenant<ClientType>("/client-types", { method: "POST", body });
+export const updateClientType = (id: string, body: Partial<ClientType>) =>
+  tenant<ClientType>(`/client-types/${id}`, { method: "PATCH", body });
+export const listSupplierTypes = () =>
+  tenant<SupplierType[]>("/supplier-types");
+export const createSupplierType = (body: { code: string; name: string }) =>
+  tenant<SupplierType>("/supplier-types", { method: "POST", body });
+export const updateSupplierType = (id: string, body: Partial<SupplierType>) =>
+  tenant<SupplierType>(`/supplier-types/${id}`, { method: "PATCH", body });
+export const listDocumentTypes = (
+  appliesTo?: "CLIENT" | "SUPPLIER" | "ENTITY",
+) =>
+  tenant<DocumentType[]>(
+    `/party-document-types${appliesTo ? `?applies_to=${appliesTo}` : ""}`,
+  );
+export const createDocumentType = (body: {
+  code: string;
+  name: string;
+  applies_to?: string;
+  default_severity?: string;
+}) => tenant<DocumentType>("/party-document-types", { method: "POST", body });
 export const updateDocumentType = (id: string, body: Partial<DocumentType>) =>
-  tenant<DocumentType>(`/party-document-types/${id}`, { method: "PATCH", body });
+  tenant<DocumentType>(`/party-document-types/${id}`, {
+    method: "PATCH",
+    body,
+  });
 
 /* ── Countries (reference) ──────────────────────────────────────── */
-export type RegistrationRequirement = { kind: string; label_en: string; label_fr: string; regex: string; placeholder: string; required: boolean };
-export type CountryProfile = { code: string; name: string; phone: string; currency: string; sort_order: number; registration_requirements: RegistrationRequirement[] };
+export type RegistrationRequirement = {
+  kind: string;
+  label_en: string;
+  label_fr: string;
+  regex: string;
+  placeholder: string;
+  required: boolean;
+};
+export type CountryProfile = {
+  code: string;
+  name: string;
+  phone: string;
+  currency: string;
+  sort_order: number;
+  registration_requirements: RegistrationRequirement[];
+};
 export const listCountries = () => tenant<CountryProfile[]>("/countries");
 
 /* ── Field-requirement config (§5) ──────────────────────────────── */
@@ -1122,27 +1634,115 @@ export type FieldConfigRow = {
   sort_order: number;
   label_override?: string | null;
 };
-export type MasterConfig = { applies_to: string; groups: string[]; fields: FieldConfigRow[] };
-export const getMasterConfig = (appliesTo: "CLIENT" | "SUPPLIER") => tenant<MasterConfig>(`/master-config/${appliesTo}`);
-export const putMasterConfig = (appliesTo: "CLIENT" | "SUPPLIER", fields: FieldConfigRow[]) =>
-  tenant<MasterConfig>(`/master-config/${appliesTo}`, { method: "PUT", body: { fields } });
+export type MasterConfig = {
+  applies_to: string;
+  groups: string[];
+  fields: FieldConfigRow[];
+};
+export const getMasterConfig = (appliesTo: "CLIENT" | "SUPPLIER") =>
+  tenant<MasterConfig>(`/master-config/${appliesTo}`);
+export const putMasterConfig = (
+  appliesTo: "CLIENT" | "SUPPLIER",
+  fields: FieldConfigRow[],
+) =>
+  tenant<MasterConfig>(`/master-config/${appliesTo}`, {
+    method: "PUT",
+    body: { fields },
+  });
 
 /* ── Nested collections (contacts / addresses / banks / documents / … ) ── */
-export type Contact = { contact_id: string; name: string; title?: string | null; email?: string | null; phone?: string | null; role_tags?: string[]; is_primary?: boolean; is_active?: boolean };
-export type Address = { address_id: string; line1?: string | null; line2?: string | null; city?: string | null; region?: string | null; postal_code?: string | null; country_code?: string | null; type?: string | null; is_primary?: boolean; is_active?: boolean };
-export type BankAccount = { bank_account_id: string; beneficiary_name?: string | null; bank_name?: string | null; branch?: string | null; account_number?: string | null; iban?: string | null; swift_bic?: string | null; currency?: string | null; momo_network?: string | null; momo_number?: string | null; is_primary?: boolean; is_verified?: boolean; is_active?: boolean; masked?: boolean };
-export type PartyDocument = { document_id: string; document_type_id?: string | null; document_type_name?: string | null; document_number?: string | null; issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null; vault_id?: string | null; scan_status?: string; physical_ref?: string | null; scan_due_on?: string | null; verification_status?: string; default_severity?: string };
-export type Registration = { registration_id: string; country_code?: string | null; kind: string; number?: string | null; issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null; verified?: boolean };
-export type BeneficialOwner = { owner_id: string; full_name: string; date_of_birth?: string | null; nationality?: string | null; id_type?: string | null; id_number?: string | null; ownership_percent?: number | null; is_pep?: boolean; notes?: string | null };
+export type Contact = {
+  contact_id: string;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  role_tags?: string[];
+  is_primary?: boolean;
+  is_active?: boolean;
+};
+export type Address = {
+  address_id: string;
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postal_code?: string | null;
+  country_code?: string | null;
+  type?: string | null;
+  is_primary?: boolean;
+  is_active?: boolean;
+};
+export type BankAccount = {
+  bank_account_id: string;
+  beneficiary_name?: string | null;
+  bank_name?: string | null;
+  branch?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  currency?: string | null;
+  momo_network?: string | null;
+  momo_number?: string | null;
+  is_primary?: boolean;
+  is_verified?: boolean;
+  is_active?: boolean;
+  masked?: boolean;
+};
+export type PartyDocument = {
+  document_id: string;
+  document_type_id?: string | null;
+  document_type_name?: string | null;
+  document_number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  vault_id?: string | null;
+  scan_status?: string;
+  physical_ref?: string | null;
+  scan_due_on?: string | null;
+  verification_status?: string;
+  default_severity?: string;
+};
+export type Registration = {
+  registration_id: string;
+  country_code?: string | null;
+  kind: string;
+  number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  verified?: boolean;
+};
+export type BeneficialOwner = {
+  owner_id: string;
+  full_name: string;
+  date_of_birth?: string | null;
+  nationality?: string | null;
+  id_type?: string | null;
+  id_number?: string | null;
+  ownership_percent?: number | null;
+  is_pep?: boolean;
+  notes?: string | null;
+};
 
 /** Generic nested-resource CRUD — one set of helpers for every child collection,
  *  keyed by the URL segment. The parent id is always in the path. */
 function nested<T>(seg: string) {
   return {
-    list: (kind: PartyKind, id: string) => tenant<T[]>(`${base(kind)}/${id}/${seg}`),
-    create: (kind: PartyKind, id: string, body: Partial<T>) => tenant<T>(`${base(kind)}/${id}/${seg}`, { method: "POST", body }),
-    update: (kind: PartyKind, id: string, childId: string, body: Partial<T>) => tenant<T>(`${base(kind)}/${id}/${seg}/${childId}`, { method: "PATCH", body }),
-    remove: (kind: PartyKind, id: string, childId: string) => tenant<{ deleted: boolean }>(`${base(kind)}/${id}/${seg}/${childId}`, { method: "DELETE" }),
+    list: (kind: PartyKind, id: string) =>
+      tenant<T[]>(`${base(kind)}/${id}/${seg}`),
+    create: (kind: PartyKind, id: string, body: Partial<T>) =>
+      tenant<T>(`${base(kind)}/${id}/${seg}`, { method: "POST", body }),
+    update: (kind: PartyKind, id: string, childId: string, body: Partial<T>) =>
+      tenant<T>(`${base(kind)}/${id}/${seg}/${childId}`, {
+        method: "PATCH",
+        body,
+      }),
+    remove: (kind: PartyKind, id: string, childId: string) =>
+      tenant<{ deleted: boolean }>(`${base(kind)}/${id}/${seg}/${childId}`, {
+        method: "DELETE",
+      }),
   };
 }
 export const contacts = nested<Contact>("contacts");
@@ -1152,52 +1752,179 @@ export const documents = nested<PartyDocument>("documents");
 /** Human verification of a scanned client/supplier document. Uploading the file
  * only advances scan_status to SCANNED; this explicit approval stamps the
  * record VERIFIED. */
-export const verifyDocument = (kind: PartyKind, partyId: string, documentId: string) =>
-  tenant<PartyDocument>(`${base(kind)}/${partyId}/documents/${documentId}/verify`, { method: "POST" });
+export const verifyDocument = (
+  kind: PartyKind,
+  partyId: string,
+  documentId: string,
+) =>
+  tenant<PartyDocument>(
+    `${base(kind)}/${partyId}/documents/${documentId}/verify`,
+    { method: "POST" },
+  );
 export const registrations = nested<Registration>("registrations");
 export const beneficialOwners = nested<BeneficialOwner>("beneficial-owners");
 
 /* ── 360° dossier ───────────────────────────────────────────────── */
-export type ComplianceFlag = { flag_id: string; rule_key: string; severity: string; message?: string | null; created_at?: string; onboarding?: boolean };
-export type Compliance = { compliance_state: string; can_verify: boolean; flags: ComplianceFlag[] };
-export type GlParity = { docTotal: number; gl: number; mismatch: number; flagged: boolean };
-export type Aging = { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number };
+export type ComplianceFlag = {
+  flag_id: string;
+  rule_key: string;
+  severity: string;
+  message?: string | null;
+  created_at?: string;
+  onboarding?: boolean;
+};
+export type Compliance = {
+  compliance_state: string;
+  can_verify: boolean;
+  flags: ComplianceFlag[];
+};
+export type GlParity = {
+  docTotal: number;
+  gl: number;
+  mismatch: number;
+  flagged: boolean;
+};
+export type Aging = {
+  current: number;
+  d1_30: number;
+  d31_60: number;
+  d61_90: number;
+  d90_plus: number;
+};
 
 // 360 richness (PR3-C §3 / §5) — aliases, likely duplicates, pending governed changes.
-export type PartyAlias = { alias: string; kind?: string | null; created_at?: string };
-export type DedupeCandidate = { id: string; name?: string | null; ref?: string | null; status?: string | null; score: number; reasons: string[] };
-export type PendingChange = { change_request_id: string; change_type: string; target_table?: string | null; target_id?: string | null; payload?: Record<string, unknown> | null; reason?: string | null; status: string; requested_by?: string | null; requested_at?: string };
-export type Scorecard = { score_on_time: number; score_claims: number; score_disputes: number; score_responsiveness: number; score_safety: number; score_compliance: number; score_overall: number; last_evaluated_at?: string | null };
+export type PartyAlias = {
+  alias: string;
+  kind?: string | null;
+  created_at?: string;
+};
+export type DedupeCandidate = {
+  id: string;
+  name?: string | null;
+  ref?: string | null;
+  status?: string | null;
+  score: number;
+  reasons: string[];
+};
+export type PendingChange = {
+  change_request_id: string;
+  change_type: string;
+  target_table?: string | null;
+  target_id?: string | null;
+  payload?: Record<string, unknown> | null;
+  reason?: string | null;
+  status: string;
+  requested_by?: string | null;
+  requested_at?: string;
+};
+export type Scorecard = {
+  score_on_time: number;
+  score_claims: number;
+  score_disputes: number;
+  score_responsiveness: number;
+  score_safety: number;
+  score_compliance: number;
+  score_overall: number;
+  last_evaluated_at?: string | null;
+};
 
 export type Client360 = {
   party: Client & PartyExtras;
-  kpis: { outstanding: number; overdue: number; oldest_due_date?: string | null; credit_limit: number | null; credit_available: number | null; ytd_revenue: number; dossiers_in_progress: number; aging: Aging };
+  kpis: {
+    outstanding: number;
+    overdue: number;
+    oldest_due_date?: string | null;
+    credit_limit: number | null;
+    credit_available: number | null;
+    ytd_revenue: number;
+    dossiers_in_progress: number;
+    aging: Aging;
+  };
   compliance: Compliance;
   gl_parity: GlParity;
-  contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
-  dossiers: { dossier_id: string; ref?: string | null; title?: string | null; status?: string | null; created_at?: string; service_name?: string | null; value?: number | string | null; milestone_total?: number | null; milestone_done?: number | null; current_milestone?: string | null }[];
-  invoices: { invoice_id: string; doc_number?: string | null; type?: string; total_ttc: number; status?: string; payment_due_on?: string | null }[];
+  contacts: Contact[];
+  addresses: Address[];
+  banks: BankAccount[];
+  documents: PartyDocument[];
+  registrations: Registration[];
+  beneficial_owners: BeneficialOwner[];
+  dossiers: {
+    dossier_id: string;
+    ref?: string | null;
+    title?: string | null;
+    status?: string | null;
+    created_at?: string;
+    service_name?: string | null;
+    value?: number | string | null;
+    milestone_total?: number | null;
+    milestone_done?: number | null;
+    current_milestone?: string | null;
+  }[];
+  invoices: {
+    invoice_id: string;
+    doc_number?: string | null;
+    type?: string;
+    total_ttc: number;
+    status?: string;
+    payment_due_on?: string | null;
+  }[];
   receipts: Receipt[];
-  advances: { advance_id: string; amount: number | string; applied_amount?: number | string | null; received_on?: string | null }[];
+  advances: {
+    advance_id: string;
+    amount: number | string;
+    applied_amount?: number | string | null;
+    received_on?: string | null;
+  }[];
   aliases: PartyAlias[];
   duplicate_candidates: DedupeCandidate[];
   pending_changes: PendingChange[];
 };
 export type Supplier360 = {
-  party: Supplier & PartyExtras & { avl_status?: string | null; withholding_rate?: number | null };
-  kpis: { payables: number; overdue_payables: number; oldest_due_date?: string | null; ytd_spend: number; open_purchase_orders: number; aging: Aging };
+  party: Supplier &
+    PartyExtras & {
+      avl_status?: string | null;
+      withholding_rate?: number | null;
+    };
+  kpis: {
+    payables: number;
+    overdue_payables: number;
+    oldest_due_date?: string | null;
+    ytd_spend: number;
+    open_purchase_orders: number;
+    aging: Aging;
+  };
   compliance: Compliance;
   gl_parity: GlParity;
-  contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
-  purchase_orders: { po_id: string; doc_number?: string | null; total_ttc?: number | null; status?: string; created_at?: string }[];
-  supplier_invoices: { supplier_invoice_id: string; doc_number?: string | null; amount_ttc?: number | null; wht_total?: number | null; status?: string; due_on?: string | null }[];
+  contacts: Contact[];
+  addresses: Address[];
+  banks: BankAccount[];
+  documents: PartyDocument[];
+  registrations: Registration[];
+  beneficial_owners: BeneficialOwner[];
+  purchase_orders: {
+    po_id: string;
+    doc_number?: string | null;
+    total_ttc?: number | null;
+    status?: string;
+    created_at?: string;
+  }[];
+  supplier_invoices: {
+    supplier_invoice_id: string;
+    doc_number?: string | null;
+    amount_ttc?: number | null;
+    wht_total?: number | null;
+    status?: string;
+    due_on?: string | null;
+  }[];
   scorecard: Scorecard;
   aliases: PartyAlias[];
   duplicate_candidates: DedupeCandidate[];
   pending_changes: PendingChange[];
 };
-export const clientDossier = (id: string) => tenant<Client360>(`/clients/${id}/360`);
-export const supplierDossier = (id: string) => tenant<Supplier360>(`/suppliers/${id}/360`);
+export const clientDossier = (id: string) =>
+  tenant<Client360>(`/clients/${id}/360`);
+export const supplierDossier = (id: string) =>
+  tenant<Supplier360>(`/suppliers/${id}/360`);
 
 /* ── Aging drill-down (Aging card → invoice list, both masters) ─────────────── */
 export type AgingBucket = keyof Aging;
@@ -1212,50 +1939,141 @@ export type AgingInvoice = {
   /** Days remaining until due; null once overdue or with no due date. */
   days_until_due: number | null;
 };
-export type AgingDetail = { as_of: string; bucket: AgingBucket; count: number; total: number; invoices: AgingInvoice[] };
+export type AgingDetail = {
+  as_of: string;
+  bucket: AgingBucket;
+  count: number;
+  total: number;
+  invoices: AgingInvoice[];
+};
 export const agingDetail = (kind: PartyKind, id: string, bucket: AgingBucket) =>
-  tenant<AgingDetail>(`${base(kind)}/${id}/aging?bucket=${encodeURIComponent(bucket)}`);
+  tenant<AgingDetail>(
+    `${base(kind)}/${id}/aging?bucket=${encodeURIComponent(bucket)}`,
+  );
 
 /* ── Deduplication (PR3-C §5.1) ─────────────────────────────────────────────── */
 export type DedupeInput = {
-  name?: string; legal_name?: string; email?: string; phone?: string;
-  registrations?: { kind?: string; number?: string }[]; exclude_id?: string;
+  name?: string;
+  legal_name?: string;
+  email?: string;
+  phone?: string;
+  registrations?: { kind?: string; number?: string }[];
+  exclude_id?: string;
 };
 export const dedupeCheck = (kind: PartyKind, input: DedupeInput) =>
-  tenant<{ candidates: DedupeCandidate[] }>(`${base(kind)}/dedupe-check`, { method: "POST", body: input });
+  tenant<{ candidates: DedupeCandidate[] }>(`${base(kind)}/dedupe-check`, {
+    method: "POST",
+    body: input,
+  });
 
 /* ── Governed merge (PR3-C §5.2) ────────────────────────────────────────────── */
-export type MergeParty = { id: string; ref?: string | null; name?: string | null };
-export type MergePreviewResult = { kind: PartyKind; survivor: MergeParty; loser: MergeParty; moves: { table: string; column: string; count: number }[]; total: number };
-export const mergePreview = (kind: PartyKind, id: string, survivorId: string, loserId: string) =>
-  tenant<MergePreviewResult>(`${base(kind)}/${id}/merge-preview`, { method: "POST", body: { survivor_id: survivorId, loser_id: loserId } });
-export const mergeParty = (kind: PartyKind, id: string, survivorId: string, loserId: string) =>
-  tenant<{ survivor_id?: string; loser_id?: string; pending?: boolean; change_request_id?: string }>(`${base(kind)}/${id}/merge`, { method: "POST", body: { survivor_id: survivorId, loser_id: loserId } });
+export type MergeParty = {
+  id: string;
+  ref?: string | null;
+  name?: string | null;
+};
+export type MergePreviewResult = {
+  kind: PartyKind;
+  survivor: MergeParty;
+  loser: MergeParty;
+  moves: { table: string; column: string; count: number }[];
+  total: number;
+};
+export const mergePreview = (
+  kind: PartyKind,
+  id: string,
+  survivorId: string,
+  loserId: string,
+) =>
+  tenant<MergePreviewResult>(`${base(kind)}/${id}/merge-preview`, {
+    method: "POST",
+    body: { survivor_id: survivorId, loser_id: loserId },
+  });
+export const mergeParty = (
+  kind: PartyKind,
+  id: string,
+  survivorId: string,
+  loserId: string,
+) =>
+  tenant<{
+    survivor_id?: string;
+    loser_id?: string;
+    pending?: boolean;
+    change_request_id?: string;
+  }>(`${base(kind)}/${id}/merge`, {
+    method: "POST",
+    body: { survivor_id: survivorId, loser_id: loserId },
+  });
 
 /* ── Copy-from-origin (PR3-C §6) ────────────────────────────────────────────── */
 export type CloneSection = "banks" | "contacts" | "addresses";
-export const cloneFromOrigin = (kind: PartyKind, id: string, sections: CloneSection[]) =>
-  tenant<{ cloned: Record<string, number>; from: string }>(`${base(kind)}/${id}/copy-from-origin`, { method: "POST", body: { sections } });
+export const cloneFromOrigin = (
+  kind: PartyKind,
+  id: string,
+  sections: CloneSection[],
+) =>
+  tenant<{ cloned: Record<string, number>; from: string }>(
+    `${base(kind)}/${id}/copy-from-origin`,
+    { method: "POST", body: { sections } },
+  );
 
 /* ── Maker-checker decisions (PR3-C §8) ─────────────────────────────────────── */
-export const approveChange = (kind: PartyKind, id: string, changeRequestId: string) =>
-  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/approve`, { method: "POST" });
-export const rejectChange = (kind: PartyKind, id: string, changeRequestId: string) =>
-  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/reject`, { method: "POST" });
+export const approveChange = (
+  kind: PartyKind,
+  id: string,
+  changeRequestId: string,
+) =>
+  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/approve`, {
+    method: "POST",
+  });
+export const rejectChange = (
+  kind: PartyKind,
+  id: string,
+  changeRequestId: string,
+) =>
+  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/reject`, {
+    method: "POST",
+  });
 
 /* ── Masked-bank reveal (PR3-C §3.5) — finance/CEO only; audited server-side ─── */
-export const revealBank = (kind: PartyKind, id: string, bankAccountId: string) =>
-  tenant<{ bank_account_id: string; account_number?: string | null; iban?: string | null; swift_bic?: string | null }>(`${base(kind)}/${id}/banks/${bankAccountId}/reveal`, { method: "POST" });
+export const revealBank = (
+  kind: PartyKind,
+  id: string,
+  bankAccountId: string,
+) =>
+  tenant<{
+    bank_account_id: string;
+    account_number?: string | null;
+    iban?: string | null;
+    swift_bic?: string | null;
+  }>(`${base(kind)}/${id}/banks/${bankAccountId}/reveal`, { method: "POST" });
 
 /* ── Lifecycle actions ──────────────────────────────────────────── */
-export const blockParty = (kind: PartyKind, id: string, reason: string) => tenant(`${base(kind)}/${id}/block`, { method: "POST", body: { reason } });
-export const unblockParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/unblock`, { method: "POST" });
-export const verifyParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/verify`, { method: "POST" });
+export const blockParty = (kind: PartyKind, id: string, reason: string) =>
+  tenant(`${base(kind)}/${id}/block`, { method: "POST", body: { reason } });
+export const unblockParty = (kind: PartyKind, id: string) =>
+  tenant(`${base(kind)}/${id}/unblock`, { method: "POST" });
+export const verifyParty = (kind: PartyKind, id: string) =>
+  tenant(`${base(kind)}/${id}/verify`, { method: "POST" });
 /** Activate / deactivate — a direct `registration_status` transition (governed
  *  like any other sensitive master field: applied at once in TEST/sandbox, opened
  *  as a maker-checker change request in LIVE). */
-export const setRegistrationStatus = (kind: PartyKind, id: string, status: "ACTIVE" | "DEACTIVATED") =>
-  (kind === "client" ? updateClient(id, { registration_status: status } as Partial<ClientInput>) : updateSupplier(id, { registration_status: status } as Partial<SupplierInput>));
+export const setRegistrationStatus = (
+  kind: PartyKind,
+  id: string,
+  status: "ACTIVE" | "DEACTIVATED",
+) =>
+  kind === "client"
+    ? updateClient(id, { registration_status: status } as Partial<ClientInput>)
+    : updateSupplier(id, {
+        registration_status: status,
+      } as Partial<SupplierInput>);
 /** Smart Copy — a supplier id → a draft client, or a client id → a draft supplier. */
-export const convertFromSupplier = (supplierId: string) => tenant<Client>(`/clients/convert-from-supplier/${supplierId}`, { method: "POST" });
-export const convertFromClient = (clientId: string) => tenant<Supplier>(`/suppliers/convert-from-client/${clientId}`, { method: "POST" });
+export const convertFromSupplier = (supplierId: string) =>
+  tenant<Client>(`/clients/convert-from-supplier/${supplierId}`, {
+    method: "POST",
+  });
+export const convertFromClient = (clientId: string) =>
+  tenant<Supplier>(`/suppliers/convert-from-client/${clientId}`, {
+    method: "POST",
+  });

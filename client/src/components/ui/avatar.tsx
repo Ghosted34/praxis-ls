@@ -50,7 +50,9 @@ export function Avatar({
         size === "sm" ? "h-7 w-7 text-micro" : "h-9 w-9 text-label",
         className,
       )}
-      {...(title ? { role: "img", "aria-label": title } : { "aria-hidden": true })}
+      {...(title
+        ? { role: "img", "aria-label": title }
+        : { "aria-hidden": true })}
     >
       {initials(name)}
     </span>

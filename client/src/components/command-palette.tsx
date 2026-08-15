@@ -35,24 +35,87 @@ type Row = {
 
 type IP = React.SVGProps<SVGSVGElement>;
 const sic = (p: IP) => ({
-  viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7,
-  strokeLinecap: "round" as const, strokeLinejoin: "round" as const, width: 17, height: 17, "aria-hidden": true, ...p,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.7,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  width: 17,
+  height: 17,
+  "aria-hidden": true,
+  ...p,
 });
-const SearchIcon = (p: IP) => (<svg {...sic(p)}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>);
-const TowerIcon = (p: IP) => (<svg {...sic(p)}><path d="m6 9 6-6 6 6M6 9v11h12V9" /></svg>);
-const FolderIcon = (p: IP) => (<svg {...sic(p)}><path d="M4 5h6l2 3h8v11H4z" /></svg>);
-const CardIcon = (p: IP) => (<svg {...sic(p)}><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18" /></svg>);
-const FleetIcon = (p: IP) => (<svg {...sic(p)}><path d="M3 7h13l5 5v4h-3" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></svg>);
-const BoxIcon = (p: IP) => (<svg {...sic(p)}><path d="M3 9l9-5 9 5v8l-9 5-9-5z" /></svg>);
-const PlusIcon = (p: IP) => (<svg {...sic(p)}><path d="M12 5v14M5 12h14" /></svg>);
-const FileTextIcon = (p: IP) => (<svg {...sic(p)}><path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4M9 13h6M9 17h6" /></svg>);
-const TaxIcon = (p: IP) => (<svg {...sic(p)}><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V9M16 16v-6" /></svg>);
-const AiIcon = (p: IP) => (<svg {...sic(p)}><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>);
-const ChatIcon = (p: IP) => (<svg {...sic(p)}><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" /></svg>);
+const SearchIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+const TowerIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="m6 9 6-6 6 6M6 9v11h12V9" />
+  </svg>
+);
+const FolderIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 5h6l2 3h8v11H4z" />
+  </svg>
+);
+const CardIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="3" y="6" width="18" height="12" rx="2" />
+    <path d="M3 10h18" />
+  </svg>
+);
+const FleetIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M3 7h13l5 5v4h-3" />
+    <circle cx="7" cy="17" r="2" />
+    <circle cx="17" cy="17" r="2" />
+  </svg>
+);
+const BoxIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M3 9l9-5 9 5v8l-9 5-9-5z" />
+  </svg>
+);
+const PlusIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+const FileTextIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M14 3H6v18h12V7z" />
+    <path d="M14 3v4h4M9 13h6M9 17h6" />
+  </svg>
+);
+const TaxIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 20V4M4 20h16" />
+    <path d="M8 16v-4M12 16V9M16 16v-6" />
+  </svg>
+);
+const AiIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+  </svg>
+);
+const ChatIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" />
+  </svg>
+);
 
 // Curated "Jump to" shortcuts shown when the query is empty. Full screen search
 // (any NAV item) kicks in as soon as the user types.
-const JUMP: { to: string; label: string; Icon: (p: IP) => React.JSX.Element }[] = [
+const JUMP: {
+  to: string;
+  label: string;
+  Icon: (p: IP) => React.JSX.Element;
+}[] = [
   { to: "/", label: "Control Tower", Icon: TowerIcon },
   { to: "/operations", label: "Operations", Icon: FolderIcon },
   { to: "/finance", label: "Finance & Treasury", Icon: CardIcon },
@@ -76,7 +139,13 @@ export function CommandPalette({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const go = React.useCallback((to: string) => { onClose(); navigate(to); }, [navigate, onClose]);
+  const go = React.useCallback(
+    (to: string) => {
+      onClose();
+      navigate(to);
+    },
+    [navigate, onClose],
+  );
   const askAi = React.useCallback(() => {
     onClose();
     window.dispatchEvent(new CustomEvent("praxis:open-copilot"));
@@ -84,7 +153,12 @@ export function CommandPalette({
 
   // Every NAV screen, for typed search — minus the ones this user cannot open.
   const allScreens = React.useMemo(
-    () => groups.flatMap((g) => g.items.filter((it) => canOpen(it.to)).map((it) => ({ ...it, group: g.heading }))),
+    () =>
+      groups.flatMap((g) =>
+        g.items
+          .filter((it) => canOpen(it.to))
+          .map((it) => ({ ...it, group: g.heading })),
+      ),
     [groups, canOpen],
   );
 
@@ -95,14 +169,46 @@ export function CommandPalette({
   const ACTIONS: Row[] = React.useMemo(
     () =>
       [
-        { key: "act:new-dossier", label: "New operation file", Icon: PlusIcon, to: "/operations" },
-        { key: "act:new-invoice", label: "New invoice", Icon: FileTextIcon, to: "/finance" },
-        { key: "act:file-tax", label: "File a tax return", Icon: TaxIcon, to: "/finance/tax" },
-        { key: "act:messages", label: "Open Messages", Icon: ChatIcon, to: "/comms" },
+        {
+          key: "act:new-dossier",
+          label: "New operation file",
+          Icon: PlusIcon,
+          to: "/operations",
+        },
+        {
+          key: "act:new-invoice",
+          label: "New invoice",
+          Icon: FileTextIcon,
+          to: "/finance",
+        },
+        {
+          key: "act:file-tax",
+          label: "File a tax return",
+          Icon: TaxIcon,
+          to: "/finance/tax",
+        },
+        {
+          key: "act:messages",
+          label: "Open Messages",
+          Icon: ChatIcon,
+          to: "/comms",
+        },
       ]
         .filter((a) => canOpen(a.to))
-        .map((a) => ({ key: a.key, label: a.label, Icon: a.Icon, run: () => go(a.to) }))
-        .concat([{ key: "act:ask-ai", label: "Ask Praxis AI…", Icon: AiIcon, run: askAi }]),
+        .map((a) => ({
+          key: a.key,
+          label: a.label,
+          Icon: a.Icon,
+          run: () => go(a.to),
+        }))
+        .concat([
+          {
+            key: "act:ask-ai",
+            label: "Ask Praxis AI…",
+            Icon: AiIcon,
+            run: askAi,
+          },
+        ]),
     [go, askAi, canOpen],
   );
 
@@ -119,37 +225,63 @@ export function CommandPalette({
       }));
     }
     return allScreens
-      .filter((s) => s.label.toLowerCase().includes(q) || s.group.toLowerCase().includes(q))
+      .filter(
+        (s) =>
+          s.label.toLowerCase().includes(q) ||
+          s.group.toLowerCase().includes(q),
+      )
       .slice(0, 12)
-      .map((s) => ({ key: `screen:${s.to}`, label: s.label, sub: s.group, Icon: FolderIcon, run: () => go(s.to) }));
+      .map((s) => ({
+        key: `screen:${s.to}`,
+        label: s.label,
+        sub: s.group,
+        Icon: FolderIcon,
+        run: () => go(s.to),
+      }));
   }, [q, allScreens, go, canOpen]);
 
   const actionRows: Row[] = React.useMemo(
-    () => (!q ? ACTIONS : ACTIONS.filter((a) => a.label.toLowerCase().includes(q))),
+    () =>
+      !q ? ACTIONS : ACTIONS.filter((a) => a.label.toLowerCase().includes(q)),
     [q, ACTIONS],
   );
 
-  const rows = React.useMemo(() => [...jumpRows, ...actionRows], [jumpRows, actionRows]);
+  const rows = React.useMemo(
+    () => [...jumpRows, ...actionRows],
+    [jumpRows, actionRows],
+  );
 
   React.useEffect(() => {
     if (!open) return;
-    setQuery(""); setActive(0);
+    setQuery("");
+    setActive(0);
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
   React.useEffect(() => setActive(0), [query]);
   React.useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`);
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-idx="${active}"]`,
+    );
     el?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
   if (!open) return null;
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => Math.min(i + 1, rows.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); rows[active]?.run(); }
-    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((i) => Math.min(i + 1, rows.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      rows[active]?.run();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
   }
 
   const jumpCount = jumpRows.length;
@@ -161,10 +293,14 @@ export function CommandPalette({
       onClick={r.run}
       className={cn(
         "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
-        idx === active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60",
+        idx === active
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:bg-accent/60",
       )}
     >
-      <span className="text-primary-ink"><r.Icon /></span>
+      <span className="text-primary-ink">
+        <r.Icon />
+      </span>
       <span className="flex-1 font-medium text-foreground">{r.label}</span>
       {r.sub && <span className="micro">{r.sub}</span>}
     </button>
@@ -176,7 +312,11 @@ export function CommandPalette({
           keyboard equivalent is Escape, handled in onKeyDown below. aria-hidden
           is the whole fix: a decorative scrim should not be announced at all,
           and hiding it also settles the rule honestly rather than by suppression. */}
-      <div aria-hidden className="absolute inset-0 animate-fade-in bg-black/40" onClick={onClose} />
+      <div
+        aria-hidden
+        className="absolute inset-0 animate-fade-in bg-black/40"
+        onClick={onClose}
+      />
       {/* A dialog handling its own arrow/Enter/Escape keys is the WAI-ARIA
           pattern, not a violation — the rule cannot tell a composite widget from
           a decorated <p>, and flags any key handler on a non-<button> role. */}
@@ -189,7 +329,9 @@ export function CommandPalette({
         onKeyDown={onKeyDown}
       >
         <div className="flex items-center gap-3 border-b px-4">
-          <span className="text-muted-foreground"><SearchIcon /></span>
+          <span className="text-muted-foreground">
+            <SearchIcon />
+          </span>
           <input
             ref={inputRef}
             value={query}
@@ -197,17 +339,23 @@ export function CommandPalette({
             placeholder="Search apps, dossiers, invoices, actions…"
             className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">ESC</kbd>
+          <kbd className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            ESC
+          </kbd>
         </div>
 
         <div ref={listRef} className="max-h-[56vh] overflow-y-auto p-2">
           {rows.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nothing matches &ldquo;{query}&rdquo;.</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              Nothing matches &ldquo;{query}&rdquo;.
+            </p>
           ) : (
             <>
               {jumpRows.length > 0 && (
                 <>
-                  <p className="micro px-3 pb-1 pt-2">{q ? "Screens" : "Jump to"}</p>
+                  <p className="micro px-3 pb-1 pt-2">
+                    {q ? "Screens" : "Jump to"}
+                  </p>
                   {jumpRows.map((r, i) => renderRow(r, i))}
                 </>
               )}

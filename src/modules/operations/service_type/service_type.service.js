@@ -11,12 +11,92 @@
  */
 "use strict";
 const { makeService } = require("../../../shared/crud/resource");
+const { atomically } = require("../../../shared/db/tx");
 const repo = require("./service_type.repo");
 const events = require("./service_type.events");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const opsRef = require("../../../services/documents/operation-reference");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "service_type", events });
+
+/**
+ * The operation-reference code, and the two rules that make it trustworthy.
+ *
+ * ONCE USED, IT IS HISTORY. A file's reference is a string stored on the row —
+ * `SL7Z3K9QW2M4XBSM` — and it has been printed on a transit order and quoted to
+ * a client. Changing this service type's code later cannot rewrite those, and
+ * must not: the only thing it would achieve is two codes meaning "sea import",
+ * with no record of when the meaning changed. So the moment any dossier of this
+ * type carries a reference, the code is frozen. Renaming the SERVICE stays free
+ * — that is what `name_fr`/`name_en` are for, and it is why the code is a
+ * separate column rather than something derived from the name.
+ *
+ * `OP` IS RESERVED. It is what a file with no service type uses, so handing it
+ * to a real one would make "unclassified" and that service indistinguishable in
+ * every reference either ever issues.
+ */
+async function assertCodeAssignable(client, id, code) {
+  if (code === opsRef.GENERIC_SERVICE_CODE) {
+    throw new AppError(
+      "CODE_RESERVED",
+      `"${opsRef.GENERIC_SERVICE_CODE}" is reserved for files with no service type`,
+      422,
+      { ops_reference_code: ["reserved"] },
+    );
+  }
+  if (!id) return;
+  const { rows } = await client.query(
+    "SELECT ops_reference_code FROM service_type WHERE service_type_id = $1",
+    [id],
+  );
+  const current = rows[0] ? rows[0].ops_reference_code : null;
+  if (!current || current === code) return;
+  // `dossier_visible`: a wizard draft carries a `DRAFT-` placeholder rather
+  // than a reference built from this code, so it must not freeze it.
+  const used = await client.query(
+    "SELECT 1 FROM dossier_visible WHERE service_type_id = $1 LIMIT 1",
+    [id],
+  );
+  if (used.rowCount) {
+    throw new AppError(
+      "CODE_IN_USE",
+      `Operation files already carry the code "${current}". It cannot be changed without renaming references that have been issued.`,
+      422,
+      { ops_reference_code: ["already used by existing operation files"] },
+    );
+  }
+}
+
+/**
+ * Run `fn`, turning a code collision into a field error the form can show.
+ *
+ * The unique index stays the guard — a pre-`SELECT` would be a check-then-act
+ * race with any other admin saving at the same moment. This only decides how
+ * the answer is PHRASED: `ux_service_type_ops_reference_code` reaching the
+ * generic error handler is a bare 409 "a record with these values already
+ * exists", which does not tell the person which of the four fields they just
+ * edited is the problem.
+ *
+ * `OPS_CODE_TAKEN` rather than the `CODE_TAKEN` the platform plan and role
+ * services raise: those are 409s, and one error code answering with two
+ * different statuses is exactly what doc/ERROR_CODES.md exists to surface.
+ */
+async function codeConflictAsField(fn, code) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err && err.code === "23505" && /ops_reference_code/.test(String(err.constraint || ""))) {
+      throw new AppError(
+        "OPS_CODE_TAKEN",
+        `Another service type already uses the code "${code}"`,
+        422,
+        { ops_reference_code: ["already in use"] },
+      );
+    }
+    throw err;
+  }
+}
 
 /** Rows shipped by provisioning are protected: renaming is fine, removing isn't. */
 async function assertNotSystem(client, id, verb) {
@@ -40,7 +120,39 @@ module.exports = {
     if (existing.rowCount) {
       throw new AppError("DUPLICATE_KEY", `Service type '${args.data.key}' already exists`, 422, { key: ["already in use"] });
     }
-    return base.create(client, args);
+    if (args.data.ops_reference_code) await assertCodeAssignable(client, null, args.data.ops_reference_code);
+    return atomically(client, async () => {
+      const row = await codeConflictAsField(
+        () => base.create(client, args),
+        args.data.ops_reference_code,
+      );
+      // Assigned NOW rather than on the first dossier of this type, so the code
+      // is visible on the Service Types screen from the moment the service
+      // exists — and inside the same transaction, so a service type never
+      // commits half-configured. `serviceTypeCode` derives it from the key,
+      // walks the fallbacks on collision and persists once: the same path an
+      // older row takes lazily, so there is one algorithm rather than two that
+      // can disagree.
+      if (row.ops_reference_code) return row;
+      return { ...row, ops_reference_code: await opsRef.serviceTypeCode(client, row.service_type_id) };
+    });
+  },
+
+  /**
+   * The kit's update, plus the code's own rules.
+   *
+   * Overridden rather than left to `makeService` because "may this column
+   * change?" is a question only this module can answer — it depends on whether
+   * a dossier has already been given a reference built from the value.
+   */
+  async update(client, args) {
+    if (args.patch && args.patch.ops_reference_code) {
+      await assertCodeAssignable(client, args.id, args.patch.ops_reference_code);
+    }
+    return codeConflictAsField(
+      () => base.update(client, args),
+      args.patch && args.patch.ops_reference_code,
+    );
   },
 
   /**

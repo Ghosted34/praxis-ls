@@ -42,7 +42,9 @@ describe("Field — label association (F4)", () => {
         </Select>
       </Field>,
     );
-    expect(screen.getByRole("combobox", { name: "Currency" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Currency" }),
+    ).toBeInTheDocument();
   });
 
   it("mints a unique id per field, so two fields on a form never collide", () => {
@@ -81,7 +83,10 @@ describe("Field — ARIA state (0 occurrences in the whole client before this)",
         <Input />
       </Field>,
     );
-    expect(screen.getByRole("textbox", { name: "Amount" })).toHaveAttribute("aria-required", "true");
+    expect(screen.getByRole("textbox", { name: "Amount" })).toHaveAttribute(
+      "aria-required",
+      "true",
+    );
   });
 
   it("does not set aria-required when the field is optional", () => {
@@ -90,7 +95,9 @@ describe("Field — ARIA state (0 occurrences in the whole client before this)",
         <Input />
       </Field>,
     );
-    expect(screen.getByRole("textbox", { name: "Notes" })).not.toHaveAttribute("aria-required");
+    expect(screen.getByRole("textbox", { name: "Notes" })).not.toHaveAttribute(
+      "aria-required",
+    );
   });
 
   it("hides the decorative asterisk from assistive tech", () => {
@@ -127,13 +134,17 @@ describe("Field — ARIA state (0 occurrences in the whole client before this)",
 
   it("prefers the error over the hint when both are set", () => {
     render(
-      <Field label="Amount" hint="Excluding TVA." error="Must be greater than zero.">
+      <Field
+        label="Amount"
+        hint="Excluding TVA."
+        error="Must be greater than zero."
+      >
         <Input />
       </Field>,
     );
-    expect(screen.getByRole("textbox", { name: "Amount" })).toHaveAccessibleDescription(
-      "Must be greater than zero.",
-    );
+    expect(
+      screen.getByRole("textbox", { name: "Amount" }),
+    ).toHaveAccessibleDescription("Must be greater than zero.");
   });
 
   it("preserves an aria-describedby the control already had", () => {
@@ -145,7 +156,9 @@ describe("Field — ARIA state (0 occurrences in the whole client before this)",
         </Field>
       </>,
     );
-    const desc = screen.getByRole("textbox", { name: "Amount" }).getAttribute("aria-describedby")!;
+    const desc = screen
+      .getByRole("textbox", { name: "Amount" })
+      .getAttribute("aria-describedby")!;
     expect(desc).toContain("external");
     expect(desc.split(" ").length).toBe(2);
   });
@@ -163,7 +176,9 @@ describe("Field — non-native and composite controls", () => {
         <div role="radiogroup" />
       </Field>,
     );
-    expect(screen.getByRole("radiogroup", { name: "Ticket view" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: "Ticket view" }),
+    ).toBeInTheDocument();
   });
 
   it("wraps multiple children in a labelled group rather than leaving them loose", () => {

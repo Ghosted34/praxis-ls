@@ -21,7 +21,11 @@ import { ledger, journalEntry } from "@shared";
 
 /* ── the shared rules, directly ────────────────────────────────────────────── */
 
-const L = (account_code: string, debit?: string | number, credit?: string | number) => ({
+const L = (
+  account_code: string,
+  debit?: string | number,
+  credit?: string | number,
+) => ({
   account_code,
   debit,
   credit,
@@ -29,25 +33,37 @@ const L = (account_code: string, debit?: string | number, credit?: string | numb
 
 describe("ledger rules (the client half of @praxis/shared)", () => {
   it("accepts a balanced two-line entry", () => {
-    expect(ledger.checkPostable([L("521", 1000), L("4191", undefined, 1000)])).toEqual({ ok: true });
+    expect(
+      ledger.checkPostable([L("521", 1000), L("4191", undefined, 1000)]),
+    ).toEqual({ ok: true });
   });
 
   it("REJECTS A LINE WITH BOTH SIDES — the old form accepted it", () => {
     // `debit > 0 || credit > 0` is true here, so the old boolean said "valid",
     // Post was enabled, and the server returned LINE_ONE_SIDE.
-    const r = ledger.checkPostable([L("521", 100, 100), L("4191", undefined, 100)]);
+    const r = ledger.checkPostable([
+      L("521", 100, 100),
+      L("4191", undefined, 100),
+    ]);
     expect(r).toMatchObject({ ok: false, code: "LINE_ONE_SIDE", line: 0 });
   });
 
   it("REJECTS MORE THAN TWO DECIMALS — the old form never checked", () => {
-    const r = ledger.checkPostable([L("521", "33.333"), L("4191", undefined, "33.333")]);
+    const r = ledger.checkPostable([
+      L("521", "33.333"),
+      L("4191", undefined, "33.333"),
+    ]);
     expect(r).toMatchObject({ ok: false, code: "INVALID_AMOUNT", line: 0 });
   });
 
   it("REJECTS COMPENSATION — the old form never checked", () => {
     // Balanced, one side per line, and still not postable: KB §23.6 forbids an
     // account being both debited and credited in one entry.
-    const r = ledger.checkPostable([L("521", 1000), L("521", undefined, 400), L("4191", undefined, 600)]);
+    const r = ledger.checkPostable([
+      L("521", 1000),
+      L("521", undefined, 400),
+      L("4191", undefined, 600),
+    ]);
     expect(r).toMatchObject({ ok: false, code: "COMPENSATION" });
   });
 
@@ -60,15 +76,26 @@ describe("ledger rules (the client half of @praxis/shared)", () => {
 
   it("sums in minor units, so float drift cannot unbalance a balanced entry", () => {
     // 0.1 + 0.2 === 0.30000000000000004.
-    expect(ledger.checkPostable([L("521", 0.1), L("571", 0.2), L("4191", undefined, 0.3)])).toEqual({ ok: true });
+    expect(
+      ledger.checkPostable([
+        L("521", 0.1),
+        L("571", 0.2),
+        L("4191", undefined, 0.3),
+      ]),
+    ).toEqual({ ok: true });
   });
 
   it("treats an empty string as an empty side, which is what a form holds", () => {
-    expect(ledger.checkPostable([L("521", "1000", ""), L("4191", "", "1000")])).toEqual({ ok: true });
+    expect(
+      ledger.checkPostable([L("521", "1000", ""), L("4191", "", "1000")]),
+    ).toEqual({ ok: true });
   });
 
   it("needs at least two lines", () => {
-    expect(ledger.checkPostable([L("521", 1000)])).toMatchObject({ ok: false, code: "ENTRY_TOO_FEW_LINES" });
+    expect(ledger.checkPostable([L("521", 1000)])).toMatchObject({
+      ok: false,
+      code: "ENTRY_TOO_FEW_LINES",
+    });
   });
 });
 
@@ -96,7 +123,10 @@ describe("journalEntry.post — the same object the API parses with", () => {
   it("REJECTS AN IMPOSSIBLE DATE, which the old regex accepted", () => {
     // `new Date("2026-02-31")` rolls over to 3 March and reports success, so a
     // naive check posts the entry to the wrong period.
-    const r = journalEntry.post.safeParse({ ...valid, entry_date: "2026-02-31" });
+    const r = journalEntry.post.safeParse({
+      ...valid,
+      entry_date: "2026-02-31",
+    });
     expect(r.success).toBe(false);
   });
 
@@ -106,11 +136,16 @@ describe("journalEntry.post — the same object the API parses with", () => {
     expect(r.success).toBe(false);
     // Pointed at a field the form actually renders — an error with no reachable
     // path renders nowhere.
-    expect(r.success === false && r.error.issues[0].path).toEqual(["journal_code"]);
+    expect(r.success === false && r.error.issues[0].path).toEqual([
+      "journal_code",
+    ]);
   });
 
   it("requires at least two lines", () => {
-    expect(journalEntry.post.safeParse({ ...valid, lines: [valid.lines[0]] }).success).toBe(false);
+    expect(
+      journalEntry.post.safeParse({ ...valid, lines: [valid.lines[0]] })
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -122,7 +157,13 @@ vi.mock("@/lib/finance-api", async (importOriginal) => {
   return {
     ...actual,
     today: () => "2026-07-01",
-    loadEntities: async () => [{ id: "11111111-1111-4111-8111-111111111111", label: "SmartBox", code: "SBX" }],
+    loadEntities: async () => [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        label: "SmartBox",
+        code: "SBX",
+      },
+    ],
     loadPostableAccounts: async () => [
       { id: "521", label: "521 — Banque" },
       { id: "4191", label: "4191 — Clients avances" },
@@ -134,8 +175,12 @@ vi.mock("@/lib/finance-api", async (importOriginal) => {
 async function renderForm() {
   const { JournalsPage } = await import("./journals");
   const { renderScreen } = await import("@/test/screen-harness");
-  const r = renderScreen(<JournalsPage />, { routes: { "/journal-entries": [] } });
-  await userEvent.click(await screen.findByRole("button", { name: /post entry/i }));
+  const r = renderScreen(<JournalsPage />, {
+    routes: { "/journal-entries": [] },
+  });
+  await userEvent.click(
+    await screen.findByRole("button", { name: /post entry/i }),
+  );
   return r;
 }
 
@@ -149,33 +194,55 @@ describe("JournalEntryForm", () => {
 
   it("opens with two lines and Post disabled — an empty entry is not postable", async () => {
     await renderForm();
-    const post = screen.getByRole("button", { name: /save draft|validate & post/i });
+    const post = screen.getByRole("button", {
+      name: /save draft|validate & post/i,
+    });
     expect(post).toBeDisabled();
-    expect(screen.getAllByRole("combobox", { name: /^Account, line/ })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("combobox", { name: /^Account, line/ }),
+    ).toHaveLength(2);
   });
 
   it("EVERY FIELD IS LABELLED — <Field> does it, not each call site", async () => {
     // F4: 565 Field sites, 0 with a label→control association. The line inputs
     // are visually label-less by design and still carry a name.
     await renderForm();
-    expect(screen.getByRole("textbox", { name: /Source document ref/i })).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "Debit, line 1" })).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "Credit, line 2" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /Source document ref/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("spinbutton", { name: "Debit, line 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("spinbutton", { name: "Credit, line 2" }),
+    ).toBeInTheDocument();
   });
 
   it("says WHY it is not postable, in the ledger's own words", async () => {
     await renderForm();
-    const status = screen.getAllByRole("status").find((n) => /at least two lines|choose an account/i.test(n.textContent ?? ""));
+    const status = screen
+      .getAllByRole("status")
+      .find((n) =>
+        /at least two lines|choose an account/i.test(n.textContent ?? ""),
+      );
     expect(status).toBeDefined();
   });
 
   it("keeps Post disabled for a line with BOTH sides filled", async () => {
     // The regression the old boolean allowed through to the server.
     await renderForm();
-    await userEvent.type(screen.getByRole("spinbutton", { name: "Debit, line 1" }), "100");
-    await userEvent.type(screen.getByRole("spinbutton", { name: "Credit, line 1" }), "100");
+    await userEvent.type(
+      screen.getByRole("spinbutton", { name: "Debit, line 1" }),
+      "100",
+    );
+    await userEvent.type(
+      screen.getByRole("spinbutton", { name: "Credit, line 1" }),
+      "100",
+    );
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /save draft|validate & post/i })).toBeDisabled(),
+      expect(
+        screen.getByRole("button", { name: /save draft|validate & post/i }),
+      ).toBeDisabled(),
     );
   });
 

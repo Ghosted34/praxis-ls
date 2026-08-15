@@ -31,7 +31,12 @@ export function SplashPreview({ cfg }: { cfg: EffectivePwa }) {
       <PhoneFrame caption="Boot splash">
         <SplashRun key={run} cfg={cfg} />
       </PhoneFrame>
-      <Button type="button" variant="outline" size="sm" onClick={() => setRun((n) => n + 1)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setRun((n) => n + 1)}
+      >
         Replay
       </Button>
     </div>
@@ -56,5 +61,13 @@ function SplashRun({ cfg }: { cfg: EffectivePwa }) {
     };
   }, []);
 
-  return <SplashScreen cfg={cfg} ready={ready} progress={progress} fading={false} variant="preview" />;
+  return (
+    <SplashScreen
+      cfg={cfg}
+      ready={ready}
+      progress={progress}
+      fading={false}
+      variant="preview"
+    />
+  );
 }

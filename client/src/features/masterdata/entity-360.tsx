@@ -39,7 +39,11 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
-import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
+import {
+  SCAN_ACCEPT,
+  scanFileProblem,
+  readFileAsDataUrl,
+} from "@/lib/vault-file";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel, toDateInput } from "@/lib/format";
@@ -49,42 +53,84 @@ import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
 
 const LIFECYCLE_TONE: Record<string, Tone> = {
-  DRAFT: "mute", PENDING_REVIEW: "blue", ACTIVE: "ok",
-  SUSPENDED: "orange", DEACTIVATED: "mute", ARCHIVED: "mute",
+  DRAFT: "mute",
+  PENDING_REVIEW: "blue",
+  ACTIVE: "ok",
+  SUSPENDED: "orange",
+  DEACTIVATED: "mute",
+  ARCHIVED: "mute",
 };
 const ROLE_TONE: Record<string, Tone> = {
-  SHAREHOLDER: "blue", DIRECTOR: "ok", OFFICER: "ok", LEGAL_REPRESENTATIVE: "ok",
-  AUTHORISED_SIGNATORY: "orange", BENEFICIAL_OWNER: "blue",
-  STATUTORY_AUDITOR: "mute", SECRETARY: "mute",
+  SHAREHOLDER: "blue",
+  DIRECTOR: "ok",
+  OFFICER: "ok",
+  LEGAL_REPRESENTATIVE: "ok",
+  AUTHORISED_SIGNATORY: "orange",
+  BENEFICIAL_OWNER: "blue",
+  STATUTORY_AUDITOR: "mute",
+  SECRETARY: "mute",
 };
 
 const TABS = [
-  "Overview", "Identity & registrations", "Documents", "Tax & jurisdiction",
-  "People & shareholding", "Contacts & addresses", "Structure",
-  "Banking & treasury", "Letterhead", "Renewals", "Working calendar",
+  "Overview",
+  "Identity & registrations",
+  "Documents",
+  "Tax & jurisdiction",
+  "People & shareholding",
+  "Contacts & addresses",
+  "Structure",
+  "Banking & treasury",
+  "Letterhead",
+  "Renewals",
+  "Working calendar",
 ] as const;
 type Tab = (typeof TABS)[number];
 
-const RENEWAL_TONE: Record<string, Tone> = { EXPIRED: "bad", DUE: "orange", APPROACHING: "warn" };
+const RENEWAL_TONE: Record<string, Tone> = {
+  EXPIRED: "bad",
+  DUE: "orange",
+  APPROACHING: "warn",
+};
 const SCAN_TONE: Record<string, Tone> = {
-  PENDING: "warn", SCANNED: "blue", VERIFIED: "ok", REJECTED: "bad", EXPIRED: "bad",
+  PENDING: "warn",
+  SCANNED: "blue",
+  VERIFIED: "ok",
+  REJECTED: "bad",
+  EXPIRED: "bad",
 };
 
 /* ── Small building blocks ─────────────────────────────────────────────────── */
 
-function MiniTable({ head, children, empty }: { head: React.ReactNode; children: React.ReactNode; empty: boolean }) {
-  if (empty) return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+function MiniTable({
+  head,
+  children,
+  empty,
+}: {
+  head: React.ReactNode;
+  children: React.ReactNode;
+  empty: boolean;
+}) {
+  if (empty)
+    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-muted-foreground"><tr>{head}</tr></thead>
+        <thead className="bg-muted/50 text-muted-foreground">
+          <tr>{head}</tr>
+        </thead>
         <tbody className="divide-y divide-border">{children}</tbody>
       </table>
     </div>
   );
 }
-const Th = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <th className={`px-3 py-2 font-medium ${r ? "text-right" : "text-left"}`}>{children}</th>;
-const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>;
+const Th = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
+  <th className={`px-3 py-2 font-medium ${r ? "text-right" : "text-left"}`}>
+    {children}
+  </th>
+);
+const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
+  <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>
+);
 
 /**
  * Was this holding or mandate live on `on` (an ISO date)?
@@ -94,30 +140,55 @@ const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <td
  * the API returns aggregates, not the filtered rows, and a table whose footer
  * disagrees with its body is worse than either alone.
  */
-const heldOn = (p: { effective_from?: string | null; effective_to?: string | null }, on: string) => {
+const heldOn = (
+  p: { effective_from?: string | null; effective_to?: string | null },
+  on: string,
+) => {
   const from = p.effective_from ? String(p.effective_from).slice(0, 10) : null;
   const to = p.effective_to ? String(p.effective_to).slice(0, 10) : null;
   return !(from && from > on) && !(to && to < on);
 };
 
 /** A labelled read-only value. `—` for anything blank, so gaps are visible. */
-function Detail({ label, children }: { label: string; children?: React.ReactNode }) {
+function Detail({
+  label,
+  children,
+}: {
+  label: string;
+  children?: React.ReactNode;
+}) {
   const empty = children === null || children === undefined || children === "";
   return (
     <div className="space-y-0.5">
       <dt className="micro text-muted-foreground">{label}</dt>
-      <dd className={`text-sm ${empty ? "text-muted-foreground" : "text-foreground"}`}>{empty ? "—" : children}</dd>
+      <dd
+        className={`text-sm ${empty ? "text-muted-foreground" : "text-foreground"}`}
+      >
+        {empty ? "—" : children}
+      </dd>
     </div>
   );
 }
 
-function Section({ title, description, action, children }: { title: string; description?: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  description,
+  action,
+  children,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-          {description && <p className="micro text-muted-foreground">{description}</p>}
+          {description && (
+            <p className="micro text-muted-foreground">{description}</p>
+          )}
         </div>
         {action}
       </div>
@@ -127,9 +198,22 @@ function Section({ title, description, action, children }: { title: string; desc
 }
 
 type FieldSpec = {
-  key: string; label: string;
-  type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea" | "multiselect" | "file";
-  options?: { value: string; label: string }[]; placeholder?: string; hint?: string;
+  key: string;
+  label: string;
+  type?:
+    | "text"
+    | "number"
+    | "date"
+    | "email"
+    | "country"
+    | "checkbox"
+    | "select"
+    | "textarea"
+    | "multiselect"
+    | "file";
+  options?: { value: string; label: string }[];
+  placeholder?: string;
+  hint?: string;
   /** Server-owned values such as system-generated document references. */
   systemGenerated?: boolean;
   /**
@@ -154,19 +238,32 @@ type FieldSpec = {
  * a name and each box has its own, which is what a screen reader needs to say
  * "Departments, Billing, checked" instead of reading ten unrelated checkboxes.
  */
-function MultiSelect({ label, value, options, onChange }: {
+function MultiSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
   label: string;
   value: string[];
   options: { value: string; label: string }[];
   onChange: (next: string[]) => void;
 }) {
-  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  const toggle = (v: string) =>
+    onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   return (
     <fieldset className="rounded-lg border p-2">
-      <legend className="px-1 text-sm font-medium text-foreground">{label}</legend>
+      <legend className="px-1 text-sm font-medium text-foreground">
+        {label}
+      </legend>
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {options.map((o) => (
-          <Checkbox key={o.value} checked={value.includes(o.value)} onCheckedChange={() => toggle(o.value)} label={<span className="text-sm">{o.label}</span>} />
+          <Checkbox
+            key={o.value}
+            checked={value.includes(o.value)}
+            onCheckedChange={() => toggle(o.value)}
+            label={<span className="text-sm">{o.label}</span>}
+          />
         ))}
       </div>
     </fieldset>
@@ -174,10 +271,24 @@ function MultiSelect({ label, value, options, onChange }: {
 }
 
 /** Generic "add / edit a nested item" modal — one implementation for every collection. */
-function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress = null, uploadSuccess = false, allowAddAnother = false }: {
-  title: string; fields: FieldSpec[]; initial?: Record<string, unknown> | null;
-  onClose: () => void; onSubmit: (values: Record<string, unknown>) => Promise<void>;
-  uploadProgress?: number | null; uploadSuccess?: boolean; allowAddAnother?: boolean;
+function ChildModal({
+  title,
+  fields,
+  initial,
+  onClose,
+  onSubmit,
+  uploadProgress = null,
+  uploadSuccess = false,
+  allowAddAnother = false,
+}: {
+  title: string;
+  fields: FieldSpec[];
+  initial?: Record<string, unknown> | null;
+  onClose: () => void;
+  onSubmit: (values: Record<string, unknown>) => Promise<void>;
+  uploadProgress?: number | null;
+  uploadSuccess?: boolean;
+  allowAddAnother?: boolean;
 }) {
   const [values, setValues] = React.useState<Record<string, unknown>>(() => {
     const seed: Record<string, unknown> = {};
@@ -194,10 +305,12 @@ function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress 
          * row nobody had touched. Normalising at the seed keeps what the control
          * shows and what Save sends the same thing.
          */
-        seed[f.key] = f.type === "date" ? toDateInput(initial[f.key]) : initial[f.key];
+        seed[f.key] =
+          f.type === "date" ? toDateInput(initial[f.key]) : initial[f.key];
       } else if (!initial && f.systemGenerated) {
         seed[f.key] = "Assigned on save";
-      } else if (!initial && f.defaultValue !== undefined) seed[f.key] = f.defaultValue;
+      } else if (!initial && f.defaultValue !== undefined)
+        seed[f.key] = f.defaultValue;
     }
     return seed;
   });
@@ -210,16 +323,24 @@ function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress 
   // collection's own onSubmit is what uploads it and links it to the record.
   function pickFile(key: string, f: File | null) {
     setFileError(null);
-    if (!f) { set(key, null); return; }
+    if (!f) {
+      set(key, null);
+      return;
+    }
     const problem = scanFileProblem(f);
-    if (problem) { setFileError(problem); return; }
+    if (problem) {
+      setFileError(problem);
+      return;
+    }
     set(key, f);
   }
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
-    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const submitter = (e.nativeEvent as SubmitEvent)
+      .submitter as HTMLButtonElement | null;
     const keepOpen = allowAddAnother && submitter?.value === "add-another";
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       await onSubmit(values);
       if (keepOpen) {
@@ -234,8 +355,11 @@ function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress 
         return;
       }
       onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
     }
-    catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
 
   // Fields keep their declared order; the headings are inserted where a group
@@ -245,127 +369,204 @@ function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress 
   return (
     <Modal open onClose={onClose} title={title}>
       <form onSubmit={save}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((f) => {
-          const heading = f.group && !seenGroups.has(f.group) ? f.group : null;
-          if (heading) seenGroups.add(f.group as string);
-          const wide = f.type === "textarea" || f.type === "multiselect" || f.type === "file";
-          const cls = `space-y-1 text-sm ${wide ? "sm:col-span-2" : ""} ${f.type === "checkbox" ? "flex items-center gap-2 space-y-0" : ""}`;
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fields.map((f) => {
+            const heading =
+              f.group && !seenGroups.has(f.group) ? f.group : null;
+            if (heading) seenGroups.add(f.group as string);
+            const wide =
+              f.type === "textarea" ||
+              f.type === "multiselect" ||
+              f.type === "file";
+            const cls = `space-y-1 text-sm ${wide ? "sm:col-span-2" : ""} ${f.type === "checkbox" ? "flex items-center gap-2 space-y-0" : ""}`;
 
-          // File pickers bring their own label and span the width; render one
-          // before the generic <label> branch, like checkbox / multiselect.
-          if (f.type === "file") {
-            return (
-              <React.Fragment key={f.key}>
-                {heading && <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>}
-                <div className="sm:col-span-2">
-                  <FileDrop
-                    label={f.label}
-                    file={(values[f.key] as File | null) ?? null}
-                    onPick={(file) => pickFile(f.key, file)}
-                    accept={SCAN_ACCEPT}
-                    disabled={busy}
-                    error={fileError}
-                    uploadProgress={values[f.key] instanceof File ? uploadProgress : null}
-                    uploadSuccess={uploadSuccess && values[f.key] instanceof File}
-                    hint={f.hint}
-                  />
-                </div>
-              </React.Fragment>
-            );
-          }
-
-          /*
-           * Checkboxes and multiselects bring their OWN labels, so neither may
-           * sit inside this grid's generic `<label>`.
-           *
-           * `Checkbox` renders a `<label htmlFor>` internally. Nesting that in
-           * another label is invalid, and the accessible name computed from the
-           * pair is not the field's: `getByRole("checkbox", { name: "Active" })`
-           * could not find the control at all. It went unnoticed because the axe
-           * register never opens a modal and the only checkboxes here used to be
-           * two optional flags. `MultiSelect` is the same fault with a
-           * `<fieldset>`, where the outer label would additionally have toggled
-           * whichever box happened to be first.
-           */
-          if (f.type === "checkbox" || f.type === "multiselect") {
-            return (
-              <React.Fragment key={f.key}>
-                {heading && <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>}
-                <div className={cls}>
-                  {f.type === "checkbox" ? (
-                    <Checkbox checked={!!values[f.key]} onCheckedChange={(v) => set(f.key, v)} label={f.label} hint={f.hint} />
-                  ) : (
-                    <>
-                      <MultiSelect
-                        label={f.label}
-                        value={Array.isArray(values[f.key]) ? (values[f.key] as string[]) : []}
-                        options={f.options || []}
-                        onChange={(next) => set(f.key, next)}
-                      />
-                      {f.hint && <span className="micro text-muted-foreground">{f.hint}</span>}
-                    </>
+            // File pickers bring their own label and span the width; render one
+            // before the generic <label> branch, like checkbox / multiselect.
+            if (f.type === "file") {
+              return (
+                <React.Fragment key={f.key}>
+                  {heading && (
+                    <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">
+                      {heading}
+                    </h4>
                   )}
-                </div>
+                  <div className="sm:col-span-2">
+                    <FileDrop
+                      label={f.label}
+                      file={(values[f.key] as File | null) ?? null}
+                      onPick={(file) => pickFile(f.key, file)}
+                      accept={SCAN_ACCEPT}
+                      disabled={busy}
+                      error={fileError}
+                      uploadProgress={
+                        values[f.key] instanceof File ? uploadProgress : null
+                      }
+                      uploadSuccess={
+                        uploadSuccess && values[f.key] instanceof File
+                      }
+                      hint={f.hint}
+                    />
+                  </div>
+                </React.Fragment>
+              );
+            }
+
+            /*
+             * Checkboxes and multiselects bring their OWN labels, so neither may
+             * sit inside this grid's generic `<label>`.
+             *
+             * `Checkbox` renders a `<label htmlFor>` internally. Nesting that in
+             * another label is invalid, and the accessible name computed from the
+             * pair is not the field's: `getByRole("checkbox", { name: "Active" })`
+             * could not find the control at all. It went unnoticed because the axe
+             * register never opens a modal and the only checkboxes here used to be
+             * two optional flags. `MultiSelect` is the same fault with a
+             * `<fieldset>`, where the outer label would additionally have toggled
+             * whichever box happened to be first.
+             */
+            if (f.type === "checkbox" || f.type === "multiselect") {
+              return (
+                <React.Fragment key={f.key}>
+                  {heading && (
+                    <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">
+                      {heading}
+                    </h4>
+                  )}
+                  <div className={cls}>
+                    {f.type === "checkbox" ? (
+                      <Checkbox
+                        checked={!!values[f.key]}
+                        onCheckedChange={(v) => set(f.key, v)}
+                        label={f.label}
+                        hint={f.hint}
+                      />
+                    ) : (
+                      <>
+                        <MultiSelect
+                          label={f.label}
+                          value={
+                            Array.isArray(values[f.key])
+                              ? (values[f.key] as string[])
+                              : []
+                          }
+                          options={f.options || []}
+                          onChange={(next) => set(f.key, next)}
+                        />
+                        {f.hint && (
+                          <span className="micro text-muted-foreground">
+                            {f.hint}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </React.Fragment>
+              );
+            }
+
+            return (
+              <React.Fragment key={f.key}>
+                {heading && (
+                  <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">
+                    {heading}
+                  </h4>
+                )}
+                <label className={cls}>
+                  <span className="font-medium text-foreground">{f.label}</span>
+                  {f.type === "country" ? (
+                    <SmartCountryPicker
+                      value={(values[f.key] as string) || ""}
+                      onChange={(c) => set(f.key, c)}
+                      label={f.label}
+                    />
+                  ) : f.type === "select" ? (
+                    <Select
+                      value={(values[f.key] as string) || ""}
+                      onChange={(e) => set(f.key, e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(f.options || []).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : f.type === "textarea" ? (
+                    <textarea
+                      className="min-h-20 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                      value={(values[f.key] as string) ?? ""}
+                      placeholder={f.placeholder}
+                      onChange={(e) => set(f.key, e.target.value)}
+                    />
+                  ) : f.type === "date" ? (
+                    <DateField
+                      value={(values[f.key] as string) || ""}
+                      placeholder={f.placeholder}
+                      onChange={(iso) => set(f.key, iso)}
+                    />
+                  ) : (
+                    <Input
+                      type={
+                        f.type === "number"
+                          ? "number"
+                          : f.type === "email"
+                            ? "email"
+                            : "text"
+                      }
+                      value={(values[f.key] as string) ?? ""}
+                      placeholder={f.placeholder}
+                      readOnly={f.systemGenerated}
+                      className={
+                        f.systemGenerated
+                          ? "bg-muted text-muted-foreground"
+                          : undefined
+                      }
+                      onChange={(e) => set(f.key, e.target.value)}
+                    />
+                  )}
+                  {f.hint && (
+                    <span className="micro text-muted-foreground">
+                      {f.hint}
+                    </span>
+                  )}
+                </label>
               </React.Fragment>
             );
-          }
-
-          return (
-            <React.Fragment key={f.key}>
-              {heading && (
-                <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>
-              )}
-              <label className={cls}>
-                <span className="font-medium text-foreground">{f.label}</span>
-                {f.type === "country" ? (
-                  <SmartCountryPicker value={(values[f.key] as string) || ""} onChange={(c) => set(f.key, c)} label={f.label} />
-                ) : f.type === "select" ? (
-                  <Select value={(values[f.key] as string) || ""} onChange={(e) => set(f.key, e.target.value)}>
-                    <option value="">—</option>
-                    {(f.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
-                ) : f.type === "textarea" ? (
-                  <textarea
-                    className="min-h-20 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                    value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
-                    onChange={(e) => set(f.key, e.target.value)}
-                  />
-                ) : f.type === "date" ? (
-                  <DateField value={(values[f.key] as string) || ""} placeholder={f.placeholder} onChange={(iso) => set(f.key, iso)} />
-                ) : (
-                  <Input
-                    type={f.type === "number" ? "number" : f.type === "email" ? "email" : "text"}
-                    value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
-                    readOnly={f.systemGenerated}
-                    className={f.systemGenerated ? "bg-muted text-muted-foreground" : undefined}
-                    onChange={(e) => set(f.key, e.target.value)}
-                  />
-                )}
-                {f.hint && <span className="micro text-muted-foreground">{f.hint}</span>}
-              </label>
-            </React.Fragment>
-          );
-        })}
-      </div>
-      {error && <div className="mt-3"><ErrorState message={error} /></div>}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        {allowAddAnother && (
-          <Button type="submit" variant="ghost" name="submitIntent" value="add-another" disabled={busy}>
-            Save & add another
-          </Button>
-        )}
-        <div className="ml-auto flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={busy}>Save</Button>
+          })}
         </div>
-      </div>
+        {error && (
+          <div className="mt-3">
+            <ErrorState message={error} />
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          {allowAddAnother && (
+            <Button
+              type="submit"
+              variant="ghost"
+              name="submitIntent"
+              value="add-another"
+              disabled={busy}
+            >
+              Save & add another
+            </Button>
+          )}
+          <div className="ml-auto flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={busy}>
+              Save
+            </Button>
+          </div>
+        </div>
       </form>
     </Modal>
   );
 }
 
-const opts = (xs: readonly string[]) => xs.map((v) => ({ value: v, label: enumLabel(v) }));
+const opts = (xs: readonly string[]) =>
+  xs.map((v) => ({ value: v, label: enumLabel(v) }));
 
 /* ── Field specs per collection ────────────────────────────────────────────── */
 
@@ -383,7 +584,11 @@ const opts = (xs: readonly string[]) => xs.map((v) => ({ value: v, label: enumLa
 type Lookups = {
   entities: { entity_id: string; code: string; legal_name: string }[];
   employees: { employee_id: string; full_name?: string | null }[];
-  users: { user_id: string; full_name?: string | null; email?: string | null }[];
+  users: {
+    user_id: string;
+    full_name?: string | null;
+    email?: string | null;
+  }[];
   jurisdictions: api.TaxJurisdiction[];
   clients: { client_id: string; name: string }[];
   suppliers: { supplier_id: string; name: string }[];
@@ -391,11 +596,20 @@ type Lookups = {
 };
 
 const EMPTY_LOOKUPS: Lookups = {
-  entities: [], employees: [], users: [], jurisdictions: [], clients: [], suppliers: [], establishments: [],
+  entities: [],
+  employees: [],
+  users: [],
+  jurisdictions: [],
+  clients: [],
+  suppliers: [],
+  establishments: [],
 };
 
-const nameOpts = <T,>(rows: T[], id: (r: T) => string, label: (r: T) => string) =>
-  rows.map((r) => ({ value: id(r), label: label(r) }));
+const nameOpts = <T,>(
+  rows: T[],
+  id: (r: T) => string,
+  label: (r: T) => string,
+) => rows.map((r) => ({ value: id(r), label: label(r) }));
 
 /**
  * People: shareholders, directors, officers, signatories, UBOs.
@@ -407,58 +621,146 @@ const nameOpts = <T,>(rows: T[], id: (r: T) => string, label: (r: T) => string) 
  * that by being rejected.
  */
 const personFields = (lk: Lookups): FieldSpec[] => [
-  { key: "role", label: "Role", type: "select", options: opts(entityCommon.PERSON_ROLES), group: "Who" },
-  { key: "holder_type", label: "Holder type", type: "select", options: opts(entityCommon.HOLDER_TYPES), hint: "A shareholder can be a company." },
+  {
+    key: "role",
+    label: "Role",
+    type: "select",
+    options: opts(entityCommon.PERSON_ROLES),
+    group: "Who",
+  },
+  {
+    key: "holder_type",
+    label: "Holder type",
+    type: "select",
+    options: opts(entityCommon.HOLDER_TYPES),
+    hint: "A shareholder can be a company.",
+  },
   { key: "full_name", label: "Full name" },
   { key: "title", label: "Title", placeholder: "Directeur Général" },
   { key: "email", label: "Email", type: "email" },
   { key: "phone", label: "Phone", placeholder: "+237690000000" },
 
-  { key: "date_of_birth", label: "Date of birth", type: "date", hint: "Natural persons only.", group: "Identity (AML/KYC)" },
+  {
+    key: "date_of_birth",
+    label: "Date of birth",
+    type: "date",
+    hint: "Natural persons only.",
+    group: "Identity (AML/KYC)",
+  },
   { key: "nationality", label: "Nationality", type: "country" },
-  { key: "country_of_residence", label: "Country of residence", type: "country", hint: "Drives which sanctions and tax-residency checks apply." },
+  {
+    key: "country_of_residence",
+    label: "Country of residence",
+    type: "country",
+    hint: "Drives which sanctions and tax-residency checks apply.",
+  },
   { key: "id_type", label: "ID type", placeholder: "PASSPORT / CNI" },
   { key: "id_number", label: "ID number" },
   { key: "is_pep", label: "Politically exposed", type: "checkbox" },
 
-  { key: "company_registration_number", label: "Company reg. number", hint: "Corporate holders only.", group: "Corporate holder" },
+  {
+    key: "company_registration_number",
+    label: "Company reg. number",
+    hint: "Corporate holders only.",
+    group: "Corporate holder",
+  },
   { key: "company_country", label: "Company country", type: "country" },
   {
-    key: "holder_entity_id", label: "Held by one of our entities", type: "select",
-    options: nameOpts(lk.entities, (e) => e.entity_id, (e) => `${e.code} — ${e.legal_name}`),
+    key: "holder_entity_id",
+    label: "Held by one of our entities",
+    type: "select",
+    options: nameOpts(
+      lk.entities,
+      (e) => e.entity_id,
+      (e) => `${e.code} — ${e.legal_name}`,
+    ),
     hint: "For an intra-group holding. The cap table shows this as a code beside the holder.",
   },
 
-  { key: "share_class", label: "Share class", placeholder: "ORDINARY", group: "Shareholding" },
-  { key: "share_count", label: "Number of shares", type: "number" },
-  { key: "share_nominal_value", label: "Nominal value per share", type: "number" },
-  { key: "ownership_percent", label: "Ownership %", type: "number" },
-  { key: "voting_percent", label: "Voting %", type: "number", hint: "Differs from ownership where a class carries extra votes." },
-
   {
-    key: "signature_limit_amount", label: "Signature limit", type: "number",
-    hint: "The most this person may commit alone.", group: "Authority and term",
+    key: "share_class",
+    label: "Share class",
+    placeholder: "ORDINARY",
+    group: "Shareholding",
   },
-  { key: "signature_limit_currency", label: "Limit currency", placeholder: "XAF" },
-  { key: "effective_from", label: "Held / appointed from", type: "date" },
-  { key: "effective_to", label: "Until", type: "date", hint: "Leave blank for a current holding or mandate." },
+  { key: "share_count", label: "Number of shares", type: "number" },
+  {
+    key: "share_nominal_value",
+    label: "Nominal value per share",
+    type: "number",
+  },
+  { key: "ownership_percent", label: "Ownership %", type: "number" },
+  {
+    key: "voting_percent",
+    label: "Voting %",
+    type: "number",
+    hint: "Differs from ownership where a class carries extra votes.",
+  },
 
   {
-    key: "employee_id", label: "Is also an employee", type: "select",
-    options: nameOpts(lk.employees, (e) => e.employee_id, (e) => e.full_name || e.employee_id),
+    key: "signature_limit_amount",
+    label: "Signature limit",
+    type: "number",
+    hint: "The most this person may commit alone.",
+    group: "Authority and term",
+  },
+  {
+    key: "signature_limit_currency",
+    label: "Limit currency",
+    placeholder: "XAF",
+  },
+  { key: "effective_from", label: "Held / appointed from", type: "date" },
+  {
+    key: "effective_to",
+    label: "Until",
+    type: "date",
+    hint: "Leave blank for a current holding or mandate.",
+  },
+
+  {
+    key: "employee_id",
+    label: "Is also an employee",
+    type: "select",
+    options: nameOpts(
+      lk.employees,
+      (e) => e.employee_id,
+      (e) => e.full_name || e.employee_id,
+    ),
     group: "Also on file as",
   },
   {
-    key: "client_id", label: "Is also a client", type: "select",
-    options: nameOpts(lk.clients, (c) => c.client_id, (c) => c.name),
+    key: "client_id",
+    label: "Is also a client",
+    type: "select",
+    options: nameOpts(
+      lk.clients,
+      (c) => c.client_id,
+      (c) => c.name,
+    ),
     hint: "A director who is also a counterparty — a related-party disclosure.",
   },
   {
-    key: "supplier_id", label: "Is also a supplier", type: "select",
-    options: nameOpts(lk.suppliers, (s) => s.supplier_id, (s) => s.name),
+    key: "supplier_id",
+    label: "Is also a supplier",
+    type: "select",
+    options: nameOpts(
+      lk.suppliers,
+      (s) => s.supplier_id,
+      (s) => s.name,
+    ),
   },
-  { key: "is_primary_contact", label: "Primary contact for the entity", type: "checkbox" },
-  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "Clear this to retire a mandate without deleting its history." },
+  {
+    key: "is_primary_contact",
+    label: "Primary contact for the entity",
+    type: "checkbox",
+  },
+  {
+    key: "is_active",
+    label: "Active",
+    type: "checkbox",
+    defaultValue: true,
+    hint: "Clear this to retire a mandate without deleting its history.",
+  },
   { key: "notes", label: "Notes", type: "textarea" },
 ];
 
@@ -468,18 +770,36 @@ const contactFields = (): FieldSpec[] => [
   { key: "email", label: "Email", type: "email" },
   { key: "phone", label: "Phone" },
   {
-    key: "role_tags", label: "Departments", type: "multiselect",
+    key: "role_tags",
+    label: "Departments",
+    type: "multiselect",
     options: opts(entityCommon.CONTACT_ROLE_TAGS),
-    hint: "What this contact is for. Nothing else made this section's \"departmental contact points\" real.",
+    hint: 'What this contact is for. Nothing else made this section\'s "departmental contact points" real.',
   },
-  { key: "language", label: "Language", placeholder: "fr", hint: "Two-letter code — what to write to them in." },
-  { key: "timezone", label: "Timezone", placeholder: "Africa/Douala", hint: "So a call is not scheduled at 3 a.m. their time." },
+  {
+    key: "language",
+    label: "Language",
+    placeholder: "fr",
+    hint: "Two-letter code — what to write to them in.",
+  },
+  {
+    key: "timezone",
+    label: "Timezone",
+    placeholder: "Africa/Douala",
+    hint: "So a call is not scheduled at 3 a.m. their time.",
+  },
   { key: "is_primary", label: "Primary contact", type: "checkbox" },
   { key: "is_active", label: "Active", type: "checkbox", defaultValue: true },
 ];
 
 const addressFields = (): FieldSpec[] => [
-  { key: "type", label: "Type", type: "select", options: opts(entityCommon.ADDRESS_TYPES), hint: "REGISTERED is what the letterhead prints." },
+  {
+    key: "type",
+    label: "Type",
+    type: "select",
+    options: opts(entityCommon.ADDRESS_TYPES),
+    hint: "REGISTERED is what the letterhead prints.",
+  },
   { key: "line1", label: "Address line 1" },
   { key: "line2", label: "Address line 2" },
   { key: "city", label: "City" },
@@ -488,43 +808,116 @@ const addressFields = (): FieldSpec[] => [
   { key: "country_code", label: "Country", type: "country" },
   { key: "po_box", label: "PO box" },
   { key: "is_primary", label: "Primary", type: "checkbox" },
-  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "An old office stays on file rather than being deleted." },
+  {
+    key: "is_active",
+    label: "Active",
+    type: "checkbox",
+    defaultValue: true,
+    hint: "An old office stays on file rather than being deleted.",
+  },
 ];
 
 const registrationFields = (): FieldSpec[] => [
   { key: "country_code", label: "Country", type: "country" },
-  { key: "kind", label: "Type", placeholder: "NIU / RCCM / VAT / EORI", hint: "Whatever the jurisdiction issues." },
+  {
+    key: "kind",
+    label: "Type",
+    placeholder: "NIU / RCCM / VAT / EORI",
+    hint: "Whatever the jurisdiction issues.",
+  },
   { key: "number", label: "Number" },
   { key: "issuing_authority", label: "Issuing authority" },
   { key: "issued_on", label: "Issued on", type: "date" },
   { key: "expires_on", label: "Expires on", type: "date" },
   { key: "is_primary", label: "Primary for this country", type: "checkbox" },
-  { key: "notes", label: "Notes", type: "textarea", hint: "Where the original is filed, what the renewal needs." },
+  {
+    key: "notes",
+    label: "Notes",
+    type: "textarea",
+    hint: "Where the original is filed, what the renewal needs.",
+  },
 ];
 
 const taxRegistrationFields = (lk: Lookups): FieldSpec[] => [
-  { key: "country_code", label: "Country", type: "country", hint: "Where this registration was issued." },
   {
-    key: "jurisdiction_id", label: "Tax jurisdiction", type: "select",
-    options: nameOpts(lk.jurisdictions, (j) => j.jurisdiction_id, (j) => `${j.name}${j.country_code ? ` (${j.country_code})` : ""}`),
+    key: "country_code",
+    label: "Country",
+    type: "country",
+    hint: "Where this registration was issued.",
+  },
+  {
+    key: "jurisdiction_id",
+    label: "Tax jurisdiction",
+    type: "select",
+    options: nameOpts(
+      lk.jurisdictions,
+      (j) => j.jurisdiction_id,
+      (j) => `${j.name}${j.country_code ? ` (${j.country_code})` : ""}`,
+    ),
     hint: "Links this registration to its rate card. The table's jurisdiction column reads from it.",
   },
-  { key: "tax_kind", label: "Tax", type: "select", options: opts(["VAT", "INCOME", "WHT", "PAYROLL", "CUSTOMS", "LOCAL", "OTHER"]) },
+  {
+    key: "tax_kind",
+    label: "Tax",
+    type: "select",
+    options: opts([
+      "VAT",
+      "INCOME",
+      "WHT",
+      "PAYROLL",
+      "CUSTOMS",
+      "LOCAL",
+      "OTHER",
+    ]),
+  },
   { key: "tax_number", label: "Tax number", placeholder: "FR12345678901" },
   { key: "regime", label: "Regime", placeholder: "RÉEL / NORMAL / SIMPLIFIÉ" },
-  { key: "filing_frequency", label: "Filing frequency", type: "select", options: opts(["MONTHLY", "QUARTERLY", "BIMONTHLY", "ANNUAL", "ON_EVENT"]) },
-  { key: "filing_due_day", label: "Filing due day", type: "number", hint: "Day of the month, 1–31. Needs a frequency to attach to." },
+  {
+    key: "filing_frequency",
+    label: "Filing frequency",
+    type: "select",
+    options: opts(["MONTHLY", "QUARTERLY", "BIMONTHLY", "ANNUAL", "ON_EVENT"]),
+  },
+  {
+    key: "filing_due_day",
+    label: "Filing due day",
+    type: "number",
+    hint: "Day of the month, 1–31. Needs a frequency to attach to.",
+  },
   { key: "currency", label: "Filing currency", placeholder: "XAF" },
   { key: "registered_on", label: "Registered on", type: "date" },
-  { key: "deregistered_on", label: "Deregistered on", type: "date", hint: "Leave blank while it is live." },
-  { key: "filing_portal_url", label: "Filing portal", placeholder: "https://…" },
   {
-    key: "responsible_user_id", label: "Responsible", type: "select",
-    options: nameOpts(lk.users, (u) => u.user_id, (u) => u.full_name || u.email || u.user_id),
+    key: "deregistered_on",
+    label: "Deregistered on",
+    type: "date",
+    hint: "Leave blank while it is live.",
+  },
+  {
+    key: "filing_portal_url",
+    label: "Filing portal",
+    placeholder: "https://…",
+  },
+  {
+    key: "responsible_user_id",
+    label: "Responsible",
+    type: "select",
+    options: nameOpts(
+      lk.users,
+      (u) => u.user_id,
+      (u) => u.full_name || u.email || u.user_id,
+    ),
     hint: "Who chases this filing. Without a name, a missed deadline belongs to nobody.",
   },
-  { key: "is_withholding_agent", label: "We withhold tax here", type: "checkbox" },
-  { key: "reverse_charge_applies", label: "Reverse charge applies", type: "checkbox" },
+  {
+    key: "is_withholding_agent",
+    label: "We withhold tax here",
+    type: "checkbox",
+  },
+  {
+    key: "reverse_charge_applies",
+    label: "Reverse charge applies",
+    type: "checkbox",
+  },
   { key: "is_primary", label: "Primary for this country", type: "checkbox" },
   { key: "is_active", label: "Active", type: "checkbox", defaultValue: true },
   { key: "notes", label: "Notes", type: "textarea" },
@@ -533,21 +926,42 @@ const taxRegistrationFields = (lk: Lookups): FieldSpec[] => [
 const establishmentFields = (lk: Lookups): FieldSpec[] => [
   { key: "name", label: "Name" },
   { key: "code", label: "Code" },
-  { key: "kind", label: "Kind", type: "select", options: opts(entityCommon.ESTABLISHMENT_KINDS) },
+  {
+    key: "kind",
+    label: "Kind",
+    type: "select",
+    options: opts(entityCommon.ESTABLISHMENT_KINDS),
+  },
   { key: "country_code", label: "Country", type: "country" },
   { key: "city", label: "City" },
   { key: "address_line", label: "Address" },
-  { key: "tax_office_ref", label: "Tax office reference", hint: "SIRET, centre des impôts…" },
+  {
+    key: "tax_office_ref",
+    label: "Tax office reference",
+    hint: "SIRET, centre des impôts…",
+  },
   { key: "registration_ref", label: "Registration reference" },
   { key: "customs_office", label: "Customs office" },
   {
-    key: "manager_employee_id", label: "Site manager", type: "select",
-    options: nameOpts(lk.employees, (e) => e.employee_id, (e) => e.full_name || e.employee_id),
+    key: "manager_employee_id",
+    label: "Site manager",
+    type: "select",
+    options: nameOpts(
+      lk.employees,
+      (e) => e.employee_id,
+      (e) => e.full_name || e.employee_id,
+    ),
     hint: "Who runs it. A site with no named manager is a site nobody is answerable for.",
   },
   { key: "opened_on", label: "Opened on", type: "date" },
   { key: "closed_on", label: "Closed on", type: "date" },
-  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "A closed site stays on file — old documents still reference it." },
+  {
+    key: "is_active",
+    label: "Active",
+    type: "checkbox",
+    defaultValue: true,
+    hint: "A closed site stays on file — old documents still reference it.",
+  },
 ];
 
 /**
@@ -558,14 +972,29 @@ const establishmentFields = (lk: Lookups): FieldSpec[] => [
  * with the dossier: six extra requests on every entity view, for pickers most
  * visits never open, is not a trade worth making.
  */
-function useChildFields(seg: api.EntityCollection, establishments: api.EntityEstablishment[]) {
+function useChildFields(
+  seg: api.EntityCollection,
+  establishments: api.EntityEstablishment[],
+) {
   const needs = (...segs: api.EntityCollection[]) => segs.includes(seg);
-  const entities = useList<Lookups["entities"][number]>(needs("people") ? "/entities" : null);
-  const employees = useList<Lookups["employees"][number]>(needs("people", "establishments") ? "/employees" : null);
-  const users = useList<Lookups["users"][number]>(needs("tax-registrations") ? "/users" : null);
-  const jurisdictions = useList<api.TaxJurisdiction>(needs("tax-registrations") ? "/tax-jurisdictions" : null);
-  const clients = useList<Lookups["clients"][number]>(needs("people") ? "/clients" : null);
-  const suppliers = useList<Lookups["suppliers"][number]>(needs("people") ? "/suppliers" : null);
+  const entities = useList<Lookups["entities"][number]>(
+    needs("people") ? "/entities" : null,
+  );
+  const employees = useList<Lookups["employees"][number]>(
+    needs("people", "establishments") ? "/employees" : null,
+  );
+  const users = useList<Lookups["users"][number]>(
+    needs("tax-registrations") ? "/users" : null,
+  );
+  const jurisdictions = useList<api.TaxJurisdiction>(
+    needs("tax-registrations") ? "/tax-jurisdictions" : null,
+  );
+  const clients = useList<Lookups["clients"][number]>(
+    needs("people") ? "/clients" : null,
+  );
+  const suppliers = useList<Lookups["suppliers"][number]>(
+    needs("people") ? "/suppliers" : null,
+  );
 
   return React.useMemo(() => {
     const lk: Lookups = {
@@ -579,21 +1008,44 @@ function useChildFields(seg: api.EntityCollection, establishments: api.EntityEst
       establishments,
     };
     switch (seg) {
-      case "people": return personFields(lk);
-      case "contacts": return contactFields();
-      case "addresses": return addressFields();
-      case "registrations": return registrationFields();
-      case "tax-registrations": return taxRegistrationFields(lk);
-      case "establishments": return establishmentFields(lk);
+      case "people":
+        return personFields(lk);
+      case "contacts":
+        return contactFields();
+      case "addresses":
+        return addressFields();
+      case "registrations":
+        return registrationFields();
+      case "tax-registrations":
+        return taxRegistrationFields(lk);
+      case "establishments":
+        return establishmentFields(lk);
       // Documents build their own list: it depends on the chosen document TYPE,
       // which has to be loaded before the modal can be assembled. See DocumentsTab.
-      default: return [];
+      default:
+        return [];
     }
-  }, [seg, establishments, entities.rows, employees.rows, users.rows, jurisdictions.rows, clients.rows, suppliers.rows]);
+  }, [
+    seg,
+    establishments,
+    entities.rows,
+    employees.rows,
+    users.rows,
+    jurisdictions.rows,
+    clients.rows,
+    suppliers.rows,
+  ]);
 }
 
 /** A nested add/edit modal that has loaded whatever pickers its collection needs. */
-function EntityChildModal({ seg, title, row, establishments, onClose, onSubmit }: {
+function EntityChildModal({
+  seg,
+  title,
+  row,
+  establishments,
+  onClose,
+  onSubmit,
+}: {
   seg: api.EntityCollection;
   title: string;
   row?: Record<string, unknown> | null;
@@ -602,12 +1054,25 @@ function EntityChildModal({ seg, title, row, establishments, onClose, onSubmit }
   onSubmit: (values: Record<string, unknown>) => Promise<void>;
 }) {
   const fields = useChildFields(seg, establishments);
-  return <ChildModal title={title} fields={fields} initial={row} onClose={onClose} onSubmit={onSubmit} />;
+  return (
+    <ChildModal
+      title={title}
+      fields={fields}
+      initial={row}
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />
+  );
 }
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
-export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h2" }: {
+export function EntityDossier({
+  entityId,
+  onEdit,
+  onChanged,
+  titleAs: Title = "h2",
+}: {
   entityId: string;
   /** Opens the entity's edit form — owned by the host screen (the master–detail
    *  list, or the deep-link page), so there is one form reachable from both. */
@@ -629,33 +1094,54 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
 }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const d = useResource<api.Entity360>(() => api.entityDossier(entityId), [entityId]);
+  const d = useResource<api.Entity360>(
+    () => api.entityDossier(entityId),
+    [entityId],
+  );
   const [tab, setTab] = React.useState<Tab>("Overview");
   // The field list is no longer carried in this state: it depends on lookups
   // fetched when the modal opens, so only the collection, the title and the row
   // being edited live here.
-  const [editing, setEditing] = React.useState<null | { seg: api.EntityCollection; title: string; row?: Record<string, unknown> | null }>(null);
+  const [editing, setEditing] = React.useState<null | {
+    seg: api.EntityCollection;
+    title: string;
+    row?: Record<string, unknown> | null;
+  }>(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
+  const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
   // Blank means "today", which is what the /360 bundle already carries — so the
   // common case costs no extra request and only a deliberate date fetches.
   const [capAsOf, setCapAsOf] = React.useState("");
   const [renewalAsOf, setRenewalAsOf] = React.useState("");
   const datedCap = useResource<api.CapTable | null>(
-    () => (capAsOf ? api.entityCapTable(entityId, capAsOf) : Promise.resolve(null)),
+    () =>
+      capAsOf ? api.entityCapTable(entityId, capAsOf) : Promise.resolve(null),
     [entityId, capAsOf],
   );
   const datedRenewals = useResource<api.Renewals | null>(
-    () => (renewalAsOf ? api.entityRenewals(entityId, renewalAsOf) : Promise.resolve(null)),
+    () =>
+      renewalAsOf
+        ? api.entityRenewals(entityId, renewalAsOf)
+        : Promise.resolve(null),
     [entityId, renewalAsOf],
   );
 
-  const reload = () => { d.reload(); onChanged?.(); };
+  const reload = () => {
+    d.reload();
+    onChanged?.();
+  };
 
-  async function saveChild(seg: api.EntityCollection, values: Record<string, unknown>, childId?: string) {
+  async function saveChild(
+    seg: api.EntityCollection,
+    values: Record<string, unknown>,
+    childId?: string,
+  ) {
     // Empty strings mean "not filled in", not "set to empty" — the API's shared
     // schemas normalise them away, and sending them would write blanks.
-    const body = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined));
+    const body = Object.fromEntries(
+      Object.entries(values).filter(([, v]) => v !== "" && v !== undefined),
+    );
     if (childId) await api.updateEntityChild(entityId, seg, childId, body);
     else await api.addEntityChild(entityId, seg, body);
     toast.success("Saved.");
@@ -667,16 +1153,35 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
       await api.deleteEntityChild(entityId, seg, childId);
       toast.success("Removed.");
       reload();
-    } catch (e) { reportActionError(e); }
+    } catch (e) {
+      reportActionError(e);
+    }
   }
 
   if (d.loading) return <LoadingRow label="Loading entity…" />;
   if (d.error || !d.data) {
-    return <ErrorState message={d.error ? errMsg(d.error) : "Entity not found."} />;
+    return (
+      <ErrorState message={d.error ? errMsg(d.error) : "Entity not found."} />
+    );
   }
 
-  const { entity: e, structure, people, contacts, addresses, registrations, establishments, cap_table: cap, usage, readiness, treasury_accounts: treasury, expiring_registrations: expiring, can_see_governance: gov } = d.data;
-  const status = e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
+  const {
+    entity: e,
+    structure,
+    people,
+    contacts,
+    addresses,
+    registrations,
+    establishments,
+    cap_table: cap,
+    usage,
+    readiness,
+    treasury_accounts: treasury,
+    expiring_registrations: expiring,
+    can_see_governance: gov,
+  } = d.data;
+  const status =
+    e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
   const currency = e.default_currency || "XAF";
   const shareholders = people.filter((p) => p.role === "SHAREHOLDER");
   const officers = people.filter((p) => p.role !== "SHAREHOLDER");
@@ -693,11 +1198,17 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Title className="truncate text-lg font-semibold text-foreground">{e.legal_name}</Title>
-              <Pill tone={LIFECYCLE_TONE[status] || "mute"}>{enumLabel(status)}</Pill>
+              <Title className="truncate text-lg font-semibold text-foreground">
+                {e.legal_name}
+              </Title>
+              <Pill tone={LIFECYCLE_TONE[status] || "mute"}>
+                {enumLabel(status)}
+              </Pill>
               {e.legal_form && <Pill tone="mute">{e.legal_form}</Pill>}
               {e.country_code && <Pill tone="mute">{e.country_code}</Pill>}
-              {e.accounting_framework && <Pill tone="blue">{enumLabel(e.accounting_framework)}</Pill>}
+              {e.accounting_framework && (
+                <Pill tone="blue">{enumLabel(e.accounting_framework)}</Pill>
+              )}
               {structure.is_group_parent && <Pill tone="ok">Group parent</Pill>}
             </div>
             <p className="mt-1 micro">
@@ -706,8 +1217,16 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => setStatusOpen(true)}>Change status</Button>
-            <Button size="sm" onClick={onEdit}>Edit details</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setStatusOpen(true)}
+            >
+              Change status
+            </Button>
+            <Button size="sm" onClick={onEdit}>
+              Edit details
+            </Button>
           </div>
         </div>
       </div>
@@ -717,10 +1236,16 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
       {!readiness.ready && (
         <Callout tone="warn" title="Not yet complete for statutory documents">
           <p className="text-muted-foreground">
-            These are missing before this entity can print a compliant letterhead. Nothing is blocked — you can trade and invoice meanwhile.
+            These are missing before this entity can print a compliant
+            letterhead. Nothing is blocked — you can trade and invoice
+            meanwhile.
           </p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
-            {readiness.missing.map((m) => <li key={m.field}><Pill tone="warn">{m.label}</Pill></li>)}
+            {readiness.missing.map((m) => (
+              <li key={m.field}>
+                <Pill tone="warn">{m.label}</Pill>
+              </li>
+            ))}
           </ul>
         </Callout>
       )}
@@ -730,8 +1255,12 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <ul className="mt-1 space-y-1">
             {expiring.map((x) => (
               <li key={x.registration_id}>
-                <Pill tone={x.expired ? "bad" : "orange"}>{x.expired ? "Expired" : "Expiring"}</Pill>{" "}
-                {x.kind} {x.number ? <span className="num">{x.number}</span> : null} — {dateFmt(x.expires_on)}
+                <Pill tone={x.expired ? "bad" : "orange"}>
+                  {x.expired ? "Expired" : "Expiring"}
+                </Pill>{" "}
+                {x.kind}{" "}
+                {x.number ? <span className="num">{x.number}</span> : null} —{" "}
+                {dateFmt(x.expires_on)}
               </li>
             ))}
           </ul>
@@ -739,17 +1268,29 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
       )}
 
       <KpiRow>
-        <KpiTile label="Shareholders" value={num(gov ? shareholders.length : cap.holder_count)} />
-        <KpiTile label="Ownership recorded" value={`${num(cap.total_percent)}%`} hint={cap.balanced ? "Balanced" : "Check the cap table"} />
+        <KpiTile
+          label="Shareholders"
+          value={num(gov ? shareholders.length : cap.holder_count)}
+        />
+        <KpiTile
+          label="Ownership recorded"
+          value={`${num(cap.total_percent)}%`}
+          hint={cap.balanced ? "Balanced" : "Check the cap table"}
+        />
         <KpiTile label="Employees" value={num(usage.employees)} />
         <KpiTile label="Subsidiaries" value={num(usage.subsidiaries)} />
         <KpiTile label="Journal entries" value={num(usage.journal_entries)} />
       </KpiRow>
 
-      <nav className="flex flex-wrap gap-1 border-b" aria-label="Entity sections">
+      <nav
+        className="flex flex-wrap gap-1 border-b"
+        aria-label="Entity sections"
+      >
         {TABS.map((t) => (
           <button
-            key={t} type="button" onClick={() => setTab(t)}
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
             aria-current={tab === t ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
@@ -760,27 +1301,52 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Section title="About" description="Shown on the entity picker and internal directories.">
-            <p className="text-sm text-muted-foreground">{e.description || "No description yet."}</p>
+          <Section
+            title="About"
+            description="Shown on the entity picker and internal directories."
+          >
+            <p className="text-sm text-muted-foreground">
+              {e.description || "No description yet."}
+            </p>
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Trading name">{e.trading_name}</Detail>
               <Detail label="Industry">{e.industry}</Detail>
               <Detail label="Website">{e.website}</Detail>
-              <Detail label="Headcount">{e.headcount != null ? num(e.headcount) : null}</Detail>
+              <Detail label="Headcount">
+                {e.headcount != null ? num(e.headcount) : null}
+              </Detail>
               <Detail label="Email">{e.email}</Detail>
               <Detail label="Phone">{e.phone}</Detail>
             </dl>
           </Section>
 
-          <Section title="Incorporation" description="The statutory facts printed on documents.">
+          <Section
+            title="Incorporation"
+            description="The statutory facts printed on documents."
+          >
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Legal form">{e.legal_form}</Detail>
-              <Detail label="Incorporated">{e.incorporation_date ? dateFmt(e.incorporation_date) : null}</Detail>
+              <Detail label="Incorporated">
+                {e.incorporation_date ? dateFmt(e.incorporation_date) : null}
+              </Detail>
               <Detail label="Place">{e.incorporation_place}</Detail>
               <Detail label="Country">{e.incorporation_country}</Detail>
-              <Detail label="Share capital">{e.share_capital != null ? money(e.share_capital, e.share_capital_currency || currency) : null}</Detail>
-              <Detail label="Paid up">{e.share_capital_paid_up != null ? money(e.share_capital_paid_up, e.share_capital_currency || currency) : null}</Detail>
-              {e.dissolution_date && <Detail label="Dissolved">{dateFmt(e.dissolution_date)}</Detail>}
+              <Detail label="Share capital">
+                {e.share_capital != null
+                  ? money(e.share_capital, e.share_capital_currency || currency)
+                  : null}
+              </Detail>
+              <Detail label="Paid up">
+                {e.share_capital_paid_up != null
+                  ? money(
+                      e.share_capital_paid_up,
+                      e.share_capital_currency || currency,
+                    )
+                  : null}
+              </Detail>
+              {e.dissolution_date && (
+                <Detail label="Dissolved">{dateFmt(e.dissolution_date)}</Detail>
+              )}
             </dl>
           </Section>
 
@@ -789,37 +1355,116 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             description="What HR, payroll and billing inherit when someone picks this entity."
           >
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              <Detail label="Accounting framework">{e.accounting_framework ? enumLabel(e.accounting_framework) : null}</Detail>
+              <Detail label="Accounting framework">
+                {e.accounting_framework
+                  ? enumLabel(e.accounting_framework)
+                  : null}
+              </Detail>
               <Detail label="Default currency">{e.default_currency}</Detail>
               <Detail label="Payroll country">{e.payroll_country}</Detail>
-              <Detail label="Default language">{e.default_language === "fr" ? "Français" : e.default_language === "en" ? "English" : null}</Detail>
-              <Detail label="Fiscal year starts">{e.fiscal_year_start_month ? new Date(2000, e.fiscal_year_start_month - 1, 1).toLocaleString("en", { month: "long" }) : null}</Detail>
+              <Detail label="Default language">
+                {e.default_language === "fr"
+                  ? "Français"
+                  : e.default_language === "en"
+                    ? "English"
+                    : null}
+              </Detail>
+              <Detail label="Fiscal year starts">
+                {e.fiscal_year_start_month
+                  ? new Date(
+                      2000,
+                      e.fiscal_year_start_month - 1,
+                      1,
+                    ).toLocaleString("en", { month: "long" })
+                  : null}
+              </Detail>
               <Detail label="Document prefix">{e.doc_prefix}</Detail>
-              <Detail label="Numbering resets">{e.numbering_reset ? enumLabel(e.numbering_reset) : null}</Detail>
-              <Detail label="VAT registered">{e.vat_registered == null ? null : e.vat_registered ? "Yes" : "No"}</Detail>
+              {/*
+                Two prefixes, two audiences. `doc_prefix` leads INVOICE numbers
+                and an accountant reads it; this one leads OPERATION-FILE
+                references and a client reads it. They are shown side by side so
+                nobody edits one believing it is the other — the mistake the
+                single-prefix version of this screen invited.
+              */}
+              <Detail label="Operation reference prefix">
+                {e.ops_reference_prefix ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="font-mono">{e.ops_reference_prefix}</span>
+                    <button
+                      type="button"
+                      className="micro underline underline-offset-2 hover:text-foreground"
+                      onClick={() => setOpsPrefixOpen(true)}
+                    >
+                      Change
+                    </button>
+                  </span>
+                ) : null}
+              </Detail>
+              <Detail label="Numbering resets">
+                {e.numbering_reset ? enumLabel(e.numbering_reset) : null}
+              </Detail>
+              <Detail label="VAT registered">
+                {e.vat_registered == null
+                  ? null
+                  : e.vat_registered
+                    ? "Yes"
+                    : "No"}
+              </Detail>
             </dl>
           </Section>
 
-          <Section title="Letterhead" description="What a document header would print today.">
+          <Section
+            title="Letterhead"
+            description="What a document header would print today."
+          >
             <div className="flex items-start gap-3">
-              {e.logo_light_ref
-                ? <img src={e.logo_light_ref} alt="" className="h-12 w-auto rounded border bg-background object-contain p-1" />
-                : <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed micro text-muted-foreground">No logo</div>}
+              {e.logo_light_ref ? (
+                <img
+                  src={e.logo_light_ref}
+                  alt=""
+                  className="h-12 w-auto rounded border bg-background object-contain p-1"
+                />
+              ) : (
+                <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed micro text-muted-foreground">
+                  No logo
+                </div>
+              )}
               <div className="min-w-0 text-sm">
-                <p className="font-medium text-foreground">{e.legal_name}{e.legal_form ? `, ${e.legal_form}` : ""}</p>
-                {e.share_capital != null && <p className="text-muted-foreground">Capital {money(e.share_capital, e.share_capital_currency || currency)}</p>}
+                <p className="font-medium text-foreground">
+                  {e.legal_name}
+                  {e.legal_form ? `, ${e.legal_form}` : ""}
+                </p>
+                {e.share_capital != null && (
+                  <p className="text-muted-foreground">
+                    Capital{" "}
+                    {money(
+                      e.share_capital,
+                      e.share_capital_currency || currency,
+                    )}
+                  </p>
+                )}
                 <p className="text-muted-foreground">
                   {addresses.find((a) => a.type === "REGISTERED")
-                    ? [addresses.find((a) => a.type === "REGISTERED")?.line1, addresses.find((a) => a.type === "REGISTERED")?.city].filter(Boolean).join(", ")
+                    ? [
+                        addresses.find((a) => a.type === "REGISTERED")?.line1,
+                        addresses.find((a) => a.type === "REGISTERED")?.city,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")
                     : e.address || "No registered address"}
                 </p>
                 <p className="num text-muted-foreground">
-                  {registrations.filter((r) => r.number).slice(0, 4).map((r) => `${r.kind} ${r.number}`).join(" · ") || "No registrations"}
+                  {registrations
+                    .filter((r) => r.number)
+                    .slice(0, 4)
+                    .map((r) => `${r.kind} ${r.number}`)
+                    .join(" · ") || "No registrations"}
                 </p>
               </div>
             </div>
             <p className="micro text-muted-foreground">
-              The full letterhead and footer designer, with a live preview, arrives with the documents work.
+              The full letterhead and footer designer, with a live preview,
+              arrives with the documents work.
             </p>
           </Section>
         </div>
@@ -829,23 +1474,72 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <Section
           title="Registrations"
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
-          action={<Button size="sm" onClick={() => setEditing({ seg: "registrations", title: "Add registration" })}>Add registration</Button>}
+          action={
+            <Button
+              size="sm"
+              onClick={() =>
+                setEditing({ seg: "registrations", title: "Add registration" })
+              }
+            >
+              Add registration
+            </Button>
+          }
         >
           <MiniTable
             empty={registrations.length === 0}
-            head={<><Th>Country</Th><Th>Type</Th><Th>Number</Th><Th>Authority</Th><Th>Issued</Th><Th>Expires</Th><Th /></>}
+            head={
+              <>
+                <Th>Country</Th>
+                <Th>Type</Th>
+                <Th>Number</Th>
+                <Th>Authority</Th>
+                <Th>Issued</Th>
+                <Th>Expires</Th>
+                <Th />
+              </>
+            }
           >
             {registrations.map((r) => (
               <tr key={r.registration_id}>
                 <Td>{r.country_code || "—"}</Td>
-                <Td><span className="font-medium text-foreground">{r.kind}</span>{r.is_primary ? <> <Pill tone="ok">Primary</Pill></> : null}</Td>
-                <Td><span className="num">{r.number || "—"}</span></Td>
+                <Td>
+                  <span className="font-medium text-foreground">{r.kind}</span>
+                  {r.is_primary ? (
+                    <>
+                      {" "}
+                      <Pill tone="ok">Primary</Pill>
+                    </>
+                  ) : null}
+                </Td>
+                <Td>
+                  <span className="num">{r.number || "—"}</span>
+                </Td>
                 <Td>{r.issuing_authority || "—"}</Td>
                 <Td>{r.issued_on ? dateFmt(r.issued_on) : "—"}</Td>
                 <Td>{r.expires_on ? dateFmt(r.expires_on) : "—"}</Td>
                 <Td r>
-                  <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "registrations", title: "Edit registration", row: r as unknown as Record<string, unknown> })}>Edit</Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeChild("registrations", r.registration_id)}>Remove</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setEditing({
+                        seg: "registrations",
+                        title: "Edit registration",
+                        row: r as unknown as Record<string, unknown>,
+                      })
+                    }
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      removeChild("registrations", r.registration_id)
+                    }
+                  >
+                    Remove
+                  </Button>
                 </Td>
               </tr>
             ))}
@@ -870,47 +1564,134 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             description="One row per jurisdiction this entity is registered in. Rate cards stay in the Tax module and are shared across entities — what lives here is this entity's own number, regime and filing rhythm."
             action={
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => navigate("/master/tax-jurisdictions")}>Open Tax module →</Button>
-                <Button size="sm" onClick={() => setEditing({ seg: "tax-registrations", title: "Add tax registration", row: { country_code: e.country_code, tax_kind: "VAT" } })}>Add registration</Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate("/master/tax-jurisdictions")}
+                >
+                  Open Tax module →
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({
+                      seg: "tax-registrations",
+                      title: "Add tax registration",
+                      row: { country_code: e.country_code, tax_kind: "VAT" },
+                    })
+                  }
+                >
+                  Add registration
+                </Button>
               </div>
             }
           >
             <MiniTable
               empty={d.data.tax_registrations.length === 0}
-              head={<><Th>Country</Th><Th>Tax</Th><Th>Number</Th><Th>Regime</Th><Th>Filing</Th><Th>Status</Th><Th /></>}
+              head={
+                <>
+                  <Th>Country</Th>
+                  <Th>Tax</Th>
+                  <Th>Number</Th>
+                  <Th>Regime</Th>
+                  <Th>Filing</Th>
+                  <Th>Status</Th>
+                  <Th />
+                </>
+              }
             >
               {d.data.tax_registrations.map((t) => (
                 <tr key={t.tax_registration_id}>
-                  <Td>{t.country_code}{t.jurisdiction_name ? <span className="micro text-muted-foreground"> · {t.jurisdiction_name}</span> : null}</Td>
                   <Td>
-                    <span className="font-medium text-foreground">{t.tax_kind}</span>
-                    {t.is_withholding_agent ? <> <Pill tone="orange">WHT agent</Pill></> : null}
-                    {t.reverse_charge_applies ? <> <Pill tone="blue">Reverse charge</Pill></> : null}
+                    {t.country_code}
+                    {t.jurisdiction_name ? (
+                      <span className="micro text-muted-foreground">
+                        {" "}
+                        · {t.jurisdiction_name}
+                      </span>
+                    ) : null}
                   </Td>
-                  <Td><span className="num">{t.tax_number || "—"}</span></Td>
+                  <Td>
+                    <span className="font-medium text-foreground">
+                      {t.tax_kind}
+                    </span>
+                    {t.is_withholding_agent ? (
+                      <>
+                        {" "}
+                        <Pill tone="orange">WHT agent</Pill>
+                      </>
+                    ) : null}
+                    {t.reverse_charge_applies ? (
+                      <>
+                        {" "}
+                        <Pill tone="blue">Reverse charge</Pill>
+                      </>
+                    ) : null}
+                  </Td>
+                  <Td>
+                    <span className="num">{t.tax_number || "—"}</span>
+                  </Td>
                   <Td>{t.regime || "—"}</Td>
                   <Td>
                     {t.filing_frequency ? enumLabel(t.filing_frequency) : "—"}
-                    {t.filing_due_day ? <span className="micro text-muted-foreground"> · day {t.filing_due_day}</span> : null}
+                    {t.filing_due_day ? (
+                      <span className="micro text-muted-foreground">
+                        {" "}
+                        · day {t.filing_due_day}
+                      </span>
+                    ) : null}
                     {/* A filing rhythm with nobody's name against it is how a
                         deadline passes with everyone assuming someone else had it. */}
-                    {t.responsible_name ? <div className="micro text-muted-foreground">{t.responsible_name}</div> : null}
+                    {t.responsible_name ? (
+                      <div className="micro text-muted-foreground">
+                        {t.responsible_name}
+                      </div>
+                    ) : null}
                   </Td>
                   <Td>
-                    {t.deregistered_on
-                      ? <Pill tone="mute">Ended {dateFmt(t.deregistered_on)}</Pill>
-                      : <Pill tone={t.is_active === false ? "mute" : "ok"}>{t.is_active === false ? "Inactive" : "Active"}</Pill>}
+                    {t.deregistered_on ? (
+                      <Pill tone="mute">
+                        Ended {dateFmt(t.deregistered_on)}
+                      </Pill>
+                    ) : (
+                      <Pill tone={t.is_active === false ? "mute" : "ok"}>
+                        {t.is_active === false ? "Inactive" : "Active"}
+                      </Pill>
+                    )}
                   </Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "tax-registrations", title: "Edit tax registration", row: t as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("tax-registrations", t.tax_registration_id)}>Remove</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "tax-registrations",
+                          title: "Edit tax registration",
+                          row: t as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        removeChild("tax-registrations", t.tax_registration_id)
+                      }
+                    >
+                      Remove
+                    </Button>
                   </Td>
                 </tr>
               ))}
             </MiniTable>
             {d.data.tax_registrations.length === 0 && (
               <Callout tone="info" title="No tax registrations yet">
-                This is what lets one group stay compliant in several countries at once — a Cameroon entity filing TVA monthly and a France subsidiary filing under its own VAT number, each with its own number on its own invoices.
+                This is what lets one group stay compliant in several countries
+                at once — a Cameroon entity filing TVA monthly and a France
+                subsidiary filing under its own VAT number, each with its own
+                number on its own invoices.
               </Callout>
             )}
           </Section>
@@ -921,14 +1702,45 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           >
             <MiniTable
               empty={d.data.tax_obligations.length === 0}
-              head={<><Th>Obligation</Th><Th>Period</Th><Th>Due</Th><Th>Status</Th></>}
+              head={
+                <>
+                  <Th>Obligation</Th>
+                  <Th>Period</Th>
+                  <Th>Due</Th>
+                  <Th>Status</Th>
+                </>
+              }
             >
               {d.data.tax_obligations.map((o) => (
                 <tr key={o.tax_calendar_id}>
-                  <Td><span className="font-medium text-foreground">{enumLabel(o.obligation)}</span>{o.country_code ? <span className="micro text-muted-foreground"> · {o.country_code}</span> : null}</Td>
+                  <Td>
+                    <span className="font-medium text-foreground">
+                      {enumLabel(o.obligation)}
+                    </span>
+                    {o.country_code ? (
+                      <span className="micro text-muted-foreground">
+                        {" "}
+                        · {o.country_code}
+                      </span>
+                    ) : null}
+                  </Td>
                   <Td>{o.period_code || "—"}</Td>
                   <Td>{dateFmt(o.due_on)}</Td>
-                  <Td><Pill tone={o.status === "DONE" ? "ok" : o.status === "LATE" ? "bad" : o.status === "PENDING" ? "warn" : "mute"}>{enumLabel(o.status)}</Pill></Td>
+                  <Td>
+                    <Pill
+                      tone={
+                        o.status === "DONE"
+                          ? "ok"
+                          : o.status === "LATE"
+                            ? "bad"
+                            : o.status === "PENDING"
+                              ? "warn"
+                              : "mute"
+                      }
+                    >
+                      {enumLabel(o.status)}
+                    </Pill>
+                  </Td>
                 </tr>
               ))}
             </MiniTable>
@@ -942,7 +1754,6 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
 
       {tab === "Working calendar" && <WorkingCalendarTab entityId={entityId} />}
 
-
       {tab === "Renewals" && (
         <Section
           title="Renewals"
@@ -954,38 +1765,79 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                   start and the screen never offered one. */}
               <label className="space-y-1 text-sm">
                 <span className="micro text-muted-foreground">As of</span>
-                <Input type="date" value={renewalAsOf} onChange={(ev) => setRenewalAsOf(ev.target.value)} className="w-40" />
+                <Input
+                  type="date"
+                  value={renewalAsOf}
+                  onChange={(ev) => setRenewalAsOf(ev.target.value)}
+                  className="w-40"
+                />
               </label>
-              {renewalAsOf && <Button size="sm" variant="ghost" onClick={() => setRenewalAsOf("")}>Today</Button>}
+              {renewalAsOf && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setRenewalAsOf("")}
+                >
+                  Today
+                </Button>
+              )}
             </div>
           }
         >
-          {datedRenewals.error && <ErrorState message={errMsg(datedRenewals.error)} />}
+          {datedRenewals.error && (
+            <ErrorState message={errMsg(datedRenewals.error)} />
+          )}
           <KpiRow>
             <KpiTile label="Expired" value={num(renewalsView.counts.expired)} />
             <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
-            <KpiTile label="Approaching" value={num(renewalsView.counts.approaching)} />
+            <KpiTile
+              label="Approaching"
+              value={num(renewalsView.counts.approaching)}
+            />
           </KpiRow>
           <MiniTable
             empty={renewalsView.items.length === 0}
-            head={<><Th>Item</Th><Th>Kind</Th><Th>Country</Th><Th>Expires</Th><Th r>Days</Th><Th>State</Th></>}
+            head={
+              <>
+                <Th>Item</Th>
+                <Th>Kind</Th>
+                <Th>Country</Th>
+                <Th>Expires</Th>
+                <Th r>Days</Th>
+                <Th>State</Th>
+              </>
+            }
           >
             {renewalsView.items.map((i) => (
               <tr key={`${i.kind}-${i.id}`}>
-                <Td><span className="font-medium text-foreground">{i.label}</span></Td>
+                <Td>
+                  <span className="font-medium text-foreground">{i.label}</span>
+                </Td>
                 <Td>{enumLabel(i.kind)}</Td>
                 <Td>{i.country_code || "—"}</Td>
                 <Td>{dateFmt(i.expires_on)}</Td>
-                <Td r>{i.days_remaining != null ? num(i.days_remaining) : "—"}</Td>
+                <Td r>
+                  {i.days_remaining != null ? num(i.days_remaining) : "—"}
+                </Td>
                 <Td>
-                  <Pill tone={RENEWAL_TONE[i.state] || "mute"}>{enumLabel(i.state)}</Pill>
-                  {i.severity === "SOFT_BLOCK_RECOMMENDATION" && <> <Pill tone="bad">Act now</Pill></>}
+                  <Pill tone={RENEWAL_TONE[i.state] || "mute"}>
+                    {enumLabel(i.state)}
+                  </Pill>
+                  {i.severity === "SOFT_BLOCK_RECOMMENDATION" && (
+                    <>
+                      {" "}
+                      <Pill tone="bad">Act now</Pill>
+                    </>
+                  )}
                 </Td>
               </tr>
             ))}
           </MiniTable>
           {renewalsView.items.length === 0 && (
-            <EmptyState title="Nothing expiring" hint="Documents and registrations with an expiry date appear here as their deadline approaches." />
+            <EmptyState
+              title="Nothing expiring"
+              hint="Documents and registrations with an expiry date appear here as their deadline approaches."
+            />
           )}
         </Section>
       )}
@@ -994,9 +1846,13 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <div className="space-y-4">
           {!gov && (
             <div className="rounded-lg border p-3">
-              <p className="text-sm text-foreground">Ownership details are hidden</p>
+              <p className="text-sm text-foreground">
+                Ownership details are hidden
+              </p>
               <p className="micro text-muted-foreground">
-                Shareholdings, dates of birth and identity numbers need the entity-admin permission. Roles and names are shown because they are on the public trade register.
+                Shareholdings, dates of birth and identity numbers need the
+                entity-admin permission. Roles and names are shown because they
+                are on the public trade register.
               </p>
             </div>
           )}
@@ -1012,10 +1868,34 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                     accounts were signed" is the question this table is asked. */}
                 <label className="space-y-1 text-sm">
                   <span className="micro text-muted-foreground">As of</span>
-                  <Input type="date" value={capAsOf} onChange={(ev) => setCapAsOf(ev.target.value)} className="w-40" />
+                  <Input
+                    type="date"
+                    value={capAsOf}
+                    onChange={(ev) => setCapAsOf(ev.target.value)}
+                    className="w-40"
+                  />
                 </label>
-                {capAsOf && <Button size="sm" variant="ghost" onClick={() => setCapAsOf("")}>Today</Button>}
-                <Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add shareholder", row: { role: "SHAREHOLDER" } })}>Add shareholder</Button>
+                {capAsOf && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setCapAsOf("")}
+                  >
+                    Today
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setEditing({
+                      seg: "people",
+                      title: "Add shareholder",
+                      row: { role: "SHAREHOLDER" },
+                    })
+                  }
+                >
+                  Add shareholder
+                </Button>
               </div>
             }
           >
@@ -1024,14 +1904,27 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
               <ul className="space-y-1">
                 {capView.findings.map((f, i) => (
                   <li key={i} className="text-sm">
-                    <Pill tone={f.severity === "WARN" ? "warn" : "mute"}>{enumLabel(f.code)}</Pill> <span className="text-muted-foreground">{f.message}</span>
+                    <Pill tone={f.severity === "WARN" ? "warn" : "mute"}>
+                      {enumLabel(f.code)}
+                    </Pill>{" "}
+                    <span className="text-muted-foreground">{f.message}</span>
                   </li>
                 ))}
               </ul>
             )}
             <MiniTable
               empty={shareholders.length === 0}
-              head={<><Th>Holder</Th><Th>Class</Th><Th r>Shares</Th><Th r>Ownership</Th><Th r>Voting</Th><Th>Held from</Th><Th /></>}
+              head={
+                <>
+                  <Th>Holder</Th>
+                  <Th>Class</Th>
+                  <Th r>Shares</Th>
+                  <Th r>Ownership</Th>
+                  <Th r>Voting</Th>
+                  <Th>Held from</Th>
+                  <Th />
+                </>
+              }
             >
               {shareholders.map((p) => {
                 // The totals count only holdings current on the reconciliation
@@ -1040,26 +1933,93 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                 // less than its own footer has a visible reason.
                 const current = heldOn(p, capView.as_of);
                 return (
-                  <tr key={p.person_id} className={!current || p.is_active === false ? "opacity-60" : undefined}>
+                  <tr
+                    key={p.person_id}
+                    className={
+                      !current || p.is_active === false
+                        ? "opacity-60"
+                        : undefined
+                    }
+                  >
                     <Td>
-                      <span className="font-medium text-foreground">{p.full_name}</span>
-                      {p.holder_type === "COMPANY" && <> <Pill tone="blue">Company</Pill></>}
-                      {p.is_pep && <> <Pill tone="orange">PEP</Pill></>}
-                      {p.holder_entity_code && <> <Pill tone="mute">{p.holder_entity_code}</Pill></>}
-                      {p.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
-                      {!current && <> <Pill tone="mute">Not held on this date</Pill></>}
+                      <span className="font-medium text-foreground">
+                        {p.full_name}
+                      </span>
+                      {p.holder_type === "COMPANY" && (
+                        <>
+                          {" "}
+                          <Pill tone="blue">Company</Pill>
+                        </>
+                      )}
+                      {p.is_pep && (
+                        <>
+                          {" "}
+                          <Pill tone="orange">PEP</Pill>
+                        </>
+                      )}
+                      {p.holder_entity_code && (
+                        <>
+                          {" "}
+                          <Pill tone="mute">{p.holder_entity_code}</Pill>
+                        </>
+                      )}
+                      {p.is_active === false && (
+                        <>
+                          {" "}
+                          <Pill tone="mute">Inactive</Pill>
+                        </>
+                      )}
+                      {!current && (
+                        <>
+                          {" "}
+                          <Pill tone="mute">Not held on this date</Pill>
+                        </>
+                      )}
                     </Td>
                     <Td>{p.share_class || "—"}</Td>
-                    <Td r>{p.share_count != null ? num(p.share_count) : "—"}</Td>
-                    <Td r>{p.ownership_percent != null ? `${num(p.ownership_percent)}%` : "—"}</Td>
-                    <Td r>{p.voting_percent != null ? `${num(p.voting_percent)}%` : "—"}</Td>
-                    <Td>
-                      {p.effective_from ? dateFmt(p.effective_from) : "—"}
-                      {p.effective_to ? <span className="micro text-muted-foreground"> → {dateFmt(p.effective_to)}</span> : null}
+                    <Td r>
+                      {p.share_count != null ? num(p.share_count) : "—"}
                     </Td>
                     <Td r>
-                      <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit shareholder", row: p as unknown as Record<string, unknown> })}>Edit</Button>
-                      <Button size="sm" variant="ghost" onClick={() => removeChild("people", p.person_id)}>Remove</Button>
+                      {p.ownership_percent != null
+                        ? `${num(p.ownership_percent)}%`
+                        : "—"}
+                    </Td>
+                    <Td r>
+                      {p.voting_percent != null
+                        ? `${num(p.voting_percent)}%`
+                        : "—"}
+                    </Td>
+                    <Td>
+                      {p.effective_from ? dateFmt(p.effective_from) : "—"}
+                      {p.effective_to ? (
+                        <span className="micro text-muted-foreground">
+                          {" "}
+                          → {dateFmt(p.effective_to)}
+                        </span>
+                      ) : null}
+                    </Td>
+                    <Td r>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setEditing({
+                            seg: "people",
+                            title: "Edit shareholder",
+                            row: p as unknown as Record<string, unknown>,
+                          })
+                        }
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeChild("people", p.person_id)}
+                      >
+                        Remove
+                      </Button>
                     </Td>
                   </tr>
                 );
@@ -1067,8 +2027,13 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             </MiniTable>
             {shareholders.length > 0 && (
               <p className="micro text-muted-foreground">
-                {num(capView.holder_count)} holder{capView.holder_count === 1 ? "" : "s"} · {num(capView.total_shares)} shares recorded · {num(capView.total_percent)}% allocated
-                {capView.issued_capital > 0 ? ` · issued capital ${money(capView.issued_capital, e.share_capital_currency || currency)}` : ""}
+                {num(capView.holder_count)} holder
+                {capView.holder_count === 1 ? "" : "s"} ·{" "}
+                {num(capView.total_shares)} shares recorded ·{" "}
+                {num(capView.total_percent)}% allocated
+                {capView.issued_capital > 0
+                  ? ` · issued capital ${money(capView.issued_capital, e.share_capital_currency || currency)}`
+                  : ""}
               </p>
             )}
           </Section>
@@ -1076,34 +2041,92 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Directors, officers and signatories"
             description="One person can hold several roles — add a row per role."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add person", row: { role: "DIRECTOR" } })}>Add person</Button>}
+            action={
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditing({
+                    seg: "people",
+                    title: "Add person",
+                    row: { role: "DIRECTOR" },
+                  })
+                }
+              >
+                Add person
+              </Button>
+            }
           >
             <MiniTable
               empty={officers.length === 0}
-              head={<><Th>Name</Th><Th>Role</Th><Th>Title</Th><Th>Appointed</Th><Th>Until</Th><Th /></>}
+              head={
+                <>
+                  <Th>Name</Th>
+                  <Th>Role</Th>
+                  <Th>Title</Th>
+                  <Th>Appointed</Th>
+                  <Th>Until</Th>
+                  <Th />
+                </>
+              }
             >
               {officers.map((p) => (
-                <tr key={p.person_id} className={p.is_active === false ? "opacity-60" : undefined}>
+                <tr
+                  key={p.person_id}
+                  className={p.is_active === false ? "opacity-60" : undefined}
+                >
                   <Td>
-                    <span className="font-medium text-foreground">{p.full_name}</span>
-                    {p.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
+                    <span className="font-medium text-foreground">
+                      {p.full_name}
+                    </span>
+                    {p.is_active === false && (
+                      <>
+                        {" "}
+                        <Pill tone="mute">Inactive</Pill>
+                      </>
+                    )}
                   </Td>
-                  <Td><Pill tone={ROLE_TONE[p.role] || "mute"}>{enumLabel(p.role)}</Pill></Td>
+                  <Td>
+                    <Pill tone={ROLE_TONE[p.role] || "mute"}>
+                      {enumLabel(p.role)}
+                    </Pill>
+                  </Td>
                   <Td>
                     {p.title || "—"}
                     {/* A signing limit is the whole point of an AUTHORISED_SIGNATORY
                         row, and nothing rendered it before. */}
                     {p.signature_limit_amount != null && (
                       <div className="micro text-muted-foreground">
-                        up to {money(p.signature_limit_amount, p.signature_limit_currency || currency)}
+                        up to{" "}
+                        {money(
+                          p.signature_limit_amount,
+                          p.signature_limit_currency || currency,
+                        )}
                       </div>
                     )}
                   </Td>
                   <Td>{p.effective_from ? dateFmt(p.effective_from) : "—"}</Td>
                   <Td>{p.effective_to ? dateFmt(p.effective_to) : "—"}</Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit person", row: p as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("people", p.person_id)}>Remove</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "people",
+                          title: "Edit person",
+                          row: p as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeChild("people", p.person_id)}
+                    >
+                      Remove
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -1117,21 +2140,78 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Addresses"
             description="REGISTERED is the statutory office the letterhead prints — often not where people actually work."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "addresses", title: "Add address", row: { type: "REGISTERED" } })}>Add address</Button>}
+            action={
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditing({
+                    seg: "addresses",
+                    title: "Add address",
+                    row: { type: "REGISTERED" },
+                  })
+                }
+              >
+                Add address
+              </Button>
+            }
           >
-            <MiniTable empty={addresses.length === 0} head={<><Th>Type</Th><Th>Address</Th><Th>City</Th><Th>Country</Th><Th /></>}>
+            <MiniTable
+              empty={addresses.length === 0}
+              head={
+                <>
+                  <Th>Type</Th>
+                  <Th>Address</Th>
+                  <Th>City</Th>
+                  <Th>Country</Th>
+                  <Th />
+                </>
+              }
+            >
               {addresses.map((a) => (
-                <tr key={a.address_id} className={a.is_active === false ? "opacity-60" : undefined}>
+                <tr
+                  key={a.address_id}
+                  className={a.is_active === false ? "opacity-60" : undefined}
+                >
                   <Td>
-                    <Pill tone={a.type === "REGISTERED" ? "ok" : "mute"}>{enumLabel(a.type)}</Pill>
-                    {a.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
+                    <Pill tone={a.type === "REGISTERED" ? "ok" : "mute"}>
+                      {enumLabel(a.type)}
+                    </Pill>
+                    {a.is_active === false && (
+                      <>
+                        {" "}
+                        <Pill tone="mute">Inactive</Pill>
+                      </>
+                    )}
                   </Td>
-                  <Td>{[a.line1, a.line2, a.po_box].filter(Boolean).join(", ") || "—"}</Td>
-                  <Td>{[a.postal_code, a.city].filter(Boolean).join(" ") || "—"}</Td>
+                  <Td>
+                    {[a.line1, a.line2, a.po_box].filter(Boolean).join(", ") ||
+                      "—"}
+                  </Td>
+                  <Td>
+                    {[a.postal_code, a.city].filter(Boolean).join(" ") || "—"}
+                  </Td>
                   <Td>{a.country_code || "—"}</Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "addresses", title: "Edit address", row: a as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("addresses", a.address_id)}>Remove</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "addresses",
+                          title: "Edit address",
+                          row: a as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeChild("addresses", a.address_id)}
+                    >
+                      Remove
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -1141,30 +2221,100 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Contacts"
             description="Departmental contact points for this entity — the AP inbox, the legal contact on a tender."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "contacts", title: "Add contact" })}>Add contact</Button>}
+            action={
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditing({ seg: "contacts", title: "Add contact" })
+                }
+              >
+                Add contact
+              </Button>
+            }
           >
             {/* The department pills are the point of this section: "the AP inbox,
                 the legal contact on a tender" is answered by role_tags, and
                 without them every row reads as an undifferentiated person. */}
-            <MiniTable empty={contacts.length === 0} head={<><Th>Name</Th><Th>Departments</Th><Th>Title</Th><Th>Email</Th><Th>Phone</Th><Th /></>}>
+            <MiniTable
+              empty={contacts.length === 0}
+              head={
+                <>
+                  <Th>Name</Th>
+                  <Th>Departments</Th>
+                  <Th>Title</Th>
+                  <Th>Email</Th>
+                  <Th>Phone</Th>
+                  <Th />
+                </>
+              }
+            >
               {contacts.map((c) => (
-                <tr key={c.contact_id} className={c.is_active === false ? "opacity-60" : undefined}>
+                <tr
+                  key={c.contact_id}
+                  className={c.is_active === false ? "opacity-60" : undefined}
+                >
                   <Td>
-                    <span className="font-medium text-foreground">{c.name}</span>
-                    {c.is_primary ? <> <Pill tone="ok">Primary</Pill></> : null}
-                    {c.is_active === false ? <> <Pill tone="mute">Inactive</Pill></> : null}
+                    <span className="font-medium text-foreground">
+                      {c.name}
+                    </span>
+                    {c.is_primary ? (
+                      <>
+                        {" "}
+                        <Pill tone="ok">Primary</Pill>
+                      </>
+                    ) : null}
+                    {c.is_active === false ? (
+                      <>
+                        {" "}
+                        <Pill tone="mute">Inactive</Pill>
+                      </>
+                    ) : null}
                   </Td>
                   <Td>
-                    {c.role_tags?.length
-                      ? <span className="flex flex-wrap gap-1">{c.role_tags.map((t) => <Pill key={t} tone="blue">{enumLabel(t)}</Pill>)}</span>
-                      : "—"}
+                    {c.role_tags?.length ? (
+                      <span className="flex flex-wrap gap-1">
+                        {c.role_tags.map((t) => (
+                          <Pill key={t} tone="blue">
+                            {enumLabel(t)}
+                          </Pill>
+                        ))}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </Td>
                   <Td>{c.title || "—"}</Td>
                   <Td>{c.email || "—"}</Td>
-                  <Td>{c.phone || "—"}{c.language ? <span className="micro text-muted-foreground"> · {c.language.toUpperCase()}</span> : null}</Td>
+                  <Td>
+                    {c.phone || "—"}
+                    {c.language ? (
+                      <span className="micro text-muted-foreground">
+                        {" "}
+                        · {c.language.toUpperCase()}
+                      </span>
+                    ) : null}
+                  </Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "contacts", title: "Edit contact", row: c as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("contacts", c.contact_id)}>Remove</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "contacts",
+                          title: "Edit contact",
+                          row: c as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeChild("contacts", c.contact_id)}
+                    >
+                      Remove
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -1178,18 +2328,40 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Position in the group"
             description="A subsidiary is its own entity with its own books — this records how it relates to the parent."
-            action={<Button size="sm" onClick={() => setStructureOpen(true)}>Edit structure</Button>}
+            action={
+              <Button size="sm" onClick={() => setStructureOpen(true)}>
+                Edit structure
+              </Button>
+            }
           >
             <dl className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
               <Detail label="Parent">
-                {structure.ancestors.length
-                  ? <Link className="underline" to={`/master/corporate-entities/${structure.ancestors[0].entity_id}`}>{structure.ancestors[0].code} — {structure.ancestors[0].legal_name}</Link>
+                {structure.ancestors.length ? (
+                  <Link
+                    className="underline"
+                    to={`/master/corporate-entities/${structure.ancestors[0].entity_id}`}
+                  >
+                    {structure.ancestors[0].code} —{" "}
+                    {structure.ancestors[0].legal_name}
+                  </Link>
+                ) : null}
+              </Detail>
+              <Detail label="Relationship">
+                {structure.relationship_type
+                  ? enumLabel(structure.relationship_type)
                   : null}
               </Detail>
-              <Detail label="Relationship">{structure.relationship_type ? enumLabel(structure.relationship_type) : null}</Detail>
-              <Detail label="Owned">{structure.ownership_percent != null ? `${num(structure.ownership_percent)}%` : null}</Detail>
-              <Detail label="Consolidates into parent">{structure.consolidates ? "Yes" : "No"}</Detail>
-              <Detail label="Group parent">{structure.is_group_parent ? "Yes" : "No"}</Detail>
+              <Detail label="Owned">
+                {structure.ownership_percent != null
+                  ? `${num(structure.ownership_percent)}%`
+                  : null}
+              </Detail>
+              <Detail label="Consolidates into parent">
+                {structure.consolidates ? "Yes" : "No"}
+              </Detail>
+              <Detail label="Group parent">
+                {structure.is_group_parent ? "Yes" : "No"}
+              </Detail>
             </dl>
             {structure.ancestors.length > 1 && (
               <p className="micro text-muted-foreground">
@@ -1198,16 +2370,48 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             )}
           </Section>
 
-          <Section title="Subsidiaries" description="Entities whose parent is this one.">
-            <MiniTable empty={structure.children.length === 0} head={<><Th>Code</Th><Th>Legal name</Th><Th>Country</Th><Th>Relationship</Th><Th r>Owned</Th><Th>Framework</Th></>}>
+          <Section
+            title="Subsidiaries"
+            description="Entities whose parent is this one."
+          >
+            <MiniTable
+              empty={structure.children.length === 0}
+              head={
+                <>
+                  <Th>Code</Th>
+                  <Th>Legal name</Th>
+                  <Th>Country</Th>
+                  <Th>Relationship</Th>
+                  <Th r>Owned</Th>
+                  <Th>Framework</Th>
+                </>
+              }
+            >
               {structure.children.map((c) => (
                 <tr key={c.entity_id}>
-                  <Td><Link className="num font-medium underline" to={`/master/corporate-entities/${c.entity_id}`}>{c.code}</Link></Td>
+                  <Td>
+                    <Link
+                      className="num font-medium underline"
+                      to={`/master/corporate-entities/${c.entity_id}`}
+                    >
+                      {c.code}
+                    </Link>
+                  </Td>
                   <Td>{c.legal_name}</Td>
                   <Td>{c.country_code || "—"}</Td>
-                  <Td>{c.relationship_type ? enumLabel(c.relationship_type) : "—"}</Td>
-                  <Td r>{c.ownership_percent != null ? `${num(c.ownership_percent)}%` : "—"}</Td>
-                  <Td>{c.accounting_framework ? enumLabel(c.accounting_framework) : "—"}</Td>
+                  <Td>
+                    {c.relationship_type ? enumLabel(c.relationship_type) : "—"}
+                  </Td>
+                  <Td r>
+                    {c.ownership_percent != null
+                      ? `${num(c.ownership_percent)}%`
+                      : "—"}
+                  </Td>
+                  <Td>
+                    {c.accounting_framework
+                      ? enumLabel(c.accounting_framework)
+                      : "—"}
+                  </Td>
                 </tr>
               ))}
             </MiniTable>
@@ -1216,23 +2420,89 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Establishments"
             description="Sites that are not separate legal persons — a warehouse or branch office with its own tax-office reference but no separate books."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "establishments", title: "Add establishment" })}>Add establishment</Button>}
+            action={
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditing({
+                    seg: "establishments",
+                    title: "Add establishment",
+                  })
+                }
+              >
+                Add establishment
+              </Button>
+            }
           >
-            <MiniTable empty={establishments.length === 0} head={<><Th>Name</Th><Th>Kind</Th><Th>City</Th><Th>Country</Th><Th>Manager</Th><Th>Tax office</Th><Th /></>}>
+            <MiniTable
+              empty={establishments.length === 0}
+              head={
+                <>
+                  <Th>Name</Th>
+                  <Th>Kind</Th>
+                  <Th>City</Th>
+                  <Th>Country</Th>
+                  <Th>Manager</Th>
+                  <Th>Tax office</Th>
+                  <Th />
+                </>
+              }
+            >
               {establishments.map((s) => (
-                <tr key={s.establishment_id} className={s.is_active === false || s.closed_on ? "opacity-60" : undefined}>
+                <tr
+                  key={s.establishment_id}
+                  className={
+                    s.is_active === false || s.closed_on
+                      ? "opacity-60"
+                      : undefined
+                  }
+                >
                   <Td>
-                    <span className="font-medium text-foreground">{s.name}</span>
-                    {s.closed_on ? <> <Pill tone="mute">Closed {dateFmt(s.closed_on)}</Pill></> : s.is_active === false ? <> <Pill tone="mute">Inactive</Pill></> : null}
+                    <span className="font-medium text-foreground">
+                      {s.name}
+                    </span>
+                    {s.closed_on ? (
+                      <>
+                        {" "}
+                        <Pill tone="mute">Closed {dateFmt(s.closed_on)}</Pill>
+                      </>
+                    ) : s.is_active === false ? (
+                      <>
+                        {" "}
+                        <Pill tone="mute">Inactive</Pill>
+                      </>
+                    ) : null}
                   </Td>
                   <Td>{s.kind ? enumLabel(s.kind) : "—"}</Td>
                   <Td>{s.city || "—"}</Td>
                   <Td>{s.country_code || "—"}</Td>
                   <Td>{s.manager_name || "—"}</Td>
-                  <Td><span className="num">{s.tax_office_ref || "—"}</span></Td>
+                  <Td>
+                    <span className="num">{s.tax_office_ref || "—"}</span>
+                  </Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "establishments", title: "Edit establishment", row: s as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("establishments", s.establishment_id)}>Remove</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditing({
+                          seg: "establishments",
+                          title: "Edit establishment",
+                          row: s as unknown as Record<string, unknown>,
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        removeChild("establishments", s.establishment_id)
+                      }
+                    >
+                      Remove
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -1245,16 +2515,46 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <Section
           title="Treasury accounts"
           description="Read-only here. Bank, cash and mobile-money accounts are owned by Treasury so the GL mapping and the invoice payment block can never disagree."
-          action={<Button size="sm" variant="outline" onClick={() => navigate("/master/treasury-accounts")}>Open Treasury →</Button>}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate("/master/treasury-accounts")}
+            >
+              Open Treasury →
+            </Button>
+          }
         >
-          <MiniTable empty={treasury.length === 0} head={<><Th>Label</Th><Th>Kind</Th><Th>GL account</Th><Th>Currency</Th><Th>Status</Th></>}>
+          <MiniTable
+            empty={treasury.length === 0}
+            head={
+              <>
+                <Th>Label</Th>
+                <Th>Kind</Th>
+                <Th>GL account</Th>
+                <Th>Currency</Th>
+                <Th>Status</Th>
+              </>
+            }
+          >
             {treasury.map((t) => (
               <tr key={t.treasury_account_id}>
-                <Td><span className="font-medium text-foreground">{t.label}</span></Td>
-                <Td>{enumLabel(t.kind)}{t.momo_network ? ` · ${t.momo_network}` : ""}</Td>
-                <Td><span className="num">{t.coa_code}</span></Td>
+                <Td>
+                  <span className="font-medium text-foreground">{t.label}</span>
+                </Td>
+                <Td>
+                  {enumLabel(t.kind)}
+                  {t.momo_network ? ` · ${t.momo_network}` : ""}
+                </Td>
+                <Td>
+                  <span className="num">{t.coa_code}</span>
+                </Td>
                 <Td>{t.currency || "—"}</Td>
-                <Td><Pill tone={t.is_active ? "ok" : "mute"}>{t.is_active ? "Active" : "Inactive"}</Pill></Td>
+                <Td>
+                  <Pill tone={t.is_active ? "ok" : "mute"}>
+                    {t.is_active ? "Active" : "Inactive"}
+                  </Pill>
+                </Td>
               </tr>
             ))}
           </MiniTable>
@@ -1276,11 +2576,17 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           onClose={() => setEditing(null)}
           onSubmit={(values) => {
             const pkBySeg: Record<api.EntityCollection, string> = {
-              people: "person_id", contacts: "contact_id", addresses: "address_id",
-              registrations: "registration_id", establishments: "establishment_id",
-              documents: "document_id", "tax-registrations": "tax_registration_id",
+              people: "person_id",
+              contacts: "contact_id",
+              addresses: "address_id",
+              registrations: "registration_id",
+              establishments: "establishment_id",
+              documents: "document_id",
+              "tax-registrations": "tax_registration_id",
             };
-            const childId = editing.row ? (editing.row[pkBySeg[editing.seg]] as string | undefined) : undefined;
+            const childId = editing.row
+              ? (editing.row[pkBySeg[editing.seg]] as string | undefined)
+              : undefined;
             return saveChild(editing.seg, values, childId);
           }}
         />
@@ -1303,6 +2609,15 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           onSaved={reload}
         />
       )}
+
+      {opsPrefixOpen && (
+        <OpsReferencePrefixModal
+          entityId={entityId}
+          current={e.ops_reference_prefix ?? ""}
+          onClose={() => setOpsPrefixOpen(false)}
+          onSaved={reload}
+        />
+      )}
     </div>
   );
 }
@@ -1319,10 +2634,19 @@ export function EntityDossierPage() {
   return (
     <section className={`${pageShell.wide} space-y-4`}>
       <div className="micro">
-        <Link to="/master/corporate-entities" className="text-muted-foreground hover:text-foreground">← Corporate entities</Link>
+        <Link
+          to="/master/corporate-entities"
+          className="text-muted-foreground hover:text-foreground"
+        >
+          ← Corporate entities
+        </Link>
       </div>
       {/* No PageHeader here — the entity's own name is this page's h1. */}
-      <EntityDossier entityId={entityId} titleAs="h1" onEdit={() => navigate(`/master/corporate-entities?edit=${entityId}`)} />
+      <EntityDossier
+        entityId={entityId}
+        titleAs="h1"
+        onEdit={() => navigate(`/master/corporate-entities?edit=${entityId}`)}
+      />
     </section>
   );
 }
@@ -1347,7 +2671,13 @@ export function EntityDossierPage() {
  * never sees: upload the file to the vault (MOD-64), then patch the returned id
  * onto the document.
  */
-function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }: {
+function DocumentsTab({
+  entityId,
+  documents,
+  establishments,
+  onRemove,
+  onSaved,
+}: {
   entityId: string;
   documents: api.EntityDocument[];
   establishments: api.EntityEstablishment[];
@@ -1356,34 +2686,89 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
 }) {
   const toast = useToast();
   const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
-  const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(null);
+  const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(
+    null,
+  );
   const [attachError, setAttachError] = React.useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(
+    null,
+  );
   const [uploadSuccess, setUploadSuccess] = React.useState(false);
   const [verifyBusy, setVerifyBusy] = React.useState<string | null>(null);
   // `types.data || []` is a fresh array each render, so it cannot be a useMemo
   // dependency — the memo would rebuild the field list on every keystroke.
   const typeList = React.useMemo(() => types.data || [], [types.data]);
 
-  const fields = React.useMemo<FieldSpec[]>(() => [
-    { key: "document_type_id", label: "Document type", type: "select", options: typeList.map((t) => ({ value: t.document_type_id, label: t.name })) },
-    { key: "title", label: "Title", placeholder: "Customs bond 2026" },
-    { key: "document_number", label: "Reference number", systemGenerated: true, hint: "Generated automatically when the document is added." },
-    { key: "issuing_authority", label: "Issuing authority", placeholder: "Direction Générale des Douanes" },
-    { key: "country_code", label: "Country", type: "country" },
-    {
-      key: "establishment_id", label: "Belongs to establishment", type: "select",
-      options: establishments.map((s) => ({ value: s.establishment_id, label: s.name })),
-      hint: "For a licence issued to one branch rather than the company as a whole.",
-    },
-    { key: "issued_on", label: "Issued on", type: "date" },
-    { key: "expires_on", label: "Expires on", type: "date", hint: "Drives the renewals list." },
-    { key: "renewal_lead_days", label: "Warn this many days ahead", type: "number", hint: "Blank uses the document type's own lead time." },
-    { key: "physical_ref", label: "Paper original filed at", placeholder: "Box A-12", hint: "Only for paper originals — where the hard copy is filed." },
-    { key: "scan_file", label: "Document file", type: "file", hint: "PDF or image (PNG, JPEG, WebP), up to 25 MB. Optional — you can attach it from the row later." },
-    { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "A superseded certificate stays on file rather than being deleted." },
-    { key: "notes", label: "Notes", type: "textarea" },
-  ], [typeList, establishments]);
+  const fields = React.useMemo<FieldSpec[]>(
+    () => [
+      {
+        key: "document_type_id",
+        label: "Document type",
+        type: "select",
+        options: typeList.map((t) => ({
+          value: t.document_type_id,
+          label: t.name,
+        })),
+      },
+      { key: "title", label: "Title", placeholder: "Customs bond 2026" },
+      {
+        key: "document_number",
+        label: "Reference number",
+        systemGenerated: true,
+        hint: "Generated automatically when the document is added.",
+      },
+      {
+        key: "issuing_authority",
+        label: "Issuing authority",
+        placeholder: "Direction Générale des Douanes",
+      },
+      { key: "country_code", label: "Country", type: "country" },
+      {
+        key: "establishment_id",
+        label: "Belongs to establishment",
+        type: "select",
+        options: establishments.map((s) => ({
+          value: s.establishment_id,
+          label: s.name,
+        })),
+        hint: "For a licence issued to one branch rather than the company as a whole.",
+      },
+      { key: "issued_on", label: "Issued on", type: "date" },
+      {
+        key: "expires_on",
+        label: "Expires on",
+        type: "date",
+        hint: "Drives the renewals list.",
+      },
+      {
+        key: "renewal_lead_days",
+        label: "Warn this many days ahead",
+        type: "number",
+        hint: "Blank uses the document type's own lead time.",
+      },
+      {
+        key: "physical_ref",
+        label: "Paper original filed at",
+        placeholder: "Box A-12",
+        hint: "Only for paper originals — where the hard copy is filed.",
+      },
+      {
+        key: "scan_file",
+        label: "Document file",
+        type: "file",
+        hint: "PDF or image (PNG, JPEG, WebP), up to 25 MB. Optional — you can attach it from the row later.",
+      },
+      {
+        key: "is_active",
+        label: "Active",
+        type: "checkbox",
+        defaultValue: true,
+        hint: "A superseded certificate stays on file rather than being deleted.",
+      },
+      { key: "notes", label: "Notes", type: "textarea" },
+    ],
+    [typeList, establishments],
+  );
 
   async function save(values: Record<string, unknown>, id?: string) {
     // `scan_file` is a picked File, not a column — pull it out before writing the
@@ -1395,21 +2780,36 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
     setAttachError(null);
     try {
       const body = Object.fromEntries(
-        Object.entries(values).filter(([key, value]) => key !== "scan_file" && key !== "document_number" && value !== "" && value !== undefined),
+        Object.entries(values).filter(
+          ([key, value]) =>
+            key !== "scan_file" &&
+            key !== "document_number" &&
+            value !== "" &&
+            value !== undefined,
+        ),
       );
       let documentId = id;
       if (id) await api.updateEntityChild(entityId, "documents", id, body);
       else {
-        const created = await api.addEntityChild<api.EntityDocument>(entityId, "documents", body);
+        const created = await api.addEntityChild<api.EntityDocument>(
+          entityId,
+          "documents",
+          body,
+        );
         documentId = created.document_id;
       }
       if (scanFile instanceof File && documentId) {
-        const vaulted = await api.uploadVaultDocument({
-          data_url: await readFileAsDataUrl(scanFile),
-          doc_type: "ENTITY_DOCUMENT",
-          entity_ref: `entity_document:${documentId}`,
-        }, setUploadProgress);
-        await api.updateEntityChild(entityId, "documents", documentId, { vault_id: vaulted.doc_id });
+        const vaulted = await api.uploadVaultDocument(
+          {
+            data_url: await readFileAsDataUrl(scanFile),
+            doc_type: "ENTITY_DOCUMENT",
+            entity_ref: `entity_document:${documentId}`,
+          },
+          setUploadProgress,
+        );
+        await api.updateEntityChild(entityId, "documents", documentId, {
+          vault_id: vaulted.doc_id,
+        });
         setUploadProgress(100);
         setUploadSuccess(true);
         await new Promise((resolve) => setTimeout(resolve, 450));
@@ -1430,7 +2830,9 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
    * vault row, not a second copy of the bytes.
    */
   async function linkScan(doc: api.EntityDocument, vaultId: string) {
-    await api.updateEntityChild(entityId, "documents", doc.document_id, { vault_id: vaultId });
+    await api.updateEntityChild(entityId, "documents", doc.document_id, {
+      vault_id: vaultId,
+    });
     // The API moves PENDING → SCANNED on its own once vault_id lands; saying so
     // explains why the pill changed without the operator touching it.
     toast.success("Scan attached — the document is now marked scanned.");
@@ -1455,30 +2857,71 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
     <Section
       title="Administrative documents"
       description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab. Uploading marks the scan as scanned; use Verify after checking the file against the original."
-      action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
+      action={
+        <Button size="sm" onClick={() => setAdding("new")}>
+          Add document
+        </Button>
+      }
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
       {attachError && <ErrorState message={attachError} />}
       <MiniTable
         empty={documents.length === 0}
-        head={<><Th>Document</Th><Th>Type</Th><Th>Number</Th><Th>Country</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th><Th /></>}
+        head={
+          <>
+            <Th>Document</Th>
+            <Th>Type</Th>
+            <Th>Number</Th>
+            <Th>Country</Th>
+            <Th>Expires</Th>
+            <Th>Scan</Th>
+            <Th>Verification</Th>
+            <Th />
+          </>
+        }
       >
         {documents.map((doc) => (
-          <tr key={doc.document_id} className={doc.is_active === false ? "opacity-60" : undefined}>
+          <tr
+            key={doc.document_id}
+            className={doc.is_active === false ? "opacity-60" : undefined}
+          >
             <Td>
-              <span className="font-medium text-foreground">{doc.title || doc.document_type_name || "Untitled"}</span>
-              {doc.establishment_name ? <div className="micro text-muted-foreground">{doc.establishment_name}</div> : null}
+              <span className="font-medium text-foreground">
+                {doc.title || doc.document_type_name || "Untitled"}
+              </span>
+              {doc.establishment_name ? (
+                <div className="micro text-muted-foreground">
+                  {doc.establishment_name}
+                </div>
+              ) : null}
             </Td>
             <Td>{doc.document_type_name || "—"}</Td>
-            <Td><span className="num">{doc.document_number || "—"}</span></Td>
+            <Td>
+              <span className="num">{doc.document_number || "—"}</span>
+            </Td>
             <Td>{doc.country_code || "—"}</Td>
             <Td>{doc.expires_on ? dateFmt(doc.expires_on) : "—"}</Td>
             <Td>
-              <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>{enumLabel(doc.scan_status)}</Pill>
-              {!doc.vault_id && doc.physical_ref ? <> <Pill tone="mute">Paper</Pill></> : null}
+              <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>
+                {enumLabel(doc.scan_status)}
+              </Pill>
+              {!doc.vault_id && doc.physical_ref ? (
+                <>
+                  {" "}
+                  <Pill tone="mute">Paper</Pill>
+                </>
+              ) : null}
             </Td>
             <Td>
-              <Pill tone={doc.verification_status === "VERIFIED" ? "ok" : doc.verification_status === "REJECTED" ? "bad" : "warn"}>
+              <Pill
+                tone={
+                  doc.verification_status === "VERIFIED"
+                    ? "ok"
+                    : doc.verification_status === "REJECTED"
+                      ? "bad"
+                      : "warn"
+                }
+              >
                 {enumLabel(doc.verification_status)}
               </Pill>
             </Td>
@@ -1492,12 +2935,29 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
                   onError={setAttachError}
                 />
                 {doc.vault_id && doc.verification_status !== "VERIFIED" && (
-                  <Button size="sm" variant="ghost" loading={verifyBusy === doc.document_id} onClick={() => void verifyDocument(doc)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={verifyBusy === doc.document_id}
+                    onClick={() => void verifyDocument(doc)}
+                  >
                     Verify
                   </Button>
                 )}
-                <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
-                <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setAdding(doc)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRemove(doc.document_id)}
+                >
+                  Remove
+                </Button>
               </div>
             </Td>
           </tr>
@@ -1515,9 +2975,15 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
         <ChildModal
           title={adding === "new" ? "Add document" : "Edit document"}
           fields={fields}
-          initial={adding === "new" ? null : (adding as unknown as Record<string, unknown>)}
+          initial={
+            adding === "new"
+              ? null
+              : (adding as unknown as Record<string, unknown>)
+          }
           onClose={() => setAdding(null)}
-          onSubmit={(values) => save(values, adding === "new" ? undefined : adding.document_id)}
+          onSubmit={(values) =>
+            save(values, adding === "new" ? undefined : adding.document_id)
+          }
           uploadProgress={uploadProgress}
           uploadSuccess={uploadSuccess}
           allowAddAnother={adding === "new"}
@@ -1539,9 +3005,18 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
  * `empty_blocks` is the part a picture alone would hide: a block switched on
  * with nothing behind it looks identical to one that is switched off.
  */
-function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () => void }) {
+function LetterheadTab({
+  entityId,
+  onSaved,
+}: {
+  entityId: string;
+  onSaved: () => void;
+}) {
   const toast = useToast();
-  const lh = useResource<api.LetterheadBundle>(() => api.entityLetterhead(entityId), [entityId]);
+  const lh = useResource<api.LetterheadBundle>(
+    () => api.entityLetterhead(entityId),
+    [entityId],
+  );
   const [lang, setLang] = React.useState<"fr" | "en">("fr");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -1553,22 +3028,34 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
     if (!lh.data) return;
     const c = lh.data.config;
     setDraft({
-      header_note_fr: c.header_note_fr ?? "", header_note_en: c.header_note_en ?? "",
-      footer_note_fr: c.footer_note_fr ?? "", footer_note_en: c.footer_note_en ?? "",
-      legal_mentions_fr: c.legal_mentions_fr ?? "", legal_mentions_en: c.legal_mentions_en ?? "",
-      brand_color: c.brand_color ?? "", accent_color: c.accent_color ?? "",
-      header_height_mm: c.header_height_mm != null ? String(c.header_height_mm) : "",
-      footer_height_mm: c.footer_height_mm != null ? String(c.footer_height_mm) : "",
+      header_note_fr: c.header_note_fr ?? "",
+      header_note_en: c.header_note_en ?? "",
+      footer_note_fr: c.footer_note_fr ?? "",
+      footer_note_en: c.footer_note_en ?? "",
+      legal_mentions_fr: c.legal_mentions_fr ?? "",
+      legal_mentions_en: c.legal_mentions_en ?? "",
+      brand_color: c.brand_color ?? "",
+      accent_color: c.accent_color ?? "",
+      header_height_mm:
+        c.header_height_mm != null ? String(c.header_height_mm) : "",
+      footer_height_mm:
+        c.footer_height_mm != null ? String(c.footer_height_mm) : "",
     });
     setDirty(false);
   }, [lh.data]);
 
   async function patch(body: Record<string, unknown>) {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       await api.saveEntityLetterhead(entityId, body);
-      lh.reload(); onSaved();
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+      lh.reload();
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveText() {
@@ -1576,36 +3063,87 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
     // nullable columns and the schema maps "" to undefined, so send null.
     // The two heights are millimetres: the shared `amount` primitive parses a
     // numeric string, so the input's value goes through as it is.
-    const body = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()]));
+    const body = Object.fromEntries(
+      Object.entries(draft).map(([k, v]) => [
+        k,
+        v.trim() === "" ? null : v.trim(),
+      ]),
+    );
     await patch(body);
     toast.success("Letterhead saved.");
   }
 
   if (lh.loading) return <LoadingRow label="Loading letterhead…" />;
-  if (lh.error || !lh.data) return <ErrorState message={lh.error ? errMsg(lh.error) : "Could not load the letterhead."} />;
+  if (lh.error || !lh.data)
+    return (
+      <ErrorState
+        message={lh.error ? errMsg(lh.error) : "Could not load the letterhead."}
+      />
+    );
 
-  const { config: c, preview, treasury_accounts: accounts, remittance_account_id: remittance } = lh.data;
+  const {
+    config: c,
+    preview,
+    treasury_accounts: accounts,
+    remittance_account_id: remittance,
+  } = lh.data;
   const p = preview[lang];
-  const toggles: { key: keyof api.LetterheadConfig; label: string; hint: string }[] = [
-    { key: "show_legal_form", label: "Legal form", hint: "SARL, SAS, Ltd — mandatory in most of the EU." },
-    { key: "show_share_capital", label: "Share capital", hint: "Mandatory on French invoices." },
-    { key: "show_registered_address", label: "Registered address", hint: "The statutory office, not the trading one." },
-    { key: "show_registrations", label: "Tax & trade identifiers", hint: "NIU, RCCM, VAT, EORI." },
+  const toggles: {
+    key: keyof api.LetterheadConfig;
+    label: string;
+    hint: string;
+  }[] = [
+    {
+      key: "show_legal_form",
+      label: "Legal form",
+      hint: "SARL, SAS, Ltd — mandatory in most of the EU.",
+    },
+    {
+      key: "show_share_capital",
+      label: "Share capital",
+      hint: "Mandatory on French invoices.",
+    },
+    {
+      key: "show_registered_address",
+      label: "Registered address",
+      hint: "The statutory office, not the trading one.",
+    },
+    {
+      key: "show_registrations",
+      label: "Tax & trade identifiers",
+      hint: "NIU, RCCM, VAT, EORI.",
+    },
     { key: "show_contact", label: "Phone, email, website", hint: "" },
-    { key: "show_bank_block", label: "Payment block", hint: "Bank details on invoices." },
-    { key: "show_establishment", label: "Establishment", hint: "The issuing site — a branch's own tax-office reference, where the law wants it." },
+    {
+      key: "show_bank_block",
+      label: "Payment block",
+      hint: "Bank details on invoices.",
+    },
+    {
+      key: "show_establishment",
+      label: "Establishment",
+      hint: "The issuing site — a branch's own tax-office reference, where the law wants it.",
+    },
   ];
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="space-y-4">
-        <Section title="What appears" description="The content is taken from the entity's own record — you choose which blocks print. Mandatory mentions differ by country.">
+        <Section
+          title="What appears"
+          description="The content is taken from the entity's own record — you choose which blocks print. Mandatory mentions differ by country."
+        >
           <div className="space-y-2">
             {toggles.map((t) => (
-              <div key={String(t.key)} className="flex items-start justify-between gap-3">
+              <div
+                key={String(t.key)}
+                className="flex items-start justify-between gap-3"
+              >
                 <div className="min-w-0">
                   <p className="text-sm text-foreground">{t.label}</p>
-                  {t.hint && <p className="micro text-muted-foreground">{t.hint}</p>}
+                  {t.hint && (
+                    <p className="micro text-muted-foreground">{t.hint}</p>
+                  )}
                 </div>
                 <Checkbox
                   checked={c[t.key] === true}
@@ -1618,11 +3156,16 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
           </div>
         </Section>
 
-        <Section title="Wording" description="What cannot be derived — a strapline, payment terms, a jurisdiction clause. Per language, so a French document never falls back to English small print.">
+        <Section
+          title="Wording"
+          description="What cannot be derived — a strapline, payment terms, a jurisdiction clause. Per language, so a French document never falls back to English small print."
+        >
           <div className="flex gap-1 border-b">
             {(["fr", "en"] as const).map((l) => (
               <button
-                key={l} type="button" onClick={() => setLang(l)}
+                key={l}
+                type="button"
+                onClick={() => setLang(l)}
                 aria-current={lang === l ? "page" : undefined}
                 className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${lang === l ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               >
@@ -1630,116 +3173,249 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
               </button>
             ))}
           </div>
-          {(["header_note", "footer_note", "legal_mentions"] as const).map((base) => {
-            const key = `${base}_${lang}`;
-            const label = base === "header_note" ? "Header note" : base === "footer_note" ? "Footer note" : "Legal mentions";
-            return (
-              <label key={key} className="block space-y-1 text-sm">
-                <span className="font-medium text-foreground">{label}</span>
-                <textarea
-                  className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                  value={draft[key] ?? ""}
-                  placeholder={base === "legal_mentions" ? (lang === "fr" ? "Pénalités de retard : 3 fois le taux légal." : "Late payment interest at 3× the statutory rate.") : ""}
-                  onChange={(ev) => { setDraft((s) => ({ ...s, [key]: ev.target.value })); setDirty(true); }}
-                />
-              </label>
-            );
-          })}
-          <p className="micro text-muted-foreground">Saved with the brand settings below.</p>
+          {(["header_note", "footer_note", "legal_mentions"] as const).map(
+            (base) => {
+              const key = `${base}_${lang}`;
+              const label =
+                base === "header_note"
+                  ? "Header note"
+                  : base === "footer_note"
+                    ? "Footer note"
+                    : "Legal mentions";
+              return (
+                <label key={key} className="block space-y-1 text-sm">
+                  <span className="font-medium text-foreground">{label}</span>
+                  <textarea
+                    className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                    value={draft[key] ?? ""}
+                    placeholder={
+                      base === "legal_mentions"
+                        ? lang === "fr"
+                          ? "Pénalités de retard : 3 fois le taux légal."
+                          : "Late payment interest at 3× the statutory rate."
+                        : ""
+                    }
+                    onChange={(ev) => {
+                      setDraft((s) => ({ ...s, [key]: ev.target.value }));
+                      setDirty(true);
+                    }}
+                  />
+                </label>
+              );
+            },
+          )}
+          <p className="micro text-muted-foreground">
+            Saved with the brand settings below.
+          </p>
         </Section>
 
         {/* Page geometry and colour. The two Selects save on change like the
             toggles above — a discrete choice has nothing to draft. The colours
             and heights are typed, so they ride the same draft as the wording. */}
-        <Section title="Page and brand" description="How the sheet is laid out and coloured. The preview is drawn from these, so a change here is visible immediately.">
+        <Section
+          title="Page and brand"
+          description="How the sheet is laid out and coloured. The preview is drawn from these, so a change here is visible immediately."
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Paper size" hint="A4 outside North America.">
-              <Select value={c.paper_size ?? "A4"} disabled={busy} onChange={(ev) => patch({ paper_size: ev.target.value })}>
+              <Select
+                value={c.paper_size ?? "A4"}
+                disabled={busy}
+                onChange={(ev) => patch({ paper_size: ev.target.value })}
+              >
                 <option value="A4">A4 — 210 × 297 mm</option>
                 <option value="LETTER">US Letter — 216 × 279 mm</option>
               </Select>
             </Field>
             <Field label="Logo position">
-              <Select value={c.logo_position ?? "LEFT"} disabled={busy} onChange={(ev) => patch({ logo_position: ev.target.value })}>
-                {(["LEFT", "CENTER", "RIGHT"] as const).map((p) => <option key={p} value={p}>{enumLabel(p)}</option>)}
+              <Select
+                value={c.logo_position ?? "LEFT"}
+                disabled={busy}
+                onChange={(ev) => patch({ logo_position: ev.target.value })}
+              >
+                {(["LEFT", "CENTER", "RIGHT"] as const).map((p) => (
+                  <option key={p} value={p}>
+                    {enumLabel(p)}
+                  </option>
+                ))}
               </Select>
             </Field>
             <Field label="Brand colour" hint="The rule under the header.">
               <Input
                 value={draft.brand_color ?? ""}
                 placeholder="#C2703D"
-                onChange={(ev) => { setDraft((s) => ({ ...s, brand_color: ev.target.value })); setDirty(true); }}
+                onChange={(ev) => {
+                  setDraft((s) => ({ ...s, brand_color: ev.target.value }));
+                  setDirty(true);
+                }}
               />
             </Field>
-            <Field label="Accent colour" hint="Secondary rules and table headings.">
+            <Field
+              label="Accent colour"
+              hint="Secondary rules and table headings."
+            >
               <Input
                 value={draft.accent_color ?? ""}
                 placeholder="#1F6F6B"
-                onChange={(ev) => { setDraft((s) => ({ ...s, accent_color: ev.target.value })); setDirty(true); }}
+                onChange={(ev) => {
+                  setDraft((s) => ({ ...s, accent_color: ev.target.value }));
+                  setDirty(true);
+                }}
               />
             </Field>
-            <Field label="Header height (mm)" hint="10–120. Blank uses the renderer's default.">
+            <Field
+              label="Header height (mm)"
+              hint="10–120. Blank uses the renderer's default."
+            >
               <Input
-                type="number" min={10} max={120} step="any"
+                type="number"
+                min={10}
+                max={120}
+                step="any"
                 value={draft.header_height_mm ?? ""}
                 placeholder="35"
-                onChange={(ev) => { setDraft((s) => ({ ...s, header_height_mm: ev.target.value })); setDirty(true); }}
+                onChange={(ev) => {
+                  setDraft((s) => ({
+                    ...s,
+                    header_height_mm: ev.target.value,
+                  }));
+                  setDirty(true);
+                }}
               />
             </Field>
-            <Field label="Footer height (mm)" hint="Reserve enough for the legal mentions, or they are clipped.">
+            <Field
+              label="Footer height (mm)"
+              hint="Reserve enough for the legal mentions, or they are clipped."
+            >
               <Input
-                type="number" min={10} max={120} step="any"
+                type="number"
+                min={10}
+                max={120}
+                step="any"
                 value={draft.footer_height_mm ?? ""}
                 placeholder="25"
-                onChange={(ev) => { setDraft((s) => ({ ...s, footer_height_mm: ev.target.value })); setDirty(true); }}
+                onChange={(ev) => {
+                  setDraft((s) => ({
+                    ...s,
+                    footer_height_mm: ev.target.value,
+                  }));
+                  setDirty(true);
+                }}
               />
             </Field>
           </div>
           {error && <ErrorState message={error} />}
           <div className="flex justify-end">
-            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>Save wording and brand</Button>
+            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>
+              Save wording and brand
+            </Button>
           </div>
         </Section>
 
-        <Section title="Payment block" description="Which account leads the payment block on this entity's documents. Accounts themselves live in Treasury.">
+        <Section
+          title="Payment block"
+          description="Which account leads the payment block on this entity's documents. Accounts themselves live in Treasury."
+        >
           {p.payment_block.source === "bank_block_legacy" && (
             <Callout tone="warn" title="Still using the old bank block">
-              These details come from the entity&apos;s legacy bank block, not a treasury account. Activate the migrated account in Treasury and flag it &ldquo;show on documents&rdquo; so the payment block and the ledger agree.
+              These details come from the entity&apos;s legacy bank block, not a
+              treasury account. Activate the migrated account in Treasury and
+              flag it &ldquo;show on documents&rdquo; so the payment block and
+              the ledger agree.
             </Callout>
           )}
           <Select
             value={remittance ?? ""}
             disabled={busy}
-            onChange={(ev) => patch({ remittance_account_id: ev.target.value || null })}
+            onChange={(ev) =>
+              patch({ remittance_account_id: ev.target.value || null })
+            }
           >
             <option value="">— first flagged account —</option>
-            {accounts.map((a) => <option key={a.treasury_account_id} value={a.treasury_account_id}>{a.label} ({a.currency})</option>)}
+            {accounts.map((a) => (
+              <option key={a.treasury_account_id} value={a.treasury_account_id}>
+                {a.label} ({a.currency})
+              </option>
+            ))}
           </Select>
-          <Button size="sm" variant="outline" onClick={() => window.location.assign("/master/treasury-accounts")}>Manage accounts in Treasury →</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.location.assign("/master/treasury-accounts")}
+          >
+            Manage accounts in Treasury →
+          </Button>
         </Section>
       </div>
 
       <div className="space-y-4">
-        <Section title="Preview" description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}>
-          <article className="space-y-3 rounded-lg border bg-background p-4" style={p.brand_color ? { borderTopColor: p.brand_color, borderTopWidth: 3 } : undefined}>
-            <header className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}>
-              {p.header.logo
-                ? <img src={p.header.logo} alt="" className="inline-block h-10 w-auto object-contain" />
-                : <div className="inline-flex h-10 items-center micro text-muted-foreground">No logo</div>}
-              {p.header.company_line && <p className="text-sm font-semibold text-foreground">{p.header.company_line}</p>}
-              {p.header.address_line && <p className="micro text-muted-foreground">{p.header.address_line}</p>}
-              {p.header.contact_line && <p className="micro text-muted-foreground">{p.header.contact_line}</p>}
-              {p.header.note && <p className="micro text-muted-foreground">{p.header.note}</p>}
+        <Section
+          title="Preview"
+          description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}
+        >
+          <article
+            className="space-y-3 rounded-lg border bg-background p-4"
+            style={
+              p.brand_color
+                ? { borderTopColor: p.brand_color, borderTopWidth: 3 }
+                : undefined
+            }
+          >
+            <header
+              className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}
+            >
+              {p.header.logo ? (
+                <img
+                  src={p.header.logo}
+                  alt=""
+                  className="inline-block h-10 w-auto object-contain"
+                />
+              ) : (
+                <div className="inline-flex h-10 items-center micro text-muted-foreground">
+                  No logo
+                </div>
+              )}
+              {p.header.company_line && (
+                <p className="text-sm font-semibold text-foreground">
+                  {p.header.company_line}
+                </p>
+              )}
+              {p.header.address_line && (
+                <p className="micro text-muted-foreground">
+                  {p.header.address_line}
+                </p>
+              )}
+              {p.header.contact_line && (
+                <p className="micro text-muted-foreground">
+                  {p.header.contact_line}
+                </p>
+              )}
+              {p.header.note && (
+                <p className="micro text-muted-foreground">{p.header.note}</p>
+              )}
             </header>
 
-            <div className="rounded border border-dashed py-8 text-center micro text-muted-foreground">Document body</div>
+            <div className="rounded border border-dashed py-8 text-center micro text-muted-foreground">
+              Document body
+            </div>
 
             {p.payment_block.accounts.length > 0 && (
               <div className="space-y-0.5 border-t pt-2">
-                <p className="micro font-medium text-foreground">{lang === "fr" ? "Coordonnées bancaires" : "Payment details"}</p>
+                <p className="micro font-medium text-foreground">
+                  {lang === "fr" ? "Coordonnées bancaires" : "Payment details"}
+                </p>
                 {p.payment_block.accounts.map((a, i) => (
                   <p key={i} className="micro num text-muted-foreground">
-                    {[a.bank_name, a.branch, a.account_number, a.iban, a.swift_bic, a.currency].filter(Boolean).join(" · ")}
+                    {[
+                      a.bank_name,
+                      a.branch,
+                      a.account_number,
+                      a.iban,
+                      a.swift_bic,
+                      a.currency,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 ))}
               </div>
@@ -1747,13 +3423,40 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
 
             {/* The accent colour is the footer rule — a colour you can set but
                 never see is a colour nobody sets on purpose. */}
-            <footer className="space-y-0.5 border-t pt-2 text-center" style={p.accent_color ? { borderTopColor: p.accent_color } : undefined}>
-              {p.footer.company_line && <p className="micro text-muted-foreground">{p.footer.company_line}</p>}
-              {p.footer.address_line && <p className="micro text-muted-foreground">{p.footer.address_line}</p>}
-              {p.footer.identifier_line && <p className="micro num text-muted-foreground">{p.footer.identifier_line}</p>}
-              {p.footer.establishment_line && <p className="micro text-muted-foreground">{p.footer.establishment_line}</p>}
-              {p.footer.note && <p className="micro text-muted-foreground">{p.footer.note}</p>}
-              {p.footer.legal_mentions && <p className="micro text-muted-foreground">{p.footer.legal_mentions}</p>}
+            <footer
+              className="space-y-0.5 border-t pt-2 text-center"
+              style={
+                p.accent_color ? { borderTopColor: p.accent_color } : undefined
+              }
+            >
+              {p.footer.company_line && (
+                <p className="micro text-muted-foreground">
+                  {p.footer.company_line}
+                </p>
+              )}
+              {p.footer.address_line && (
+                <p className="micro text-muted-foreground">
+                  {p.footer.address_line}
+                </p>
+              )}
+              {p.footer.identifier_line && (
+                <p className="micro num text-muted-foreground">
+                  {p.footer.identifier_line}
+                </p>
+              )}
+              {p.footer.establishment_line && (
+                <p className="micro text-muted-foreground">
+                  {p.footer.establishment_line}
+                </p>
+              )}
+              {p.footer.note && (
+                <p className="micro text-muted-foreground">{p.footer.note}</p>
+              )}
+              {p.footer.legal_mentions && (
+                <p className="micro text-muted-foreground">
+                  {p.footer.legal_mentions}
+                </p>
+              )}
             </footer>
           </article>
         </Section>
@@ -1761,10 +3464,15 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
         {p.empty_blocks.length > 0 && (
           <Callout tone="warn" title="Switched on, but empty">
             <p className="text-muted-foreground">
-              These blocks are enabled and would print nothing. Fill them in on the entity&apos;s other tabs, or switch them off.
+              These blocks are enabled and would print nothing. Fill them in on
+              the entity&apos;s other tabs, or switch them off.
             </p>
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {p.empty_blocks.map((b) => <li key={b}><Pill tone="warn">{enumLabel(b)}</Pill></li>)}
+              {p.empty_blocks.map((b) => (
+                <li key={b}>
+                  <Pill tone="warn">{enumLabel(b)}</Pill>
+                </li>
+              ))}
             </ul>
           </Callout>
         )}
@@ -1786,7 +3494,12 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
  * "who re-parented this subsidiary" is answerable without diffing an entity
  * update that also changed a phone number. The cycle check runs on both.
  */
-function StructureModal({ entityId, structure, onClose, onSaved }: {
+function StructureModal({
+  entityId,
+  structure,
+  onClose,
+  onSaved,
+}: {
   entityId: string;
   structure: api.Entity360["structure"];
   onClose: () => void;
@@ -1794,35 +3507,58 @@ function StructureModal({ entityId, structure, onClose, onSaved }: {
 }) {
   const toast = useToast();
   const { rows: entities } = useList<api.Entity>("/entities");
-  const [parentId, setParentId] = React.useState(structure.parent_entity_id ?? "");
-  const [relationship, setRelationship] = React.useState<string>(structure.relationship_type ?? "");
-  const [owned, setOwned] = React.useState(structure.ownership_percent != null ? String(structure.ownership_percent) : "");
-  const [consolidates, setConsolidates] = React.useState(structure.consolidates === true);
-  const [isGroupParent, setIsGroupParent] = React.useState(structure.is_group_parent === true);
+  const [parentId, setParentId] = React.useState(
+    structure.parent_entity_id ?? "",
+  );
+  const [relationship, setRelationship] = React.useState<string>(
+    structure.relationship_type ?? "",
+  );
+  const [owned, setOwned] = React.useState(
+    structure.ownership_percent != null
+      ? String(structure.ownership_percent)
+      : "",
+  );
+  const [consolidates, setConsolidates] = React.useState(
+    structure.consolidates === true,
+  );
+  const [isGroupParent, setIsGroupParent] = React.useState(
+    structure.is_group_parent === true,
+  );
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   // Never offer this entity as its own parent, nor anything it already sits
   // above — the API rejects both (rules.assertNoCycle), but a picker that leads
   // straight to a 422 is a picker that should not have offered the option.
-  const descendants = React.useMemo(() => new Set(structure.children.map((c) => c.entity_id)), [structure.children]);
-  const parentOptions = (entities || []).filter((x) => x.entity_id !== entityId && !descendants.has(x.entity_id));
+  const descendants = React.useMemo(
+    () => new Set(structure.children.map((c) => c.entity_id)),
+    [structure.children],
+  );
+  const parentOptions = (entities || []).filter(
+    (x) => x.entity_id !== entityId && !descendants.has(x.entity_id),
+  );
 
   async function save() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       await api.setEntityStructure(entityId, {
         parent_entity_id: parentId || null,
         // A relationship with no parent is meaningless; clear it together so the
         // pair can never disagree.
-        relationship_type: parentId ? (relationship || null) : null,
+        relationship_type: parentId ? relationship || null : null,
         ownership_percent: owned.trim() === "" ? null : Number(owned),
         consolidates,
         is_group_parent: isGroupParent,
       });
       toast.success("Structure updated.");
-      onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -1833,25 +3569,53 @@ function StructureModal({ entityId, structure, onClose, onSaved }: {
       description="How this entity sits in the group. Changing it is recorded on the audit trail."
     >
       <div className="space-y-3">
-        <Field label="Parent entity" hint="Leave blank for a standalone or top-level company.">
-          <Select value={parentId} onChange={(ev) => setParentId(ev.target.value)}>
+        <Field
+          label="Parent entity"
+          hint="Leave blank for a standalone or top-level company."
+        >
+          <Select
+            value={parentId}
+            onChange={(ev) => setParentId(ev.target.value)}
+          >
             <option value="">— none —</option>
-            {parentOptions.map((p) => <option key={p.entity_id} value={p.entity_id}>{p.code} — {p.legal_name}</option>)}
+            {parentOptions.map((p) => (
+              <option key={p.entity_id} value={p.entity_id}>
+                {p.code} — {p.legal_name}
+              </option>
+            ))}
           </Select>
         </Field>
 
         {parentId && (
           <>
             <Field label="Relationship to parent">
-              <Select value={relationship} onChange={(ev) => setRelationship(ev.target.value)}>
+              <Select
+                value={relationship}
+                onChange={(ev) => setRelationship(ev.target.value)}
+              >
                 <option value="">—</option>
-                {entityCommon.RELATIONSHIP_TYPES.filter((r) => r !== "HEADQUARTERS").map((r) => (
-                  <option key={r} value={r}>{enumLabel(r)}</option>
+                {entityCommon.RELATIONSHIP_TYPES.filter(
+                  (r) => r !== "HEADQUARTERS",
+                ).map((r) => (
+                  <option key={r} value={r}>
+                    {enumLabel(r)}
+                  </option>
                 ))}
               </Select>
             </Field>
-            <Field label="Owned by the parent (%)" hint="What the parent holds. The cap table records who holds what in detail.">
-              <Input type="number" min={0} max={100} step="any" value={owned} onChange={(ev) => setOwned(ev.target.value)} placeholder="100" />
+            <Field
+              label="Owned by the parent (%)"
+              hint="What the parent holds. The cap table records who holds what in detail."
+            >
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step="any"
+                value={owned}
+                onChange={(ev) => setOwned(ev.target.value)}
+                placeholder="100"
+              />
             </Field>
           </>
         )}
@@ -1871,14 +3635,88 @@ function StructureModal({ entityId, structure, onClose, onSaved }: {
 
         {parentId && isGroupParent && (
           <Callout tone="warn">
-            An entity with a parent is not usually the group parent. Leave this off unless it heads a sub-group with its own consolidated accounts.
+            An entity with a parent is not usually the group parent. Leave this
+            off unless it heads a sub-group with its own consolidated accounts.
           </Callout>
         )}
 
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button loading={busy} disabled={busy} onClick={save}>
+            Save structure
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The two characters that lead this entity's operation-file references.
+ *
+ * WHY IT IS NOT A BOX ON THE ENTITY FORM. Every other field there is a fact
+ * about the company that an administrator may correct at any time. This one is
+ * an identifier that goes out to clients on documents and then belongs to the
+ * past: the API refuses to change it once an operation file has used one, and
+ * records the change on the audit trail when it does allow it. A field with
+ * those rules sitting between "Website" and "Phone" would look like an ordinary
+ * edit right up until it came back 422.
+ *
+ * The client keeps no copy of the rule — it sends the change and shows what
+ * comes back, so "has a file used this?" is answered by the only thing that can
+ * actually answer it.
+ */
+function OpsReferencePrefixModal({ entityId, current, onClose, onSaved }: {
+  entityId: string;
+  current: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [prefix, setPrefix] = React.useState(current);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      await api.setEntityOpsReferencePrefix(entityId, prefix);
+      toast.success("Operation reference prefix updated.");
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Operation reference prefix"
+      description="The two characters every operation file of this entity starts with. Fixed once a file has used it."
+    >
+      <div className="space-y-3">
+        <Field label="Prefix" hint="Two characters, A–Z or 0–9. Unique across this tenant's entities.">
+          <Input
+            value={prefix}
+            onChange={(ev) => setPrefix(ev.target.value.toUpperCase().slice(0, 2))}
+            maxLength={2}
+            placeholder="SL"
+            className="font-mono"
+          />
+        </Field>
+        <p className="micro text-muted-foreground">
+          A file would read <span className="font-mono">{(prefix || "SL")}7Z3K9QW2M4XBSM</span>. This is not the
+          invoice prefix — that is <span className="font-mono">Document prefix</span>, and it leads a different
+          set of numbers.
+        </p>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={busy} disabled={busy} onClick={save}>Save structure</Button>
+          <Button loading={busy} disabled={busy || prefix.length !== 2 || prefix === current} onClick={save}>
+            Save prefix
+          </Button>
         </div>
       </div>
     </Modal>
@@ -1890,53 +3728,94 @@ function StructureModal({ entityId, structure, onClose, onSaved }: {
  * and lets a rejected move come back as a readable 409, rather than the client
  * keeping a second copy of the rules that can drift from the server's.
  */
-function StatusModal({ entity, usage, onClose, onSaved }: {
+function StatusModal({
+  entity,
+  usage,
+  onClose,
+  onSaved,
+}: {
   entity: api.Entity;
   usage: { subsidiaries: number };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const toast = useToast();
-  const current = entity.registration_status || (entity.is_active ? "ACTIVE" : "DEACTIVATED");
-  const [status, setStatus] = React.useState<api.EntityLifecycle>(current as api.EntityLifecycle);
+  const current =
+    entity.registration_status || (entity.is_active ? "ACTIVE" : "DEACTIVATED");
+  const [status, setStatus] = React.useState<api.EntityLifecycle>(
+    current as api.EntityLifecycle,
+  );
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const needsReason = ["SUSPENDED", "DEACTIVATED", "ARCHIVED"].includes(status);
 
   async function save() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       await api.setEntityStatus(entity.entity_id, status, reason || undefined);
       toast.success("Status updated.");
-      onSaved(); onClose();
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <Modal open onClose={onClose} title="Change entity status" description={`Currently ${enumLabel(current)}.`}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Change entity status"
+      description={`Currently ${enumLabel(current)}.`}
+    >
       <div className="space-y-3">
         <Field label="New status">
-          <Select value={status} onChange={(ev) => setStatus(ev.target.value as api.EntityLifecycle)}>
+          <Select
+            value={status}
+            onChange={(ev) => setStatus(ev.target.value as api.EntityLifecycle)}
+          >
             {entityCommon.LIFECYCLE_STATES.map((s) => (
-              <option key={s} value={s}>{enumLabel(s)}</option>
+              <option key={s} value={s}>
+                {enumLabel(s)}
+              </option>
             ))}
           </Select>
         </Field>
         {needsReason && (
           <Field label="Reason" required hint="Recorded on the audit trail.">
-            <Input value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="Dormant since the 2026 restructuring" />
+            <Input
+              value={reason}
+              onChange={(ev) => setReason(ev.target.value)}
+              placeholder="Dormant since the 2026 restructuring"
+            />
           </Field>
         )}
-        {usage.subsidiaries > 0 && ["DEACTIVATED", "ARCHIVED"].includes(status) && (
-          <Callout tone="warn">
-            This entity is the parent of {usage.subsidiaries} other {usage.subsidiaries === 1 ? "entity" : "entities"}. Re-parent them first.
-          </Callout>
-        )}
+        {usage.subsidiaries > 0 &&
+          ["DEACTIVATED", "ARCHIVED"].includes(status) && (
+            <Callout tone="warn">
+              This entity is the parent of {usage.subsidiaries} other{" "}
+              {usage.subsidiaries === 1 ? "entity" : "entities"}. Re-parent them
+              first.
+            </Callout>
+          )}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={busy} disabled={busy || status === current || (needsReason && !reason.trim())} onClick={save}>Update status</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            loading={busy}
+            disabled={
+              busy || status === current || (needsReason && !reason.trim())
+            }
+            onClick={save}
+          >
+            Update status
+          </Button>
         </div>
       </div>
     </Modal>

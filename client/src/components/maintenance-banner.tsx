@@ -93,7 +93,10 @@ function endsAtLabel(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -128,7 +131,11 @@ export function MaintenanceBanner() {
   const dismissible = !win.writes_blocked;
   if (dismissible && dismissedId === win.maintenance_window_id) return null;
 
-  const tone = win.writes_blocked ? "warn" : win.mode === "READ_ONLY" ? "warn" : "info";
+  const tone = win.writes_blocked
+    ? "warn"
+    : win.mode === "READ_ONLY"
+      ? "warn"
+      : "info";
 
   const headline = win.writes_blocked
     ? `${win.title} — changes are paused until ${endsAtLabel(win.ends_at)}.`

@@ -35,9 +35,24 @@ import { LeadForm, ConvertModal, TriageModal, ReviewModal } from "./lead-forms";
 /* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
 const LEADS_AI: AiAction[] = [
-  { label: "Triage inbound enquiry", kind: "assist", describe: "Triage an enquiry into a qualified lead (optionally converting it)." },
-  { label: "Suggest next action", kind: "assist", describe: "Suggest the next best action for a stale lead based on its history." },
-  { label: "Draft outreach", kind: "write", describe: "Draft a first-contact email for a new lead (human-confirmed before send)." },
+  {
+    label: "Triage inbound enquiry",
+    kind: "assist",
+    describe:
+      "Triage an enquiry into a qualified lead (optionally converting it).",
+  },
+  {
+    label: "Suggest next action",
+    kind: "assist",
+    describe:
+      "Suggest the next best action for a stale lead based on its history.",
+  },
+  {
+    label: "Draft outreach",
+    kind: "write",
+    describe:
+      "Draft a first-contact email for a new lead (human-confirmed before send).",
+  },
 ];
 
 const LEAD_FILTERS = [
@@ -48,7 +63,10 @@ const LEAD_FILTERS = [
   { value: "CONVERTED", label: "Converted" },
   { value: "LOST", label: "Lost" },
 ];
-const NEXT_STATUS: Record<string, string> = { NEW: "CONTACTED", CONTACTED: "QUALIFIED" };
+const NEXT_STATUS: Record<string, string> = {
+  NEW: "CONTACTED",
+  CONTACTED: "QUALIFIED",
+};
 
 function LeadsTab() {
   const reload = useRefresh();
@@ -79,7 +97,11 @@ function LeadsTab() {
     return (rows || []).filter((r) => {
       if (filter && String(r.status) !== filter) return false;
       if (!q) return true;
-      return [r.company_name, r.contact_name, r.email].some((v) => String(v ?? "").toLowerCase().includes(q));
+      return [r.company_name, r.contact_name, r.email].some((v) =>
+        String(v ?? "")
+          .toLowerCase()
+          .includes(q),
+      );
     });
   }, [rows, filter, search]);
 
@@ -87,7 +109,11 @@ function LeadsTab() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a lead — company, contact, email…" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a lead — company, contact, email…"
+          />
         </div>
         <Button
           onClick={() => {
@@ -98,7 +124,12 @@ function LeadsTab() {
           Capture lead
         </Button>
       </div>
-      <Chips label="Filter leads by status" value={filter} options={LEAD_FILTERS} onChange={setFilter} />
+      <Chips
+        label="Filter leads by status"
+        value={filter}
+        options={LEAD_FILTERS}
+        onChange={setFilter}
+      />
 
       {rowError && <ErrorState message={rowError} />}
 
@@ -107,7 +138,14 @@ function LeadsTab() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : filtered.length === 0 ? (
-        <EmptyState title={rows.length ? "No leads match" : "No leads yet"} hint={rows.length ? "Try a different filter or search." : "Capture your first lead, or triage an inbound enquiry into one."} />
+        <EmptyState
+          title={rows.length ? "No leads match" : "No leads yet"}
+          hint={
+            rows.length
+              ? "Try a different filter or search."
+              : "Capture your first lead, or triage an inbound enquiry into one."
+          }
+        />
       ) : (
         <div className="space-y-2">
           {filtered.map((r) => {
@@ -120,16 +158,25 @@ function LeadsTab() {
                 <Avatar name={String(r.company_name || "?")} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">{cell(r.company_name)}</p>
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {cell(r.company_name)}
+                    </p>
                     <StatusPill status={status} />
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
-                    {[cell(r.contact_name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "No contact details"}
+                    {[cell(r.contact_name), cell(r.email)]
+                      .filter((x) => x !== "—")
+                      .join(" · ") || "No contact details"}
                     {r.service_interest ? ` · ${cell(r.service_interest)}` : ""}
                   </p>
                 </div>
-                <span className="hidden text-xs text-muted-foreground sm:block">{cell(r.source).toLowerCase()}</span>
-                <ComposeIconButton to={String(r.email ?? "") || undefined} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" />
+                <span className="hidden text-xs text-muted-foreground sm:block">
+                  {cell(r.source).toLowerCase()}
+                </span>
+                <ComposeIconButton
+                  to={String(r.email ?? "") || undefined}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                />
                 {!terminal && (
                   <div className="flex gap-2">
                     {status === "QUALIFIED" ? (
@@ -137,11 +184,21 @@ function LeadsTab() {
                         Convert
                       </Button>
                     ) : next ? (
-                      <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => transition(id, next)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={rowBusy === id}
+                        onClick={() => transition(id, next)}
+                      >
                         {next === "CONTACTED" ? "Mark contacted" : "Qualify"}
                       </Button>
                     ) : null}
-                    <Button size="sm" variant="ghost" disabled={rowBusy === id} onClick={() => transition(id, "LOST")}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={rowBusy === id}
+                      onClick={() => transition(id, "LOST")}
+                    >
                       Lost
                     </Button>
                     <Button
@@ -162,8 +219,17 @@ function LeadsTab() {
         </div>
       )}
 
-      <LeadForm open={formOpen} editing={editing} onClose={() => setFormOpen(false)} onSaved={reload} />
-      <ConvertModal lead={converting} onClose={() => setConverting(null)} onDone={reload} />
+      <LeadForm
+        open={formOpen}
+        editing={editing}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+      />
+      <ConvertModal
+        lead={converting}
+        onClose={() => setConverting(null)}
+        onDone={reload}
+      />
     </div>
   );
 }
@@ -171,10 +237,16 @@ function LeadsTab() {
 /* ═══════════════════════════════ INBOUND INTAKE ═══════════════════════════════ */
 
 function IntakeTab() {
-  const [sub, setSub] = React.useState<"enquiries" | "partnerships">("enquiries");
+  const [sub, setSub] = React.useState<"enquiries" | "partnerships">(
+    "enquiries",
+  );
   const reload = useRefresh();
-  const { rows: enquiries, error: enqErr } = useList(sub === "enquiries" ? "/intake/enquiries" : null);
-  const { rows: partnerships, error: partErr } = useList(sub === "partnerships" ? "/intake/partnerships" : null);
+  const { rows: enquiries, error: enqErr } = useList(
+    sub === "enquiries" ? "/intake/enquiries" : null,
+  );
+  const { rows: partnerships, error: partErr } = useList(
+    sub === "partnerships" ? "/intake/partnerships" : null,
+  );
   const [triaging, setTriaging] = React.useState<Row | null>(null);
   const [reviewing, setReviewing] = React.useState<Row | null>(null);
 
@@ -196,25 +268,43 @@ function IntakeTab() {
         ) : enquiries === null ? (
           <SkeletonTable />
         ) : enquiries.length === 0 ? (
-          <EmptyState title="No enquiries" hint="Contact-form and email enquiries land here for triage into leads." />
+          <EmptyState
+            title="No enquiries"
+            hint="Contact-form and email enquiries land here for triage into leads."
+          />
         ) : (
           <div className="space-y-2">
             {enquiries.map((r) => {
-              const done = String(r.status) === "TRIAGED" || String(r.status) === "CLOSED";
+              const done =
+                String(r.status) === "TRIAGED" || String(r.status) === "CLOSED";
               return (
-                <div key={String(r.contact_enquiry_id)} className="lux-card flex items-center gap-3 p-3">
+                <div
+                  key={String(r.contact_enquiry_id)}
+                  className="lux-card flex items-center gap-3 p-3"
+                >
                   <Avatar name={String(r.name || r.email || "?")} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">{cell(r.subject) === "—" ? "(no subject)" : cell(r.subject)}</p>
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {cell(r.subject) === "—"
+                          ? "(no subject)"
+                          : cell(r.subject)}
+                      </p>
                       <StatusPill status={String(r.status || "NEW")} />
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[cell(r.name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "Anonymous"} · {cell(r.source).toLowerCase()} · {dateFmt(r.created_at)}
+                      {[cell(r.name), cell(r.email)]
+                        .filter((x) => x !== "—")
+                        .join(" · ") || "Anonymous"}{" "}
+                      · {cell(r.source).toLowerCase()} · {dateFmt(r.created_at)}
                     </p>
                   </div>
                   {!done && (
-                    <Button size="sm" variant="outline" onClick={() => setTriaging(r)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTriaging(r)}
+                    >
                       Triage
                     </Button>
                   )}
@@ -228,22 +318,37 @@ function IntakeTab() {
       ) : partnerships === null ? (
         <SkeletonTable />
       ) : partnerships.length === 0 ? (
-        <EmptyState title="No partnership requests" hint="Inbound partnership proposals land here for review." />
+        <EmptyState
+          title="No partnership requests"
+          hint="Inbound partnership proposals land here for review."
+        />
       ) : (
         <div className="space-y-2">
           {partnerships.map((r) => (
-            <div key={String(r.partnership_request_id)} className="lux-card flex items-center gap-3 p-3">
+            <div
+              key={String(r.partnership_request_id)}
+              className="lux-card flex items-center gap-3 p-3"
+            >
               <Avatar name={String(r.company_name || "?")} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">{cell(r.company_name)}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {cell(r.company_name)}
+                  </p>
                   <StatusPill status={String(r.status || "NEW")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
-                  {[cell(r.contact_name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "—"} · {dateFmt(r.created_at)}
+                  {[cell(r.contact_name), cell(r.email)]
+                    .filter((x) => x !== "—")
+                    .join(" · ") || "—"}{" "}
+                  · {dateFmt(r.created_at)}
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setReviewing(r)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setReviewing(r)}
+              >
                 Review
               </Button>
             </div>
@@ -251,8 +356,16 @@ function IntakeTab() {
         </div>
       )}
 
-      <TriageModal enquiry={triaging} onClose={() => setTriaging(null)} onDone={reload} />
-      <ReviewModal partnership={reviewing} onClose={() => setReviewing(null)} onDone={reload} />
+      <TriageModal
+        enquiry={triaging}
+        onClose={() => setTriaging(null)}
+        onDone={reload}
+      />
+      <ReviewModal
+        partnership={reviewing}
+        onClose={() => setReviewing(null)}
+        onDone={reload}
+      />
     </div>
   );
 }
@@ -260,12 +373,22 @@ function IntakeTab() {
 /* ─────────────────────────────── Leads page (tabbed) ─────────────────────────────── */
 
 export function LeadsPage() {
-  const initialTab = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "intake" ? "intake" : "leads";
-  const [tab, setTab] = React.useState<"leads" | "intake">(initialTab as "leads" | "intake");
+  const initialTab =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("tab") === "intake"
+      ? "intake"
+      : "leads";
+  const [tab, setTab] = React.useState<"leads" | "intake">(
+    initialTab as "leads" | "intake",
+  );
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />} title="Leads & intake" description="The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Leads & intake"
+        description="The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them."
+      />
       <HubTabs />
 
       <div className="mb-5">

@@ -42,7 +42,10 @@ export function SessionsPage() {
     {
       success: "Session revoked",
       idle: "That session was already revoked.",
-      onSuccess: () => { mine.reload(); all.reload(); },
+      onSuccess: () => {
+        mine.reload();
+        all.reload();
+      },
     },
   );
 
@@ -53,20 +56,74 @@ export function SessionsPage() {
   const error = kill.error || killAllMine.error;
 
   const baseCols: Column<Session>[] = [
-    { key: "created_at", label: "Started", render: (r) => <span className="num">{dateFmt(r.created_at)}</span> },
-    { key: "last_seen_at", label: "Last seen", render: (r) => <span className="num">{dateFmt(r.last_seen_at)}</span> },
-    { key: "ip", label: "IP", render: (r) => <span className="num text-muted-foreground">{r.ip || "—"}</span> },
-    { key: "user_agent", label: "Device", render: (r) => <span className="text-muted-foreground">{(r.user_agent || "—").slice(0, 48)}</span> },
-    { key: "state", label: "State", render: (r) => (r.killed_at ? <Pill tone="bad">Revoked</Pill> : <Pill tone="ok">Active</Pill>) },
+    {
+      key: "created_at",
+      label: "Started",
+      render: (r) => <span className="num">{dateFmt(r.created_at)}</span>,
+    },
+    {
+      key: "last_seen_at",
+      label: "Last seen",
+      render: (r) => <span className="num">{dateFmt(r.last_seen_at)}</span>,
+    },
+    {
+      key: "ip",
+      label: "IP",
+      render: (r) => (
+        <span className="num text-muted-foreground">{r.ip || "—"}</span>
+      ),
+    },
+    {
+      key: "user_agent",
+      label: "Device",
+      render: (r) => (
+        <span className="text-muted-foreground">
+          {(r.user_agent || "—").slice(0, 48)}
+        </span>
+      ),
+    },
+    {
+      key: "state",
+      label: "State",
+      render: (r) =>
+        r.killed_at ? (
+          <Pill tone="bad">Revoked</Pill>
+        ) : (
+          <Pill tone="ok">Active</Pill>
+        ),
+    },
   ];
 
   const withKill: Column<Session>[] = [
     ...baseCols,
-    { key: "_a", label: "", render: (r) => <RowActions><Button size="sm" variant="outline" disabled={!!r.killed_at || kill.busy} onClick={() => kill.run(r.session_id)}>Revoke</Button></RowActions> },
+    {
+      key: "_a",
+      label: "",
+      render: (r) => (
+        <RowActions>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!r.killed_at || kill.busy}
+            onClick={() => kill.run(r.session_id)}
+          >
+            Revoke
+          </Button>
+        </RowActions>
+      ),
+    },
   ];
 
   const adminCols: Column<Session>[] = [
-    { key: "user_id", label: "User", render: (r) => <span className="num text-muted-foreground">{r.user_id ? `…${r.user_id.slice(-8)}` : "—"}</span> },
+    {
+      key: "user_id",
+      label: "User",
+      render: (r) => (
+        <span className="num text-muted-foreground">
+          {r.user_id ? `…${r.user_id.slice(-8)}` : "—"}
+        </span>
+      ),
+    },
     ...withKill,
   ];
 
@@ -76,7 +133,17 @@ export function SessionsPage() {
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Sessions"
         description="Active sign-ins. Revoking a session invalidates its refresh token immediately — the next refresh is rejected as reuse."
-        action={tab === "mine" ? <Button variant="outline" onClick={() => killAllMine.run()} loading={killAllMine.busy}>Revoke all mine</Button> : undefined}
+        action={
+          tab === "mine" ? (
+            <Button
+              variant="outline"
+              onClick={() => killAllMine.run()}
+              loading={killAllMine.busy}
+            >
+              Revoke all mine
+            </Button>
+          ) : undefined
+        }
       />
       <HubTabs />
       <Segmented
@@ -85,13 +152,40 @@ export function SessionsPage() {
         className="mb-4"
         value={tab}
         onChange={setTab}
-        options={[{ value: "mine", label: "My sessions" }, { value: "all", label: "All sessions" }]}
+        options={[
+          { value: "mine", label: "My sessions" },
+          { value: "all", label: "All sessions" },
+        ]}
       />
-      {error && <div className="mb-3"><ErrorState message={error} /></div>}
+      {error && (
+        <div className="mb-3">
+          <ErrorState message={error} />
+        </div>
+      )}
       {tab === "mine" ? (
-        <DataList columns={withKill} rows={mine.rows} error={mine.error} loading={mine.loading} rowKey={(r) => r.session_id} empty={{ title: "No active sessions", hint: "You're signed in on this device only." }} />
+        <DataList
+          columns={withKill}
+          rows={mine.rows}
+          error={mine.error}
+          loading={mine.loading}
+          rowKey={(r) => r.session_id}
+          empty={{
+            title: "No active sessions",
+            hint: "You're signed in on this device only.",
+          }}
+        />
       ) : (
-        <DataList columns={adminCols} rows={all.rows} error={all.error} loading={all.loading} rowKey={(r) => r.session_id} empty={{ title: "No sessions", hint: "Listing every tenant session needs the session view grant." }} />
+        <DataList
+          columns={adminCols}
+          rows={all.rows}
+          error={all.error}
+          loading={all.loading}
+          rowKey={(r) => r.session_id}
+          empty={{
+            title: "No sessions",
+            hint: "Listing every tenant session needs the session view grant.",
+          }}
+        />
       )}
     </section>
   );

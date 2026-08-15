@@ -47,11 +47,32 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useAuth } from "@/app/auth/auth-context";
 import { AiComposer, type ComposerValue } from "@/components/ai/composer";
-import { AiThinking, AiTurnView, hasOutput, outputFor, type TurnOutput } from "@/components/ai/turn";
+import {
+  AiThinking,
+  AiTurnView,
+  hasOutput,
+  outputFor,
+  type TurnOutput,
+} from "@/components/ai/turn";
 import { useAiThread, type AiTurn } from "@/components/ai/thread";
-import { DESK_STARTERS, scopeByKey, useAiScopes, type AiMode } from "@/components/ai/context";
-import { extractSources, extractTables, mergeSources, type AiSource, type AiTable } from "@/components/ai/grounding";
-import { PanelLeftIcon, PanelRightIcon, PraxisMarkLarge } from "@/components/ai/icons";
+import {
+  DESK_STARTERS,
+  scopeByKey,
+  useAiScopes,
+  type AiMode,
+} from "@/components/ai/context";
+import {
+  extractSources,
+  extractTables,
+  mergeSources,
+  type AiSource,
+  type AiTable,
+} from "@/components/ai/grounding";
+import {
+  PanelLeftIcon,
+  PanelRightIcon,
+  PraxisMarkLarge,
+} from "@/components/ai/icons";
 import { PlusIcon } from "@/components/ui/icons";
 import { AiHistoryRail } from "./history-rail";
 import { AiRightPane, EMPTY_PANE, type PaneState } from "./right-pane";
@@ -62,7 +83,8 @@ const LAYOUT_KEY = "praxis.ai.workspace.panes";
 function storedLayout(): { left: boolean; right: boolean } {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);
-    if (raw) return { left: true, right: false, ...(JSON.parse(raw) as object) };
+    if (raw)
+      return { left: true, right: false, ...(JSON.parse(raw) as object) };
   } catch {
     /* private mode — defaults are fine */
   }
@@ -127,7 +149,9 @@ export function AiWorkspace() {
       out.push(...mergeSources(extractSources(t.text), t.sources));
     }
     const seen = new Set<string>();
-    return out.filter((s) => (seen.has(s.href) ? false : (seen.add(s.href), true)));
+    return out.filter((s) =>
+      seen.has(s.href) ? false : (seen.add(s.href), true),
+    );
   }, [thread.turns]);
 
   React.useEffect(() => {
@@ -253,7 +277,13 @@ export function AiWorkspace() {
       output: { tables: allTables, artifact: lastOutput.artifact },
       // The tab is chosen once, when the pane opens for this answer. Re-choosing
       // it on every token would drag the user off Sources mid-read.
-      ...(firstFill ? { tab: lastOutput.tables.length ? ("table" as const) : ("canvas" as const) } : {}),
+      ...(firstFill
+        ? {
+            tab: lastOutput.tables.length
+              ? ("table" as const)
+              : ("canvas" as const),
+          }
+        : {}),
     }));
     if (firstFill) {
       openedFor.current = lastAnswer.id;
@@ -275,14 +305,19 @@ export function AiWorkspace() {
    */
   React.useEffect(() => {
     if (pinned) return;
-    setPane((p) => (p.output.tables === allTables ? p : { ...p, output: { ...p.output, tables: allTables } }));
+    setPane((p) =>
+      p.output.tables === allTables
+        ? p
+        : { ...p, output: { ...p.output, tables: allTables } },
+    );
   }, [allTables, pinned]);
 
   // Keep the URL pointing at the thread on screen, so the page is refreshable
   // and shareable. `replace`, so switching conversations does not stack a dozen
   // history entries between the user and the page they arrived from.
   React.useEffect(() => {
-    if (!thread.conversationId || params.get("c") === thread.conversationId) return;
+    if (!thread.conversationId || params.get("c") === thread.conversationId)
+      return;
     setParams({ c: thread.conversationId }, { replace: true });
   }, [thread.conversationId, params, setParams]);
 
@@ -295,11 +330,16 @@ export function AiWorkspace() {
    *  Pinning it stops the live answer's sync from taking it straight back. */
   function openOutput(turn: AiTurn, output: TurnOutput) {
     setPinned(turn.id);
-    setPane((p) => ({ ...p, tab: output.tables.length ? "table" : "canvas", output }));
+    setPane((p) => ({
+      ...p,
+      tab: output.tables.length ? "table" : "canvas",
+      output,
+    }));
     setLayout((l) => ({ ...l, right: true }));
   }
 
-  const empty = thread.turns.length === 0 && !thread.busy && !thread.loadingHistory;
+  const empty =
+    thread.turns.length === 0 && !thread.busy && !thread.loadingHistory;
   const activeScope = scopeByKey(scopes, composer.scope);
   const title = thread.turns.find((t) => t.role === "user")?.text;
 
@@ -467,10 +507,15 @@ export function AiWorkspace() {
             />
           ) : (
             <>
-              <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+              <div
+                ref={bodyRef}
+                className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
+              >
                 <div className="mx-auto flex max-w-reading flex-col gap-6">
                   {thread.loadingHistory && thread.turns.length === 0 && (
-                    <p className="micro text-muted-foreground">Loading this conversation…</p>
+                    <p className="micro text-muted-foreground">
+                      Loading this conversation…
+                    </p>
                   )}
                   {thread.turns.map((t, i) => (
                     <AiTurnView
@@ -485,16 +530,20 @@ export function AiWorkspace() {
                       onOpenCanvas={openOutput}
                     />
                   ))}
-                  {thread.busy && (() => {
-                    // Hide the generic indicator once the turn has something
-                    // better to say for itself: a growing answer IS the thinking,
-                    // and a status line names the step. "Praxis is working…"
-                    // stacked above "Reading the dossier 360°…" is two spinners
-                    // for one wait.
-                    const last = thread.turns[thread.turns.length - 1];
-                    const speaking = last && last.role === "assistant" && (last.text.length > 0 || !!last.status);
-                    return speaking ? null : <AiThinking />;
-                  })()}
+                  {thread.busy &&
+                    (() => {
+                      // Hide the generic indicator once the turn has something
+                      // better to say for itself: a growing answer IS the thinking,
+                      // and a status line names the step. "Praxis is working…"
+                      // stacked above "Reading the dossier 360°…" is two spinners
+                      // for one wait.
+                      const last = thread.turns[thread.turns.length - 1];
+                      const speaking =
+                        last &&
+                        last.role === "assistant" &&
+                        (last.text.length > 0 || !!last.status);
+                      return speaking ? null : <AiThinking />;
+                    })()}
                 </div>
               </div>
 
@@ -507,7 +556,8 @@ export function AiWorkspace() {
                     busy={thread.busy}
                   />
                   <p className="micro mt-2 text-center text-muted-foreground">
-                    Praxis acts with your permissions only — writes always ask first.
+                    Praxis acts with your permissions only — writes always ask
+                    first.
                   </p>
                 </div>
               </div>
@@ -560,7 +610,9 @@ function PaneToggle({
         aria-pressed={on}
         className={cn(
           "tap-24 grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors",
-          on ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          on
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground",
         )}
       >
         {children}
@@ -599,7 +651,8 @@ function Landing({
   busy: boolean;
 }) {
   const hour = new Date().getHours();
-  const part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const part =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   // First name only. "Good afternoon, Blake" is a greeting; "Good afternoon,
   // Blake Asaah Tom" is a mail merge.
   const first = (name || "").trim().split(/\s+/)[0];
@@ -608,7 +661,10 @@ function Landing({
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-8">
       <div className="w-full max-w-reading">
         <div className="mb-5 flex flex-col items-center text-center">
-          <span aria-hidden className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-primary/12 text-primary-ink">
+          <span
+            aria-hidden
+            className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-primary/12 text-primary-ink"
+          >
             <PraxisMarkLarge />
           </span>
           <h2 className="font-display text-h2 font-semibold tracking-tight">
@@ -616,7 +672,8 @@ function Landing({
             {first ? `, ${first}` : ""}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ask about anything on your desk — receivables, operation files, costing, procurement.
+            Ask about anything on your desk — receivables, operation files,
+            costing, procurement.
           </p>
         </div>
 
@@ -641,7 +698,9 @@ function Landing({
               <span className="block text-label font-semibold text-foreground transition-colors group-hover/card:text-primary-ink">
                 {s.label}
               </span>
-              <span className="micro mt-0.5 line-clamp-2 block text-muted-foreground">{s.prompt}</span>
+              <span className="micro mt-0.5 line-clamp-2 block text-muted-foreground">
+                {s.prompt}
+              </span>
             </button>
           ))}
         </div>

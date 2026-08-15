@@ -1,6 +1,7 @@
 /** Operations file (dossier) repository (MOD-29). All dossier SQL lives here. */
 "use strict";
 const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
+const { normaliseReference } = require("../../../services/documents/operation-reference");
 
 /**
  * Every column of `dossier` a caller may write, and nothing else.
@@ -97,7 +98,19 @@ async function listPaged(client, q = {}) {
   if (q.q) {
     params.push("%" + q.q + "%");
     const p = "$" + params.length;
-    wh.push(`(d.ref ILIKE ${p} OR cm.name ILIKE ${p} OR d.bl_mawb ILIKE ${p} OR d.vessel_flight ILIKE ${p})`);
+    const clauses = [`d.ref ILIKE ${p}`, `cm.name ILIKE ${p}`, `d.bl_mawb ILIKE ${p}`, `d.vessel_flight ILIKE ${p}`];
+    // Operation references are STORED without separators (`SL7Z3K9QW2M4XBSM`)
+    // and DISPLAYED with them (`SL-7Z3K9QW2M4XB-SM`), so the form a person
+    // copies off a screen or an email is not the form the column holds and the
+    // ILIKE above cannot match it. This adds the canonical spelling as an exact
+    // alternative — only when normalising actually changed something, so the
+    // ordinary search still costs one parameter.
+    const canonical = normaliseReference(q.q);
+    if (canonical && canonical !== String(q.q).trim().toUpperCase()) {
+      params.push(canonical);
+      clauses.push(`upper(d.ref) = $${params.length}`);
+    }
+    wh.push("(" + clauses.join(" OR ") + ")");
   }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const sql =

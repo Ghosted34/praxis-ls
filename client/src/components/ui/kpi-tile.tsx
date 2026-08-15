@@ -12,7 +12,8 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 
 const TONE: Record<string, string> = {
-  accent: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary-ink",
+  accent:
+    "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary-ink",
   ok: "bg-[rgb(var(--ok)_/_0.12)] text-[rgb(var(--ok))]",
   warn: "bg-[rgb(var(--warn)_/_0.15)] text-[rgb(var(--warn))]",
   bad: "bg-[rgb(var(--bad)_/_0.12)] text-[rgb(var(--bad))]",
@@ -43,23 +44,38 @@ export function KpiTile({
   const body = (
     <>
       {icon && (
-        <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-md text-[14px]", TONE[tone])}>
+        <span
+          className={cn(
+            "grid h-6 w-6 shrink-0 place-items-center rounded-md text-[14px]",
+            TONE[tone],
+          )}
+        >
           {icon}
         </span>
       )}
-      <span className="num text-[18px] font-semibold leading-none">{value}</span>
-      <span className="truncate text-[12px] text-muted-foreground">{label}</span>
+      <span className="num text-[18px] font-semibold leading-none">
+        {value}
+      </span>
+      <span className="truncate text-[12px] text-muted-foreground">
+        {label}
+      </span>
       {delta && (
         <span
           className={cn(
             "ml-auto shrink-0 text-[11px] font-semibold",
-            delta.dir === "down" ? "text-[rgb(var(--bad))]" : "text-[rgb(var(--ok))]",
+            delta.dir === "down"
+              ? "text-[rgb(var(--bad))]"
+              : "text-[rgb(var(--ok))]",
           )}
         >
           {delta.value}
         </span>
       )}
-      {hint && !delta && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{hint}</span>}
+      {hint && !delta && (
+        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+          {hint}
+        </span>
+      )}
     </>
   );
 

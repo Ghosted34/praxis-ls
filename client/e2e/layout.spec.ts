@@ -627,7 +627,9 @@ test.describe("title bar strip", () => {
   const STRIP_WIDTHS = [320, 360, 414, 768, 1024, 1440] as const;
 
   for (const width of STRIP_WIDTHS) {
-    test(`carries search and the environment control at ${width}px`, async ({ page }) => {
+    test(`carries search and the environment control at ${width}px`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width, height: 900 });
       const { errors } = await openScreen(
         page,
@@ -673,8 +675,8 @@ test.describe("title bar strip", () => {
       // an installed window, and it is whatever the controls leave — so it is
       // the first thing a seventh control in this strip would consume.
       const spacer = await page.evaluate(() => {
-        const el = Array.from(document.querySelector(".wco")!.children).find((c) =>
-          c.classList.contains("flex-1"),
+        const el = Array.from(document.querySelector(".wco")!.children).find(
+          (c) => c.classList.contains("flex-1"),
         );
         return el ? Math.round(el.getBoundingClientRect().width) : -1;
       });
@@ -689,25 +691,33 @@ test.describe("title bar strip", () => {
    * (`md:hidden`) — which is what made the strip's `lg:flex` search a hole
    * rather than a duplication.
    */
-  test("closes the 768–1023px gap where neither search control rendered", async ({ page }) => {
+  test("closes the 768–1023px gap where neither search control rendered", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 768, height: 900 });
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
     await expect(page.locator(".lux-botnav")).toBeHidden();
-    await expect(page.locator(".wco").getByRole("button", { name: "Search" })).toBeVisible();
+    await expect(
+      page.locator(".wco").getByRole("button", { name: "Search" }),
+    ).toBeVisible();
   });
 
   /**
    * And the other half of that trade: the bottom bar gave its Search cell back
    * to the families. Six thumb targets on a 360px screen instead of seven.
    */
-  test("gives the bottom bar's Search width back to the families", async ({ page }) => {
+  test("gives the bottom bar's Search width back to the families", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 360, height: 900 });
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
     const botnav = page.locator(".lux-botnav");
     await expect(botnav).toBeVisible();
-    await expect(botnav.getByRole("button", { name: /search/i })).toHaveCount(0);
+    await expect(botnav.getByRole("button", { name: /search/i })).toHaveCount(
+      0,
+    );
     await expect(botnav.getByRole("button")).toHaveCount(6);
   });
 });

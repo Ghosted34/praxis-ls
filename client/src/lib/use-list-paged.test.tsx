@@ -63,19 +63,29 @@ afterEach(() => {
  * fields, so filling them changes no assertion — it just stops the fixture
  * lying about the shape.
  */
-function paged<T>(p: { data: T; total: number | null } & Partial<apiClient.Paged<T>>): apiClient.Paged<T> {
+function paged<T>(
+  p: { data: T; total: number | null } & Partial<apiClient.Paged<T>>,
+): apiClient.Paged<T> {
   return { limit: null, offset: null, hasMore: false, meta: null, ...p };
 }
 
 /** Renders the hook's output as text so assertions read off the DOM. */
-function Probe({ path, params }: { path: string; params?: Parameters<typeof useListPaged>[1] }) {
+function Probe({
+  path,
+  params,
+}: {
+  path: string;
+  params?: Parameters<typeof useListPaged>[1];
+}) {
   const l = useListPaged<{ id: string }>(path, params);
   return (
     <div>
       <span data-testid="total">{l.total}</span>
       <span data-testid="pageCount">{l.pageCount}</span>
       <span data-testid="page">{l.page}</span>
-      <span data-testid="rows">{(l.rows || []).map((r) => r.id).join(",")}</span>
+      <span data-testid="rows">
+        {(l.rows || []).map((r) => r.id).join(",")}
+      </span>
       <span data-testid="error">{l.error || ""}</span>
     </div>
   );
@@ -86,7 +96,10 @@ const url = () => String(pagedSpy.mock.calls[0][0]);
 describe("useListPaged request shape", () => {
   it("sends limit and offset derived from a ZERO-based page", async () => {
     pagedSpy.mockResolvedValue(paged({ data: [], total: 0 }));
-    render(<Probe path="/final-invoices" params={{ page: 2, pageSize: 25 }} />, { wrapper: wrapper() });
+    render(
+      <Probe path="/final-invoices" params={{ page: 2, pageSize: 25 }} />,
+      { wrapper: wrapper() },
+    );
 
     await waitFor(() => expect(pagedSpy).toHaveBeenCalled());
     const q = new URL(url(), "http://x").searchParams;
@@ -97,7 +110,9 @@ describe("useListPaged request shape", () => {
 
   it("sends the search to the server rather than filtering locally", async () => {
     pagedSpy.mockResolvedValue(paged({ data: [], total: 0 }));
-    render(<Probe path="/final-invoices" params={{ q: "SBX-2026" }} />, { wrapper: wrapper() });
+    render(<Probe path="/final-invoices" params={{ q: "SBX-2026" }} />, {
+      wrapper: wrapper(),
+    });
 
     await waitFor(() => expect(pagedSpy).toHaveBeenCalled());
     expect(new URL(url(), "http://x").searchParams.get("q")).toBe("SBX-2026");
@@ -105,7 +120,9 @@ describe("useListPaged request shape", () => {
 
   it("omits an empty or whitespace-only search, so clearing the box is not a new query", async () => {
     pagedSpy.mockResolvedValue(paged({ data: [], total: 0 }));
-    render(<Probe path="/final-invoices" params={{ q: "   " }} />, { wrapper: wrapper() });
+    render(<Probe path="/final-invoices" params={{ q: "   " }} />, {
+      wrapper: wrapper(),
+    });
 
     await waitFor(() => expect(pagedSpy).toHaveBeenCalled());
     expect(new URL(url(), "http://x").searchParams.has("q")).toBe(false);
@@ -122,13 +139,19 @@ describe("useListPaged totals", () => {
   it("reports the SERVER total, not the number of rows on this page", async () => {
     // The exact bug shape: 25 rows returned, 300 matching. Reading rows.length
     // here is what made the hub claim a tenant had 50 invoices.
-    pagedSpy.mockResolvedValue(paged({
-      data: Array.from({ length: 25 }, (_, i) => ({ id: `r${i}` })),
-      total: 300,
-    }));
-    render(<Probe path="/final-invoices" params={{ pageSize: 25 }} />, { wrapper: wrapper() });
+    pagedSpy.mockResolvedValue(
+      paged({
+        data: Array.from({ length: 25 }, (_, i) => ({ id: `r${i}` })),
+        total: 300,
+      }),
+    );
+    render(<Probe path="/final-invoices" params={{ pageSize: 25 }} />, {
+      wrapper: wrapper(),
+    });
 
-    await waitFor(() => expect(screen.getByTestId("total")).toHaveTextContent("300"));
+    await waitFor(() =>
+      expect(screen.getByTestId("total")).toHaveTextContent("300"),
+    );
     expect(screen.getByTestId("pageCount")).toHaveTextContent("12"); // ceil(300/25)
   });
 
@@ -138,22 +161,31 @@ describe("useListPaged totals", () => {
     pagedSpy.mockResolvedValue(paged({ data: [{ id: "a" }], total: null }));
     render(<Probe path="/final-invoices" />, { wrapper: wrapper() });
 
-    await waitFor(() => expect(screen.getByTestId("rows")).toHaveTextContent("a"));
+    await waitFor(() =>
+      expect(screen.getByTestId("rows")).toHaveTextContent("a"),
+    );
     expect(screen.getByTestId("total")).toHaveTextContent("0");
     expect(screen.getByTestId("pageCount")).toHaveTextContent("1");
   });
 
   it("a non-array payload yields an empty page rather than throwing in the table", async () => {
-    pagedSpy.mockResolvedValue(paged({ data: { nope: true } as never, total: 0 }));
+    pagedSpy.mockResolvedValue(
+      paged({ data: { nope: true } as never, total: 0 }),
+    );
     render(<Probe path="/final-invoices" />, { wrapper: wrapper() });
 
-    await waitFor(() => expect(screen.getByTestId("pageCount")).toHaveTextContent("1"));
+    await waitFor(() =>
+      expect(screen.getByTestId("pageCount")).toHaveTextContent("1"),
+    );
     expect(screen.getByTestId("rows")).toHaveTextContent("");
   });
 
   it("clamps a negative page to the first page instead of sending offset -25", async () => {
     pagedSpy.mockResolvedValue(paged({ data: [], total: 0 }));
-    render(<Probe path="/final-invoices" params={{ page: -3, pageSize: 25 }} />, { wrapper: wrapper() });
+    render(
+      <Probe path="/final-invoices" params={{ page: -3, pageSize: 25 }} />,
+      { wrapper: wrapper() },
+    );
 
     await waitFor(() => expect(pagedSpy).toHaveBeenCalled());
     expect(new URL(url(), "http://x").searchParams.get("offset")).toBe("0");
@@ -170,7 +202,9 @@ describe("useListPaged caching", () => {
       const [page, setPage] = React.useState(0);
       return (
         <>
-          <button onClick={() => setPage((p) => (p === 0 ? 1 : 0))}>toggle</button>
+          <button onClick={() => setPage((p) => (p === 0 ? 1 : 0))}>
+            toggle
+          </button>
           <Probe path="/final-invoices" params={{ page, pageSize: 25 }} />
         </>
       );
@@ -181,15 +215,23 @@ describe("useListPaged caching", () => {
     getByText("toggle").click();
     await waitFor(() => expect(pagedSpy).toHaveBeenCalledTimes(2));
     // The key IS the URL, so page 1 is a distinct entry — offset must differ.
-    expect(new URL(String(pagedSpy.mock.calls[1][0]), "http://x").searchParams.get("offset")).toBe("25");
+    expect(
+      new URL(String(pagedSpy.mock.calls[1][0]), "http://x").searchParams.get(
+        "offset",
+      ),
+    ).toBe("25");
   });
 
   it("surfaces a server error as a formatted string, not an Error object", async () => {
-    pagedSpy.mockRejectedValue(new apiClient.ApiError("FORBIDDEN", "nope", 403));
+    pagedSpy.mockRejectedValue(
+      new apiClient.ApiError("FORBIDDEN", "nope", 403),
+    );
     render(<Probe path="/final-invoices" />, { wrapper: wrapper() });
 
     await waitFor(() =>
-      expect(screen.getByTestId("error")).toHaveTextContent("You don't have permission to do this."),
+      expect(screen.getByTestId("error")).toHaveTextContent(
+        "You don't have permission to do this.",
+      ),
     );
   });
 });

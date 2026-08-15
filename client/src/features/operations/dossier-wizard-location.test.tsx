@@ -19,7 +19,12 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
-import { apiClientMock, authContextMock, fixtures, renderScreen } from "@/test/screen-harness";
+import {
+  apiClientMock,
+  authContextMock,
+  fixtures,
+  renderScreen,
+} from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
@@ -54,7 +59,12 @@ const field = (o: Record<string, unknown>) => ({
 const search = (places: GeoPlace[]) => ({
   places,
   has_exact: false,
-  provider: { requested: false, status: "NOT_REQUESTED", message: null, results: [] },
+  provider: {
+    requested: false,
+    status: "NOT_REQUESTED",
+    message: null,
+    results: [],
+  },
 });
 
 function renderForm(
@@ -65,7 +75,14 @@ function renderForm(
   const onChange = vi.fn();
   const view = renderScreen(
     <DetailFieldGroups
-      groups={[{ code: "TRANSPORT", label: "Transport", seq: 0, fields: fields as never }]}
+      groups={[
+        {
+          code: "TRANSPORT",
+          label: "Transport",
+          seq: 0,
+          fields: fields as never,
+        },
+      ]}
       values={values}
       displays={{}}
       onChange={onChange}
@@ -101,7 +118,9 @@ describe("every location field gets the verified picker", () => {
     // popup — which is exactly what these four used to be.
     const trigger = await screen.findByRole("button", { name: label });
     expect(trigger).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: label })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: label }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -109,8 +128,13 @@ describe("what the field stores", () => {
   it("the catalogue place's own name, so the server can resolve it exactly", async () => {
     const user = userEvent.setup();
     const { onChange } = renderForm([field({})]);
-    await user.click(await screen.findByRole("button", { name: "Port of loading (POL)" }));
-    await user.type(screen.getByRole("combobox", { name: "Port of loading (POL)" }), "dou");
+    await user.click(
+      await screen.findByRole("button", { name: "Port of loading (POL)" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Port of loading (POL)" }),
+      "dou",
+    );
     await user.click(await screen.findByRole("option", { name: /Douala/ }));
     expect(onChange).toHaveBeenCalledWith("pol", "Douala");
   });
@@ -118,9 +142,18 @@ describe("what the field stores", () => {
   it("nothing at all when the operator only typed", async () => {
     const user = userEvent.setup();
     const { onChange } = renderForm([field({})], {}, []);
-    await user.click(await screen.findByRole("button", { name: "Port of loading (POL)" }));
-    await user.type(screen.getByRole("combobox", { name: "Port of loading (POL)" }), "Doula");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/no places matched/i));
+    await user.click(
+      await screen.findByRole("button", { name: "Port of loading (POL)" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Port of loading (POL)" }),
+      "Doula",
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /no places matched/i,
+      ),
+    );
     await user.keyboard("{Enter}");
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -132,12 +165,25 @@ describe("a field a tenant scoped to certain place kinds", () => {
     // `ref_kind` is the same column that scopes a carrier field to shipping
     // lines. Reusing it means an airport field can be restricted from the
     // Service Types screen with no code change.
-    renderForm([field({ key: "origin_airport", label: "Origin airport", ref_kind: "AIRPORT" })]);
-    await user.click(await screen.findByRole("button", { name: "Origin airport" }));
-    await user.type(screen.getByRole("combobox", { name: "Origin airport" }), "dla");
+    renderForm([
+      field({
+        key: "origin_airport",
+        label: "Origin airport",
+        ref_kind: "AIRPORT",
+      }),
+    ]);
+    await user.click(
+      await screen.findByRole("button", { name: "Origin airport" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Origin airport" }),
+      "dla",
+    );
     // The request carried the filter; the fixture ignores it, so the assertion is
     // that the control did not crash and still renders its results.
-    await waitFor(() => expect(screen.getByRole("listbox")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("listbox")).toBeInTheDocument(),
+    );
   });
 });
 
@@ -146,7 +192,9 @@ describe("a legacy value already on the file", () => {
     // The promise the migration makes: existing files keep loading and their
     // values keep displaying. They are just visibly distinguishable now.
     renderForm([field({})], { pol: "Doula" }, []);
-    expect(await screen.findByRole("button", { name: "Port of loading (POL)" })).toHaveTextContent("Doula");
+    expect(
+      await screen.findByRole("button", { name: "Port of loading (POL)" }),
+    ).toHaveTextContent("Doula");
     expect(await screen.findByText(/text only/i)).toBeInTheDocument();
   });
 
@@ -167,7 +215,9 @@ describe("non-location fields are untouched", () => {
         column_name: null,
       }),
     ]);
-    expect(await screen.findByRole("textbox", { name: "Commodity" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("textbox", { name: "Commodity" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -181,7 +231,15 @@ describe("non-location fields are untouched", () => {
 describe("dates read day-first", () => {
   it("an ETA shows dd/mm/yyyy, not the browser's locale", async () => {
     renderForm(
-      [field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" })],
+      [
+        field({
+          key: "eta",
+          label: "ETA",
+          data_type: "DATE",
+          facet_role: "ARRIVAL_DATE",
+          column_name: "eta",
+        }),
+      ],
       { eta: "2026-07-03" },
     );
     const box = await screen.findByRole("textbox", { name: "ETA" });
@@ -191,18 +249,36 @@ describe("dates read day-first", () => {
   it("typing day-first stores the ISO date", async () => {
     const user = userEvent.setup();
     const { onChange } = renderForm([
-      field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" }),
+      field({
+        key: "eta",
+        label: "ETA",
+        data_type: "DATE",
+        facet_role: "ARRIVAL_DATE",
+        column_name: "eta",
+      }),
     ]);
-    await user.type(await screen.findByRole("textbox", { name: "ETA" }), "03072026");
+    await user.type(
+      await screen.findByRole("textbox", { name: "ETA" }),
+      "03072026",
+    );
     expect(onChange).toHaveBeenLastCalledWith("eta", "2026-07-03");
   });
 
   it("an incomplete date clears the value rather than storing half of one", async () => {
     const user = userEvent.setup();
     const { onChange } = renderForm([
-      field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" }),
+      field({
+        key: "eta",
+        label: "ETA",
+        data_type: "DATE",
+        facet_role: "ARRIVAL_DATE",
+        column_name: "eta",
+      }),
     ]);
-    await user.type(await screen.findByRole("textbox", { name: "ETA" }), "0307");
+    await user.type(
+      await screen.findByRole("textbox", { name: "ETA" }),
+      "0307",
+    );
     expect(onChange).toHaveBeenLastCalledWith("eta", null);
   });
 });
@@ -212,7 +288,12 @@ describe("accessibility", () => {
     const { container } = renderForm(
       [
         field({}),
-        field({ key: "pod", label: "Port of discharge (POD)", facet_role: "DESTINATION", column_name: "pod" }),
+        field({
+          key: "pod",
+          label: "Port of discharge (POD)",
+          facet_role: "DESTINATION",
+          column_name: "pod",
+        }),
       ],
       { pol: "Douala" },
       [DOUALA],
@@ -224,9 +305,18 @@ describe("accessibility", () => {
   it("each picker's accessible name is its field label", async () => {
     renderForm([
       field({}),
-      field({ key: "pod", label: "Port of discharge (POD)", facet_role: "DESTINATION", column_name: "pod" }),
+      field({
+        key: "pod",
+        label: "Port of discharge (POD)",
+        facet_role: "DESTINATION",
+        column_name: "pod",
+      }),
     ]);
-    expect(await screen.findByRole("button", { name: "Port of loading (POL)" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Port of discharge (POD)" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Port of loading (POL)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Port of discharge (POD)" }),
+    ).toBeInTheDocument();
   });
 });

@@ -7,13 +7,24 @@
  * previews, and a preview computed from a second copy of the rules would be a
  * preview of something else.
  */
-import { pwaDesign, type PwaConfig, type EffectivePwa, type PwaBrandSource } from "@shared";
+import {
+  pwaDesign,
+  type PwaConfig,
+  type EffectivePwa,
+  type PwaBrandSource,
+} from "@shared";
 import { tenant } from "./api-client";
 import type { Branding } from "./branding";
 
 export type { PwaConfig, EffectivePwa };
-export const { effectivePwa, iconLayout, resolveTitlebar, PWA_DEFAULTS, PWA_RANGES, SPLASH_FALLBACK_BG } =
-  pwaDesign;
+export const {
+  effectivePwa,
+  iconLayout,
+  resolveTitlebar,
+  PWA_DEFAULTS,
+  PWA_RANGES,
+  SPLASH_FALLBACK_BG,
+} = pwaDesign;
 
 /** Everything unset — what a tenant that has never opened the editor has. */
 export const EMPTY_PWA_CONFIG: PwaConfig = {
@@ -59,7 +70,12 @@ export const EMPTY_PWA_CONFIG: PwaConfig = {
 
 /** Narrow the full Branding shape to the fields the PWA resolution inherits. */
 export function brandSource(b: Branding): PwaBrandSource {
-  return { name: b.name, primary: b.primary, logoUrl: b.logoUrl, theme: b.theme };
+  return {
+    name: b.name,
+    primary: b.primary,
+    logoUrl: b.logoUrl,
+    theme: b.theme,
+  };
 }
 
 /**
@@ -122,7 +138,9 @@ function pokeWindowFrame(meta: HTMLMetaElement) {
 /** Write the title-bar colour the browser reads, creating the tag if the
  *  document somehow has none, and make the first write of a document stick. */
 function setThemeColor(value: string) {
-  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  let meta = document.querySelector<HTMLMetaElement>(
+    'meta[name="theme-color"]',
+  );
   if (!meta) {
     meta = document.createElement("meta");
     meta.name = "theme-color";
@@ -193,18 +211,27 @@ export function applyPwaDocument(cfg: EffectivePwa) {
   } catch {
     /* private mode — the pre-boot bar falls back to the token default */
   }
-  root.style.setProperty("--titlebar-image", bar.imageUrl ? `url("${cssUrl(bar.imageUrl)}")` : "none");
-  root.style.setProperty("--titlebar-image-opacity", bar.imageUrl ? String(bar.opacity) : "0");
+  root.style.setProperty(
+    "--titlebar-image",
+    bar.imageUrl ? `url("${cssUrl(bar.imageUrl)}")` : "none",
+  );
+  root.style.setProperty(
+    "--titlebar-image-opacity",
+    bar.imageUrl ? String(bar.opacity) : "0",
+  );
   root.style.setProperty("--titlebar-image-blur", `${bar.blur}px`);
 
   // iOS home-screen label. Static "Praxis LS" in index.html, so every tenant's
   // icon was captioned with the vendor's name until now.
-  const title = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]');
+  const title = document.querySelector<HTMLMetaElement>(
+    'meta[name="apple-mobile-web-app-title"]',
+  );
   if (title) title.content = cfg.shortName;
 }
 
 /** Public — resolved by Host, no auth. The boot splash reads this pre-login. */
-export const fetchPwaConfig = () => tenant<PwaConfig>("/branding/pwa", { auth: false });
+export const fetchPwaConfig = () =>
+  tenant<PwaConfig>("/branding/pwa", { auth: false });
 
 /** Gated(edit). Upserts only the provided fields; returns the merged result. */
 export const savePwaConfig = (patch: Partial<PwaConfig>) =>
@@ -214,9 +241,13 @@ export const savePwaConfig = (patch: Partial<PwaConfig>) =>
  *  Separate from the logo upload because the size cap is different (2 MB — an
  *  app icon wants to be at least 512px square). */
 export const uploadAppIcon = (dataUrl: string) =>
-  tenant<{ iconUrl: string }>("/branding/pwa/icon", { method: "POST", body: { dataUrl } });
+  tenant<{ iconUrl: string }>("/branding/pwa/icon", {
+    method: "POST",
+    body: { dataUrl },
+  });
 
 /** Gated(edit). Title-bar artwork. Reuses the app-icon endpoint — same tenant
  *  namespace, same public /media segment, same 2 MB cap — and only the field it
  *  is assigned to differs. */
-export const uploadTitlebarImage = async (dataUrl: string) => (await uploadAppIcon(dataUrl)).iconUrl;
+export const uploadTitlebarImage = async (dataUrl: string) =>
+  (await uploadAppIcon(dataUrl)).iconUrl;

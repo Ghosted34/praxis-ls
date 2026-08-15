@@ -20,7 +20,9 @@ let accessToken: string | null = null;
 
 /** Which web-storage backs the refresh token, per the keep-signed-in choice. */
 function refreshStore(): Storage {
-  return localStorage.getItem(PERSIST_KEY) === "0" ? sessionStorage : localStorage;
+  return localStorage.getItem(PERSIST_KEY) === "0"
+    ? sessionStorage
+    : localStorage;
 }
 
 export const tokenStore = {
@@ -36,7 +38,8 @@ export const tokenStore = {
   getPersist: () => localStorage.getItem(PERSIST_KEY) !== "0",
 
   // Read from whichever store currently holds it (checking both is fine — one is empty).
-  getRefresh: () => localStorage.getItem(REFRESH_KEY) || sessionStorage.getItem(REFRESH_KEY),
+  getRefresh: () =>
+    localStorage.getItem(REFRESH_KEY) || sessionStorage.getItem(REFRESH_KEY),
   setRefresh: (t: string | null) => {
     // Always clear both first so a token never lingers in the other store.
     localStorage.removeItem(REFRESH_KEY);

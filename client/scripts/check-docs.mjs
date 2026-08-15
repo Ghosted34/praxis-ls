@@ -41,7 +41,9 @@ const repoRoot = join(here, "..", "..");
 const GUIDE = join(repoRoot, "doc", "FRONTEND_GUIDE.md");
 
 if (!existsSync(GUIDE)) {
-  console.error("\n✗ doc/FRONTEND_GUIDE.md is missing. It is the one frontend document.\n");
+  console.error(
+    "\n✗ doc/FRONTEND_GUIDE.md is missing. It is the one frontend document.\n",
+  );
   process.exit(1);
 }
 const guide = readFileSync(GUIDE, "utf8");
@@ -49,10 +51,22 @@ const guide = readFileSync(GUIDE, "utf8");
 /* ── every export the client actually has ─────────────────────────────────── */
 
 function sources() {
-  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "client/src"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  })
+  return execFileSync(
+    "git",
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "client/src",
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  )
     .split("\0")
     .filter((f) => f && /\.tsx?$/.test(f) && existsSync(join(repoRoot, f)));
 }
@@ -60,17 +74,24 @@ function sources() {
 const EXPORTED = new Set();
 for (const file of sources()) {
   const text = readFileSync(join(repoRoot, file), "utf8");
-  for (const m of text.matchAll(/export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/g)) {
+  for (const m of text.matchAll(
+    /export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/g,
+  )) {
     EXPORTED.add(m[1]);
   }
   // `export { A, B as C }` — the re-export form the barrel files use.
   for (const m of text.matchAll(/export\s*\{([^}]*)\}/g)) {
     for (const part of m[1].split(",")) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim();
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
       if (name && /^[A-Za-z_$][\w$]*$/.test(name)) EXPORTED.add(name);
     }
   }
-  for (const m of text.matchAll(/export\s+type\s+([A-Za-z_$][\w$]*)/g)) EXPORTED.add(m[1]);
+  for (const m of text.matchAll(/export\s+type\s+([A-Za-z_$][\w$]*)/g))
+    EXPORTED.add(m[1]);
 }
 
 /* ── what the guide claims ────────────────────────────────────────────────── */
@@ -103,8 +124,10 @@ const record = (name, why) => {
  */
 guide.split("\n").forEach((line, i) => {
   if (line.trimStart().startsWith(">")) return;
-  for (const m of line.matchAll(/`<([A-Z][A-Za-z0-9]*)[^`]*>`/g)) record(m[1], i + 1);
-  for (const m of line.matchAll(/`(use[A-Z][A-Za-z0-9]*)\(/g)) record(m[1], i + 1);
+  for (const m of line.matchAll(/`<([A-Z][A-Za-z0-9]*)[^`]*>`/g))
+    record(m[1], i + 1);
+  for (const m of line.matchAll(/`(use[A-Z][A-Za-z0-9]*)\(/g))
+    record(m[1], i + 1);
 });
 
 const missing = [];
@@ -131,15 +154,21 @@ const unbanded = SUPERSEDED.filter((f) => {
   const head = readFileSync(p, "utf8").slice(0, 1200);
   // Either a supersession banner or a redirect stub — both point a reader
   // at the guide, which is the property being asserted.
-  return !(/SUPERSEDED|Moved →/.test(head) && head.includes("FRONTEND_GUIDE.md"));
+  return !(
+    /SUPERSEDED|Moved →/.test(head) && head.includes("FRONTEND_GUIDE.md")
+  );
 });
 
 /* ── report ───────────────────────────────────────────────────────────────── */
 
-console.warn(`\nFrontend guide — ${claimed.size} component/hook name(s) checked against ${EXPORTED.size} exports\n`);
+console.warn(
+  `\nFrontend guide — ${claimed.size} component/hook name(s) checked against ${EXPORTED.size} exports\n`,
+);
 
 if (missing.length) {
-  console.error(`✗ doc/FRONTEND_GUIDE.md names ${missing.length} thing(s) that do not exist:\n`);
+  console.error(
+    `✗ doc/FRONTEND_GUIDE.md names ${missing.length} thing(s) that do not exist:\n`,
+  );
   for (const m of missing) console.error(`    line ${m.line}:  ${m.name}`);
   console.error(
     "\n  This is F5. The previous version of that document told every new engineer\n" +
@@ -151,14 +180,18 @@ if (missing.length) {
 }
 
 if (unbanded.length) {
-  console.error(`✗ ${unbanded.length} superseded doc(s) no longer point at the guide:\n`);
+  console.error(
+    `✗ ${unbanded.length} superseded doc(s) no longer point at the guide:\n`,
+  );
   for (const f of unbanded) console.error(`    doc/${f}`);
   console.error(
-    "\n  F15: six overlapping frontend plans, and \"a new engineer cannot tell which\n" +
+    '\n  F15: six overlapping frontend plans, and "a new engineer cannot tell which\n' +
       "  is current — and the one that reads most authoritative is the one that's\n" +
-      "  wrong\". The banner is what stops that recurring.\n",
+      '  wrong". The banner is what stops that recurring.\n',
   );
 }
 
 if (missing.length || unbanded.length) process.exit(1);
-console.warn("✓ Every component the guide names exists, and every superseded doc points at it.\n");
+console.warn(
+  "✓ Every component the guide names exists, and every superseded doc points at it.\n",
+);

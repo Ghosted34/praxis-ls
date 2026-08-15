@@ -84,12 +84,19 @@ type Stranded = { path: string; message: string };
  * A leaf is identified by a string `type`, which is the one property RHF's
  * `FieldError` always sets and container nodes never do.
  */
-function leafErrors(node: unknown, path = "", out: Stranded[] = []): Stranded[] {
+function leafErrors(
+  node: unknown,
+  path = "",
+  out: Stranded[] = [],
+): Stranded[] {
   if (!node || typeof node !== "object") return out;
   const record = node as Record<string, unknown>;
 
   if (typeof record.type === "string") {
-    const message = typeof record.message === "string" && record.message ? record.message : "This value is not valid.";
+    const message =
+      typeof record.message === "string" && record.message
+        ? record.message
+        : "This value is not valid.";
     out.push({ path, message });
     return out;
   }
@@ -135,20 +142,35 @@ export function Form<TFieldValues extends FieldValues>({
          * Routing those to the fields is the half of F12 that the errMsg
          * consolidation in PR1 could not do from a helper — it needs the form.
          */
-        if (e instanceof ApiError && e.status === 422 && e.fields && typeof e.fields === "object") {
+        if (
+          e instanceof ApiError &&
+          e.status === 422 &&
+          e.fields &&
+          typeof e.fields === "object"
+        ) {
           let routed = false;
-          for (const [name, messages] of Object.entries(e.fields as Record<string, string[] | string>)) {
-            const message = Array.isArray(messages) ? messages.join(", ") : String(messages);
+          for (const [name, messages] of Object.entries(
+            e.fields as Record<string, string[] | string>,
+          )) {
+            const message = Array.isArray(messages)
+              ? messages.join(", ")
+              : String(messages);
             // Only fields the form actually has; anything else falls through to
             // the banner rather than being silently dropped.
             if (name in form.getValues()) {
-              form.setError(name as Path<TFieldValues>, { type: "server", message });
+              form.setError(name as Path<TFieldValues>, {
+                type: "server",
+                message,
+              });
               routed = true;
             }
           }
           if (routed) return;
         }
-        form.setError("root.serverError", { type: "server", message: errMsg(e) });
+        form.setError("root.serverError", {
+          type: "server",
+          message: errMsg(e),
+        });
       }
     },
     (errors) => {
@@ -191,7 +213,9 @@ export function Form<TFieldValues extends FieldValues>({
       // The schema's messages are already written as sentences ("Client name is
       // required."), so they read as prose. The path is the fallback for a rule
       // that never got given one.
-      const details = stranded.map(({ path, message }) => message || path).join(" ");
+      const details = stranded
+        .map(({ path, message }) => message || path)
+        .join(" ");
       form.setError("root.serverError", {
         type: "validation",
         message: `This form can't be submitted: ${details} That isn't a field on this screen, so please report it.`,
@@ -228,14 +252,22 @@ export function FormField<TFieldValues extends FieldValues>({
   hint?: string;
   required?: boolean;
   className?: string;
-  children: (field: ControllerRenderProps<TFieldValues, Path<TFieldValues>>) => React.ReactElement;
+  children: (
+    field: ControllerRenderProps<TFieldValues, Path<TFieldValues>>,
+  ) => React.ReactElement;
 }) {
   return (
     <Controller
       control={form.control}
       name={name}
       render={({ field, fieldState }) => (
-        <Field label={label} hint={hint} required={required} error={fieldState.error?.message} className={className}>
+        <Field
+          label={label}
+          hint={hint}
+          required={required}
+          error={fieldState.error?.message}
+          className={className}
+        >
           {children(field)}
         </Field>
       )}
@@ -248,7 +280,11 @@ export function FormField<TFieldValues extends FieldValues>({
  * closed period, a network drop). Field-level messages render at their field;
  * this is only the remainder.
  */
-export function FormError<TFieldValues extends FieldValues>({ form }: { form: UseFormReturn<TFieldValues> }) {
+export function FormError<TFieldValues extends FieldValues>({
+  form,
+}: {
+  form: UseFormReturn<TFieldValues>;
+}) {
   const message = form.formState.errors.root?.serverError?.message;
   if (!message) return null;
   return <ErrorState message={message} />;

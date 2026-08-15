@@ -43,8 +43,16 @@ import { routeLabel, serviceLabel, tone } from "./shared";
 import { MilestoneCell } from "./components";
 
 const OPS_FILES_AI: AiAction[] = [
-  { label: "List / get dossiers", kind: "read", describe: "List operation files (dossiers) or fetch one." },
-  { label: "Open / advance dossier", kind: "write", describe: "Open a dossier, update it, or advance its status." },
+  {
+    label: "List / get dossiers",
+    kind: "read",
+    describe: "List operation files (dossiers) or fetch one.",
+  },
+  {
+    label: "Open / advance dossier",
+    kind: "write",
+    describe: "Open a dossier, update it, or advance its status.",
+  },
 ];
 
 const PAGE_SIZE = 25;
@@ -65,7 +73,9 @@ export function OperationsFilesPage() {
   const [status, setStatus] = React.useState("ALL");
   const [serviceTypeId, setServiceTypeId] = React.useState("");
   const [page, setPage] = React.useState(0);
-  const [editing, setEditing] = React.useState<api.Dossier | "new" | null>(null);
+  const [editing, setEditing] = React.useState<api.Dossier | "new" | null>(
+    null,
+  );
   const [view, setView] = React.useState<api.Dossier | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -112,10 +122,25 @@ export function OperationsFilesPage() {
    * counts track what the user has narrowed to. Four ~200-byte responses,
    * deduplicated and cached by Query for 30s.
    */
-  const countAll = useListPaged<api.Dossier>("/operations", { ...filters, pageSize: 1 });
-  const countOpen = useListPaged<api.Dossier>("/operations", { ...filters, status: "OPEN", pageSize: 1 });
-  const countProgress = useListPaged<api.Dossier>("/operations", { ...filters, status: "IN_PROGRESS", pageSize: 1 });
-  const countDone = useListPaged<api.Dossier>("/operations", { ...filters, status: "COMPLETED", pageSize: 1 });
+  const countAll = useListPaged<api.Dossier>("/operations", {
+    ...filters,
+    pageSize: 1,
+  });
+  const countOpen = useListPaged<api.Dossier>("/operations", {
+    ...filters,
+    status: "OPEN",
+    pageSize: 1,
+  });
+  const countProgress = useListPaged<api.Dossier>("/operations", {
+    ...filters,
+    status: "IN_PROGRESS",
+    pageSize: 1,
+  });
+  const countDone = useListPaged<api.Dossier>("/operations", {
+    ...filters,
+    status: "COMPLETED",
+    pageSize: 1,
+  });
   const counts: Record<string, number> = {
     ALL: countAll.total,
     OPEN: countOpen.total,
@@ -128,7 +153,12 @@ export function OperationsFilesPage() {
   // try/finally with no catch swallowed every failure here — see
   // doc/PERMISSION_SWEEP_BACKLOG.md §C and lib/use-action.ts.
   async function advance(d: api.Dossier) {
-    const next = d.status === "OPEN" ? "IN_PROGRESS" : d.status === "IN_PROGRESS" ? "COMPLETED" : null;
+    const next =
+      d.status === "OPEN"
+        ? "IN_PROGRESS"
+        : d.status === "IN_PROGRESS"
+          ? "COMPLETED"
+          : null;
     if (!next) return;
     setBusyId(d.dossier_id);
     setActionError(null);
@@ -143,29 +173,74 @@ export function OperationsFilesPage() {
   }
 
   const columns: Column<api.Dossier>[] = [
-    { key: "ref", label: "Reference", className: "whitespace-nowrap", render: (r) => <span className="num font-medium text-foreground">{r.ref}</span> },
-    { key: "client", label: "Client", className: "whitespace-nowrap", render: (r) => clientOf(r) },
+    {
+      key: "ref",
+      label: "Reference",
+      className: "whitespace-nowrap",
+      render: (r) => (
+        <span className="num font-medium text-foreground">{r.ref}</span>
+      ),
+    },
+    {
+      key: "client",
+      label: "Client",
+      className: "whitespace-nowrap",
+      render: (r) => clientOf(r),
+    },
     {
       key: "service",
       label: "Service",
       className: "whitespace-nowrap",
       render: (r) =>
-        r.service_key || r.service_name_en ? <Pill tone="mute">{serviceLabel(r)}</Pill> : <span className="text-muted-foreground">—</span>,
+        r.service_key || r.service_name_en ? (
+          <Pill tone="mute">{serviceLabel(r)}</Pill>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
     },
-    { key: "route", label: "Route", className: "whitespace-nowrap", render: (r) => <span className="text-muted-foreground">{routeLabel(r)}</span> },
-    { key: "milestone", label: "Milestone", render: (r) => <MilestoneCell row={r} /> },
-    { key: "costing", label: "Costing · XAF", className: "num whitespace-nowrap text-right", render: (r) => money0(r.costing_total) },
-    { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
+    {
+      key: "route",
+      label: "Route",
+      className: "whitespace-nowrap",
+      render: (r) => (
+        <span className="text-muted-foreground">{routeLabel(r)}</span>
+      ),
+    },
+    {
+      key: "milestone",
+      label: "Milestone",
+      render: (r) => <MilestoneCell row={r} />,
+    },
+    {
+      key: "costing",
+      label: "Costing · XAF",
+      className: "num whitespace-nowrap text-right",
+      render: (r) => money0(r.costing_total),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill>,
+    },
     {
       key: "_a",
       label: "",
       render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()} role="presentation">
+        <div
+          className="flex justify-end gap-2"
+          onClick={(e) => e.stopPropagation()}
+          role="presentation"
+        >
           <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>
             Edit
           </Button>
           {(r.status === "OPEN" || r.status === "IN_PROGRESS") && (
-            <Button size="sm" variant="outline" loading={busyId === r.dossier_id} onClick={() => advance(r)}>
+            <Button
+              size="sm"
+              variant="outline"
+              loading={busyId === r.dossier_id}
+              onClick={() => advance(r)}
+            >
               {r.status === "OPEN" ? "Start" : "Complete"}
             </Button>
           )}
@@ -252,17 +327,37 @@ export function OperationsFilesPage() {
           </Button>
         ),
       }}
-      pagination={{ page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: setPage }}
+      pagination={{
+        page: list.page,
+        pageSize: list.pageSize,
+        total: list.total,
+        onPageChange: setPage,
+      }}
     >
       {actionError && <ErrorState message={actionError} />}
       {/* Creating walks the three-step wizard, which opens a DRAFT so documents
           can be attached before the file is finished. EDITING does not: somebody
           correcting an ETA should not be walked through three steps. */}
-      {editing === "new" && <DossierWizard onClose={() => setEditing(null)} onCreated={list.reload} />}
-      {editing !== null && editing !== "new" && (
-        <DossierForm row={editing} onClose={() => setEditing(null)} onSaved={list.reload} />
+      {editing === "new" && (
+        <DossierWizard
+          onClose={() => setEditing(null)}
+          onCreated={list.reload}
+        />
       )}
-      {view && <Dossier360Modal dossier={view} clientLabel={clientOf(view)} onClose={() => setView(null)} />}
+      {editing !== null && editing !== "new" && (
+        <DossierForm
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={list.reload}
+        />
+      )}
+      {view && (
+        <Dossier360Modal
+          dossier={view}
+          clientLabel={clientOf(view)}
+          onClose={() => setView(null)}
+        />
+      )}
       <AiActions actions={OPS_FILES_AI} />
     </ListPage>
   );

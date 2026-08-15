@@ -30,9 +30,12 @@ jest.mock("../../src/modules/operations/milestone/milestone.service", () => ({
   recalculate: (...a) => mockRecalculate(...a),
   instantiate: jest.fn(),
 }));
-jest.mock("../../src/modules/operations/shipment_details/shipment_details.service", () => ({
-  applyValues: (...a) => mockApplyValues(...a),
-}));
+jest.mock(
+  "../../src/modules/operations/shipment_details/shipment_details.service",
+  () => ({
+    applyValues: (...a) => mockApplyValues(...a),
+  }),
+);
 jest.mock("../../src/modules/operations/geo_place/geo_place.service", () => ({
   resolveMany: (...a) => mockResolveMany(...a),
 }));
@@ -65,7 +68,9 @@ const DOSSIER = {
 async function update(patch, after = {}) {
   const before = { ...DOSSIER };
   jest.spyOn(repo, "get").mockResolvedValue(before);
-  jest.spyOn(repo, "update").mockResolvedValue({ ...before, ...patch, ...after });
+  jest
+    .spyOn(repo, "update")
+    .mockResolvedValue({ ...before, ...patch, ...after });
   return service.update({}, { id: "d-1", patch, actor: { user_id: "u-1" } });
 }
 
@@ -95,17 +100,29 @@ describe("moving the target date re-plans the chain", () => {
   });
 
   test("setting a promise for the first time counts as a move", async () => {
-    jest.spyOn(repo, "get").mockResolvedValue({ ...DOSSIER, promised_delivery_date: null });
-    jest.spyOn(repo, "update").mockResolvedValue({ ...DOSSIER, promised_delivery_date: "2026-09-25" });
-    await service.update({}, { id: "d-1", patch: { promised_delivery_date: "2026-09-25" }, actor: {} });
+    jest
+      .spyOn(repo, "get")
+      .mockResolvedValue({ ...DOSSIER, promised_delivery_date: null });
+    jest
+      .spyOn(repo, "update")
+      .mockResolvedValue({ ...DOSSIER, promised_delivery_date: "2026-09-25" });
+    await service.update(
+      {},
+      { id: "d-1", patch: { promised_delivery_date: "2026-09-25" }, actor: {} },
+    );
     // This is the case the new field creates: files that have never had one.
     expect(mockRecalculate).toHaveBeenCalledTimes(1);
   });
 
   test("clearing it counts too — the horizon falls back to the ETA", async () => {
     jest.spyOn(repo, "get").mockResolvedValue({ ...DOSSIER });
-    jest.spyOn(repo, "update").mockResolvedValue({ ...DOSSIER, promised_delivery_date: null });
-    await service.update({}, { id: "d-1", patch: { promised_delivery_date: null }, actor: {} });
+    jest
+      .spyOn(repo, "update")
+      .mockResolvedValue({ ...DOSSIER, promised_delivery_date: null });
+    await service.update(
+      {},
+      { id: "d-1", patch: { promised_delivery_date: null }, actor: {} },
+    );
     expect(mockRecalculate).toHaveBeenCalledTimes(1);
   });
 

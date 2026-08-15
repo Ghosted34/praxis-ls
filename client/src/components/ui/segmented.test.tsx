@@ -24,13 +24,23 @@ const OPTIONS = [
 
 function Harness({ variant }: { variant?: "inset" | "solid" }) {
   const [v, setV] = React.useState("open");
-  return <Segmented label="Deal status" variant={variant} value={v} options={OPTIONS} onChange={setV} />;
+  return (
+    <Segmented
+      label="Deal status"
+      variant={variant}
+      value={v}
+      options={OPTIONS}
+      onChange={setV}
+    />
+  );
 }
 
 describe("Segmented", () => {
   it("exposes itself as a named radio group, not three loose buttons", () => {
     render(<Harness />);
-    expect(screen.getByRole("radiogroup", { name: "Deal status" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: "Deal status" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("radio")).toHaveLength(3);
   });
 
@@ -82,7 +92,14 @@ describe("Segmented", () => {
   it("selects on click", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<Segmented label="Deal status" value="open" options={OPTIONS} onChange={onChange} />);
+    render(
+      <Segmented
+        label="Deal status"
+        value="open"
+        options={OPTIONS}
+        onChange={onChange}
+      />,
+    );
     await user.click(screen.getByRole("radio", { name: "Lost" }));
     expect(onChange).toHaveBeenCalledWith("lost");
   });
@@ -106,10 +123,13 @@ describe("Segmented", () => {
     expect(screen.getByRole("radio", { name: "Lost" })).toBeChecked();
   });
 
-  it.each(["inset", "solid"] as const)("has no axe violations (%s variant)", async (variant) => {
-    const { container } = render(<Harness variant={variant} />);
-    expect(await axe(container)).toHaveNoViolations();
-  });
+  it.each(["inset", "solid"] as const)(
+    "has no axe violations (%s variant)",
+    async (variant) => {
+      const { container } = render(<Harness variant={variant} />);
+      expect(await axe(container)).toHaveNoViolations();
+    },
+  );
 });
 
 describe("Chips", () => {
@@ -120,13 +140,29 @@ describe("Chips", () => {
   ];
 
   it("is a named radio group with the active chip checked", () => {
-    render(<Chips label="Filter by status" value="" options={CHIPS} onChange={() => {}} />);
-    expect(screen.getByRole("radiogroup", { name: "Filter by status" })).toBeInTheDocument();
+    render(
+      <Chips
+        label="Filter by status"
+        value=""
+        options={CHIPS}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole("radiogroup", { name: "Filter by status" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /All/ })).toBeChecked();
   });
 
   it("renders counts alongside labels", () => {
-    render(<Chips label="Filter by status" value="" options={CHIPS} onChange={() => {}} />);
+    render(
+      <Chips
+        label="Filter by status"
+        value=""
+        options={CHIPS}
+        onChange={() => {}}
+      />,
+    );
     expect(screen.getByRole("radio", { name: /Open/ })).toHaveTextContent("4");
   });
 
@@ -134,7 +170,14 @@ describe("Chips", () => {
     const user = userEvent.setup();
     function H() {
       const [v, setV] = React.useState("");
-      return <Chips label="Filter by status" value={v} options={CHIPS} onChange={setV} />;
+      return (
+        <Chips
+          label="Filter by status"
+          value={v}
+          options={CHIPS}
+          onChange={setV}
+        />
+      );
     }
     render(<H />);
     await user.tab();
@@ -143,7 +186,14 @@ describe("Chips", () => {
   });
 
   it("has no axe violations", async () => {
-    const { container } = render(<Chips label="Filter by status" value="" options={CHIPS} onChange={() => {}} />);
+    const { container } = render(
+      <Chips
+        label="Filter by status"
+        value=""
+        options={CHIPS}
+        onChange={() => {}}
+      />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

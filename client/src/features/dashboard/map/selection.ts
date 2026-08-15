@@ -36,7 +36,9 @@ export function nextSelection(current: Selection, clicked: string): Selection {
 /** Every drawn segment belonging to one file, in itinerary order. */
 export function lanesOfFile(lanes: Lane[], dossierId: Selection): Lane[] {
   if (!dossierId) return [];
-  return lanes.filter((l) => l.dossierId === dossierId).sort((a, b) => a.seq - b.seq);
+  return lanes
+    .filter((l) => l.dossierId === dossierId)
+    .sort((a, b) => a.seq - b.seq);
 }
 
 /**
@@ -64,10 +66,13 @@ export function focusOrder(lanes: Lane[]): string[] {
   const seen = new Map<string, Lane>();
   lanes.forEach((l) => {
     const first = seen.get(l.dossierId);
-    if (!first || l.seq < first.seq || (l.seq === first.seq && l.id < first.id)) seen.set(l.dossierId, l);
+    if (!first || l.seq < first.seq || (l.seq === first.seq && l.id < first.id))
+      seen.set(l.dossierId, l);
   });
   return [...seen.entries()]
-    .sort(([, a], [, b]) => a.ref.localeCompare(b.ref) || a.id.localeCompare(b.id))
+    .sort(
+      ([, a], [, b]) => a.ref.localeCompare(b.ref) || a.id.localeCompare(b.id),
+    )
     .map(([dossierId]) => dossierId);
 }
 
@@ -78,7 +83,11 @@ export function focusOrder(lanes: Lane[]): string[] {
  * bottom, and a key that silently does nothing at the last item reads as broken.
  * From nothing selected, forward starts at the first and backward at the last.
  */
-export function stepFocus(order: string[], current: Selection, delta: number): Selection {
+export function stepFocus(
+  order: string[],
+  current: Selection,
+  delta: number,
+): Selection {
   if (!order.length) return null;
   const at = current === null ? -1 : order.indexOf(current);
   if (at === -1) return delta > 0 ? order[0] : order[order.length - 1];
@@ -88,7 +97,12 @@ export function stepFocus(order: string[], current: Selection, delta: number): S
 
 /* ── geographic bounds ───────────────────────────────────────────────────── */
 
-export type Bounds = { minLon: number; maxLon: number; minLat: number; maxLat: number };
+export type Bounds = {
+  minLon: number;
+  maxLon: number;
+  minLat: number;
+  maxLat: number;
+};
 
 /** The box every endpoint of these lanes fits in. Null for nothing to bound. */
 export function boundsOf(lanes: Lane[]): Bounds | null {
@@ -148,11 +162,16 @@ export type ClusteredNode = PlacedNode & {
  * is drawn as one, because a terminus disappearing into a waypoint is the wrong
  * way round to lose information.
  */
-export function clusterNodes(nodes: PlacedNode[], radiusPx: number): ClusteredNode[] {
+export function clusterNodes(
+  nodes: PlacedNode[],
+  radiusPx: number,
+): ClusteredNode[] {
   const out: ClusteredNode[] = [];
   for (const node of nodes) {
     const near = out.find(
-      (c) => Math.abs(c.x - node.x) <= radiusPx && Math.abs(c.y - node.y) <= radiusPx,
+      (c) =>
+        Math.abs(c.x - node.x) <= radiusPx &&
+        Math.abs(c.y - node.y) <= radiusPx,
     );
     if (!near) {
       out.push({ ...node, count: 1, names: [node.name] });
@@ -180,7 +199,9 @@ export function labelOffset(
 ): number {
   let dy = 0;
   for (let guard = 0; guard < 6; guard += 1) {
-    const clash = placed.some((n) => Math.abs(n.x - x) < 84 && Math.abs(n.y + n.dy - (y + dy)) < 13);
+    const clash = placed.some(
+      (n) => Math.abs(n.x - x) < 84 && Math.abs(n.y + n.dy - (y + dy)) < 13,
+    );
     if (!clash) break;
     dy = dy <= 0 ? -dy + 13 : -dy;
   }

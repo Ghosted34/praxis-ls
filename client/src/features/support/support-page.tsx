@@ -34,17 +34,39 @@ type Ticket = {
   created_at?: string | null;
 };
 
-const KIND_LABEL: Record<Kind, string> = { SUPPORT: "Support", BUG: "Bug", FEATURE: "Feature" };
-const KIND_TONE: Record<Kind, Tone> = { SUPPORT: "blue", BUG: "bad", FEATURE: "orange" };
+const KIND_LABEL: Record<Kind, string> = {
+  SUPPORT: "Support",
+  BUG: "Bug",
+  FEATURE: "Feature",
+};
+const KIND_TONE: Record<Kind, Tone> = {
+  SUPPORT: "blue",
+  BUG: "bad",
+  FEATURE: "orange",
+};
 const STATUS_LABEL: Record<Status, string> = {
-  NEW: "New", TRIAGED: "Triaged", IN_PROGRESS: "In progress", SHIPPED: "Shipped", DECLINED: "Declined",
+  NEW: "New",
+  TRIAGED: "Triaged",
+  IN_PROGRESS: "In progress",
+  SHIPPED: "Shipped",
+  DECLINED: "Declined",
 };
 const STATUS_TONE: Record<Status, Tone> = {
-  NEW: "warn", TRIAGED: "blue", IN_PROGRESS: "blue", SHIPPED: "ok", DECLINED: "bad",
+  NEW: "warn",
+  TRIAGED: "blue",
+  IN_PROGRESS: "blue",
+  SHIPPED: "ok",
+  DECLINED: "bad",
 };
 const isResolved = (s: Status) => s === "SHIPPED" || s === "DECLINED";
 
-function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function NewTicketModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const [kind, setKind] = React.useState<Kind>("SUPPORT");
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
@@ -56,7 +78,10 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setBusy(true);
     setError(null);
     try {
-      await tenant("/support/tickets", { method: "POST", body: { kind, title: title.trim(), body: body.trim() } });
+      await tenant("/support/tickets", {
+        method: "POST",
+        body: { kind, title: title.trim(), body: body.trim() },
+      });
       onCreated();
       onClose();
     } catch (err) {
@@ -67,20 +92,37 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
   }
 
   return (
-    <Modal open onClose={onClose} title="Raise a ticket" description="Reach the Praxis team directly — ask for help, report a bug, or request a feature.">
+    <Modal
+      open
+      onClose={onClose}
+      title="Raise a ticket"
+      description="Reach the Praxis team directly — ask for help, report a bug, or request a feature."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Type" required>
-          <Select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+          <Select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as Kind)}
+          >
             <option value="SUPPORT">Support — I need help</option>
             <option value="BUG">Bug — something’s broken</option>
             <option value="FEATURE">Feature — I’d like an improvement</option>
           </Select>
         </Field>
         <Field label="Summary" required>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="One line describing it" maxLength={200} />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="One line describing it"
+            maxLength={200}
+          />
         </Field>
-        <Field label="Details" hint="What happened, what you expected, where in the app (optional).">
-          <Textarea className="min-h-[110px]"
+        <Field
+          label="Details"
+          hint="What happened, what you expected, where in the app (optional)."
+        >
+          <Textarea
+            className="min-h-[110px]"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Add any detail that would help us…"
@@ -89,15 +131,36 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={title.trim().length < 3 || busy}>Send to Praxis</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={title.trim().length < 3 || busy}
+          >
+            Send to Praxis
+          </Button>
         </div>
       </form>
     </Modal>
   );
 }
 
-function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () => void; onRated: () => void }) {
+function CsatModal({
+  ticket,
+  onClose,
+  onRated,
+}: {
+  ticket: Ticket;
+  onClose: () => void;
+  onRated: () => void;
+}) {
   const [score, setScore] = React.useState<number>(5);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -107,7 +170,10 @@ function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () =
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/support/tickets/${ticket.ticket_id}/csat`, { method: "POST", body: { csat: score } });
+      await tenant(`/support/tickets/${ticket.ticket_id}/csat`, {
+        method: "POST",
+        body: { csat: score },
+      });
       onRated();
       onClose();
     } catch (err) {
@@ -118,7 +184,12 @@ function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () =
   }
 
   return (
-    <Modal open onClose={onClose} title="Rate this resolution" description={ticket.title}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Rate this resolution"
+      description={ticket.title}
+    >
       <form className="space-y-4" onSubmit={submit}>
         <Field label="How satisfied are you?" required>
           <div className="flex gap-2">
@@ -137,8 +208,17 @@ function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () =
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy}>Submit rating</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy}>
+            Submit rating
+          </Button>
         </div>
       </form>
     </Modal>
@@ -156,24 +236,63 @@ export function SupportPage() {
 
   const columns: Column<Ticket>[] = [
     {
-      key: "title", label: "Ticket", render: (r) => (
+      key: "title",
+      label: "Ticket",
+      render: (r) => (
         <div>
           <div className="font-medium text-foreground">{r.title}</div>
-          {r.body ? <div className="micro line-clamp-1 max-w-md text-muted-foreground">{r.body}</div> : null}
+          {r.body ? (
+            <div className="micro line-clamp-1 max-w-md text-muted-foreground">
+              {r.body}
+            </div>
+          ) : null}
         </div>
       ),
     },
-    { key: "kind", label: "Type", render: (r) => <Pill tone={KIND_TONE[r.kind] || "mute"}>{KIND_LABEL[r.kind] || r.kind}</Pill> },
-    { key: "status", label: "Status", render: (r) => <Pill tone={STATUS_TONE[r.status] || "mute"}>{STATUS_LABEL[r.status] || r.status}</Pill> },
-    { key: "created_at", label: "Raised", render: (r) => dateFmt(r.created_at) },
     {
-      key: "csat", label: "Rating", render: (r) => {
-        if (r.csat) return <span className="num text-primary-ink">{"★".repeat(r.csat)}<span className="text-muted-foreground">{"★".repeat(5 - r.csat)}</span></span>;
-        if (isResolved(r.status)) return (
-          <RowActions>
-            <Button size="sm" variant="outline" onClick={() => setRating(r)}>Rate</Button>
-          </RowActions>
-        );
+      key: "kind",
+      label: "Type",
+      render: (r) => (
+        <Pill tone={KIND_TONE[r.kind] || "mute"}>
+          {KIND_LABEL[r.kind] || r.kind}
+        </Pill>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) => (
+        <Pill tone={STATUS_TONE[r.status] || "mute"}>
+          {STATUS_LABEL[r.status] || r.status}
+        </Pill>
+      ),
+    },
+    {
+      key: "created_at",
+      label: "Raised",
+      render: (r) => dateFmt(r.created_at),
+    },
+    {
+      key: "csat",
+      label: "Rating",
+      render: (r) => {
+        if (r.csat)
+          return (
+            <span className="num text-primary-ink">
+              {"★".repeat(r.csat)}
+              <span className="text-muted-foreground">
+                {"★".repeat(5 - r.csat)}
+              </span>
+            </span>
+          );
+        if (isResolved(r.status))
+          return (
+            <RowActions>
+              <Button size="sm" variant="outline" onClick={() => setRating(r)}>
+                Rate
+              </Button>
+            </RowActions>
+          );
         return <span className="text-muted-foreground">—</span>;
       },
     },
@@ -184,7 +303,9 @@ export function SupportPage() {
       <PageHeader
         title="Support & feedback"
         description="Reach the Praxis team directly. Raise a ticket and track it from New through to Shipped."
-        action={<Button onClick={() => setCreating(true)}>Raise a ticket</Button>}
+        action={
+          <Button onClick={() => setCreating(true)}>Raise a ticket</Button>
+        }
       />
       <KpiRow>
         <KpiTile label="Total tickets" value={num(list.length)} />
@@ -197,10 +318,21 @@ export function SupportPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.ticket_id}
-        empty={{ title: "No tickets yet", hint: "Raise a ticket to reach the Praxis team — support, a bug, or a feature request." }}
+        empty={{
+          title: "No tickets yet",
+          hint: "Raise a ticket to reach the Praxis team — support, a bug, or a feature request.",
+        }}
       />
-      {creating && <NewTicketModal onClose={() => setCreating(false)} onCreated={reload} />}
-      {rating && <CsatModal ticket={rating} onClose={() => setRating(null)} onRated={reload} />}
+      {creating && (
+        <NewTicketModal onClose={() => setCreating(false)} onCreated={reload} />
+      )}
+      {rating && (
+        <CsatModal
+          ticket={rating}
+          onClose={() => setRating(null)}
+          onRated={reload}
+        />
+      )}
     </section>
   );
 }

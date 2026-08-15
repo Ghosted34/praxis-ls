@@ -46,7 +46,9 @@ const upstream = (over) => ({ data: { results: [hit(over)] } });
 /** An axios rejection shaped the way axios actually shapes them, INCLUDING the
  *  `config.params.apiKey` that the leak test below is about. */
 function axiosError({ code = null, status = null } = {}) {
-  const err = new Error(status ? `Request failed with status code ${status}` : "boom");
+  const err = new Error(
+    status ? `Request failed with status code ${status}` : "boom",
+  );
   if (code) err.code = code;
   if (status) err.response = { status, data: { message: "nope" } };
   err.config = { params: { text: "bassa", apiKey: "platform-key" } };
@@ -134,7 +136,9 @@ describe("spending a request at all", () => {
     // The validator already constrains this; the service does not rely on that,
     // because a filter string is provider grammar and must not be assemblable
     // from arbitrary input.
-    await geoapify.searchPlaces("bassa", { countryCodes: ["cm,de&bias=proximity:0,0"] });
+    await geoapify.searchPlaces("bassa", {
+      countryCodes: ["cm,de&bias=proximity:0,0"],
+    });
     expect(axios.get.mock.calls[0][1].params.filter).toBeUndefined();
   });
 
@@ -165,7 +169,9 @@ describe("normalising what comes back", () => {
   });
 
   test("the GeoJSON shape is read too, in case format=json is dropped upstream", async () => {
-    axios.get.mockResolvedValue({ data: { features: [{ properties: hit() }] } });
+    axios.get.mockResolvedValue({
+      data: { features: [{ properties: hit() }] },
+    });
     const { results, status } = await geoapify.searchPlaces("bassa");
     expect(status).toBe("OK");
     expect(results[0].name).toBe("Zone Industrielle Bassa");
@@ -183,19 +189,31 @@ describe("normalising what comes back", () => {
       },
     });
     const { results } = await geoapify.searchPlaces("bassa", { limit: 10 });
-    expect(results.map((r) => r.kind)).toEqual(["CITY", "ADDRESS", "OTHER", "OTHER"]);
+    expect(results.map((r) => r.kind)).toEqual([
+      "CITY",
+      "ADDRESS",
+      "OTHER",
+      "OTHER",
+    ]);
   });
 
   test("a candidate with no usable coordinate is dropped, not returned as NaN", async () => {
     axios.get.mockResolvedValue({
-      data: { results: [hit({ lat: null, lon: null }), hit({ place_id: "ok", lat: 5, lon: 5 })] },
+      data: {
+        results: [
+          hit({ lat: null, lon: null }),
+          hit({ place_id: "ok", lat: 5, lon: 5 }),
+        ],
+      },
     });
     const { results } = await geoapify.searchPlaces("bassa", { limit: 10 });
     expect(results.map((r) => r.provider_place_id)).toEqual(["ok"]);
   });
 
   test("an out-of-range coordinate is dropped — provider data is untrusted", async () => {
-    axios.get.mockResolvedValue({ data: { results: [hit({ lat: 91, lon: 500 })] } });
+    axios.get.mockResolvedValue({
+      data: { results: [hit({ lat: 91, lon: 500 })] },
+    });
     const { results } = await geoapify.searchPlaces("bassa");
     expect(results).toEqual([]);
   });
@@ -210,7 +228,16 @@ describe("normalising what comes back", () => {
 
   test("a nameless city result takes its name from the address, not from nothing", async () => {
     axios.get.mockResolvedValue({
-      data: { results: [hit({ name: undefined, city: undefined, state: undefined, formatted: "Kribi, Cameroon" })] },
+      data: {
+        results: [
+          hit({
+            name: undefined,
+            city: undefined,
+            state: undefined,
+            formatted: "Kribi, Cameroon",
+          }),
+        ],
+      },
     });
     const { results } = await geoapify.searchPlaces("kribi");
     expect(results[0].name).toBe("Kribi");
@@ -218,7 +245,9 @@ describe("normalising what comes back", () => {
 
   test("provider strings are length-capped so a hostile payload cannot travel", async () => {
     axios.get.mockResolvedValue({
-      data: { results: [hit({ name: "x".repeat(5000), formatted: "y".repeat(5000) })] },
+      data: {
+        results: [hit({ name: "x".repeat(5000), formatted: "y".repeat(5000) })],
+      },
     });
     const { results } = await geoapify.searchPlaces("bassa");
     expect(results[0].name).toHaveLength(200);
@@ -232,7 +261,9 @@ describe("normalising what comes back", () => {
   });
 
   test("confidence is clamped to 0..1", async () => {
-    axios.get.mockResolvedValue({ data: { results: [hit({ rank: { confidence: 7 } })] } });
+    axios.get.mockResolvedValue({
+      data: { results: [hit({ rank: { confidence: 7 } })] },
+    });
     const { results } = await geoapify.searchPlaces("bassa");
     expect(results[0].confidence).toBe(1);
   });
@@ -255,7 +286,9 @@ describe("the failure taxonomy", () => {
 
   test("it never throws — the picker must always get an answer", async () => {
     axios.get.mockRejectedValue(new Error("unshaped"));
-    await expect(geoapify.searchPlaces("bassa")).resolves.toMatchObject({ status: "PROVIDER_ERROR" });
+    await expect(geoapify.searchPlaces("bassa")).resolves.toMatchObject({
+      status: "PROVIDER_ERROR",
+    });
   });
 });
 
@@ -280,7 +313,9 @@ describe("the API key never reaches a log", () => {
     const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
     axios.get.mockRejectedValue(axiosError({ status: 500 }));
     await geoapify.forwardGeocode("Douala");
-    expect(JSON.stringify(warn.mock.calls.map((c) => c[0]))).not.toContain("platform-key");
+    expect(JSON.stringify(warn.mock.calls.map((c) => c[0]))).not.toContain(
+      "platform-key",
+    );
     warn.mockRestore();
   });
 
@@ -288,7 +323,9 @@ describe("the API key never reaches a log", () => {
     const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
     axios.get.mockRejectedValue(axiosError({ status: 500 }));
     await geoapify.reverseGeocode(4.05, 9.7);
-    expect(JSON.stringify(warn.mock.calls.map((c) => c[0]))).not.toContain("platform-key");
+    expect(JSON.stringify(warn.mock.calls.map((c) => c[0]))).not.toContain(
+      "platform-key",
+    );
     warn.mockRestore();
   });
 });

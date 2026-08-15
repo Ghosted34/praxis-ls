@@ -20,8 +20,12 @@ jest.mock("dns/promises", () => ({
 
 jest.mock("../../src/services/platform/mail-fallback.service", () => ({
   resolve: jest.fn(async () => ({
-    from: "no-reply@praxisls.com", smtp_host: null, smtp_port: 587,
-    smtp_user: null, smtp_pass: null, source: "env",
+    from: "no-reply@praxisls.com",
+    smtp_host: null,
+    smtp_port: 587,
+    smtp_user: null,
+    smtp_pass: null,
+    source: "env",
   })),
 }));
 jest.mock("../../src/services/email.service", () => ({
@@ -33,7 +37,11 @@ const email = require("../../src/services/email.service");
 const { checkDomain } = require("../../src/modules/mail/dns-check");
 const cfg = require("../../src/modules/smartcomm/smartcomm.config.service");
 
-const noRecord = () => { const e = new Error("queryTxt ENOTFOUND x"); e.code = "ENOTFOUND"; return e; };
+const noRecord = () => {
+  const e = new Error("queryTxt ENOTFOUND x");
+  e.code = "ENOTFOUND";
+  return e;
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -43,7 +51,8 @@ describe("dns-check.checkDomain", () => {
   it("passes everything when MX, SPF and DKIM are all published", async () => {
     mockResolveMx.mockResolvedValue([{ exchange: "mail.x.cm", priority: 10 }]);
     mockResolveTxt.mockImplementation((name) => {
-      if (name === "google._domainkey.x.cm") return Promise.resolve([["v=DKIM1; k=rsa; p=MIGfMA"]]);
+      if (name === "google._domainkey.x.cm")
+        return Promise.resolve([["v=DKIM1; k=rsa; p=MIGfMA"]]);
       if (name === "x.cm") return Promise.resolve([["v=spf1 mx ~all"]]);
       return Promise.reject(noRecord());
     });
@@ -80,7 +89,11 @@ describe("dns-check.checkDomain", () => {
   });
 
   it("marks records ok:null when the resolver fails (self-check fallback)", async () => {
-    const mkErr = (code) => { const e = new Error(code); e.code = code; return e; };
+    const mkErr = (code) => {
+      const e = new Error(code);
+      e.code = code;
+      return e;
+    };
     mockResolveMx.mockRejectedValue(mkErr("ETIMEOUT"));
     mockResolveTxt.mockRejectedValue(mkErr("ETIMEOUT"));
     const r = await checkDomain("x.cm");
@@ -91,7 +104,9 @@ describe("dns-check.checkDomain", () => {
   });
 
   it("rejects non-domain input", async () => {
-    await expect(checkDomain("not a domain")).rejects.toThrow("Not a domain name");
+    await expect(checkDomain("not a domain")).rejects.toThrow(
+      "Not a domain name",
+    );
   });
 });
 
@@ -109,7 +124,11 @@ describe("smartcomm.config.testSend", () => {
   it("reports ok with the provider message id on success", async () => {
     email.send.mockResolvedValue({ messageId: "abc-123" });
     const r = await cfg.testSend({}, { to: "admin@x.cm" });
-    expect(r).toMatchObject({ ok: true, to: "admin@x.cm", message_id: "abc-123" });
+    expect(r).toMatchObject({
+      ok: true,
+      to: "admin@x.cm",
+      message_id: "abc-123",
+    });
   });
 
   it("keeps the raw reason for non-SMTP failures", async () => {

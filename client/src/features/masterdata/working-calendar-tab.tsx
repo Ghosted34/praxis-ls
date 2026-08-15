@@ -50,13 +50,28 @@ type Calendar = {
 };
 
 /** 0 = Sunday, matching working_calendar_day.weekday and JS getDay(). */
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
-const getCalendar = (entityId: string) => tenant<Calendar>(`/entities/${entityId}/working-calendar`);
+const getCalendar = (entityId: string) =>
+  tenant<Calendar>(`/entities/${entityId}/working-calendar`);
 const putCalendar = (entityId: string, body: Omit<Calendar, "inherited">) =>
-  tenant<Calendar>(`/entities/${entityId}/working-calendar`, { method: "PUT", body });
+  tenant<Calendar>(`/entities/${entityId}/working-calendar`, {
+    method: "PUT",
+    body,
+  });
 const resetCalendar = (entityId: string) =>
-  tenant<Calendar>(`/entities/${entityId}/working-calendar/reset`, { method: "POST", body: {} });
+  tenant<Calendar>(`/entities/${entityId}/working-calendar/reset`, {
+    method: "POST",
+    body: {},
+  });
 
 /** "07:30:00" → "07:30" — a time column comes back with seconds. */
 const hhmm = (v: string) => String(v || "").slice(0, 5);
@@ -71,39 +86,81 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
     if (!loaded.data) return;
     setDraft({
       ...loaded.data,
-      days: loaded.data.days.map((d) => ({ ...d, opens_at: hhmm(d.opens_at), closes_at: hhmm(d.closes_at) })),
-      holidays: loaded.data.holidays.map((h) => ({ ...h, holiday_date: String(h.holiday_date).slice(0, 10) })),
+      days: loaded.data.days.map((d) => ({
+        ...d,
+        opens_at: hhmm(d.opens_at),
+        closes_at: hhmm(d.closes_at),
+      })),
+      holidays: loaded.data.holidays.map((h) => ({
+        ...h,
+        holiday_date: String(h.holiday_date).slice(0, 10),
+      })),
     });
   }, [loaded.data]);
 
   if (loaded.error) return <ErrorState message={loaded.error} />;
   if (!draft) return <p className="micro">Loading the calendar…</p>;
 
-  const openOn = (weekday: number) => draft.days.find((d) => d.weekday === weekday);
+  const openOn = (weekday: number) =>
+    draft.days.find((d) => d.weekday === weekday);
 
   const toggleDay = (weekday: number, on: boolean) =>
     setDraft((c) => {
       if (!c) return c;
       const days = on
-        ? [...c.days, { weekday, opens_at: "07:30", closes_at: "17:00" }].sort((a, b) => a.weekday - b.weekday)
+        ? [...c.days, { weekday, opens_at: "07:30", closes_at: "17:00" }].sort(
+            (a, b) => a.weekday - b.weekday,
+          )
         : c.days.filter((d) => d.weekday !== weekday);
       return { ...c, days };
     });
 
   const setHours = (weekday: number, patch: Partial<Day>) =>
-    setDraft((c) => (c ? { ...c, days: c.days.map((d) => (d.weekday === weekday ? { ...d, ...patch } : d)) } : c));
+    setDraft((c) =>
+      c
+        ? {
+            ...c,
+            days: c.days.map((d) =>
+              d.weekday === weekday ? { ...d, ...patch } : d,
+            ),
+          }
+        : c,
+    );
 
   const addHoliday = () =>
     setDraft((c) =>
-      c ? { ...c, holidays: [...c.holidays, { holiday_date: "", name_fr: "", is_recurring: true }] } : c,
+      c
+        ? {
+            ...c,
+            holidays: [
+              ...c.holidays,
+              { holiday_date: "", name_fr: "", is_recurring: true },
+            ],
+          }
+        : c,
     );
   const setHoliday = (i: number, patch: Partial<Holiday>) =>
-    setDraft((c) => (c ? { ...c, holidays: c.holidays.map((h, ix) => (ix === i ? { ...h, ...patch } : h)) } : c));
+    setDraft((c) =>
+      c
+        ? {
+            ...c,
+            holidays: c.holidays.map((h, ix) =>
+              ix === i ? { ...h, ...patch } : h,
+            ),
+          }
+        : c,
+    );
   const removeHoliday = (i: number) =>
-    setDraft((c) => (c ? { ...c, holidays: c.holidays.filter((_, ix) => ix !== i) } : c));
+    setDraft((c) =>
+      c ? { ...c, holidays: c.holidays.filter((_, ix) => ix !== i) } : c,
+    );
 
   const invalidDay = draft.days.find((d) => !(d.closes_at > d.opens_at));
-  const canSave = draft.days.length > 0 && !invalidDay && draft.holidays.every((h) => h.holiday_date && h.name_fr.trim()) && !busy;
+  const canSave =
+    draft.days.length > 0 &&
+    !invalidDay &&
+    draft.holidays.every((h) => h.holiday_date && h.name_fr.trim()) &&
+    !busy;
 
   async function save() {
     if (!draft) return;
@@ -149,38 +206,57 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
     <div className="space-y-4">
       {draft.inherited ? (
         <Callout tone="info" title="Following the tenant default">
-          This entity has no calendar of its own, so the milestone engine schedules it against the
-          tenant-wide hours below. Saving here gives it its own — the default is left alone for
-          everyone still following it.
+          This entity has no calendar of its own, so the milestone engine
+          schedules it against the tenant-wide hours below. Saving here gives it
+          its own — the default is left alone for everyone still following it.
         </Callout>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Pill tone="ok">Own calendar</Pill>
-          <Button size="sm" variant="outline" onClick={useDefault} loading={busy}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={useDefault}
+            loading={busy}
+          >
             Follow the tenant default instead
           </Button>
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Timezone" hint="Opening hours below are wall-clock time in this zone.">
-          <Input value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })} />
+        <Field
+          label="Timezone"
+          hint="Opening hours below are wall-clock time in this zone."
+        >
+          <Input
+            value={draft.timezone}
+            onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}
+          />
         </Field>
         <Field label="Calendar name">
-          <Input value={draft.name || ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Douala branch" />
+          <Input
+            value={draft.name || ""}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            placeholder="Douala branch"
+          />
         </Field>
       </div>
 
       <section className="space-y-2">
         <h3 className="text-sm font-medium text-foreground">Opening hours</h3>
         <p className="micro">
-          A day that is switched off is closed — no milestone time accrues on it. Sunday is off by default.
+          A day that is switched off is closed — no milestone time accrues on
+          it. Sunday is off by default.
         </p>
         <div className="space-y-1">
           {WEEKDAYS.map((label, weekday) => {
             const day = openOn(weekday);
             return (
-              <div key={weekday} className="grid items-center gap-2 sm:grid-cols-[10rem_auto_auto_1fr]">
+              <div
+                key={weekday}
+                className="grid items-center gap-2 sm:grid-cols-[10rem_auto_auto_1fr]"
+              >
                 <Checkbox
                   checked={!!day}
                   onCheckedChange={(on) => toggleDay(weekday, on)}
@@ -190,20 +266,26 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                   <>
                     <Input
                       value={day.opens_at}
-                      onChange={(e) => setHours(weekday, { opens_at: e.target.value })}
+                      onChange={(e) =>
+                        setHours(weekday, { opens_at: e.target.value })
+                      }
                       className="num w-24"
                       aria-label={`${label} opening time`}
                       placeholder="07:30"
                     />
                     <Input
                       value={day.closes_at}
-                      onChange={(e) => setHours(weekday, { closes_at: e.target.value })}
+                      onChange={(e) =>
+                        setHours(weekday, { closes_at: e.target.value })
+                      }
                       className="num w-24"
                       aria-label={`${label} closing time`}
                       placeholder="17:00"
                     />
                     {!(day.closes_at > day.opens_at) && (
-                      <span className="text-sm text-[rgb(var(--bad))]">Closing must be after opening.</span>
+                      <span className="text-sm text-[rgb(var(--bad))]">
+                        Closing must be after opening.
+                      </span>
                     )}
                   </>
                 ) : (
@@ -217,21 +299,31 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-foreground">Public holidays</h3>
-          <Button size="sm" variant="outline" onClick={addHoliday}>Add a holiday</Button>
+          <h3 className="text-sm font-medium text-foreground">
+            Public holidays
+          </h3>
+          <Button size="sm" variant="outline" onClick={addHoliday}>
+            Add a holiday
+          </Button>
         </div>
 
         {movable.length > 0 && (
           <Callout tone="warn" title="Confirm the movable feasts each year">
-            {movable.length === 1 ? "One date moves" : `${movable.length} dates move`} with the lunar or
-            Easter calendar and the Islamic ones are fixed locally by moon sighting. The values shipped
-            are published estimates — a holiday the calendar believes in but the port does not is a due
+            {movable.length === 1
+              ? "One date moves"
+              : `${movable.length} dates move`}{" "}
+            with the lunar or Easter calendar and the Islamic ones are fixed
+            locally by moon sighting. The values shipped are published estimates
+            — a holiday the calendar believes in but the port does not is a due
             date that is wrong in the expensive direction.
           </Callout>
         )}
 
         {draft.holidays.length === 0 ? (
-          <EmptyState title="No holidays" hint="Without them the engine will schedule work on 20 May." />
+          <EmptyState
+            title="No holidays"
+            hint="Without them the engine will schedule work on 20 May."
+          />
         ) : (
           <Table>
             <THead>
@@ -249,25 +341,43 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                   <TD>
                     <Input
                       value={h.holiday_date}
-                      onChange={(e) => setHoliday(i, { holiday_date: e.target.value })}
+                      onChange={(e) =>
+                        setHoliday(i, { holiday_date: e.target.value })
+                      }
                       placeholder="2026-05-20"
                       className="num w-36"
                       aria-label={`Holiday ${i + 1} date`}
                     />
                     {h.is_recurring && h.holiday_date && (
-                      <span className="micro block">every {dateFmt(h.holiday_date).replace(/\s*\d{4}$/, "")}</span>
+                      <span className="micro block">
+                        every {dateFmt(h.holiday_date).replace(/\s*\d{4}$/, "")}
+                      </span>
                     )}
                   </TD>
                   <TD>
-                    <Input value={h.name_fr} onChange={(e) => setHoliday(i, { name_fr: e.target.value })} aria-label={`Holiday ${i + 1} French name`} />
+                    <Input
+                      value={h.name_fr}
+                      onChange={(e) =>
+                        setHoliday(i, { name_fr: e.target.value })
+                      }
+                      aria-label={`Holiday ${i + 1} French name`}
+                    />
                   </TD>
                   <TD>
-                    <Input value={h.name_en || ""} onChange={(e) => setHoliday(i, { name_en: e.target.value })} aria-label={`Holiday ${i + 1} English name`} />
+                    <Input
+                      value={h.name_en || ""}
+                      onChange={(e) =>
+                        setHoliday(i, { name_en: e.target.value })
+                      }
+                      aria-label={`Holiday ${i + 1} English name`}
+                    />
                   </TD>
                   <TD>
                     <Checkbox
                       checked={!!h.is_recurring}
-                      onCheckedChange={(v) => setHoliday(i, { is_recurring: v })}
+                      onCheckedChange={(v) =>
+                        setHoliday(i, { is_recurring: v })
+                      }
                       label={h.is_recurring ? "Fixed date" : "Moves each year"}
                     />
                   </TD>
@@ -292,7 +402,9 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
 
       <div className="flex justify-end gap-2">
         <Button onClick={save} loading={busy} disabled={!canSave}>
-          {draft.inherited ? "Give this entity its own calendar" : "Save calendar"}
+          {draft.inherited
+            ? "Give this entity its own calendar"
+            : "Save calendar"}
         </Button>
       </div>
     </div>

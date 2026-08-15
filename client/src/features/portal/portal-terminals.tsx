@@ -11,25 +11,61 @@ import { Panel } from "@/components/ui/panel";
 import { num, dateFmt } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
-import { portalClientView, portalInvestorView, portalAuditorView, type PortalMe, type ClientView, type InvestorView, type AuditorView } from "@/lib/portal-api";
+import {
+  portalClientView,
+  portalInvestorView,
+  portalAuditorView,
+  type PortalMe,
+  type ClientView,
+  type InvestorView,
+  type AuditorView,
+} from "@/lib/portal-api";
 import { msg } from "./portal-chrome";
 import { label } from "./portal-auth";
 import { PortalShipment } from "./portal-shipment";
 
-function Kpi({ label: k, value, hint }: { label: string; value: number; hint?: string }) {
+function Kpi({
+  label: k,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{k}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+        {k}
+      </p>
       <p className="num mt-2 text-2xl text-foreground">{num(value)}</p>
-      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   );
 }
 
-function Line({ label: k, value, strong = false }: { label: string; value: number; strong?: boolean }) {
+function Line({
+  label: k,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: number;
+  strong?: boolean;
+}) {
   return (
-    <div className={`flex items-center justify-between py-2 ${strong ? "border-t border-border font-semibold" : ""}`}>
-      <span className={strong ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>{k}</span>
+    <div
+      className={`flex items-center justify-between py-2 ${strong ? "border-t border-border font-semibold" : ""}`}
+    >
+      <span
+        className={
+          strong ? "text-sm text-foreground" : "text-sm text-muted-foreground"
+        }
+      >
+        {k}
+      </span>
       <span className="num text-sm text-foreground">{num(value)}</span>
     </div>
   );
@@ -52,21 +88,42 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
   if (error) return <ErrorState message={error} />;
   if (!view) return <SkeletonTable />;
 
-  const { kpis, income_statement: is, balance_sheet: bs, cash_position: cash } = view;
+  const {
+    kpis,
+    income_statement: is,
+    balance_sheet: bs,
+    cash_position: cash,
+  } = view;
 
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Financial position{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
+        Financial position
+        {me.portal_user.full_name
+          ? `, ${me.portal_user.full_name.split(" ")[0]}`
+          : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis} basis
+        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis}{" "}
+        basis
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Revenue" value={kpis.revenue} hint="Produits for the period" />
-        <Kpi label="Net result" value={kpis.net_result} hint="Produits less charges" />
-        <Kpi label="Cash on hand" value={kpis.cash_on_hand} hint="Today, not period-end" />
+        <Kpi
+          label="Revenue"
+          value={kpis.revenue}
+          hint="Produits for the period"
+        />
+        <Kpi
+          label="Net result"
+          value={kpis.net_result}
+          hint="Produits less charges"
+        />
+        <Kpi
+          label="Cash on hand"
+          value={kpis.cash_on_hand}
+          hint="Today, not period-end"
+        />
         <Kpi label="Balance sheet total" value={kpis.balance_sheet_total} />
       </div>
 
@@ -74,7 +131,9 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
         <Panel title="Compte de résultat">
           <Line label="Produits" value={is.produits} />
           <Line label="Charges" value={is.charges} />
-          {is.hao_net ? <Line label="Hors activités ordinaires (net)" value={is.hao_net} /> : null}
+          {is.hao_net ? (
+            <Line label="Hors activités ordinaires (net)" value={is.hao_net} />
+          ) : null}
           <Line label="Résultat net" value={is.result} strong />
         </Panel>
 
@@ -87,18 +146,26 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
             // attention, and quietly rendering it as though it were final would
             // be the worse of the two failures.
             <p className="mt-2 text-xs text-[hsl(var(--warn))]">
-              Actif and passif do not balance for this period — figures are provisional.
+              Actif and passif do not balance for this period — figures are
+              provisional.
             </p>
           ) : null}
         </Panel>
 
         <Panel title="Cash position">
           {cash.accounts.length === 0 ? (
-            <EmptyState title="No treasury accounts" hint="Class-5 balances will appear here." />
+            <EmptyState
+              title="No treasury accounts"
+              hint="Class-5 balances will appear here."
+            />
           ) : (
             <>
               {cash.accounts.map((a) => (
-                <Line key={a.account_code} label={a.account_code} value={a.balance} />
+                <Line
+                  key={a.account_code}
+                  label={a.account_code}
+                  value={a.balance}
+                />
               ))}
               <Line label="Total" value={cash.total_cash} strong />
             </>
@@ -107,7 +174,8 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Read-only summary prepared on the {view.basis} basis. No operational detail is included.
+        Read-only summary prepared on the {view.basis} basis. No operational
+        detail is included.
       </p>
     </>
   );
@@ -132,19 +200,33 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
   if (error) return <ErrorState message={error} />;
   if (!view) return <SkeletonTable />;
 
-  const { income_statement: is, balance_sheet: bs, trial_balance: tb, audit_trail: trail } = view;
-  const actionLabel = (a: string) => (a || "").replace(/[._]/g, " ").replace(/^./, (c) => c.toUpperCase());
+  const {
+    income_statement: is,
+    balance_sheet: bs,
+    trial_balance: tb,
+    audit_trail: trail,
+  } = view;
+  const actionLabel = (a: string) =>
+    (a || "").replace(/[._]/g, " ").replace(/^./, (c) => c.toUpperCase());
 
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Audit room{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
+        Audit room
+        {me.portal_user.full_name
+          ? `, ${me.portal_user.full_name.split(" ")[0]}`
+          : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis} basis
-        {me.grants.AUDITOR?.expires_at ? ` · access to ${dateFmt(me.grants.AUDITOR.expires_at)}` : ""}
+        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis}{" "}
+        basis
+        {me.grants.AUDITOR?.expires_at
+          ? ` · access to ${dateFmt(me.grants.AUDITOR.expires_at)}`
+          : ""}
       </p>
-      <p className="mt-3 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">{view.disclosure}</p>
+      <p className="mt-3 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">
+        {view.disclosure}
+      </p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Compte de résultat">
@@ -157,7 +239,10 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
           <Line label="Passif" value={bs.passif} />
           <Line label="Résultat" value={bs.result} strong />
           {!bs.balanced ? (
-            <p className="mt-2 text-xs text-[hsl(var(--warn))]">Actif and passif do not balance for this period — figures are provisional.</p>
+            <p className="mt-2 text-xs text-[hsl(var(--warn))]">
+              Actif and passif do not balance for this period — figures are
+              provisional.
+            </p>
           ) : null}
         </Panel>
       </div>
@@ -165,7 +250,10 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6">
         <Panel title="Trial balance">
           {tb.rows.length === 0 ? (
-            <EmptyState title="No movements" hint="No ledger movements for this period." />
+            <EmptyState
+              title="No movements"
+              hint="No ledger movements for this period."
+            />
           ) : (
             <div className="max-h-80 overflow-auto">
               <table className="w-full text-sm">
@@ -180,16 +268,26 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
                   {tb.rows.map((r) => (
                     <tr key={r.account_code}>
                       <td className="py-2 text-foreground">{r.account_code}</td>
-                      <td className="num py-2 text-right text-foreground">{num(r.debit)}</td>
-                      <td className="num py-2 text-right text-foreground">{num(r.credit)}</td>
+                      <td className="num py-2 text-right text-foreground">
+                        {num(r.debit)}
+                      </td>
+                      <td className="num py-2 text-right text-foreground">
+                        {num(r.credit)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="border-t border-border">
                   <tr>
-                    <td className="py-2 font-semibold text-foreground">Total</td>
-                    <td className="num py-2 text-right font-semibold text-foreground">{num(tb.totals.debit)}</td>
-                    <td className="num py-2 text-right font-semibold text-foreground">{num(tb.totals.credit)}</td>
+                    <td className="py-2 font-semibold text-foreground">
+                      Total
+                    </td>
+                    <td className="num py-2 text-right font-semibold text-foreground">
+                      {num(tb.totals.debit)}
+                    </td>
+                    <td className="num py-2 text-right font-semibold text-foreground">
+                      {num(tb.totals.credit)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -201,19 +299,33 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6">
         <Panel title="Audit trail">
           {trail.length === 0 ? (
-            <EmptyState title="No postings" hint="Financial and document postings for the period will appear here." />
+            <EmptyState
+              title="No postings"
+              hint="Financial and document postings for the period will appear here."
+            />
           ) : (
             <div className="max-h-96 overflow-auto">
               <ul className="divide-y divide-border">
                 {trail.map((t) => (
-                  <li key={t.ledger_id} className="flex items-center justify-between gap-4 py-3">
+                  <li
+                    key={t.ledger_id}
+                    className="flex items-center justify-between gap-4 py-3"
+                  >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{actionLabel(t.action)}</p>
-                      <p className="truncate text-xs text-muted-foreground">{t.entity_ref || "—"}</p>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {actionLabel(t.action)}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {t.entity_ref || "—"}
+                      </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm text-foreground">{t.actor_name || "System"}</p>
-                      <p className="text-xs text-muted-foreground">{dateFmt(t.created_at)}</p>
+                      <p className="text-sm text-foreground">
+                        {t.actor_name || "System"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {dateFmt(t.created_at)}
+                      </p>
                     </div>
                   </li>
                 ))}
@@ -224,7 +336,8 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">
-        Read-only, prepared on the {view.basis} basis for the period shown. HR, payroll and security events are excluded.
+        Read-only, prepared on the {view.basis} basis for the period shown. HR,
+        payroll and security events are excluded.
       </p>
     </>
   );
@@ -250,7 +363,13 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   }, []);
 
   if (error) return <ErrorState message={error} />;
-  if (openDossier) return <PortalShipment dossierId={openDossier} onBack={() => setOpenDossier(null)} />;
+  if (openDossier)
+    return (
+      <PortalShipment
+        dossierId={openDossier}
+        onBack={() => setOpenDossier(null)}
+      />
+    );
 
   const dossiers = view?.dossiers ?? [];
   const invoices = view?.invoices ?? [];
@@ -258,10 +377,15 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Welcome{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
+        Welcome
+        {me.portal_user.full_name
+          ? `, ${me.portal_user.full_name.split(" ")[0]}`
+          : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {me.grants.CLIENT.expires_at ? `Your access runs to ${dateFmt(me.grants.CLIENT.expires_at)}.` : "Your current shipments and invoices."}
+        {me.grants.CLIENT.expires_at
+          ? `Your access runs to ${dateFmt(me.grants.CLIENT.expires_at)}.`
+          : "Your current shipments and invoices."}
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
@@ -269,7 +393,10 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           {!view ? (
             <SkeletonTable />
           ) : dossiers.length === 0 ? (
-            <EmptyState title="No shipments yet" hint="New files will appear here as they're opened." />
+            <EmptyState
+              title="No shipments yet"
+              hint="New files will appear here as they're opened."
+            />
           ) : (
             <ul className="divide-y divide-border">
               {dossiers.map((d) => (
@@ -283,8 +410,12 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     className="flex w-full items-center justify-between py-3 text-left hover:opacity-80"
                   >
                     <div>
-                      <p className="text-sm font-medium text-foreground">{d.ref}</p>
-                      <p className="text-xs text-muted-foreground">Opened {dateFmt(d.created_at)}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {d.ref}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Opened {dateFmt(d.created_at)}
+                      </p>
                     </div>
                     <span className="status">{label(d.status)}</span>
                   </button>
@@ -298,17 +429,29 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           {!view ? (
             <SkeletonTable />
           ) : invoices.length === 0 ? (
-            <EmptyState title="Nothing outstanding" hint="Issued invoices will appear here." />
+            <EmptyState
+              title="Nothing outstanding"
+              hint="Issued invoices will appear here."
+            />
           ) : (
             <ul className="divide-y divide-border">
               {invoices.map((i) => (
-                <li key={i.invoice_id} className="flex items-center justify-between py-3">
+                <li
+                  key={i.invoice_id}
+                  className="flex items-center justify-between py-3"
+                >
                   <div>
-                    <p className="text-sm font-medium text-foreground">{i.doc_number || "—"}</p>
-                    <p className="text-xs text-muted-foreground">Due {dateFmt(i.payment_due_on)}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {i.doc_number || "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Due {dateFmt(i.payment_due_on)}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="num text-sm text-foreground">{num(i.total_ttc)}</p>
+                    <p className="num text-sm text-foreground">
+                      {num(i.total_ttc)}
+                    </p>
                     <span className="status">{label(i.status)}</span>
                   </div>
                 </li>

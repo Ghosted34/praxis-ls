@@ -22,11 +22,15 @@ export const EMPTY_USER_APPEARANCE: UserAppearance = {
   fontMono: null,
 };
 
-export const fetchUserAppearance = () => tenant<UserAppearance>("/me/preferences/appearance");
+export const fetchUserAppearance = () =>
+  tenant<UserAppearance>("/me/preferences/appearance");
 
 /** Partial — omit a key to leave it, send null to clear it back to the tenant's. */
 export const saveUserAppearance = (patch: Partial<UserAppearance>) =>
-  tenant<UserAppearance>("/me/preferences/appearance", { method: "PUT", body: patch });
+  tenant<UserAppearance>("/me/preferences/appearance", {
+    method: "PUT",
+    body: patch,
+  });
 
 /** Clear all three overrides at once. */
 export const resetUserAppearance = () =>
@@ -70,11 +74,16 @@ export const EMPTY_SHELL_PREFS: ShellPrefs = {
  *  this expects would crash the app rather than lose a preference. `null` is a
  *  real value here — "never chosen" — so only the wrong TYPE is corrected. */
 export const fetchShellPrefs = async (): Promise<ShellPrefs> => {
-  const p = ((await tenant<unknown>("/me/preferences/shell")) ?? {}) as Partial<ShellPrefs>;
+  const p = ((await tenant<unknown>("/me/preferences/shell")) ??
+    {}) as Partial<ShellPrefs>;
   return {
     ribbonPinned: typeof p.ribbonPinned === "boolean" ? p.ribbonPinned : null,
-    railPins: Array.isArray(p.railPins) ? p.railPins.filter((k): k is string => typeof k === "string") : null,
-    towerPins: Array.isArray(p.towerPins) ? p.towerPins.filter((k): k is string => typeof k === "string") : null,
+    railPins: Array.isArray(p.railPins)
+      ? p.railPins.filter((k): k is string => typeof k === "string")
+      : null,
+    towerPins: Array.isArray(p.towerPins)
+      ? p.towerPins.filter((k): k is string => typeof k === "string")
+      : null,
     railHintSeen: typeof p.railHintSeen === "boolean" ? p.railHintSeen : null,
   };
 };

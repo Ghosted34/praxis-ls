@@ -97,15 +97,21 @@ async function main() {
     await rm(entry, { force: true });
     console.error("\u2717 The client bundle cannot consume @praxis/shared.\n");
     console.error(`  ${err.message}\n`);
-    console.error("  See client/config/shared-alias.ts — commonjsOptions.include,");
-    console.error("  the zod alias target, and the export shape in packages/shared");
+    console.error(
+      "  See client/config/shared-alias.ts — commonjsOptions.include,",
+    );
+    console.error(
+      "  the zod alias target, and the export shape in packages/shared",
+    );
     console.error("  are the three things that make this work.");
     process.exit(1);
   }
   await rm(entry, { force: true });
 
   // Run the built bundle and read back what it observed.
-  const mod = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+  const mod = await import(
+    `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`
+  );
   const checks = mod.default;
 
   const failed = Object.entries(checks).filter(([, ok]) => !ok);
@@ -122,7 +128,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.warn(`\u2713 @praxis/shared bundles cleanly — ${Object.keys(checks).length} checks, one Zod instance.`);
+  console.warn(
+    `\u2713 @praxis/shared bundles cleanly — ${Object.keys(checks).length} checks, one Zod instance.`,
+  );
 }
 
 main().catch((err) => {

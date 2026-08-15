@@ -71,7 +71,10 @@ const ROW: Record<Env, { title: string; hint: string }> = {
  * they are agreeing to, and this is a dialog people will meet often enough to
  * start dismissing on muscle memory.
  */
-const CONFIRM: Record<Env, { title: string; body: string; confirmLabel: string }> = {
+const CONFIRM: Record<
+  Env,
+  { title: string; body: string; confirmLabel: string }
+> = {
   sandbox: {
     title: "Switch to TEST mode?",
     body: "You'll be viewing sandbox data. Changes you make in TEST don't affect live records.",
@@ -122,7 +125,13 @@ function EnvConfirm({
  * The status chip and the sheet it opens. `sm:hidden` — above that width the
  * segmented `EnvToggle` in app-shell.tsx is the control, unchanged.
  */
-export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) => void }) {
+export function EnvChip({
+  env,
+  onSwitch,
+}: {
+  env: string;
+  onSwitch: (next: Env) => void;
+}) {
   const current = asEnv(env);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [queued, setQueued] = React.useState<Env | null>(null);
@@ -184,7 +193,11 @@ export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) 
           `aria-labelledby` and opener-focus restoration are exactly what a
           bespoke sheet gets wrong, and it is already a bottom sheet at this
           width. Same reasoning `FamilySheet` in mobile-nav.tsx records. */}
-      <Dialog open={sheetOpen} onClose={() => setSheetOpen(false)} title="Data environment">
+      <Dialog
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title="Data environment"
+      >
         <div className="flex flex-col gap-2">
           {(["live", "sandbox"] as const).map((e) => (
             <button
@@ -198,12 +211,21 @@ export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) 
               aria-current={e === current ? "true" : undefined}
               className="flex min-h-[56px] w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent/50"
             >
-              <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold", TINT[e])}>
+              <span
+                className={cn(
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold",
+                  TINT[e],
+                )}
+              >
                 {LABEL[e]}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-foreground">{ROW[e].title}</span>
-                <span className="block text-xs text-muted-foreground">{ROW[e].hint}</span>
+                <span className="block text-sm font-semibold text-foreground">
+                  {ROW[e].title}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {ROW[e].hint}
+                </span>
               </span>
               {/* `-ink`, not `text-primary`. `--primary` is a FILL — it measures
                   2.59:1 as type on `--card` (audit F13), and the tick is type
@@ -211,7 +233,9 @@ export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) 
                   token-for-token the same brand colour at a legible value, and
                   `scripts/check-contrast.mjs` fails the build on the other
                   spelling precisely because it is the shorter one to type. */}
-              {e === current && <CheckIcon aria-hidden className="shrink-0 text-primary-ink" />}
+              {e === current && (
+                <CheckIcon aria-hidden className="shrink-0 text-primary-ink" />
+              )}
             </button>
           ))}
         </div>
@@ -241,7 +265,11 @@ export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) 
  * this button too, and the exception carved out for desktop is the segmented
  * toggle's single tap, not this.
  */
-export function SwitchToLiveButton({ onSwitch }: { onSwitch: (next: Env) => void }) {
+export function SwitchToLiveButton({
+  onSwitch,
+}: {
+  onSwitch: (next: Env) => void;
+}) {
   const [confirming, setConfirming] = React.useState(false);
   return (
     <>

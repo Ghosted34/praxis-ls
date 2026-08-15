@@ -18,7 +18,9 @@ describe("PageContainer", () => {
       ["reading", "max-w-reading"],
     ] as const;
     for (const [width, cls] of cases) {
-      const { unmount } = render(<PageContainer width={width}>{width}</PageContainer>);
+      const { unmount } = render(
+        <PageContainer width={width}>{width}</PageContainer>,
+      );
       expect(screen.getByText(width)).toHaveClass(cls);
       unmount();
     }
@@ -59,7 +61,12 @@ describe("PageContainer", () => {
 describe("pageShell tokens", () => {
   it("exposes exactly the four sanctioned widths", () => {
     // Guard against the drift F3 documented: five unruled widths across the app.
-    expect(Object.keys(pageShell).sort()).toEqual(["full", "reading", "standard", "wide"]);
+    expect(Object.keys(pageShell).sort()).toEqual([
+      "full",
+      "reading",
+      "standard",
+      "wide",
+    ]);
   });
 
   it("never re-introduces a raw max-w-6xl cap", () => {

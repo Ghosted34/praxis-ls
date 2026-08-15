@@ -59,7 +59,9 @@ export function AiHistoryRail({
   const groups = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
     const list = needle
-      ? conversations.filter((c) => (c.title || "").toLowerCase().includes(needle))
+      ? conversations.filter((c) =>
+          (c.title || "").toLowerCase().includes(needle),
+        )
       : conversations;
     return groupConversations(list);
   }, [conversations, q]);
@@ -95,7 +97,10 @@ export function AiHistoryRail({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         <section aria-labelledby="ai-spaces">
-          <h3 id="ai-spaces" className="micro px-2 pb-1 uppercase text-muted-foreground">
+          <h3
+            id="ai-spaces"
+            className="micro px-2 pb-1 uppercase text-muted-foreground"
+          >
             Spaces
           </h3>
           <ul className="space-y-0.5">
@@ -115,8 +120,15 @@ export function AiHistoryRail({
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
                   >
-                    <span aria-hidden className="grid h-4 w-4 shrink-0 place-items-center">
-                      {s.key === "all" ? <PraxisMark width={13} height={13} /> : <Icon width={14} height={14} />}
+                    <span
+                      aria-hidden
+                      className="grid h-4 w-4 shrink-0 place-items-center"
+                    >
+                      {s.key === "all" ? (
+                        <PraxisMark width={13} height={13} />
+                      ) : (
+                        <Icon width={14} height={14} />
+                      )}
                     </span>
                     <span className="truncate">{s.label}</span>
                   </button>
@@ -134,12 +146,16 @@ export function AiHistoryRail({
             <LoadingRow />
           ) : groups.length === 0 ? (
             <p className="micro px-2 py-2 text-muted-foreground">
-              {q ? "No conversation matches that." : "No conversations yet. Ask something to start one."}
+              {q
+                ? "No conversation matches that."
+                : "No conversations yet. Ask something to start one."}
             </p>
           ) : (
             groups.map((g) => (
               <div key={g.heading} className="mb-3">
-                <h4 className="micro px-2 pb-1 uppercase text-muted-foreground">{g.heading}</h4>
+                <h4 className="micro px-2 pb-1 uppercase text-muted-foreground">
+                  {g.heading}
+                </h4>
                 <ul className="space-y-0.5">
                   {g.items.map((c) => {
                     const on = c.conversation_id === activeId;
@@ -157,13 +173,16 @@ export function AiHistoryRail({
                           <span
                             className={cn(
                               "line-clamp-1 text-sm",
-                              on ? "font-medium text-foreground" : "text-foreground/90",
+                              on
+                                ? "font-medium text-foreground"
+                                : "text-foreground/90",
                             )}
                           >
                             {c.title || "Untitled conversation"}
                           </span>
                           <span className="micro text-muted-foreground">
-                            {new Date(c.last_at).toLocaleDateString()} · {c.message_count} message
+                            {new Date(c.last_at).toLocaleDateString()} ·{" "}
+                            {c.message_count} message
                             {c.message_count === 1 ? "" : "s"}
                           </span>
                         </button>

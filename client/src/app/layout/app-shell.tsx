@@ -36,8 +36,19 @@ import { useBranding } from "@/app/branding/branding-context";
 import { CommandPaletteProvider } from "@/app/layout/command-palette-context";
 import { NAV, type NavGroup } from "@/app/layout/nav-model";
 import {
-  AREA_ICON, CHILD_ICON, AlertIcon, ChevronIcon, DotIcon, DownloadIcon,
-  HrIcon, LogoutIcon, MenuIcon, MoreIcon, PaletteIcon, SearchIcon, SecurityIcon,
+  AREA_ICON,
+  CHILD_ICON,
+  AlertIcon,
+  ChevronIcon,
+  DotIcon,
+  DownloadIcon,
+  HrIcon,
+  LogoutIcon,
+  MenuIcon,
+  MoreIcon,
+  PaletteIcon,
+  SearchIcon,
+  SecurityIcon,
 } from "@/app/layout/nav-icons";
 import { Ribbon } from "@/app/layout/ribbon";
 import { IconRail } from "@/app/layout/icon-rail";
@@ -51,14 +62,29 @@ import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getMode, setMode, resolved } from "@/lib/theme-mode";
+import { ClockPunchChip } from "@/components/clock-punch";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
 import { QuickActionsMenu } from "@/components/quick-actions";
-import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
-import { getDensity, setDensity, isDensity, DENSITY_LABEL, DENSITY_HINT, type Density } from "@/lib/density";
+import {
+  DropdownMenu,
+  DropdownItem,
+  DropdownLabel,
+  DropdownSeparator,
+  DropdownRadioGroup,
+  DropdownRadioItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  getDensity,
+  setDensity,
+  isDensity,
+  DENSITY_LABEL,
+  DENSITY_HINT,
+  type Density,
+} from "@/lib/density";
 import { AppIcon } from "@/components/ui/app-icon";
 import { type EffectivePwa } from "@/lib/pwa-config";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -77,12 +103,12 @@ function useVisibleNav(): NavGroup[] {
   const aiEnabled = useAiEnabled();
   return React.useMemo(() => {
     if (aiEnabled) return NAV;
-    return NAV
-      .map((g) => ({ ...g, items: g.items.filter((it) => it.to !== "/ai-control") }))
-      .filter((g) => g.items.length > 0);
+    return NAV.map((g) => ({
+      ...g,
+      items: g.items.filter((it) => it.to !== "/ai-control"),
+    })).filter((g) => g.items.length > 0);
   }, [aiEnabled]);
 }
-
 
 /**
  * LIVE / TEST, from `sm` up. Lifted out of the shell's markup when the utility
@@ -99,7 +125,13 @@ function useVisibleNav(): NavGroup[] {
  * way out of it. Deliberately still single-tap and unconfirmed: that asymmetry
  * with the phone's confirm-both-ways is argued in env-switcher.tsx's header.
  */
-function EnvToggle({ env, onSwitch }: { env: string; onSwitch: (e: "live" | "sandbox") => void }) {
+function EnvToggle({
+  env,
+  onSwitch,
+}: {
+  env: string;
+  onSwitch: (e: "live" | "sandbox") => void;
+}) {
   return (
     <div
       className="hidden items-center rounded-md border p-0.5 text-[11px] font-semibold sm:inline-flex"
@@ -196,7 +228,9 @@ function EnvSwitchOverlay({ to }: { to: "live" | "sandbox" }) {
 /** Initials from a name or email local-part. */
 function initialsOf(nameOrEmail?: string | null): string {
   if (!nameOrEmail) return "?";
-  const base = nameOrEmail.includes("@") ? nameOrEmail.split("@")[0].replace(/[._-]+/g, " ") : nameOrEmail;
+  const base = nameOrEmail.includes("@")
+    ? nameOrEmail.split("@")[0].replace(/[._-]+/g, " ")
+    : nameOrEmail;
   const parts = base.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
@@ -226,7 +260,11 @@ function initialsOf(nameOrEmail?: string | null): string {
  * Failures (feature off, 403) still resolve to 0 rather than surfacing —
  * `Promise.allSettled` is kept for exactly that reason.
  */
-function useUnreadCounts(env: string): { messages: number; notifications: number; reload: () => void } {
+function useUnreadCounts(env: string): {
+  messages: number;
+  notifications: number;
+  reload: () => void;
+} {
   const qc = useQueryClient();
 
   const num = (v: unknown): number => {
@@ -241,7 +279,12 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
   // /smartcomm/unread returns per-channel rows [{group_id, unread}] → sum them;
   // /notifications/unread-count returns { unread: N }.
   const sumUnread = (v: unknown): number =>
-    Array.isArray(v) ? v.reduce((s, r) => s + (Number((r as { unread?: unknown })?.unread) || 0), 0) : num(v);
+    Array.isArray(v)
+      ? v.reduce(
+          (s, r) => s + (Number((r as { unread?: unknown })?.unread) || 0),
+          0,
+        )
+      : num(v);
 
   // `env` is in the key so flipping LIVE/TEST reads the other environment's
   // counts rather than showing stale ones.
@@ -340,7 +383,9 @@ function DensityChoice() {
  * the toggle can never disagree about what is stored.
  */
 function ThemeChoice() {
-  const [mode, setLocal] = React.useState<"light" | "dark">(() => resolved(getMode()));
+  const [mode, setLocal] = React.useState<"light" | "dark">(() =>
+    resolved(getMode()),
+  );
 
   return (
     <>
@@ -363,8 +408,25 @@ function ThemeChoice() {
 }
 
 /** User avatar + dropdown (role · My HR · My security · theme · density · Sign out). */
-function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
-  const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
+function UserMenu({
+  user,
+  onLogout,
+}: {
+  user: {
+    email?: string;
+    display_name?: string;
+    full_name?: string;
+    avatar_url?: string | null;
+    role?: string | null;
+  } | null;
+  onLogout: () => void;
+}) {
+  const name = (
+    user?.display_name ||
+    user?.full_name ||
+    (user?.email ? user.email.split("@")[0] : "") ||
+    "Account"
+  ).replace(/[._-]+/g, " ");
   const email = user?.email || "";
   const role = user?.role || "Member";
 
@@ -391,23 +453,38 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
             className="flex items-center gap-2 rounded-lg border p-1 pr-2 transition-colors hover:bg-accent/50"
           >
             {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="" className="h-8 w-8 rounded-md object-cover" />
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="h-8 w-8 rounded-md object-cover"
+              />
             ) : (
-              <span aria-hidden className="grid h-8 w-8 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+              <span
+                aria-hidden
+                className="grid h-8 w-8 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground"
+              >
                 {initialsOf(name || email)}
               </span>
             )}
             <span className="hidden text-left leading-tight sm:block">
-              <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
-              <span className="block max-w-[10rem] truncate text-micro text-muted-foreground">{role}</span>
+              <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">
+                {name}
+              </span>
+              <span className="block max-w-[10rem] truncate text-micro text-muted-foreground">
+                {role}
+              </span>
             </span>
             <ChevronIcon className="hidden shrink-0 sm:block" />
           </button>
         }
       >
         <DropdownLabel>
-          <span className="block truncate text-sm font-semibold capitalize text-foreground">{name}</span>
-          <span className="block truncate text-xs text-muted-foreground">{role}</span>
+          <span className="block truncate text-sm font-semibold capitalize text-foreground">
+            {name}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {role}
+          </span>
         </DropdownLabel>
         <DropdownSeparator />
         <DropdownItem to="/my-hr">
@@ -461,11 +538,17 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
   const [manual, setManual] = React.useState<Record<string, boolean>>({});
   React.useEffect(() => setManual({}), [pathname]);
   const inGroup = (g: NavGroup) =>
-    g.items.some((it) => (it.to === "/" ? pathname === "/" : pathname === it.to || pathname.startsWith(it.to + "/")));
+    g.items.some((it) =>
+      it.to === "/"
+        ? pathname === "/"
+        : pathname === it.to || pathname.startsWith(it.to + "/"),
+    );
   const childLink = ({ isActive }: { isActive: boolean }) =>
     cn(
       "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
-      isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+      isActive
+        ? "bg-accent font-semibold text-foreground"
+        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
     );
   const activeBorder = ({ isActive }: { isActive: boolean }) =>
     isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined;
@@ -488,7 +571,9 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
-                  isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  isActive
+                    ? "bg-accent font-semibold text-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                 )
               }
             >
@@ -511,14 +596,26 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
             >
               <Icon />
               <span className="flex-1 text-left">{g.heading}</span>
-              <ChevronIcon className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+              <ChevronIcon
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform",
+                  !open && "-rotate-90",
+                )}
+              />
             </button>
             {open && (
               <div className="mb-1 mt-0.5 flex flex-col gap-0.5 pl-[26px]">
                 {g.items.map((it) => {
                   const CIcon = CHILD_ICON[it.to] || DotIcon;
                   return (
-                    <NavLink key={it.to} to={it.to} end={it.to === "/"} onClick={onNavigate} style={activeBorder} className={childLink}>
+                    <NavLink
+                      key={it.to}
+                      to={it.to}
+                      end={it.to === "/"}
+                      onClick={onNavigate}
+                      style={activeBorder}
+                      className={childLink}
+                    >
                       <CIcon />
                       <span>{it.label}</span>
                     </NavLink>
@@ -542,7 +639,9 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
       {logoUrl ? (
         <img src={logoUrl} alt={name} className="h-9 w-auto" />
       ) : (
-        <span className="lux-mark" title={name}>{name.charAt(0)}</span>
+        <span className="lux-mark" title={name}>
+          {name.charAt(0)}
+        </span>
       )}
     </div>
   );
@@ -586,7 +685,9 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
       {/* `truncate` because the name is tenant-supplied and the bar is shared
           with the window controls — a long one must give way rather than push
           the search field off the row. */}
-      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground">{cfg.name}</span>
+      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground">
+        {cfg.name}
+      </span>
     </div>
   );
 }
@@ -704,21 +805,21 @@ export function AppShell() {
 
   return (
     <CommandPaletteProvider value={paletteApi}>
-    <RibbonCommandsProvider>
-    <div className="flex h-full flex-col">
-      {/*
+      <RibbonCommandsProvider>
+        <div className="flex h-full flex-col">
+          {/*
         Skip link (audit F13, WCAG 2.4.1). With 12 of 16 areas behind the More
         drawer, a keyboard user previously tabbed the entire header on every
         navigation before reaching content. Visually hidden until focused.
       */}
-      <a
-        href="#main-content"
-        className="sr-only z-50 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-[var(--shadow-l)] focus:outline-none focus:ring-2 focus:ring-ring"
-      >
-        Skip to main content
-      </a>
+          <a
+            href="#main-content"
+            className="sr-only z-50 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-[var(--shadow-l)] focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            Skip to main content
+          </a>
 
-      {/*
+          {/*
         ── THE TITLE BAR ──────────────────────────────────────────────────────
         In an installed window this IS the title bar: `display_override:
         ["window-controls-overlay"]` (src/routes/pwa.js) tells the OS to stop
@@ -743,23 +844,23 @@ export function AppShell() {
         child opts out via the `:is(button, a, input…)` rule there, which
         top-shell.test.tsx pins.
       */}
-      <div className="wco wco-surface relative z-40 flex flex-none items-center gap-2 px-3">
-        <div className="wco-art" aria-hidden />
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="Open menu"
-        >
-          <MenuIcon width={18} height={18} />
-        </button>
-        <AppMark cfg={pwa} />
-        {/* The drag handle. An empty flex-1 rather than a padded element: it is
+          <div className="wco wco-surface relative z-40 flex flex-none items-center gap-2 px-3">
+            <div className="wco-art" aria-hidden />
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <MenuIcon width={18} height={18} />
+            </button>
+            <AppMark cfg={pwa} />
+            {/* The drag handle. An empty flex-1 rather than a padded element: it is
             the only region a user can reliably grab to move the window, so it
             gets whatever width is left rather than a fixed amount. */}
-        <div className="flex-1" />
-        <div className="flex items-center gap-2">
-          {/*
+            <div className="flex-1" />
+            <div className="flex items-center gap-2">
+              {/*
             ONE SEARCH BUTTON, AT EVERY WIDTH — and it is one button, not two
             that hand off.
 
@@ -777,84 +878,108 @@ export function AppShell() {
             the badge; `lg:h-auto` gives back the intrinsic height that
             `wco-touch` overrides for the thumb below it.
           */}
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(true)}
-            aria-label="Search"
-            title="Search (⌘K)"
-            className="wco-touch flex min-w-[40px] items-center justify-center rounded-lg border bg-accent/40 text-muted-foreground transition-colors hover:text-foreground lg:h-auto lg:min-w-0 lg:justify-start lg:gap-2 lg:px-3 lg:py-1.5"
-          >
-            <SearchIcon width={16} height={16} />
-            <span className="hidden text-xs lg:inline">Search…</span>
-            <span className="ml-4 hidden rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold lg:inline">⌘K</span>
-          </button>
-          {/* Two renderings of one control, split at `sm`: the segmented toggle
-              for a pointer, the chip + sheet + confirmation for a thumb. Only
-              ever one of them is on screen. */}
-          <EnvToggle env={env} onSwitch={switchEnv} />
-          <EnvChip env={env} onSwitch={switchEnv} />
-          {/* `sm:` — 36px is a lot of a 360px strip to hold permanently for a
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(true)}
+                aria-label="Search"
+                title="Search (⌘K)"
+                className="wco-touch flex min-w-[40px] items-center justify-center rounded-lg border bg-accent/40 text-muted-foreground transition-colors hover:text-foreground lg:h-auto lg:min-w-0 lg:justify-start lg:gap-2 lg:px-3 lg:py-1.5"
+              >
+                <SearchIcon width={16} height={16} />
+                <span className="hidden text-xs lg:inline">Search…</span>
+                <span className="ml-4 hidden rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold lg:inline">
+                  ⌘K
+                </span>
+              </button>
+              {/* Clocking in is a STATE, not a quick action — it lasts a shift, and
+              until now the only desktop route to it was one click deep inside
+              the quick-actions menu, whose burst icon gives no hint whether a
+              shift is running. It sits with the other always-true facts of the
+              session (which environment, which account). */}
+              <ClockPunchChip />
+              <EnvToggle env={env} onSwitch={switchEnv} />
+              <EnvChip env={env} onSwitch={switchEnv} />
+              {/* `sm:` — 36px is a lot of a 360px strip to hold permanently for a
               preference set once per user, and search and the env chip needed
               it. Below `sm` the same choice lives in the account menu
               (`ThemeChoice`), which is where the other display preference this
               user owns already is. */}
-          <span className="hidden sm:inline-flex">
-            <ThemeToggle />
-          </span>
-          <span className="hidden md:inline-flex">
-            <QuickActionsMenu badge={unread.messages} />
-          </span>
-          <NotificationBell count={unread.notifications} onChange={unread.reload} />
-          <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
-        </div>
-      </div>
+              <span className="hidden sm:inline-flex">
+                <ThemeToggle />
+              </span>
+              <span className="hidden md:inline-flex">
+                <QuickActionsMenu badge={unread.messages} />
+              </span>
+              <NotificationBell
+                count={unread.notifications}
+                onChange={unread.reload}
+              />
+              <UserMenu
+                user={
+                  user as {
+                    email?: string;
+                    display_name?: string;
+                    full_name?: string;
+                  } | null
+                }
+                onLogout={onLogout}
+              />
+            </div>
+          </div>
 
-      {/*
+          {/*
         Mobile overlay sidebar — hamburger only, and `md:hidden` so it cannot
         appear on a desktop viewport even if the state is somehow set (F9: this
         drawer used to be the ONLY route to twelve of sixteen areas at every
         width). Desktop reaches everything through the menubar above.
       */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          {/* Scrim. Click-to-dismiss is a pointer convenience; the drawer has a
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-40 md:hidden">
+              {/* Scrim. Click-to-dismiss is a pointer convenience; the drawer has a
               real labelled close button and the shell closes it on Escape, so
               there is no keyboard-only path through this element. */}
-          <div role="presentation" className="absolute inset-0 animate-fade-in bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <aside className="lux-sidebar-in absolute left-0 top-0 flex h-full w-72 flex-col overflow-y-auto border-r bg-sidebar">
-            <div className="flex h-[66px] flex-none items-center justify-between border-b px-4">
-              <Brand name={brandName} logoUrl={branding.logoUrl} />
-              <button
-                type="button"
+              <div
+                role="presentation"
+                className="absolute inset-0 animate-fade-in bg-black/40"
                 onClick={() => setSidebarOpen(false)}
-                aria-label="Close menu"
-                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <XIcon width={18} height={18} />
-              </button>
+              />
+              <aside className="lux-sidebar-in absolute left-0 top-0 flex h-full w-72 flex-col overflow-y-auto border-r bg-sidebar">
+                <div className="flex h-[66px] flex-none items-center justify-between border-b px-4">
+                  <Brand name={brandName} logoUrl={branding.logoUrl} />
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    aria-label="Close menu"
+                    className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <XIcon width={18} height={18} />
+                  </button>
+                </div>
+                <SidebarLinks onNavigate={() => setSidebarOpen(false)} />
+              </aside>
             </div>
-            <SidebarLinks onNavigate={() => setSidebarOpen(false)} />
-          </aside>
-        </div>
-      )}
+          )}
 
-      {/* The single custom scroll container: vertical scrolls, horizontal is
+          {/* The single custom scroll container: vertical scrolls, horizontal is
           clipped (pages that need it wrap their own overflow-x-auto region). */}
-      {/* Sandbox warning banner (Lovable mock) — only in TEST mode.
+          {/* Sandbox warning banner (Lovable mock) — only in TEST mode.
           Its way out goes through `SwitchToLiveButton`, which asks first. This
           used to call `switchEnv("live")` from the onClick, so a phone had two
           routes between environments and only one of them confirmed — and this
           was the route a thumb could take by accident while reading the banner
           that explains why it matters. */}
-      {env === "sandbox" && (
-        <div className="flex flex-none items-center justify-center gap-2 border-b border-[rgb(var(--warn-fill)_/_0.35)] bg-[rgb(var(--warn-fill)_/_0.14)] px-4 py-2 text-center text-xs font-medium text-[rgb(var(--warn))]">
-          <AlertIcon width={14} height={14} className="shrink-0" />
-          <span>TEST MODE — you&rsquo;re viewing sandbox data. Changes here don&rsquo;t affect live.</span>
-          <SwitchToLiveButton onSwitch={switchEnv} />
-        </div>
-      )}
+          {env === "sandbox" && (
+            <div className="flex flex-none items-center justify-center gap-2 border-b border-[rgb(var(--warn-fill)_/_0.35)] bg-[rgb(var(--warn-fill)_/_0.14)] px-4 py-2 text-center text-xs font-medium text-[rgb(var(--warn))]">
+              <AlertIcon width={14} height={14} className="shrink-0" />
+              <span>
+                TEST MODE — you&rsquo;re viewing sandbox data. Changes here
+                don&rsquo;t affect live.
+              </span>
+              <SwitchToLiveButton onSwitch={switchEnv} />
+            </div>
+          )}
 
-      {/*
+          {/*
         THE BODY: rail beside, ribbon above.
 
         The rail runs the full height of everything under the title bar rather
@@ -864,75 +989,79 @@ export function AppShell() {
         content column, which is what makes "these destinations are inside this
         family" a spatial fact rather than a caption.
       */}
-      <div className="flex min-h-0 flex-1">
-        <IconRail />
+          <div className="flex min-h-0 flex-1">
+            <IconRail />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Ribbon pathname={location.pathname} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Ribbon pathname={location.pathname} />
 
-          {/* key={env} remounts the routed screen on an env switch so every screen
+              {/* key={env} remounts the routed screen on an env switch so every screen
               re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
-          {/*
+              {/*
             Padding scales with the viewport now (was a flat p-6 at every width).
             Width itself is NOT capped here — each screen picks a deliberate column
             width via <PageContainer> / pageShell (audit F3), so the shell stays out
             of that decision and a full-bleed screen stays possible.
           */}
-          <main
-            id="main-content"
-            tabIndex={-1}
-            key={env}
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
-          >
-            {/* Per-route boundary, keyed on the path so navigating away from a
+              <main
+                id="main-content"
+                tabIndex={-1}
+                key={env}
+                className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
+              >
+                {/* Per-route boundary, keyed on the path so navigating away from a
                 crashed screen clears the error rather than stranding the user on it.
                 The root boundary in main.tsx is the backstop; this one keeps the
                 shell, the nav and the copilot alive when a single screen throws. */}
-            <ErrorBoundary key={location.pathname} name="This screen">
-              {/* Screens are lazy (app.tsx), so the routed element can suspend while
+                <ErrorBoundary key={location.pathname} name="This screen">
+                  {/* Screens are lazy (app.tsx), so the routed element can suspend while
                   its chunk downloads. The boundary sits HERE rather than around the
                   whole app so the nav, topbar and copilot stay painted and only the
                   content column shows the skeleton. Inside the ErrorBoundary so a
                   chunk that fails to load — a stale service worker pointing at a
                   filename a deploy removed — surfaces as the screen error, not a
                   silent dead route. */}
-              <React.Suspense fallback={<PageSkeleton />}>
-                <RouteAccessGate pathname={location.pathname}>
-                  <Outlet />
-                </RouteAccessGate>
-              </React.Suspense>
-            </ErrorBoundary>
-          </main>
-        </div>
-      </div>
+                  <React.Suspense fallback={<PageSkeleton />}>
+                    <RouteAccessGate pathname={location.pathname}>
+                      <Outlet />
+                    </RouteAccessGate>
+                  </React.Suspense>
+                </ErrorBoundary>
+              </main>
+            </div>
+          </div>
 
-      {/* `onMenu` is the bar's escape hatch when the permissions read yields no
+          {/* `onMenu` is the bar's escape hatch when the permissions read yields no
           families: the drawer is the complete, unfiltered index. It no longer
           takes `onSearch` — the strip's search button renders at every width
           now, so the bottom bar's Search cell was a second control for the same
           palette, and dropping it gives that width back to the families. */}
-      <BottomNav onMenu={() => setSidebarOpen(true)} />
+          <BottomNav onMenu={() => setSidebarOpen(true)} />
 
-      {/* Surfaces row-action failures reported via lib/action-error. Retrofit
+          {/* Surfaces row-action failures reported via lib/action-error. Retrofit
           for screens whose handlers had no catch — see
           doc/PERMISSION_SWEEP_BACKLOG.md §C. */}
-      <ActionErrorBanner />
-      {/* The GRANT half of live permission invalidation. Its counterpart — a
+          <ActionErrorBanner />
+          {/* The GRANT half of live permission invalidation. Its counterpart — a
           revocation — never reaches a component: ShellProvider clears the local
           cache and hard-refreshes the moment it sees one. */}
-      <AccessBanner />
-      <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
-      <PraxisDrawer />
-      <FloatingActions badge={unread.messages + unread.notifications} />
-      {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
+          <AccessBanner />
+          <CommandPalette
+            open={paletteOpen}
+            groups={visibleNav}
+            onClose={() => setPaletteOpen(false)}
+          />
+          <PraxisDrawer />
+          <FloatingActions badge={unread.messages + unread.notifications} />
+          {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
           the brief window between the toggle and the newly-mounted screen's
           first paint. `to` is the destination env, mapped back from the
           project's terminology (sandbox=TEST). */}
-      {switchingFrom && (
-        <EnvSwitchOverlay to={env === "sandbox" ? "sandbox" : "live"} />
-      )}
-    </div>
-    </RibbonCommandsProvider>
+          {switchingFrom && (
+            <EnvSwitchOverlay to={env === "sandbox" ? "sandbox" : "live"} />
+          )}
+        </div>
+      </RibbonCommandsProvider>
     </CommandPaletteProvider>
   );
 }

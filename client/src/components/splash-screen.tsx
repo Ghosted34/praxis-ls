@@ -32,7 +32,11 @@ import { contrast, parseHex } from "@/lib/theme";
  * anything — so it cannot use `--foreground` and has to make the light/dark
  * decision itself. Measured with the same WCAG helpers `applyBrand` uses.
  */
-function inkFor(background: string): { strong: string; muted: string; track: string } {
+function inkFor(background: string): {
+  strong: string;
+  muted: string;
+  track: string;
+} {
   const bg = parseHex(background) ?? [11, 15, 16];
   const onDark = contrast([255, 255, 255], bg) >= contrast([17, 20, 24], bg);
   return onDark
@@ -137,7 +141,10 @@ export function SplashScreen({
           transition: "opacity 0.4s ease",
         }}
       >
-        <div className={MARK_CLASS[cfg.splashPreset] || undefined} style={{ display: "grid", placeItems: "center" }}>
+        <div
+          className={MARK_CLASS[cfg.splashPreset] || undefined}
+          style={{ display: "grid", placeItems: "center" }}
+        >
           {cfg.splashLogoUrl ? (
             <img
               src={cfg.splashLogoUrl}

@@ -82,21 +82,25 @@ export function useMyAuditFeed(page = 1) {
     // cache holds one entry per page instead of trampling it.
     queryKey: [...tenantKey("/audit/my-feed"), env, page] as const,
     queryFn: async (): Promise<AuditFeedPage> => {
-      const res = await apiPaged<AuditFeedRow[]>(`/tenant/audit/my-feed?page=${page}`);
+      const res = await apiPaged<AuditFeedRow[]>(
+        `/tenant/audit/my-feed?page=${page}`,
+      );
       const rows = Array.isArray(res.data) ? res.data : [];
       // Prefer the raw meta — the endpoint ships a bespoke `window` flag
       // ('24h' | 'all_time') that the shared numeric fields don't cover.
       // Falls back to the typed fields when the raw envelope is missing.
       const raw = res.meta || null;
-      const rawWindow = raw && (raw.window === "24h" || raw.window === "all_time")
-        ? (raw.window as AuditFeedWindow)
-        : DEFAULT_META.window;
+      const rawWindow =
+        raw && (raw.window === "24h" || raw.window === "all_time")
+          ? (raw.window as AuditFeedWindow)
+          : DEFAULT_META.window;
       const meta: AuditFeedMeta | null =
         typeof res.total === "number"
           ? {
               window: rawWindow,
               page: typeof raw?.page === "number" ? raw.page : page,
-              page_size: typeof raw?.page_size === "number" ? raw.page_size : 10,
+              page_size:
+                typeof raw?.page_size === "number" ? raw.page_size : 10,
               total: res.total,
               has_more: res.hasMore,
             }

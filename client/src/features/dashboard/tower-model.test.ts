@@ -40,16 +40,80 @@ function grant(byGroup: Record<string, string[]>): NavAccess {
 
 const CEO = grant({
   monitor: ["MOD-00A", "MOD-64", "MOD-74"],
-  engage: ["MOD-20", "MOD-21", "MOD-22", "MOD-23", "MOD-24", "MOD-26", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
-  fulfill: [
-    "MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38",
-    "MOD-39", "MOD-40", "MOD-41", "MOD-42", "MOD-43", "MOD-44", "MOD-45",
+  engage: [
+    "MOD-20",
+    "MOD-21",
+    "MOD-22",
+    "MOD-23",
+    "MOD-24",
+    "MOD-26",
+    "MOD-27",
+    "MOD-28",
+    "MOD-60",
+    "MOD-61",
+    "MOD-62",
   ],
-  transact: ["MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59", "MOD-46", "MOD-47", "MOD-49"],
-  empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-13", "MOD-14", "MOD-15", "MOD-16", "MOD-17", "MOD-18", "MOD-19", "MOD-71"],
+  fulfill: [
+    "MOD-29",
+    "MOD-30",
+    "MOD-31",
+    "MOD-32",
+    "MOD-33",
+    "MOD-34",
+    "MOD-35",
+    "MOD-36",
+    "MOD-37",
+    "MOD-38",
+    "MOD-39",
+    "MOD-40",
+    "MOD-41",
+    "MOD-42",
+    "MOD-43",
+    "MOD-44",
+    "MOD-45",
+  ],
+  transact: [
+    "MOD-51",
+    "MOD-52",
+    "MOD-53",
+    "MOD-54",
+    "MOD-56",
+    "MOD-58",
+    "MOD-59",
+    "MOD-46",
+    "MOD-47",
+    "MOD-49",
+  ],
+  empower: [
+    "MOD-02",
+    "MOD-11",
+    "MOD-12",
+    "MOD-13",
+    "MOD-14",
+    "MOD-15",
+    "MOD-16",
+    "MOD-17",
+    "MOD-18",
+    "MOD-19",
+    "MOD-71",
+  ],
   configure: [
-    "MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65",
-    "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75", "MOD-00B",
+    "MOD-01",
+    "MOD-03",
+    "MOD-04",
+    "MOD-05",
+    "MOD-07",
+    "MOD-08",
+    "MOD-09",
+    "MOD-10",
+    "MOD-63",
+    "MOD-65",
+    "MOD-66",
+    "MOD-67",
+    "MOD-68",
+    "MOD-70",
+    "MOD-75",
+    "MOD-00B",
   ],
 });
 
@@ -72,14 +136,20 @@ describe("tower-model.resolveTowerPins", () => {
   it("drops a stored key whose area the user can no longer see", () => {
     // Warehouse-only cannot see 'finance'; a stored pin for it must vanish
     // rather than render an unreachable tile.
-    const pins = resolveTowerPins(["wms", "finance"], buildRibbon(WAREHOUSE_ONLY));
+    const pins = resolveTowerPins(
+      ["wms", "finance"],
+      buildRibbon(WAREHOUSE_ONLY),
+    );
     expect(pins.map((a) => a.key)).toEqual(["wms"]);
   });
 
   it("respects the MAX_TOWER_PINS cap on the way out", () => {
     // A stored list of 20 keys — a client that ignored the cap — must not
     // spill into a fifteen-tile grid.
-    const inflated = Array.from({ length: 20 }, (_, i) => DEFAULT_TOWER_PINS[i % DEFAULT_TOWER_PINS.length]);
+    const inflated = Array.from(
+      { length: 20 },
+      (_, i) => DEFAULT_TOWER_PINS[i % DEFAULT_TOWER_PINS.length],
+    );
     const pins = resolveTowerPins(inflated, buildRibbon(CEO));
     expect(pins.length).toBeLessThanOrEqual(MAX_TOWER_PINS);
   });
@@ -114,14 +184,18 @@ describe("tower-model.unpinnedTowerAreas", () => {
     const pinnedKeys = new Set(pinned.map((a) => a.key));
     for (const a of rest) expect(pinnedKeys.has(a.key)).toBe(false);
     // Together they cover every pinnable area exactly once.
-    expect(pinned.length + rest.length).toBe(pinnableTowerAreas(families).length);
+    expect(pinned.length + rest.length).toBe(
+      pinnableTowerAreas(families).length,
+    );
   });
 });
 
 describe("tower-model.previewSections", () => {
   it("returns the first four sub-nav labels for an area the ribbon shows", () => {
     const families = buildRibbon(CEO);
-    const operations = pinnableTowerAreas(families).find((a) => a.key === "operations")!;
+    const operations = pinnableTowerAreas(families).find(
+      (a) => a.key === "operations",
+    )!;
     const preview = previewSections(operations, families);
     expect(preview.length).toBeLessThanOrEqual(4);
     // Milestones must resolve to the routed deep link, not the raw key.
@@ -141,7 +215,12 @@ describe("tower-model.previewSections", () => {
     // An unreachable module is not in the pinnable set at all, so the
     // preview is empty by definition — construct it manually to prove the
     // guard rather than by absence.
-    const stubArea = { key: "operations", label: "Operations", basePath: "/operations", sections: [] };
+    const stubArea = {
+      key: "operations",
+      label: "Operations",
+      basePath: "/operations",
+      sections: [],
+    };
     expect(previewSections(stubArea, families)).toEqual([]);
   });
 });

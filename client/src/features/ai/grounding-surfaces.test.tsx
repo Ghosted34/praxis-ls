@@ -24,7 +24,8 @@ import { AiRightPane, EMPTY_PANE, type PaneState } from "./right-pane";
 import type { AiTurn } from "@/components/ai/thread";
 
 /** An answer written the way the assistant is actually told to write: names, no links. */
-const ANSWER = "Two invoices are overdue: SBX-INV-0031 (42 days) and SBX-INV-0044 (11 days).";
+const ANSWER =
+  "Two invoices are overdue: SBX-INV-0031 (42 days) and SBX-INV-0044 (11 days).";
 
 const turn = (extra: Partial<AiTurn> = {}): AiTurn =>
   ({ id: "t1", role: "assistant", text: ANSWER, ...extra }) as AiTurn;
@@ -41,7 +42,15 @@ function mount(ui: React.ReactNode) {
 }
 
 function renderTurn(t: AiTurn) {
-  return mount(<AiTurnView turn={t} isLast confirming={null} doneActions={{}} onConfirmAction={vi.fn()} />);
+  return mount(
+    <AiTurnView
+      turn={t}
+      isLast
+      confirming={null}
+      doneActions={{}}
+      onConfirmAction={vi.fn()}
+    />,
+  );
 }
 
 describe("the grounding footer", () => {
@@ -49,7 +58,13 @@ describe("the grounding footer", () => {
     // The whole bug in one assertion: derivation from the prose finds nothing
     // here, and the footer still has to appear.
     expect(ANSWER).not.toMatch(/\]\(/);
-    renderTurn(turn({ sources: [{ label: "Invoices · 2", href: "/finance/invoices", kind: "record" }] }));
+    renderTurn(
+      turn({
+        sources: [
+          { label: "Invoices · 2", href: "/finance/invoices", kind: "record" },
+        ],
+      }),
+    );
 
     expect(screen.getByText("Based on")).toBeInTheDocument();
     const chip = screen.getByRole("link", { name: /Invoices · 2/ });
@@ -67,17 +82,30 @@ describe("the grounding footer", () => {
     renderTurn(
       turn({
         text: "See [the list](/finance/invoices).",
-        sources: [{ label: "Invoices · 12", href: "/finance/invoices", kind: "record" }],
+        sources: [
+          { label: "Invoices · 12", href: "/finance/invoices", kind: "record" },
+        ],
       }),
     );
-    expect(screen.getByRole("link", { name: /Invoices · 12/ })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "the list" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Invoices · 12/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "the list" }),
+    ).not.toBeInTheDocument();
   });
 });
 
 describe("the trace disclosure", () => {
   it("renders the backend's steps, collapsed, in order", async () => {
-    renderTurn(turn({ trace: ["Read receivables ageing — computed", "Read final invoices (status: OVERDUE) — 2 records"] }));
+    renderTurn(
+      turn({
+        trace: [
+          "Read receivables ageing — computed",
+          "Read final invoices (status: OVERDUE) — 2 records",
+        ],
+      }),
+    );
 
     const summary = screen.getByText("Trace · 2 steps");
     expect(summary).toBeInTheDocument();
@@ -101,27 +129,46 @@ describe("the trace disclosure", () => {
 
 describe("the right pane's Sources and Record tabs", () => {
   const sources = [
-    { label: "Invoices · 2", href: "/finance/invoices", kind: "record" as const },
-    { label: "Receivables", href: "/finance/receivables", kind: "report" as const },
+    {
+      label: "Invoices · 2",
+      href: "/finance/invoices",
+      kind: "record" as const,
+    },
+    {
+      label: "Receivables",
+      href: "/finance/receivables",
+      kind: "report" as const,
+    },
   ];
 
   function renderPane(state: Partial<PaneState> = {}) {
     const onChange = vi.fn();
-    mount(<AiRightPane state={{ ...EMPTY_PANE, tab: "sources", sources, ...state }} onChange={onChange} onClose={vi.fn()} />);
+    mount(
+      <AiRightPane
+        state={{ ...EMPTY_PANE, tab: "sources", sources, ...state }}
+        onChange={onChange}
+        onClose={vi.fn()}
+      />,
+    );
     return onChange;
   }
 
   it("enables the Sources tab and lists what the thread stands on", () => {
     renderPane();
     expect(screen.getByRole("tab", { name: "Sources" })).toBeEnabled();
-    expect(screen.getByText(/2 references across this conversation/)).toBeInTheDocument();
-    for (const s of sources) expect(screen.getByText(s.label)).toBeInTheDocument();
+    expect(
+      screen.getByText(/2 references across this conversation/),
+    ).toBeInTheDocument();
+    for (const s of sources)
+      expect(screen.getByText(s.label)).toBeInTheDocument();
   });
 
   it("previewing a source moves to the Record tab carrying that source", async () => {
     const onChange = renderPane();
     await userEvent.click(screen.getByText("Invoices · 2"));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ tab: "record", record: sources[0] }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: "record", record: sources[0] }),
+    );
   });
 
   it("resolves the citation against the screen registry, and links somewhere real", () => {
@@ -130,6 +177,9 @@ describe("the right pane's Sources and Record tabs", () => {
     // record-suffixed path would land on the catch-all redirect to "/".
     expect(screen.getByText("Invoices · 2")).toBeInTheDocument();
     expect(screen.getByText("Lives on")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Open / })).toHaveAttribute("href", "/finance/invoices");
+    expect(screen.getByRole("link", { name: /^Open / })).toHaveAttribute(
+      "href",
+      "/finance/invoices",
+    );
   });
 });

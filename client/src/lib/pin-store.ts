@@ -22,7 +22,8 @@ function write(r: Registry) {
 }
 
 export const pinStore = {
-  get: (email: string): PinDevice | null => read()[email.trim().toLowerCase()] || null,
+  get: (email: string): PinDevice | null =>
+    read()[email.trim().toLowerCase()] || null,
   set: (email: string, d: PinDevice) => {
     const r = read();
     r[email.trim().toLowerCase()] = d;

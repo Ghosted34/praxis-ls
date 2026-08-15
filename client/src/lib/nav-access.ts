@@ -39,7 +39,13 @@ export type NavAccess = {
  * someone who is not one. The icon rail's fixed entries (Control Tower, search)
  * are not gated on this, so the shell is still usable while it loads.
  */
-export const NO_ACCESS: NavAccess = { modules: [], groups: [], byGroup: {}, isCeo: false, version: "" };
+export const NO_ACCESS: NavAccess = {
+  modules: [],
+  groups: [],
+  byGroup: {},
+  isCeo: false,
+  version: "",
+};
 
 /**
  * Coerce whatever came back into the shape the shell indexes into.
@@ -61,7 +67,10 @@ export function coerceNavAccess(raw: unknown): NavAccess {
   return {
     modules: Array.isArray(a.modules) ? a.modules : [],
     groups: Array.isArray(a.groups) ? a.groups : [],
-    byGroup: a.byGroup && typeof a.byGroup === "object" && !Array.isArray(a.byGroup) ? a.byGroup : {},
+    byGroup:
+      a.byGroup && typeof a.byGroup === "object" && !Array.isArray(a.byGroup)
+        ? a.byGroup
+        : {},
     isCeo: Boolean(a.isCeo),
     version: typeof a.version === "string" ? a.version : "",
   };

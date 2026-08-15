@@ -92,7 +92,9 @@ function resolve(expr, body, depth = 0) {
   const s = String(expr).trim();
 
   // rgb(var(--x) / a)  |  rgb(var(--x))
-  const wrapped = s.match(/^rgba?\(\s*var\(\s*(--[\w-]+)\s*\)\s*(?:\/\s*([\d.]+%?))?\s*\)$/);
+  const wrapped = s.match(
+    /^rgba?\(\s*var\(\s*(--[\w-]+)\s*\)\s*(?:\/\s*([\d.]+%?))?\s*\)$/,
+  );
   if (wrapped) {
     const inner = resolve(lookup(wrapped[1].slice(2), body), body, depth + 1);
     if (!inner) return null;
@@ -104,10 +106,15 @@ function resolve(expr, body, depth = 0) {
   if (bare) return resolve(lookup(bare[1].slice(2), body), body, depth + 1);
 
   // rgb(r g b [/ a])  |  rgb(r, g, b)  |  a bare "r g b" triplet
-  const nums = s.match(/(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)/);
+  const nums = s.match(
+    /(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)/,
+  );
   if (!nums) return null;
   const slash = s.match(/\/\s*([\d.]+%?)\s*\)?$/);
-  return { rgb: [Number(nums[1]), Number(nums[2]), Number(nums[3])], a: alpha(slash?.[1]) };
+  return {
+    rgb: [Number(nums[1]), Number(nums[2]), Number(nums[3])],
+    a: alpha(slash?.[1]),
+  };
 }
 
 function alpha(v) {
@@ -136,7 +143,8 @@ const lin = (c) => {
   const s = c / 255;
   return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 };
-const luminance = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+const luminance = ([r, g, b]) =>
+  0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 const contrast = (a, b) => {
   const la = luminance(a);
   const lb = luminance(b);
@@ -160,7 +168,12 @@ function pillRules() {
     const body = m[2];
     const color = body.match(/(?:^|[\s;])color:\s*([^;]+);/)?.[1];
     const background = body.match(/(?:^|[\s;])background:\s*([^;]+);/)?.[1];
-    if (color && background) out.push({ name: m[1], color: color.trim(), background: background.trim() });
+    if (color && background)
+      out.push({
+        name: m[1],
+        color: color.trim(),
+        background: background.trim(),
+      });
   }
   return out;
 }
@@ -171,15 +184,45 @@ function pillRules() {
 const TEXT_PAIRS = [
   // The .micro caption — the audit's worst offender at 3.01:1 / 2.78:1.
   [".micro on --card (light)", "ink-3", "card", lightBody, AA_NORMAL],
-  [".micro on --background (light)", "ink-3", "background", lightBody, AA_NORMAL],
+  [
+    ".micro on --background (light)",
+    "ink-3",
+    "background",
+    lightBody,
+    AA_NORMAL,
+  ],
   [".micro on --card (dark)", "ink-3", "card", darkBody, AA_NORMAL],
   [".micro on --background (dark)", "ink-3", "background", darkBody, AA_NORMAL],
   // Secondary body text.
-  ["--muted-foreground on --card (light)", "muted-foreground", "card", lightBody, AA_NORMAL],
-  ["--muted-foreground on --card (dark)", "muted-foreground", "card", darkBody, AA_NORMAL],
+  [
+    "--muted-foreground on --card (light)",
+    "muted-foreground",
+    "card",
+    lightBody,
+    AA_NORMAL,
+  ],
+  [
+    "--muted-foreground on --card (dark)",
+    "muted-foreground",
+    "card",
+    darkBody,
+    AA_NORMAL,
+  ],
   // Table column headings sit on --secondary.
-  ["TH label on --secondary (light)", "muted-foreground", "secondary", lightBody, AA_NORMAL],
-  ["TH label on --secondary (dark)", "muted-foreground", "secondary", darkBody, AA_NORMAL],
+  [
+    "TH label on --secondary (light)",
+    "muted-foreground",
+    "secondary",
+    lightBody,
+    AA_NORMAL,
+  ],
+  [
+    "TH label on --secondary (dark)",
+    "muted-foreground",
+    "secondary",
+    darkBody,
+    AA_NORMAL,
+  ],
   // Status text on a PLAIN surface — a ledger figure or a metric, not a pill.
   ["--ok text on --card (light)", "ok", "card", lightBody, AA_NORMAL],
   ["--warn text on --card (light)", "warn", "card", lightBody, AA_NORMAL],
@@ -188,18 +231,54 @@ const TEXT_PAIRS = [
   ["--warn text on --card (dark)", "warn", "card", darkBody, AA_NORMAL],
   ["--bad text on --card (dark)", "bad", "card", darkBody, AA_NORMAL],
   // Accent as TEXT must use --primary-ink, never --primary.
-  ["--primary-ink on --card (light)", "primary-ink", "card", lightBody, AA_NORMAL],
-  ["--primary-ink on --card (dark)", "primary-ink", "card", darkBody, AA_NORMAL],
+  [
+    "--primary-ink on --card (light)",
+    "primary-ink",
+    "card",
+    lightBody,
+    AA_NORMAL,
+  ],
+  [
+    "--primary-ink on --card (dark)",
+    "primary-ink",
+    "card",
+    darkBody,
+    AA_NORMAL,
+  ],
   /*
    * MONEY FIGURES, held to AAA (Phase 5). `.num` money is `--foreground` on
    * --card or --background, and it is the text in this product where a misread
    * has a cost measured in currency. It already clears 7:1, so this locks in a
    * property rather than requesting one.
    */
-  ["money/body --foreground on --card (light)", "foreground", "card", lightBody, AAA_NORMAL],
-  ["money/body --foreground on --card (dark)", "foreground", "card", darkBody, AAA_NORMAL],
-  ["--foreground on --background (light)", "foreground", "background", lightBody, AAA_NORMAL],
-  ["--foreground on --background (dark)", "foreground", "background", darkBody, AAA_NORMAL],
+  [
+    "money/body --foreground on --card (light)",
+    "foreground",
+    "card",
+    lightBody,
+    AAA_NORMAL,
+  ],
+  [
+    "money/body --foreground on --card (dark)",
+    "foreground",
+    "card",
+    darkBody,
+    AAA_NORMAL,
+  ],
+  [
+    "--foreground on --background (light)",
+    "foreground",
+    "background",
+    lightBody,
+    AAA_NORMAL,
+  ],
+  [
+    "--foreground on --background (dark)",
+    "foreground",
+    "background",
+    darkBody,
+    AAA_NORMAL,
+  ],
 ];
 
 const THEMES = [
@@ -212,7 +291,9 @@ let failed = 0;
 let skipped = 0;
 const aaaMisses = [];
 
-console.warn("\nDesign-token contrast — WCAG 2.1 AA floor, AAA where it pays\n");
+console.warn(
+  "\nDesign-token contrast — WCAG 2.1 AA floor, AAA where it pays\n",
+);
 
 /* 1. plain text on opaque surfaces */
 console.warn("  Text on surface");
@@ -220,7 +301,9 @@ for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
   const fg = token(body, fgName);
   const bg = token(body, bgName);
   if (!fg || !bg) {
-    console.warn(`    SKIP  ${label} — token not found (${!fg ? fgName : bgName})`);
+    console.warn(
+      `    SKIP  ${label} — token not found (${!fg ? fgName : bgName})`,
+    );
     skipped++;
     continue;
   }
@@ -229,7 +312,9 @@ for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
   const ratio = contrast(over(fg, bg.rgb), bg.rgb);
   const ok = ratio >= min;
   if (!ok) failed++;
-  console.warn(`    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${min})  ${label}`);
+  console.warn(
+    `    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${min})  ${label}`,
+  );
 }
 
 /*
@@ -241,9 +326,13 @@ for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
  * measuring.
  */
 const pills = pillRules();
-console.warn(`\n  Status pills — text on its own tinted ground (${pills.length} rules, parsed from index.css)`);
+console.warn(
+  `\n  Status pills — text on its own tinted ground (${pills.length} rules, parsed from index.css)`,
+);
 if (pills.length === 0) {
-  console.error("    FAIL  no .st-* rules found — the parser or the stylesheet changed shape.");
+  console.error(
+    "    FAIL  no .st-* rules found — the parser or the stylesheet changed shape.",
+  );
   failed++;
 }
 for (const [themeName, body] of THEMES) {
@@ -254,7 +343,9 @@ for (const [themeName, body] of THEMES) {
       const ink = resolve(p.color, body);
       const tint = resolve(p.background, body);
       if (!ink || !tint) {
-        console.warn(`    SKIP  .${p.name} (${themeName}/${surfaceName}) — could not resolve`);
+        console.warn(
+          `    SKIP  .${p.name} (${themeName}/${surfaceName}) — could not resolve`,
+        );
         skipped++;
         continue;
       }
@@ -262,7 +353,10 @@ for (const [themeName, body] of THEMES) {
       const ratio = contrast(over(ink, ground), ground);
       const ok = ratio >= AA_NORMAL;
       if (!ok) failed++;
-      else if (ratio < AAA_NORMAL) aaaMisses.push(`.${p.name} on --${surfaceName} (${themeName}) ${ratio.toFixed(2)}:1`);
+      else if (ratio < AAA_NORMAL)
+        aaaMisses.push(
+          `.${p.name} on --${surfaceName} (${themeName}) ${ratio.toFixed(2)}:1`,
+        );
       console.warn(
         `    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${AA_NORMAL})  .${p.name} on --${surfaceName} (${themeName})`,
       );
@@ -302,7 +396,9 @@ const INK_ALLOW = [
 ];
 
 function stripComments(text) {
-  const blanked = text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  const blanked = text.replace(/\/\*[\s\S]*?\*\//g, (m) =>
+    m.replace(/[^\n]/g, " "),
+  );
   return blanked
     .split("\n")
     .map((line) => (/^\s*(\/\/|\*)/.test(line) ? "" : line))
@@ -314,7 +410,15 @@ function stripComments(text) {
 function sources() {
   const out = execFileSync(
     "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "client/src"],
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "client/src",
+    ],
     { cwd: repoRoot, encoding: "utf8" },
   );
   return out
@@ -342,7 +446,12 @@ for (const file of sources()) {
   text.split("\n").forEach((line, i) => {
     for (const hit of line.matchAll(INK_RE)) {
       const tokenName = hit[1] ?? hit[2];
-      inkViolations.push({ file: rel, line: i + 1, token: tokenName, src: line.trim().slice(0, 110) });
+      inkViolations.push({
+        file: rel,
+        line: i + 1,
+        token: tokenName,
+        src: line.trim().slice(0, 110),
+      });
     }
   });
 }
@@ -352,7 +461,9 @@ if (inkViolations.length) {
   failed += inkViolations.length;
   console.error("");
   for (const v of inkViolations) {
-    console.error(`    ${v.file}:${v.line}  text-${v.token}  →  use ${INK_FOR[v.token]}`);
+    console.error(
+      `    ${v.file}:${v.line}  text-${v.token}  →  use ${INK_FOR[v.token]}`,
+    );
     console.error(`      ${v.src}`);
   }
   console.error(

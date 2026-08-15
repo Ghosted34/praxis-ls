@@ -1,6 +1,37 @@
 "use strict";
 const { discover } = require("../../src/shared/http/module-loader");
 const { authMiddleware } = require("../../src/middleware/auth");
+const { isRateLimiter } = require("../../src/shared/http/rate-limit");
+
+/**
+ * ── THE ANONYMOUS SURFACE, AND WHY THERE IS EXACTLY ONE ────────────────────
+ *
+ * This guard's whole value is that it fails when somebody ships a tenant module
+ * without auth. The moment a legitimate exception exists, the guard is one
+ * `.filter()` away from becoming decoration — so the exception is a NAMED
+ * ALLOW-LIST with three properties, all asserted below:
+ *
+ *   1. Adding a module to it is a deliberate, reviewable edit to this file.
+ *   2. A STALE entry fails, so deleting a public module cannot leave a hole
+ *      that a future module could silently occupy by taking its name.
+ *   3. An allow-listed module must carry a RATE LIMITER on every route. Auth is
+ *      not merely absent there, it is REPLACED — a public write endpoint with no
+ *      limiter is the actual vulnerability this exception could introduce, and
+ *      it is worth more than the auth check it is standing in for.
+ *
+ * `hr/careers` is the public job-adverts page. It cannot be authenticated by
+ * construction: the people using it do not have accounts, and the whole point is
+ * that strangers can read a vacancy and apply to it. Its compensating controls
+ * live in careers.service (responses are built from an allow-list, never a row;
+ * lookup is by minted token only, never by vacancy_id; every refusal is the same
+ * 404 so nothing can be enumerated) and careers.validator (every field bounded).
+ */
+const PUBLIC_BY_DESIGN = new Map([
+  [
+    "hr/careers",
+    "Public job adverts + applications. Callers have no accounts by definition.",
+  ],
+]);
 
 /**
  * TC-Q6 — this guard is the right instinct with two ways of passing while
@@ -85,9 +116,61 @@ describe("every tenant module router is authenticated (no anonymous surface)", (
     expect(typeof authMiddleware).toBe("function");
   });
 
-  it.each(modules)("%s carries authMiddleware", ({ _, def }) => {
-    // The only intentionally-public tenant route is document-verification /scan,
-    // and that module ALSO gates /verify, so it still has authMiddleware present.
-    expect(hasAuth(def.router)).toBe(true);
+  it("every allow-listed public module still exists", () => {
+    // Property 2. A stale entry is worse than no allow-list: it is a named hole
+    // that a future module could occupy just by being called the same thing.
+    const names = new Set(modules.map((m) => m.name));
+    for (const name of PUBLIC_BY_DESIGN.keys()) expect(names).toContain(name);
+  });
+
+  it.each(modules.filter((m) => !PUBLIC_BY_DESIGN.has(m.name)))(
+    "%s carries authMiddleware",
+    ({ _, def }) => {
+      // document-verification /scan is intentionally reachable, but that module
+      // ALSO gates /verify, so authMiddleware is present on the router and it
+      // needs no exception here.
+      expect(hasAuth(def.router)).toBe(true);
+    },
+  );
+
+  describe("the anonymous surface is rate limited instead", () => {
+    const publicModules = modules.filter((m) => PUBLIC_BY_DESIGN.has(m.name));
+
+    it("there is at least one, or this allow-list is dead code", () => {
+      expect(publicModules.length).toBe(PUBLIC_BY_DESIGN.size);
+    });
+
+    it.each(publicModules)("%s limits EVERY route", ({ _, def }) => {
+      // Property 3, and the reason this exception is safe to grant. Walked
+      // per-ROUTE rather than per-router: a public module with a limiter on
+      // three of four endpoints has one open door, and "the router has a
+      // limiter somewhere" would call that a pass.
+      const routes = [];
+      const walk = (router) => {
+        for (const l of (router && router.stack) || []) {
+          if (l.route) routes.push(l.route);
+          else if (l.handle && l.handle.stack) walk(l.handle);
+        }
+      };
+      walk(def.router);
+
+      expect(routes.length).toBeGreaterThan(0);
+      // Collected and compared as a LIST rather than asserted in a loop, so a
+      // failure names every unlimited route at once instead of stopping at the
+      // first — and so the expectation reads as "nothing is unlimited" rather
+      // than depending on a regex to tell `limited` from `UNLIMITED`.
+      const unlimited = routes
+        .filter(
+          (route) =>
+            !(route.stack || []).some(
+              (h) => isRateLimiter(h.handle) || isRateLimiter(h),
+            ),
+        )
+        .map(
+          (route) =>
+            `${Object.keys(route.methods).join("/").toUpperCase()} ${route.path}`,
+        );
+      expect(unlimited).toEqual([]);
+    });
   });
 });

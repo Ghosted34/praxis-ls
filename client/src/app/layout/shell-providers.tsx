@@ -16,10 +16,19 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { fetchNavAccess, NO_ACCESS, type NavAccess } from "@/lib/nav-access";
 import {
-  accessSignature, classifyAccessChange, clearCachedAccess, readCachedAccess,
-  writeCachedAccess, writeCachedRibbonPinned,
+  accessSignature,
+  classifyAccessChange,
+  clearCachedAccess,
+  readCachedAccess,
+  writeCachedAccess,
+  writeCachedRibbonPinned,
 } from "@/lib/nav-access-cache";
-import { fetchShellPrefs, saveShellPrefs, EMPTY_SHELL_PREFS, type ShellPrefs } from "@/lib/preferences";
+import {
+  fetchShellPrefs,
+  saveShellPrefs,
+  EMPTY_SHELL_PREFS,
+  type ShellPrefs,
+} from "@/lib/preferences";
 import { queryClient } from "@/lib/query-client";
 import { ShellContext, type GrantNotice } from "./shell-context";
 import { RibbonCommandsContext, type RibbonCommand } from "./ribbon-commands";
@@ -70,10 +79,14 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   // THE FIRST PAINT COMES FROM THE LAST SESSION. Read once, lazily, at the
   // first render — the provider is mounted inside RequireAuth, so the user is
   // already resolved and cannot change underneath it without a remount.
-  const [seed] = React.useState<NavAccess | null>(() => readCachedAccess(userId));
+  const [seed] = React.useState<NavAccess | null>(() =>
+    readCachedAccess(userId),
+  );
   const [access, setAccess] = React.useState<NavAccess>(seed ?? NO_ACCESS);
   const [resolved, setResolved] = React.useState(seed !== null);
-  const [grantNotice, setGrantNotice] = React.useState<GrantNotice | null>(null);
+  const [grantNotice, setGrantNotice] = React.useState<GrantNotice | null>(
+    null,
+  );
   const [prefs, setLocalPrefs] = React.useState<ShellPrefs>(EMPTY_SHELL_PREFS);
   // `ready` covers BOTH reads, and that is load-bearing rather than tidy. The
   // starting preference object is all-null, which is indistinguishable from a
@@ -92,7 +105,12 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   const inFlight = React.useRef(false);
   const lastReadAt = React.useRef(0);
   const alive = React.useRef(true);
-  React.useEffect(() => () => { alive.current = false; }, []);
+  React.useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
 
   const revalidate = React.useCallback(
     async (force: boolean) => {
@@ -137,7 +155,8 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
           // A GRANT CANNOT EXPOSE ANYTHING, so nothing here is urgent enough to
           // throw away a half-written form. Tell them, and let them finish.
           const signature = accessSignature(fresh);
-          if (dismissed.current !== signature) setGrantNotice({ gained: change.gained, signature });
+          if (dismissed.current !== signature)
+            setGrantNotice({ gained: change.gained, signature });
         }
       } catch {
         // Keep whatever is on screen. A cached ribbon that is one read out of
@@ -147,7 +166,8 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
         if (alive.current) setResolved(true);
       } finally {
         inFlight.current = false;
-        if (alive.current) setSettled((s) => (s.access ? s : { ...s, access: true }));
+        if (alive.current)
+          setSettled((s) => (s.access ? s : { ...s, access: true }));
       }
     },
     [userId],
@@ -167,7 +187,8 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     // returning to the window; `visibilitychange` fires when a background TAB
     // is brought forward without the window ever having lost focus — which is
     // the common case on a desktop with one browser window.
-    const onVisible = () => document.visibilityState === "visible" && void revalidate(false);
+    const onVisible = () =>
+      document.visibilityState === "visible" && void revalidate(false);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -195,10 +216,14 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
        * deliberately NOT a write — the server row stays absent, so a genuine
        * first login still gets its hint the next time the read succeeds.
        */
-      .catch(() => live && setLocalPrefs((cur) => ({ ...cur, railHintSeen: true })))
+      .catch(
+        () => live && setLocalPrefs((cur) => ({ ...cur, railHintSeen: true })),
+      )
       // `done("prefs")` in the version this came from; that helper went when the
       // access branch was rewritten to revalidate, so the settle is inline here.
-      .finally(() => live && setSettled((s) => (s.prefs ? s : { ...s, prefs: true })));
+      .finally(
+        () => live && setSettled((s) => (s.prefs ? s : { ...s, prefs: true })),
+      );
     return () => {
       live = false;
     };
@@ -210,12 +235,15 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   // API or from a local toggle, and neither of those two paths should have to
   // remember to call it. See PINNED_KEY in lib/nav-access-cache.ts.
   React.useEffect(() => {
-    if (prefs.ribbonPinned !== null) writeCachedRibbonPinned(prefs.ribbonPinned);
+    if (prefs.ribbonPinned !== null)
+      writeCachedRibbonPinned(prefs.ribbonPinned);
   }, [prefs.ribbonPinned]);
 
   const setPrefs = React.useCallback((patch: Partial<ShellPrefs>) => {
     setLocalPrefs((cur) => ({ ...cur, ...patch }));
-    saveShellPrefs(patch).catch(() => { /* @silent:storage */ });
+    saveShellPrefs(patch).catch(() => {
+      /* @silent:storage */
+    });
   }, []);
 
   const dismissGrantNotice = React.useCallback(() => {
@@ -229,17 +257,33 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = React.useMemo(
-    () => ({ access, ready, resolved, prefs, setPrefs, grantNotice, dismissGrantNotice }),
+    () => ({
+      access,
+      ready,
+      resolved,
+      prefs,
+      setPrefs,
+      grantNotice,
+      dismissGrantNotice,
+    }),
     [access, ready, resolved, prefs, setPrefs, grantNotice, dismissGrantNotice],
   );
-  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
+  return (
+    <ShellContext.Provider value={value}>{children}</ShellContext.Provider>
+  );
 }
 
-export function RibbonCommandsProvider({ children }: { children: React.ReactNode }) {
+export function RibbonCommandsProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   // Keyed by publisher so two mounted screens (a hub and a panel inside it)
   // cannot clobber each other, and so retracting is exact rather than "clear
   // everything and hope the survivor re-publishes".
-  const [byPublisher, setByPublisher] = React.useState<Record<number, RibbonCommand[]>>({});
+  const [byPublisher, setByPublisher] = React.useState<
+    Record<number, RibbonCommand[]>
+  >({});
 
   // Idempotent, and that is not an optimisation. Publishing rebuilds the
   // registry object, which re-renders every consumer — including the screen
@@ -247,7 +291,9 @@ export function RibbonCommandsProvider({ children }: { children: React.ReactNode
   // re-render publishes again. The app spins. Bailing on an unchanged list is
   // what makes the cycle terminate.
   const publish = React.useCallback((id: number, commands: RibbonCommand[]) => {
-    setByPublisher((cur) => (cur[id] === commands ? cur : { ...cur, [id]: commands }));
+    setByPublisher((cur) =>
+      cur[id] === commands ? cur : { ...cur, [id]: commands },
+    );
   }, []);
   const retract = React.useCallback((id: number) => {
     setByPublisher((cur) => {
@@ -258,7 +304,17 @@ export function RibbonCommandsProvider({ children }: { children: React.ReactNode
     });
   }, []);
 
-  const commands = React.useMemo(() => Object.values(byPublisher).flat(), [byPublisher]);
-  const value = React.useMemo(() => ({ commands, publish, retract }), [commands, publish, retract]);
-  return <RibbonCommandsContext.Provider value={value}>{children}</RibbonCommandsContext.Provider>;
+  const commands = React.useMemo(
+    () => Object.values(byPublisher).flat(),
+    [byPublisher],
+  );
+  const value = React.useMemo(
+    () => ({ commands, publish, retract }),
+    [commands, publish, retract],
+  );
+  return (
+    <RibbonCommandsContext.Provider value={value}>
+      {children}
+    </RibbonCommandsContext.Provider>
+  );
 }

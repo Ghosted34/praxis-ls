@@ -105,7 +105,9 @@ export function extractSources(text: string): AiSource[] {
  */
 export function kindOf(href: string): AiSourceKind {
   if (!href.startsWith("/")) return "external";
-  return /\/(reports?|statements|ageing|analytics)\b/.test(href) ? "report" : "record";
+  return /\/(reports?|statements|ageing|analytics)\b/.test(href)
+    ? "report"
+    : "record";
 }
 
 /**
@@ -126,7 +128,8 @@ export function mergeSources(
 ): AiSource[] {
   if (!supplied?.length) return derived;
   const byHref = new Map(derived.map((s) => [s.href, s]));
-  for (const s of supplied) byHref.set(s.href, { ...s, kind: s.kind ?? kindOf(s.href) });
+  for (const s of supplied)
+    byHref.set(s.href, { ...s, kind: s.kind ?? kindOf(s.href) });
   return [...byHref.values()];
 }
 
@@ -236,9 +239,18 @@ export function isLongForm(text: string): boolean {
 /** A short, human title for a lifted artefact: its first heading, or its first line. */
 export function artifactTitle(text: string): string {
   const heading = text.match(/^#{1,3}\s+(.+)$/m);
-  const raw = (heading?.[1] ?? text.split("\n").find((l) => l.trim()) ?? "Draft").trim();
-  const clean = raw.replace(LINK, "$1").replace(/[*_`#]/g, "").trim();
-  return clean.length > 60 ? clean.slice(0, 57).trimEnd() + "…" : clean || "Draft";
+  const raw = (
+    heading?.[1] ??
+    text.split("\n").find((l) => l.trim()) ??
+    "Draft"
+  ).trim();
+  const clean = raw
+    .replace(LINK, "$1")
+    .replace(/[*_`#]/g, "")
+    .trim();
+  return clean.length > 60
+    ? clean.slice(0, 57).trimEnd() + "…"
+    : clean || "Draft";
 }
 
 /**
@@ -279,14 +291,16 @@ export function artifactTitle(text: string): string {
  */
 
 /** Openers a model uses to hand over a draft, before the draft starts. */
-const LEAD_IN = /^\s*(here('?s| is)|i'?ve (drafted|prepared|written)|below is|this is)\b/i;
+const LEAD_IN =
+  /^\s*(here('?s| is)|i'?ve (drafted|prepared|written)|below is|this is)\b/i;
 
 /**
  * The wrap-up offer. Anchored to a line START and to phrasings that are
  * unambiguously a question back to the user, so a document that happens to
  * contain the word "would" mid-sentence is untouched.
  */
-const OFFER = /^\s{0,3}(#{1,6}\s*)?(\*\*)?(would you like me to|want me to|shall i|do you want me to|let me know if|just let me know|would you like)\b/i;
+const OFFER =
+  /^\s{0,3}(#{1,6}\s*)?(\*\*)?(would you like me to|want me to|shall i|do you want me to|let me know if|just let me know|would you like)\b/i;
 
 export function documentBody(text: string): string {
   const lines = text.split("\n");
@@ -323,7 +337,12 @@ export function documentBody(text: string): string {
       let j = i;
       while (j < end && !lines[j].trim()) j += 1;
       // And it has to be followed by a rule or a heading — the document starting.
-      if (j < end && (/^\s*-{3,}\s*$/.test(lines[j]) || /^\s{0,3}#{1,6}\s/.test(lines[j]) || /^\s*\*\*/.test(lines[j]))) {
+      if (
+        j < end &&
+        (/^\s*-{3,}\s*$/.test(lines[j]) ||
+          /^\s{0,3}#{1,6}\s/.test(lines[j]) ||
+          /^\s*\*\*/.test(lines[j]))
+      ) {
         start = /^\s*-{3,}\s*$/.test(lines[j]) ? j + 1 : j;
       }
     }

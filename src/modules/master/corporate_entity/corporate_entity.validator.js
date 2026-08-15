@@ -26,6 +26,10 @@ const schemas = {
   logoUpload: entityCommon.logoUpload,
   letterhead: entityCommon.letterheadUpdate,
   workingCalendar: entityCommon.workingCalendarSave,
+  // Its own endpoint rather than a column on the PATCH body — the prefix is an
+  // identifier clients see, and it is only changeable before any operation file
+  // has used it. See the note beside the schema.
+  opsReferencePrefix: entityCommon.opsReferencePrefix,
   // AI-facing: entity_id in the payload → list_entities picker.
   aiUpdate: entityCommon.aiUpdate,
   aiSetActive: entityCommon.aiSetActive,
@@ -49,5 +53,6 @@ module.exports = {
   logoUpload: mw("logoUpload"),
   letterhead: mw("letterhead"),
   workingCalendar: mw("workingCalendar"),
+  opsReferencePrefix: mw("opsReferencePrefix"),
   schemas,
 };

@@ -30,12 +30,15 @@ import { NewAccountModal } from "./new-account-modal";
 import { NewCategoryModal } from "./new-category-modal";
 
 const KIND_TONE: Record<string, Tone> = {
-  BANK: "blue", CASH: "ok", MOMO: "orange",
+  BANK: "blue",
+  CASH: "ok",
+  MOMO: "orange",
 };
 
 export function TreasuryMasterPage() {
   const reload = useRefresh();
-  const { rows, error, loading } = useList<api.TreasuryAccountRich>("/treasury-accounts");
+  const { rows, error, loading } =
+    useList<api.TreasuryAccountRich>("/treasury-accounts");
   const [cats, setCats] = React.useState<api.TreasuryCategory[] | null>(null);
   const [catFilter, setCatFilter] = React.useState<string>("");
   const [q, setQ] = React.useState("");
@@ -47,8 +50,15 @@ export function TreasuryMasterPage() {
 
   React.useEffect(() => {
     let cancelled = false;
-    api.listCategories().then((r) => { if (!cancelled) setCats(r); }).catch(() => {});
-    return () => { cancelled = true; };
+    api
+      .listCategories()
+      .then((r) => {
+        if (!cancelled) setCats(r);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const accts = React.useMemo(() => rows || [], [rows]);
@@ -57,7 +67,11 @@ export function TreasuryMasterPage() {
     if (catFilter) out = out.filter((a) => a.category_id === catFilter);
     if (q) {
       const needle = q.toLowerCase();
-      out = out.filter((a) => `${a.label} ${a.bank_name || ""} ${a.iban || ""} ${a.momo_number || ""} ${a.category_label || ""}`.toLowerCase().includes(needle));
+      out = out.filter((a) =>
+        `${a.label} ${a.bank_name || ""} ${a.iban || ""} ${a.momo_number || ""} ${a.category_label || ""}`
+          .toLowerCase()
+          .includes(needle),
+      );
     }
     return out;
   }, [accts, catFilter, q]);
@@ -77,11 +91,13 @@ export function TreasuryMasterPage() {
 
   const countByCat = React.useMemo(() => {
     const m: Record<string, number> = {};
-    for (const a of accts) if (a.category_id) m[a.category_id] = (m[a.category_id] || 0) + 1;
+    for (const a of accts)
+      if (a.category_id) m[a.category_id] = (m[a.category_id] || 0) + 1;
     return m;
   }, [accts]);
 
-  const selected = filtered.find((a) => a.treasury_account_id === selId) || null;
+  const selected =
+    filtered.find((a) => a.treasury_account_id === selId) || null;
 
   return (
     <section className={pageShell.wide}>
@@ -89,7 +105,9 @@ export function TreasuryMasterPage() {
         eyebrow={<HubCrumb area="Master data" to="/master" />}
         title="Treasury"
         description="Bank, cash, petty-cash and mobile-money accounts. Every account owns an auto-minted class-5 CoA leaf, so balances, statements and reconciliation come from one source of truth."
-        action={<Button onClick={() => setCreateOpen(true)}>New account</Button>}
+        action={
+          <Button onClick={() => setCreateOpen(true)}>New account</Button>
+        }
       />
       <HubTabs />
 
@@ -97,19 +115,29 @@ export function TreasuryMasterPage() {
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
         <button
           onClick={() => setCatFilter("")}
-          className={`rounded-full px-3 py-1 text-xs ${catFilter === "" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+          className={`rounded-full px-3 py-1 text-xs ${catFilter === "" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+        >
           All ({accts.length})
         </button>
-        {(cats || []).filter((c) => c.is_active).map((c) => (
-          <button
-            key={c.treasury_category_id}
-            onClick={() => setCatFilter(c.treasury_category_id)}
-            className={`rounded-full px-3 py-1 text-xs ${catFilter === c.treasury_category_id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-            {c.label} ({countByCat[c.treasury_category_id] || 0})
-          </button>
-        ))}
+        {(cats || [])
+          .filter((c) => c.is_active)
+          .map((c) => (
+            <button
+              key={c.treasury_category_id}
+              onClick={() => setCatFilter(c.treasury_category_id)}
+              className={`rounded-full px-3 py-1 text-xs ${catFilter === c.treasury_category_id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+            >
+              {c.label} ({countByCat[c.treasury_category_id] || 0})
+            </button>
+          ))}
         <div className="ml-auto">
-          <Button size="sm" variant="outline" onClick={() => setNewCatOpen(true)}>+ New category</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setNewCatOpen(true)}
+          >
+            + New category
+          </Button>
         </div>
       </div>
 
@@ -118,58 +146,108 @@ export function TreasuryMasterPage() {
       {error ? (
         <ErrorState message={error} />
       ) : (
-        <SplitPane storageKey="master.treasury-accounts" label="Treasury list width" defaultSize={320} min={260} max={480}>
+        <SplitPane
+          storageKey="master.treasury-accounts"
+          label="Treasury list width"
+          defaultSize={320}
+          min={260}
+          max={480}
+        >
           <div className="space-y-2">
-            <Input placeholder="Search label / IBAN / MoMo…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input
+              placeholder="Search label / IBAN / MoMo…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
               {loading ? (
                 <LoadingRow label="Loading accounts…" />
               ) : filtered.length === 0 ? (
                 <div className="p-3">
-                  <EmptyState title="No accounts" hint={catFilter ? "No accounts in this category yet." : "Add a bank, cash, petty-cash or mobile-money account."} />
+                  <EmptyState
+                    title="No accounts"
+                    hint={
+                      catFilter
+                        ? "No accounts in this category yet."
+                        : "Add a bank, cash, petty-cash or mobile-money account."
+                    }
+                  />
                 </div>
-              ) : filtered.map((a) => {
-                const id = a.treasury_account_id;
-                const sel = id === selId;
-                return (
-                  <button key={id} onClick={() => setSelId(id)}
-                    className={`flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors ${sel ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate font-medium">{cell(a.label)}</span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {a.is_primary && <Pill tone="blue">★</Pill>}
-                        {a.is_verified ? <Pill tone="ok">✓</Pill> : <Pill tone="warn">?</Pill>}
-                        <Pill tone={KIND_TONE[a.kind] || "mute"}>{a.kind}</Pill>
+              ) : (
+                filtered.map((a) => {
+                  const id = a.treasury_account_id;
+                  const sel = id === selId;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSelId(id)}
+                      className={`flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors ${sel ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium">
+                          {cell(a.label)}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {a.is_primary && <Pill tone="blue">★</Pill>}
+                          {a.is_verified ? (
+                            <Pill tone="ok">✓</Pill>
+                          ) : (
+                            <Pill tone="warn">?</Pill>
+                          )}
+                          <Pill tone={KIND_TONE[a.kind] || "mute"}>
+                            {a.kind}
+                          </Pill>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="micro text-muted-foreground truncate">
-                        {a.category_label || "—"} · <code className="rounded bg-muted px-1">{cell(a.coa_code)}</code>
-                      </span>
-                      <span className="micro text-muted-foreground shrink-0">{cell(a.currency)}</span>
-                    </div>
-                  </button>
-                );
-              })}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="micro text-muted-foreground truncate">
+                          {a.category_label || "—"} ·{" "}
+                          <code className="rounded bg-muted px-1">
+                            {cell(a.coa_code)}
+                          </code>
+                        </span>
+                        <span className="micro text-muted-foreground shrink-0">
+                          {cell(a.currency)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
-          {selected
-            ? <TreasuryDossier id={selected.treasury_account_id} onChanged={reload} />
-            : <EmptyState title="No account selected" hint="Pick an account from the list to see its 360." />}
+          {selected ? (
+            <TreasuryDossier
+              id={selected.treasury_account_id}
+              onChanged={reload}
+            />
+          ) : (
+            <EmptyState
+              title="No account selected"
+              hint="Pick an account from the list to see its 360."
+            />
+          )}
         </SplitPane>
       )}
 
       <NewAccountModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(created) => { reload(); setSelId(created.treasury_account_id); }}
+        onCreated={(created) => {
+          reload();
+          setSelId(created.treasury_account_id);
+        }}
       />
       <NewCategoryModal
         open={newCatOpen}
         onClose={() => setNewCatOpen(false)}
         onCreated={async () => {
-          try { const r = await api.listCategories(); setCats(r); }
-          catch (e) { setRowError(errMsg(e)); }
+          try {
+            const r = await api.listCategories();
+            setCats(r);
+          } catch (e) {
+            setRowError(errMsg(e));
+          }
         }}
       />
     </section>

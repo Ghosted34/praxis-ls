@@ -24,6 +24,43 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Operation-file references stop being guessable.** A dossier reference is the
+  one number in this system a CLIENT holds, and it was sequential:
+  `SLAS-OPS-2026-0142` tells whoever holds it how many files we opened this year,
+  roughly where theirs sits, and that `…-0141` and `…-0143` are worth trying. New
+  files now get `SL7Z3K9QW2M4XBSM` — an entity prefix, a 60-bit
+  `crypto.randomBytes` core in Crockford Base32, and a service-type code — which
+  is the legacy `SL6721864SM` convention modernised rather than discarded. The
+  allocator owns generate → write → retry as one step, so the unique index on
+  `dossier.ref` is the only thing that decides a collision (a savepoint per
+  attempt, because a 23505 otherwise poisons the caller's transaction). References
+  are allocated by the backend alone: `service.create` used to take one from its
+  payload, which three of its four callers — including the AI action registry —
+  could set. Once allocated a reference never changes: updates that carry a
+  different `ref` are refused, and status, service-type and entity changes leave it
+  alone. **Financial and statutory numbering is untouched** — invoices, receipts,
+  journal entries and tax documents keep their gap-free `doc_sequence` numbers,
+  which is what reconciliation needs. Every existing reference stays valid, nothing
+  is rewritten, and search reaches all three schemes (including the display
+  spelling `SL-7Z3K9QW2M4XB-SM`). Entity prefixes and service codes are seeded for
+  existing rows by migration `0682`, editable until the first file uses them, and
+  audited when changed — on the entity dossier and the Service Type form
+  respectively.
+- **Structured client discovery on meetings (MOD-21, Sales & CRM F1).** A
+  meeting against a lead is now captured in the three named sections of the
+  Client Discovery Framework — business and operations context, pain points,
+  proposed strategy — instead of one free-text box, because those three sections
+  are what a proposal is later drafted from and free text is not data. Each can
+  be typed or dictated; dictation runs through the existing `ai-transcribe`
+  worker, which is the half that was missing (`meeting.transcript_vault_id` used
+  to be read off the request body, so the flag "this meeting has a transcript"
+  was an assertion the caller made about itself — only the worker writes it now).
+  The scripted probing questions above each box are seeded rows in EN and FR,
+  editable per tenant, not markup. Meeting location is captured. A section whose
+  audio failed to transcribe says so on the record rather than sitting blank, and
+  a lead's latest discovery set is one call (`GET /meetings/discovery/lead/:id`).
+  Migration `0681_meeting_discovery.sql`.
+
 - **Change your own password (`POST /api/tenant/auth/change-password`).** The
   third leg of the password story, and the one that was missing: recovery by
   email covered "locked out" and `POST /users/:id/password` covered "someone

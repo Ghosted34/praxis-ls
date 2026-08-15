@@ -29,7 +29,17 @@ import { PageError } from "./shared";
 
 const TREASURY_KINDS = ["BANK", "CASH", "MOMO"];
 
-function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean; onClose: () => void; onCreated: () => void; entities: Row[] }) {
+function NewAccountForm({
+  open,
+  onClose,
+  onCreated,
+  entities,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+  entities: Row[];
+}) {
   const [entityId, setEntityId] = React.useState("");
   const [kind, setKind] = React.useState("BANK");
   const [label, setLabel] = React.useState("");
@@ -66,8 +76,10 @@ function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean;
           label: label.trim(),
           coa_code: coa.trim(),
           currency: currency.trim().toUpperCase() || undefined,
-          momo_network: kind === "MOMO" ? momoNetwork.trim() || undefined : undefined,
-          momo_fee_account: kind === "MOMO" ? momoFee.trim() || undefined : undefined,
+          momo_network:
+            kind === "MOMO" ? momoNetwork.trim() || undefined : undefined,
+          momo_fee_account:
+            kind === "MOMO" ? momoFee.trim() || undefined : undefined,
         },
       });
       onCreated();
@@ -79,11 +91,22 @@ function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean;
     }
   }
 
-  const entityText = (en: Row) => (en.code ? `${cell(en.code)} — ${cell(en.legal_name ?? en.name ?? en.entity_id)}` : cell(en.legal_name ?? en.name ?? en.entity_id));
-  const entityLabel = (() => { const en = entities.find((e) => String(e.entity_id) === entityId); return en ? entityText(en) : null; })();
+  const entityText = (en: Row) =>
+    en.code
+      ? `${cell(en.code)} — ${cell(en.legal_name ?? en.name ?? en.entity_id)}`
+      : cell(en.legal_name ?? en.name ?? en.entity_id);
+  const entityLabel = (() => {
+    const en = entities.find((e) => String(e.entity_id) === entityId);
+    return en ? entityText(en) : null;
+  })();
 
   return (
-    <Modal open={open} onClose={onClose} title="New bank account" description="A bank, cash or mobile-money account tied to a corporate entity and a chart-of-accounts code.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New bank account"
+      description="A bank, cash or mobile-money account tied to a corporate entity and a chart-of-accounts code."
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Corporate entity" required className="sm:col-span-2">
@@ -106,26 +129,56 @@ function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean;
             </Select>
           </Field>
           <Field label="Currency" hint="ISO code">
-            <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="XAF" />
+            <Input
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder="XAF"
+            />
           </Field>
           <Field label="Label" required className="sm:col-span-2">
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Afriland — Main XAF" />
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Afriland — Main XAF"
+            />
           </Field>
-          <Field label="CoA code" hint="Chart-of-accounts account (class 5)" required className="sm:col-span-2">
-            <Input value={coa} onChange={(e) => setCoa(e.target.value)} placeholder="521100" />
+          <Field
+            label="CoA code"
+            hint="Chart-of-accounts account (class 5)"
+            required
+            className="sm:col-span-2"
+          >
+            <Input
+              value={coa}
+              onChange={(e) => setCoa(e.target.value)}
+              placeholder="521100"
+            />
           </Field>
           {kind === "MOMO" && (
             <>
               <Field label="MoMo network">
-                <Input value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value)} placeholder="MTN / Orange" />
+                <Input
+                  value={momoNetwork}
+                  onChange={(e) => setMomoNetwork(e.target.value)}
+                  placeholder="MTN / Orange"
+                />
               </Field>
               <Field label="MoMo fee account" hint="CoA code for gateway fees">
-                <Input value={momoFee} onChange={(e) => setMomoFee(e.target.value)} placeholder="627800" />
+                <Input
+                  value={momoFee}
+                  onChange={(e) => setMomoFee(e.target.value)}
+                  placeholder="627800"
+                />
               </Field>
             </>
           )}
         </div>
-        {entities.length === 0 && <p className="text-xs text-muted-foreground">No corporate entities found — create one under Master data → Corporate entities first.</p>}
+        {entities.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No corporate entities found — create one under Master data →
+            Corporate entities first.
+          </p>
+        )}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>
@@ -150,7 +203,9 @@ export function BankAccountsPage() {
 
   const entityName = React.useCallback(
     (id: unknown) => {
-      const en = (entities || []).find((e) => String(e.entity_id) === String(id));
+      const en = (entities || []).find(
+        (e) => String(e.entity_id) === String(id),
+      );
       return en ? cell(en.code ?? en.legal_name ?? en.name) : cell(id);
     },
     [entities],
@@ -160,7 +215,10 @@ export function BankAccountsPage() {
     setRowBusy(id);
     setRowError(null);
     try {
-      await tenant(`/treasury-accounts/${id}/active`, { method: "POST", body: { active } });
+      await tenant(`/treasury-accounts/${id}/active`, {
+        method: "POST",
+        body: { active },
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -171,7 +229,14 @@ export function BankAccountsPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Bank accounts" description="Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code." action={<Button onClick={() => setCreateOpen(true)}>New account</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Bank accounts"
+        description="Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code."
+        action={
+          <Button onClick={() => setCreateOpen(true)}>New account</Button>
+        }
+      />
       <HubTabs />
 
       <PageError message={rowError} />
@@ -181,7 +246,10 @@ export function BankAccountsPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No accounts yet" hint="Add a bank, cash or mobile-money account." />
+        <EmptyState
+          title="No accounts yet"
+          hint="Add a bank, cash or mobile-money account."
+        />
       ) : (
         <Table>
           <THead>
@@ -207,10 +275,17 @@ export function BankAccountsPage() {
                   <TD className="num text-sm">{cell(r.coa_code)}</TD>
                   <TD className="text-sm">{cell(r.currency)}</TD>
                   <TD className="text-sm">
-                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Inactive"}</Pill>
+                    <Pill tone={active ? "ok" : "mute"}>
+                      {active ? "Active" : "Inactive"}
+                    </Pill>
                   </TD>
                   <TD>
-                    <Button size="sm" variant={active ? "outline" : "default"} loading={rowBusy === id} onClick={() => setActive(id, !active)}>
+                    <Button
+                      size="sm"
+                      variant={active ? "outline" : "default"}
+                      loading={rowBusy === id}
+                      onClick={() => setActive(id, !active)}
+                    >
                       {active ? "Deactivate" : "Activate"}
                     </Button>
                   </TD>
@@ -221,7 +296,12 @@ export function BankAccountsPage() {
         </Table>
       )}
 
-      <NewAccountForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} entities={entities || []} />
+      <NewAccountForm
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={reload}
+        entities={entities || []}
+      />
     </section>
   );
 }

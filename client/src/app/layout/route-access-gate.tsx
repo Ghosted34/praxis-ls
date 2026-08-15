@@ -26,9 +26,18 @@ import { canOpenRoute, gatingModulesForPath } from "@/lib/route-access";
 import { NoAccessPage } from "@/features/access/no-access-page";
 import { useShell } from "./shell-context";
 
-export function RouteAccessGate({ pathname, children }: { pathname: string; children: React.ReactNode }) {
+export function RouteAccessGate({
+  pathname,
+  children,
+}: {
+  pathname: string;
+  children: React.ReactNode;
+}) {
   const { access, resolved } = useShell();
-  const wanted = React.useMemo(() => gatingModulesForPath(pathname), [pathname]);
+  const wanted = React.useMemo(
+    () => gatingModulesForPath(pathname),
+    [pathname],
+  );
 
   if (!resolved) return <PageSkeleton />;
   if (canOpenRoute(access, pathname)) return <>{children}</>;

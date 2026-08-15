@@ -27,7 +27,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
-import { apiClientMock, authContextMock, fixtures, renderScreen } from "@/test/screen-harness";
+import {
+  apiClientMock,
+  authContextMock,
+  fixtures,
+  renderScreen,
+} from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
@@ -36,7 +41,9 @@ const updateFieldInSet = vi.fn();
 const addFieldToSet = vi.fn();
 
 vi.mock("@/lib/operations-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/operations-api")>("@/lib/operations-api");
+  const actual = await vi.importActual<typeof import("@/lib/operations-api")>(
+    "@/lib/operations-api",
+  );
   return {
     ...actual,
     updateFieldInSet: (...a: unknown[]) => updateFieldInSet(...a),
@@ -50,8 +57,16 @@ import { optionProblems } from "./field-options";
 import type { FieldOption, ServiceTypeField } from "@/lib/operations-api";
 
 const INCOTERMS: FieldOption[] = [
-  { value: "FOB", label_fr: "FOB — Franco à bord", label_en: "FOB — Free On Board" },
-  { value: "CIF", label_fr: "CIF — Coût, assurance et fret", label_en: "CIF — Cost, Insurance and Freight" },
+  {
+    value: "FOB",
+    label_fr: "FOB — Franco à bord",
+    label_en: "FOB — Free On Board",
+  },
+  {
+    value: "CIF",
+    label_fr: "CIF — Coût, assurance et fret",
+    label_en: "CIF — Cost, Insurance and Freight",
+  },
 ];
 
 const field = (over: Partial<ServiceTypeField> = {}): ServiceTypeField =>
@@ -79,20 +94,49 @@ const field = (over: Partial<ServiceTypeField> = {}): ServiceTypeField =>
 
 /** One draft version and one live one, which is the state the screen is normally
  *  in — the draft is the only one that may be edited. */
-function withSets({ draft = true, fields }: { draft?: boolean; fields?: ServiceTypeField[] } = {}) {
+function withSets({
+  draft = true,
+  fields,
+}: { draft?: boolean; fields?: ServiceTypeField[] } = {}) {
   const sets = draft
     ? [
-        { service_type_field_set_id: "fs-1", service_type_id: "st1", version: 1, is_active: true, is_system: true, field_count: 1 },
-        { service_type_field_set_id: "fs-2", service_type_id: "st1", version: 2, is_active: false, is_system: false, field_count: 1 },
+        {
+          service_type_field_set_id: "fs-1",
+          service_type_id: "st1",
+          version: 1,
+          is_active: true,
+          is_system: true,
+          field_count: 1,
+        },
+        {
+          service_type_field_set_id: "fs-2",
+          service_type_id: "st1",
+          version: 2,
+          is_active: false,
+          is_system: false,
+          field_count: 1,
+        },
       ]
-    : [{ service_type_field_set_id: "fs-1", service_type_id: "st1", version: 1, is_active: true, is_system: true, field_count: 1 }];
+    : [
+        {
+          service_type_field_set_id: "fs-1",
+          service_type_id: "st1",
+          version: 1,
+          is_active: true,
+          is_system: true,
+          field_count: 1,
+        },
+      ];
   const detail = (id: string, active: boolean) => ({
     service_type_field_set_id: id,
     service_type_id: "st1",
     version: active ? 1 : 2,
     is_active: active,
     is_system: active,
-    fields: (fields || [field()]).map((f) => ({ ...f, service_type_field_set_id: id })),
+    fields: (fields || [field()]).map((f) => ({
+      ...f,
+      service_type_field_set_id: id,
+    })),
   });
   return {
     "/service-types/st1/field-sets": sets,
@@ -105,7 +149,10 @@ function renderTab(routes: Record<string, unknown>) {
   return renderScreen(
     <ServiceTypeFieldsTab
       serviceTypeId="st1"
-      containers={{ captures_containers: false, container_detail_mode: "GROUPED" }}
+      containers={{
+        captures_containers: false,
+        container_detail_mode: "GROUPED",
+      }}
     />,
     { routes },
   );
@@ -113,7 +160,10 @@ function renderTab(routes: Record<string, unknown>) {
 
 /** Open the draft version, then its Incoterm option list. */
 async function openOptions(user: ReturnType<typeof userEvent.setup>) {
-  await user.selectOptions(await screen.findByLabelText("Form version"), "fs-2");
+  await user.selectOptions(
+    await screen.findByLabelText("Form version"),
+    "fs-2",
+  );
   await user.click(await screen.findByRole("button", { name: /2 options/ }));
   return screen.findByRole("dialog", { name: /Options — Incoterm/ });
 }
@@ -131,19 +181,31 @@ describe("finding the option list", () => {
     renderTab(withSets());
     // The count is on the button so a dropdown with no options is visible here
     // rather than only when a file fails to fill it in.
-    expect(await screen.findByRole("button", { name: /2 options/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /2 options/ }),
+    ).toBeInTheDocument();
   });
 
   it("says so when a dropdown has none", async () => {
     renderTab(withSets({ fields: [field({ options_json: [] })] }));
     await screen.findByLabelText("Form version");
-    expect(await screen.findByRole("button", { name: /0 options — none yet/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /0 options — none yet/ }),
+    ).toBeInTheDocument();
   });
 
   it("is offered on a non-dropdown field never — there is nothing to list", async () => {
-    renderTab(withSets({ fields: [field({ key: "bl_number", data_type: "TEXT", options_json: [] })] }));
+    renderTab(
+      withSets({
+        fields: [
+          field({ key: "bl_number", data_type: "TEXT", options_json: [] }),
+        ],
+      }),
+    );
     await screen.findByLabelText("Form version");
-    expect(screen.queryByRole("button", { name: /option/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /option/ }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -153,13 +215,20 @@ describe("adding an option", () => {
     renderTab(withSets());
     const dialog = await openOptions(user);
 
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
     const rows = within(dialog).getAllByRole("group");
     expect(rows).toHaveLength(3);
 
     await user.type(within(rows[2]).getByLabelText("Value"), "ddp");
-    await user.type(within(rows[2]).getByLabelText("Label (English)"), "DDP — Delivered Duty Paid");
-    await user.click(within(dialog).getByRole("button", { name: /Save 3 options/ }));
+    await user.type(
+      within(rows[2]).getByLabelText("Label (English)"),
+      "DDP — Delivered Duty Paid",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save 3 options/ }),
+    );
 
     await waitFor(() => expect(updateFieldInSet).toHaveBeenCalledTimes(1));
     const [, , fieldId, patch] = updateFieldInSet.mock.calls[0];
@@ -170,7 +239,11 @@ describe("adding an option", () => {
       ...INCOTERMS,
       // A code is upper-cased as it is typed: it is stored on every file, and
       // "ddp" and "DDP" must not become two answers.
-      { value: "DDP", label_fr: "DDP — Delivered Duty Paid", label_en: "DDP — Delivered Duty Paid" },
+      {
+        value: "DDP",
+        label_fr: "DDP — Delivered Duty Paid",
+        label_en: "DDP — Delivered Duty Paid",
+      },
     ]);
   });
 
@@ -180,22 +253,35 @@ describe("adding an option", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
     const rows = within(dialog).getAllByRole("group");
     await user.type(within(rows[2]).getByLabelText("Value"), "EXW");
-    await user.type(within(rows[2]).getByLabelText("Label (English)"), "EXW — Ex Works");
-    await user.click(within(dialog).getByRole("button", { name: /Save 3 options/ }));
+    await user.type(
+      within(rows[2]).getByLabelText("Label (English)"),
+      "EXW — Ex Works",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save 3 options/ }),
+    );
 
     await waitFor(() => expect(updateFieldInSet).toHaveBeenCalled());
-    expect(updateFieldInSet.mock.calls[0][3].options_json[2].label_fr).toBe("EXW — Ex Works");
+    expect(updateFieldInSet.mock.calls[0][3].options_json[2].label_fr).toBe(
+      "EXW — Ex Works",
+    );
   });
 
   it("uppercases a code as it is typed", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
-    const value = within(within(dialog).getAllByRole("group")[2]).getByLabelText("Value");
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
+    const value = within(
+      within(dialog).getAllByRole("group")[2],
+    ).getByLabelText("Value");
     await user.type(value, "im4");
     expect(value).toHaveValue("IM4");
   });
@@ -206,20 +292,34 @@ describe("removing and reordering", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: "Remove CIF" }));
-    await user.click(within(dialog).getByRole("button", { name: /Save 1 option/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove CIF" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save 1 option/ }),
+    );
     await waitFor(() => expect(updateFieldInSet).toHaveBeenCalled());
-    expect(updateFieldInSet.mock.calls[0][3].options_json).toEqual([INCOTERMS[0]]);
+    expect(updateFieldInSet.mock.calls[0][3].options_json).toEqual([
+      INCOTERMS[0],
+    ]);
   });
 
   it("reorders, because the order IS the order the dropdown shows", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: "Move CIF up" }));
-    await user.click(within(dialog).getByRole("button", { name: /Save 2 options/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move CIF up" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save 2 options/ }),
+    );
     await waitFor(() => expect(updateFieldInSet).toHaveBeenCalled());
-    expect(updateFieldInSet.mock.calls[0][3].options_json.map((o: FieldOption) => o.value)).toEqual(["CIF", "FOB"]);
+    expect(
+      updateFieldInSet.mock.calls[0][3].options_json.map(
+        (o: FieldOption) => o.value,
+      ),
+    ).toEqual(["CIF", "FOB"]);
   });
 });
 
@@ -228,11 +328,19 @@ describe("what it refuses to save", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: "Remove FOB" }));
-    await user.click(within(dialog).getByRole("button", { name: "Remove CIF" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove FOB" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove CIF" }),
+    );
 
-    expect(within(dialog).getByText(/needs at least one option/i)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /Save 0 options/ })).toBeDisabled();
+    expect(
+      within(dialog).getByText(/needs at least one option/i),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /Save 0 options/ }),
+    ).toBeDisabled();
     expect(updateFieldInSet).not.toHaveBeenCalled();
   });
 
@@ -240,21 +348,36 @@ describe("what it refuses to save", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
-    expect(within(dialog).getByText(/needs a stored value/i)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /Save 3 options/ })).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
+    expect(
+      within(dialog).getByText(/needs a stored value/i),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /Save 3 options/ }),
+    ).toBeDisabled();
   });
 
   it("two rows sharing a value — nothing downstream could tell them apart", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
     const rows = within(dialog).getAllByRole("group");
     await user.type(within(rows[2]).getByLabelText("Value"), "FOB");
-    await user.type(within(rows[2]).getByLabelText("Label (English)"), "Free on board");
-    expect(within(dialog).getByText(/cannot share a value — FOB/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /Save 3 options/ })).toBeDisabled();
+    await user.type(
+      within(rows[2]).getByLabelText("Label (English)"),
+      "Free on board",
+    );
+    expect(
+      within(dialog).getByText(/cannot share a value — FOB/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /Save 3 options/ }),
+    ).toBeDisabled();
   });
 });
 
@@ -265,34 +388,51 @@ describe("renaming a stored value", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    const value = within(within(dialog).getAllByRole("group")[0]).getByLabelText("Value");
+    const value = within(
+      within(dialog).getAllByRole("group")[0],
+    ).getByLabelText("Value");
     await user.clear(value);
     await user.type(value, "FOB2020");
 
-    expect(within(dialog).getByText(/changing a stored value/i)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/changing a stored value/i),
+    ).toBeInTheDocument();
     // Still saveable — it is a warning, not a refusal.
-    expect(within(dialog).getByRole("button", { name: /Save 2 options/ })).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: /Save 2 options/ }),
+    ).toBeEnabled();
   });
 
   it("says nothing when only a LABEL changes", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    const en = within(within(dialog).getAllByRole("group")[0]).getByLabelText("Label (English)");
+    const en = within(within(dialog).getAllByRole("group")[0]).getByLabelText(
+      "Label (English)",
+    );
     await user.clear(en);
     await user.type(en, "FOB — Free on Board (Incoterms 2020)");
-    expect(within(dialog).queryByText(/changing a stored value/i)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/changing a stored value/i),
+    ).not.toBeInTheDocument();
   });
 
   it("says nothing about a brand-new row", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
     const rows = within(dialog).getAllByRole("group");
     await user.type(within(rows[2]).getByLabelText("Value"), "DDP");
-    await user.type(within(rows[2]).getByLabelText("Label (English)"), "Delivered Duty Paid");
-    expect(within(dialog).queryByText(/changing a stored value/i)).not.toBeInTheDocument();
+    await user.type(
+      within(rows[2]).getByLabelText("Label (English)"),
+      "Delivered Duty Paid",
+    );
+    expect(
+      within(dialog).queryByText(/changing a stored value/i),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -303,14 +443,26 @@ describe("a published version", () => {
     const user = userEvent.setup();
     renderTab(withSets({ draft: false }));
     await user.click(await screen.findByRole("button", { name: /2 options/ }));
-    const dialog = await screen.findByRole("dialog", { name: /Options — Incoterm/ });
+    const dialog = await screen.findByRole("dialog", {
+      name: /Options — Incoterm/,
+    });
 
-    expect(within(dialog).getByText(/live, so the list is read-only/i)).toBeInTheDocument();
-    within(dialog).getAllByLabelText("Value").forEach((box) => expect(box).toBeDisabled());
+    expect(
+      within(dialog).getByText(/live, so the list is read-only/i),
+    ).toBeInTheDocument();
+    within(dialog)
+      .getAllByLabelText("Value")
+      .forEach((box) => expect(box).toBeDisabled());
     // No way to change it from here at all.
-    expect(within(dialog).queryByRole("button", { name: /Save/ })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("button", { name: /Add an option/ })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /Save/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /Add an option/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /^Remove/ }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -318,25 +470,46 @@ describe("adding a new dropdown field", () => {
   it("collects its options first, because the server refuses an empty list", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
-    await user.selectOptions(await screen.findByLabelText("Form version"), "fs-2");
+    await user.selectOptions(
+      await screen.findByLabelText("Form version"),
+      "fs-2",
+    );
 
     await user.type(screen.getByPlaceholderText("booking_ref"), "packing_type");
-    await user.type(screen.getByPlaceholderText("Booking reference"), "Packing type");
+    await user.type(
+      screen.getByPlaceholderText("Booking reference"),
+      "Packing type",
+    );
     await user.selectOptions(screen.getByLabelText("Type"), "SELECT");
 
     // Blocked until the list exists — this is the 422 that had no way past it.
     expect(screen.getByRole("button", { name: "Add field" })).toBeDisabled();
-    expect(screen.getByText(/needs its options before it can be added/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/needs its options before it can be added/i),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Set the options/ }));
-    const dialog = await screen.findByRole("dialog", { name: /Options — Packing type/ });
-    await user.click(within(dialog).getByRole("button", { name: /Add an option/ }));
+    const dialog = await screen.findByRole("dialog", {
+      name: /Options — Packing type/,
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: /Add an option/ }),
+    );
     const row = within(dialog).getAllByRole("group")[0];
     await user.type(within(row).getByLabelText("Value"), "CRATE");
-    await user.type(within(row).getByLabelText("Label (English)"), "Wooden crate");
-    await user.click(within(dialog).getByRole("button", { name: /Save 1 option/ }));
+    await user.type(
+      within(row).getByLabelText("Label (English)"),
+      "Wooden crate",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save 1 option/ }),
+    );
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Edit 1 option/ })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Edit 1 option/ }),
+      ).toBeInTheDocument(),
+    );
     const add = screen.getByRole("button", { name: "Add field" });
     expect(add).toBeEnabled();
     await user.click(add);
@@ -345,18 +518,28 @@ describe("adding a new dropdown field", () => {
     expect(addFieldToSet.mock.calls[0][2]).toMatchObject({
       key: "packing_type",
       data_type: "SELECT",
-      options_json: [{ value: "CRATE", label_fr: "Wooden crate", label_en: "Wooden crate" }],
+      options_json: [
+        { value: "CRATE", label_fr: "Wooden crate", label_en: "Wooden crate" },
+      ],
     });
   });
 
   it("asks for no options on a type that has none", async () => {
     const user = userEvent.setup();
     renderTab(withSets());
-    await user.selectOptions(await screen.findByLabelText("Form version"), "fs-2");
+    await user.selectOptions(
+      await screen.findByLabelText("Form version"),
+      "fs-2",
+    );
     await user.type(screen.getByPlaceholderText("booking_ref"), "booking_ref");
-    await user.type(screen.getByPlaceholderText("Booking reference"), "Booking reference");
+    await user.type(
+      screen.getByPlaceholderText("Booking reference"),
+      "Booking reference",
+    );
 
-    expect(screen.queryByRole("button", { name: /Set the options/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Set the options/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add field" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Add field" }));
     await waitFor(() => expect(addFieldToSet).toHaveBeenCalled());
@@ -372,7 +555,11 @@ describe("optionProblems", () => {
   });
 
   it("accepts an English-only label", () => {
-    expect(optionProblems([{ value: "FOB", label_fr: "", label_en: "Free On Board" }])).toEqual([]);
+    expect(
+      optionProblems([
+        { value: "FOB", label_fr: "", label_en: "Free On Board" },
+      ]),
+    ).toEqual([]);
   });
 
   it("compares values case-insensitively — a code is a code", () => {
@@ -391,8 +578,12 @@ describe("accessibility", () => {
     const dialog = await openOptions(user);
     // Three inputs per row, eleven rows on a real Incoterm list — "Value" repeated
     // eleven times is not a label, so each row is a named group.
-    expect(within(dialog).getByRole("group", { name: "Option 1: FOB" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("group", { name: "Option 2: CIF" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("group", { name: "Option 1: FOB" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("group", { name: "Option 2: CIF" }),
+    ).toBeInTheDocument();
     expect(await axe(dialog)).toHaveNoViolations();
   });
 });
@@ -402,12 +593,16 @@ describe("the dialog discards on cancel", () => {
     const user = userEvent.setup();
     renderTab(withSets());
     const dialog = await openOptions(user);
-    await user.click(within(dialog).getByRole("button", { name: "Remove CIF" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove CIF" }),
+    );
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(updateFieldInSet).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: /2 options/ }));
-    const reopened = await screen.findByRole("dialog", { name: /Options — Incoterm/ });
+    const reopened = await screen.findByRole("dialog", {
+      name: /Options — Incoterm/,
+    });
     expect(within(reopened).getAllByRole("group")).toHaveLength(2);
   });
 });
@@ -434,6 +629,8 @@ describe("FieldOptionsDialog on its own", () => {
     await user.clear(value);
     await user.type(value, "  ton  ");
     await user.click(screen.getByRole("button", { name: /Save 1 option/ }));
-    expect(onSave).toHaveBeenCalledWith([{ value: "TON", label_fr: "kg", label_en: "kg" }]);
+    expect(onSave).toHaveBeenCalledWith([
+      { value: "TON", label_fr: "kg", label_en: "kg" },
+    ]);
   });
 });

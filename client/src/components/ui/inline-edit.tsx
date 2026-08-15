@@ -197,7 +197,11 @@ export function InlineEdit({
         className,
       )}
     >
-      <span className={cn("min-w-0 truncate", !value && "text-muted-foreground")}>{value || placeholder}</span>
+      <span
+        className={cn("min-w-0 truncate", !value && "text-muted-foreground")}
+      >
+        {value || placeholder}
+      </span>
       {busy ? (
         <Spinner className="h-3 w-3 shrink-0" />
       ) : (

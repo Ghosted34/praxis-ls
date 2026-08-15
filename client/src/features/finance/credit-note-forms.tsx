@@ -13,7 +13,13 @@ import { Modal, Field } from "@/components/ui/modal";
 import { SearchSelect } from "@/components/ui/search-select";
 import * as fin from "@/lib/finance-api";
 import type { CreditNote, CreditNoteLineInput } from "@/lib/finance-api";
-import { useOptions, optionLabel, expandInvLines, type InvLine, blankInvLine } from "./shared";
+import {
+  useOptions,
+  optionLabel,
+  expandInvLines,
+  type InvLine,
+  blankInvLine,
+} from "./shared";
 import { DictLineCell } from "./line-picker";
 
 function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
@@ -28,34 +34,87 @@ function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
     }));
 }
 
-function CreditNoteLines({ lines, setLines, dossierId }: { lines: InvLine[]; setLines: React.Dispatch<React.SetStateAction<InvLine[]>>; dossierId?: string | null }) {
-  const setLine = (i: number, patch: Partial<InvLine>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+function CreditNoteLines({
+  lines,
+  setLines,
+  dossierId,
+}: {
+  lines: InvLine[];
+  setLines: React.Dispatch<React.SetStateAction<InvLine[]>>;
+  dossierId?: string | null;
+}) {
+  const setLine = (i: number, patch: Partial<InvLine>) =>
+    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Lines</span>
-        <Button type="button" size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, blankInvLine()])}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setLines((ls) => [...ls, blankInvLine()])}
+        >
           + Add line
         </Button>
       </div>
       {lines.map((l, i) => (
-        <div key={i} className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-start gap-2">
-          <Input placeholder="Label (required)" aria-label={`Label, line ${i + 1}`} value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} />
+        <div
+          key={i}
+          className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-start gap-2"
+        >
+          <Input
+            placeholder="Label (required)"
+            aria-label={`Label, line ${i + 1}`}
+            value={l.label}
+            onChange={(e) => setLine(i, { label: e.target.value })}
+          />
           {/* Picking a charge fills the label too — it is required here, and the
               catalogue's own wording is the one that keeps grouping honest. */}
           <DictLineCell
             line={l}
             index={i}
             dossierId={dossierId}
-            onPick={(id, label) => setLine(i, { dictionary_item_id: id, label: label || l.label, container_type_ref_id: undefined, container_type_label: undefined })}
-            onPickMulti={(id, label, _hit, picks) => setLines((ls) => expandInvLines(ls, i, id, label, picks))}
+            onPick={(id, label) =>
+              setLine(i, {
+                dictionary_item_id: id,
+                label: label || l.label,
+                container_type_ref_id: undefined,
+                container_type_label: undefined,
+              })
+            }
+            onPickMulti={(id, label, _hit, picks) =>
+              setLines((ls) => expandInvLines(ls, i, id, label, picks))
+            }
           />
-          <Input type="number" min="0" step="0.01" className="num text-right" placeholder="Amount" aria-label={`Amount, line ${i + 1}`} value={l.amount} onChange={(e) => setLine(i, { amount: e.target.value })} />
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            className="num text-right"
+            placeholder="Amount"
+            aria-label={`Amount, line ${i + 1}`}
+            value={l.amount}
+            onChange={(e) => setLine(i, { amount: e.target.value })}
+          />
           <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-            <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={l.is_disbursement}
+              onChange={(e) =>
+                setLine(i, { is_disbursement: e.target.checked })
+              }
+            />
             débours
           </label>
-          <Button type="button" size="icon" variant="ghost" disabled={lines.length <= 1} onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))} aria-label="Remove line">
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            disabled={lines.length <= 1}
+            onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+            aria-label="Remove line"
+          >
             ✕
           </Button>
         </div>
@@ -64,7 +123,15 @@ function CreditNoteLines({ lines, setLines, dossierId }: { lines: InvLine[]; set
   );
 }
 
-export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+export function CreditNoteCreateForm({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: clients } = useOptions(fin.loadClients, open);
   const { opts: invoices } = useOptions(fin.loadFinalInvoices, open);
@@ -107,12 +174,27 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
     }
   }
 
-  const entityLabel = (() => { const o = entities.find((x) => x.id === entityId); return o ? optionLabel(o) : null; })();
-  const clientLabel = (() => { const o = clients.find((x) => x.id === clientId); return o ? optionLabel(o) : null; })();
-  const invoiceLabel = (() => { const o = invoices.find((x) => x.id === reversesInvoiceId); return o ? optionLabel(o) : null; })();
+  const entityLabel = (() => {
+    const o = entities.find((x) => x.id === entityId);
+    return o ? optionLabel(o) : null;
+  })();
+  const clientLabel = (() => {
+    const o = clients.find((x) => x.id === clientId);
+    return o ? optionLabel(o) : null;
+  })();
+  const invoiceLabel = (() => {
+    const o = invoices.find((x) => x.id === reversesInvoiceId);
+    return o ? optionLabel(o) : null;
+  })();
 
   return (
-    <Modal open={open} onClose={onClose} title="New credit note" description="Reverses a finalised invoice; create a draft, then post to the ledger." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New credit note"
+      description="Reverses a finalised invoice; create a draft, then post to the ledger."
+      size="xl"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Entity" required>
@@ -120,7 +202,11 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
               path="/entities"
               value={entityLabel}
               placeholder="Search entities…"
-              getLabel={(r) => (r.code ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}` : String(r.legal_name ?? r.entity_id))}
+              getLabel={(r) =>
+                r.code
+                  ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}`
+                  : String(r.legal_name ?? r.entity_id)
+              }
               getKey={(r) => String(r.entity_id)}
               onSelect={(r) => setEntityId(String(r.entity_id))}
             />
@@ -130,20 +216,42 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
               path="/clients"
               value={clientLabel}
               placeholder="Search clients…"
-              getLabel={(r) => (r.ref ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}` : String(r.name ?? r.client_id))}
+              getLabel={(r) =>
+                r.ref
+                  ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}`
+                  : String(r.name ?? r.client_id)
+              }
               getKey={(r) => String(r.client_id)}
               onSelect={(r) => setClientId(String(r.client_id))}
             />
           </Field>
-          <Field label="Reverses invoice" hint="Finalised invoice this note credits" className="sm:col-span-2">
+          <Field
+            label="Reverses invoice"
+            hint="Finalised invoice this note credits"
+            className="sm:col-span-2"
+          >
             <SearchSelect
               path="/final-invoices"
               value={invoiceLabel}
               placeholder="Search finalised invoices…"
-              filter={(r) => String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"}
-              getLabel={(r) => String(r.doc_number ?? r.ref ?? r.invoice_id ?? r.final_invoice_id ?? "")}
+              filter={(r) =>
+                String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"
+              }
+              getLabel={(r) =>
+                String(
+                  r.doc_number ??
+                    r.ref ??
+                    r.invoice_id ??
+                    r.final_invoice_id ??
+                    "",
+                )
+              }
               getKey={(r) => String(r.invoice_id ?? r.final_invoice_id ?? r.id)}
-              onSelect={(r) => setReversesInvoiceId(String(r.invoice_id ?? r.final_invoice_id ?? r.id))}
+              onSelect={(r) =>
+                setReversesInvoiceId(
+                  String(r.invoice_id ?? r.final_invoice_id ?? r.id),
+                )
+              }
             />
           </Field>
         </div>
@@ -167,7 +275,15 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
   );
 }
 
-export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: string | null; onClose: () => void; onSaved: () => void }) {
+export function CreditNoteEditForm({
+  creditNoteId,
+  onClose,
+  onSaved,
+}: {
+  creditNoteId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const open = !!creditNoteId;
   const { opts: clients } = useOptions(fin.loadClients, open);
   const { opts: invoices } = useOptions(fin.loadFinalInvoices, open);
@@ -185,20 +301,36 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
     let live = true;
     setLoading(true);
     setError(null);
-    fin.getCreditNote(creditNoteId)
+    fin
+      .getCreditNote(creditNoteId)
       .then((cn) => {
         if (!live) return;
         setClientId(cn.client_id ? String(cn.client_id) : "");
         setDossierId(cn.dossier_id ? String(cn.dossier_id) : "");
-        setReversesInvoiceId(cn.reverses_invoice_id ? String(cn.reverses_invoice_id) : "");
+        setReversesInvoiceId(
+          cn.reverses_invoice_id ? String(cn.reverses_invoice_id) : "",
+        );
         const ls = (cn.lines || []).map((l) => ({
-          dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
-          amount: l.amount != null ? String(l.amount) : l.line_ht != null ? String(l.line_ht) : "",
+          dictionary_item_id: l.dictionary_item_id
+            ? String(l.dictionary_item_id)
+            : "",
+          amount:
+            l.amount != null
+              ? String(l.amount)
+              : l.line_ht != null
+                ? String(l.line_ht)
+                : "",
           is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
           // Read back so re-saving a draft does not strip the equipment tag.
-          container_type_ref_id: l.container_type_ref_id ? String(l.container_type_ref_id) : undefined,
-          container_type_label: l.container_type_en || l.container_type_fr || l.container_type_code || undefined,
+          container_type_ref_id: l.container_type_ref_id
+            ? String(l.container_type_ref_id)
+            : undefined,
+          container_type_label:
+            l.container_type_en ||
+            l.container_type_fr ||
+            l.container_type_code ||
+            undefined,
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
@@ -228,11 +360,23 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
     }
   }
 
-  const clientLabel = (() => { const o = clients.find((x) => x.id === clientId); return o ? optionLabel(o) : null; })();
-  const invoiceLabel = (() => { const o = invoices.find((x) => x.id === reversesInvoiceId); return o ? optionLabel(o) : null; })();
+  const clientLabel = (() => {
+    const o = clients.find((x) => x.id === clientId);
+    return o ? optionLabel(o) : null;
+  })();
+  const invoiceLabel = (() => {
+    const o = invoices.find((x) => x.id === reversesInvoiceId);
+    return o ? optionLabel(o) : null;
+  })();
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit credit note" description="Update the client, reversed invoice and lines. Only drafts can be edited." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit credit note"
+      description="Update the client, reversed invoice and lines. Only drafts can be edited."
+      size="xl"
+    >
       {loading ? (
         <LoadingRow label="Loading credit note…" />
       ) : (
@@ -243,7 +387,11 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
                 path="/clients"
                 value={clientLabel}
                 placeholder="Search clients…"
-                getLabel={(r) => (r.ref ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}` : String(r.name ?? r.client_id))}
+                getLabel={(r) =>
+                  r.ref
+                    ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}`
+                    : String(r.name ?? r.client_id)
+                }
                 getKey={(r) => String(r.client_id)}
                 onSelect={(r) => setClientId(String(r.client_id))}
               />
@@ -253,15 +401,35 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
                 path="/final-invoices"
                 value={invoiceLabel}
                 placeholder="Search finalised invoices…"
-                filter={(r) => String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"}
-                getLabel={(r) => String(r.doc_number ?? r.ref ?? r.invoice_id ?? r.final_invoice_id ?? "")}
-                getKey={(r) => String(r.invoice_id ?? r.final_invoice_id ?? r.id)}
-                onSelect={(r) => setReversesInvoiceId(String(r.invoice_id ?? r.final_invoice_id ?? r.id))}
+                filter={(r) =>
+                  String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"
+                }
+                getLabel={(r) =>
+                  String(
+                    r.doc_number ??
+                      r.ref ??
+                      r.invoice_id ??
+                      r.final_invoice_id ??
+                      "",
+                  )
+                }
+                getKey={(r) =>
+                  String(r.invoice_id ?? r.final_invoice_id ?? r.id)
+                }
+                onSelect={(r) =>
+                  setReversesInvoiceId(
+                    String(r.invoice_id ?? r.final_invoice_id ?? r.id),
+                  )
+                }
               />
             </Field>
           </div>
 
-          <CreditNoteLines lines={lines} setLines={setLines} dossierId={dossierId || null} />
+          <CreditNoteLines
+            lines={lines}
+            setLines={setLines}
+            dossierId={dossierId || null}
+          />
 
           {error && <ErrorState message={error} />}
 
@@ -279,7 +447,15 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
   );
 }
 
-export function CreditNotePostForm({ creditNote, onClose, onPosted }: { creditNote: CreditNote | null; onClose: () => void; onPosted: () => void }) {
+export function CreditNotePostForm({
+  creditNote,
+  onClose,
+  onPosted,
+}: {
+  creditNote: CreditNote | null;
+  onClose: () => void;
+  onPosted: () => void;
+}) {
   const [entryDate, setEntryDate] = React.useState(fin.today());
   const [sourceRef, setSourceRef] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -311,14 +487,27 @@ export function CreditNotePostForm({ creditNote, onClose, onPosted }: { creditNo
   }
 
   return (
-    <Modal open={!!creditNote} onClose={onClose} title="Post credit note" description="Posts the linked contra entry to the ledger and reverses the invoice.">
+    <Modal
+      open={!!creditNote}
+      onClose={onClose}
+      title="Post credit note"
+      description="Posts the linked contra entry to the ledger and reverses the invoice."
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Posting date">
-            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+            <Input
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+            />
           </Field>
           <Field label="Source document ref">
-            <Input value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} placeholder="CN-2026-0001" />
+            <Input
+              value={sourceRef}
+              onChange={(e) => setSourceRef(e.target.value)}
+              placeholder="CN-2026-0001"
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}

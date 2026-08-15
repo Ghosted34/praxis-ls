@@ -1189,12 +1189,15 @@
       "route": "/sales/meetings",
       "area": "sales",
       "module_key": "MOD-21",
-      "purpose": "Client meetings and their outcomes.",
+      "purpose": "Client meetings, structured client discovery, and their outcomes.",
       "actions": [
         "list_meetings",
         "get_meeting",
         "schedule_meeting",
-        "add_meeting_note"
+        "add_meeting_note",
+        "get_meeting_discovery",
+        "get_lead_discovery",
+        "save_meeting_discovery_section"
       ]
     },
     {

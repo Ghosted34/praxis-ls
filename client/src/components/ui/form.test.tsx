@@ -29,14 +29,20 @@ describe("@shared — the package the root README promised and did not exist", (
   });
 
   it("accepts a payload the API would accept", () => {
-    const r = finalInvoice.submit.safeParse({ entry_date: "2026-03-21", source_doc_ref: "INV-2026-0041" });
+    const r = finalInvoice.submit.safeParse({
+      entry_date: "2026-03-21",
+      source_doc_ref: "INV-2026-0041",
+    });
     expect(r.success).toBe(true);
   });
 
   it("rejects the cases the client's ad-hoc booleans used to let through", () => {
     // `canSubmit` in finance/pages.tsx tested `value !== ""`, so a field of
     // spaces passed the client and failed the server.
-    const r = finalInvoice.submit.safeParse({ entry_date: "2026-02-31", source_doc_ref: "   " });
+    const r = finalInvoice.submit.safeParse({
+      entry_date: "2026-02-31",
+      source_doc_ref: "   ",
+    });
     expect(r.success).toBe(false);
     const errors = r.error!.flatten().fieldErrors;
     expect(errors.entry_date?.join(" ")).toMatch(/doesn't exist/);
@@ -52,7 +58,14 @@ describe("@shared — the package the root README promised and did not exist", (
 
 /* ────────────────────────────── the form itself ──────────────────────────── */
 
-function InvoiceForm({ onSubmit }: { onSubmit: (v: { entry_date: string; source_doc_ref: string }) => Promise<void> }) {
+function InvoiceForm({
+  onSubmit,
+}: {
+  onSubmit: (v: {
+    entry_date: string;
+    source_doc_ref: string;
+  }) => Promise<void>;
+}) {
   const form = useZodForm(finalInvoice.submit, {
     defaultValues: { entry_date: "", source_doc_ref: "" },
   });
@@ -61,7 +74,12 @@ function InvoiceForm({ onSubmit }: { onSubmit: (v: { entry_date: string; source_
       <FormField form={form} name="entry_date" label="Entry date" required>
         {(field) => <Input {...field} />}
       </FormField>
-      <FormField form={form} name="source_doc_ref" label="Document reference" required>
+      <FormField
+        form={form}
+        name="source_doc_ref"
+        label="Document reference"
+        required
+      >
         {(field) => <Input {...field} />}
       </FormField>
       <FormError form={form} />
@@ -79,8 +97,14 @@ const derivedName = z.object({
   legal_name: z.string().optional(),
 });
 
-function DerivedNameForm({ onSubmit }: { onSubmit: (v: { name: string; legal_name?: string }) => Promise<void> }) {
-  const form = useZodForm(derivedName, { defaultValues: { name: "", legal_name: "" } });
+function DerivedNameForm({
+  onSubmit,
+}: {
+  onSubmit: (v: { name: string; legal_name?: string }) => Promise<void>;
+}) {
+  const form = useZodForm(derivedName, {
+    defaultValues: { name: "", legal_name: "" },
+  });
   const legalName = form.watch("legal_name");
   React.useEffect(() => {
     form.setValue("name", (legalName || "").trim(), { shouldValidate: true });
@@ -98,14 +122,23 @@ function DerivedNameForm({ onSubmit }: { onSubmit: (v: { name: string; legal_nam
 }
 
 const nestedContact = z.object({
-  contact: z.object({ email: z.string().email("Enter a valid email address.") }),
+  contact: z.object({
+    email: z.string().email("Enter a valid email address."),
+  }),
 });
 
 function NestedForm() {
-  const form = useZodForm(nestedContact, { defaultValues: { contact: { email: "" } } });
+  const form = useZodForm(nestedContact, {
+    defaultValues: { contact: { email: "" } },
+  });
   return (
     <Form form={form} onSubmit={vi.fn()}>
-      <FormField form={form} name="contact.email" label="Contact email" required>
+      <FormField
+        form={form}
+        name="contact.email"
+        label="Contact email"
+        required
+      >
         {/* `field.value` types as the union of every path, so coerce as the screens do. */}
         {(field) => <Input {...field} value={String(field.value ?? "")} />}
       </FormField>
@@ -147,12 +180,18 @@ describe("Form", () => {
 
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Entry date" })).toHaveAttribute("aria-invalid", "true"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Entry date" }),
+      ).toHaveAttribute("aria-invalid", "true"),
+    );
     expect(onSubmit).not.toHaveBeenCalled();
     // The message is the field's accessible DESCRIPTION — which is what makes a
     // screen reader read it when focus lands on the input. Before this, 0 of 565
     // fields had aria-describedby at all.
-    expect(screen.getByRole("textbox", { name: "Entry date" })).toHaveAccessibleDescription(/YYYY-MM-DD/);
+    expect(
+      screen.getByRole("textbox", { name: "Entry date" }),
+    ).toHaveAccessibleDescription(/YYYY-MM-DD/);
   });
 
   it("submits parsed values once the schema is satisfied", async () => {
@@ -160,12 +199,21 @@ describe("Form", () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<InvoiceForm onSubmit={onSubmit} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Entry date" }), "2026-03-21");
-    await user.type(screen.getByRole("textbox", { name: "Document reference" }), "INV-2026-0041");
+    await user.type(
+      screen.getByRole("textbox", { name: "Entry date" }),
+      "2026-03-21",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Document reference" }),
+      "INV-2026-0041",
+    );
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ entry_date: "2026-03-21", source_doc_ref: "INV-2026-0041" }),
+      expect(onSubmit).toHaveBeenCalledWith({
+        entry_date: "2026-03-21",
+        source_doc_ref: "INV-2026-0041",
+      }),
     );
   });
 
@@ -178,45 +226,81 @@ describe("Form", () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockRejectedValue(
       new ApiError("VALIDATION_ERROR", "Invalid body", 422, {
-        source_doc_ref: ["That reference is already used on invoice INV-2026-0038."],
+        source_doc_ref: [
+          "That reference is already used on invoice INV-2026-0038.",
+        ],
       }),
     );
     render(<InvoiceForm onSubmit={onSubmit} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Entry date" }), "2026-03-21");
-    await user.type(screen.getByRole("textbox", { name: "Document reference" }), "INV-2026-0041");
+    await user.type(
+      screen.getByRole("textbox", { name: "Entry date" }),
+      "2026-03-21",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Document reference" }),
+      "INV-2026-0041",
+    );
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: "Document reference" })).toHaveAccessibleDescription(
-        /already used on invoice INV-2026-0038/,
-      ),
+      expect(
+        screen.getByRole("textbox", { name: "Document reference" }),
+      ).toHaveAccessibleDescription(/already used on invoice INV-2026-0038/),
     );
-    expect(screen.getByRole("textbox", { name: "Document reference" })).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.getByRole("textbox", { name: "Document reference" }),
+    ).toHaveAttribute("aria-invalid", "true");
   });
 
   it("falls back to a form-level alert for an error that belongs to no field", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn().mockRejectedValue(new ApiError("PERIOD_CLOSED", "Period 2026-03 is already closed.", 409));
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError("PERIOD_CLOSED", "Period 2026-03 is already closed.", 409),
+      );
     render(<InvoiceForm onSubmit={onSubmit} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Entry date" }), "2026-03-21");
-    await user.type(screen.getByRole("textbox", { name: "Document reference" }), "INV-2026-0041");
+    await user.type(
+      screen.getByRole("textbox", { name: "Entry date" }),
+      "2026-03-21",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Document reference" }),
+      "INV-2026-0041",
+    );
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Period 2026-03 is already closed."));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Period 2026-03 is already closed.",
+      ),
+    );
   });
 
   it("keeps a 403 readable rather than replacing it with 'Something went wrong'", async () => {
     const user = userEvent.setup();
-    const onSubmit = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "nope", 403));
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("FORBIDDEN", "nope", 403));
     render(<InvoiceForm onSubmit={onSubmit} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Entry date" }), "2026-03-21");
-    await user.type(screen.getByRole("textbox", { name: "Document reference" }), "INV-2026-0041");
+    await user.type(
+      screen.getByRole("textbox", { name: "Entry date" }),
+      "2026-03-21",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Document reference" }),
+      "INV-2026-0041",
+    );
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to do this."));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "You don't have permission to do this.",
+      ),
+    );
   });
 
   /**
@@ -238,7 +322,11 @@ describe("Form", () => {
 
     await user.click(screen.getByRole("button", { name: "Save client" }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Client name is required."));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Client name is required.",
+      ),
+    );
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -251,7 +339,10 @@ describe("Form", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
 
     // Typing a legal name derives `name`, which is the whole point of the sync.
-    await user.type(screen.getByRole("textbox", { name: "Legal name" }), "Bolloré Transport");
+    await user.type(
+      screen.getByRole("textbox", { name: "Legal name" }),
+      "Bolloré Transport",
+    );
     await user.click(screen.getByRole("button", { name: "Save client" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -273,7 +364,9 @@ describe("Form", () => {
     await user.click(screen.getByRole("button", { name: "Save contact" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: "Contact email" })).toHaveAttribute("aria-invalid", "true"),
+      expect(
+        screen.getByRole("textbox", { name: "Contact email" }),
+      ).toHaveAttribute("aria-invalid", "true"),
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -295,7 +388,9 @@ describe("Form", () => {
     await user.click(screen.getByRole("button", { name: "Save modal" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: "Modal title" })).toHaveAttribute("aria-invalid", "true"),
+      expect(
+        screen.getByRole("textbox", { name: "Modal title" }),
+      ).toHaveAttribute("aria-invalid", "true"),
     );
     expect(pageField).not.toHaveAttribute("aria-invalid");
   });
@@ -306,7 +401,11 @@ describe("Form", () => {
     expect(await axe(container)).toHaveNoViolations();
 
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Entry date" })).toHaveAttribute("aria-invalid", "true"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Entry date" }),
+      ).toHaveAttribute("aria-invalid", "true"),
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

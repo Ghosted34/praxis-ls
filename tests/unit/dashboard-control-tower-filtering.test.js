@@ -35,7 +35,19 @@ function fakeClient({ shipments = [], counts = {} } = {}) {
       state.sql.push(s);
       state.params.push(params);
       if (/COUNT\(\*\) FILTER \(WHERE d.status/i.test(s)) {
-        return { rows: [{ active: 3, open: 2, in_progress: 1, movement: 2, activity: 1, needs_location: 1, ...counts }] };
+        return {
+          rows: [
+            {
+              active: 3,
+              open: 2,
+              in_progress: 1,
+              movement: 2,
+              activity: 1,
+              needs_location: 1,
+              ...counts,
+            },
+          ],
+        };
       }
       if (/FROM approval_task/i.test(s)) return { rows: [{ awaiting: 4 }] };
       if (/FROM dossier_visible d/i.test(s)) return { rows: shipments };
@@ -45,9 +57,15 @@ function fakeClient({ shipments = [], counts = {} } = {}) {
 }
 
 /** The page query — the one that returns the rows the map draws. */
-const pageSql = (c) => c.state.sql.find((s) => /FROM dossier_visible d/i.test(s) && /ORDER BY d.created_at DESC/i.test(s));
+const pageSql = (c) =>
+  c.state.sql.find(
+    (s) =>
+      /FROM dossier_visible d/i.test(s) &&
+      /ORDER BY d.created_at DESC/i.test(s),
+  );
 /** The count query, which must carry the SAME predicate as the page. */
-const countSql = (c) => c.state.sql.find((s) => /COUNT\(\*\) FILTER \(WHERE d.status/i.test(s));
+const countSql = (c) =>
+  c.state.sql.find((s) => /COUNT\(\*\) FILTER \(WHERE d.status/i.test(s));
 
 const row = (over = {}) => ({
   dossier_id: "d-1",
@@ -113,7 +131,9 @@ describe("filters reach the database", () => {
     expect(sql).not.toContain("DROP TABLE");
     expect(sql).toContain("st.territory = $");
     // The hostile string travels as a parameter value, which is inert.
-    expect(c.state.params.some((p) => p.includes("CM'; DROP TABLE dossier; --"))).toBe(true);
+    expect(
+      c.state.params.some((p) => p.includes("CM'; DROP TABLE dossier; --")),
+    ).toBe(true);
   });
 
   test("the mode filter uses the ITINERARY, not the service-type name", async () => {
@@ -131,7 +151,9 @@ describe("filters reach the database", () => {
   test("the layer filter partitions movement from facility work", async () => {
     const movement = fakeClient();
     await repo.controlTower(movement, { layer: "MOVEMENT" });
-    expect(pageSql(movement)).toMatch(/d\.pol IS NOT NULL OR d\.pod IS NOT NULL/);
+    expect(pageSql(movement)).toMatch(
+      /d\.pol IS NOT NULL OR d\.pod IS NOT NULL/,
+    );
 
     const activity = fakeClient();
     await repo.controlTower(activity, { layer: "ACTIVITY" });
@@ -185,10 +207,20 @@ describe("filters reach the database", () => {
 describe("the counts describe the same set as the list", () => {
   test("the count query carries every predicate the page does", async () => {
     const c = fakeClient();
-    await repo.controlTower(c, { mode: "AIR", territory: "CM", verified: "UNVERIFIED", layer: "MOVEMENT" });
+    await repo.controlTower(c, {
+      mode: "AIR",
+      territory: "CM",
+      verified: "UNVERIFIED",
+      layer: "MOVEMENT",
+    });
     const page = pageSql(c);
     const count = countSql(c);
-    for (const fragment of ["st.territory = $", "l.leg_type = 'MAIN_CARRIAGE'", "verified_at IS NULL", "d.pol IS NOT NULL"]) {
+    for (const fragment of [
+      "st.territory = $",
+      "l.leg_type = 'MAIN_CARRIAGE'",
+      "verified_at IS NULL",
+      "d.pol IS NOT NULL",
+    ]) {
       expect(page).toContain(fragment);
       // The class of bug this prevents: a header that says 12 above a list of 3.
       expect(count).toContain(fragment);
@@ -239,7 +271,9 @@ describe("pagination", () => {
 
   test("a malformed cursor is ignored rather than 500ing the dashboard", async () => {
     const c = fakeClient();
-    await expect(repo.controlTower(c, { cursor: "garbage" })).resolves.toBeTruthy();
+    await expect(
+      repo.controlTower(c, { cursor: "garbage" }),
+    ).resolves.toBeTruthy();
     expect(pageSql(c)).not.toContain("(d.created_at, d.dossier_id) <");
   });
 
@@ -259,12 +293,18 @@ describe("the rows the map draws", () => {
   test("coordinates are numbers and carry their verification state", async () => {
     const c = fakeClient({ shipments: [row()] });
     const [s] = (await repo.controlTower(c)).live_shipments;
-    expect(s.coords.from).toMatchObject({ latitude: 31.2292, longitude: 121.4744, state: "verified" });
+    expect(s.coords.from).toMatchObject({
+      latitude: 31.2292,
+      longitude: 121.4744,
+      state: "verified",
+    });
     expect(typeof s.coords.to.latitude).toBe("number");
   });
 
   test("a reference point says so, so the map can draw it hollow", async () => {
-    const c = fakeClient({ shipments: [row({ dest_is_reference_point: true })] });
+    const c = fakeClient({
+      shipments: [row({ dest_is_reference_point: true })],
+    });
     const [s] = (await repo.controlTower(c)).live_shipments;
     expect(s.coords.to.state).toBe("reference");
   });
@@ -276,7 +316,9 @@ describe("the rows the map draws", () => {
   });
 
   test("one end unresolved yields NO lane — half a route is a fabrication", async () => {
-    const c = fakeClient({ shipments: [row({ dest_lat: null, dest_lng: null })] });
+    const c = fakeClient({
+      shipments: [row({ dest_lat: null, dest_lng: null })],
+    });
     const [s] = (await repo.controlTower(c)).live_shipments;
     expect(s.coords).toBeNull();
   });
@@ -284,7 +326,9 @@ describe("the rows the map draws", () => {
   test("progress is null when a file has no milestone chain", async () => {
     // "Not tracked" and "not started" are different facts; a 0%-width bar asserts
     // the second one.
-    const c = fakeClient({ shipments: [row({ milestone_total: 0, milestone_done: 0 })] });
+    const c = fakeClient({
+      shipments: [row({ milestone_total: 0, milestone_done: 0 })],
+    });
     const [s] = (await repo.controlTower(c)).live_shipments;
     expect(s.progress).toBeNull();
   });
@@ -296,7 +340,9 @@ describe("the rows the map draws", () => {
   });
 
   test("the mode and the movement flag come from the server, not from a guess", async () => {
-    const c = fakeClient({ shipments: [row({ mode: "LAND", is_movement: false })] });
+    const c = fakeClient({
+      shipments: [row({ mode: "LAND", is_movement: false })],
+    });
     const [s] = (await repo.controlTower(c)).live_shipments;
     expect(s).toMatchObject({ mode: "LAND", is_movement: false });
   });

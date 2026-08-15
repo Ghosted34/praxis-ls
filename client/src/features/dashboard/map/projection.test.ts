@@ -49,7 +49,10 @@ describe("buildMapModel", () => {
       coords.forEach((n) => expect(Number.isFinite(n)).toBe(true));
     });
     // Endpoints (not the bowed control point, which may sit outside) are inside.
-    const [x1, y1] = m.lanes[0].d.match(/-?\d+\.\d+/g)!.slice(0, 2).map(Number);
+    const [x1, y1] = m.lanes[0].d
+      .match(/-?\d+\.\d+/g)!
+      .slice(0, 2)
+      .map(Number);
     expect(x1).toBeGreaterThanOrEqual(0);
     expect(x1).toBeLessThanOrEqual(MAP_W);
     expect(y1).toBeGreaterThanOrEqual(0);
@@ -84,7 +87,10 @@ describe("buildMapModel", () => {
   });
 
   it("bows lanes sharing a corridor to opposite sides so both stay traceable", () => {
-    const m = buildMapModel([ANTWERP_DOUALA, lane("A2", [51.4, 4.5], [4.1, 9.75])])!;
+    const m = buildMapModel([
+      ANTWERP_DOUALA,
+      lane("A2", [51.4, 4.5], [4.1, 9.75]),
+    ])!;
     expect(m.lanes[0].d).not.toEqual(m.lanes[1].d);
   });
 
@@ -125,7 +131,14 @@ describe("landPaths", () => {
   });
 
   it("ignores degenerate rings", () => {
-    expect(landPaths(model, [[[5, 5], [6, 6]]])).toBe("");
+    expect(
+      landPaths(model, [
+        [
+          [5, 5],
+          [6, 6],
+        ],
+      ]),
+    ).toBe("");
   });
 
   it("emits a closed subpath for a visible ring", () => {

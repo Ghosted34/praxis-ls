@@ -44,7 +44,12 @@ import { optionProblems } from "./field-options";
  * whose only text is nested too deep for anything to associate with it.
  */
 function ModeChoice({
-  id, checked, disabled, onSelect, title, body,
+  id,
+  checked,
+  disabled,
+  onSelect,
+  title,
+  body,
 }: {
   id: string;
   checked: boolean;
@@ -66,7 +71,10 @@ function ModeChoice({
         onChange={onSelect}
       />
       <div className="min-w-0">
-        <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-foreground">
+        <label
+          htmlFor={id}
+          className="block cursor-pointer text-sm font-medium text-foreground"
+        >
           {title}
         </label>
         <p id={`${id}-body`} className="micro text-muted-foreground">
@@ -97,7 +105,10 @@ function ContainerCapture({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  async function set(body: { captures_containers?: boolean; container_detail_mode?: "GROUPED" | "PER_BOX" }) {
+  async function set(body: {
+    captures_containers?: boolean;
+    container_detail_mode?: "GROUPED" | "PER_BOX";
+  }) {
     setBusy(true);
     setError(null);
     try {
@@ -113,7 +124,9 @@ function ContainerCapture({
   return (
     <div className="space-y-3 rounded-md border border-border p-4">
       <div>
-        <h4 className="text-sm font-medium text-foreground">Equipment on the file</h4>
+        <h4 className="text-sm font-medium text-foreground">
+          Equipment on the file
+        </h4>
         <p className="micro text-muted-foreground">
           Whether files of this service type record the containers they move.
         </p>
@@ -122,7 +135,9 @@ function ContainerCapture({
       <Checkbox
         checked={captures}
         disabled={busy}
-        onCheckedChange={(c: boolean) => set({ captures_containers: c === true })}
+        onCheckedChange={(c: boolean) =>
+          set({ captures_containers: c === true })
+        }
         label="This service moves containers"
         hint={
           captures
@@ -133,7 +148,9 @@ function ContainerCapture({
 
       {captures && (
         <div className="space-y-2 border-t border-border pt-3">
-          <p className="text-sm font-medium text-foreground">How much detail per container?</p>
+          <p className="text-sm font-medium text-foreground">
+            How much detail per container?
+          </p>
           {/* Spelled out rather than labelled "Grouped / Per box", because the
               consequence — whether per-container charges are exact or estimated
               — is the actual decision being made, and the label alone does not
@@ -165,24 +182,55 @@ function ContainerCapture({
 /* ── The field table ───────────────────────────────────────────────────────── */
 
 const DATA_TYPES: api.FieldDataType[] = [
-  "TEXT", "TEXTAREA", "NUMBER", "INTEGER", "DATE", "DATETIME", "BOOLEAN",
-  "SELECT", "MULTISELECT", "GEO_PLACE", "RATE_PROVIDER",
+  "TEXT",
+  "TEXTAREA",
+  "NUMBER",
+  "INTEGER",
+  "DATE",
+  "DATETIME",
+  "BOOLEAN",
+  "SELECT",
+  "MULTISELECT",
+  "GEO_PLACE",
+  "RATE_PROVIDER",
 ];
 
 /** The types whose whole behaviour is their option list. */
-const NEEDS_OPTIONS = (t: api.FieldDataType) => t === "SELECT" || t === "MULTISELECT";
+const NEEDS_OPTIONS = (t: api.FieldDataType) =>
+  t === "SELECT" || t === "MULTISELECT";
 
 const FACET_ROLES: (api.FacetRole | "")[] = [
-  "", "TRANSPORT_REF", "CONVEYANCE", "CARRIER", "ORIGIN", "DESTINATION", "ROUTE_VIA",
+  "",
+  "TRANSPORT_REF",
+  "CONVEYANCE",
+  "CARRIER",
+  "ORIGIN",
+  "DESTINATION",
+  "ROUTE_VIA",
   // The door legs (0678) and the scheduled commitment (0679). They were in the
   // server's vocabulary and missing from this list, so the three roles the last
   // two migrations added could not be set from the screen that exists to set them.
-  "COLLECTION", "FINAL_DELIVERY",
-  "DEPARTURE_DATE", "ARRIVAL_DATE", "DELIVERY_DATE",
-  "CARGO_DESC", "CARGO_WEIGHT", "CARGO_VOLUME", "CARGO_PACKAGES", "CARGO_MARKS",
-  "CUSTODY_LOCATION", "CUSTODY_STATUS", "CUSTODY_IN", "CUSTODY_OUT",
-  "INCOTERM", "CUSTOMS_REF", "CUSTOMS_REGIME",
-  "SCOPE_SUMMARY", "COUNTERPARTY", "PERIOD_START", "PERIOD_END",
+  "COLLECTION",
+  "FINAL_DELIVERY",
+  "DEPARTURE_DATE",
+  "ARRIVAL_DATE",
+  "DELIVERY_DATE",
+  "CARGO_DESC",
+  "CARGO_WEIGHT",
+  "CARGO_VOLUME",
+  "CARGO_PACKAGES",
+  "CARGO_MARKS",
+  "CUSTODY_LOCATION",
+  "CUSTODY_STATUS",
+  "CUSTODY_IN",
+  "CUSTODY_OUT",
+  "INCOTERM",
+  "CUSTOMS_REF",
+  "CUSTOMS_REGIME",
+  "SCOPE_SUMMARY",
+  "COUNTERPARTY",
+  "PERIOD_START",
+  "PERIOD_END",
 ];
 
 function FieldRow({
@@ -233,7 +281,8 @@ function FieldRow({
             disabled={busy}
             onClick={onEditOptions}
           >
-            {(field.options_json || []).length} option{(field.options_json || []).length === 1 ? "" : "s"}
+            {(field.options_json || []).length} option
+            {(field.options_json || []).length === 1 ? "" : "s"}
             {!(field.options_json || []).length && " — none yet"}
           </Button>
         )}
@@ -243,7 +292,11 @@ function FieldRow({
           <Select
             aria-label={`Meaning of ${field.key}`}
             value={field.facet_role || ""}
-            onChange={(e) => onPatch({ facet_role: (e.target.value || null) as api.FacetRole | null })}
+            onChange={(e) =>
+              onPatch({
+                facet_role: (e.target.value || null) as api.FacetRole | null,
+              })
+            }
             disabled={busy}
           >
             {FACET_ROLES.map((r) => (
@@ -268,12 +321,18 @@ function FieldRow({
         <Checkbox
           checked={field.is_client_visible}
           disabled={!editable || busy}
-          onCheckedChange={(c: boolean) => onPatch({ is_client_visible: c === true })}
+          onCheckedChange={(c: boolean) =>
+            onPatch({ is_client_visible: c === true })
+          }
           label={<span className="sr-only">Client-visible: {field.key}</span>}
         />
       </TD>
       <TD>
-        {field.is_system ? <Pill tone="mute">shipped</Pill> : <Pill tone="blue">yours</Pill>}
+        {field.is_system ? (
+          <Pill tone="mute">shipped</Pill>
+        ) : (
+          <Pill tone="blue">yours</Pill>
+        )}
       </TD>
       <TD>
         {editable && field.is_active && (
@@ -294,10 +353,16 @@ export function ServiceTypeFieldsTab({
   onChanged,
 }: {
   serviceTypeId: string;
-  containers: { captures_containers: boolean; container_detail_mode: "GROUPED" | "PER_BOX" };
+  containers: {
+    captures_containers: boolean;
+    container_detail_mode: "GROUPED" | "PER_BOX";
+  };
   onChanged?: () => void;
 }) {
-  const sets = useResource<api.ServiceTypeFieldSet[]>(() => api.listFieldSets(serviceTypeId), [serviceTypeId]);
+  const sets = useResource<api.ServiceTypeFieldSet[]>(
+    () => api.listFieldSets(serviceTypeId),
+    [serviceTypeId],
+  );
   const [openId, setOpenId] = React.useState<string | null>(null);
   /** The field whose option list is open, by id — not the field object, so it
    *  cannot go stale against a reload that happens while the dialog is up. */
@@ -306,16 +371,25 @@ export function ServiceTypeFieldsTab({
   const [error, setError] = React.useState<string | null>(null);
 
   const live = (sets.data || []).find((s) => s.is_active) || null;
-  const selectedId = openId || live?.service_type_field_set_id || (sets.data || [])[0]?.service_type_field_set_id || null;
+  const selectedId =
+    openId ||
+    live?.service_type_field_set_id ||
+    (sets.data || [])[0]?.service_type_field_set_id ||
+    null;
 
   const detail = useResource<api.ServiceTypeFieldSet | null>(
-    () => (selectedId ? api.getFieldSet(serviceTypeId, selectedId) : Promise.resolve(null)),
+    () =>
+      selectedId
+        ? api.getFieldSet(serviceTypeId, selectedId)
+        : Promise.resolve(null),
     [serviceTypeId, selectedId],
   );
 
   const set = detail.data;
   const editable = !!set && !set.is_active;
-  const optionsField = (set?.fields || []).find((f) => f.service_type_field_id === optionsFor) || null;
+  const optionsField =
+    (set?.fields || []).find((f) => f.service_type_field_id === optionsFor) ||
+    null;
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -359,9 +433,13 @@ export function ServiceTypeFieldsTab({
           className="max-w-xs"
         >
           {(sets.data || []).map((s) => (
-            <option key={s.service_type_field_set_id} value={s.service_type_field_set_id}>
+            <option
+              key={s.service_type_field_set_id}
+              value={s.service_type_field_set_id}
+            >
               v{s.version}
-              {s.is_active ? " — live" : " — draft"} · {s.field_count ?? 0} fields
+              {s.is_active ? " — live" : " — draft"} · {s.field_count ?? 0}{" "}
+              fields
               {s.dossier_count ? ` · ${s.dossier_count} files` : ""}
             </option>
           ))}
@@ -373,7 +451,10 @@ export function ServiceTypeFieldsTab({
           disabled={busy}
           onClick={() =>
             run(async () => {
-              const created = await api.createFieldSetVersion(serviceTypeId, live ? { from: live.service_type_field_set_id } : {});
+              const created = await api.createFieldSetVersion(
+                serviceTypeId,
+                live ? { from: live.service_type_field_set_id } : {},
+              );
               setOpenId(created.service_type_field_set_id);
             })
           }
@@ -385,7 +466,14 @@ export function ServiceTypeFieldsTab({
           <Button
             size="sm"
             disabled={busy}
-            onClick={() => run(() => api.publishFieldSet(serviceTypeId, set.service_type_field_set_id))}
+            onClick={() =>
+              run(() =>
+                api.publishFieldSet(
+                  serviceTypeId,
+                  set.service_type_field_set_id,
+                ),
+              )
+            }
           >
             Publish v{set.version}
           </Button>
@@ -394,9 +482,10 @@ export function ServiceTypeFieldsTab({
 
       {set?.is_active && (
         <Callout tone="info" title={`v${set.version} is live and read-only`}>
-          Every new file of this service type is created against this version. To change it, create a new version
-          from it, edit that, and publish — files already open keep the version they were created under, so nothing
-          in flight is disturbed.
+          Every new file of this service type is created against this version.
+          To change it, create a new version from it, edit that, and publish —
+          files already open keep the version they were created under, so
+          nothing in flight is disturbed.
         </Callout>
       )}
 
@@ -427,10 +516,23 @@ export function ServiceTypeFieldsTab({
                   editable={editable}
                   busy={busy}
                   onPatch={(patch) =>
-                    run(() => api.updateFieldInSet(serviceTypeId, set.service_type_field_set_id, f.service_type_field_id, patch))
+                    run(() =>
+                      api.updateFieldInSet(
+                        serviceTypeId,
+                        set.service_type_field_set_id,
+                        f.service_type_field_id,
+                        patch,
+                      ),
+                    )
                   }
                   onRemove={() =>
-                    run(() => api.removeFieldFromSet(serviceTypeId, set.service_type_field_set_id, f.service_type_field_id))
+                    run(() =>
+                      api.removeFieldFromSet(
+                        serviceTypeId,
+                        set.service_type_field_set_id,
+                        f.service_type_field_id,
+                      ),
+                    )
                   }
                   onEditOptions={() => setOptionsFor(f.service_type_field_id)}
                 />
@@ -439,16 +541,26 @@ export function ServiceTypeFieldsTab({
           </Table>
 
           <p className="micro text-muted-foreground">
-            <strong>Means (shared panel)</strong> is how a field is understood by every document, costing and
-            quotation that references a file — tag a Bill of Lading and a MAWB both as the transport reference and
-            they render in the same place, whatever the service type. A field with no meaning still appears on the
-            form and the file; it just does not join the shared header.
+            <strong>Means (shared panel)</strong> is how a field is understood
+            by every document, costing and quotation that references a file —
+            tag a Bill of Lading and a MAWB both as the transport reference and
+            they render in the same place, whatever the service type. A field
+            with no meaning still appears on the form and the file; it just does
+            not join the shared header.
           </p>
 
           {editable && (
             <NewFieldForm
               busy={busy}
-              onAdd={(body) => run(() => api.addFieldToSet(serviceTypeId, set.service_type_field_set_id, body))}
+              onAdd={(body) =>
+                run(() =>
+                  api.addFieldToSet(
+                    serviceTypeId,
+                    set.service_type_field_set_id,
+                    body,
+                  ),
+                )
+              }
             />
           )}
 
@@ -486,7 +598,9 @@ function NewFieldForm({
   onAdd,
   busy,
 }: {
-  onAdd: (body: Partial<api.ServiceTypeField> & { key: string; label_fr: string }) => void;
+  onAdd: (
+    body: Partial<api.ServiceTypeField> & { key: string; label_fr: string },
+  ) => void;
   busy: boolean;
 }) {
   const [key, setKey] = React.useState("");
@@ -505,24 +619,47 @@ function NewFieldForm({
   const [options, setOptions] = React.useState<api.FieldOption[]>([]);
   const [optionsOpen, setOptionsOpen] = React.useState(false);
 
-  const slug = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const slug = key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
   const optionsNeeded = NEEDS_OPTIONS(type);
   const optionsOk = !optionsNeeded || optionProblems(options).length === 0;
   const ok =
-    /^[a-z][a-z0-9_]*$/.test(slug) && slug.length >= 2 && label.trim().length > 0 && optionsOk;
+    /^[a-z][a-z0-9_]*$/.test(slug) &&
+    slug.length >= 2 &&
+    label.trim().length > 0 &&
+    optionsOk;
 
   return (
     <div className="space-y-3 rounded-md border border-border p-4">
       <h4 className="text-sm font-medium text-foreground">Add a field</h4>
       <div className="grid gap-3 sm:grid-cols-12">
-        <Field label="Key" required className="sm:col-span-3" hint="Permanent — values are stored under it.">
-          <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="booking_ref" />
+        <Field
+          label="Key"
+          required
+          className="sm:col-span-3"
+          hint="Permanent — values are stored under it."
+        >
+          <Input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="booking_ref"
+          />
         </Field>
         <Field label="Label" required className="sm:col-span-3">
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Booking reference" />
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Booking reference"
+          />
         </Field>
         <Field label="Type" className="sm:col-span-2">
-          <Select value={type} onChange={(e) => setType(e.target.value as api.FieldDataType)}>
+          <Select
+            value={type}
+            onChange={(e) => setType(e.target.value as api.FieldDataType)}
+          >
             {DATA_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -531,10 +668,16 @@ function NewFieldForm({
           </Select>
         </Field>
         <Field label="Section" className="sm:col-span-2">
-          <Input value={group} onChange={(e) => setGroup(e.target.value.toUpperCase())} />
+          <Input
+            value={group}
+            onChange={(e) => setGroup(e.target.value.toUpperCase())}
+          />
         </Field>
         <Field label="Means" className="sm:col-span-2">
-          <Select value={role} onChange={(e) => setRole(e.target.value as api.FacetRole | "")}>
+          <Select
+            value={role}
+            onChange={(e) => setRole(e.target.value as api.FacetRole | "")}
+          >
             {FACET_ROLES.map((r) => (
               <option key={r || "none"} value={r}>
                 {r || "—"}
@@ -546,8 +689,15 @@ function NewFieldForm({
 
       {optionsNeeded && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setOptionsOpen(true)}>
-            {options.length ? `Edit ${options.length} option${options.length === 1 ? "" : "s"}` : "Set the options"}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => setOptionsOpen(true)}
+          >
+            {options.length
+              ? `Edit ${options.length} option${options.length === 1 ? "" : "s"}`
+              : "Set the options"}
           </Button>
           {!optionsOk && (
             <span className="micro text-muted-foreground">
@@ -580,7 +730,8 @@ function NewFieldForm({
       </Button>
       {key && !/^[a-z][a-z0-9_]*$/.test(slug) && (
         <p className="micro text-muted-foreground">
-          A key is snake_case and at least two characters — “{key}” becomes “{slug || "…"}”.
+          A key is snake_case and at least two characters — “{key}” becomes “
+          {slug || "…"}”.
         </p>
       )}
 

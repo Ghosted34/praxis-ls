@@ -16,7 +16,15 @@ import {
 } from "@/lib/branding";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { SettingsCard, Field, TextArea, Segmented, Toggle, ColorRow, ImageField } from "@/components/settings/controls";
+import {
+  SettingsCard,
+  Field,
+  TextArea,
+  Segmented,
+  Toggle,
+  ColorRow,
+  ImageField,
+} from "@/components/settings/controls";
 import { cn } from "@/lib/cn";
 
 export function LoginEditor() {
@@ -29,7 +37,10 @@ export function LoginEditor() {
   const [accentOverride, setAccentOverride] = React.useState("");
 
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = React.useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
 
   React.useEffect(() => {
     fetchLogin()
@@ -78,24 +89,44 @@ export function LoginEditor() {
 
   return (
     <section className={cn(pageShell.reading, "pb-24")}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Login screen" description="Configure the signed-out door — no code, no redeploy." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Login screen"
+        description="Configure the signed-out door — no code, no redeploy."
+      />
 
       {!loaded ? (
         <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="mt-6 flex flex-col gap-5">
-          <SettingsCard title="Copy" desc="Headline and supporting line shown on the sign-in screen.">
+          <SettingsCard
+            title="Copy"
+            desc="Headline and supporting line shown on the sign-in screen."
+          >
             <div className="flex flex-col gap-4">
               <Field label="Headline">
-                <TextArea rows={2} value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder="Your logistics command center" />
+                <TextArea
+                  rows={2}
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
+                  placeholder="Your logistics command center"
+                />
               </Field>
               <Field label="Subtext">
-                <TextArea rows={2} value={subtext} onChange={(e) => setSubtext(e.target.value)} placeholder="Sign in to your command center." />
+                <TextArea
+                  rows={2}
+                  value={subtext}
+                  onChange={(e) => setSubtext(e.target.value)}
+                  placeholder="Sign in to your command center."
+                />
               </Field>
             </div>
           </SettingsCard>
 
-          <SettingsCard title="Layout & background" desc="How the sign-in screen is composed.">
+          <SettingsCard
+            title="Layout & background"
+            desc="How the sign-in screen is composed."
+          >
             <div className="flex flex-col gap-4">
               <Field label="Layout">
                 <Segmented
@@ -113,14 +144,29 @@ export function LoginEditor() {
                 onChange={setBackgroundUrl}
                 shape="wide"
                 hint="A dark scrim is applied automatically. Large landscape image recommended."
-                upload={(d) => uploadLoginBackground(d).then((r) => r.backgroundUrl)}
+                upload={(d) =>
+                  uploadLoginBackground(d).then((r) => r.backgroundUrl)
+                }
               />
-              <Toggle checked={showLogo} onChange={setShowLogo} label="Show logo" hint="Display the brand logo on the sign-in screen." />
+              <Toggle
+                checked={showLogo}
+                onChange={setShowLogo}
+                label="Show logo"
+                hint="Display the brand logo on the sign-in screen."
+              />
               <Field label="Accent override (optional)">
                 <div className="flex items-center gap-2">
-                  <ColorRow token="accent" value={accentOverride || "#000000"} onChange={setAccentOverride} />
+                  <ColorRow
+                    token="accent"
+                    value={accentOverride || "#000000"}
+                    onChange={setAccentOverride}
+                  />
                   {accentOverride && (
-                    <Button variant="ghost" size="sm" onClick={() => setAccentOverride("")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAccentOverride("")}
+                    >
                       Clear
                     </Button>
                   )}

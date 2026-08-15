@@ -111,6 +111,12 @@ function Stars({
               // hiring decision is later defended with.
               onClick={() => { if (value === n) onChange(null); }}
             />
+            {/* The radio's accessible name. Without it this control was five
+                unlabelled radios: the input is `sr-only`, the star is
+                `aria-hidden` because it is decoration, and the `title` above
+                sits on the LABEL, which does not name the input it wraps. A
+                sighted user sees a row of stars; everyone else heard nothing. */}
+            <span className="sr-only">{n === 1 ? "1 star" : `${n} stars`}</span>
             <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden
               className={cn("transition-colors", on ? "text-[rgb(var(--warn))]" : "text-muted-foreground/40")}
               fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round">

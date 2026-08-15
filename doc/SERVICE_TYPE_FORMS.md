@@ -87,6 +87,38 @@ offer `SELECT` in its type list and send no options, which the server refuses �
 adding one always failed with no way past it. A dropdown *is* its option list;
 asking for the list is not an extra step, it is the step that was missing.
 
+## The Estimated Project Delivery Date
+
+One field is worth calling out because the milestone engine is scheduled against
+it: **Estimated Project Delivery Date**, bound to `dossier.promised_delivery_date`,
+facet role `DELIVERY_DATE`, on every movement service type (0679).
+
+It is the FIRST thing `milestone.resolveTarget` consults:
+
+```
+1. promised_delivery_date   the client SLA — what we committed to
+2. eta                      the carrier's estimate — NOT the same promise
+3. default_duration_days    the service type's own horizon
+```
+
+Two consequences, and both are the point:
+
+- **`is_target_lock` needs it.** That flag marks the SLA-protected stage: upstream
+  slip *compresses* the remaining stages toward the committed date rather than
+  moving it, and then reports the breach. With no promised date the lock falls onto
+  the carrier's ETA, so a carrier delay silently becomes ours and nothing is ever
+  reported as breached.
+- **Changing it re-plans the chain.** `operations_file.update` fires
+  `recalculate(trigger: "TARGET_CHANGED")` whenever the promised date or the ETA
+  moves by a day. Compared by day, not by value: these are `date` columns that
+  arrive as a string from a form and as a `Date` from pg, and re-planning on every
+  unrelated save would rewrite planned dates and write a rebaseline row for nothing.
+
+It is *not* on warehousing, brokerage or representation (no delivery, and two of
+them are open-ended by declaration), nor on inland transportation, whose own `eta`
+is already labelled "Planned delivery" — a second delivery date on a five-day
+domestic haul is the ask-twice mistake.
+
 ## Where the seeded lists came from
 
 `migrations/seeds/9092_seed_service_type_fields.sql` writes each list once and
@@ -125,3 +157,41 @@ these need `edit` on the service-type module and are audited.
 - [VERIFIED_PLACES.md](VERIFIED_PLACES.md) — `GEO_PLACE` fields, and why a location
   field is a picker rather than a text box.
 - [CONTROL_TOWER.md](CONTROL_TOWER.md) — what the facet roles feed.
+
+## Milestone chains: the same versioning, and one tenant-specific catch
+
+Milestone templates work the way forms do — versions, one live, publish to
+supersede — and `9091` ships a real **14-stage** chain for all twelve service
+types. Sea Freight Import, for the record:
+
+```
+PRE_ALERT · DOCS_VERIFIED · ARRIVAL_NOTICE · VESSEL_ARRIVED (ATA) · DISCHARGE
+DECLARATION_LODGED · INSPECTION · DUTIES_PAID · CUSTOMS_RELEASED (BAE)
+CARRIER_RELEASE (D.O.) · TERMINAL_EXIT · DELIVERY · EMPTY_RETURN · FILE_CLOSED
+```
+
+`9091` is deliberately non-destructive: a service type that already has *any*
+template is skipped, so a tenant's own chain is never overwritten. On
+**sandbox-seeded tenants** that rule backfired. `seed-sandbox.sql` creates a
+five-stage demo chain for sea import, air import and hinterland transit as part of
+the sample data, and it runs first — so those three services ran on
+`Réservation → Départ navire → Arrivée port → Dédouanement → Livraison finale`
+while the other nine got their fourteen.
+
+Worse, the sandbox inserts its template with `is_system` left false, and
+"compare against the shipped default / restore it" reads
+`WHERE t.is_system AND s.is_system`. With no system template there was nothing to
+compare against and nothing to restore — the escape hatch was present and
+disconnected.
+
+`0680` fixes it for those three, and only where the demo chain is still exactly as
+the sandbox left it (matched on its five stage codes — one renamed stage means a
+human has been in there, and it is left alone). The shipped fourteen are published
+as a **new version**, marked system so drift-and-restore finally has a baseline.
+
+**Files already open are untouched.** Milestone *instances* are copies taken at
+instantiation, so every dossier keeps the chain it was created against, exactly as a
+republished detail form leaves open files alone. New files get the fourteen.
+
+`tests/unit/milestone-seed-parity.test.js` reads `9091` and `0680` and fails if the
+stage rows they share ever stop agreeing.

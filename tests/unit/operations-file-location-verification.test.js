@@ -196,6 +196,17 @@ describe("opening a movement file", () => {
     expect(err.details.place_delivery[0]).toContain("Yaonde");
   });
 
+  test("the delivery DATE is not place-checked — it is a date, not a place", async () => {
+    // 0679's DELIVERY_DATE sits next to 0678's FINAL_DELIVERY and the names are one
+    // word apart. Only the second is a place, and a gate that confused them would
+    // refuse to open every file with a delivery date on it.
+    const c = fakeClient({
+      fields: [field({ key: "estimated_delivery_date", data_type: "DATE", facet_role: "DELIVERY_DATE", column_name: "promised_delivery_date", label_en: "Estimated Project Delivery Date", is_required: false })],
+    });
+    await expect(apply(c, { estimated_delivery_date: "2026-09-25" })).resolves.toBeTruthy();
+    expect(c.state.keysAsked).toEqual([]);
+  });
+
   test("a verified delivery address passes and is rewritten to the catalogue's spelling", async () => {
     const c = fakeClient({
       fields: [field({ key: "place_delivery", facet_role: "FINAL_DELIVERY", column_name: "place_delivery", label_en: "Place of delivery" })],

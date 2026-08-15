@@ -38,6 +38,10 @@ const FACET_ROLE = z.enum([
   "TRANSPORT_REF", "CONVEYANCE", "CARRIER", "ORIGIN", "DESTINATION", "ROUTE_VIA",
   "COLLECTION", "FINAL_DELIVERY",
   "DEPARTURE_DATE", "ARRIVAL_DATE",
+  // The commitment the milestone chain is scheduled against (0679). Distinct from
+  // ARRIVAL_DATE, which is arrival at the PORT — delivery to the consignee is a
+  // different date, and the facet map is keyed by role.
+  "DELIVERY_DATE",
   "CARGO_DESC", "CARGO_WEIGHT", "CARGO_VOLUME", "CARGO_PACKAGES", "CARGO_MARKS",
   "CUSTODY_LOCATION", "CUSTODY_STATUS", "CUSTODY_IN", "CUSTODY_OUT",
   "INCOTERM", "CUSTOMS_REF", "CUSTOMS_REGIME",

@@ -39,6 +39,12 @@ const createShape = z.object({
   salary_max: z.coerce.number().nonnegative().optional(),
   salary_currency: z.string().length(3).optional(),
   closes_on: z.string().date().optional(),
+  // 0526 — which corporate entity is hiring. Optional: a single-entity tenant
+  // is not asked a question with one possible answer (the service resolves the
+  // sole active entity). It decides the salary currency and grounds the AI, so
+  // the blank-form path must be able to set it too, not just the wizard.
+  entity_id: z.string().uuid().optional().nullable(),
+  headcount: z.coerce.number().int().min(1).max(500).optional(),
 });
 
 // Mirrors ck_vacancy_salary_range. Applied to both create and update so the
@@ -96,7 +102,37 @@ const answer = z.object({
 });
 const publish = z.object({ published: z.boolean() });
 
-const schemas = { create, update, status, applicant, applicantStatus, criterion, question, answer, publish };
+/**
+ * The interview answers (0526).
+ *
+ * `passthrough()`, and that is the point: the later questions are GENERATED, so
+ * their keys cannot be enumerated here without the schema having to be edited
+ * every time the model asks something new. Each value is bounded instead —
+ * these are free text from a human, they are stored verbatim in `intake_json`,
+ * and they are forwarded to a model, so length is the control that matters.
+ */
+const intakeAnswers = z.record(
+  z.union([z.string().max(4000), z.number(), z.boolean(), z.null()]),
+);
+const intake = z.object({
+  entity_id: z.string().uuid().optional().nullable(),
+  answers: intakeAnswers,
+});
+
+/**
+ * A spoken answer, as a base64 data URL.
+ *
+ * ~2.7 MB of base64 for 2 MB of audio, which at Opus bitrates is several
+ * minutes — far more than any answer to "where is the role based?" needs, and
+ * small enough that a stalled upload is not a hung browser tab. The cap is the
+ * cheap outer bound: it stops a large blob being base64-decoded into memory
+ * before anything looks at it.
+ */
+const transcribe = z.object({
+  audio_data_url: z.string().min(32).max(2_800_000),
+});
+
+const schemas = { create, update, status, applicant, applicantStatus, criterion, question, answer, publish, intake, transcribe };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -115,5 +151,7 @@ module.exports = {
   question: mw("question"),
   answer: mw("answer"),
   publish: mw("publish"),
+  intake: mw("intake"),
+  transcribe: mw("transcribe"),
   schemas,
 };

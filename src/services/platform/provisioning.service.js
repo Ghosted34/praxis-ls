@@ -40,21 +40,48 @@ const tenantRoleName = (slug) => `praxis_${slug}`;
  * migrations run as the superuser, so they must be declared FOR that role —
  * otherwise a table added by a LATER migration is unreadable again.
  */
+/**
+ * A bare SQL identifier, validated then quoted.
+ *
+ * GRANT takes no parameters — a role and a schema are identifiers, not values,
+ * so `$1` is not available and the name must be interpolated. That makes this
+ * the one place in the file where a string reaches SQL as syntax, and it is
+ * therefore the one place that has to prove the string cannot BE syntax.
+ *
+ * Deliberately narrower than Postgres allows, and the same shape as the check in
+ * shared/db/query-helpers.js: lower-case start, then letters, digits and
+ * underscores, to Postgres's own 63-character NAMEDATALEN limit. Every schema
+ * and role this system creates fits it — `live`, `sandbox`, `public`, and
+ * `praxis_<slug>` where the slug already passed `m.slugOk`. Anything that does
+ * not fit is a mistake or an attack, and both should stop here rather than
+ * reaching the database as a fragment.
+ *
+ * Quoting alone would NOT be enough: a name containing a double quote would
+ * close the quoted identifier and escape. The pattern check is what closes that,
+ * and the two are done together so neither can be applied without the other.
+ */
+const SQL_IDENT = /^[a-z_][a-z0-9_]{0,62}$/;
+function quoteIdent(name, what) {
+  if (typeof name !== "string" || !SQL_IDENT.test(name)) {
+    throw new Error(`refusing to build SQL from an invalid ${what}: "${String(name).slice(0, 40)}"`);
+  }
+  return `"${name}"`;
+}
+
 async function grantSchemaToRole(cli, { schema, role, superuser }) {
-  await cli.query(`GRANT USAGE ON SCHEMA "${schema}" TO "${role}"`);
+  const sch = quoteIdent(schema, "schema name");
+  const rol = quoteIdent(role, "role name");
+  const su = quoteIdent(superuser, "superuser name");
+  await cli.query(`GRANT USAGE ON SCHEMA ${sch} TO ${rol}`);
+  await cli.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${sch} TO ${rol}`);
+  await cli.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${sch} TO ${rol}`);
   await cli.query(
-    `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO "${role}"`,
+    `ALTER DEFAULT PRIVILEGES FOR ROLE ${su} IN SCHEMA ${sch} ` +
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${rol}`,
   );
   await cli.query(
-    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "${schema}" TO "${role}"`,
-  );
-  await cli.query(
-    `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${role}"`,
-  );
-  await cli.query(
-    `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
-      `GRANT USAGE, SELECT ON SEQUENCES TO "${role}"`,
+    `ALTER DEFAULT PRIVILEGES FOR ROLE ${su} IN SCHEMA ${sch} ` +
+      `GRANT USAGE, SELECT ON SEQUENCES TO ${rol}`,
   );
 }
 

@@ -470,6 +470,20 @@ function VacancyDetail({ token }: { token: string }) {
 
   return (
     <article className="space-y-8">
+      {/* A rehearsal posting, opened by whoever was handed its link. It is a
+          real page with a real application form writing to real (Test) rows —
+          the one thing it must not do is look like the live advert, because the
+          person reading it may be a candidate somebody forwarded it to. */}
+      {v.environment === "sandbox" && (
+        <p
+          role="status"
+          className="rounded-lg border border-[rgb(var(--warn)_/_0.4)] bg-[rgb(var(--warn)_/_0.1)] px-3 py-2 text-sm text-foreground"
+        >
+          <span className="font-semibold">TEST</span> — this is a test posting.
+          Anything you send here goes to the test workspace, not to a real
+          hiring team.
+        </p>
+      )}
       <div>
         <Link to="/careers" className="text-sm text-muted-foreground underline">
           ← All roles

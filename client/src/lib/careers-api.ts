@@ -33,6 +33,15 @@ export type PublicVacancy = {
   salary_currency?: string | null;
   closes_on?: string | null;
   published_at?: string | null;
+  /**
+   * Which environment this role lives in — `sandbox` for a rehearsal posting.
+   *
+   * The server decides it from the token rather than from a header, because a
+   * candidate has none: before that, whether a careers link worked depended on
+   * a value in the VIEWER's localStorage. Present on the single-role read only;
+   * the index is live-only.
+   */
+  environment?: "live" | "sandbox";
 };
 
 export type ApplyInput = {

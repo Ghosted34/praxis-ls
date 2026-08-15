@@ -8,8 +8,12 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { FileDrop } from "@/components/ui/file-drop";
+import { Callout } from "@/components/ui/callout";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
@@ -30,14 +34,52 @@ const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = {
   DRAFT: "mute",
   OPEN: "ok",
+  PAUSED: "warn",
   CLOSED: "mute",
 };
+// Mirrors the server's map (vacancy.service). PAUSED is a round trip out of
+// OPEN and back; CLOSED is an ending, so nothing leads out of it.
 const VAC_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["OPEN"],
-  OPEN: ["CLOSED"],
+  OPEN: ["PAUSED", "CLOSED"],
+  PAUSED: ["OPEN", "CLOSED"],
   CLOSED: [],
 };
-const VAC_LABEL: Record<string, string> = { OPEN: "Open", CLOSED: "Close" };
+/** The verb on the button, which is not the state's name: you "pause" a role
+ *  to reach PAUSED, and from there the same OPEN target reads "Resume". */
+const VAC_LABEL: Record<string, string> = {
+  OPEN: "Open",
+  PAUSED: "Pause",
+  CLOSED: "Close",
+};
+
+/**
+ * The list filters.
+ *
+ * "Published" is not a status — it is `public_token != null` on an OPEN role —
+ * but it is the question people actually ask ("what is live on the careers page
+ * right now?"), so it earns a tab of its own rather than making somebody open
+ * each open role to find out.
+ */
+const FILTERS: {
+  key: string;
+  label: string;
+  match: (v: api.Vacancy) => boolean;
+}[] = [
+  { key: "", label: "All", match: () => true },
+  { key: "DRAFT", label: "Drafts", match: (v) => v.status === "DRAFT" },
+  { key: "OPEN", label: "Open", match: (v) => v.status === "OPEN" },
+  {
+    key: "PUBLISHED",
+    label: "Published",
+    match: (v) => v.status === "OPEN" && Boolean(v.public_token),
+  },
+  { key: "PAUSED", label: "Paused", match: (v) => v.status === "PAUSED" },
+  { key: "CLOSED", label: "Closed", match: (v) => v.status === "CLOSED" },
+];
+
+/** Mirrors careers.service + vacancy.service — the same document either way. */
+const CV_MAX_BYTES = 8 * 1024 * 1024;
 
 const ORDER = ["APPLIED", "SHORTLISTED", "INTERVIEWED", "HIRED"];
 const COLUMNS = [...ORDER, "REJECTED", "TALENT_POOL"];
@@ -52,26 +94,70 @@ const COL_LABEL: Record<string, string> = {
 
 function AddApplicantForm({
   vacancyId,
+  vacancyCurrency,
   onClose,
   onSaved,
 }: {
   vacancyId: string;
+  /** The role's own currency, so "desired salary" is not a bare number. */
+  vacancyCurrency?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [f, setF] = React.useState({ full_name: "", email: "", phone: "" });
+  const [f, setF] = React.useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    address: "",
+    skills: "",
+    experience_years: "",
+    expected_salary: "",
+    portfolio_url: "",
+    cover_note: "",
+    source: "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
+  // The CV takes the same road as one uploaded to the careers page: read to a
+  // base64 data URL here, sniffed and size-capped by the vault server-side.
+  // Without it a referral can never be scored on more than the typed fields,
+  // while an online applicant is read in full.
+  const [cv, setCv] = React.useState<File | null>(null);
+  const [cvError, setCvError] = React.useState<string | null>(null);
+  const readDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onerror = () => reject(new Error("Couldn't read that file."));
+      r.onload = () => resolve(String(r.result));
+      r.readAsDataURL(file);
+    });
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const cvDataUrl = cv ? await readDataUrl(cv) : undefined;
       await api.addApplicant(vacancyId, {
+        cv_data_url: cvDataUrl,
+        cv_filename: cv?.name,
         full_name: f.full_name,
         email: f.email || undefined,
         phone: f.phone || undefined,
+        address: f.address || undefined,
+        // The scorer matches these by substring, so blanks would be scored as a
+        // required skill nobody can meet.
+        skills: f.skills
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        experience_years: num(f.experience_years),
+        expected_salary: num(f.expected_salary),
+        portfolio_url: f.portfolio_url || undefined,
+        cover_note: f.cover_note || undefined,
+        source: f.source || undefined,
       });
       onSaved();
       onClose();
@@ -86,7 +172,8 @@ function AddApplicantForm({
       open
       onClose={onClose}
       title="Add applicant"
-      description="Add a candidate to this vacancy's pipeline."
+      size="lg"
+      description="Add a candidate to this vacancy's pipeline. The more you fill in, the more the AI score has to read."
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Full name" required>
@@ -110,6 +197,108 @@ function AddApplicantForm({
             />
           </Field>
         </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Address">
+            <Input
+              value={f.address}
+              onChange={(e) => set("address", e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Source"
+            hint="Where they came from — referral, walk-in, LinkedIn."
+          >
+            <Input
+              list="applicant-sources"
+              value={f.source}
+              onChange={(e) => set("source", e.target.value)}
+            />
+          </Field>
+        </div>
+        {/* Suggestions, not a fixed list: `source` is free text and the public
+            form stamps its own value ("careers"), so a select would either drop
+            what somebody typed or quietly disagree with the careers page. */}
+        <datalist id="applicant-sources">
+          {[
+            "Referral",
+            "Walk-in",
+            "LinkedIn",
+            "Agency",
+            "Jobberman",
+            "Instagram",
+          ].map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Years of experience">
+            <Input
+              type="number"
+              min={0}
+              step="0.5"
+              inputMode="decimal"
+              value={f.experience_years}
+              onChange={(e) => set("experience_years", e.target.value)}
+            />
+          </Field>
+          <Field
+            label={`Desired salary${vacancyCurrency ? ` (${vacancyCurrency})` : ""}`}
+          >
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={f.expected_salary}
+              onChange={(e) => set("expected_salary", e.target.value)}
+            />
+          </Field>
+          <Field label="Portfolio link">
+            <Input
+              type="url"
+              value={f.portfolio_url}
+              onChange={(e) => set("portfolio_url", e.target.value)}
+            />
+          </Field>
+        </div>
+        <Field
+          label="Skills"
+          hint="Comma separated. The AI score matches these against the role's required skills."
+        >
+          <Input
+            value={f.skills}
+            onChange={(e) => set("skills", e.target.value)}
+          />
+        </Field>
+        <FileDrop
+          file={cv}
+          onPick={(picked) => {
+            // Refused here as well as server-side, because the alternative is
+            // reading an 80 MB file into memory to be told no afterwards.
+            if (picked && picked.size > CV_MAX_BYTES) {
+              setCvError(
+                "That file is over 8 MB. Send a smaller PDF or photo.",
+              );
+              return;
+            }
+            setCvError(null);
+            setCv(picked);
+          }}
+          accept="application/pdf,image/png,image/jpeg"
+          label="CV"
+          hint="PDF or a photo, up to 8 MB. Without one the AI score stays an estimate."
+          error={cvError}
+          disabled={busy}
+        />
+        <Field
+          label="Cover note"
+          hint="Anything they sent or said — the AI reads it alongside the CV."
+        >
+          <Textarea
+            rows={4}
+            value={f.cover_note}
+            onChange={(e) => set("cover_note", e.target.value)}
+          />
+        </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button
@@ -145,6 +334,13 @@ function NewVacancyForm({
     scope_id: null,
     department: null,
   });
+  // Who is hiring. Asked here for the same reason the interview asks it: the
+  // vacancy is what carries `entity_id` to the employee record at hire, and a
+  // vacancy attached to no company is the link in that chain that breaks. Only
+  // shown when there is a choice — one company is not a question.
+  const entities = useResource(() => api.hiringEntities(), []);
+  const choices = entities.data || [];
+  const [entityId, setEntityId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
@@ -157,6 +353,7 @@ function NewVacancyForm({
         scope_id: dept.scope_id || undefined,
         department: dept.department || undefined,
         description: f.description || undefined,
+        entity_id: entityId || undefined,
       });
       onSaved(v);
       onClose();
@@ -181,6 +378,23 @@ function NewVacancyForm({
             placeholder="Driver — heavy goods"
           />
         </Field>
+        {choices.length > 1 && (
+          <Field
+            label="Company"
+            hint="Which corporate entity is hiring. It sets the vacancy's currency."
+          >
+            <Select
+              value={entityId}
+              onValueChange={setEntityId}
+              placeholder="Choose the hiring company…"
+              options={choices.map((c) => ({
+                value: c.entity_id,
+                label: c.name,
+                hint: c.currency ? `Salaries in ${c.currency}` : undefined,
+              }))}
+            />
+          </Field>
+        )}
         <Field
           label="Department"
           hint="From your organigramme — Security › Scopes."
@@ -235,7 +449,9 @@ function Pipeline({
   const [openApplicant, setOpenApplicant] =
     React.useState<api.Applicant | null>(null);
   const [copied, setCopied] = React.useState(false);
+  const [rescored, setRescored] = React.useState<string | null>(null);
 
+  const paused = vacancy.status === "PAUSED";
   const publicUrl = vacancy.public_token
     ? // Same origin: the tenant is resolved from the HOST, so the careers page for
       // this workspace is on this workspace's own domain. Building it from
@@ -273,6 +489,27 @@ function Pipeline({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setError("Couldn't copy — select the link and copy it by hand.");
+    }
+  }
+
+  async function rescoreAll() {
+    setBusy("score-all");
+    setError(null);
+    setRescored(null);
+    try {
+      const r = await api.scoreAllApplicants(vacancy.vacancy_id);
+      applicants.reload();
+      // Said out loud, including the failures: "12 scored" with three silently
+      // missing is how a shortlist gets trusted more than it should be.
+      setRescored(
+        `${r.scored} scored${r.failed ? `, ${r.failed} failed` : ""}${
+          r.skipped ? `, ${r.skipped} not reached` : ""
+        }.`,
+      );
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -408,6 +645,19 @@ function Pipeline({
               {vacancy.public_token ? "Unpublish" : "Publish to careers"}
             </Button>
           )}
+          {/* After the criteria or the advert change, the scores on this board
+              were taken against a different version of the role. This is the
+              only way to make them comparable again without opening every
+              candidate. */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy === "score-all"}
+            disabled={Boolean(busy)}
+            onClick={rescoreAll}
+          >
+            Re-score all with AI
+          </Button>
           <Button size="sm" onClick={() => setAdding(true)}>
             Add applicant
           </Button>
@@ -416,7 +666,12 @@ function Pipeline({
 
       {publicUrl && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-          <Pill tone="ok">Live</Pill>
+          {/* A paused role keeps its token but its page 404s, so the banner must
+              not keep saying "Live" — that is how somebody carries on sharing a
+              link that turns candidates away. */}
+          <Pill tone={paused ? "warn" : "ok"}>
+            {paused ? "Paused" : "Live"}
+          </Pill>
           <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {publicUrl}
           </code>
@@ -425,8 +680,19 @@ function Pipeline({
           </Button>
         </div>
       )}
+      {paused && (
+        <p className="micro">
+          Not accepting applications. The link above is kept — reopening the
+          role makes it work again, unchanged.
+        </p>
+      )}
 
       {error && <ErrorState message={error} />}
+      {rescored && (
+        <Callout tone="info" title="Re-scored">
+          {rescored}
+        </Callout>
+      )}
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNS.map((col) => (
@@ -494,6 +760,7 @@ function Pipeline({
       {adding && (
         <AddApplicantForm
           vacancyId={vacancy.vacancy_id}
+          vacancyCurrency={vacancy.salary_currency}
           onClose={() => setAdding(false)}
           onSaved={applicants.reload}
         />
@@ -519,11 +786,18 @@ export function VacanciesPage() {
   const [blankForm, setBlankForm] = React.useState(false);
   const [editing, setEditing] = React.useState<api.Vacancy | null>(null);
 
-  const rows = React.useMemo(() => vacancies.data || [], [vacancies.data]);
+  const [filter, setFilter] = React.useState("");
+  const all = React.useMemo(() => vacancies.data || [], [vacancies.data]);
+  const rows = React.useMemo(() => {
+    const f = FILTERS.find((x) => x.key === filter) || FILTERS[0];
+    return all.filter(f.match);
+  }, [all, filter]);
   const selected = rows.find((v) => v.vacancy_id === selId) || null;
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].vacancy_id);
-  }, [rows, selId]);
+    // Also re-selects when a filter change hides the current row, so the pane
+    // beside the list never sits on a vacancy the list no longer shows.
+    if (!selected && rows.length) setSelId(rows[0].vacancy_id);
+  }, [rows, selected]);
 
   return (
     <section className={shell}>
@@ -538,27 +812,59 @@ export function VacanciesPage() {
         <ErrorState message={vacancies.error} />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
-          <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
-            {vacancies.loading ? (
-              <LoadingRow />
-            ) : rows.length === 0 ? (
-              <div className="px-3 py-4 micro">No vacancies.</div>
-            ) : (
-              rows.map((v) => (
-                <button
-                  key={v.vacancy_id}
-                  onClick={() => setSelId(v.vacancy_id)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${v.vacancy_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
-                >
-                  <span className="truncate font-medium">
-                    {v.title || v.vacancy_id.slice(0, 8)}
-                  </span>
-                  <Pill tone={VAC_TONE[v.status] || "mute"}>
-                    {enumLabel(v.status)}
-                  </Pill>
-                </button>
-              ))
-            )}
+          <div className="space-y-2">
+            <div
+              className="flex flex-wrap gap-1"
+              role="group"
+              aria-label="Filter by status"
+            >
+              {FILTERS.map((f) => {
+                const on = filter === f.key;
+                const n = all.filter(f.match).length;
+                return (
+                  <button
+                    key={f.key || "all"}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setFilter(f.key)}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                      on
+                        ? "border-primary/40 bg-primary/10 text-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {f.label}
+                    {/* The count is the point of a filter row: it says where the
+                        work is before anything is clicked. */}
+                    <span className="ml-1 opacity-60">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+              {vacancies.loading ? (
+                <LoadingRow />
+              ) : rows.length === 0 ? (
+                <div className="px-3 py-4 micro">
+                  {all.length ? "Nothing in this state." : "No vacancies."}
+                </div>
+              ) : (
+                rows.map((v) => (
+                  <button
+                    key={v.vacancy_id}
+                    onClick={() => setSelId(v.vacancy_id)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${v.vacancy_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                  >
+                    <span className="truncate font-medium">
+                      {v.title || v.vacancy_id.slice(0, 8)}
+                    </span>
+                    <Pill tone={VAC_TONE[v.status] || "mute"}>
+                      {enumLabel(v.status)}
+                    </Pill>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
           {selected ? (
             <Pipeline

@@ -51,7 +51,7 @@ const { logger } = require("../../../config/logger");
 function entityContext(entity) {
   if (!entity) return "No entity details on file — write in a neutral, professional voice.";
   const lines = [
-    `Name: ${entity.trading_name || entity.name || "the company"}`,
+    `Name: ${entity.trading_name || entity.legal_name || "the company"}`,
     entity.description && `About: ${entity.description}`,
     entity.industry && `Industry: ${entity.industry}`,
     entity.legal_form && `Legal form: ${entity.legal_form}`,
@@ -111,6 +111,34 @@ const BASE_QUESTIONS = [
     hint: "Perks, reporting line, team, probation…",
   },
 ];
+
+/**
+ * "Which company is hiring?" — asked ONLY when the tenant has more than one
+ * active entity.
+ *
+ * It is question one, and it blocks, because everything after it depends on the
+ * answer: the currency the salary question is labelled in, the labour market
+ * the band is proposed for, what the model is told the company does, and the
+ * `entity_id` the vacancy carries into the hire it eventually provisions.
+ * Without it a multi-entity tenant drafted generic copy in a fallback currency
+ * on a vacancy attached to no company — and nothing said so.
+ *
+ * A single-entity tenant is never shown it: one possible answer is not a
+ * question. The service resolves that case for them.
+ */
+function entityQuestion(entities) {
+  return {
+    key: "entity_id",
+    type: "entity",
+    question: "Which company is hiring?",
+    hint: "It sets the currency of the salary band and grounds what the AI writes about the employer.",
+    options: entities.map((e) => ({
+      value: e.entity_id,
+      label: e.trading_name || e.legal_name,
+      currency: e.default_currency || null,
+    })),
+  };
+}
 
 /** How many generated follow-ups sit after the fixed set. */
 const FOLLOW_UP_COUNT = 2;
@@ -280,7 +308,7 @@ function shape(out, { entity, answers }) {
 function templateDraft({ entity, answers }) {
   const a = answers || {};
   const title = String(a.title || "New role").trim();
-  const company = (entity && (entity.trading_name || entity.name)) || "our team";
+  const company = (entity && (entity.trading_name || entity.legal_name)) || "our team";
   const bullets = (text) =>
     String(text || "")
       .split(/\n|;|(?<=\.)\s+/)
@@ -357,6 +385,7 @@ module.exports = {
   followUpQuestions,
   templateDraft,
   entityContext,
+  entityQuestion,
   shape,
   parseLoose,
   BASE_QUESTIONS,

@@ -53,14 +53,41 @@ function publicVacancy(v) {
     token: v.public_token,
     title: v.title,
     department: v.department,
-    location: v.location,
+    // The written line if there is one, otherwise the structured parts — so a
+    // recruiter who filled in city/state/country is not asked to type the
+    // address a second time for the sake of a display string (0684).
+    location:
+      v.location ||
+      [v.location_city, v.location_state, v.location_country].filter(Boolean).join(", ") ||
+      null,
+    location_city: v.location_city,
+    location_state: v.location_state,
+    location_country: v.location_country,
+    work_mode: v.work_mode,
+    working_hours: v.working_hours,
+    days_on_site: v.days_on_site,
+    days_off_site: v.days_off_site,
+    days_off: v.days_off,
+    probation_months: v.probation_months,
+    target_start_date: v.target_start_date,
     employment_type: v.employment_type,
     description: v.description,
     experience_years_min: v.experience_years_min,
     skills_required: v.skills_required || [],
-    salary_min: v.salary_min,
-    salary_max: v.salary_max,
-    salary_currency: v.salary_currency,
+    // A hidden band is OMITTED, not nulled-in-place and not merely unrendered by
+    // the storefront: the row keeps the numbers for payroll and for scoring a
+    // candidate's expectation, and this JSON is what the internet sees. A flag
+    // the payload ignored would read as a promise (0684).
+    ...(v.salary_hidden
+      ? { salary_hidden: true }
+      : {
+          salary_min: v.salary_min,
+          salary_max: v.salary_max,
+          salary_currency: v.salary_currency,
+        }),
+    // What the form must insist on, so the page can mark the fields required
+    // before the candidate spends ten minutes writing.
+    apply_config: v.apply_config || {},
     closes_on: v.closes_on,
     published_at: v.published_at,
   };
@@ -92,6 +119,19 @@ async function get(client, token) {
 async function apply(client, { token, data, slug }) {
   const vacancy = await vacancyRepo.publishedByToken(client, token);
   if (!vacancy) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
+
+  // What the recruiter marked as required (0684). Enforced HERE and not only in
+  // the page's own markup, because the endpoint is public: a toggle a curl can
+  // walk past is a lie told to whoever set it. Named fields, so the storefront
+  // can mark the box rather than showing a bare 422.
+  const requires = vacancy.apply_config || {};
+  const missing = {};
+  if (requires.require_cover_letter && !String(data.cover_note || "").trim())
+    missing.cover_note = ["This role asks every applicant for a covering note."];
+  if (requires.require_portfolio && !String(data.portfolio_url || "").trim())
+    missing.portfolio_url = ["This role asks every applicant for a portfolio link."];
+  if (Object.keys(missing).length)
+    throw new AppError("INCOMPLETE_APPLICATION", "Some answers are still needed", 422, missing);
 
   let cvVaultId = null;
   if (data.cv_data_url) {

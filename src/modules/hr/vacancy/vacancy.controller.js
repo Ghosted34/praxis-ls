@@ -44,7 +44,18 @@ module.exports = {
     res.json({ data: row });
   }),
 
+  /** Re-score everyone on the vacancy. Sequential model calls — see the
+   *  service for why this does not fan out. */
+  scoreAllApplicants: asyncHandler(async (req, res) => {
+    const out = await req.tenantDb((c) =>
+      service.scoreAllApplicants(c, { vacancyId: req.params.id, actor: actor(req) }));
+    if (!out) throw new AppError("NOT_FOUND", "Vacancy not found", 404);
+    res.json({ data: out });
+  }),
+
   /* ── Drafting from an interview (0526) ── */
+  hiringEntities: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.hiringEntities(c)) })),
   intakeQuestions: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.intakeQuestions(c, { entityId: req.query.entity_id || null })) })),
   intakeFollowUps: asyncHandler(async (req, res) =>

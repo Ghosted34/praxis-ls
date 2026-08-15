@@ -2,6 +2,30 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 const { insertOne, updateOne, getById, listComplete } = require("../../../shared/db/query-helpers");
 
+/**
+ * What "still hiring" means, in one place.
+ *
+ * Three queries below ask it, and a predicate copied three times is a predicate
+ * that will disagree with itself the first time somebody adds a state to it.
+ */
+const ACTIVE_ENTITY = "COALESCE(registration_status, 'ACTIVE') <> 'INACTIVE'";
+
+/**
+ * The entity as the drafting model is allowed to see it.
+ *
+ * Only the columns an advert can honestly use — NOT share capital, tax ids or
+ * registration numbers: they are on the record, irrelevant to a job advert, and
+ * every one sent to a third-party model is a disclosure nobody asked for.
+ *
+ * The name column is `legal_name` (0100), NOT `name`. Selecting `name` is a
+ * 42703 that the error handler turns into a 500 "A required column is missing",
+ * which is what the whole drafting interview did on every call.
+ */
+const ENTITY_COLUMNS = `SELECT entity_id, legal_name, trading_name, description, industry, legal_form,
+                incorporation_place, incorporation_country, headcount, website,
+                default_currency, payroll_country, timezone
+           FROM corporate_entity`;
+
 // vacancy head + job_applicant children. All SQL lives here.
 const base = makeRepo({
   table: "vacancy",
@@ -70,36 +94,41 @@ module.exports = {
   },
 
   /* ── The hiring entity (0526) ──────────────────────────────────────────
-   * Grounding for the drafting wizard. Only the columns an advert can honestly
-   * use — NOT share capital, tax ids or registration numbers, which are on the
-   * record, irrelevant to a job advert, and a disclosure to a third-party model
-   * that nobody asked for. */
+   * Grounding for the drafting wizard. See ENTITY_COLUMNS above for what is
+   * read and what is deliberately not. */
   getEntity(client, entityId) {
     if (!entityId) return Promise.resolve(null);
     return client
-      .query(
-        `SELECT entity_id, name, trading_name, description, industry, legal_form,
-                incorporation_place, incorporation_country, headcount, website,
-                default_currency, payroll_country, timezone
-           FROM corporate_entity WHERE entity_id = $1`,
-        [entityId],
-      )
+      .query(`${ENTITY_COLUMNS} WHERE entity_id = $1`, [entityId])
       .then((r) => r.rows[0] || null);
   },
   /** The sole active entity, when a tenant has exactly one — so a single-entity
    *  workspace is never asked a question with one possible answer. Returns null
-   *  when there are none or several, and the caller then requires a choice. */
+   *  when there are none or several, and the caller then asks which. */
   soleEntity(client) {
     return client
-      .query(
-        `SELECT entity_id, name, trading_name, description, industry, legal_form,
-                incorporation_place, incorporation_country, headcount, website,
-                default_currency, payroll_country, timezone
-           FROM corporate_entity
-          WHERE COALESCE(registration_status, 'ACTIVE') <> 'INACTIVE'
-          LIMIT 2`,
-      )
+      .query(`${ENTITY_COLUMNS} WHERE ${ACTIVE_ENTITY} LIMIT 2`)
       .then((r) => (r.rows.length === 1 ? r.rows[0] : null));
+  },
+  /**
+   * Every entity that could be doing the hiring, for the "which company?"
+   * question and for the plain create form.
+   *
+   * Deliberately NOT the corporate-entity module's list endpoint: that one is
+   * gated on the master-data grant, and a recruiter who can post a vacancy is
+   * not necessarily allowed to browse the group structure. This returns the
+   * three fields naming a choice — and the currency, so the salary question can
+   * be labelled the moment one is picked rather than after a round trip.
+   */
+  listHiringEntities(client) {
+    return client
+      .query(
+        `SELECT entity_id, legal_name, trading_name, default_currency
+           FROM corporate_entity
+          WHERE ${ACTIVE_ENTITY}
+          ORDER BY COALESCE(trading_name, legal_name) ASC`,
+      )
+      .then((r) => r.rows);
   },
 
   /* ── Custom scoring criteria ── */

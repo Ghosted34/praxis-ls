@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 110,
-  "route_count": 1047,
+  "route_count": 1048,
   "tiers": {
     "public": 22,
     "self-scoped": 65,
-    "gated": 960
+    "gated": 961
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3075,6 +3075,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/vacancies/hiring-entities": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/vacancies/intake/questions": {
       "auth": true,
       "rbac": true,
@@ -6028,6 +6034,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/vacancies/:id/questions/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/score-all": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -1,5 +1,5 @@
 /** Vacancy routes — RBAC-gated (MOD-11) + feature "hr.recruitment".
- * Vacancy lifecycle DRAFT → OPEN → CLOSED via POST /:id/status.
+ * Vacancy lifecycle DRAFT → OPEN ⇄ PAUSED → CLOSED via POST /:id/status.
  * Applicants: GET/POST /:id/applicants, PATCH /:id/applicants/:applicantId. */
 "use strict";
 const express = require("express");
@@ -21,6 +21,9 @@ const M = "MOD-11";
 const TRANSITION_ACTION = {
   DRAFT: "edit",
   OPEN: "edit",
+  // Pausing and resuming are `edit`: both are reversible, neither ends the
+  // record, and the public link survives them (0683). Closing stays `approve`.
+  PAUSED: "edit",
   CLOSED: "approve",
 };
 
@@ -49,6 +52,11 @@ router.get("/talent-pool", requirePermission(M, "view"), controller.searchPool);
  * work has to survive a closed tab after a four-minute interview, so it is
  * saved rather than previewed.
  */
+/* Which companies a vacancy can be opened under. `view`, and on THIS module
+ * rather than the corporate-entity module, because a recruiter who can post a
+ * role is not necessarily granted the master-data list — and a create form that
+ * cannot name the employer produces vacancies attached to nobody. */
+router.get("/hiring-entities", requirePermission(M, "view"), controller.hiringEntities);
 router.get("/intake/questions", requirePermission(M, "view"), controller.intakeQuestions);
 router.post("/intake/follow-ups", requirePermission(M, "create"), validator.intake, controller.intakeFollowUps);
 router.post("/draft", requirePermission(M, "create"), validator.intake, controller.draftVacancy);
@@ -82,6 +90,10 @@ router.get("/:id/applicants", requirePermission(M, "view"), controller.listAppli
  *   for good).
  */
 router.post("/:id/applicants/:applicantId/score", requirePermission(M, "edit"), controller.scoreApplicant);
+// Everyone at once, after the criteria or the description changed. Same `edit`
+// gate and the same budget as scoring one, multiplied — which is why the
+// service caps it rather than trusting the caller.
+router.post("/:id/score-all", requirePermission(M, "edit"), controller.scoreAllApplicants);
 
 router.get("/:id/criteria", requirePermission(M, "view"), controller.listCriteria);
 router.post("/:id/criteria", requirePermission(M, "edit"), validator.criterion, controller.addCriterion);

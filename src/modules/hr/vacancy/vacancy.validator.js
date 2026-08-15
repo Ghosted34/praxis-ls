@@ -26,7 +26,7 @@ const createShape = z.object({
   department: z.string().optional(),
   description: z.string().optional(),
   ai_generated: z.boolean().optional(),
-  status: z.enum(["DRAFT", "OPEN", "CLOSED"]).optional(),
+  status: z.enum(["DRAFT", "OPEN", "PAUSED", "CLOSED"]).optional(),
   posted_to_website: z.boolean().optional(),
   // 0525 — the structured shape the scorer compares against. All optional: a
   // vacancy with none of it still works, the scorer simply has fewer dimensions
@@ -45,6 +45,29 @@ const createShape = z.object({
   // the blank-form path must be able to set it too, not just the wizard.
   entity_id: z.string().uuid().optional().nullable(),
   headcount: z.coerce.number().int().min(1).max(500).optional(),
+  // 0684 — the detail a candidate reads before deciding to apply. All optional
+  // and all nullish: an advert that says none of it still publishes, and
+  // clearing a field is as legitimate an edit as setting one.
+  work_mode: z.string().max(40).nullish(),
+  working_hours: z.string().max(120).nullish(),
+  days_on_site: z.coerce.number().int().min(0).max(7).nullish(),
+  days_off_site: z.coerce.number().int().min(0).max(7).nullish(),
+  days_off: z.coerce.number().int().min(0).max(7).nullish(),
+  probation_months: z.coerce.number().int().min(0).max(24).nullish(),
+  location_city: z.string().max(120).nullish(),
+  location_state: z.string().max(120).nullish(),
+  location_country: z.string().max(120).nullish(),
+  target_start_date: z.string().date().nullish(),
+  salary_hidden: z.boolean().optional(),
+  // Closed shape, not a passthrough: this drives what the PUBLIC form refuses,
+  // so an unknown key here would look like a rule and enforce nothing.
+  apply_config: z
+    .object({
+      require_cover_letter: z.boolean().optional(),
+      require_portfolio: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 });
 
 // Mirrors ck_vacancy_salary_range. Applied to both create and update so the
@@ -62,7 +85,10 @@ const SALARY_ORDER_ERROR = { message: "The top of the salary band must not be be
 const create = createShape.refine(salaryOrder, SALARY_ORDER_ERROR);
 const update = createShape.partial().refine(salaryOrder, SALARY_ORDER_ERROR);
 
-const status = z.object({ status: z.enum(["DRAFT", "OPEN", "CLOSED"]) });
+/** The transition endpoint's target state. Must list every state `createShape`
+ *  allows: this schema runs BEFORE the permission gate picks an action from the
+ *  target, so a state missing here is a 422 no grant can reach. */
+const status = z.object({ status: z.enum(["DRAFT", "OPEN", "PAUSED", "CLOSED"]) });
 const applicant = z.object({
   full_name: z.string().min(1),
   email: z.string().email().optional(),
@@ -77,6 +103,12 @@ const applicant = z.object({
   portfolio_url: z.string().url().max(500).optional(),
   cover_note: z.string().max(5000).optional(),
   source: z.string().max(60).optional(),
+  // 0684 — a CV typed in by hand takes the same road as one uploaded to the
+  // careers page: a base64 data URL, sniffed and size-capped by the vault.
+  // Without it a referral can never be scored on more than the fields above,
+  // while an online applicant is read in full.
+  cv_data_url: z.string().min(32).max(11_000_000).optional(),
+  cv_filename: z.string().max(200).optional(),
 });
 const applicantStatus = z.object({ status: z.enum(APPLICANT_STATUS) });
 

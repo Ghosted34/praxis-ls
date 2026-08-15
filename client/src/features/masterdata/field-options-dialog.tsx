@@ -43,7 +43,13 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
 import type { FieldOption } from "@/lib/operations-api";
-import { nextKey, optionProblems, toDraft, toWireOptions, type DraftOption } from "./field-options";
+import {
+  nextKey,
+  optionProblems,
+  toDraft,
+  toWireOptions,
+  type DraftOption,
+} from "./field-options";
 
 export function FieldOptionsDialog({
   open,
@@ -82,7 +88,8 @@ export function FieldOptionsDialog({
   /** A row that existed when the dialog opened and whose value has since changed.
    *  Those are the ones that orphan stored data. */
   const changedValues = rows.filter(
-    (r) => r._original !== undefined && r._original !== String(r.value || "").trim(),
+    (r) =>
+      r._original !== undefined && r._original !== String(r.value || "").trim(),
   );
 
   const patch = (i: number, next: Partial<DraftOption>) =>
@@ -111,7 +118,12 @@ export function FieldOptionsDialog({
       footer={
         editable ? (
           <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button
@@ -132,8 +144,8 @@ export function FieldOptionsDialog({
     >
       <div className="space-y-3">
         <p className="micro text-muted-foreground">
-          Field key <span className="num font-semibold">{fieldKey}</span>. Order is the order the dropdown shows
-          them in.
+          Field key <span className="num font-semibold">{fieldKey}</span>. Order
+          is the order the dropdown shows them in.
         </p>
 
         {!rows.length && (
@@ -158,77 +170,90 @@ export function FieldOptionsDialog({
                   aria-label={`Option ${i + 1}${row.value ? `: ${row.value}` : ""}`}
                   className="grid gap-2 rounded-md border border-border p-2 sm:grid-cols-12"
                 >
-                <div className="sm:col-span-2">
-                  <label className="micro block text-muted-foreground" htmlFor={`${row._key}-value`}>
-                    Value
-                  </label>
-                  <Input
-                    id={`${row._key}-value`}
-                    className="num"
-                    value={row.value}
-                    disabled={!editable || busy}
-                    placeholder="FOB"
-                    onChange={(e) => patch(i, { value: e.target.value.toUpperCase() })}
-                  />
-                </div>
-                <div className="sm:col-span-4">
-                  <label className="micro block text-muted-foreground" htmlFor={`${row._key}-en`}>
-                    Label (English)
-                  </label>
-                  <Input
-                    id={`${row._key}-en`}
-                    value={row.label_en || ""}
-                    disabled={!editable || busy}
-                    placeholder="FOB — Free On Board"
-                    onChange={(e) => patch(i, { label_en: e.target.value })}
-                  />
-                </div>
-                <div className="sm:col-span-4">
-                  <label className="micro block text-muted-foreground" htmlFor={`${row._key}-fr`}>
-                    Label (French)
-                  </label>
-                  <Input
-                    id={`${row._key}-fr`}
-                    value={row.label_fr || ""}
-                    disabled={!editable || busy}
-                    placeholder="FOB — Franco à bord"
-                    onChange={(e) => patch(i, { label_fr: e.target.value })}
-                  />
-                </div>
-                {editable && (
-                  <div className="flex items-end gap-1 sm:col-span-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Move ${row.value || `option ${i + 1}`} up`}
-                      disabled={i === 0 || busy}
-                      onClick={() => move(i, -1)}
+                  <div className="sm:col-span-2">
+                    <label
+                      className="micro block text-muted-foreground"
+                      htmlFor={`${row._key}-value`}
                     >
-                      ↑
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Move ${row.value || `option ${i + 1}`} down`}
-                      disabled={i === rows.length - 1 || busy}
-                      onClick={() => move(i, 1)}
-                    >
-                      ↓
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Remove ${row.value || `option ${i + 1}`}`}
-                      disabled={busy}
-                      onClick={() => setRows((s) => s.filter((_, j) => j !== i))}
-                    >
-                      ✕
-                    </Button>
+                      Value
+                    </label>
+                    <Input
+                      id={`${row._key}-value`}
+                      className="num"
+                      value={row.value}
+                      disabled={!editable || busy}
+                      placeholder="FOB"
+                      onChange={(e) =>
+                        patch(i, { value: e.target.value.toUpperCase() })
+                      }
+                    />
                   </div>
-                )}
+                  <div className="sm:col-span-4">
+                    <label
+                      className="micro block text-muted-foreground"
+                      htmlFor={`${row._key}-en`}
+                    >
+                      Label (English)
+                    </label>
+                    <Input
+                      id={`${row._key}-en`}
+                      value={row.label_en || ""}
+                      disabled={!editable || busy}
+                      placeholder="FOB — Free On Board"
+                      onChange={(e) => patch(i, { label_en: e.target.value })}
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <label
+                      className="micro block text-muted-foreground"
+                      htmlFor={`${row._key}-fr`}
+                    >
+                      Label (French)
+                    </label>
+                    <Input
+                      id={`${row._key}-fr`}
+                      value={row.label_fr || ""}
+                      disabled={!editable || busy}
+                      placeholder="FOB — Franco à bord"
+                      onChange={(e) => patch(i, { label_fr: e.target.value })}
+                    />
+                  </div>
+                  {editable && (
+                    <div className="flex items-end gap-1 sm:col-span-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Move ${row.value || `option ${i + 1}`} up`}
+                        disabled={i === 0 || busy}
+                        onClick={() => move(i, -1)}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Move ${row.value || `option ${i + 1}`} down`}
+                        disabled={i === rows.length - 1 || busy}
+                        onClick={() => move(i, 1)}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Remove ${row.value || `option ${i + 1}`}`}
+                        disabled={busy}
+                        onClick={() =>
+                          setRows((s) => s.filter((_, j) => j !== i))
+                        }
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
@@ -242,7 +267,10 @@ export function FieldOptionsDialog({
             variant="outline"
             disabled={busy}
             onClick={() =>
-              setRows((s) => [...s, { value: "", label_fr: "", label_en: "", _key: nextKey() }])
+              setRows((s) => [
+                ...s,
+                { value: "", label_fr: "", label_en: "", _key: nextKey() },
+              ])
             }
           >
             ＋ Add an option
@@ -263,8 +291,9 @@ export function FieldOptionsDialog({
                 {r._original}
               </Pill>
             ))}{" "}
-            keep that code and will no longer match this list. Renaming a LABEL is always safe; renaming a value is
-            not. Add a new option and retire the old one if both need to exist.
+            keep that code and will no longer match this list. Renaming a LABEL
+            is always safe; renaming a value is not. Add a new option and retire
+            the old one if both need to exist.
           </Callout>
         )}
 

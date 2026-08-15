@@ -29,7 +29,12 @@ export function DictLineCell({
   index: number;
   dossierId?: string | null;
   onPick: (id: string, label: string, hit?: DictSearchHit) => void;
-  onPickMulti: (id: string, label: string, hit: DictSearchHit, picks: EquipmentPick[]) => void;
+  onPickMulti: (
+    id: string,
+    label: string,
+    hit: DictSearchHit,
+    picks: EquipmentPick[],
+  ) => void;
 }) {
   return (
     <div className="min-w-0">
@@ -43,7 +48,9 @@ export function DictLineCell({
         onPickMulti={onPickMulti}
       />
       {line.container_type_label && (
-        <p className="mt-0.5 truncate micro text-muted-foreground">{line.container_type_label}</p>
+        <p className="mt-0.5 truncate micro text-muted-foreground">
+          {line.container_type_label}
+        </p>
       )}
     </div>
   );

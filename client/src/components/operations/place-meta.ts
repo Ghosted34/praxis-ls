@@ -23,9 +23,12 @@ import type { GeoPlace, PlaceSuggestion } from "@/lib/operations-api";
  *               background-geocode population. Actionable: offer an upgrade.
  *   unknown     no place record at all. Legacy free text, or nothing.
  */
-export type VerificationState = "verified" | "reference" | "unverified" | "unknown";
+export type VerificationState =
+  "verified" | "reference" | "unverified" | "unknown";
 
-export function verificationOf(place: GeoPlace | null | undefined): VerificationState {
+export function verificationOf(
+  place: GeoPlace | null | undefined,
+): VerificationState {
   if (!place) return "unknown";
   if (place.is_reference_point) return "reference";
   return place.verified_at ? "verified" : "unverified";
@@ -33,7 +36,10 @@ export function verificationOf(place: GeoPlace | null | undefined): Verification
 
 /** The label, and the sentence that explains it. Tone never carries the meaning
  *  on its own (WCAG §1.4.1), so every state ships its own word. */
-export const VERIFICATION_COPY: Record<VerificationState, { label: string; hint: string }> = {
+export const VERIFICATION_COPY: Record<
+  VerificationState,
+  { label: string; hint: string }
+> = {
   verified: {
     label: "Verified",
     hint: "This place is in the catalogue with a confirmed coordinate.",
@@ -63,9 +69,13 @@ export const VERIFICATION_COPY: Record<VerificationState, { label: string; hint:
  * city's port from its airport — see migration 0675, which is why the two codes
  * live in two columns.
  */
-export function codeOf(place: Pick<GeoPlace, "unlocode" | "formatted">): string | null {
+export function codeOf(
+  place: Pick<GeoPlace, "unlocode" | "formatted">,
+): string | null {
   if (place.unlocode) return place.unlocode;
-  const head = String(place.formatted || "").split("·")[0].trim();
+  const head = String(place.formatted || "")
+    .split("·")[0]
+    .trim();
   return /^[A-Z]{3}$/.test(head) ? head : null;
 }
 
@@ -151,7 +161,10 @@ export function placeKey(value: string): string {
 
 /** The place in `places` that IS `value`, or null. Exact identity after folding —
  *  never a "close enough" match, which is the failure mode being removed. */
-export function matchStoredValue(value: string, places: GeoPlace[]): GeoPlace | null {
+export function matchStoredValue(
+  value: string,
+  places: GeoPlace[],
+): GeoPlace | null {
   const key = placeKey(value);
   if (!key) return null;
   return places.find((p) => placeKey(p.name) === key) || null;

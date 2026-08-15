@@ -89,7 +89,9 @@ function KindGlyph({ kind }: { kind?: string | null }) {
 }
 
 const Chip = ({ children }: { children: React.ReactNode }) => (
-  <span className="num rounded border px-1 py-px text-micro font-semibold text-muted-foreground">{children}</span>
+  <span className="num rounded border px-1 py-px text-micro font-semibold text-muted-foreground">
+    {children}
+  </span>
 );
 
 /**
@@ -143,7 +145,9 @@ export function PlaceResultRow({
         <span aria-hidden className="shrink-0 text-muted-foreground">
           <KindGlyph kind={meta.kind} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{meta.name}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {meta.name}
+        </span>
         {meta.code && <Chip>{meta.code}</Chip>}
         {meta.isReferencePoint && <Chip>Reference</Chip>}
         {meta.unverified && <Chip>Unverified</Chip>}

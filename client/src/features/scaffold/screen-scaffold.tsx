@@ -33,75 +33,113 @@ const BE_CLASS: Record<BeStatus, string> = {
 
 export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
   const [tab, setTab] = React.useState(0);
-  const columns = spec.tabs && spec.tabs[tab]?.columns ? spec.tabs[tab].columns : spec.columns || [];
+  const columns =
+    spec.tabs && spec.tabs[tab]?.columns
+      ? spec.tabs[tab].columns
+      : spec.columns || [];
   const tabActions = spec.tabs && spec.tabs[tab]?.actions;
   const actions = tabActions || spec.actions || [];
 
   return (
-    <TabsRoot value={String(tab)} onValueChange={(v) => setTab(Number(v))} activationMode="manual" asChild>
-    <section className={pageShell.wide}>
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          {spec.area && <p className="micro mb-1">{spec.area}</p>}
-          <div className="flex items-center gap-3">
-            <h1 className="font-display text-2xl tracking-tight">{spec.title}</h1>
-            <span className={`status ${BE_CLASS[spec.status]}`}>{spec.module ? `${spec.module} · ` : ""}{BE_LABEL[spec.status]}</span>
+    <TabsRoot
+      value={String(tab)}
+      onValueChange={(v) => setTab(Number(v))}
+      activationMode="manual"
+      asChild
+    >
+      <section className={pageShell.wide}>
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            {spec.area && <p className="micro mb-1">{spec.area}</p>}
+            <div className="flex items-center gap-3">
+              <h1 className="font-display text-2xl tracking-tight">
+                {spec.title}
+              </h1>
+              <span className={`status ${BE_CLASS[spec.status]}`}>
+                {spec.module ? `${spec.module} · ` : ""}
+                {BE_LABEL[spec.status]}
+              </span>
+            </div>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              {spec.purpose}
+            </p>
           </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{spec.purpose}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {actions.map((a) => (
-            <Button key={a} disabled title="Available once the backend is wired">
-              {a}
-            </Button>
-          ))}
-        </div>
-      </header>
+          <div className="flex flex-wrap gap-2">
+            {actions.map((a) => (
+              <Button
+                key={a}
+                disabled
+                title="Available once the backend is wired"
+              >
+                {a}
+              </Button>
+            ))}
+          </div>
+        </header>
 
-      {/* Was a THIRD independent tab-bar style with the same missing semantics
+        {/* Was a THIRD independent tab-bar style with the same missing semantics
           as tabbed-hub's (audit F13/F14: three interaction patterns for one
           job). Now the shared primitive, so all three look and behave alike. */}
-      {spec.tabs && spec.tabs.length > 0 && (
-        <TabList
-          label={`${spec.title} sections`}
-          tabs={spec.tabs.map((t, i) => ({ value: String(i), label: t.label }))}
-        />
-      )}
+        {spec.tabs && spec.tabs.length > 0 && (
+          <TabList
+            label={`${spec.title} sections`}
+            tabs={spec.tabs.map((t, i) => ({
+              value: String(i),
+              label: t.label,
+            }))}
+          />
+        )}
 
-      <TabsContent value={String(tab)} className="lux-card block overflow-hidden focus-visible:outline-none">
-        <Table>
-          <THead>
-            <TR>
-              {(columns.length ? columns : ["—"]).map((c) => (
-                <TH key={c}>{c}</TH>
-              ))}
-            </TR>
-          </THead>
-          <TBody>
-            <TR>
-              <TD colSpan={Math.max(1, columns.length)}>
-                <div className="flex flex-col items-center justify-center gap-1 py-14 text-center">
-                  <span className={`status ${BE_CLASS[spec.status]} mb-1`}>Awaiting backend integration</span>
-                  <p className="text-sm font-medium text-foreground">{spec.title} data will render here</p>
-                  <p className="max-w-md text-xs text-muted-foreground">
-                    Columns, filters and actions above are the planned structure. {spec.module ? `Source module ${spec.module}. ` : ""}
-                    See <code className="text-[11px]">doc/FE_IA_BUILD_MAP.md</code>.
-                  </p>
-                </div>
-              </TD>
-            </TR>
-          </TBody>
-        </Table>
-      </TabsContent>
+        <TabsContent
+          value={String(tab)}
+          className="lux-card block overflow-hidden focus-visible:outline-none"
+        >
+          <Table>
+            <THead>
+              <TR>
+                {(columns.length ? columns : ["—"]).map((c) => (
+                  <TH key={c}>{c}</TH>
+                ))}
+              </TR>
+            </THead>
+            <TBody>
+              <TR>
+                <TD colSpan={Math.max(1, columns.length)}>
+                  <div className="flex flex-col items-center justify-center gap-1 py-14 text-center">
+                    <span className={`status ${BE_CLASS[spec.status]} mb-1`}>
+                      Awaiting backend integration
+                    </span>
+                    <p className="text-sm font-medium text-foreground">
+                      {spec.title} data will render here
+                    </p>
+                    <p className="max-w-md text-xs text-muted-foreground">
+                      Columns, filters and actions above are the planned
+                      structure.{" "}
+                      {spec.module ? `Source module ${spec.module}. ` : ""}
+                      See{" "}
+                      <code className="text-[11px]">
+                        doc/FE_IA_BUILD_MAP.md
+                      </code>
+                      .
+                    </p>
+                  </div>
+                </TD>
+              </TR>
+            </TBody>
+          </Table>
+        </TabsContent>
 
-      <AiActions actions={spec.ai} />
+        <AiActions actions={spec.ai} />
 
-      <p className="mt-6 text-sm">
-        <Link to="/" className="text-primary-ink underline-offset-4 hover:underline">
-          &larr; Back to Control Tower
-        </Link>
-      </p>
-    </section>
+        <p className="mt-6 text-sm">
+          <Link
+            to="/"
+            className="text-primary-ink underline-offset-4 hover:underline"
+          >
+            &larr; Back to Control Tower
+          </Link>
+        </p>
+      </section>
     </TabsRoot>
   );
 }
@@ -113,9 +151,11 @@ function fallbackSpec(pathname: string): ScreenSpec {
   const title = seg.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   return {
     path: parts.join("/"),
-    area: parts.length > 1 ? parts[0].replace(/^\w/, (c) => c.toUpperCase()) : "",
+    area:
+      parts.length > 1 ? parts[0].replace(/^\w/, (c) => c.toUpperCase()) : "",
     title,
-    purpose: "This screen is on the IA roadmap. Structure is pending definition.",
+    purpose:
+      "This screen is on the IA roadmap. Structure is pending definition.",
     status: "none",
     columns: [],
   };

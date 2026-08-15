@@ -25,7 +25,12 @@ import type { RibbonFamily } from "./ribbon-model";
  * Filtered by access, and backfilled if a user can see none of them — see
  * `resolveRailPins`.
  */
-export const DEFAULT_RAIL_PINS = ["operations", "finance", "comms", "workspace"];
+export const DEFAULT_RAIL_PINS = [
+  "operations",
+  "finance",
+  "comms",
+  "workspace",
+];
 
 /** How many shortcuts a rail may hold. Bounded by the strip's height on a
  *  laptop, not by the API — the server caps at 16, this is the honest number. */
@@ -48,18 +53,29 @@ export function pinnableAreas(families: RibbonFamily[]): Area[] {
  * A pin whose area the user can no longer see is dropped rather than rendered
  * dead: losing a grant should take a shortcut away, not leave one that 403s.
  */
-export function resolveRailPins(saved: string[] | null | undefined, families: RibbonFamily[]): Area[] {
+export function resolveRailPins(
+  saved: string[] | null | undefined,
+  families: RibbonFamily[],
+): Area[] {
   const available = pinnableAreas(families);
   const byKey = new Map(available.map((a) => [a.key, a]));
 
   if (saved) {
-    return saved.map((k) => byKey.get(k)).filter((a): a is Area => !!a).slice(0, MAX_RAIL_PINS);
+    return saved
+      .map((k) => byKey.get(k))
+      .filter((a): a is Area => !!a)
+      .slice(0, MAX_RAIL_PINS);
   }
 
-  const defaults = DEFAULT_RAIL_PINS.map((k) => byKey.get(k)).filter((a): a is Area => !!a);
+  const defaults = DEFAULT_RAIL_PINS.map((k) => byKey.get(k)).filter(
+    (a): a is Area => !!a,
+  );
   // A user who can see none of the defaults — a warehouse-only or finance-only
   // role — would otherwise get the empty rail this function exists to prevent.
-  return (defaults.length > 0 ? defaults : available.slice(0, 4)).slice(0, MAX_RAIL_PINS);
+  return (defaults.length > 0 ? defaults : available.slice(0, 4)).slice(
+    0,
+    MAX_RAIL_PINS,
+  );
 }
 
 /** A pin's destination. */
@@ -67,4 +83,5 @@ export const pinRoute = (area: Area): string => areaRoute(area);
 
 /** Label for a stored key even when the area is not currently visible — the
  *  editor lists what you pinned, not only what you can reach today. */
-export const areaLabel = (key: string): string => AREAS.find((a) => a.key === key)?.label ?? key;
+export const areaLabel = (key: string): string =>
+  AREAS.find((a) => a.key === key)?.label ?? key;

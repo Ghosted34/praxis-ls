@@ -44,7 +44,12 @@ export function FormButtons({
 }) {
   return (
     <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onCancel}
+        disabled={busy}
+      >
         {cancelLabel}
       </Button>
       <Button type="submit" loading={busy} disabled={disabled}>

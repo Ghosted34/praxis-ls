@@ -31,7 +31,11 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useCanOpenRoute } from "@/lib/route-access";
-import { DropdownMenu, DropdownItem, DropdownLabel } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownItem,
+  DropdownLabel,
+} from "@/components/ui/dropdown-menu";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const s = (p: IP) => ({
@@ -114,9 +118,25 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
       });
     }
     if (canOpen("/comms")) {
-      list.push({ key: "msg", label: "Messages", Icon: ChatIcon, onSelect: () => { navigate("/comms"); done(); } });
+      list.push({
+        key: "msg",
+        label: "Messages",
+        Icon: ChatIcon,
+        onSelect: () => {
+          navigate("/comms");
+          done();
+        },
+      });
     }
-    list.push({ key: "help", label: "Help", Icon: HelpIcon, onSelect: () => { navigate("/help"); done(); } });
+    list.push({
+      key: "help",
+      label: "Help",
+      Icon: HelpIcon,
+      onSelect: () => {
+        navigate("/help");
+        done();
+      },
+    });
     return list;
   }, [aiEnabled, canOpen, navigate, onDone]);
 }
@@ -133,7 +153,9 @@ export function QuickActionsMenu({ badge = 0 }: { badge?: number }) {
           // Named including the count, because a badge is a picture: a screen
           // reader user should hear "Quick actions, 3 unread" from the button
           // itself rather than have to open it to find out.
-          aria-label={badge > 0 ? `Quick actions, ${badge} unread` : "Quick actions"}
+          aria-label={
+            badge > 0 ? `Quick actions, ${badge} unread` : "Quick actions"
+          }
           className="relative flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <BurstIcon />

@@ -49,14 +49,17 @@ export function disconnectCommsSocket() {
   }
 }
 
-type Handlers = Record<string, (payload: any) => void>;  
+type Handlers = Record<string, (payload: any) => void>;
 
 /**
  * Subscribe to a channel's live events for the lifetime of the mounted
  * component. Joins on mount / channel change, leaves on cleanup, and returns a
  * `setTyping()` to broadcast the ephemeral typing indicator.
  */
-export function useCommsChannel(channelId: string | null | undefined, handlers: Handlers) {
+export function useCommsChannel(
+  channelId: string | null | undefined,
+  handlers: Handlers,
+) {
   const handlersRef = React.useRef(handlers);
   handlersRef.current = handlers;
 
@@ -67,7 +70,8 @@ export function useCommsChannel(channelId: string | null | undefined, handlers: 
     // Bind every handler through a stable wrapper so re-renders don't re-bind.
     const bound: Handlers = {};
     for (const event of Object.keys(handlersRef.current)) {
-      bound[event] = (payload: unknown) => handlersRef.current[event]?.(payload);
+      bound[event] = (payload: unknown) =>
+        handlersRef.current[event]?.(payload);
       s.on(event, bound[event]);
     }
 

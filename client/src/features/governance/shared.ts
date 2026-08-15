@@ -9,4 +9,5 @@ import { pageShell } from "@/lib/layout";
 export const shell = pageShell.wide;
 
 /** Short display for a user id when the /users list isn't readable. */
-export const shortId = (id?: string | null) => (id ? `…${String(id).slice(-8)}` : "—");
+export const shortId = (id?: string | null) =>
+  id ? `…${String(id).slice(-8)}` : "—";

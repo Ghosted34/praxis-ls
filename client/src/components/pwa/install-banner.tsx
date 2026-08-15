@@ -35,7 +35,17 @@ function rememberDismiss(key: string) {
  *  shared icon set for a single-use mark. */
 function ShareGlyph() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M12 15V3" />
       <path d="m7 8 5-5 5 5" />
       <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
@@ -44,7 +54,8 @@ function ShareGlyph() {
 }
 
 export function InstallBanner() {
-  const { canInstall, isIOS, isStandalone, openSignal, promptInstall } = usePwaInstall();
+  const { canInstall, isIOS, isStandalone, openSignal, promptInstall } =
+    usePwaInstall();
   const { pwa } = useBranding();
   const brandName = pwa.name;
 
@@ -108,27 +119,39 @@ export function InstallBanner() {
             that exact mark on the user's home screen, so showing anything else
             here mis-sells the thing being installed. */}
         {pwa.iconUrl ? (
-          <img src={pwa.iconUrl} alt={brandName} className="h-10 w-auto max-w-[7rem] flex-none rounded-lg object-contain" />
+          <img
+            src={pwa.iconUrl}
+            alt={brandName}
+            className="h-10 w-auto max-w-[7rem] flex-none rounded-lg object-contain"
+          />
         ) : (
           <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
             {brandName.charAt(0)}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">{pwa.installTitle || `Install ${brandName}`}</p>
+          <p className="text-sm font-semibold text-foreground">
+            {pwa.installTitle || `Install ${brandName}`}
+          </p>
           {iosMode ? (
             <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
               {pwa.installIosBody || (
                 <>
-                  Tap <ShareGlyph /> <span className="font-medium text-foreground">Share</span>, then{" "}
-                  <span className="font-medium text-foreground">Add to Home Screen</span> to use {brandName} like an
-                  app — full screen, on your home screen.
+                  Tap <ShareGlyph />{" "}
+                  <span className="font-medium text-foreground">Share</span>,
+                  then{" "}
+                  <span className="font-medium text-foreground">
+                    Add to Home Screen
+                  </span>{" "}
+                  to use {brandName} like an app — full screen, on your home
+                  screen.
                 </>
               )}
             </p>
           ) : (
             <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-              {pwa.installBody || `Add ${brandName} to your device for a faster, full-screen app that works offline.`}
+              {pwa.installBody ||
+                `Add ${brandName} to your device for a faster, full-screen app that works offline.`}
             </p>
           )}
 

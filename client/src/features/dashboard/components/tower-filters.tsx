@@ -71,7 +71,13 @@ const DATE_FIELDS = [
   { value: "delivery", label: "Planned delivery" },
 ] as const;
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="space-y-1 text-sm">
       <span className="font-medium text-foreground">{label}</span>
@@ -88,7 +94,10 @@ export function TowerFilters({ value, page, onChange }: Props) {
     setDraft(value);
   }, [value]);
 
-  function set<K extends keyof ControlTowerFilters>(key: K, next: ControlTowerFilters[K]) {
+  function set<K extends keyof ControlTowerFilters>(
+    key: K,
+    next: ControlTowerFilters[K],
+  ) {
     setDraft((current) => ({ ...current, [key]: next }));
   }
 
@@ -96,7 +105,8 @@ export function TowerFilters({ value, page, onChange }: Props) {
     const next: ControlTowerFilters = { ...draft, cursor: null };
     for (const key of Object.keys(next) as (keyof ControlTowerFilters)[]) {
       const current = next[key];
-      if (current === "" || current === null || current === undefined) delete next[key];
+      if (current === "" || current === null || current === undefined)
+        delete next[key];
     }
     onChange(next);
   }
@@ -106,37 +116,76 @@ export function TowerFilters({ value, page, onChange }: Props) {
     onChange({});
   }
 
-  const completion = draft.include_completed === undefined ? "" : String(draft.include_completed);
+  const completion =
+    draft.include_completed === undefined
+      ? ""
+      : String(draft.include_completed);
 
   return (
-    <section className="mb-5 rounded-xl border bg-card p-4" aria-label="Control Tower filters">
+    <section
+      className="mb-5 rounded-xl border bg-card p-4"
+      aria-label="Control Tower filters"
+    >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Filter operations</h2>
-          <p className="micro text-muted-foreground">Filters are applied on the server and keep the result page stable.</p>
+          <h2 className="text-sm font-semibold text-foreground">
+            Filter operations
+          </h2>
+          <p className="micro text-muted-foreground">
+            Filters are applied on the server and keep the result page stable.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button type="button" size="sm" variant="ghost" onClick={reset}>Reset</Button>
-          <Button type="button" size="sm" onClick={apply}>Apply filters</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={reset}>
+            Reset
+          </Button>
+          <Button type="button" size="sm" onClick={apply}>
+            Apply filters
+          </Button>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <Field label="Transport mode">
-          <Select value={draft.mode ?? ""} onChange={(event) => set("mode", (event.target.value || undefined) as ControlTowerFilters["mode"])}>
-            {MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          <Select
+            value={draft.mode ?? ""}
+            onChange={(event) =>
+              set(
+                "mode",
+                (event.target.value ||
+                  undefined) as ControlTowerFilters["mode"],
+              )
+            }
+          >
+            {MODES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </Field>
 
         <Field label="Territory">
-          <Input value={draft.territory ?? ""} placeholder="e.g. CM" onChange={(event) => set("territory", event.target.value)} />
+          <Input
+            value={draft.territory ?? ""}
+            placeholder="e.g. CM"
+            onChange={(event) => set("territory", event.target.value)}
+          />
         </Field>
 
         <Field label="Service type">
-          <Select value={draft.service_type_id ?? ""} onChange={(event) => set("service_type_id", event.target.value || undefined)}>
+          <Select
+            value={draft.service_type_id ?? ""}
+            onChange={(event) =>
+              set("service_type_id", event.target.value || undefined)
+            }
+          >
             <option value="">All service types</option>
             {(serviceTypes ?? []).map((service) => (
-              <option key={service.service_type_id} value={service.service_type_id}>
+              <option
+                key={service.service_type_id}
+                value={service.service_type_id}
+              >
                 {service.name_en || service.name_fr || service.key}
               </option>
             ))}
@@ -144,41 +193,90 @@ export function TowerFilters({ value, page, onChange }: Props) {
         </Field>
 
         <Field label="Date field">
-          <Select value={draft.date_field ?? "created"} onChange={(event) => set("date_field", (event.target.value || undefined) as ControlTowerFilters["date_field"])}>
-            {DATE_FIELDS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          <Select
+            value={draft.date_field ?? "created"}
+            onChange={(event) =>
+              set(
+                "date_field",
+                (event.target.value ||
+                  undefined) as ControlTowerFilters["date_field"],
+              )
+            }
+          >
+            {DATE_FIELDS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </Field>
 
         {/* Day-first, like every other date on an operations screen — the window
             being filtered is read out loud in the meeting these filters drive. */}
         <Field label="From">
-          <DateField value={draft.from ?? ""} onChange={(iso) => set("from", iso || undefined)} />
+          <DateField
+            value={draft.from ?? ""}
+            onChange={(iso) => set("from", iso || undefined)}
+          />
         </Field>
 
         <Field label="To">
-          <DateField value={draft.to ?? ""} onChange={(iso) => set("to", iso || undefined)} />
+          <DateField
+            value={draft.to ?? ""}
+            onChange={(iso) => set("to", iso || undefined)}
+          />
         </Field>
 
         <Field label="Layer">
           <Select
             value={draft.layer ?? ""}
-            onChange={(event) => set("layer", (event.target.value || undefined) as ControlTowerFilters["layer"])}
+            onChange={(event) =>
+              set(
+                "layer",
+                (event.target.value ||
+                  undefined) as ControlTowerFilters["layer"],
+              )
+            }
           >
-            {LAYERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {LAYERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </Field>
 
         <Field label="Location">
           <Select
             value={draft.verified ?? ""}
-            onChange={(event) => set("verified", (event.target.value || undefined) as ControlTowerFilters["verified"])}
+            onChange={(event) =>
+              set(
+                "verified",
+                (event.target.value ||
+                  undefined) as ControlTowerFilters["verified"],
+              )
+            }
           >
-            {VERIFICATION.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {VERIFICATION.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </Field>
 
         <Field label="Completion">
-          <Select value={completion} onChange={(event) => set("include_completed", event.target.value === "" ? undefined : event.target.value === "true")}>
+          <Select
+            value={completion}
+            onChange={(event) =>
+              set(
+                "include_completed",
+                event.target.value === ""
+                  ? undefined
+                  : event.target.value === "true",
+              )
+            }
+          >
             <option value="">Open and completed</option>
             <option value="false">Open only</option>
             <option value="true">Include completed</option>
@@ -186,8 +284,15 @@ export function TowerFilters({ value, page, onChange }: Props) {
         </Field>
 
         <Field label="Page size">
-          <Select value={String(draft.limit ?? page.limit ?? 50)} onChange={(event) => set("limit", Number(event.target.value))}>
-            {[25, 50, 100].map((size) => <option key={size} value={size}>{size} rows</option>)}
+          <Select
+            value={String(draft.limit ?? page.limit ?? 50)}
+            onChange={(event) => set("limit", Number(event.target.value))}
+          >
+            {[25, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                {size} rows
+              </option>
+            ))}
           </Select>
         </Field>
       </div>
@@ -196,8 +301,26 @@ export function TowerFilters({ value, page, onChange }: Props) {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <span className="micro">Showing up to {page.limit} operations.</span>
           <div className="flex gap-2">
-            {value.cursor && <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, cursor: null })}>First page</Button>}
-            {page.has_more && page.next_cursor && <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, cursor: page.next_cursor })}>Next page</Button>}
+            {value.cursor && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onChange({ ...value, cursor: null })}
+              >
+                First page
+              </Button>
+            )}
+            {page.has_more && page.next_cursor && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onChange({ ...value, cursor: page.next_cursor })}
+              >
+                Next page
+              </Button>
+            )}
           </div>
         </div>
       )}

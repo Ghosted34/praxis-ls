@@ -15,7 +15,13 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
-import { SettingsCard, Field, Segmented, ColorRow, ImageField } from "@/components/settings/controls";
+import {
+  SettingsCard,
+  Field,
+  Segmented,
+  ColorRow,
+  ImageField,
+} from "@/components/settings/controls";
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
 import { cn } from "@/lib/cn";
@@ -45,22 +51,30 @@ export function AppearancePage() {
   const { branding, setBranding, ready } = useBranding();
 
   const [name, setName] = React.useState(branding.name || "");
-  const [theme, setTheme] = React.useState<"dark" | "light">(branding.theme || "dark");
+  const [theme, setTheme] = React.useState<"dark" | "light">(
+    branding.theme || "dark",
+  );
   const [colors, setColors] = React.useState<Record<string, string>>(() => {
     const seed: Record<string, string> = {};
-    for (const { key } of COLORS) seed[key] = (branding[key] as string | null) || "";
+    for (const { key } of COLORS)
+      seed[key] = (branding[key] as string | null) || "";
     return seed;
   });
   const [logoUrl, setLogoUrl] = React.useState(branding.logoUrl || "");
   const [logoAltUrl, setLogoAltUrl] = React.useState(branding.logoAltUrl || "");
   const [faviconUrl, setFaviconUrl] = React.useState(branding.faviconUrl || "");
-  const [fontDisplay, setFontDisplay] = React.useState(branding.fontDisplay || "");
+  const [fontDisplay, setFontDisplay] = React.useState(
+    branding.fontDisplay || "",
+  );
   const [fontBody, setFontBody] = React.useState(branding.fontBody || "");
   const [fontMono, setFontMono] = React.useState(branding.fontMono || "");
   const [radius, setRadius] = React.useState(branding.radius || "");
 
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = React.useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
 
   // The form fields are seeded from `branding` at mount. On a hard reload this
   // component can mount BEFORE the public GET /branding resolves, so it captures
@@ -74,7 +88,8 @@ export function AppearancePage() {
     setName(branding.name || "");
     setTheme(branding.theme || "dark");
     const seed: Record<string, string> = {};
-    for (const { key } of COLORS) seed[key] = (branding[key] as string | null) || "";
+    for (const { key } of COLORS)
+      seed[key] = (branding[key] as string | null) || "";
     setColors(seed);
     setLogoUrl(branding.logoUrl || "");
     setLogoAltUrl(branding.logoAltUrl || "");
@@ -85,7 +100,8 @@ export function AppearancePage() {
     setRadius(branding.radius || "");
   }, [ready, branding]);
 
-  const setColor = (k: string, v: string) => setColors((c) => ({ ...c, [k]: v }));
+  const setColor = (k: string, v: string) =>
+    setColors((c) => ({ ...c, [k]: v }));
   const primary = colors.primary || "#0f766e";
 
   async function onSave() {
@@ -125,13 +141,24 @@ export function AppearancePage() {
 
   return (
     <section className={cn(pageShell.reading, "pb-24")}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Appearance" description="White-label the workspace — identity, colours, logos, type. Changes apply on save." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Appearance"
+        description="White-label the workspace — identity, colours, logos, type. Changes apply on save."
+      />
 
       <div className="mt-2 flex flex-col gap-5">
-        <SettingsCard title="Identity" desc="Shown across the app and on the login screen.">
+        <SettingsCard
+          title="Identity"
+          desc="Shown across the app and on the login screen."
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Display name">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Smart Logistics" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Smart Logistics"
+              />
             </Field>
             <Field label="Theme mode">
               <Segmented
@@ -146,27 +173,51 @@ export function AppearancePage() {
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Colours" desc="The brand token set. Primary re-tints the app immediately on save.">
+        <SettingsCard
+          title="Colours"
+          desc="The brand token set. Primary re-tints the app immediately on save."
+        >
           <div className="grid gap-2 sm:grid-cols-2">
             {COLORS.map(({ key, token, fallback }) => (
-              <ColorRow key={key} token={token} value={colors[key] || fallback} onChange={(v) => setColor(key, v)} />
+              <ColorRow
+                key={key}
+                token={token}
+                value={colors[key] || fallback}
+                onChange={(v) => setColor(key, v)}
+              />
             ))}
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Logos & favicon" desc="Transparent PNG/WEBP recommended, ≤512 KB.">
+        <SettingsCard
+          title="Logos & favicon"
+          desc="Transparent PNG/WEBP recommended, ≤512 KB."
+        >
           <div className="grid gap-4 sm:grid-cols-3">
             <ImageField label="Logo" value={logoUrl} onChange={setLogoUrl} />
-            <ImageField label="Alt logo (for light/dark)" value={logoAltUrl} onChange={setLogoAltUrl} />
-            <ImageField label="Favicon" value={faviconUrl} onChange={setFaviconUrl} shape="square" />
+            <ImageField
+              label="Alt logo (for light/dark)"
+              value={logoAltUrl}
+              onChange={setLogoAltUrl}
+            />
+            <ImageField
+              label="Favicon"
+              value={faviconUrl}
+              onChange={setFaviconUrl}
+              shape="square"
+            />
           </div>
           {/* The home-screen icon lives on its own screen, and someone looking
               for it will look here first. Say where it is rather than letting
               them settle for the sidebar logo — which is the wrong shape for a
               circular crop and is only the FALLBACK for the app icon. */}
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Installing the app on a phone or desktop uses a separate square icon —{" "}
-            <Link to="/settings/pwa" className="font-medium text-primary-ink hover:underline">
+            Installing the app on a phone or desktop uses a separate square icon
+            —{" "}
+            <Link
+              to="/settings/pwa"
+              className="font-medium text-primary-ink hover:underline"
+            >
               App &amp; PWA
             </Link>
             . Leave it unset and it falls back to the logo above.
@@ -179,21 +230,43 @@ export function AppearancePage() {
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Display font">
-              <FontPicker slot="display" value={fontDisplay} onChange={setFontDisplay} aria-label="Display font" />
+              <FontPicker
+                slot="display"
+                value={fontDisplay}
+                onChange={setFontDisplay}
+                aria-label="Display font"
+              />
             </Field>
             <Field label="Body font">
-              <FontPicker slot="body" value={fontBody} onChange={setFontBody} aria-label="Body font" />
+              <FontPicker
+                slot="body"
+                value={fontBody}
+                onChange={setFontBody}
+                aria-label="Body font"
+              />
             </Field>
             <Field label="Mono font">
-              <FontPicker slot="mono" value={fontMono} onChange={setFontMono} aria-label="Mono font" />
+              <FontPicker
+                slot="mono"
+                value={fontMono}
+                onChange={setFontMono}
+                aria-label="Mono font"
+              />
             </Field>
             <Field label="Corner radius">
-              <Input value={radius} onChange={(e) => setRadius(e.target.value)} placeholder="18px" />
+              <Input
+                value={radius}
+                onChange={(e) => setRadius(e.target.value)}
+                placeholder="18px"
+              />
             </Field>
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Preview" desc="Live — reflects name, colours, logos, typography, corner radius and theme mode.">
+        <SettingsCard
+          title="Preview"
+          desc="Live — reflects name, colours, logos, typography, corner radius and theme mode."
+        >
           {(() => {
             const c = (k: string, fb: string) => colors[k] || fb;
             const radiusVal = radius || "12px";
@@ -211,7 +284,9 @@ export function AppearancePage() {
               fontFamily: fontBody || "inherit",
               color: isDark ? "#e5e7eb" : "#0f172a",
               background: isDark ? "#0b1220" : "#ffffff",
-              borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)",
+              borderColor: isDark
+                ? "rgba(255,255,255,0.12)"
+                : "rgba(0,0,0,0.1)",
             } as React.CSSProperties;
             const pill = (label: string, v: string) => (
               <span
@@ -227,22 +302,49 @@ export function AppearancePage() {
                 {/* Top bar: logo/avatar + name + primary/secondary actions */}
                 <div className="flex items-center gap-3">
                   {logoUrl ? (
-                    <img src={logoUrl} alt="" className="h-10 w-auto" style={{ borderRadius: radiusVal }} />
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      className="h-10 w-auto"
+                      style={{ borderRadius: radiusVal }}
+                    />
                   ) : (
                     <span
                       className="flex h-10 w-10 items-center justify-center text-lg font-semibold"
-                      style={{ background: primary, color: "var(--pv-primary-fg)" as string, borderRadius: radiusVal, fontFamily: fontDisplay || "inherit" }}
+                      style={{
+                        background: primary,
+                        color: "var(--pv-primary-fg)" as string,
+                        borderRadius: radiusVal,
+                        fontFamily: fontDisplay || "inherit",
+                      }}
                     >
                       {(name || "P").charAt(0)}
                     </span>
                   )}
-                  <div className="flex-1 text-lg font-semibold" style={{ fontFamily: fontDisplay || "inherit" }}>
+                  <div
+                    className="flex-1 text-lg font-semibold"
+                    style={{ fontFamily: fontDisplay || "inherit" }}
+                  >
                     {name || "Praxis LS"}
                   </div>
-                  <button className="px-3 py-1.5 text-sm font-semibold" style={{ background: primary, color: "var(--pv-primary-fg)" as string, borderRadius: radiusVal }}>
+                  <button
+                    className="px-3 py-1.5 text-sm font-semibold"
+                    style={{
+                      background: primary,
+                      color: "var(--pv-primary-fg)" as string,
+                      borderRadius: radiusVal,
+                    }}
+                  >
                     Primary
                   </button>
-                  <button className="px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--pv-secondary)" as string, color: "#fff", borderRadius: radiusVal }}>
+                  <button
+                    className="px-3 py-1.5 text-sm font-semibold"
+                    style={{
+                      background: "var(--pv-secondary)" as string,
+                      color: "#fff",
+                      borderRadius: radiusVal,
+                    }}
+                  >
                     Secondary
                   </button>
                 </div>
@@ -253,14 +355,27 @@ export function AppearancePage() {
                       value — `"Montserrat", Georgia, serif` — which is noise,
                       and worse, it listed fallbacks the viewer might have been
                       looking at without knowing it. */}
-                  <div className="text-base font-semibold" style={{ fontFamily: fontDisplay || "inherit" }}>
-                    Display heading — {fontByValue(fontDisplay)?.name ?? (fontDisplay ? "custom" : "default")}
+                  <div
+                    className="text-base font-semibold"
+                    style={{ fontFamily: fontDisplay || "inherit" }}
+                  >
+                    Display heading —{" "}
+                    {fontByValue(fontDisplay)?.name ??
+                      (fontDisplay ? "custom" : "default")}
                   </div>
-                  <p className="text-sm opacity-80" style={{ fontFamily: fontBody || "inherit" }}>
-                    Body text in {fontByValue(fontBody)?.name ?? (fontBody ? "a custom font" : "the default font")}. The
-                    quick brown fox clears customs at Douala.
+                  <p
+                    className="text-sm opacity-80"
+                    style={{ fontFamily: fontBody || "inherit" }}
+                  >
+                    Body text in{" "}
+                    {fontByValue(fontBody)?.name ??
+                      (fontBody ? "a custom font" : "the default font")}
+                    . The quick brown fox clears customs at Douala.
                   </p>
-                  <code className="text-xs opacity-80" style={{ fontFamily: fontMono || "monospace" }}>
+                  <code
+                    className="text-xs opacity-80"
+                    style={{ fontFamily: fontMono || "monospace" }}
+                  >
                     SLAS-2026-0142 · 12,000,000 XAF
                   </code>
                 </div>
@@ -271,14 +386,31 @@ export function AppearancePage() {
                   {pill("Success", c("success", "#16a34a"))}
                   {pill("Warning", c("warn", "#d97706"))}
                   {pill("Danger", c("danger", "#dc2626"))}
-                  <span className="px-2 py-0.5 text-[11px] font-semibold" style={{ borderRadius: 999, background: "var(--pv-accent)" as string, color: "#fff" }}>
+                  <span
+                    className="px-2 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      borderRadius: 999,
+                      background: "var(--pv-accent)" as string,
+                      color: "#fff",
+                    }}
+                  >
                     Accent
                   </span>
                 </div>
 
                 {/* A card using the radius + accent edge */}
-                <div className="p-3 text-sm" style={{ borderRadius: radiusVal, borderLeft: `3px solid ${c("accent", "#f5821f")}`, background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }}>
-                  Card surface · {radiusVal} radius · {isDark ? "dark" : "light"} theme
+                <div
+                  className="p-3 text-sm"
+                  style={{
+                    borderRadius: radiusVal,
+                    borderLeft: `3px solid ${c("accent", "#f5821f")}`,
+                    background: isDark
+                      ? "rgba(255,255,255,0.04)"
+                      : "rgba(0,0,0,0.03)",
+                  }}
+                >
+                  Card surface · {radiusVal} radius ·{" "}
+                  {isDark ? "dark" : "light"} theme
                 </div>
               </div>
             );

@@ -34,7 +34,9 @@ vi.mock("virtual:pwa-register/react", () => ({
 }));
 
 vi.mock("@/app/branding/branding-context", () => ({
-  useBranding: () => ({ pwa: { updateButton: "Update", updateTitle: null, updateBody: null } }),
+  useBranding: () => ({
+    pwa: { updateButton: "Update", updateTitle: null, updateBody: null },
+  }),
 }));
 
 import { PwaUpdater } from "./pwa-updater";
@@ -61,8 +63,15 @@ function installSwMock(registration: unknown) {
       if (type === "controllerchange") controllerChange.push(fn);
     },
   };
-  Object.defineProperty(navigator, "serviceWorker", { value: sw, configurable: true, writable: true });
-  return { sw, fireControllerChange: () => controllerChange.forEach((f) => f()) };
+  Object.defineProperty(navigator, "serviceWorker", {
+    value: sw,
+    configurable: true,
+    writable: true,
+  });
+  return {
+    sw,
+    fireControllerChange: () => controllerChange.forEach((f) => f()),
+  };
 }
 
 let reload: ReturnType<typeof vi.fn>;
@@ -85,12 +94,19 @@ afterEach(() => {
 describe("PwaUpdater — clicking Update always reloads", () => {
   it("skip-waits the parked worker and reloads when it takes control", async () => {
     const waiting = makeWorker();
-    const { fireControllerChange } = installSwMock({ waiting, installing: null });
+    const { fireControllerChange } = installSwMock({
+      waiting,
+      installing: null,
+    });
 
     render(<PwaUpdater />);
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    await waitFor(() => expect(waiting.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" }));
+    await waitFor(() =>
+      expect(waiting.postMessage).toHaveBeenCalledWith({
+        type: "SKIP_WAITING",
+      }),
+    );
 
     // Nothing has reloaded yet — we wait for control to change hands so the new
     // build serves the next load, rather than the old worker serving stale HTML.
@@ -134,24 +150,33 @@ describe("PwaUpdater — clicking Update always reloads", () => {
     render(<PwaUpdater />);
     await userEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    await waitFor(() => expect(navigator.serviceWorker.getRegistration).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(navigator.serviceWorker.getRegistration).toHaveBeenCalled(),
+    );
     expect(installing.postMessage).not.toHaveBeenCalled();
 
     installing.state = "installed";
     installing.fire("statechange");
-    expect(installing.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
+    expect(installing.postMessage).toHaveBeenCalledWith({
+      type: "SKIP_WAITING",
+    });
   });
 
   it("reloads exactly once even if the user clicks repeatedly", async () => {
     const waiting = makeWorker();
-    const { fireControllerChange } = installSwMock({ waiting, installing: null });
+    const { fireControllerChange } = installSwMock({
+      waiting,
+      installing: null,
+    });
 
     render(<PwaUpdater />);
     const btn = screen.getByRole("button", { name: "Update" });
     await userEvent.click(btn);
 
     // The button reports it is working, so a click is never ambiguous.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Updating…" })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Updating…" })).toBeDisabled(),
+    );
 
     fireControllerChange();
     fireControllerChange();

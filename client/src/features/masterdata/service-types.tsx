@@ -37,25 +37,35 @@ const shell = pageShell.wide;
 
 export function ServiceTypesPage() {
   const [includeInactive, setIncludeInactive] = React.useState(false);
-  const list = useResource(() => api.listServiceTypes({ includeInactive }), [includeInactive]);
+  const list = useResource(
+    () => api.listServiceTypes({ includeInactive }),
+    [includeInactive],
+  );
   const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   // `editing` and `templating` open modals over the selected service type.
   // `null` in `editing` means "create new"; `undefined` means "closed" — same
   // three-state convention the entity-360 form uses.
-  const [editing, setEditing] = React.useState<api.ServiceType | null | undefined>(undefined);
-  const [templating, setTemplating] = React.useState<api.ServiceType | null>(null);
+  const [editing, setEditing] = React.useState<
+    api.ServiceType | null | undefined
+  >(undefined);
+  const [templating, setTemplating] = React.useState<api.ServiceType | null>(
+    null,
+  );
   // The ⚙ policy modal: how THIS service schedules, and what it does when its
   // SLA can no longer be met. Falls back to the tenant default when unset.
-  const [policyFor, setPolicyFor] = React.useState<api.ServiceType | null>(null);
+  const [policyFor, setPolicyFor] = React.useState<api.ServiceType | null>(
+    null,
+  );
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
   const filtered = React.useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter((r) =>
-      (r.name_en || r.name_fr || "").toLowerCase().includes(needle) ||
-      (r.key || "").toLowerCase().includes(needle),
+    return rows.filter(
+      (r) =>
+        (r.name_en || r.name_fr || "").toLowerCase().includes(needle) ||
+        (r.key || "").toLowerCase().includes(needle),
     );
   }, [rows, q]);
   const selected = rows.find((r) => r.service_type_id === selId) || null;
@@ -71,18 +81,34 @@ export function ServiceTypesPage() {
         eyebrow={<HubCrumb area="Master data" to="/master" />}
         title="Service types"
         description="The services you sell. Dossiers are classified by service type, and each one carries the milestone chain new files start with."
-        action={<Button onClick={() => setEditing(null)}>New service type</Button>}
+        action={
+          <Button onClick={() => setEditing(null)}>New service type</Button>
+        }
       />
       <HubTabs />
 
       {list.error ? (
         <ErrorState message={list.error} />
       ) : (
-        <SplitPane storageKey="master.service-types" label="Service type list width" defaultSize={280} min={220} max={480}>
+        <SplitPane
+          storageKey="master.service-types"
+          label="Service type list width"
+          defaultSize={280}
+          min={220}
+          max={480}
+        >
           <div className="space-y-2">
-            <Input placeholder="Search service…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input
+              placeholder="Search service…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+              />
               Show archived
             </label>
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
@@ -96,17 +122,25 @@ export function ServiceTypesPage() {
                     key={r.service_type_id}
                     onClick={() => setSelId(r.service_type_id)}
                     className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      r.service_type_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"
+                      r.service_type_id === selId
+                        ? "bg-primary/10 text-foreground"
+                        : "hover:bg-muted"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{r.name_en || r.name_fr}</span>
+                      <span className="truncate font-medium">
+                        {r.name_en || r.name_fr}
+                      </span>
                       <div className="flex shrink-0 items-center gap-1">
                         {/* Trap-visible: a service type with no active milestone template silently
                             produces dossiers with no chain (0310_operations.sql:7). Amber pill on the
                             list keeps the fix one click away rather than buried in a tab. */}
-                        {r.is_active && !r.has_active_template && <Pill tone="warn">no chain</Pill>}
-                        <Pill tone={r.is_active ? "ok" : "mute"}>{r.is_active ? "Active" : "Off"}</Pill>
+                        {r.is_active && !r.has_active_template && (
+                          <Pill tone="warn">no chain</Pill>
+                        )}
+                        <Pill tone={r.is_active ? "ok" : "mute"}>
+                          {r.is_active ? "Active" : "Off"}
+                        </Pill>
                       </div>
                     </div>
                     <span className="micro">{r.key}</span>
@@ -135,10 +169,18 @@ export function ServiceTypesPage() {
       <ScreenAi path="master/service-types" />
 
       {editing !== undefined && (
-        <ServiceTypeForm row={editing} onClose={() => setEditing(undefined)} onSaved={list.reload} />
+        <ServiceTypeForm
+          row={editing}
+          onClose={() => setEditing(undefined)}
+          onSaved={list.reload}
+        />
       )}
       {templating && (
-        <TemplateForm svc={templating} onClose={() => setTemplating(null)} onSaved={list.reload} />
+        <TemplateForm
+          svc={templating}
+          onClose={() => setTemplating(null)}
+          onSaved={list.reload}
+        />
       )}
       {policyFor && (
         <MilestonePolicyForm

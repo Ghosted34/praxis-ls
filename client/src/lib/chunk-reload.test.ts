@@ -16,20 +16,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { withChunkReload, clearChunkReloadFlag } from "./chunk-reload";
 
-const STALE = new TypeError("Failed to fetch dynamically imported module: https://x/assets/index-abc.js");
+const STALE = new TypeError(
+  "Failed to fetch dynamically imported module: https://x/assets/index-abc.js",
+);
 
 let reload: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   sessionStorage.clear();
   reload = vi.fn();
-  Object.defineProperty(window, "location", { value: { reload }, writable: true });
+  Object.defineProperty(window, "location", {
+    value: { reload },
+    writable: true,
+  });
 });
 afterEach(() => sessionStorage.clear());
 
 describe("withChunkReload", () => {
   it("passes a successful import straight through", async () => {
-    await expect(withChunkReload(async () => "module")()).resolves.toBe("module");
+    await expect(withChunkReload(async () => "module")()).resolves.toBe(
+      "module",
+    );
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -40,7 +47,9 @@ describe("withChunkReload", () => {
     const pending = load();
     await Promise.resolve();
     expect(reload).toHaveBeenCalledTimes(1);
-    await expect(Promise.race([pending, Promise.resolve("still-pending")])).resolves.toBe("still-pending");
+    await expect(
+      Promise.race([pending, Promise.resolve("still-pending")]),
+    ).resolves.toBe("still-pending");
   });
 
   it("recognises the wording other browsers use", async () => {
@@ -66,15 +75,21 @@ describe("withChunkReload", () => {
 
     // Second failure in the same session: the cause is not a stale build, so it
     // must reach the error boundary where a human can see it.
-    await expect(withChunkReload(() => Promise.reject(STALE))()).rejects.toThrow(/Failed to fetch/);
+    await expect(
+      withChunkReload(() => Promise.reject(STALE))(),
+    ).rejects.toThrow(/Failed to fetch/);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it("lets a genuine module error through untouched", async () => {
     // A bug inside the imported module must not be masked as a stale deploy and
     // silently reloaded — that would hide a real crash behind a refresh.
-    const boom = new Error("Cannot read properties of undefined (reading 'map')");
-    await expect(withChunkReload(() => Promise.reject(boom))()).rejects.toThrow(boom);
+    const boom = new Error(
+      "Cannot read properties of undefined (reading 'map')",
+    );
+    await expect(withChunkReload(() => Promise.reject(boom))()).rejects.toThrow(
+      boom,
+    );
     expect(reload).not.toHaveBeenCalled();
   });
 

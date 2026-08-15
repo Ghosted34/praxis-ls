@@ -34,7 +34,14 @@ import type { ShellPrefs } from "@/lib/preferences";
  *  than an assumption about local state. */
 const saved: Partial<ShellPrefs>[] = [];
 const access = { current: null as NavAccess | null };
-const stored = { current: { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true } as ShellPrefs };
+const stored = {
+  current: {
+    ribbonPinned: null,
+    railPins: null,
+    towerPins: null,
+    railHintSeen: true,
+  } as ShellPrefs,
+};
 /** Make the preferences read fail, which is NOT the same as it returning
  *  nothing — see "a failed preferences read" below. */
 const prefsFail = { current: false };
@@ -43,7 +50,10 @@ const prefsFail = { current: false };
 const accessPending = { current: false };
 
 vi.mock("@/lib/nav-access", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/nav-access")>("@/lib/nav-access");
+  const actual =
+    await vi.importActual<typeof import("@/lib/nav-access")>(
+      "@/lib/nav-access",
+    );
   return {
     ...actual,
     fetchNavAccess: () =>
@@ -54,7 +64,10 @@ vi.mock("@/lib/nav-access", async () => {
 });
 
 vi.mock("@/lib/preferences", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/preferences")>("@/lib/preferences");
+  const actual =
+    await vi.importActual<typeof import("@/lib/preferences")>(
+      "@/lib/preferences",
+    );
   return {
     ...actual,
     fetchShellPrefs: async () => {
@@ -71,10 +84,15 @@ vi.mock("@/lib/preferences", async () => {
 
 // The rail's quick actions read the tenant's AI flag through useAuth.
 vi.mock("@/app/auth/auth-context", async () => {
-  const actual = await vi.importActual<typeof import("@/app/auth/auth-context")>("@/app/auth/auth-context");
+  const actual = await vi.importActual<
+    typeof import("@/app/auth/auth-context")
+  >("@/app/auth/auth-context");
   return {
     ...actual,
-    useAuth: () => ({ user: { user_id: "u1", ai_enabled: true }, status: "authed" as const }),
+    useAuth: () => ({
+      user: { user_id: "u1", ai_enabled: true },
+      status: "authed" as const,
+    }),
   };
 });
 
@@ -88,24 +106,110 @@ import { useRibbonCommands } from "./ribbon-commands";
  *  server's partition of the visible modules; the client never invents it. */
 function grant(byGroup: Record<string, string[]>, isCeo = false): NavAccess {
   const modules = Object.values(byGroup).flat().sort();
-  return { modules, groups: Object.keys(byGroup), byGroup, isCeo, version: modules.join("|").slice(0, 12) };
+  return {
+    modules,
+    groups: Object.keys(byGroup),
+    byGroup,
+    isCeo,
+    version: modules.join("|").slice(0, 12),
+  };
 }
 
 /** Two tabs: warehouse work and the money behind it. */
 const TWO_TABS = grant({
   fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"],
-  transact: ["MOD-51", "MOD-52", "MOD-56", "MOD-58", "MOD-59", "MOD-54", "MOD-53", "MOD-07", "MOD-05"],
+  transact: [
+    "MOD-51",
+    "MOD-52",
+    "MOD-56",
+    "MOD-58",
+    "MOD-59",
+    "MOD-54",
+    "MOD-53",
+    "MOD-07",
+    "MOD-05",
+  ],
 });
 
 /** All six, as a CEO resolves. */
 const SIX_TABS = grant(
   {
     monitor: ["MOD-00A", "MOD-64", "MOD-74"],
-    engage: ["MOD-20", "MOD-21", "MOD-22", "MOD-23", "MOD-24", "MOD-26", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
-    fulfill: ["MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38", "MOD-39", "MOD-40", "MOD-41", "MOD-42", "MOD-43", "MOD-44", "MOD-45"],
-    transact: ["MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59", "MOD-46", "MOD-47", "MOD-49"],
-    empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-13", "MOD-14", "MOD-15", "MOD-16", "MOD-17", "MOD-18", "MOD-19", "MOD-71"],
-    configure: ["MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65", "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75", "MOD-00B"],
+    engage: [
+      "MOD-20",
+      "MOD-21",
+      "MOD-22",
+      "MOD-23",
+      "MOD-24",
+      "MOD-26",
+      "MOD-27",
+      "MOD-28",
+      "MOD-60",
+      "MOD-61",
+      "MOD-62",
+    ],
+    fulfill: [
+      "MOD-29",
+      "MOD-30",
+      "MOD-31",
+      "MOD-32",
+      "MOD-33",
+      "MOD-34",
+      "MOD-35",
+      "MOD-36",
+      "MOD-37",
+      "MOD-38",
+      "MOD-39",
+      "MOD-40",
+      "MOD-41",
+      "MOD-42",
+      "MOD-43",
+      "MOD-44",
+      "MOD-45",
+    ],
+    transact: [
+      "MOD-51",
+      "MOD-52",
+      "MOD-53",
+      "MOD-54",
+      "MOD-56",
+      "MOD-58",
+      "MOD-59",
+      "MOD-46",
+      "MOD-47",
+      "MOD-49",
+    ],
+    empower: [
+      "MOD-02",
+      "MOD-11",
+      "MOD-12",
+      "MOD-13",
+      "MOD-14",
+      "MOD-15",
+      "MOD-16",
+      "MOD-17",
+      "MOD-18",
+      "MOD-19",
+      "MOD-71",
+    ],
+    configure: [
+      "MOD-01",
+      "MOD-03",
+      "MOD-04",
+      "MOD-05",
+      "MOD-07",
+      "MOD-08",
+      "MOD-09",
+      "MOD-10",
+      "MOD-63",
+      "MOD-65",
+      "MOD-66",
+      "MOD-67",
+      "MOD-68",
+      "MOD-70",
+      "MOD-75",
+      "MOD-00B",
+    ],
   },
   true,
 );
@@ -116,9 +220,14 @@ beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: (query: string) => ({
-      matches: false, media: query, onchange: null,
-      addEventListener: () => {}, removeEventListener: () => {},
-      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
     }),
   });
   window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -129,7 +238,12 @@ beforeEach(() => {
   prefsFail.current = false;
   accessPending.current = false;
   access.current = null;
-  stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
+  stored.current = {
+    ribbonPinned: null,
+    railPins: null,
+    towerPins: null,
+    railHintSeen: true,
+  };
   // THE SHELL NOW REMEMBERS. `lib/nav-access-cache` persists the last answer so
   // the ribbon paints before the network replies, which makes every test in
   // this file start from whatever the previous one left behind — and a fixture
@@ -165,7 +279,10 @@ describe("the ribbon's tabs are the user's, not the app's", () => {
   it("shows only the families this user has modules in", async () => {
     access.current = TWO_TABS;
     renderRibbon("/wms");
-    expect((await tabs()).map((t) => t.textContent)).toEqual(["Fulfil", "Transact"]);
+    expect((await tabs()).map((t) => t.textContent)).toEqual([
+      "Fulfil",
+      "Transact",
+    ]);
   });
 
   it("does not render a family whose modules resolve to no screen", async () => {
@@ -180,7 +297,9 @@ describe("the ribbon's tabs are the user's, not the app's", () => {
   it("marks the family you are in, since the row is links rather than tabs", async () => {
     access.current = TWO_TABS;
     renderRibbon("/finance/invoices");
-    const current = (await tabs()).filter((t) => t.getAttribute("aria-current") === "page");
+    const current = (await tabs()).filter(
+      (t) => t.getAttribute("aria-current") === "page",
+    );
     expect(current.map((t) => t.textContent)).toEqual(["Transact"]);
   });
 
@@ -203,17 +322,34 @@ describe("row B is the hub's tabs, in the chrome", () => {
   it("lists the active area's sections", async () => {
     access.current = TWO_TABS;
     renderRibbon("/wms/inventory");
-    const sections = await screen.findByRole("navigation", { name: "Warehouse sections" });
-    expect(within(sections).getAllByRole("link").map((l) => l.textContent)).toEqual([
-      "Locations", "Inventory", "Inbound / GRN", "Outbound", "Equipment", "Cycle counts",
+    const sections = await screen.findByRole("navigation", {
+      name: "Warehouse sections",
+    });
+    expect(
+      within(sections)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual([
+      "Locations",
+      "Inventory",
+      "Inbound / GRN",
+      "Outbound",
+      "Equipment",
+      "Cycle counts",
     ]);
   });
 
   it("hides a section this user cannot read, while keeping the rest", async () => {
     access.current = grant({ fulfill: ["MOD-33", "MOD-35"] }); // inbound + inventory only
     renderRibbon("/wms");
-    const sections = await screen.findByRole("navigation", { name: "Warehouse sections" });
-    expect(within(sections).getAllByRole("link").map((l) => l.textContent)).toEqual(["Inventory", "Inbound / GRN"]);
+    const sections = await screen.findByRole("navigation", {
+      name: "Warehouse sections",
+    });
+    expect(
+      within(sections)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["Inventory", "Inbound / GRN"]);
   });
 
   it("lists the family's areas when the area you are in has no sections of its own", async () => {
@@ -225,9 +361,18 @@ describe("row B is the hub's tabs, in the chrome", () => {
     // its own to be filed correctly, only a registry entry naming one.
     access.current = grant({ monitor: ["MOD-00A", "MOD-74"] });
     renderRibbon("/");
-    const areas = await screen.findByRole("navigation", { name: "Monitor areas" });
-    expect(within(areas).getAllByRole("link").map((l) => l.textContent)).toEqual([
-      "Control Tower", "My workspace", "Praxis AI", "Support & feedback",
+    const areas = await screen.findByRole("navigation", {
+      name: "Monitor areas",
+    });
+    expect(
+      within(areas)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual([
+      "Control Tower",
+      "My workspace",
+      "Praxis AI",
+      "Support & feedback",
     ]);
   });
 
@@ -236,7 +381,9 @@ describe("row B is the hub's tabs, in the chrome", () => {
     renderRibbon("/operations/files");
     // Exactly "Operations" — the overflow trigger beside it is named "All
     // Operations destinations", and a loose matcher would pass on either.
-    expect(await screen.findByRole("button", { name: "Operations" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Operations" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -256,43 +403,74 @@ describe("pinned / collapsed round-trips through the preference API", () => {
   it("defaults to pinned when the user has never chosen", async () => {
     access.current = TWO_TABS;
     renderRibbon("/wms");
-    expect(await screen.findByRole("button", { name: "Collapse the ribbon" })).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByRole("navigation", { name: "Warehouse sections" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Collapse the ribbon" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      await screen.findByRole("navigation", { name: "Warehouse sections" }),
+    ).toBeInTheDocument();
   });
 
   it("persists a collapse, and hides row B", async () => {
     access.current = TWO_TABS;
     renderRibbon("/wms");
-    await userEvent.click(await screen.findByRole("button", { name: "Collapse the ribbon" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Collapse the ribbon" }),
+    );
 
     expect(saved).toEqual([{ ribbonPinned: false }]);
-    expect(screen.queryByRole("navigation", { name: "Warehouse sections" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Keep the ribbon open" })).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.queryByRole("navigation", { name: "Warehouse sections" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Keep the ribbon open" }),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   it("reads the saved state back on the next session", async () => {
     access.current = TWO_TABS;
-    stored.current = { ribbonPinned: false, railPins: null, towerPins: null, railHintSeen: true };
+    stored.current = {
+      ribbonPinned: false,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: true,
+    };
     renderRibbon("/wms");
     await screen.findByRole("navigation", { name: "Workflow" });
-    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Warehouse sections" })).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("navigation", { name: "Warehouse sections" }),
+      ).toBeNull(),
+    );
   });
 
   /** Unpinned is not "gone": clicking a family still summons row B, which is
    *  what makes collapsing safe to try. */
   it("summons row B from a family click while collapsed", async () => {
     access.current = TWO_TABS;
-    stored.current = { ribbonPinned: false, railPins: null, towerPins: null, railHintSeen: true };
+    stored.current = {
+      ribbonPinned: false,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: true,
+    };
     renderRibbon("/wms");
     const [fulfil] = await tabs();
     await userEvent.click(fulfil);
-    expect(await screen.findByRole("navigation", { name: /sections|areas/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("navigation", { name: /sections|areas/ }),
+    ).toBeInTheDocument();
   });
 });
 
 describe("a screen's commands sit in row B, right-aligned", () => {
   function Publisher() {
-    useRibbonCommands(React.useMemo(() => [{ key: "new", label: "New invoice", onSelect: () => {} }], []));
+    useRibbonCommands(
+      React.useMemo(
+        () => [{ key: "new", label: "New invoice", onSelect: () => {} }],
+        [],
+      ),
+    );
     return null;
   }
 
@@ -317,7 +495,9 @@ describe("a screen's commands sit in row B, right-aligned", () => {
   it("keeps the area overview within reach from a section, which is not nothing", async () => {
     access.current = TWO_TABS;
     renderRibbon("/wms/inventory");
-    expect(await screen.findByRole("link", { name: /Warehouse overview/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: /Warehouse overview/ }),
+    ).toBeInTheDocument();
   });
 
   it("shows what the mounted screen published, and drops it when the screen unmounts", async () => {
@@ -329,7 +509,9 @@ describe("a screen's commands sit in row B, right-aligned", () => {
       </>,
       "/finance",
     );
-    expect(await screen.findByRole("button", { name: "New invoice" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "New invoice" }),
+    ).toBeInTheDocument();
 
     rerender(
       <TooltipProvider>
@@ -342,69 +524,123 @@ describe("a screen's commands sit in row B, right-aligned", () => {
         </MemoryRouter>
       </TooltipProvider>,
     );
-    await waitFor(() => expect(screen.queryByRole("button", { name: "New invoice" })).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "New invoice" })).toBeNull(),
+    );
   });
 });
 
 describe("the icon rail", () => {
   it("is never empty on a first login", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: null,
+    };
     renderChrome(<IconRail />, "/");
 
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
     // The fixed pair plus a starter set — not "two icons and a plus".
-    await waitFor(() => expect(within(rail).getAllByRole("link").length).toBeGreaterThan(3));
-    expect(within(rail).getByRole("link", { name: "Control Tower" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: /Search/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(rail).getAllByRole("link").length).toBeGreaterThan(3),
+    );
+    expect(
+      within(rail).getByRole("link", { name: "Control Tower" }),
+    ).toBeInTheDocument();
+    expect(
+      within(rail).getByRole("button", { name: /Search/ }),
+    ).toBeInTheDocument();
   });
 
   it("falls back to what this user CAN see when none of the defaults are visible", async () => {
     // A warehouse-only role sees none of Operations / Finance / Comms /
     // Workspace, which is exactly when a naive default set yields an empty rail.
     access.current = grant({ fulfill: ["MOD-33", "MOD-35"] });
-    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: null,
+    };
     renderChrome(<IconRail />, "/wms");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
-    await waitFor(() => expect(within(rail).getByRole("link", { name: "Warehouse" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(rail).getByRole("link", { name: "Warehouse" }),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("keeps a deliberately cleared rail cleared", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: [], towerPins: null, railHintSeen: true };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: [],
+      towerPins: null,
+      railHintSeen: true,
+    };
     renderChrome(<IconRail />, "/");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
     // Control Tower and the editor survive — "cleared" is not "empty".
-    await waitFor(() => expect(within(rail).queryByRole("link", { name: "Finance" })).toBeNull());
-    expect(within(rail).getByRole("link", { name: "Control Tower" })).toBeInTheDocument();
-    expect(within(rail).getByRole("link", { name: "Edit shortcuts" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(rail).queryByRole("link", { name: "Finance" })).toBeNull(),
+    );
+    expect(
+      within(rail).getByRole("link", { name: "Control Tower" }),
+    ).toBeInTheDocument();
+    expect(
+      within(rail).getByRole("link", { name: "Edit shortcuts" }),
+    ).toBeInTheDocument();
   });
 
   it("drops a pin whose area the user can no longer reach", async () => {
     access.current = grant({ fulfill: ["MOD-33"] });
-    stored.current = { ribbonPinned: null, railPins: ["wms", "finance"], towerPins: null, railHintSeen: true };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: ["wms", "finance"],
+      towerPins: null,
+      railHintSeen: true,
+    };
     renderChrome(<IconRail />, "/wms");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
-    await waitFor(() => expect(within(rail).getByRole("link", { name: "Warehouse" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(rail).getByRole("link", { name: "Warehouse" }),
+      ).toBeInTheDocument(),
+    );
     expect(within(rail).queryByRole("link", { name: "Finance" })).toBeNull();
   });
 
   it("nudges the edit affordance once, and records that it has", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: null,
+    };
     renderChrome(<IconRail />, "/");
     // The rail paints before the preferences land — the hint is decided once
     // BOTH reads settle, which is what stops it firing at a returning user on
     // the strength of the all-null starting state.
     await waitFor(() =>
-      expect(screen.getByRole("link", { name: "Edit shortcuts" }).className).toContain("rail-jiggle"),
+      expect(
+        screen.getByRole("link", { name: "Edit shortcuts" }).className,
+      ).toContain("rail-jiggle"),
     );
     expect(saved).toEqual([{ railHintSeen: true }]);
   });
 
   it("does not nudge a user who has already seen it", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
+    stored.current = {
+      ribbonPinned: null,
+      railPins: null,
+      towerPins: null,
+      railHintSeen: true,
+    };
     renderChrome(<IconRail />, "/");
     const edit = await screen.findByRole("link", { name: "Edit shortcuts" });
     await waitFor(() => expect(edit.className).not.toContain("rail-jiggle"));
@@ -428,7 +664,9 @@ describe("the icon rail", () => {
 
     const edit = await screen.findByRole("link", { name: "Edit shortcuts" });
     // The rail still works — the fixed entries do not depend on preferences.
-    expect(await screen.findByRole("link", { name: "Control Tower" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("link", { name: "Control Tower" }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(edit.className).not.toContain("rail-jiggle"));
     // And nothing was written, so a real first login still gets its hint once
     // the read succeeds.
@@ -442,7 +680,9 @@ describe("the icon rail", () => {
     prefsFail.current = true;
     renderChrome(<IconRail />, "/");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
-    await waitFor(() => expect(within(rail).getAllByRole("link").length).toBeGreaterThan(3));
+    await waitFor(() =>
+      expect(within(rail).getAllByRole("link").length).toBeGreaterThan(3),
+    );
   });
 
   it("is axe-clean", async () => {
@@ -458,7 +698,9 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     access.current = SIX_TABS;
     renderChrome(<BottomNav />, "/");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
-    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(6)); // six families, nothing else
+    await waitFor(() =>
+      expect(within(bar).getAllByRole("button")).toHaveLength(6),
+    ); // six families, nothing else
   });
 
   /**
@@ -513,7 +755,9 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     const bar = await screen.findByRole("navigation", { name: "Primary" });
     await waitFor(() => expect(bar).not.toHaveAttribute("aria-busy"));
     expect(within(bar).getAllByRole("button")).toHaveLength(1);
-    await userEvent.click(within(bar).getByRole("button", { name: /All areas/ }));
+    await userEvent.click(
+      within(bar).getByRole("button", { name: /All areas/ }),
+    );
     expect(onMenu).toHaveBeenCalled();
   });
 
@@ -521,7 +765,9 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     access.current = TWO_TABS;
     renderChrome(<BottomNav />, "/");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
-    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(2)); // two families
+    await waitFor(() =>
+      expect(within(bar).getAllByRole("button")).toHaveLength(2),
+    ); // two families
     expect(bar).not.toHaveAttribute("aria-busy");
     expect(within(bar).queryByText("Loading navigation…")).toBeNull();
   });
@@ -538,7 +784,11 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     await userEvent.click(within(bar).getByRole("button", { name: /Fulfil/ }));
 
     const sheet = await screen.findByRole("dialog");
-    expect(within(sheet).getByRole("link", { name: "Warehouse" })).toBeInTheDocument();
-    expect(within(sheet).getByRole("link", { name: "Cycle counts" })).toBeInTheDocument();
+    expect(
+      within(sheet).getByRole("link", { name: "Warehouse" }),
+    ).toBeInTheDocument();
+    expect(
+      within(sheet).getByRole("link", { name: "Cycle counts" }),
+    ).toBeInTheDocument();
   });
 });

@@ -20,7 +20,13 @@ import { enumLabel } from "@/lib/format";
 type Step = string | { key: string; label: string };
 
 /** Ordered lifecycle stepper. `steps` is the happy path; `current` the live stage. */
-export function StepBar({ steps, current }: { steps: Step[]; current: string }) {
+export function StepBar({
+  steps,
+  current,
+}: {
+  steps: Step[];
+  current: string;
+}) {
   const keys = steps.map((s) => (typeof s === "string" ? s : s.key));
   const idx = keys.indexOf(current);
   return (
@@ -32,7 +38,12 @@ export function StepBar({ steps, current }: { steps: Step[]; current: string }) 
         const isCurrent = i === idx;
         return (
           <React.Fragment key={key}>
-            {i > 0 && <span className={cn("h-px w-5", reached ? "bg-primary" : "bg-border")} aria-hidden />}
+            {i > 0 && (
+              <span
+                className={cn("h-px w-5", reached ? "bg-primary" : "bg-border")}
+                aria-hidden
+              />
+            )}
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-colors",
@@ -44,7 +55,13 @@ export function StepBar({ steps, current }: { steps: Step[]; current: string }) 
               )}
               aria-current={isCurrent ? "step" : undefined}
             >
-              <span className={cn("h-1.5 w-1.5 rounded-full", reached ? "bg-primary" : "bg-[rgb(var(--ink-3))]")} aria-hidden />
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  reached ? "bg-primary" : "bg-[rgb(var(--ink-3))]",
+                )}
+                aria-hidden
+              />
               {label}
             </span>
           </React.Fragment>
@@ -54,7 +71,12 @@ export function StepBar({ steps, current }: { steps: Step[]; current: string }) 
   );
 }
 
-export type Transition = { to: string; label: string; variant?: "default" | "outline"; loading?: boolean };
+export type Transition = {
+  to: string;
+  label: string;
+  variant?: "default" | "outline";
+  loading?: boolean;
+};
 
 /** The record's available transition buttons — the per-row / detail action group.
  *  Each item carries its own `loading` (callers compute it from whatever busy-key
@@ -72,7 +94,13 @@ export function TransitionButtons({
   return (
     <div className={cn("flex flex-wrap justify-end gap-2", className)}>
       {items.map((t) => (
-        <Button key={t.to} size="sm" variant={t.variant || "default"} loading={t.loading} onClick={() => onTransition(t.to)}>
+        <Button
+          key={t.to}
+          size="sm"
+          variant={t.variant || "default"}
+          loading={t.loading}
+          onClick={() => onTransition(t.to)}
+        >
           {t.label}
         </Button>
       ))}
@@ -98,7 +126,10 @@ export function StatusActionBar({
   busyKey?: string | null;
   children?: React.ReactNode;
 }) {
-  const items = transitions.map((t) => ({ ...t, loading: busyKey === "st:" + t.to }));
+  const items = transitions.map((t) => ({
+    ...t,
+    loading: busyKey === "st:" + t.to,
+  }));
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -110,7 +141,11 @@ export function StatusActionBar({
   );
 }
 
-export type LineColumn<T> = { label: string; align?: "left" | "right"; render: (row: T) => React.ReactNode };
+export type LineColumn<T> = {
+  label: string;
+  align?: "left" | "right";
+  render: (row: T) => React.ReactNode;
+};
 
 /** Bordered line-item grid with loading/empty states — the WO-parts / pick-lines
  *  / count-sheet table pulled into one place. */
@@ -133,7 +168,13 @@ export function LineTable<T>({
         <thead className="bg-secondary text-muted-foreground">
           <tr>
             {columns.map((c) => (
-              <th key={c.label} className={cn("px-3 py-2 font-medium", c.align === "right" ? "text-right" : "text-left")}>
+              <th
+                key={c.label}
+                className={cn(
+                  "px-3 py-2 font-medium",
+                  c.align === "right" ? "text-right" : "text-left",
+                )}
+              >
                 {c.label}
               </th>
             ))}
@@ -142,17 +183,33 @@ export function LineTable<T>({
         <tbody className="divide-y divide-border">
           {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-4 text-center micro">Loading…</td>
+              <td
+                colSpan={columns.length}
+                className="px-3 py-4 text-center micro"
+              >
+                Loading…
+              </td>
             </tr>
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-4 text-center micro">{empty}</td>
+              <td
+                colSpan={columns.length}
+                className="px-3 py-4 text-center micro"
+              >
+                {empty}
+              </td>
             </tr>
           ) : (
             rows.map((r, i) => (
               <tr key={rowKey(r, i)}>
                 {columns.map((c) => (
-                  <td key={c.label} className={cn("px-3 py-1.5", c.align === "right" ? "text-right" : "text-left")}>
+                  <td
+                    key={c.label}
+                    className={cn(
+                      "px-3 py-1.5",
+                      c.align === "right" ? "text-right" : "text-left",
+                    )}
+                  >
                     {c.render(r)}
                   </td>
                 ))}

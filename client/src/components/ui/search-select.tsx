@@ -110,7 +110,11 @@ export function SearchSelect({
           const list = filter ? raw.filter(filter) : raw;
           const t = term.trim().toLowerCase();
           // Client-side narrowing safety net for endpoints that ignore ?q=.
-          setRows(t ? list.filter((r) => getLabel(r).toLowerCase().includes(t)) : list);
+          setRows(
+            t
+              ? list.filter((r) => getLabel(r).toLowerCase().includes(t))
+              : list,
+          );
           setActive(0);
         })
         .catch(() => live && setRows([]))
@@ -125,7 +129,8 @@ export function SearchSelect({
   React.useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      if (boxRef.current && !boxRef.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -153,7 +158,12 @@ export function SearchSelect({
     }
   }
 
-  const showCreate = !!onCreate && !!term.trim() && rows !== null && rows.length === 0 && !loading;
+  const showCreate =
+    !!onCreate &&
+    !!term.trim() &&
+    rows !== null &&
+    rows.length === 0 &&
+    !loading;
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     const n = rows?.length ?? 0;
@@ -200,7 +210,9 @@ export function SearchSelect({
           }}
           className="flex w-full items-center justify-between rounded-lg border bg-background px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className={value ? "text-foreground" : "text-muted-foreground"}>{value || placeholder || "Search…"}</span>
+          <span className={value ? "text-foreground" : "text-muted-foreground"}>
+            {value || placeholder || "Search…"}
+          </span>
           <span aria-hidden className="text-muted-foreground">
             ▾
           </span>
@@ -222,7 +234,9 @@ export function SearchSelect({
           aria-expanded
           aria-controls={listId}
           aria-autocomplete="list"
-          aria-activedescendant={rows?.[active] ? `${baseId}-opt-${active}` : undefined}
+          aria-activedescendant={
+            rows?.[active] ? `${baseId}-opt-${active}` : undefined
+          }
           value={term}
           placeholder={placeholder || "Type to search…"}
           onChange={(e) => setTerm(e.target.value)}
@@ -236,9 +250,18 @@ export function SearchSelect({
           <p role="status" aria-live="polite" className="sr-only">
             {status}
           </p>
-          {loading && <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>}
+          {loading && (
+            <p className="px-3 py-2 text-sm text-muted-foreground">
+              Searching…
+            </p>
+          )}
 
-          <ul id={listId} role="listbox" aria-label={label ? `${label} results` : "Results"} className="m-0 list-none p-0">
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label={label ? `${label} results` : "Results"}
+            className="m-0 list-none p-0"
+          >
             {!loading &&
               rows?.map((r, i) => (
                 <li key={getKey(r)} role="none">
@@ -263,9 +286,15 @@ export function SearchSelect({
               ))}
           </ul>
 
-          {!loading && rows && rows.length === 0 && !showCreate && !allowFreeText && (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
-          )}
+          {!loading &&
+            rows &&
+            rows.length === 0 &&
+            !showCreate &&
+            !allowFreeText && (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                No matches.
+              </p>
+            )}
           {allowFreeText && term.trim() && (
             <button
               type="button"
@@ -289,7 +318,8 @@ export function SearchSelect({
               // --primary-ink, not --primary: this is a text label (F13).
               className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-primary-ink hover:bg-primary/10"
             >
-              ＋ {createLabel ? createLabel(term.trim()) : `Add “${term.trim()}”`}
+              ＋{" "}
+              {createLabel ? createLabel(term.trim()) : `Add “${term.trim()}”`}
             </button>
           )}
         </div>

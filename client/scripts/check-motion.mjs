@@ -75,14 +75,21 @@ const BUDGET_MS = 250;
  * not, which is why the escape hatch is shaped this way.
  */
 const EXEMPT = [
-  [/^\.landing/, "marketing front door — seen once per session, before any work"],
+  [
+    /^\.landing/,
+    "marketing front door — seen once per session, before any work",
+  ],
   [/^\.login/, "sign-in card — same surface, same reason"],
-  [/^\.splash/, "boot splash — the door, not the workstation: shown once per session before any work, and it is the surface a tenant designs in Settings › App & PWA"],
+  [
+    /^\.splash/,
+    "boot splash — the door, not the workstation: shown once per session before any work, and it is the surface a tenant designs in Settings › App & PWA",
+  ],
 ];
 
 /** Tailwind `animation` entries that may loop forever, and why. */
 const INFINITE_OK = {
-  "lane-sea": "marching-ants stroke on a shipping lane — the motion IS direction of travel",
+  "lane-sea":
+    "marching-ants stroke on a shipping lane — the motion IS direction of travel",
   "lane-road": "as above",
   "lane-air": "as above",
 };
@@ -161,14 +168,21 @@ function declarations(source) {
     const open = line.indexOf("{");
     if (open !== -1) {
       const head = line.slice(0, open).trim();
-      if (head && !head.startsWith("@media") && !head.startsWith("@layer") && !head.startsWith("@supports")) {
+      if (
+        head &&
+        !head.startsWith("@media") &&
+        !head.startsWith("@layer") &&
+        !head.startsWith("@supports")
+      ) {
         stack.push(head);
         selector = head;
       } else {
         stack.push(selector);
       }
     }
-    const m = line.match(/(?:^|\s)(transition|animation)(?:-duration)?\s*:\s*([^;]+);/);
+    const m = line.match(
+      /(?:^|\s)(transition|animation)(?:-duration)?\s*:\s*([^;]+);/,
+    );
     if (m) out.push({ prop: m[1], value: m[2], selector, line: i + 1 });
     if (line.includes("}")) {
       stack.pop();
@@ -207,10 +221,17 @@ for (const d of declarations(css)) {
 
 /* ── 2. animation-delay, which is wall time the user also waits ───────────── */
 
-for (const m of stripComments(css).matchAll(/^([^{}\n]+)\{[^}]*animation-delay:\s*([^;]+);/gm)) {
+for (const m of stripComments(css).matchAll(
+  /^([^{}\n]+)\{[^}]*animation-delay:\s*([^;]+);/gm,
+)) {
   const worst = Math.max(0, ...durations(m[2]));
   if (worst > BUDGET_MS && !exemptFor(m[1])) {
-    failures.push({ prop: "animation-delay", value: m[2], selector: m[1].trim(), worst });
+    failures.push({
+      prop: "animation-delay",
+      value: m[2],
+      selector: m[1].trim(),
+      worst,
+    });
   }
 }
 
@@ -218,21 +239,46 @@ for (const m of stripComments(css).matchAll(/^([^{}\n]+)\{[^}]*animation-delay:\
 
 const twAnimations = tw.match(/animation:\s*\{([\s\S]*?)\n\s{6}\}/);
 if (!twAnimations) {
-  failures.push({ selector: "tailwind.config.ts", prop: "animation", value: "block not found", worst: NaN });
+  failures.push({
+    selector: "tailwind.config.ts",
+    prop: "animation",
+    value: "block not found",
+    worst: NaN,
+  });
 } else {
-  for (const m of stripComments(twAnimations[1]).matchAll(/"([\w-]+)":\s*"([^"]+)"/g)) {
+  for (const m of stripComments(twAnimations[1]).matchAll(
+    /"([\w-]+)":\s*"([^"]+)"/g,
+  )) {
     const [, name, decl] = m;
     const worst = Math.max(0, ...durations(decl));
     checked++;
     if (decl.includes("infinite")) {
       if (!INFINITE_OK[name]) {
-        failures.push({ selector: `tailwind animation.${name}`, prop: "animation", value: decl, worst, infinite: true });
+        failures.push({
+          selector: `tailwind animation.${name}`,
+          prop: "animation",
+          value: decl,
+          worst,
+          infinite: true,
+        });
       } else {
-        exempted.push({ selector: `tailwind animation.${name}`, prop: "animation", value: decl, worst, reason: INFINITE_OK[name] });
+        exempted.push({
+          selector: `tailwind animation.${name}`,
+          prop: "animation",
+          value: decl,
+          worst,
+          reason: INFINITE_OK[name],
+        });
       }
       continue;
     }
-    if (worst > BUDGET_MS) failures.push({ selector: `tailwind animation.${name}`, prop: "animation", value: decl, worst });
+    if (worst > BUDGET_MS)
+      failures.push({
+        selector: `tailwind animation.${name}`,
+        prop: "animation",
+        value: decl,
+        worst,
+      });
   }
 }
 
@@ -245,12 +291,18 @@ if (!twAnimations) {
  */
 const declaredAnimations = new Set([
   // …from the Tailwind scale (`animation: { "fade-in": … }`)…
-  ...(twAnimations ? [...stripComments(twAnimations[1]).matchAll(/"([\w-]+)":/g)].map((m) => m[1]) : []),
+  ...(twAnimations
+    ? [...stripComments(twAnimations[1]).matchAll(/"([\w-]+)":/g)].map(
+        (m) => m[1],
+      )
+    : []),
   // …and from index.css, where a couple are written as plain classes
   // (`.animate-fade-up { animation: … }`) rather than through the config.
   // Both are already measured by sections 1 and 3; the point here is only to
   // recognise them as OURS so they are not reported as framework built-ins.
-  ...[...stripComments(css).matchAll(/\.animate-([\w-]+)\s*\{/g)].map((m) => m[1]),
+  ...[...stripComments(css).matchAll(/\.animate-([\w-]+)\s*\{/g)].map(
+    (m) => m[1],
+  ),
 ]);
 
 const used = new Map();
@@ -265,7 +317,13 @@ for (const file of clientSources()) {
 for (const [name, where] of used) {
   checked++;
   if (FRAMEWORK_OK[name]) {
-    exempted.push({ selector: `tailwind base .animate-${name}`, prop: "animation", value: "(framework)", worst: NaN, reason: FRAMEWORK_OK[name] });
+    exempted.push({
+      selector: `tailwind base .animate-${name}`,
+      prop: "animation",
+      value: "(framework)",
+      worst: NaN,
+      reason: FRAMEWORK_OK[name],
+    });
   } else {
     failures.push({
       selector: `.animate-${name} (${where})`,
@@ -284,11 +342,19 @@ const globalKill = css.match(
   /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\*,\s*\*::before,\s*\*::after\s*\{([\s\S]*?)\}/,
 );
 if (!globalKill) {
-  reducedMotion.push("No global `*, *::before, *::after` block under prefers-reduced-motion.");
+  reducedMotion.push(
+    "No global `*, *::before, *::after` block under prefers-reduced-motion.",
+  );
 } else {
   const body = globalKill[1];
-  if (!/animation:\s*none\s*!important/.test(body)) reducedMotion.push("Global block does not kill `animation` with !important.");
-  if (!/transition:\s*none\s*!important/.test(body)) reducedMotion.push("Global block does not kill `transition` with !important.");
+  if (!/animation:\s*none\s*!important/.test(body))
+    reducedMotion.push(
+      "Global block does not kill `animation` with !important.",
+    );
+  if (!/transition:\s*none\s*!important/.test(body))
+    reducedMotion.push(
+      "Global block does not kill `transition` with !important.",
+    );
 }
 
 /* ── report ───────────────────────────────────────────────────────────────── */
@@ -298,16 +364,22 @@ console.warn(`\nMotion budget — ${BUDGET_MS}ms in-app\n`);
 for (const e of exempted) {
   // `NaN` is a framework animation whose duration is not declared in this repo,
   // so there is no number to print — the reason is the whole point of the line.
-  const at = Number.isNaN(e.worst) ? "      —" : `${String(Math.round(e.worst)).padStart(6)}ms`;
+  const at = Number.isNaN(e.worst)
+    ? "      —"
+    : `${String(Math.round(e.worst)).padStart(6)}ms`;
   console.warn(`  ALLOW ${at}  ${e.selector}  — ${e.reason}`);
 }
-console.warn(`\n  ${checked} declaration(s) checked, ${exempted.length} exempt.`);
+console.warn(
+  `\n  ${checked} declaration(s) checked, ${exempted.length} exempt.`,
+);
 
 if (reducedMotion.length) {
   console.error("\n✗ prefers-reduced-motion is no longer honoured globally:");
   for (const r of reducedMotion) console.error(`    ${r}`);
 } else {
-  console.warn("  prefers-reduced-motion: global kill present, covers animation + transition + pseudo-elements.");
+  console.warn(
+    "  prefers-reduced-motion: global kill present, covers animation + transition + pseudo-elements.",
+  );
 }
 
 if (failures.length) {
@@ -318,7 +390,9 @@ if (failures.length) {
       : f.framework
         ? "a framework animation with no entry in FRAMEWORK_OK — this file cannot read its duration, so it must be reasoned about by hand"
         : `${Math.round(f.worst)}ms > ${BUDGET_MS}ms`;
-    console.error(`    ${f.selector}  { ${f.prop}: ${f.value.trim()} }  — ${why}`);
+    console.error(
+      `    ${f.selector}  { ${f.prop}: ${f.value.trim()} }  — ${why}`,
+    );
   }
   console.error(
     "\n  Entrance motion on a screen opened dozens of times a day should be\n" +

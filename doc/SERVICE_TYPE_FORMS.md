@@ -1,8 +1,8 @@
 # Service type forms
 
 How the form a service type asks for is changed, and where each part of it lives.
-Written because the first question anybody asks about it — *"how do I add an
-Incoterm?"* — had no answer in the product.
+Written because the first question anybody asks about it — _"how do I add an
+Incoterm?"_ — had no answer in the product.
 
 ## Where
 
@@ -20,7 +20,7 @@ To change anything:
 
 1. **New version from live** — clones the live form into a draft.
 2. Edit the draft.
-3. **Publish** — every *new* file of that service type is created against it.
+3. **Publish** — every _new_ file of that service type is created against it.
 
 Files already open keep the version they were created under, which is the whole
 point. Editing the live form in place breaks three ways at once: files created under
@@ -34,16 +34,16 @@ identical problem.
 
 ## What a row on the Details table can change
 
-| Column | Editable on a draft | Notes |
-|---|---|---|
-| Key | **Never** | It is the property values are stored under. Asked once, at creation. |
-| Label | Yes | Free — a label is read, not stored. |
-| Type | No | Changing it after files exist changes what stored values *mean*. |
-| Options | Yes, for `SELECT` / `MULTISELECT` | See below |
-| Means (facet role) | Yes | How every document, costing and quotation understands the field |
-| Required | Yes | Required *at creation* — see the note in the tab |
-| Client sees | Yes | Renders on the client portal beside the milestone chain |
-| — | Retire / delete | A shipped field is retired, not deleted |
+| Column             | Editable on a draft               | Notes                                                                |
+| ------------------ | --------------------------------- | -------------------------------------------------------------------- |
+| Key                | **Never**                         | It is the property values are stored under. Asked once, at creation. |
+| Label              | Yes                               | Free — a label is read, not stored.                                  |
+| Type               | No                                | Changing it after files exist changes what stored values _mean_.     |
+| Options            | Yes, for `SELECT` / `MULTISELECT` | See below                                                            |
+| Means (facet role) | Yes                               | How every document, costing and quotation understands the field      |
+| Required           | Yes                               | Required _at creation_ — see the note in the tab                     |
+| Client sees        | Yes                               | Renders on the client portal beside the milestone chain              |
+| —                  | Retire / delete                   | A shipped field is retired, not deleted                              |
 
 ## Option lists — Incoterms, customs regimes, units
 
@@ -75,7 +75,7 @@ answers to the same question.
 - two rows sharing a value, compared case-insensitively. Nothing downstream could
   tell them apart, and it is the mistake a duplicated row makes by default.
 
-Those are checked in the browser so the operator is told *before* pressing Save
+Those are checked in the browser so the operator is told _before_ pressing Save
 rather than by a 422 afterwards — but the server enforces the same rules
 (`service_type_field.validator`), so the browser is the courtesy and not the
 control.
@@ -84,7 +84,7 @@ control.
 
 The add-field form collects the options **before** the field is created. It used to
 offer `SELECT` in its type list and send no options, which the server refuses — so
-adding one always failed with no way past it. A dropdown *is* its option list;
+adding one always failed with no way past it. A dropdown _is_ its option list;
 asking for the list is not an extra step, it is the step that was missing.
 
 ## The Estimated Project Delivery Date
@@ -104,7 +104,7 @@ It is the FIRST thing `milestone.resolveTarget` consults:
 Two consequences, and both are the point:
 
 - **`is_target_lock` needs it.** That flag marks the SLA-protected stage: upstream
-  slip *compresses* the remaining stages toward the committed date rather than
+  slip _compresses_ the remaining stages toward the committed date rather than
   moving it, and then reports the breach. With no promised date the lock falls onto
   the carrier's ETA, so a carrier delay silently becomes ours and nothing is ever
   reported as breached.
@@ -114,7 +114,7 @@ Two consequences, and both are the point:
   arrive as a string from a form and as a `Date` from pg, and re-planning on every
   unrelated save would rewrite planned dates and write a rebaseline row for nothing.
 
-It is *not* on warehousing, brokerage or representation (no delivery, and two of
+It is _not_ on warehousing, brokerage or representation (no delivery, and two of
 them are open-ended by declaration), nor on inland transportation, whose own `eta`
 is already labelled "Planned delivery" — a second delivery date on a five-day
 domestic haul is the ask-twice mistake.
@@ -125,14 +125,14 @@ domestic haul is the ask-twice mistake.
 applies it by field key — repeating an eleven-element Incoterm array in eight places
 is eight chances to let one fall out of date. What ships:
 
-| Field | Values |
-|---|---|
-| `incoterm` | EXW FCA FAS FOB CFR CIF CPT CIP DAP DPU DDP (Incoterms 2020, all eleven) |
-| `customs_regime` | IM4 IM7 IM8 EX1 EX2 |
-| `weight_unit` | KG TON LB |
-| `bonded_status` | BONDED NON_BONDED |
-| `storage_basis` | PER_PALLET PER_SQM PER_CBM PER_TON PER_CONTAINER FLAT_MONTHLY |
-| `retainer_basis` | MONTHLY_RETAINER PER_ASSIGNMENT COMMISSION MIXED |
+| Field            | Values                                                                   |
+| ---------------- | ------------------------------------------------------------------------ |
+| `incoterm`       | EXW FCA FAS FOB CFR CIF CPT CIP DAP DPU DDP (Incoterms 2020, all eleven) |
+| `customs_regime` | IM4 IM7 IM8 EX1 EX2                                                      |
+| `weight_unit`    | KG TON LB                                                                |
+| `bonded_status`  | BONDED NON_BONDED                                                        |
+| `storage_basis`  | PER_PALLET PER_SQM PER_CBM PER_TON PER_CONTAINER FLAT_MONTHLY            |
+| `retainer_basis` | MONTHLY_RETAINER PER_ASSIGNMENT COMMISSION MIXED                         |
 
 A tenant's edits are theirs from then on — the seed is idempotent by filename and
 never re-applied.
@@ -170,7 +170,7 @@ DECLARATION_LODGED · INSPECTION · DUTIES_PAID · CUSTOMS_RELEASED (BAE)
 CARRIER_RELEASE (D.O.) · TERMINAL_EXIT · DELIVERY · EMPTY_RETURN · FILE_CLOSED
 ```
 
-`9091` is deliberately non-destructive: a service type that already has *any*
+`9091` is deliberately non-destructive: a service type that already has _any_
 template is skipped, so a tenant's own chain is never overwritten. On
 **sandbox-seeded tenants** that rule backfired. `seed-sandbox.sql` creates a
 five-stage demo chain for sea import, air import and hinterland transit as part of
@@ -189,7 +189,7 @@ the sandbox left it (matched on its five stage codes — one renamed stage means
 human has been in there, and it is left alone). The shipped fourteen are published
 as a **new version**, marked system so drift-and-restore finally has a baseline.
 
-**Files already open are untouched.** Milestone *instances* are copies taken at
+**Files already open are untouched.** Milestone _instances_ are copies taken at
 instantiation, so every dossier keeps the chain it was created against, exactly as a
 republished detail form leaves open files alone. New files get the fourteen.
 

@@ -15,6 +15,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (status === "anon") return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
+  if (status === "anon")
+    return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   return <>{children}</>;
 }

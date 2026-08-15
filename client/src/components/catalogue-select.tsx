@@ -11,7 +11,13 @@ import { DictionaryFinder } from "@/components/dictionary-finder";
 
 type Opt = { id: string; label: string };
 
-function OptSelect({ value, onPick, options, loading, placeholder }: {
+function OptSelect({
+  value,
+  onPick,
+  options,
+  loading,
+  placeholder,
+}: {
   value?: string | null;
   onPick: (id: string, label: string) => void;
   options: Opt[];
@@ -27,8 +33,14 @@ function OptSelect({ value, onPick, options, loading, placeholder }: {
         onPick(id, opt ? opt.label : "");
       }}
     >
-      <option value="">{loading ? "Loading…" : (placeholder || "— select —")}</option>
-      {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+      <option value="">
+        {loading ? "Loading…" : placeholder || "— select —"}
+      </option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
     </Select>
   );
 }
@@ -42,7 +54,11 @@ function OptSelect({ value, onPick, options, loading, placeholder }: {
  * is the denormalised label every caller already stores on the line, so the
  * control reads correctly before any search runs.
  */
-export function DictionaryItemSelect({ value, valueLabel, onPick }: {
+export function DictionaryItemSelect({
+  value,
+  valueLabel,
+  onPick,
+}: {
   value?: string | null;
   valueLabel?: string | null;
   onPick: (id: string, label: string) => void;
@@ -59,8 +75,25 @@ export function DictionaryItemSelect({ value, valueLabel, onPick }: {
 }
 
 /** Warehouse inventory item (GRN, delivery note). */
-export function InventoryItemSelect({ value, onPick }: { value?: string | null; onPick: (id: string, label: string) => void }) {
+export function InventoryItemSelect({
+  value,
+  onPick,
+}: {
+  value?: string | null;
+  onPick: (id: string, label: string) => void;
+}) {
   const r = useResource(() => listInventory(), []);
-  const options: Opt[] = (r.data || []).map((i) => ({ id: i.inventory_item_id, label: i.description || i.sku || i.inventory_item_id.slice(0, 8) }));
-  return <OptSelect value={value} onPick={onPick} options={options} loading={r.loading} placeholder="— item —" />;
+  const options: Opt[] = (r.data || []).map((i) => ({
+    id: i.inventory_item_id,
+    label: i.description || i.sku || i.inventory_item_id.slice(0, 8),
+  }));
+  return (
+    <OptSelect
+      value={value}
+      onPick={onPick}
+      options={options}
+      loading={r.loading}
+      placeholder="— item —"
+    />
+  );
 }

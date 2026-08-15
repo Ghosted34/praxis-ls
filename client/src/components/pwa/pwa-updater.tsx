@@ -76,8 +76,12 @@ export function PwaUpdater() {
         // update CHECK is benign by construction, because the next tick simply
         // tries again.
         r.update()
-          .catch(() => { /* benign — the app is fine, the next tick retries */ })
-          .finally(() => { checking = false; });
+          .catch(() => {
+            /* benign — the app is fine, the next tick retries */
+          })
+          .finally(() => {
+            checking = false;
+          });
       };
 
       const timer = window.setInterval(tick, SW_UPDATE_POLL_MS);
@@ -174,7 +178,8 @@ export function PwaUpdater() {
         const installing = reg.installing;
         if (installing) {
           installing.addEventListener("statechange", () => {
-            if (installing.state === "installed") installing.postMessage({ type: "SKIP_WAITING" });
+            if (installing.state === "installed")
+              installing.postMessage({ type: "SKIP_WAITING" });
           });
           return;
         }
@@ -195,11 +200,17 @@ export function PwaUpdater() {
         <div className="min-w-0 flex-1">
           {needRefresh ? (
             <>
-              <p className="text-sm font-semibold text-foreground">{pwa.updateTitle || "New version available"}</p>
-              <p className="text-[13px] text-muted-foreground">{pwa.updateBody || "Reload to get the latest update."}</p>
+              <p className="text-sm font-semibold text-foreground">
+                {pwa.updateTitle || "New version available"}
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                {pwa.updateBody || "Reload to get the latest update."}
+              </p>
             </>
           ) : (
-            <p className="text-sm font-medium text-foreground">{pwa.offlineReadyText || "Ready to work offline."}</p>
+            <p className="text-sm font-medium text-foreground">
+              {pwa.offlineReadyText || "Ready to work offline."}
+            </p>
           )}
         </div>
         {needRefresh && (

@@ -73,7 +73,10 @@ export function PageHeader({
   return (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-3">
       <div className="flex min-w-0 items-start gap-3">
-        <span aria-hidden className="mt-1 h-7 w-1 shrink-0 rounded-full bg-primary" />
+        <span
+          aria-hidden
+          className="mt-1 h-7 w-1 shrink-0 rounded-full bg-primary"
+        />
         <div className="min-w-0">
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
           {/*
@@ -91,7 +94,9 @@ export function PageHeader({
           {description ? (
             <>
               <h1 className="micro mb-1">{title}</h1>
-              <p className="max-w-prose text-base font-medium leading-snug text-foreground">{description}</p>
+              <p className="max-w-prose text-base font-medium leading-snug text-foreground">
+                {description}
+              </p>
             </>
           ) : (
             <h1 className="font-display text-h2 leading-tight">{title}</h1>
@@ -126,7 +131,13 @@ export function PageHeader({
  * This is why `onRowClick` rows must put something identifying in column 0 —
  * which every screen already does, because that is also what a human scans.
  */
-function RowActivator({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function RowActivator({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -220,13 +231,19 @@ export function DataList<T extends Record<string, unknown>>({
     );
 
   const rowName = (r: T, i: number) =>
-    selectionLabel?.(r) ?? String(columns[0] ? (r[columns[0].key] ?? rowKey(r, i)) : rowKey(r, i));
+    selectionLabel?.(r) ??
+    String(columns[0] ? (r[columns[0].key] ?? rowKey(r, i)) : rowKey(r, i));
 
   return (
     <>
       {/* Table — sm and up. Below that it would overflow, so we swap to cards. */}
       <div className="hidden sm:block">
-        <Table density={density} sticky={sticky} freezeFirstColumn={freezeFirstColumn} maxHeight={maxHeight}>
+        <Table
+          density={density}
+          sticky={sticky}
+          freezeFirstColumn={freezeFirstColumn}
+          maxHeight={maxHeight}
+        >
           <THead>
             <TR>
               {selection && (
@@ -246,7 +263,11 @@ export function DataList<T extends Record<string, unknown>>({
                     // A visible "Select all" heading would take a column's worth
                     // of width to say what the control already says. sr-only is
                     // the same trade `headerLabel` makes for the actions column.
-                    label={<span className="sr-only">Select all rows on this page</span>}
+                    label={
+                      <span className="sr-only">
+                        Select all rows on this page
+                      </span>
+                    }
                   />
                 </TH>
               )}
@@ -255,7 +276,11 @@ export function DataList<T extends Record<string, unknown>>({
               ))}
             </TR>
           </THead>
-          <TBody ref={roving.bodyRef} onKeyDown={roving.onKeyDown} onFocus={roving.onFocus}>
+          <TBody
+            ref={roving.bodyRef}
+            onKeyDown={roving.onKeyDown}
+            onFocus={roving.onFocus}
+          >
             {rows.map((r, i) => {
               const key = rowKey(r, i);
               const selected = selection?.isSelected(key) ?? false;
@@ -269,12 +294,14 @@ export function DataList<T extends Record<string, unknown>>({
                     // Selected rows need a persistent ground, not just a ticked
                     // box: on a scrolled table the checkbox column may be the
                     // part that is off screen.
-                    selected && "bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]",
+                    selected &&
+                      "bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]",
                     // A deep-link brought the user here to look at THIS row.
                     // The ring survives a re-render (unlike a transient scroll
                     // flash) so it still reads as "you're here" if the table
                     // repaints from a background refresh.
-                    focused && "outline outline-2 outline-primary bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]",
+                    focused &&
+                      "outline outline-2 outline-primary bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]",
                   )}
                   onClick={onRowClick ? () => onRowClick(r) : undefined}
                 >
@@ -293,8 +320,14 @@ export function DataList<T extends Record<string, unknown>>({
                       <Checkbox
                         className="[&>button]:mt-0 [&>button]:tap-24"
                         checked={selected}
-                        onCheckedChange={() => selection.toggle(key, { shift: shiftRef.current })}
-                        label={<span className="sr-only">Select {rowName(r, i)}</span>}
+                        onCheckedChange={() =>
+                          selection.toggle(key, { shift: shiftRef.current })
+                        }
+                        label={
+                          <span className="sr-only">
+                            Select {rowName(r, i)}
+                          </span>
+                        }
                       />
                     </TD>
                   )}
@@ -302,7 +335,13 @@ export function DataList<T extends Record<string, unknown>>({
                     const val = c.render ? c.render(r) : cell(r[c.key]);
                     return (
                       <TD key={c.key} className={c.className}>
-                        {onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{val}</RowActivator> : val}
+                        {onRowClick && ci === 0 ? (
+                          <RowActivator onClick={() => onRowClick(r)}>
+                            {val}
+                          </RowActivator>
+                        ) : (
+                          val
+                        )}
                       </TD>
                     );
                   })}
@@ -332,7 +371,9 @@ export function DataList<T extends Record<string, unknown>>({
               disabled={!selection.selectable}
               label={<span className="text-sm">Select all</span>}
             />
-            {selection.count > 0 && <span className="micro">{selection.count} selected</span>}
+            {selection.count > 0 && (
+              <span className="micro">{selection.count} selected</span>
+            )}
           </div>
         )}
         {rows.map((r, i) => {
@@ -351,8 +392,10 @@ export function DataList<T extends Record<string, unknown>>({
               className={cn(
                 "lux-card p-3",
                 onRowClick && "cursor-pointer",
-                selected && "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]",
-                focused && "ring-2 ring-primary bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]",
+                selected &&
+                  "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]",
+                focused &&
+                  "ring-2 ring-primary bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]",
               )}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
             >
@@ -361,7 +404,10 @@ export function DataList<T extends Record<string, unknown>>({
                   // The checkbox sits OUTSIDE the column loop rather than as a
                   // pseudo-column: a card is not a row, and threading it through
                   // the label/value pairs would have given it a "" label cell.
-                  <span role="presentation" onClick={(e) => e.stopPropagation()}>
+                  <span
+                    role="presentation"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Checkbox
                       className="[&>button]:tap-44"
                       checked={selected}
@@ -369,21 +415,40 @@ export function DataList<T extends Record<string, unknown>>({
                       // long-press range is an idiom this app does not use
                       // anywhere else. Tap-to-toggle plus Select all covers it.
                       onCheckedChange={() => selection.toggle(key)}
-                      label={<span className="sr-only">Select {rowName(r, i)}</span>}
+                      label={
+                        <span className="sr-only">Select {rowName(r, i)}</span>
+                      }
                     />
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
                   {columns.map((c, ci) => {
                     const raw = c.render ? c.render(r) : cell(r[c.key]);
-                    const val = onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{raw}</RowActivator> : raw;
+                    const val =
+                      onRowClick && ci === 0 ? (
+                        <RowActivator onClick={() => onRowClick(r)}>
+                          {raw}
+                        </RowActivator>
+                      ) : (
+                        raw
+                      );
                     return c.label ? (
-                      <div key={c.key} className="flex items-baseline justify-between gap-3 py-0.5">
+                      <div
+                        key={c.key}
+                        className="flex items-baseline justify-between gap-3 py-0.5"
+                      >
                         <span className="micro shrink-0">{c.label}</span>
-                        <span className="min-w-0 text-right text-sm">{val}</span>
+                        <span className="min-w-0 text-right text-sm">
+                          {val}
+                        </span>
                       </div>
                     ) : (
-                      <div key={c.key} className="mt-2 flex flex-wrap justify-end gap-2">{val}</div>
+                      <div
+                        key={c.key}
+                        className="mt-2 flex flex-wrap justify-end gap-2"
+                      >
+                        {val}
+                      </div>
                     );
                   })}
                 </div>

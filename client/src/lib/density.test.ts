@@ -9,7 +9,14 @@
  * developer usually looks at.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDensity, setDensity, initDensity, isDensity, DENSITY_PY, DENSITY_ROW_PX } from "@/lib/density";
+import {
+  getDensity,
+  setDensity,
+  initDensity,
+  isDensity,
+  DENSITY_PY,
+  DENSITY_ROW_PX,
+} from "@/lib/density";
 
 describe("density", () => {
   beforeEach(() => {
@@ -25,13 +32,17 @@ describe("density", () => {
   it("round-trips a choice through localStorage and the DOM attribute", () => {
     setDensity("compact");
     expect(getDensity()).toBe("compact");
-    expect(document.documentElement.getAttribute("data-density")).toBe("compact");
+    expect(document.documentElement.getAttribute("data-density")).toBe(
+      "compact",
+    );
   });
 
   it("applies the stored preference at boot", () => {
     localStorage.setItem("praxis.density", "comfortable");
     initDensity();
-    expect(document.documentElement.getAttribute("data-density")).toBe("comfortable");
+    expect(document.documentElement.getAttribute("data-density")).toBe(
+      "comfortable",
+    );
   });
 
   it("ignores a stored value that is not a level", () => {
@@ -54,7 +65,9 @@ describe("density", () => {
     });
     expect(() => setDensity("compact")).not.toThrow();
     // Still applied for this session, just not remembered.
-    expect(document.documentElement.getAttribute("data-density")).toBe("compact");
+    expect(document.documentElement.getAttribute("data-density")).toBe(
+      "compact",
+    );
   });
 
   it("announces a change so geometry-measuring code can react", () => {

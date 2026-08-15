@@ -58,7 +58,11 @@ import { SecurityIcon } from "@/app/layout/nav-icons";
  * screen's `title` and `purpose` are the user-facing description of what the
  * module DOES, which is what the page has to say.
  */
-function describe(moduleKey: string): { title: string; purpose: string; screens: string[] } {
+function describe(moduleKey: string): {
+  title: string;
+  purpose: string;
+  screens: string[];
+} {
   const screens = screensForModule(moduleKey);
 
   // The area MOST of this module's screens live in. Most rather than first,
@@ -70,7 +74,9 @@ function describe(moduleKey: string): { title: string; purpose: string; screens:
   let best = 0;
   for (const a of AREAS) {
     if (!a.basePath) continue;
-    const n = screens.filter((s) => s.route === a.basePath || s.route.startsWith(a.basePath + "/")).length;
+    const n = screens.filter(
+      (s) => s.route === a.basePath || s.route.startsWith(a.basePath + "/"),
+    ).length;
     if (n > best) {
       best = n;
       area = a;
@@ -89,9 +95,17 @@ function describe(moduleKey: string): { title: string; purpose: string; screens:
   };
 }
 
-export function NoAccessPage({ moduleKey, pathname }: { moduleKey: string; pathname: string }) {
+export function NoAccessPage({
+  moduleKey,
+  pathname,
+}: {
+  moduleKey: string;
+  pathname: string;
+}) {
   const { title, purpose, screens } = describe(moduleKey);
-  const [state, setState] = React.useState<"idle" | "sending" | "sent" | "failed">("idle");
+  const [state, setState] = React.useState<
+    "idle" | "sending" | "sent" | "failed"
+  >("idle");
 
   async function requestAccess() {
     setState("sending");
@@ -106,7 +120,11 @@ export function NoAccessPage({ moduleKey, pathname }: { moduleKey: string; pathn
             `Please review my role's grant for this module.`,
           // The breadcrumb the API's `context` field exists for. Whoever triages
           // this needs the module key, not a prose paraphrase of it.
-          context: { reason: "access_request", module_key: moduleKey, route: pathname },
+          context: {
+            reason: "access_request",
+            module_key: moduleKey,
+            route: pathname,
+          },
         },
       });
       setState("sent");
@@ -127,43 +145,65 @@ export function NoAccessPage({ moduleKey, pathname }: { moduleKey: string; pathn
           <SecurityIcon width={20} height={20} />
         </span>
 
-        <h1 className="mt-5 font-display text-2xl tracking-tight">{title} is not part of your access</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{purpose}</p>
+        <h1 className="mt-5 font-display text-2xl tracking-tight">
+          {title} is not part of your access
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {purpose}
+        </p>
 
         {screens.length > 1 && (
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            It covers {screens.slice(0, -1).join(", ")} and {screens[screens.length - 1]}.
+            It covers {screens.slice(0, -1).join(", ")} and{" "}
+            {screens[screens.length - 1]}.
           </p>
         )}
 
         <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
           Your role does not include{" "}
-          <span className="font-mono text-xs text-foreground">{moduleKey}</span>, so this page has nothing from it to
-          show you — not a summary, not a count. If you need it for your work, ask for it and an administrator can
-          grant it.
+          <span className="font-mono text-xs text-foreground">{moduleKey}</span>
+          , so this page has nothing from it to show you — not a summary, not a
+          count. If you need it for your work, ask for it and an administrator
+          can grant it.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <Button onClick={requestAccess} loading={state === "sending"} disabled={state === "sent"}>
+          <Button
+            onClick={requestAccess}
+            loading={state === "sending"}
+            disabled={state === "sent"}
+          >
             {state === "sent" ? "Request sent" : "Request access"}
           </Button>
-          <Button variant="outline" icon={null} onClick={() => window.history.back()}>
+          <Button
+            variant="outline"
+            icon={null}
+            onClick={() => window.history.back()}
+          >
             Go back
           </Button>
-          <Link to="/" className="rounded-sm px-2 text-sm font-semibold text-primary-ink hover:underline">
+          <Link
+            to="/"
+            className="rounded-sm px-2 text-sm font-semibold text-primary-ink hover:underline"
+          >
             Control Tower
           </Link>
         </div>
 
         {state === "sent" && (
           <Callout tone="ok" className="mt-5" title="Request sent.">
-            It is on the support queue as an access request for {title}. You can follow it under Support &amp;
-            feedback.
+            It is on the support queue as an access request for {title}. You can
+            follow it under Support &amp; feedback.
           </Callout>
         )}
         {state === "failed" && (
-          <Callout tone="bad" className="mt-5" title="That request did not send.">
-            Ask an administrator for {title} ({moduleKey}) directly, or try again from Support &amp; feedback.
+          <Callout
+            tone="bad"
+            className="mt-5"
+            title="That request did not send."
+          >
+            Ask an administrator for {title} ({moduleKey}) directly, or try
+            again from Support &amp; feedback.
           </Callout>
         )}
       </div>

@@ -48,7 +48,11 @@ import * as api from "@/lib/operations-api";
 /** Kept in step with `SINGLE_POINT_LEGS` in `itinerary.service.js`: a customs
  *  clearance and a warehouse custody period happen AT one place, so the editor
  *  stops asking for a second and the server stops requiring one. */
-const SINGLE_POINT_LEGS = new Set<api.LegType>(["CUSTOMS", "WAREHOUSE", "OTHER"]);
+const SINGLE_POINT_LEGS = new Set<api.LegType>([
+  "CUSTOMS",
+  "WAREHOUSE",
+  "OTHER",
+]);
 
 const LEG_LABEL: Record<api.LegType, string> = {
   PICKUP: "Pickup",
@@ -122,7 +126,10 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
   const [saved, setSaved] = React.useState<DraftLeg[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string[]> | null>(null);
+  const [fieldErrors, setFieldErrors] = React.useState<Record<
+    string,
+    string[]
+  > | null>(null);
   const [justSaved, setJustSaved] = React.useState(false);
 
   React.useEffect(() => {
@@ -136,7 +143,9 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
 
   function update(index: number, patch: Partial<api.ItineraryLeg>) {
     setJustSaved(false);
-    setLegs((current) => current.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+    setLegs((current) =>
+      current.map((l, i) => (i === index ? { ...l, ...patch } : l)),
+    );
     // Clear the row's errors as soon as it is touched: an error message that
     // outlives the thing it described teaches people to ignore error messages.
     setFieldErrors((errs) => {
@@ -153,7 +162,13 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
     setJustSaved(false);
     setLegs((current) => [
       ...current,
-      withKey({ leg_type: "FINAL_DELIVERY", mode: "LAND", status: "PLANNED", is_optional: true, source: "MANUAL" }),
+      withKey({
+        leg_type: "FINAL_DELIVERY",
+        mode: "LAND",
+        status: "PLANNED",
+        is_optional: true,
+        source: "MANUAL",
+      }),
     ]);
   }
 
@@ -189,7 +204,10 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
       // `fields` first, `details` as the deprecated alias — reading only the
       // alias is the API F-2 defect: it was populated by exactly one route, so
       // field-level messages silently never arrived from any of the other ~700.
-      const err = e as { fields?: Record<string, string[]>; details?: Record<string, string[]> };
+      const err = e as {
+        fields?: Record<string, string[]>;
+        details?: Record<string, string[]>;
+      };
       const detail = err?.fields ?? err?.details;
       if (detail && typeof detail === "object") setFieldErrors(detail);
       setError(errMsg(e));
@@ -205,7 +223,8 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
     setJustSaved(false);
   }
 
-  const errorFor = (index: number, field: string) => fieldErrors?.[`legs.${index}.${field}`]?.[0];
+  const errorFor = (index: number, field: string) =>
+    fieldErrors?.[`legs.${index}.${field}`]?.[0];
   /** Errors the server reported against the whole list rather than a row. */
   const listErrors = fieldErrors?.legs;
 
@@ -218,8 +237,8 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
         <div>
           <h3 className="font-semibold">Itinerary</h3>
           <p className="micro text-muted-foreground">
-            Every movement on this file, in order. Legs from the service type are marked; you can add,
-            reorder and remove your own.
+            Every movement on this file, in order. Legs from the service type
+            are marked; you can add, reorder and remove your own.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -231,12 +250,17 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
         </div>
       </div>
 
-      {listErrors && <Callout tone="warn" title="This service type needs a leg you removed">{listErrors.join(" ")}</Callout>}
+      {listErrors && (
+        <Callout tone="warn" title="This service type needs a leg you removed">
+          {listErrors.join(" ")}
+        </Callout>
+      )}
 
       {legs.length === 0 && (
         <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No structured itinerary yet. Add a leg to record where this file&apos;s cargo actually goes — the
-          Control Tower map draws one segment per leg.
+          No structured itinerary yet. Add a leg to record where this
+          file&apos;s cargo actually goes — the Control Tower map draws one
+          segment per leg.
         </div>
       )}
 
@@ -256,16 +280,19 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
             aria-label={`Leg ${i + 1}: ${LEG_LABEL[leg.leg_type]}`}
             className={cn(
               "space-y-3 rounded-lg border p-3",
-              (errorFor(i, "origin") || errorFor(i, "destination")) && "border-destructive/50",
+              (errorFor(i, "origin") || errorFor(i, "destination")) &&
+                "border-destructive/50",
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-2">
-                <span className="num text-micro font-semibold text-muted-foreground">{i + 1}</span>
-                <span className="text-sm font-medium">{LEG_LABEL[leg.leg_type]}</span>
-                {fromTemplate && (
-                  <Pill tone="mute">From the service type</Pill>
-                )}
+                <span className="num text-micro font-semibold text-muted-foreground">
+                  {i + 1}
+                </span>
+                <span className="text-sm font-medium">
+                  {LEG_LABEL[leg.leg_type]}
+                </span>
+                {fromTemplate && <Pill tone="mute">From the service type</Pill>}
                 {leg.is_optional && <Pill tone="mute">Optional</Pill>}
               </span>
               <span className="flex items-center gap-1">
@@ -303,7 +330,9 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
               <Field label="Leg type">
                 <Select
                   value={leg.leg_type}
-                  onChange={(e) => update(i, { leg_type: e.target.value as api.LegType })}
+                  onChange={(e) =>
+                    update(i, { leg_type: e.target.value as api.LegType })
+                  }
                 >
                   {api.LEG_TYPES.map((v) => (
                     <option key={v} value={v}>
@@ -314,7 +343,12 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
               </Field>
 
               <Field label="Mode">
-                <Select value={leg.mode} onChange={(e) => update(i, { mode: e.target.value as api.LegMode })}>
+                <Select
+                  value={leg.mode}
+                  onChange={(e) =>
+                    update(i, { mode: e.target.value as api.LegMode })
+                  }
+                >
                   {api.LEG_MODES.map((v) => (
                     <option key={v} value={v}>
                       {MODE_LABEL[v]}
@@ -326,7 +360,9 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
               <Field label="Status">
                 <Select
                   value={leg.status || "PLANNED"}
-                  onChange={(e) => update(i, { status: e.target.value as api.LegStatus })}
+                  onChange={(e) =>
+                    update(i, { status: e.target.value as api.LegStatus })
+                  }
                 >
                   {api.LEG_STATUSES.map((v) => (
                     <option key={v} value={v}>
@@ -336,29 +372,43 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                 </Select>
               </Field>
 
-              <Field label="Carrier" hint="The provider moving this leg — often not the one on the file.">
+              <Field
+                label="Carrier"
+                hint="The provider moving this leg — often not the one on the file."
+              >
                 <SearchSelect
                   path="/rate-providers?active=true"
                   label="Carrier"
                   value={leg.provider_name || null}
                   placeholder="Search a carrier…"
                   getKey={(r) => String(r.rate_provider_id)}
-                  getLabel={(r) => [r.name, r.carrier_code].filter(Boolean).join(" · ")}
+                  getLabel={(r) =>
+                    [r.name, r.carrier_code].filter(Boolean).join(" · ")
+                  }
                   onSelect={(r) =>
-                    update(i, { provider_id: String(r.rate_provider_id), provider_name: String(r.name) })
+                    update(i, {
+                      provider_id: String(r.rate_provider_id),
+                      provider_name: String(r.name),
+                    })
                   }
                 />
               </Field>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={singlePoint ? "Location" : "Origin"} error={errorFor(i, "origin")}>
+              <Field
+                label={singlePoint ? "Location" : "Origin"}
+                error={errorFor(i, "origin")}
+              >
                 <PlacePicker
                   value={leg.origin || null}
                   label={singlePoint ? "Location" : "Origin"}
                   canCreate={canCreatePlace}
                   onSelect={({ name, place }) =>
-                    update(i, { origin: name, origin_place_id: place.geo_place_id })
+                    update(i, {
+                      origin: name,
+                      origin_place_id: place.geo_place_id,
+                    })
                   }
                 />
               </Field>
@@ -376,7 +426,10 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                     label="Destination"
                     canCreate={canCreatePlace}
                     onSelect={({ name, place }) =>
-                      update(i, { destination: name, destination_place_id: place.geo_place_id })
+                      update(i, {
+                        destination: name,
+                        destination_place_id: place.geo_place_id,
+                      })
                     }
                   />
                 </Field>
@@ -384,16 +437,26 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Planned departure" error={errorFor(i, "planned_departure")}>
+              <Field
+                label="Planned departure"
+                error={errorFor(i, "planned_departure")}
+              >
                 <DateField
                   value={(leg.planned_departure || "").slice(0, 10)}
-                  onChange={(iso) => update(i, { planned_departure: iso || null })}
+                  onChange={(iso) =>
+                    update(i, { planned_departure: iso || null })
+                  }
                 />
               </Field>
-              <Field label="Planned arrival" error={errorFor(i, "planned_arrival")}>
+              <Field
+                label="Planned arrival"
+                error={errorFor(i, "planned_arrival")}
+              >
                 <DateField
                   value={(leg.planned_arrival || "").slice(0, 10)}
-                  onChange={(iso) => update(i, { planned_arrival: iso || null })}
+                  onChange={(iso) =>
+                    update(i, { planned_arrival: iso || null })
+                  }
                 />
               </Field>
               {/*
@@ -402,13 +465,21 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                 moved at all were indistinguishable before 0677, because only the
                 plan was stored.
               */}
-              <Field label="Actual departure" error={errorFor(i, "actual_departure")}>
+              <Field
+                label="Actual departure"
+                error={errorFor(i, "actual_departure")}
+              >
                 <DateField
                   value={(leg.actual_departure || "").slice(0, 10)}
-                  onChange={(iso) => update(i, { actual_departure: iso || null })}
+                  onChange={(iso) =>
+                    update(i, { actual_departure: iso || null })
+                  }
                 />
               </Field>
-              <Field label="Actual arrival" error={errorFor(i, "actual_arrival")}>
+              <Field
+                label="Actual arrival"
+                error={errorFor(i, "actual_arrival")}
+              >
                 <DateField
                   value={(leg.actual_arrival || "").slice(0, 10)}
                   onChange={(iso) => update(i, { actual_arrival: iso || null })}
@@ -416,7 +487,10 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
               </Field>
             </div>
 
-            <Field label="Notes" hint="Driver instructions, gate references, anything the next person needs.">
+            <Field
+              label="Notes"
+              hint="Driver instructions, gate references, anything the next person needs."
+            >
               <Input
                 value={leg.notes || ""}
                 maxLength={2000}
@@ -426,7 +500,9 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
 
             <Checkbox
               checked={leg.is_optional === true}
-              onCheckedChange={(c: boolean) => update(i, { is_optional: c === true })}
+              onCheckedChange={(c: boolean) =>
+                update(i, { is_optional: c === true })
+              }
               label="Optional leg"
             />
           </div>

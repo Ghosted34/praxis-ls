@@ -27,7 +27,9 @@ describe("skillsScore", () => {
   });
 
   it("counts the proportion of required skills claimed", () => {
-    expect(s.skillsScore(["customs", "french", "forklift"], ["customs", "french"])).toBe(67);
+    expect(
+      s.skillsScore(["customs", "french", "forklift"], ["customs", "french"]),
+    ).toBe(67);
     expect(s.skillsScore(["customs"], ["customs", "french"])).toBe(100);
     expect(s.skillsScore(["customs"], ["welding"])).toBe(0);
   });
@@ -35,7 +37,9 @@ describe("skillsScore", () => {
   it("matches substrings in both directions and ignores case", () => {
     // "customs clearance (sea)" must satisfy a "customs clearance" requirement,
     // and "SQL" must be satisfied by "PostgreSQL".
-    expect(s.skillsScore(["customs clearance"], ["Customs Clearance (sea)"])).toBe(100);
+    expect(
+      s.skillsScore(["customs clearance"], ["Customs Clearance (sea)"]),
+    ).toBe(100);
     expect(s.skillsScore(["sql"], ["PostgreSQL"])).toBe(100);
   });
 });
@@ -103,10 +107,19 @@ describe("composite", () => {
 });
 
 describe("estimate", () => {
-  const vacancy = { skills_required: ["customs", "french"], experience_years_min: 3, salary_min: 100, salary_max: 200 };
+  const vacancy = {
+    skills_required: ["customs", "french"],
+    experience_years_min: 3,
+    salary_min: 100,
+    salary_max: 200,
+  };
 
   it("MARKS ITSELF PROVISIONAL — it has not opened the CV", () => {
-    const out = s.estimate(vacancy, { skills: ["customs"], experience_years: 3, expected_salary: 150 });
+    const out = s.estimate(vacancy, {
+      skills: ["customs"],
+      experience_years: 3,
+      expected_salary: 150,
+    });
     expect(out.ai_provisional).toBe(true);
     expect(out.ai_model).toBeNull();
     expect(out.ai_summary).toMatch(/pending/i);
@@ -114,7 +127,11 @@ describe("estimate", () => {
 
   it("scores from the fields the candidate typed", () => {
     const out = s.estimate(vacancy, {
-      skills: ["customs", "french"], experience_years: 5, expected_salary: 150, cv_vault_id: "x", portfolio_url: "http://x",
+      skills: ["customs", "french"],
+      experience_years: 5,
+      expected_salary: 150,
+      cv_vault_id: "x",
+      portfolio_url: "http://x",
     });
     // skills 100, experience 100, salary 100, portfolio 67 (CV + portfolio, no note)
     expect(out.ai_breakdown.skills).toBe(100);
@@ -125,14 +142,20 @@ describe("estimate", () => {
   it("does not throw on an application that filled in nothing", () => {
     const out = s.estimate({}, {});
     expect(out.ai_provisional).toBe(true);
-    expect(typeof out.ai_score === "number" || out.ai_score === null).toBe(true);
+    expect(typeof out.ai_score === "number" || out.ai_score === null).toBe(
+      true,
+    );
   });
 });
 
 describe("parseAssessment", () => {
   it("pulls the object out of a fenced or prose-padded reply", () => {
-    expect(s.parseAssessment('```json\n{"overall":80}\n```')).toEqual({ overall: 80 });
-    expect(s.parseAssessment('Here you go: {"overall":80} — hope that helps')).toEqual({ overall: 80 });
+    expect(s.parseAssessment('```json\n{"overall":80}\n```')).toEqual({
+      overall: 80,
+    });
+    expect(
+      s.parseAssessment('Here you go: {"overall":80} — hope that helps'),
+    ).toEqual({ overall: 80 });
   });
 
   it("returns null on prose, so the caller keeps the previous score", () => {

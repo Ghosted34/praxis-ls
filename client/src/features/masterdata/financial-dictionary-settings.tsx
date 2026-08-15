@@ -33,10 +33,26 @@ const KINDS: { kind: api.DictRefKind; label: string }[] = [
 /** Seeded families, so a first container type on a fresh tenant still has a
  *  list to choose from. The live distinct values are merged in on top — the
  *  set is open, and a tenant who invents one keeps it. */
-const SEED_FAMILIES = ["DRY", "REEFER", "FLATRACK", "OPENTOP", "ISOTANK", "VENTILATED", "BULK"];
+const SEED_FAMILIES = [
+  "DRY",
+  "REEFER",
+  "FLATRACK",
+  "OPENTOP",
+  "ISOTANK",
+  "VENTILATED",
+  "BULK",
+];
 
-const BLANK_FORM = { code: "", name_fr: "", name_en: "", teu: "", size: "", family: "DRY", aliases: "", marks_token: "" };
-
+const BLANK_FORM = {
+  code: "",
+  name_fr: "",
+  name_en: "",
+  teu: "",
+  size: "",
+  family: "DRY",
+  aliases: "",
+  marks_token: "",
+};
 
 function RefManager({ kind }: { kind: api.DictRefKind }) {
   const toast = useToast();
@@ -52,12 +68,19 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
   // TEU total, and no `size` means the rate card has no key to look it up by.
   // So they are captured here, and the API refuses the row without them.
   const isContainer = kind === "CONTAINER_TYPE";
-  const teuError = isContainer && !(Number(form.teu) > 0) ? "TEU is required and must be greater than 0." : null;
-  const sizeError = isContainer && !form.size.trim() ? "Size is the rate-card lookup key — required." : null;
+  const teuError =
+    isContainer && !(Number(form.teu) > 0)
+      ? "TEU is required and must be greater than 0."
+      : null;
+  const sizeError =
+    isContainer && !form.size.trim()
+      ? "Size is the rate-card lookup key — required."
+      : null;
 
   const families = React.useMemo(() => {
     const seen = new Set(SEED_FAMILIES);
-    for (const r of list.data || []) if (r.extra?.family) seen.add(r.extra.family);
+    for (const r of list.data || [])
+      if (r.extra?.family) seen.add(r.extra.family);
     return [...seen];
   }, [list.data]);
 
@@ -69,20 +92,34 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
     extra: { size: form.size.trim(), family: form.family },
   });
 
-  const reset = () => { setForm(BLANK_FORM); setTouched(false); };
+  const reset = () => {
+    setForm(BLANK_FORM);
+    setTouched(false);
+  };
 
   async function submit() {
     setTouched(true);
-    if (!form.code || !form.name_fr) { toast.error("Code and French name are required"); return; }
+    if (!form.code || !form.name_fr) {
+      toast.error("Code and French name are required");
+      return;
+    }
     if (teuError || sizeError) return;
     setBusy(true);
     try {
-      const aliases = form.aliases.split(",").map((a) => a.trim()).filter(Boolean);
+      const aliases = form.aliases
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean);
       await api.createDictRef({
-        kind, code: form.code, name_fr: form.name_fr, name_en: form.name_en || undefined,
+        kind,
+        code: form.code,
+        name_fr: form.name_fr,
+        name_en: form.name_en || undefined,
         extra: isContainer
           ? {
-              teu: Number(form.teu), size: form.size.trim(), family: form.family,
+              teu: Number(form.teu),
+              size: form.size.trim(),
+              family: form.family,
               ...(aliases.length ? { aliases } : {}),
               // Stored explicitly even when it equals the derived value: the
               // derivation is a fallback for types created before this field
@@ -91,86 +128,218 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
             }
           : undefined,
       });
-      toast.success("Value added"); reset(); setAdding(false); list.reload();
-    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+      toast.success("Value added");
+      reset();
+      setAdding(false);
+      list.reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
   }
   async function toggle(r: api.DictRef) {
-    try { await api.updateDictRef(r.ref_id, { is_active: !(r.is_active ?? true) }); list.reload(); }
-    catch (e) { toast.error(errMsg(e)); }
+    try {
+      await api.updateDictRef(r.ref_id, { is_active: !(r.is_active ?? true) });
+      list.reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
   }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="micro">Values a manager can extend. Seeded rows are marked <em>System</em> but stay editable.</p>
-        <Button size="sm" variant="outline" onClick={() => { setAdding((a) => !a); reset(); }}>+ Add new</Button>
+        <p className="micro">
+          Values a manager can extend. Seeded rows are marked <em>System</em>{" "}
+          but stay editable.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setAdding((a) => !a);
+            reset();
+          }}
+        >
+          + Add new
+        </Button>
       </div>
       {adding && (
         <div className="rounded-lg border bg-card p-3">
           <div className="grid gap-2 sm:grid-cols-3">
-            <Input placeholder="CODE" aria-label="Code" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value.toUpperCase() }))} />
-            <Input placeholder="Nom (FR)" aria-label="Nom (FR)" value={form.name_fr} onChange={(e) => setForm((s) => ({ ...s, name_fr: e.target.value }))} />
-            <Input placeholder="Name (EN)" aria-label="Name (EN)" value={form.name_en} onChange={(e) => setForm((s) => ({ ...s, name_en: e.target.value }))} />
+            <Input
+              placeholder="CODE"
+              aria-label="Code"
+              value={form.code}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, code: e.target.value.toUpperCase() }))
+              }
+            />
+            <Input
+              placeholder="Nom (FR)"
+              aria-label="Nom (FR)"
+              value={form.name_fr}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, name_fr: e.target.value }))
+              }
+            />
+            <Input
+              placeholder="Name (EN)"
+              aria-label="Name (EN)"
+              value={form.name_en}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, name_en: e.target.value }))
+              }
+            />
           </div>
           {isContainer && (
             <div className="mt-2 grid gap-2 sm:grid-cols-4">
-              <Field label="TEU" required error={touched ? teuError || undefined : undefined}
-                hint="Capacity. A 20' is 1, a 40' is 2.">
-                <Input type="number" min="0" step="0.01" inputMode="decimal" className="num text-right"
-                  placeholder="2" value={form.teu}
-                  onChange={(e) => setForm((s) => ({ ...s, teu: e.target.value }))} />
+              <Field
+                label="TEU"
+                required
+                error={touched ? teuError || undefined : undefined}
+                hint="Capacity. A 20' is 1, a 40' is 2."
+              >
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  className="num text-right"
+                  placeholder="2"
+                  value={form.teu}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, teu: e.target.value }))
+                  }
+                />
               </Field>
-              <Field label="Size key" required error={touched ? sizeError || undefined : undefined}
-                hint="What the rate card calls it — 20, 40, 40HC.">
-                <Input placeholder="50HC" value={form.size}
-                  onChange={(e) => setForm((s) => ({ ...s, size: e.target.value.toUpperCase() }))} />
+              <Field
+                label="Size key"
+                required
+                error={touched ? sizeError || undefined : undefined}
+                hint="What the rate card calls it — 20, 40, 40HC."
+              >
+                <Input
+                  placeholder="50HC"
+                  value={form.size}
+                  onChange={(e) =>
+                    setForm((s) => ({
+                      ...s,
+                      size: e.target.value.toUpperCase(),
+                    }))
+                  }
+                />
               </Field>
-              <Field label="Family" hint="Groups the sized variants of one kind.">
-                <Select value={form.family} onChange={(e) => setForm((s) => ({ ...s, family: e.target.value }))}>
-                  {families.map((f) => <option key={f} value={f}>{f}</option>)}
+              <Field
+                label="Family"
+                hint="Groups the sized variants of one kind."
+              >
+                <Select
+                  value={form.family}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, family: e.target.value }))
+                  }
+                >
+                  {families.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
                 </Select>
               </Field>
-              <Field label="Also known as" hint="Comma-separated, for the finder's search.">
-                <Input placeholder="50hq, 50dc" value={form.aliases}
-                  onChange={(e) => setForm((s) => ({ ...s, aliases: e.target.value }))} />
+              <Field
+                label="Also known as"
+                hint="Comma-separated, for the finder's search."
+              >
+                <Input
+                  placeholder="50hq, 50dc"
+                  value={form.aliases}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, aliases: e.target.value }))
+                  }
+                />
               </Field>
               <Field
                 label="Marks token"
                 className="sm:col-span-2"
                 hint={`How it prints on marks & numbers — e.g. 02*${form.marks_token.trim() || previewToken}. Leave blank to use the derived value.`}
               >
-                <Input placeholder={previewToken} value={form.marks_token}
-                  onChange={(e) => setForm((s) => ({ ...s, marks_token: e.target.value }))} />
+                <Input
+                  placeholder={previewToken}
+                  value={form.marks_token}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, marks_token: e.target.value }))
+                  }
+                />
               </Field>
             </div>
           )}
           <div className="mt-2 flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => { setAdding(false); reset(); }}>Cancel</Button>
-            <Button size="sm" loading={busy} onClick={submit}>Add</Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setAdding(false);
+                reset();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" loading={busy} onClick={submit}>
+              Add
+            </Button>
           </div>
         </div>
       )}
-      {list.loading ? <LoadingRow label="Loading…" /> : list.error ? <ErrorState message={list.error} /> : (list.data || []).length === 0 ? <EmptyState title="Nothing yet" hint="Add your first value." /> : (
+      {list.loading ? (
+        <LoadingRow label="Loading…" />
+      ) : list.error ? (
+        <ErrorState message={list.error} />
+      ) : (list.data || []).length === 0 ? (
+        <EmptyState title="Nothing yet" hint="Add your first value." />
+      ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               {(list.data || []).map((r) => (
-                <tr key={r.ref_id} className={r.is_active === false ? "opacity-50" : ""}>
-                  <td className="px-3 py-1.5 num font-medium text-foreground">{r.code}</td>
-                  <td className="px-3 py-1.5 text-muted-foreground">{r.name_fr}{r.name_en ? ` · ${r.name_en}` : ""}</td>
+                <tr
+                  key={r.ref_id}
+                  className={r.is_active === false ? "opacity-50" : ""}
+                >
+                  <td className="px-3 py-1.5 num font-medium text-foreground">
+                    {r.code}
+                  </td>
+                  <td className="px-3 py-1.5 text-muted-foreground">
+                    {r.name_fr}
+                    {r.name_en ? ` · ${r.name_en}` : ""}
+                  </td>
                   {/* The equipment facts are shown because they are the ones a
                       manager cannot infer from the name, and a wrong TEU is
                       otherwise invisible until a capacity report is wrong. */}
                   {isContainer && (
                     <td className="px-3 py-1.5 micro text-muted-foreground">
-                      {r.extra?.teu ? `${r.extra.teu} TEU` : <span className="text-destructive">no TEU</span>}
+                      {r.extra?.teu ? (
+                        `${r.extra.teu} TEU`
+                      ) : (
+                        <span className="text-destructive">no TEU</span>
+                      )}
                       {r.extra?.size ? ` · ${r.extra.size}` : ""}
                       {r.extra?.family ? ` · ${r.extra.family}` : ""}
                       {` · prints ${marks.marksTokenFor(r)}`}
                     </td>
                   )}
-                  <td className="px-3 py-1.5">{r.is_system && <Pill tone="mute">System</Pill>}</td>
-                  <td className="px-3 py-1.5 text-right"><button onClick={() => toggle(r)} className="text-sm text-primary-ink underline">{(r.is_active ?? true) ? "Deactivate" : "Activate"}</button></td>
+                  <td className="px-3 py-1.5">
+                    {r.is_system && <Pill tone="mute">System</Pill>}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    <button
+                      onClick={() => toggle(r)}
+                      className="text-sm text-primary-ink underline"
+                    >
+                      {(r.is_active ?? true) ? "Deactivate" : "Activate"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -181,20 +350,36 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
   );
 }
 
-export function FinancialDictionarySettings({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function FinancialDictionarySettings({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [kind, setKind] = React.useState<api.DictRefKind>("SUBCATEGORY");
   if (!open) return null;
   return (
-    <Modal open onClose={onClose} title="Dictionary settings" description="Seeded-but-editable values behind every dropdown.">
+    <Modal
+      open
+      onClose={onClose}
+      title="Dictionary settings"
+      description="Seeded-but-editable values behind every dropdown."
+    >
       <div className="mb-4 flex flex-wrap gap-1 border-b">
         {KINDS.map((k) => (
-          <button key={k.kind} onClick={() => setKind(k.kind)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${kind === k.kind ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+          <button
+            key={k.kind}
+            onClick={() => setKind(k.kind)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${kind === k.kind ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
             {k.label}
           </button>
         ))}
       </div>
-      <div className="max-h-[60vh] overflow-auto pr-1"><RefManager kind={kind} /></div>
+      <div className="max-h-[60vh] overflow-auto pr-1">
+        <RefManager kind={kind} />
+      </div>
     </Modal>
   );
 }

@@ -40,8 +40,21 @@ import { ScreenOverlay } from "../components/screen-overlay";
 import { MODE_GLYPH } from "../mode-icons";
 import { MapTooltip, type HoverTarget } from "../components/map-tooltip";
 import type { Lane, LiveShipment, ShipmentMode } from "../model";
-import { buildMapModel, landPaths, MAP_H, MAP_W, type MapLane } from "./projection";
-import { focusOrder, isSelected, lanesOfFile, nextSelection, stepFocus, type Selection } from "./selection";
+import {
+  buildMapModel,
+  landPaths,
+  MAP_H,
+  MAP_W,
+  type MapLane,
+} from "./projection";
+import {
+  focusOrder,
+  isSelected,
+  lanesOfFile,
+  nextSelection,
+  stepFocus,
+  type Selection,
+} from "./selection";
 import { useLandRings } from "./use-land";
 
 /**
@@ -68,8 +81,18 @@ export const LANE_STROKE: Record<ShipmentMode, string> = {
   // legend — and it has no lane to draw in the normal case anyway.
   other: "rgb(var(--ink) / 0.45)",
 };
-const LANE_DASH: Record<ShipmentMode, string> = { sea: "6 7", air: "3 6", road: "2 8", other: "1 5" };
-const LANE_WIDTH: Record<ShipmentMode, number> = { sea: 2.2, air: 1.6, road: 2.6, other: 1.4 };
+const LANE_DASH: Record<ShipmentMode, string> = {
+  sea: "6 7",
+  air: "3 6",
+  road: "2 8",
+  other: "1 5",
+};
+const LANE_WIDTH: Record<ShipmentMode, number> = {
+  sea: 2.2,
+  air: 1.6,
+  road: 2.6,
+  other: 1.4,
+};
 const LANE_ANIM: Record<ShipmentMode, string> = {
   sea: "animate-lane-sea",
   air: "animate-lane-air",
@@ -81,14 +104,16 @@ const LANE_ANIM: Record<ShipmentMode, string> = {
 /** A stable "HH:MM" for the footer, recomputed only when the lanes change. */
 function useUpdatedAt(dep: unknown): string {
   return React.useMemo(
-    () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    () =>
+      new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dep],
   );
 }
 
 /** Marker radius by role. A cluster is drawn larger because it stands for several. */
-const nodeRadius = (emphasis: boolean, count: number) => (count > 1 ? 7.5 : emphasis ? 6 : 4.5);
+const nodeRadius = (emphasis: boolean, count: number) =>
+  count > 1 ? 7.5 : emphasis ? 6 : 4.5;
 
 /**
  * The glyph for a PLACE, by what kind of place it is.
@@ -213,7 +238,10 @@ export function ShipmentMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lanes, selected],
   );
-  const land = React.useMemo(() => (model && rings ? landPaths(model, rings) : ""), [model, rings]);
+  const land = React.useMemo(
+    () => (model && rings ? landPaths(model, rings) : ""),
+    [model, rings],
+  );
   const order = React.useMemo(() => focusOrder(lanes), [lanes]);
 
   const counts = model?.counts ?? { sea: 0, road: 0, air: 0, other: 0 };
@@ -273,7 +301,9 @@ export function ShipmentMap({
     if (first) hoverLane(first);
   }
 
-  const hoveredShipment = hover ? shipmentsById[hover.lane.dossierId] : undefined;
+  const hoveredShipment = hover
+    ? shipmentsById[hover.lane.dossierId]
+    : undefined;
 
   /**
    * Does the map get a box to fit inside, or does it set its own height?
@@ -321,13 +351,24 @@ export function ShipmentMap({
             useLandRings) and sits at the bottom of the stack, so nothing above
             it moves when it lands. */}
         {!model ? (
-          <text x={MAP_W / 2} y={MAP_H / 2} textAnchor="middle" className="fill-muted-foreground text-[11px]">
-            No plottable routes — open files need a verified origin and destination.
+          <text
+            x={MAP_W / 2}
+            y={MAP_H / 2}
+            textAnchor="middle"
+            className="fill-muted-foreground text-[11px]"
+          >
+            No plottable routes — open files need a verified origin and
+            destination.
           </text>
         ) : (
           <>
             {land && (
-              <g fill="url(#ct-land)" stroke="rgb(var(--ink) / 0.18)" strokeWidth={0.8} strokeLinejoin="round">
+              <g
+                fill="url(#ct-land)"
+                stroke="rgb(var(--ink) / 0.18)"
+                strokeWidth={0.8}
+                strokeLinejoin="round"
+              >
                 <path d={land} />
               </g>
             )}
@@ -345,7 +386,12 @@ export function ShipmentMap({
             )}
             <g opacity={0.5}>
               {model.gridLabels.map((l) => (
-                <text key={`${l.x}-${l.y}-${l.t}`} x={l.x.toFixed(1)} y={l.y.toFixed(1)} className="fill-muted-foreground text-[8.5px] font-semibold">
+                <text
+                  key={`${l.x}-${l.y}-${l.t}`}
+                  x={l.x.toFixed(1)}
+                  y={l.y.toFixed(1)}
+                  className="fill-muted-foreground text-[8.5px] font-semibold"
+                >
                   {l.t}
                 </text>
               ))}
@@ -382,7 +428,10 @@ export function ShipmentMap({
               />
 
               {model.lanes.map((l) => {
-                const on = isSelected({ dossierId: l.dossierId } as Lane, selected);
+                const on = isSelected(
+                  { dossierId: l.dossierId } as Lane,
+                  selected,
+                );
                 const dimmed = selected !== null && !on;
                 const cursored = cursor === l.dossierId;
                 return (
@@ -398,7 +447,11 @@ export function ShipmentMap({
                       d={l.d}
                       fill="none"
                       stroke={LANE_STROKE[l.mode]}
-                      strokeWidth={on || cursored ? LANE_WIDTH[l.mode] + 1.2 : LANE_WIDTH[l.mode]}
+                      strokeWidth={
+                        on || cursored
+                          ? LANE_WIDTH[l.mode] + 1.2
+                          : LANE_WIDTH[l.mode]
+                      }
                       strokeDasharray={LANE_DASH[l.mode]}
                       strokeLinecap={l.mode === "road" ? "round" : undefined}
                       opacity={dimmed ? 0.22 : l.mode === "air" ? 0.75 : 0.92}
@@ -453,14 +506,20 @@ export function ShipmentMap({
                       stroke="var(--card)"
                       strokeWidth={1.1}
                     />
-                    <animateMotion dur={`${l.dur}s`} repeatCount="indefinite" rotate="auto">
+                    <animateMotion
+                      dur={`${l.dur}s`}
+                      repeatCount="indefinite"
+                      rotate="auto"
+                    >
                       <mpath href={`#${l.id}`} />
                     </animateMotion>
                   </g>
                 ))}
 
             {model.nodes.map((n) => {
-              const colour = n.emphasis ? "var(--primary)" : "rgb(var(--brand-blue))";
+              const colour = n.emphasis
+                ? "var(--primary)"
+                : "rgb(var(--brand-blue))";
               // Flip the label to the left near the right edge so it can't run off.
               const right = n.x > MAP_W - 120;
               const lx = right ? n.x - 9 : n.x + 9;
@@ -556,7 +615,9 @@ export function ShipmentMap({
   const header = (
     <div className="pointer-events-none absolute inset-x-4 top-4 z-[2] flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h2 className="text-title font-semibold leading-tight tracking-tight">Live shipment map</h2>
+        <h2 className="text-title font-semibold leading-tight tracking-tight">
+          Live shipment map
+        </h2>
         <p className="mt-0.5 text-label text-muted-foreground">
           {laneCount
             ? `${laneCount} ${laneCount === 1 ? "leg" : "legs"} across ${fileCount} open ${fileCount === 1 ? "file" : "files"}`
@@ -566,7 +627,12 @@ export function ShipmentMap({
       </div>
       <div className="pointer-events-auto flex shrink-0 items-center gap-2">
         {selected !== null && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => onSelect(null)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => onSelect(null)}
+          >
             Clear selection
           </Button>
         )}
@@ -607,7 +673,10 @@ export function ShipmentMap({
         />
       )}
       <span className="ml-auto flex items-center gap-1.5 text-micro font-semibold text-[rgb(var(--ok))]">
-        <span aria-hidden className="h-[7px] w-[7px] animate-pulse rounded-full bg-[rgb(var(--ok))]" />
+        <span
+          aria-hidden
+          className="h-[7px] w-[7px] animate-pulse rounded-full bg-[rgb(var(--ok))]"
+        />
         Updated {updatedAt}
       </span>
     </div>
@@ -627,7 +696,10 @@ export function ShipmentMap({
    */
   if (fullScreen) {
     return (
-      <ScreenOverlay label="Live shipment map, full screen" className="p-3 sm:p-4">
+      <ScreenOverlay
+        label="Live shipment map, full screen"
+        className="p-3 sm:p-4"
+      >
         <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {header}
           {mapBody}

@@ -38,9 +38,15 @@ describe("fetchNavAccess", () => {
     ["nothing at all", undefined],
     ["null", null],
     ["an empty array — what an unmocked fixture returns", []],
-    ["an older shape with no byGroup", { modules: ["MOD-29"], groups: ["fulfill"], isCeo: false, version: "x" }],
+    [
+      "an older shape with no byGroup",
+      { modules: ["MOD-29"], groups: ["fulfill"], isCeo: false, version: "x" },
+    ],
     ["an envelope", { data: { groups: ["fulfill"] } }],
-    ["the right keys with the wrong types", { modules: "MOD-29", groups: {}, byGroup: [], isCeo: "yes", version: 7 }],
+    [
+      "the right keys with the wrong types",
+      { modules: "MOD-29", groups: {}, byGroup: [], isCeo: "yes", version: 7 },
+    ],
   ])("survives %s", async (_label, payload) => {
     response.current = payload;
     const out = await fetchNavAccess();

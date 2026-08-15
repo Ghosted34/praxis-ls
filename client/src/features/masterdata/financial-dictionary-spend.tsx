@@ -38,7 +38,8 @@ import * as api from "@/lib/masterdata-api";
 /* ── Period picker ────────────────────────────────────────────────────────── */
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-const startOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+const startOfMonth = (d: Date) =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 
 /**
  * The presets an operator actually asks for, resolved to concrete days here so
@@ -52,7 +53,10 @@ const PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 
-function presetRange(preset: PeriodPreset, today = new Date()): { from: string; to: string } {
+function presetRange(
+  preset: PeriodPreset,
+  today = new Date(),
+): { from: string; to: string } {
   const to = iso(today);
   if (preset === "month") return { from: iso(startOfMonth(today)), to };
   if (preset === "quarter") {
@@ -60,26 +64,61 @@ function presetRange(preset: PeriodPreset, today = new Date()): { from: string; 
     return { from: iso(new Date(Date.UTC(today.getUTCFullYear(), q, 1))), to };
   }
   // 12 months = 11 back + the 1st, so the current month is the twelfth.
-  return { from: iso(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 11, 1))), to };
+  return {
+    from: iso(
+      new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 11, 1)),
+    ),
+    to,
+  };
 }
 
 function PeriodPicker({
-  preset, from, to, onPreset, onFrom, onTo,
+  preset,
+  from,
+  to,
+  onPreset,
+  onFrom,
+  onTo,
 }: {
-  preset: PeriodPreset; from: string; to: string;
-  onPreset: (p: PeriodPreset) => void; onFrom: (v: string) => void; onTo: (v: string) => void;
+  preset: PeriodPreset;
+  from: string;
+  to: string;
+  onPreset: (p: PeriodPreset) => void;
+  onFrom: (v: string) => void;
+  onTo: (v: string) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Segmented label="Period" value={preset} onChange={(v) => onPreset(v as PeriodPreset)} options={PRESETS} />
+      <Segmented
+        label="Period"
+        value={preset}
+        onChange={(v) => onPreset(v as PeriodPreset)}
+        options={PRESETS}
+      />
       {preset === "custom" && (
         <>
-          <Input type="date" aria-label="Period from" value={from} onChange={(e) => onFrom(e.target.value)} className="w-40" />
+          <Input
+            type="date"
+            aria-label="Period from"
+            value={from}
+            onChange={(e) => onFrom(e.target.value)}
+            className="w-40"
+          />
           <span className="micro">to</span>
-          <Input type="date" aria-label="Period to" value={to} onChange={(e) => onTo(e.target.value)} className="w-40" />
+          <Input
+            type="date"
+            aria-label="Period to"
+            value={to}
+            onChange={(e) => onTo(e.target.value)}
+            className="w-40"
+          />
         </>
       )}
-      {preset !== "custom" && <span className="micro">{dateFmt(from)} — {dateFmt(to)}</span>}
+      {preset !== "custom" && (
+        <span className="micro">
+          {dateFmt(from)} — {dateFmt(to)}
+        </span>
+      )}
     </div>
   );
 }
@@ -87,7 +126,11 @@ function PeriodPicker({
 /* ── The grouped bar chart ────────────────────────────────────────────────── */
 
 const LENSES: { key: api.SpendLens; label: string; stroke: string }[] = [
-  { key: "estimated", label: "Estimated", stroke: "rgb(var(--muted-foreground))" },
+  {
+    key: "estimated",
+    label: "Estimated",
+    stroke: "rgb(var(--muted-foreground))",
+  },
   { key: "committed", label: "Committed", stroke: "rgb(var(--warn))" },
   { key: "actual", label: "Actual", stroke: "rgb(var(--primary))" },
 ];
@@ -100,27 +143,62 @@ const LENSES: { key: api.SpendLens; label: string; stroke: string }[] = [
  * there isn't one. Widths are computed from the month count so twelve months
  * and three months both fill the frame.
  */
-function SpendChart({ months, currency }: { months: api.SpendMonth[]; currency: string }) {
+function SpendChart({
+  months,
+  currency,
+}: {
+  months: api.SpendMonth[];
+  currency: string;
+}) {
   const w = 720;
   const h = 200;
   const padL = 8;
   const padB = 26;
   const padT = 10;
-  const max = Math.max(1, ...months.flatMap((m) => [m.estimated, m.committed, m.actual]));
+  const max = Math.max(
+    1,
+    ...months.flatMap((m) => [m.estimated, m.committed, m.actual]),
+  );
   const plotH = h - padB - padT;
   const groupW = (w - padL * 2) / Math.max(months.length, 1);
   const barW = Math.max(2, Math.min(14, (groupW - 6) / 3));
 
   const label =
     `Spend by month, ${currency}. ` +
-    months.map((m) => `${m.month}: actual ${Math.round(m.actual)}, committed ${Math.round(m.committed)}, estimated ${Math.round(m.estimated)}`).join("; ");
+    months
+      .map(
+        (m) =>
+          `${m.month}: actual ${Math.round(m.actual)}, committed ${Math.round(m.committed)}, estimated ${Math.round(m.estimated)}`,
+      )
+      .join("; ");
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label={label} preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="w-full"
+      role="img"
+      aria-label={label}
+      preserveAspectRatio="none"
+    >
       {/* Baseline + a single mid gridline: two references are enough to read a
           bar against, and more would crowd a 200px frame. */}
-      <line x1={padL} y1={padT + plotH} x2={w - padL} y2={padT + plotH} stroke="rgb(var(--border))" strokeWidth="1" />
-      <line x1={padL} y1={padT + plotH / 2} x2={w - padL} y2={padT + plotH / 2} stroke="rgb(var(--border))" strokeWidth="0.5" strokeDasharray="3 3" />
+      <line
+        x1={padL}
+        y1={padT + plotH}
+        x2={w - padL}
+        y2={padT + plotH}
+        stroke="rgb(var(--border))"
+        strokeWidth="1"
+      />
+      <line
+        x1={padL}
+        y1={padT + plotH / 2}
+        x2={w - padL}
+        y2={padT + plotH / 2}
+        stroke="rgb(var(--border))"
+        strokeWidth="0.5"
+        strokeDasharray="3 3"
+      />
       {months.map((m, i) => {
         const gx = padL + i * groupW;
         return (
@@ -143,7 +221,13 @@ function SpendChart({ months, currency }: { months: api.SpendMonth[]; currency: 
             })}
             {/* Every other label when the axis is crowded, so they never overlap. */}
             {(months.length <= 8 || i % 2 === 0) && (
-              <text x={gx + groupW / 2} y={h - 8} textAnchor="middle" fontSize="9" fill="rgb(var(--muted-foreground))">
+              <text
+                x={gx + groupW / 2}
+                y={h - 8}
+                textAnchor="middle"
+                fontSize="9"
+                fill="rgb(var(--muted-foreground))"
+              >
                 {m.month.slice(2)}
               </text>
             )}
@@ -159,7 +243,14 @@ function Legend() {
     <ul className="flex flex-wrap gap-4 text-xs text-muted-foreground">
       {LENSES.map((l) => (
         <li key={l.key} className="flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: l.stroke, opacity: l.key === "actual" ? 1 : 0.55 }} />
+          <span
+            aria-hidden
+            className="inline-block h-2.5 w-2.5 rounded-sm"
+            style={{
+              background: l.stroke,
+              opacity: l.key === "actual" ? 1 : 0.55,
+            }}
+          />
           {l.label}
         </li>
       ))}
@@ -192,7 +283,13 @@ const DOC_ROUTE = new Map<string, (d: api.SpendDocument) => string>([
   ["costing", (d) => `/costing/sheets?focus=${d.doc_id}`],
   ["purchase_order", (d) => `/procurement/purchase-orders?focus=${d.doc_id}`],
   ["cash_request", (d) => `/costing/cash-requests?focus=${d.doc_id}`],
-  ["cost_entry", (d) => (d.dossier_id ? `/operations/files?focus=${d.dossier_id}` : "/costing/cost-tracking")],
+  [
+    "cost_entry",
+    (d) =>
+      d.dossier_id
+        ? `/operations/files?focus=${d.dossier_id}`
+        : "/costing/cost-tracking",
+  ],
 ]);
 const DOC_LABEL = new Map<string, string>([
   ["costing", "Costing"],
@@ -201,8 +298,10 @@ const DOC_LABEL = new Map<string, string>([
   ["cost_entry", "Cost entry"],
 ]);
 /** Where a drill-in row points. An unknown type gets no link target, not a crash. */
-const docHref = (d: api.SpendDocument) => DOC_ROUTE.get(String(d.doc_type))?.(d);
-const docLabel = (d: api.SpendDocument) => DOC_LABEL.get(String(d.doc_type)) ?? "Document";
+const docHref = (d: api.SpendDocument) =>
+  DOC_ROUTE.get(String(d.doc_type))?.(d);
+const docLabel = (d: api.SpendDocument) =>
+  DOC_LABEL.get(String(d.doc_type)) ?? "Document";
 
 export function SpendTab({ id }: { id: string }) {
   const [preset, setPreset] = React.useState<PeriodPreset>("year");
@@ -216,25 +315,47 @@ export function SpendTab({ id }: { id: string }) {
     if (p !== "custom") setRange(presetRange(p));
   };
 
-  const spend = useResource(() => api.dictSpend(id, { from: range.from, to: range.to }), [id, range.from, range.to]);
+  const spend = useResource(
+    () => api.dictSpend(id, { from: range.from, to: range.to }),
+    [id, range.from, range.to],
+  );
 
   if (spend.loading) return <LoadingRow label="Loading spend…" />;
   if (spend.error) return <ErrorState message={spend.error} />;
-  if (!spend.data) return <EmptyState title="No spend data" hint="This item has not been used on a document yet." />;
+  if (!spend.data)
+    return (
+      <EmptyState
+        title="No spend data"
+        hint="This item has not been used on a document yet."
+      />
+    );
 
   const d = spend.data;
   const cur = d.item.currency || "XAF";
-  const docs = lensFilter ? d.documents.filter((x) => x.lens === lensFilter) : d.documents;
-  const nothing = d.totals.estimated === 0 && d.totals.committed === 0 && d.totals.actual === 0;
+  const docs = lensFilter
+    ? d.documents.filter((x) => x.lens === lensFilter)
+    : d.documents;
+  const nothing =
+    d.totals.estimated === 0 &&
+    d.totals.committed === 0 &&
+    d.totals.actual === 0;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodPicker
-          preset={preset} from={range.from} to={range.to}
+          preset={preset}
+          from={range.from}
+          to={range.to}
           onPreset={choosePreset}
-          onFrom={(v) => { setPreset("custom"); setRange((r) => ({ ...r, from: v })); }}
-          onTo={(v) => { setPreset("custom"); setRange((r) => ({ ...r, to: v })); }}
+          onFrom={(v) => {
+            setPreset("custom");
+            setRange((r) => ({ ...r, from: v }));
+          }}
+          onTo={(v) => {
+            setPreset("custom");
+            setRange((r) => ({ ...r, to: v }));
+          }}
         />
         <Legend />
       </div>
@@ -242,34 +363,80 @@ export function SpendTab({ id }: { id: string }) {
       {/* Headline = actual. The other two tiles are context for it, which is why
           the variance is stated on the committed tile rather than as a fourth. */}
       <KpiRow>
-        <KpiTile label={`Actual (${cur})`} value={money(d.totals.actual, cur)} hint={`${num(d.totals.actual_count)} ledger entries`} />
-        <KpiTile label="Committed" value={money(d.totals.committed, cur)} hint={`${money(d.totals.variance_committed_actual, cur)} not yet posted`} />
-        <KpiTile label="Estimated" value={money(d.totals.estimated, cur)} hint={`${num(d.totals.estimated_count)} costing lines`} />
-        <KpiTile label="Documents" value={num(d.documents.length)} hint={`${dateFmt(d.period.from)} — ${dateFmt(d.period.to)}`} />
+        <KpiTile
+          label={`Actual (${cur})`}
+          value={money(d.totals.actual, cur)}
+          hint={`${num(d.totals.actual_count)} ledger entries`}
+        />
+        <KpiTile
+          label="Committed"
+          value={money(d.totals.committed, cur)}
+          hint={`${money(d.totals.variance_committed_actual, cur)} not yet posted`}
+        />
+        <KpiTile
+          label="Estimated"
+          value={money(d.totals.estimated, cur)}
+          hint={`${num(d.totals.estimated_count)} costing lines`}
+        />
+        <KpiTile
+          label="Documents"
+          value={num(d.documents.length)}
+          hint={`${dateFmt(d.period.from)} — ${dateFmt(d.period.to)}`}
+        />
       </KpiRow>
 
       {nothing ? (
-        <EmptyState title="No spend in this period" hint="Widen the period, or this line has not been costed, ordered or posted yet." />
+        <EmptyState
+          title="No spend in this period"
+          hint="Widen the period, or this line has not been costed, ordered or posted yet."
+        />
       ) : (
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">By month</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">
+            By month
+          </h3>
           <SpendChart months={d.months} currency={cur} />
           <div className="mt-3 max-h-56 overflow-auto">
             <table className="w-full text-sm">
-              <caption className="sr-only">Spend per month for {d.item.code}, in {cur}</caption>
-              <thead><tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <th scope="col" className="px-3 py-2">Month</th>
-                <th scope="col" className="px-3 py-2 text-right">Estimated</th>
-                <th scope="col" className="px-3 py-2 text-right">Committed</th>
-                <th scope="col" className="px-3 py-2 text-right">Actual</th>
-              </tr></thead>
+              <caption className="sr-only">
+                Spend per month for {d.item.code}, in {cur}
+              </caption>
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                  <th scope="col" className="px-3 py-2">
+                    Month
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right">
+                    Estimated
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right">
+                    Committed
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right">
+                    Actual
+                  </th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-border">
                 {d.months.map((m) => (
-                  <tr key={m.month} className={m.actual === 0 && m.committed === 0 && m.estimated === 0 ? "text-muted-foreground" : ""}>
+                  <tr
+                    key={m.month}
+                    className={
+                      m.actual === 0 && m.committed === 0 && m.estimated === 0
+                        ? "text-muted-foreground"
+                        : ""
+                    }
+                  >
                     <td className="px-3 py-1.5 num text-xs">{m.month}</td>
-                    <td className="px-3 py-1.5 num text-right text-xs">{money(m.estimated, cur)}</td>
-                    <td className="px-3 py-1.5 num text-right text-xs">{money(m.committed, cur)}</td>
-                    <td className="px-3 py-1.5 num text-right text-xs font-semibold text-foreground">{money(m.actual, cur)}</td>
+                    <td className="px-3 py-1.5 num text-right text-xs">
+                      {money(m.estimated, cur)}
+                    </td>
+                    <td className="px-3 py-1.5 num text-right text-xs">
+                      {money(m.committed, cur)}
+                    </td>
+                    <td className="px-3 py-1.5 num text-right text-xs font-semibold text-foreground">
+                      {money(m.actual, cur)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -282,47 +449,97 @@ export function SpendTab({ id }: { id: string }) {
           than opening a modal here — the convention party-360.tsx documents. */}
       <div className="rounded-xl border bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">Underlying documents</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            Underlying documents
+          </h3>
           <Segmented
             label="Lens filter"
             value={lensFilter}
             onChange={(v) => setLensFilter(v as "" | api.SpendLens)}
-            options={[{ value: "", label: "All" }, ...LENSES.map((l) => ({ value: l.key, label: l.label }))]}
+            options={[
+              { value: "", label: "All" },
+              ...LENSES.map((l) => ({ value: l.key, label: l.label })),
+            ]}
           />
         </div>
         {docs.length === 0 ? (
-          <p className="micro">No documents in this period{lensFilter ? " for this lens" : ""}.</p>
+          <p className="micro">
+            No documents in this period{lensFilter ? " for this lens" : ""}.
+          </p>
         ) : (
           <div className="max-h-72 overflow-auto">
             <table className="w-full text-sm">
-              <caption className="sr-only">Documents behind the spend figures</caption>
-              <thead><tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <th scope="col" className="px-3 py-2">Date</th>
-                <th scope="col" className="px-3 py-2">Document</th>
-                <th scope="col" className="px-3 py-2">Dossier</th>
-                <th scope="col" className="px-3 py-2">Status</th>
-                <th scope="col" className="px-3 py-2 text-right">Amount</th>
-              </tr></thead>
+              <caption className="sr-only">
+                Documents behind the spend figures
+              </caption>
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                  <th scope="col" className="px-3 py-2">
+                    Date
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    Document
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    Dossier
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    Status
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-border">
                 {docs.map((doc, i) => {
                   const href = docHref(doc);
                   const name = doc.doc_number || docLabel(doc);
                   return (
-                  <tr key={`${doc.doc_type}-${doc.doc_id}-${i}`}>
-                    <td className="px-3 py-1.5 num text-xs">{dateFmt(doc.doc_date)}</td>
-                    <td className="px-3 py-1.5 text-xs">
-                      {/* Plain text when the type has no known route — an <a>
+                    <tr key={`${doc.doc_type}-${doc.doc_id}-${i}`}>
+                      <td className="px-3 py-1.5 num text-xs">
+                        {dateFmt(doc.doc_date)}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs">
+                        {/* Plain text when the type has no known route — an <a>
                           with no href is not a link, and announcing one to a
                           screen reader that goes nowhere is worse than a label. */}
-                      {href
-                        ? <a href={href} className="font-medium text-primary-ink underline-offset-2 hover:underline">{name}</a>
-                        : <span className="font-medium">{name}</span>}
-                      {doc.label ? <span className="block text-muted-foreground">{doc.label}</span> : null}
-                    </td>
-                    <td className="px-3 py-1.5 num text-xs">{doc.dossier_ref || "—"}</td>
-                    <td className="px-3 py-1.5"><Pill tone={doc.lens === "actual" ? "ok" : doc.lens === "committed" ? "warn" : "mute"}>{doc.status || doc.lens}</Pill></td>
-                    <td className="px-3 py-1.5 num text-right text-xs">{money(doc.amount, doc.currency || cur)}</td>
-                  </tr>
+                        {href ? (
+                          <a
+                            href={href}
+                            className="font-medium text-primary-ink underline-offset-2 hover:underline"
+                          >
+                            {name}
+                          </a>
+                        ) : (
+                          <span className="font-medium">{name}</span>
+                        )}
+                        {doc.label ? (
+                          <span className="block text-muted-foreground">
+                            {doc.label}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-1.5 num text-xs">
+                        {doc.dossier_ref || "—"}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Pill
+                          tone={
+                            doc.lens === "actual"
+                              ? "ok"
+                              : doc.lens === "committed"
+                                ? "warn"
+                                : "mute"
+                          }
+                        >
+                          {doc.status || doc.lens}
+                        </Pill>
+                      </td>
+                      <td className="px-3 py-1.5 num text-right text-xs">
+                        {money(doc.amount, doc.currency || cur)}
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -339,7 +556,13 @@ export function SpendTab({ id }: { id: string }) {
 /** A rate series as a step line — a rate holds until it is superseded, so a
  *  straight interpolation between two effective dates would draw a change that
  *  never happened. Steps are the honest shape for effective-dated data. */
-function RateStepLine({ points, currency }: { points: api.RatePoint[]; currency: string }) {
+function RateStepLine({
+  points,
+  currency,
+}: {
+  points: api.RatePoint[];
+  currency: string;
+}) {
   const w = 320;
   const h = 56;
   const pad = 4;
@@ -359,22 +582,61 @@ function RateStepLine({ points, currency }: { points: api.RatePoint[]; currency:
   const label = `Rate history in ${currency}: ${points.map((p) => `${p.effective_from} ${p.rate}`).join(", ")}`;
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-[320px]" role="img" aria-label={label}>
-      <path d={dPath} fill="none" stroke={up ? "rgb(var(--warn))" : "rgb(var(--ok))"} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="w-full max-w-[320px]"
+      role="img"
+      aria-label={label}
+    >
+      <path
+        d={dPath}
+        fill="none"
+        stroke={up ? "rgb(var(--warn))" : "rgb(var(--ok))"}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
       {points.map((p, i) => (
-        <circle key={p.expense_rate_id} cx={x(i)} cy={y(vals[i])} r={p.in_force ? 3 : 1.8}
-          fill={p.in_force ? "rgb(var(--primary))" : "rgb(var(--muted-foreground))"} />
+        <circle
+          key={p.expense_rate_id}
+          cx={x(i)}
+          cy={y(vals[i])}
+          r={p.in_force ? 3 : 1.8}
+          fill={
+            p.in_force ? "rgb(var(--primary))" : "rgb(var(--muted-foreground))"
+          }
+        />
       ))}
     </svg>
   );
 }
 
-function TrendPill({ trend, currency }: { trend: api.RateTrend; currency: string }) {
+function TrendPill({
+  trend,
+  currency,
+}: {
+  trend: api.RateTrend;
+  currency: string;
+}) {
   if (trend.points < 2) return <Pill tone="mute">No movement yet</Pill>;
-  const tone = trend.direction === "up" ? "warn" : trend.direction === "down" ? "ok" : "mute";
-  const arrow = trend.direction === "up" ? "▲" : trend.direction === "down" ? "▼" : "▬";
-  const pct = trend.delta_pct === null ? "" : ` ${trend.delta_pct > 0 ? "+" : ""}${trend.delta_pct}%`;
-  return <Pill tone={tone}>{arrow} {money(trend.delta ?? 0, currency)}{pct}</Pill>;
+  const tone =
+    trend.direction === "up"
+      ? "warn"
+      : trend.direction === "down"
+        ? "ok"
+        : "mute";
+  const arrow =
+    trend.direction === "up" ? "▲" : trend.direction === "down" ? "▼" : "▬";
+  const pct =
+    trend.delta_pct === null
+      ? ""
+      : ` ${trend.delta_pct > 0 ? "+" : ""}${trend.delta_pct}%`;
+  return (
+    <Pill tone={tone}>
+      {arrow} {money(trend.delta ?? 0, currency)}
+      {pct}
+    </Pill>
+  );
 }
 
 export function CostEvolutionTab({ id }: { id: string }) {
@@ -382,7 +644,13 @@ export function CostEvolutionTab({ id }: { id: string }) {
 
   if (hist.loading) return <LoadingRow label="Loading rate history…" />;
   if (hist.error) return <ErrorState message={hist.error} />;
-  if (!hist.data) return <EmptyState title="No rate history" hint="This item has no rate cards yet." />;
+  if (!hist.data)
+    return (
+      <EmptyState
+        title="No rate history"
+        hint="This item has no rate cards yet."
+      />
+    );
 
   const d = hist.data;
   if (d.series.length === 0) {
@@ -397,14 +665,19 @@ export function CostEvolutionTab({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       <Callout tone="info" title="Rates are superseded, never edited">
-        Amending a rate expires the open row the day before the new one opens, so the history stays continuous and a
-        back-dated document still resolves the rate that was really in force. This is the same discipline tax codes use.
+        Amending a rate expires the open row the day before the new one opens,
+        so the history stays continuous and a back-dated document still resolves
+        the rate that was really in force. This is the same discipline tax codes
+        use.
       </Callout>
 
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm text-muted-foreground">Overall movement</span>
         <TrendPill trend={d.trend} currency={d.item.currency} />
-        <span className="micro">{d.trend.points} rate version{d.trend.points === 1 ? "" : "s"} across {d.series.length} series</span>
+        <span className="micro">
+          {d.trend.points} rate version{d.trend.points === 1 ? "" : "s"} across{" "}
+          {d.series.length} series
+        </span>
       </div>
 
       {d.series.map((s) => (
@@ -412,8 +685,14 @@ export function CostEvolutionTab({ id }: { id: string }) {
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-foreground">
-                {s.provider_name || s.provider_kind?.replace(/_/g, " ").toLowerCase() || "Standard rate"}
-                {s.container_type_code ? <span className="ml-2 micro">{s.container_type_name || s.container_type_code}</span> : null}
+                {s.provider_name ||
+                  s.provider_kind?.replace(/_/g, " ").toLowerCase() ||
+                  "Standard rate"}
+                {s.container_type_code ? (
+                  <span className="ml-2 micro">
+                    {s.container_type_name || s.container_type_code}
+                  </span>
+                ) : null}
               </h3>
               <p className="micro">
                 {s.current
@@ -428,24 +707,52 @@ export function CostEvolutionTab({ id }: { id: string }) {
 
           <div className="mt-3 overflow-hidden rounded-lg border">
             <table className="w-full text-sm">
-              <caption className="sr-only">Effective-dated rate versions</caption>
-              <thead><tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <th scope="col" className="px-3 py-2">From</th>
-                <th scope="col" className="px-3 py-2">To</th>
-                <th scope="col" className="px-3 py-2 text-right">Rate</th>
-                <th scope="col" className="px-3 py-2">State</th>
-                <th scope="col" className="px-3 py-2">Note</th>
-              </tr></thead>
+              <caption className="sr-only">
+                Effective-dated rate versions
+              </caption>
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                  <th scope="col" className="px-3 py-2">
+                    From
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    To
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right">
+                    Rate
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    State
+                  </th>
+                  <th scope="col" className="px-3 py-2">
+                    Note
+                  </th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-border">
                 {[...s.points].reverse().map((p) => (
                   <tr key={p.expense_rate_id}>
-                    <td className="px-3 py-1.5 num text-xs">{dateFmt(p.effective_from)}</td>
-                    <td className="px-3 py-1.5 num text-xs">{p.effective_to ? dateFmt(p.effective_to) : "—"}</td>
-                    <td className="px-3 py-1.5 num text-right text-xs font-semibold">{money(p.rate, p.currency || s.currency)}</td>
-                    <td className="px-3 py-1.5">
-                      {p.in_force ? <Pill tone="ok">In force</Pill> : p.superseded ? <Pill tone="mute">Superseded</Pill> : <Pill tone="blue">Scheduled</Pill>}
+                    <td className="px-3 py-1.5 num text-xs">
+                      {dateFmt(p.effective_from)}
                     </td>
-                    <td className="px-3 py-1.5 text-xs text-muted-foreground">{p.note || "—"}</td>
+                    <td className="px-3 py-1.5 num text-xs">
+                      {p.effective_to ? dateFmt(p.effective_to) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 num text-right text-xs font-semibold">
+                      {money(p.rate, p.currency || s.currency)}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {p.in_force ? (
+                        <Pill tone="ok">In force</Pill>
+                      ) : p.superseded ? (
+                        <Pill tone="mute">Superseded</Pill>
+                      ) : (
+                        <Pill tone="blue">Scheduled</Pill>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-muted-foreground">
+                      {p.note || "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -460,5 +767,15 @@ export function CostEvolutionTab({ id }: { id: string }) {
 /** Exported for the dossier's action bar — a deep link rather than a form here,
  *  because expense rates are MOD-10's to own and this tab is the read. */
 export function ManageRatesLink() {
-  return <Button size="sm" variant="ghost" onClick={() => { window.location.href = "/master/expense-rates"; }}>Manage rates</Button>;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => {
+        window.location.href = "/master/expense-rates";
+      }}
+    >
+      Manage rates
+    </Button>
+  );
 }

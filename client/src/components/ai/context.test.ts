@@ -9,12 +9,23 @@
  * forever, which is precisely the behaviour this design set out to remove.
  */
 import { describe, it, expect } from "vitest";
-import { DESK_STARTERS, scopeByKey, scopeForPath, suggestionsFor, type AiScope } from "./context";
+import {
+  DESK_STARTERS,
+  scopeByKey,
+  scopeForPath,
+  suggestionsFor,
+  type AiScope,
+} from "./context";
 import { groupConversations } from "./thread";
 import type { AiConversationMeta } from "@/lib/ai-api";
 
 const Blank = () => null as unknown as React.JSX.Element;
-const scope = (key: string, basePath: string): AiScope => ({ key, label: key, Icon: Blank, basePath });
+const scope = (key: string, basePath: string): AiScope => ({
+  key,
+  label: key,
+  Icon: Blank,
+  basePath,
+});
 
 const SCOPES: AiScope[] = [
   scope("all", ""),
@@ -62,13 +73,23 @@ describe("scopeByKey", () => {
 
 describe("suggestionsFor", () => {
   it("offers the questions that desk actually asks", () => {
-    const s = suggestionsFor({ route: "/finance/receivables", label: "Receivables", actions: [], area: "finance" });
+    const s = suggestionsFor({
+      route: "/finance/receivables",
+      label: "Receivables",
+      actions: [],
+      area: "finance",
+    });
     expect(s).toHaveLength(3);
     expect(s[0].prompt).toMatch(/overdue/i);
   });
 
   it("templates on the screen when its area has no curated set", () => {
-    const s = suggestionsFor({ route: "/hr/appraisals", label: "Appraisals", actions: [], area: "appraisals" });
+    const s = suggestionsFor({
+      route: "/hr/appraisals",
+      label: "Appraisals",
+      actions: [],
+      area: "appraisals",
+    });
     expect(s.map((x) => x.label)).toContain("Summarise Appraisals");
   });
 
@@ -79,8 +100,17 @@ describe("suggestionsFor", () => {
   });
 
   it("never offers more than fits the drawer's empty state", () => {
-    for (const area of ["finance", "operations", "procurement", "sales", "vault", "comms"]) {
-      expect(suggestionsFor({ route: "/x", label: "X", actions: [], area }).length).toBeLessThanOrEqual(3);
+    for (const area of [
+      "finance",
+      "operations",
+      "procurement",
+      "sales",
+      "vault",
+      "comms",
+    ]) {
+      expect(
+        suggestionsFor({ route: "/x", label: "X", actions: [], area }).length,
+      ).toBeLessThanOrEqual(3);
     }
   });
 });
@@ -94,7 +124,13 @@ describe("groupConversations", () => {
   });
 
   it("buckets by how a person remembers, not by date", () => {
-    const groups = groupConversations([at(0.2, "a"), at(1.2, "b"), at(4, "c"), at(20, "d"), at(200, "e")]);
+    const groups = groupConversations([
+      at(0.2, "a"),
+      at(1.2, "b"),
+      at(4, "c"),
+      at(20, "d"),
+      at(200, "e"),
+    ]);
     expect(groups.map((g) => g.heading)).toEqual([
       "Today",
       "Yesterday",
@@ -111,7 +147,10 @@ describe("groupConversations", () => {
 
   it("orders within a bucket newest first", () => {
     const groups = groupConversations([at(0.6, "older"), at(0.1, "newer")]);
-    expect(groups[0].items.map((c) => c.conversation_id)).toEqual(["newer", "older"]);
+    expect(groups[0].items.map((c) => c.conversation_id)).toEqual([
+      "newer",
+      "older",
+    ]);
   });
 
   it("returns nothing for a user with no threads", () => {

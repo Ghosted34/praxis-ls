@@ -11,7 +11,12 @@ import { type Row } from "@/lib/use-resource";
 
 /** Key-safe slug for a user-entered name — the store's keys are the identity. */
 export const slug = (s: string) =>
-  s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "").slice(0, 60);
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/(^_|_$)/g, "")
+    .slice(0, 60);
 
 export type Entry = { key: string; value: Row };
 

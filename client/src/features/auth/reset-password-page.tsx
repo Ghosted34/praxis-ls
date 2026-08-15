@@ -11,7 +11,13 @@ import * as React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, tenant } from "@/lib/api-client";
 import { useBranding } from "@/app/branding/branding-context";
-import { LockIcon, EyeIcon, EyeOffIcon, ArrowRightIcon, CheckIcon } from "@/components/ui/icons";
+import {
+  LockIcon,
+  EyeIcon,
+  EyeOffIcon,
+  ArrowRightIcon,
+  CheckIcon,
+} from "@/components/ui/icons";
 
 const MIN_LENGTH = 12;
 
@@ -37,9 +43,12 @@ export function ResetPasswordPage() {
     if (err instanceof ApiError) {
       if (err.code === "INVALID_RESET_TOKEN")
         return "This reset link is invalid or has expired. Request a new one from the sign-in screen.";
-      if (err.code === "WEAK_PASSWORD" || err.code === "BREACHED_PASSWORD") return err.message;
-      if (err.code === "RATE_LIMITED") return "Too many attempts. Please wait a few minutes and try again.";
-      if (err.code === "ERROR") return "Can't reach the server. Check your connection.";
+      if (err.code === "WEAK_PASSWORD" || err.code === "BREACHED_PASSWORD")
+        return err.message;
+      if (err.code === "RATE_LIMITED")
+        return "Too many attempts. Please wait a few minutes and try again.";
+      if (err.code === "ERROR")
+        return "Can't reach the server. Check your connection.";
       return err.message;
     }
     return "Something went wrong. Please try again.";
@@ -76,12 +85,19 @@ export function ResetPasswordPage() {
         {!token ? (
           <>
             <h2 className="login-card-title">Reset link needed</h2>
-            <p className="login-card-sub">This page opens from the link in your reset email.</p>
-            <p className="login-note mt-5">
-              We couldn't find a reset token in this link. Please open the most recent link from your email, or
-              request a new one from the sign-in screen.
+            <p className="login-card-sub">
+              This page opens from the link in your reset email.
             </p>
-            <button type="button" className="login-submit mt-5" onClick={() => navigate("/login")}>
+            <p className="login-note mt-5">
+              We couldn't find a reset token in this link. Please open the most
+              recent link from your email, or request a new one from the sign-in
+              screen.
+            </p>
+            <button
+              type="button"
+              className="login-submit mt-5"
+              onClick={() => navigate("/login")}
+            >
               Back to sign in
             </button>
           </>
@@ -90,10 +106,14 @@ export function ResetPasswordPage() {
             <h2 className="login-card-title">Password updated</h2>
             <p className="login-card-sub">You're all set</p>
             <p className="login-note mt-5">
-              Your password has been changed and you've been signed out everywhere. Sign in with your new password
-              to continue.
+              Your password has been changed and you've been signed out
+              everywhere. Sign in with your new password to continue.
             </p>
-            <button type="button" className="login-submit mt-5" onClick={() => navigate("/login")}>
+            <button
+              type="button"
+              className="login-submit mt-5"
+              onClick={() => navigate("/login")}
+            >
               Go to sign in
               <ArrowRightIcon width={16} height={16} />
             </button>
@@ -101,9 +121,16 @@ export function ResetPasswordPage() {
         ) : (
           <>
             <h2 className="login-card-title">Choose a new password</h2>
-            <p className="login-card-sub">At least {MIN_LENGTH} characters, with a mix of cases, a number and a symbol.</p>
+            <p className="login-card-sub">
+              At least {MIN_LENGTH} characters, with a mix of cases, a number
+              and a symbol.
+            </p>
 
-            <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-4" noValidate>
+            <form
+              onSubmit={onSubmit}
+              className="mt-5 flex flex-col gap-4"
+              noValidate
+            >
               <div className="flex flex-col gap-1.5">
                 <label className="login-label" htmlFor="rp-pw">
                   New password
@@ -124,7 +151,11 @@ export function ResetPasswordPage() {
                     onClick={() => setShowPw((s) => !s)}
                     aria-label={showPw ? "Hide password" : "Show password"}
                   >
-                    {showPw ? <EyeOffIcon width={17} height={17} /> : <EyeIcon width={17} height={17} />}
+                    {showPw ? (
+                      <EyeOffIcon width={17} height={17} />
+                    ) : (
+                      <EyeIcon width={17} height={17} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -147,22 +178,43 @@ export function ResetPasswordPage() {
                 </div>
               </div>
 
-              <ul className="flex flex-col gap-1" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                <li className="login-note" data-ok={meetsLength} style={{ opacity: meetsLength ? 1 : 0.55 }}>
-                  {meetsLength ? <CheckIcon width={13} height={13} /> : "•"} At least {MIN_LENGTH} characters
+              <ul
+                className="flex flex-col gap-1"
+                style={{ listStyle: "none", padding: 0, margin: 0 }}
+              >
+                <li
+                  className="login-note"
+                  data-ok={meetsLength}
+                  style={{ opacity: meetsLength ? 1 : 0.55 }}
+                >
+                  {meetsLength ? <CheckIcon width={13} height={13} /> : "•"} At
+                  least {MIN_LENGTH} characters
                 </li>
-                <li className="login-note" data-ok={matches} style={{ opacity: matches ? 1 : 0.55 }}>
-                  {matches ? <CheckIcon width={13} height={13} /> : "•"} Passwords match
+                <li
+                  className="login-note"
+                  data-ok={matches}
+                  style={{ opacity: matches ? 1 : 0.55 }}
+                >
+                  {matches ? <CheckIcon width={13} height={13} /> : "•"}{" "}
+                  Passwords match
                 </li>
               </ul>
 
               {error && <p className="login-error">{error}</p>}
 
-              <button type="submit" className="login-submit" disabled={!canSubmit}>
+              <button
+                type="submit"
+                className="login-submit"
+                disabled={!canSubmit}
+              >
                 {busy ? "Updating…" : "Update password"}
                 {!busy && <ArrowRightIcon width={16} height={16} />}
               </button>
-              <button type="button" className="login-note" onClick={() => navigate("/login")}>
+              <button
+                type="button"
+                className="login-note"
+                onClick={() => navigate("/login")}
+              >
                 ← Back to sign in
               </button>
             </form>

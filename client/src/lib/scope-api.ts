@@ -33,7 +33,11 @@ export type ScopeMember = {
   status?: string | null;
 };
 
-export type ScopeEntity = { entity_id: string; code: string; legal_name: string };
+export type ScopeEntity = {
+  entity_id: string;
+  code: string;
+  legal_name: string;
+};
 
 export const listScopes = () => tenant<Scope[]>("/scopes");
 
@@ -59,21 +63,30 @@ export const fetchScopeOptions = () => tenant<ScopeNode[]>("/scopes/options");
  * and saving fails on the foreign key. This endpoint reads the same schema the
  * constraint does.
  */
-export const fetchScopeEntities = () => tenant<ScopeEntity[]>("/scopes/entities");
+export const fetchScopeEntities = () =>
+  tenant<ScopeEntity[]>("/scopes/entities");
 
 export const listScopeMembers = (scopeId: string) =>
   tenant<ScopeMember[]>(`/scopes/${scopeId}/members`);
 export const addScopeMember = (scopeId: string, userId: string) =>
-  tenant<{ assigned: boolean; already: boolean }>(`/scopes/${scopeId}/members`, {
-    method: "POST",
-    body: { user_id: userId },
-  });
+  tenant<{ assigned: boolean; already: boolean }>(
+    `/scopes/${scopeId}/members`,
+    {
+      method: "POST",
+      body: { user_id: userId },
+    },
+  );
 export const removeScopeMember = (scopeId: string, userId: string) =>
-  tenant<{ removed: boolean }>(`/scopes/${scopeId}/members/${userId}`, { method: "DELETE" });
+  tenant<{ removed: boolean }>(`/scopes/${scopeId}/members/${userId}`, {
+    method: "DELETE",
+  });
 
 /* ── tree shaping ─────────────────────────────────────────────────────────── */
 
-export type ScopeTreeNode = ScopeNode & { children: ScopeTreeNode[]; depth: number };
+export type ScopeTreeNode = ScopeNode & {
+  children: ScopeTreeNode[];
+  depth: number;
+};
 
 /**
  * Flat rows → a forest, ordered by name at every level.

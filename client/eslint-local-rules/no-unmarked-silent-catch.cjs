@@ -31,8 +31,11 @@ function isSilentBody(body) {
     if (stmt.type === "EmptyStatement") continue;
     if (
       stmt.type === "ReturnStatement" &&
-      (stmt.argument === null || stmt.argument.type === "Identifier" && stmt.argument.name === "undefined")
-    ) continue;
+      (stmt.argument === null ||
+        (stmt.argument.type === "Identifier" &&
+          stmt.argument.name === "undefined"))
+    )
+      continue;
     // Anything else is not silent.
     return false;
   }
@@ -68,7 +71,11 @@ module.exports = {
       // between the last statement and the closing brace).
       const comments = source.getCommentsInside
         ? source.getCommentsInside(node)
-        : source.getAllComments().filter((c) => c.range[0] > node.range[0] && c.range[1] < node.range[1]);
+        : source
+            .getAllComments()
+            .filter(
+              (c) => c.range[0] > node.range[0] && c.range[1] < node.range[1],
+            );
       if (hasMarker(comments)) return;
       context.report({ node, messageId: "needsMarker" });
     }
@@ -84,10 +91,14 @@ module.exports = {
           node.callee.type !== "MemberExpression" ||
           node.callee.property.type !== "Identifier" ||
           node.callee.property.name !== "catch"
-        ) return;
+        )
+          return;
         const arg = node.arguments[0];
         if (!arg) return;
-        if (arg.type === "ArrowFunctionExpression" || arg.type === "FunctionExpression") {
+        if (
+          arg.type === "ArrowFunctionExpression" ||
+          arg.type === "FunctionExpression"
+        ) {
           // If the arrow returns a value directly (`.catch(() => [])`) that
           // constant IS the swallow — same class as an empty block, so
           // require a marker. Non-constant returns (variable, call) are

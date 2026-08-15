@@ -10,7 +10,13 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownCheckboxItem, DropdownLabel, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownCheckboxItem,
+  DropdownLabel,
+  DropdownItem,
+  DropdownSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { ColumnVisibility } from "@/lib/use-column-visibility";
 
 /**
@@ -22,15 +28,32 @@ import type { ColumnVisibility } from "@/lib/use-column-visibility";
  * const cols = useColumnVisibility("finance.invoices", COLUMNS);
  * <ListPage columns={cols.columns} toolbar={<><Search…/><ColumnsMenu state={cols} /></>} … />
  */
-export function ColumnsMenu<T>({ state, className }: { state: ColumnVisibility<T>; className?: string }) {
+export function ColumnsMenu<T>({
+  state,
+  className,
+}: {
+  state: ColumnVisibility<T>;
+  className?: string;
+}) {
   const { toggles, setVisible, reset, hiddenCount } = state;
   if (toggles.length === 0) return null;
 
   return (
     <DropdownMenu
       trigger={
-        <Button variant="outline" size="sm" className={cn("gap-1.5", className)}>
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("gap-1.5", className)}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            aria-hidden
+          >
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M9 4v16M15 4v16" />
           </svg>
@@ -50,7 +73,11 @@ export function ColumnsMenu<T>({ state, className }: { state: ColumnVisibility<T
         <span className="micro">Columns shown</span>
       </DropdownLabel>
       {toggles.map((t) => (
-        <DropdownCheckboxItem key={t.key} checked={t.visible} onCheckedChange={(v) => setVisible(t.key, v)}>
+        <DropdownCheckboxItem
+          key={t.key}
+          checked={t.visible}
+          onCheckedChange={(v) => setVisible(t.key, v)}
+        >
           {t.label}
         </DropdownCheckboxItem>
       ))}

@@ -28,11 +28,21 @@ import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { listDictRefs, createDictRef, uploadVaultDocument, type DictRef } from "@/lib/masterdata-api";
+import {
+  listDictRefs,
+  createDictRef,
+  uploadVaultDocument,
+  type DictRef,
+} from "@/lib/masterdata-api";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = ".pdf,.png,.jpg,.jpeg";
-const ACCEPTED_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/jpg"];
+const ACCEPTED_TYPES = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+];
 
 /** Attached in this session — the vault is the record, this is the receipt. */
 export type AttachedDoc = { doc_id: string; name: string; type: string };
@@ -63,7 +73,10 @@ export function DossierDocuments({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // Adding a type inline, without leaving a half-filled file for Settings.
-  const [newType, setNewType] = React.useState<{ code: string; name: string } | null>(null);
+  const [newType, setNewType] = React.useState<{
+    code: string;
+    name: string;
+  } | null>(null);
 
   const active = (types.data || []).filter((t) => t.is_active !== false);
 
@@ -83,7 +96,10 @@ export function DossierDocuments({
     try {
       const row = await createDictRef({
         kind: "DOCUMENT_TYPE",
-        code: newType.code.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+        code: newType.code
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, "_"),
         name_fr: newType.name.trim(),
       });
       await types.reload();
@@ -128,9 +144,16 @@ export function DossierDocuments({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Document type" hint="Not listed? Add it — it stays available on every file.">
+        <Field
+          label="Document type"
+          hint="Not listed? Add it — it stays available on every file."
+        >
           <div className="flex gap-2">
-            <Select value={typeId} onChange={(e) => setTypeId(e.target.value)} aria-label="Document type">
+            <Select
+              value={typeId}
+              onChange={(e) => setTypeId(e.target.value)}
+              aria-label="Document type"
+            >
               <option value="">—</option>
               {active.map((t) => (
                 <option key={t.ref_id} value={t.ref_id}>
@@ -165,17 +188,29 @@ export function DossierDocuments({
               placeholder="CODE (e.g. APEC)"
               aria-label="New document type code"
               value={newType.code}
-              onChange={(e) => setNewType((s) => ({ ...s!, code: e.target.value.toUpperCase() }))}
+              onChange={(e) =>
+                setNewType((s) => ({
+                  ...s!,
+                  code: e.target.value.toUpperCase(),
+                }))
+              }
             />
             <Input
               placeholder="Name (e.g. Attestation de Prise en Charge)"
               aria-label="New document type name"
               value={newType.name}
-              onChange={(e) => setNewType((s) => ({ ...s!, name: e.target.value }))}
+              onChange={(e) =>
+                setNewType((s) => ({ ...s!, name: e.target.value }))
+              }
             />
           </div>
           <div className="mt-2 flex justify-end gap-2">
-            <Button type="button" size="sm" variant="ghost" onClick={() => setNewType(null)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setNewType(null)}
+            >
               Cancel
             </Button>
             <Button type="button" size="sm" loading={busy} onClick={addType}>
@@ -186,7 +221,13 @@ export function DossierDocuments({
       )}
 
       <div className="flex justify-end">
-        <Button type="button" size="sm" loading={busy} disabled={!file || !!fileError || busy} onClick={upload}>
+        <Button
+          type="button"
+          size="sm"
+          loading={busy}
+          disabled={!file || !!fileError || busy}
+          onClick={upload}
+        >
           Attach
         </Button>
       </div>
@@ -196,9 +237,14 @@ export function DossierDocuments({
       {attached.length > 0 && (
         <ul className="space-y-1" aria-label="Attached documents">
           {attached.map((d) => (
-            <li key={d.doc_id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm">
+            <li
+              key={d.doc_id}
+              className="flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm"
+            >
               <Pill tone="ok">{d.type}</Pill>
-              <span className="min-w-0 flex-1 truncate text-foreground">{d.name}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground">
+                {d.name}
+              </span>
             </li>
           ))}
         </ul>

@@ -27,7 +27,9 @@ export function useFocusRow(rows: { length: number } | null | undefined) {
     if (scrolledFor.current === focusId) return;
     // Defer to the next tick so the DataList has committed its DOM.
     const t = window.setTimeout(() => {
-      const el = document.querySelector<HTMLElement>(`[data-row-key="${cssEscape(focusId)}"]`);
+      const el = document.querySelector<HTMLElement>(
+        `[data-row-key="${cssEscape(focusId)}"]`,
+      );
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         scrolledFor.current = focusId;
@@ -49,7 +51,8 @@ export function useFocusRow(rows: { length: number } | null | undefined) {
  *  — the layout gate runs against real Chromium so the native path is used
  *  there). Kept private to this hook; nothing else should need it. */
 function cssEscape(s: string): string {
-  const globalCss = (typeof CSS !== "undefined" ? CSS : undefined) as { escape?: (s: string) => string } | undefined;
+  const globalCss = (typeof CSS !== "undefined" ? CSS : undefined) as
+    { escape?: (s: string) => string } | undefined;
   if (globalCss?.escape) return globalCss.escape(s);
   return s.replace(/["\\]/g, "\\$&");
 }

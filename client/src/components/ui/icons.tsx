@@ -151,7 +151,14 @@ export const UploadIcon = (p: P) => (
 );
 /** The tenant brand glyph — a soft "X" mark echoing the hub logo. Uses currentColor. */
 export const BrandGlyph = (p: P) => (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden width={22} height={22} {...p}>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden
+    width={22}
+    height={22}
+    {...p}
+  >
     <path
       d="M5 4c3 1.8 5 4.4 7 8 2-3.6 4-6.2 7-8-1.8 3-2.8 5.7-3 8 .2 2.3 1.2 5 3 8-3-1.8-5-4.4-7-8-2 3.6-4 6.2-7 8 1.8-3 2.8-5.7 3-8-.2-2.3-1.2-5-3-8Z"
       fill="currentColor"

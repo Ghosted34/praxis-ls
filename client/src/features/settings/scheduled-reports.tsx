@@ -23,7 +23,17 @@ import { PageError } from "./shared";
 const CADENCES = ["daily", "weekly", "monthly", "quarterly", "on_event"];
 const REPORT_FORMATS = ["pdf", "csv", "xlsx"];
 
-function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; onClose: () => void; onCreated: () => void; catalogue: Row[] }) {
+function ScheduleForm({
+  open,
+  onClose,
+  onCreated,
+  catalogue,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+  catalogue: Row[];
+}) {
   const [name, setName] = React.useState("");
   const [reportKey, setReportKey] = React.useState("");
   const [cadence, setCadence] = React.useState("monthly");
@@ -45,7 +55,9 @@ function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; 
   }, [open]);
 
   function toggleFormat(f: string) {
-    setFormats((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
+    setFormats((cur) =>
+      cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f],
+    );
   }
 
   const emails = recipients
@@ -80,14 +92,27 @@ function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Schedule a report" description="Automated report delivery on a cadence. Recipients receive the generated file by email." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Schedule a report"
+      description="Automated report delivery on a cadence. Recipients receive the generated file by email."
+      size="lg"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Monthly receivables ageing" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Monthly receivables ageing"
+            />
           </Field>
           <Field label="Report" required>
-            <Select value={reportKey} onChange={(e) => setReportKey(e.target.value)}>
+            <Select
+              value={reportKey}
+              onChange={(e) => setReportKey(e.target.value)}
+            >
               <option value="">Select…</option>
               {catalogue.map((c) => (
                 <option key={String(c.report_key)} value={String(c.report_key)}>
@@ -97,7 +122,10 @@ function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; 
             </Select>
           </Field>
           <Field label="Cadence" required>
-            <Select value={cadence} onChange={(e) => setCadence(e.target.value)}>
+            <Select
+              value={cadence}
+              onChange={(e) => setCadence(e.target.value)}
+            >
               {CADENCES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -105,26 +133,47 @@ function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; 
               ))}
             </Select>
           </Field>
-          <Field label="Recipients" hint="Comma-separated emails" error={badEmail ? `Invalid email: ${badEmail}` : undefined}>
-            <Input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="cfo@acme.cm, ops@acme.cm" />
+          <Field
+            label="Recipients"
+            hint="Comma-separated emails"
+            error={badEmail ? `Invalid email: ${badEmail}` : undefined}
+          >
+            <Input
+              value={recipients}
+              onChange={(e) => setRecipients(e.target.value)}
+              placeholder="cfo@acme.cm, ops@acme.cm"
+            />
           </Field>
         </div>
         {reportKey && (
-          <p className="text-xs text-muted-foreground">{cell(catalogue.find((c) => String(c.report_key) === reportKey)?.describe)}</p>
+          <p className="text-xs text-muted-foreground">
+            {cell(
+              catalogue.find((c) => String(c.report_key) === reportKey)
+                ?.describe,
+            )}
+          </p>
         )}
         <div>
           <p className="mb-1.5 text-sm font-medium text-foreground">Formats</p>
           <div className="flex gap-4">
             {REPORT_FORMATS.map((f) => (
               <label key={f} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={formats.includes(f)} onChange={() => toggleFormat(f)} />
+                <input
+                  type="checkbox"
+                  checked={formats.includes(f)}
+                  onChange={() => toggleFormat(f)}
+                />
                 {f.toUpperCase()}
               </label>
             ))}
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
           Active (start delivering on the next due date)
         </label>
         {error && <ErrorState message={error} />}
@@ -153,7 +202,10 @@ export function ScheduledReportsPage() {
     setRowBusy(id);
     setRowError(null);
     try {
-      await tenant(`/reports/scheduled/${id}`, { method: "PATCH", body: { active } });
+      await tenant(`/reports/scheduled/${id}`, {
+        method: "PATCH",
+        body: { active },
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -178,7 +230,14 @@ export function ScheduledReportsPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Scheduled reports" description="Automated report delivery — pick a report, a cadence and recipients." action={<Button onClick={() => setCreateOpen(true)}>Schedule report</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Scheduled reports"
+        description="Automated report delivery — pick a report, a cadence and recipients."
+        action={
+          <Button onClick={() => setCreateOpen(true)}>Schedule report</Button>
+        }
+      />
 
       <PageError message={rowError} />
 
@@ -187,7 +246,10 @@ export function ScheduledReportsPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="Nothing scheduled" hint="Schedule a report to have it delivered automatically." />
+        <EmptyState
+          title="Nothing scheduled"
+          hint="Schedule a report to have it delivered automatically."
+        />
       ) : (
         <Table>
           <THead>
@@ -215,14 +277,27 @@ export function ScheduledReportsPage() {
                   <TD className="text-sm">{cell(r.formats)}</TD>
                   <TD className="text-sm">{dateFmt(r.next_run_at)}</TD>
                   <TD className="text-sm">
-                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Paused"}</Pill>
+                    <Pill tone={active ? "ok" : "mute"}>
+                      {active ? "Active" : "Paused"}
+                    </Pill>
                   </TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant={active ? "outline" : "default"} loading={rowBusy === id} onClick={() => toggle(id, !active)}>
+                      <Button
+                        size="sm"
+                        variant={active ? "outline" : "default"}
+                        loading={rowBusy === id}
+                        onClick={() => toggle(id, !active)}
+                      >
                         {active ? "Pause" : "Resume"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" loading={rowBusy === id} onClick={() => remove(id, String(r.name))}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        loading={rowBusy === id}
+                        onClick={() => remove(id, String(r.name))}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -234,7 +309,12 @@ export function ScheduledReportsPage() {
         </Table>
       )}
 
-      <ScheduleForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} catalogue={catalogue || []} />
+      <ScheduleForm
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={reload}
+        catalogue={catalogue || []}
+      />
     </section>
   );
 }

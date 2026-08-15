@@ -18,10 +18,27 @@ import { tenant } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { Organigramme } from "@/components/organigramme";
 import { RowActions } from "@/components/ui/row-actions";
-import { fetchScopeTree, buildScopeTree, fetchScopeEntities, listScopeMembers, addScopeMember, removeScopeMember } from "@/lib/scope-api";
+import {
+  fetchScopeTree,
+  buildScopeTree,
+  fetchScopeEntities,
+  listScopeMembers,
+  addScopeMember,
+  removeScopeMember,
+} from "@/lib/scope-api";
 import { type Scope, ConfirmDelete, shell } from "./shared";
 
-function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; scopes: Scope[]; onClose: () => void; onSaved: () => void }) {
+function ScopeForm({
+  scope,
+  scopes,
+  onClose,
+  onSaved,
+}: {
+  scope: Scope | null;
+  scopes: Scope[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const editing = !!scope;
   // Entities from the IDENTITY schema, not /entities. scope.entity_id is checked
   // against live.corporate_entity, so listing the env-selected schema here meant
@@ -46,7 +63,8 @@ function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; s
       parent_scope_id: parentId || null,
     };
     try {
-      if (editing && scope) await tenant(`/scopes/${scope.scope_id}`, { method: "PATCH", body });
+      if (editing && scope)
+        await tenant(`/scopes/${scope.scope_id}`, { method: "PATCH", body });
       else await tenant("/scopes", { method: "POST", body });
       onSaved();
       onClose();
@@ -58,16 +76,33 @@ function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; s
   }
 
   // A scope can't be its own parent.
-  const parentOptions = scopes.filter((s) => !scope || s.scope_id !== scope.scope_id);
+  const parentOptions = scopes.filter(
+    (s) => !scope || s.scope_id !== scope.scope_id,
+  );
 
   return (
-    <Modal open onClose={onClose} title={editing ? "Edit scope" : "New scope"} description="Scopes confine a user to an entity, branch or department. They nest — that tree is the organigramme.">
+    <Modal
+      open
+      onClose={onClose}
+      title={editing ? "Edit scope" : "New scope"}
+      description="Scopes confine a user to an entity, branch or department. They nest — that tree is the organigramme."
+    >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Corporate entity" hint="Leave blank for a tenant-wide scope.">
-          <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+        <Field
+          label="Corporate entity"
+          hint="Leave blank for a tenant-wide scope."
+        >
+          <Select
+            value={entityId}
+            onChange={(e) => setEntityId(e.target.value)}
+          >
             <option value="">— none —</option>
             {entities.map((en) => (
-              <option key={en.entity_id} value={en.entity_id}>{en.code ? `${en.code} · ${en.legal_name || ""}` : en.legal_name || en.entity_id}</option>
+              <option key={en.entity_id} value={en.entity_id}>
+                {en.code
+                  ? `${en.code} · ${en.legal_name || ""}`
+                  : en.legal_name || en.entity_id}
+              </option>
             ))}
           </Select>
           {/* An empty list here is not the same as "no entities exist". Scopes are
@@ -76,30 +111,68 @@ function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; s
               here, which looks like a bug and isn't. Say so, rather than leaving
               a silently empty dropdown. */}
           {entitiesQ.error ? (
-            <p className="micro mt-1 text-[rgb(var(--bad))]">Couldn&rsquo;t load entities: {entitiesQ.error}</p>
+            <p className="micro mt-1 text-[rgb(var(--bad))]">
+              Couldn&rsquo;t load entities: {entitiesQ.error}
+            </p>
           ) : !entitiesQ.loading && !entities.length ? (
             <p className="micro mt-1">
-              No entities exist in the live schema. Scopes are stored there, so only live entities can be
-              selected — create the entity in LIVE mode, or leave this blank for a tenant-wide scope.
+              No entities exist in the live schema. Scopes are stored there, so
+              only live entities can be selected — create the entity in LIVE
+              mode, or leave this blank for a tenant-wide scope.
             </p>
           ) : null}
         </Field>
-        <Field label="Code" required hint="Unique within the entity — e.g. HQ, DLA_BRANCH, CUSTOMS_DESK.">
-          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HQ" />
+        <Field
+          label="Code"
+          required
+          hint="Unique within the entity — e.g. HQ, DLA_BRANCH, CUSTOMS_DESK."
+        >
+          <Input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="HQ"
+          />
         </Field>
         <Field label="Name" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Head office" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Head office"
+          />
         </Field>
-        <Field label="Parent scope" hint="Optional — builds the organigramme tree.">
-          <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+        <Field
+          label="Parent scope"
+          hint="Optional — builds the organigramme tree."
+        >
+          <Select
+            value={parentId}
+            onChange={(e) => setParentId(e.target.value)}
+          >
             <option value="">— top level —</option>
-            {parentOptions.map((s) => <option key={s.scope_id} value={s.scope_id}>{s.code} · {s.name}</option>)}
+            {parentOptions.map((s) => (
+              <option key={s.scope_id} value={s.scope_id}>
+                {s.code} · {s.name}
+              </option>
+            ))}
           </Select>
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy || !code || !name}>{editing ? "Save changes" : "Create scope"}</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={busy || !code || !name}
+          >
+            {editing ? "Save changes" : "Create scope"}
+          </Button>
         </div>
       </form>
     </Modal>
@@ -116,47 +189,99 @@ function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; s
  */
 function ScopeMembers({ scopeId }: { scopeId: string }) {
   const members = useResource(() => listScopeMembers(scopeId), [scopeId]);
-  const usersQ = useList<{ user_id: string; full_name: string; email: string }>("/users");
+  const usersQ = useList<{ user_id: string; full_name: string; email: string }>(
+    "/users",
+  );
   const [adding, setAdding] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const assigned = members.data || [];
   const assignedIds = new Set(assigned.map((m) => m.user_id));
-  const candidates = (usersQ.rows || []).filter((u) => !assignedIds.has(u.user_id));
+  const candidates = (usersQ.rows || []).filter(
+    (u) => !assignedIds.has(u.user_id),
+  );
 
   async function add() {
     if (!adding) return;
-    setBusy("add"); setError(null);
-    try { await addScopeMember(scopeId, adding); setAdding(""); members.reload(); }
-    catch (e) { setError(errMsg(e)); } finally { setBusy(null); }
+    setBusy("add");
+    setError(null);
+    try {
+      await addScopeMember(scopeId, adding);
+      setAdding("");
+      members.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
   }
   async function remove(userId: string) {
-    setBusy(userId); setError(null);
-    try { await removeScopeMember(scopeId, userId); members.reload(); }
-    catch (e) { setError(errMsg(e)); } finally { setBusy(null); }
+    setBusy(userId);
+    setError(null);
+    try {
+      await removeScopeMember(scopeId, userId);
+      members.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
     <div className="space-y-2 pb-2">
-      {members.loading ? <p className="micro">Loading people…</p> : assigned.length ? (
+      {members.loading ? (
+        <p className="micro">Loading people…</p>
+      ) : assigned.length ? (
         <ul className="space-y-1">
           {assigned.map((m) => (
-            <li key={m.user_id} className="flex items-center justify-between gap-2 rounded-md bg-accent/40 px-2 py-1">
-              <span className="min-w-0 truncate text-sm">{m.full_name} <span className="micro">· {m.email}</span></span>
-              <Button size="sm" variant="ghost" loading={busy === m.user_id} onClick={() => remove(m.user_id)}>Remove</Button>
+            <li
+              key={m.user_id}
+              className="flex items-center justify-between gap-2 rounded-md bg-accent/40 px-2 py-1"
+            >
+              <span className="min-w-0 truncate text-sm">
+                {m.full_name} <span className="micro">· {m.email}</span>
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={busy === m.user_id}
+                onClick={() => remove(m.user_id)}
+              >
+                Remove
+              </Button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="micro">Nobody assigned — approvals routed here have no one to action them.</p>
+        <p className="micro">
+          Nobody assigned — approvals routed here have no one to action them.
+        </p>
       )}
       <div className="flex items-center gap-2">
-        <Select aria-label="Add a user to this scope" value={adding} onChange={(e) => setAdding(e.target.value)} className="max-w-xs">
+        <Select
+          aria-label="Add a user to this scope"
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          className="max-w-xs"
+        >
           <option value="">Add someone…</option>
-          {candidates.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
+          {candidates.map((u) => (
+            <option key={u.user_id} value={u.user_id}>
+              {u.full_name}
+            </option>
+          ))}
         </Select>
-        <Button size="sm" variant="outline" disabled={!adding || busy === "add"} loading={busy === "add"} onClick={add}>Assign</Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!adding || busy === "add"}
+          loading={busy === "add"}
+          onClick={add}
+        >
+          Assign
+        </Button>
       </div>
       {error && <ErrorState message={error} />}
     </div>
@@ -174,31 +299,75 @@ export function ScopesPage() {
   const [view, setView] = React.useState<"chart" | "list">("chart");
 
   const all = React.useMemo(() => rows || [], [rows]);
-  const tree = React.useMemo(() => buildScopeTree(treeQ.data || []), [treeQ.data]);
-  const reloadAll = React.useCallback(() => { reload(); treeQ.reload(); }, [reload, treeQ]);
+  const tree = React.useMemo(
+    () => buildScopeTree(treeQ.data || []),
+    [treeQ.data],
+  );
+  const reloadAll = React.useCallback(() => {
+    reload();
+    treeQ.reload();
+  }, [reload, treeQ]);
   const entityName = React.useMemo(() => {
     const m: Record<string, string> = {};
-    (entitiesQ.data || []).forEach((e) => { m[e.entity_id] = e.code || e.legal_name || e.entity_id; });
+    (entitiesQ.data || []).forEach((e) => {
+      m[e.entity_id] = e.code || e.legal_name || e.entity_id;
+    });
     return m;
   }, [entitiesQ.data]);
   const scopeName = React.useMemo(() => {
     const m: Record<string, string> = {};
-    all.forEach((s) => { m[s.scope_id] = s.code; });
+    all.forEach((s) => {
+      m[s.scope_id] = s.code;
+    });
     return m;
   }, [all]);
 
   const columns: Column<Scope>[] = [
-    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-primary-ink">{r.code}</span> },
-    { key: "name", label: "Name", render: (r) => <span className="font-medium text-foreground">{r.name}</span> },
-    { key: "entity_id", label: "Entity", render: (r) => (r.entity_id ? entityName[r.entity_id] || "—" : <span className="text-muted-foreground">Tenant-wide</span>) },
-    { key: "parent_scope_id", label: "Parent", render: (r) => (r.parent_scope_id ? scopeName[r.parent_scope_id] || "—" : "—") },
+    {
+      key: "code",
+      label: "Code",
+      render: (r) => (
+        <span className="num font-medium text-primary-ink">{r.code}</span>
+      ),
+    },
+    {
+      key: "name",
+      label: "Name",
+      render: (r) => (
+        <span className="font-medium text-foreground">{r.name}</span>
+      ),
+    },
+    {
+      key: "entity_id",
+      label: "Entity",
+      render: (r) =>
+        r.entity_id ? (
+          entityName[r.entity_id] || "—"
+        ) : (
+          <span className="text-muted-foreground">Tenant-wide</span>
+        ),
+    },
+    {
+      key: "parent_scope_id",
+      label: "Parent",
+      render: (r) =>
+        r.parent_scope_id ? scopeName[r.parent_scope_id] || "—" : "—",
+    },
     {
       key: "_a",
       label: "",
       render: (r) => (
         <RowActions>
-          <Button size="sm" variant="outline" onClick={() => setForm({ scope: r })}>Edit</Button>
-          <Button size="sm" variant="outline" onClick={() => setDel(r)}>Delete</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setForm({ scope: r })}
+          >
+            Edit
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setDel(r)}>
+            Delete
+          </Button>
         </RowActions>
       ),
     },
@@ -210,7 +379,9 @@ export function ScopesPage() {
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Scopes"
         description="The entity, branch or department a user belongs to. They nest — that tree is the organigramme, and approval steps route through it. Deleting a scope cascades to its assignments."
-        action={<Button onClick={() => setForm({ scope: null })}>New scope</Button>}
+        action={
+          <Button onClick={() => setForm({ scope: null })}>New scope</Button>
+        }
       />
       <HubTabs />
 
@@ -221,7 +392,9 @@ export function ScopesPage() {
             onClick={() => setView(v)}
             className={cn(
               "rounded-md px-3 py-1.5 text-sm transition-colors",
-              view === v ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+              view === v
+                ? "bg-accent font-semibold text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {v === "chart" ? "Organigramme" : "List"}
@@ -238,17 +411,47 @@ export function ScopesPage() {
           ) : (
             <Organigramme
               nodes={tree}
-              onSelect={(n) => setForm({ scope: all.find((s) => s.scope_id === n.scope_id) || null })}
+              onSelect={(n) =>
+                setForm({
+                  scope: all.find((s) => s.scope_id === n.scope_id) || null,
+                })
+              }
               renderNodeExtra={(n) => <ScopeMembers scopeId={n.scope_id} />}
             />
           )}
         </div>
       ) : (
-        <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.scope_id} onRowClick={(r) => setForm({ scope: r })} empty={{ title: "No scopes", hint: "Add HQ first, then branches beneath it." }} />
+        <DataList
+          columns={columns}
+          rows={rows}
+          error={error}
+          loading={loading}
+          rowKey={(r) => r.scope_id}
+          onRowClick={(r) => setForm({ scope: r })}
+          empty={{
+            title: "No scopes",
+            hint: "Add HQ first, then branches beneath it.",
+          }}
+        />
       )}
 
-      {form && <ScopeForm scope={form.scope} scopes={all} onClose={() => setForm(null)} onSaved={reloadAll} />}
-      {del && <ConfirmDelete title="Delete scope" what={`${del.code} · ${del.name}`} path={`/scopes/${del.scope_id}`} onClose={() => setDel(null)} onDone={reloadAll} />}
+      {form && (
+        <ScopeForm
+          scope={form.scope}
+          scopes={all}
+          onClose={() => setForm(null)}
+          onSaved={reloadAll}
+        />
+      )}
+      {del && (
+        <ConfirmDelete
+          title="Delete scope"
+          what={`${del.code} · ${del.name}`}
+          path={`/scopes/${del.scope_id}`}
+          onClose={() => setDel(null)}
+          onDone={reloadAll}
+        />
+      )}
     </section>
   );
 }

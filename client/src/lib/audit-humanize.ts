@@ -87,7 +87,11 @@ export const kindToTone: Record<Kind, Tone> = {
 
 type SpecialText =
   | { text: string; kind: Kind; sensitive?: boolean }
-  | ((meta: Record<string, unknown> | null) => { text: string; kind: Kind; sensitive?: boolean });
+  | ((meta: Record<string, unknown> | null) => {
+      text: string;
+      kind: Kind;
+      sensitive?: boolean;
+    });
 
 const SPECIALS: Record<string, SpecialText> = {
   // ── auth ──────────────────────────────────────────────────────────────
@@ -95,63 +99,138 @@ const SPECIALS: Record<string, SpecialText> = {
   // the server (see src/modules/security/app_user/app_user.service.js) and
   // any legacy row falls through to the generic derivation.
   "auth.login_succeeded": { text: "You signed in", kind: "security" },
-  "auth.login_failed": { text: "You had a failed sign-in attempt", kind: "security" },
+  "auth.login_failed": {
+    text: "You had a failed sign-in attempt",
+    kind: "security",
+  },
   "auth.logged_out": { text: "You signed out", kind: "security" },
   "app_user.logged_out": { text: "You signed out", kind: "security" },
-  "auth.password_reset_requested": { text: "You requested a password reset", kind: "security" },
-  "app_user.password_reset_requested": { text: "You requested a password reset", kind: "security" },
-  "auth.password_reset_completed": { text: "You reset your password", kind: "security" },
-  "app_user.password_reset_completed": { text: "You reset your password", kind: "security" },
-  "app_user.password_set": { text: "You changed your password", kind: "security" },
+  "auth.password_reset_requested": {
+    text: "You requested a password reset",
+    kind: "security",
+  },
+  "app_user.password_reset_requested": {
+    text: "You requested a password reset",
+    kind: "security",
+  },
+  "auth.password_reset_completed": {
+    text: "You reset your password",
+    kind: "security",
+  },
+  "app_user.password_reset_completed": {
+    text: "You reset your password",
+    kind: "security",
+  },
+  "app_user.password_set": {
+    text: "You changed your password",
+    kind: "security",
+  },
   "auth.2fa_enabled": { text: "You enabled two-factor auth", kind: "security" },
-  "app_user.2fa_enabled": { text: "You enabled two-factor auth", kind: "security" },
-  "auth.2fa_disabled": { text: "You disabled two-factor auth", kind: "security" },
-  "app_user.2fa_disabled": { text: "You disabled two-factor auth", kind: "security" },
+  "app_user.2fa_enabled": {
+    text: "You enabled two-factor auth",
+    kind: "security",
+  },
+  "auth.2fa_disabled": {
+    text: "You disabled two-factor auth",
+    kind: "security",
+  },
+  "app_user.2fa_disabled": {
+    text: "You disabled two-factor auth",
+    kind: "security",
+  },
 
   // ── attendance ────────────────────────────────────────────────────────
   "attendance.clocked_in": { text: "You clocked in", kind: "create" },
   "attendance.clocked_out": { text: "You clocked out", kind: "update" },
-  "attendance.offsite_clock_in": { text: "You clocked in off-site", kind: "create" },
+  "attendance.offsite_clock_in": {
+    text: "You clocked in off-site",
+    kind: "create",
+  },
 
   // ── comms (messaging) ─────────────────────────────────────────────────
   "comms.message_posted": (meta) => {
-    const channel = meta && typeof meta.channel_name === "string" ? meta.channel_name : null;
+    const channel =
+      meta && typeof meta.channel_name === "string" ? meta.channel_name : null;
     return {
       text: channel ? `You sent a message in ${channel}` : "You sent a message",
       kind: "send",
     };
   },
-  "comms.certified_export": { text: "You exported a conversation", kind: "export" },
+  "comms.certified_export": {
+    text: "You exported a conversation",
+    kind: "export",
+  },
 
   // ── RBAC / governance ─────────────────────────────────────────────────
   // permission.changed is emitted through events.UPDATED (see
   // permission.service.js:159); the humaniser matches on the concrete key.
-  "permission.changed": { text: "You changed a role's permissions", kind: "security", sensitive: true },
-  "permission.updated": { text: "You changed a role's permissions", kind: "security", sensitive: true },
+  "permission.changed": {
+    text: "You changed a role's permissions",
+    kind: "security",
+    sensitive: true,
+  },
+  "permission.updated": {
+    text: "You changed a role's permissions",
+    kind: "security",
+    sensitive: true,
+  },
   // iam_role.events.js maps CREATED/UPDATED/ARCHIVED all onto the single
   // security-critical key 'role.changed' (seeded in 9020_seed_rbac_events.sql)
   // — there is no 'role.created' / 'role.updated' / 'role.archived' emitted
   // anywhere in the codebase, so those three keys (the previous shape of this
   // entry) never actually matched and every role change fell through to the
   // generic fallback as "You did changed on a role".
-  "role.changed": { text: "You changed a role", kind: "security", sensitive: true },
+  "role.changed": {
+    text: "You changed a role",
+    kind: "security",
+    sensitive: true,
+  },
   // capability.service.js#setForUser deliberately emits 'role.changed' for the
   // Watch-the-Watcher notification but audits under this more specific key —
   // same fix as above, matched on what's actually written.
-  "user.capability.changed": { text: "You changed a user's capabilities", kind: "security", sensitive: true },
-  "field_visibility.changed": { text: "You changed field visibility", kind: "security", sensitive: true },
-  "capability.assigned": { text: "You assigned a capability", kind: "security" },
+  "user.capability.changed": {
+    text: "You changed a user's capabilities",
+    kind: "security",
+    sensitive: true,
+  },
+  "field_visibility.changed": {
+    text: "You changed field visibility",
+    kind: "security",
+    sensitive: true,
+  },
+  "capability.assigned": {
+    text: "You assigned a capability",
+    kind: "security",
+  },
   "capability.revoked": { text: "You revoked a capability", kind: "security" },
 
   // ── access reviews ────────────────────────────────────────────────────
-  "access_review.created": { text: "You started an access review", kind: "security" },
-  "access_review.completed": { text: "You completed an access review", kind: "security" },
-  "access_review.entry.decided": { text: "You decided an access-review entry", kind: "security" },
+  "access_review.created": {
+    text: "You started an access review",
+    kind: "security",
+  },
+  "access_review.completed": {
+    text: "You completed an access review",
+    kind: "security",
+  },
+  "access_review.entry.decided": {
+    text: "You decided an access-review entry",
+    kind: "security",
+  },
 
   // ── ledger restore ────────────────────────────────────────────────────
-  "audit_ledger.restored": { text: "You restored a deleted record", kind: "create" },
-  "soft_delete.restored": { text: "You restored a deleted record", kind: "create" },
-  "soft_delete.restore_requested": { text: "You requested a restore", kind: "update" },
+  "audit_ledger.restored": {
+    text: "You restored a deleted record",
+    kind: "create",
+  },
+  "soft_delete.restored": {
+    text: "You restored a deleted record",
+    kind: "create",
+  },
+  "soft_delete.restore_requested": {
+    text: "You requested a restore",
+    kind: "update",
+  },
 
   // ── HR recruitment (vacancy.service.js) ─────────────────────────────────
   // Both actions audit under the multi-word key `applicant_added` /
@@ -159,27 +238,45 @@ const SPECIALS: Record<string, SpecialText> = {
   // through to the generic layer as "You did applicant updated on a
   // vacancy" (VERBS has no "applicant_updated" entry, and entity_ref is
   // `vacancy:<id>`, not an applicant, so even the noun read wrong).
-  "vacancy.applicant_added": { text: "You added an applicant to a vacancy", kind: "create" },
-  "vacancy.applicant_updated": { text: "You updated an applicant", kind: "update" },
+  "vacancy.applicant_added": {
+    text: "You added an applicant to a vacancy",
+    kind: "create",
+  },
+  "vacancy.applicant_updated": {
+    text: "You updated an applicant",
+    kind: "update",
+  },
   // Emitted once, on the HIRED transition, when the applicant's employee
   // record is provisioned (vacancy.service.js:72). No domain prefix at all,
   // so it never had a shot at the verb table.
-  "employee_provisioned": { text: "You hired an applicant", kind: "create" },
+  employee_provisioned: { text: "You hired an applicant", kind: "create" },
 
   // ── client/supplier Smart Copy conversion (party-lifecycle.service.js) ──
   // Action key is `${toKind}.converted_from_${fromKind}` — "converted_from_
   // client" isn't a verb VERBS recognises, so this read as "You did
   // converted from client on a supplier".
-  "client.converted_from_supplier": { text: "You converted a supplier into a client", kind: "create" },
-  "supplier.converted_from_client": { text: "You converted a client into a supplier", kind: "create" },
+  "client.converted_from_supplier": {
+    text: "You converted a supplier into a client",
+    kind: "create",
+  },
+  "supplier.converted_from_client": {
+    text: "You converted a client into a supplier",
+    kind: "create",
+  },
 };
 
 // God-Mode is always sensitive and always says the same thing at the
 // coarsest granularity, so a prefix match (not an exact match) covers the
 // whole family (godmode.purge, godmode.something_new_someone_adds_later).
-function godmodeSpecial(action: string): { text: string; kind: Kind; sensitive: boolean } | null {
+function godmodeSpecial(
+  action: string,
+): { text: string; kind: Kind; sensitive: boolean } | null {
   if (action.startsWith("godmode.")) {
-    return { text: "You ran a God-Mode action", kind: "security", sensitive: true };
+    return {
+      text: "You ran a God-Mode action",
+      kind: "security",
+      sensitive: true,
+    };
   }
   return null;
 }
@@ -192,63 +289,63 @@ function godmodeSpecial(action: string): { text: string; kind: Kind; sensitive: 
 // that recognising both is easier than fixing every call site.
 
 const VERBS: Record<string, { past: string; kind: Kind }> = {
-  create:   { past: "created",  kind: "create" },
-  created:  { past: "created",  kind: "create" },
-  post:     { past: "posted",   kind: "create" },
-  posted:   { past: "posted",   kind: "create" },
-  update:   { past: "updated",  kind: "update" },
-  updated:  { past: "updated",  kind: "update" },
-  edit:     { past: "edited",   kind: "update" },
-  edited:   { past: "edited",   kind: "update" },
-  archive:  { past: "archived", kind: "delete" },
+  create: { past: "created", kind: "create" },
+  created: { past: "created", kind: "create" },
+  post: { past: "posted", kind: "create" },
+  posted: { past: "posted", kind: "create" },
+  update: { past: "updated", kind: "update" },
+  updated: { past: "updated", kind: "update" },
+  edit: { past: "edited", kind: "update" },
+  edited: { past: "edited", kind: "update" },
+  archive: { past: "archived", kind: "delete" },
   archived: { past: "archived", kind: "delete" },
-  delete:   { past: "deleted",  kind: "delete" },
-  deleted:  { past: "deleted",  kind: "delete" },
-  restore:  { past: "restored", kind: "create" },
+  delete: { past: "deleted", kind: "delete" },
+  deleted: { past: "deleted", kind: "delete" },
+  restore: { past: "restored", kind: "create" },
   restored: { past: "restored", kind: "create" },
-  approve:  { past: "approved", kind: "approve" },
+  approve: { past: "approved", kind: "approve" },
   approved: { past: "approved", kind: "approve" },
-  reject:   { past: "rejected", kind: "reject" },
+  reject: { past: "rejected", kind: "reject" },
   rejected: { past: "rejected", kind: "reject" },
-  send:     { past: "sent",     kind: "send" },
-  sent:     { past: "sent",     kind: "send" },
-  export:   { past: "exported", kind: "export" },
+  send: { past: "sent", kind: "send" },
+  sent: { past: "sent", kind: "send" },
+  export: { past: "exported", kind: "export" },
   exported: { past: "exported", kind: "export" },
-  grant:    { past: "granted",  kind: "security" },
-  granted:  { past: "granted",  kind: "security" },
-  revoke:   { past: "revoked",  kind: "security" },
-  revoked:  { past: "revoked",  kind: "security" },
-  view:     { past: "viewed",   kind: "view" },
-  viewed:   { past: "viewed",   kind: "view" },
-  login:    { past: "signed in", kind: "security" },
-  logout:   { past: "signed out", kind: "security" },
+  grant: { past: "granted", kind: "security" },
+  granted: { past: "granted", kind: "security" },
+  revoke: { past: "revoked", kind: "security" },
+  revoked: { past: "revoked", kind: "security" },
+  view: { past: "viewed", kind: "view" },
+  viewed: { past: "viewed", kind: "view" },
+  login: { past: "signed in", kind: "security" },
+  logout: { past: "signed out", kind: "security" },
   // Money-flavoured verbs — 'posted' the accounting verb is above; these are
   // the payment/receipt half.
-  paid:     { past: "paid",      kind: "money" },
-  received: { past: "received",  kind: "money" },
-  refunded: { past: "refunded",  kind: "money" },
+  paid: { past: "paid", kind: "money" },
+  received: { past: "received", kind: "money" },
+  refunded: { past: "refunded", kind: "money" },
   // Doc/lock lifecycle
-  locked:   { past: "locked",    kind: "update" },
-  unlocked: { past: "unlocked",  kind: "update" },
-  activated:   { past: "activated",   kind: "create" },
+  locked: { past: "locked", kind: "update" },
+  unlocked: { past: "unlocked", kind: "update" },
+  activated: { past: "activated", kind: "create" },
   deactivated: { past: "deactivated", kind: "delete" },
-  signed_off:  { past: "signed off",  kind: "approve" },
-  published:   { past: "published",   kind: "create" },
-  triaged:     { past: "triaged",     kind: "update" },
-  converted:   { past: "converted",   kind: "create" },
+  signed_off: { past: "signed off", kind: "approve" },
+  published: { past: "published", kind: "create" },
+  triaged: { past: "triaged", kind: "update" },
+  converted: { past: "converted", kind: "create" },
   // party-lifecycle.service.js (client/supplier hard-block gate) and
   // marketing_campaign.service.js (campaign_sender.verified) — generic here
   // rather than one-off SPECIALS because the noun comes straight out of
   // entity_ref/NOUN_ARTICLE ("a client", "a supplier", "a campaign sender").
-  verified:    { past: "verified",    kind: "approve" },
-  blocked:     { past: "blocked",     kind: "security" },
-  unblocked:   { past: "unblocked",   kind: "update" },
+  verified: { past: "verified", kind: "approve" },
+  blocked: { past: "blocked", kind: "security" },
+  unblocked: { past: "unblocked", kind: "update" },
   // Bare "changed" — 'role.changed' and 'ai.feature.changed' both end in a
   // plain "changed" segment. The far more common "<field>_changed" shape
   // (vehicle.status_changed, entity.structure_changed, …) is NOT this — see
   // the dedicated composition below, since "status_changed" as a whole is
   // not a key in this table.
-  changed:     { past: "changed",     kind: "update" },
+  changed: { past: "changed", kind: "update" },
 };
 
 // ── Nouns from entity_ref ────────────────────────────────────────────────
@@ -363,7 +460,11 @@ function ARTICLE_FOR(word: string): string {
  * server override (a break-glass grant, say) still shows even if the humaniser
  * doesn't know the specific action key.
  */
-export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensitive: boolean } {
+export function humanize(row: AuditFeedRow): {
+  text: string;
+  kind: Kind;
+  sensitive: boolean;
+} {
   const action = String(row.action || "").trim();
 
   // 1. Godmode.* always wins — the action family is defined by prefix.
@@ -373,8 +474,13 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
   // 2. Exact-match special.
   const special = SPECIALS[action];
   if (special) {
-    const resolved = typeof special === "function" ? special(row.metadata || null) : special;
-    return { text: resolved.text, kind: resolved.kind, sensitive: resolved.sensitive === true };
+    const resolved =
+      typeof special === "function" ? special(row.metadata || null) : special;
+    return {
+      text: resolved.text,
+      kind: resolved.kind,
+      sensitive: resolved.sensitive === true,
+    };
   }
 
   // 3. Verb + noun.
@@ -383,10 +489,16 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
   const midSeg = parts.length >= 2 ? parts[parts.length - 2] : null;
 
   const verb = VERBS[lastSeg.toLowerCase()];
-  const noun = nounFromRef(row.entity_ref) || (midSeg ? NOUN_ARTICLE[midSeg.toLowerCase()] : null);
+  const noun =
+    nounFromRef(row.entity_ref) ||
+    (midSeg ? NOUN_ARTICLE[midSeg.toLowerCase()] : null);
 
   if (verb && noun) {
-    return { text: `You ${verb.past} ${noun}`, kind: verb.kind, sensitive: false };
+    return {
+      text: `You ${verb.past} ${noun}`,
+      kind: verb.kind,
+      sensitive: false,
+    };
   }
   if (verb) {
     // No object we can name — either no entity_ref and no mid segment, or a
@@ -397,7 +509,9 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
       ? `${ARTICLE_FOR(midSeg)} ${midSeg.replace(/_/g, " ")}`
       : null;
     return {
-      text: fallbackNoun ? `You ${verb.past} ${fallbackNoun}` : `You ${verb.past} something`,
+      text: fallbackNoun
+        ? `You ${verb.past} ${fallbackNoun}`
+        : `You ${verb.past} something`,
       kind: verb.kind,
       sensitive: false,
     };
@@ -419,7 +533,9 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
       (midSeg ? NOUN_ARTICLE[midSeg.toLowerCase()] : null) ||
       (midSeg ? `${ARTICLE_FOR(midSeg)} ${midSeg.replace(/_/g, " ")}` : null);
     return {
-      text: changedNoun ? `You changed ${changedNoun}'s ${field}` : `You changed the ${field}`,
+      text: changedNoun
+        ? `You changed ${changedNoun}'s ${field}`
+        : `You changed the ${field}`,
       kind: "update",
       sensitive: false,
     };
@@ -431,7 +547,9 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
     nounFromRef(row.entity_ref) ||
     (midSeg ? `${ARTICLE_FOR(midSeg)} ${midSeg.replace(/_/g, " ")}` : null);
   return {
-    text: readableNoun ? `You did ${readableVerb} on ${readableNoun}` : `You did ${readableVerb}`,
+    text: readableNoun
+      ? `You did ${readableVerb} on ${readableNoun}`
+      : `You did ${readableVerb}`,
     kind: "generic",
     sensitive: false,
   };

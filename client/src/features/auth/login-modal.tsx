@@ -67,10 +67,14 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
   function friendly(err: unknown): string {
     if (err instanceof ApiError) {
-      if (err.code === "INVALID_CREDENTIALS") return "That email or password doesn't match. Try again.";
-      if (err.code === "USER_INACTIVE") return "This account is suspended. Contact your administrator.";
-      if (err.code === "INVALID_2FA_CODE") return "That code isn't right. Check your authenticator and retry.";
-      if (err.code === "ERROR") return "Can't reach the server. Check your connection.";
+      if (err.code === "INVALID_CREDENTIALS")
+        return "That email or password doesn't match. Try again.";
+      if (err.code === "USER_INACTIVE")
+        return "This account is suspended. Contact your administrator.";
+      if (err.code === "INVALID_2FA_CODE")
+        return "That code isn't right. Check your authenticator and retry.";
+      if (err.code === "ERROR")
+        return "Can't reach the server. Check your connection.";
       if (err.code === "NO_PIN_DEVICE")
         return "No Quick PIN is set up on this device. Sign in with your password, then enable it in My security.";
       if (err.code === "INVALID_PIN") return "That PIN isn't right. Try again.";
@@ -117,7 +121,12 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     try {
       // Always succeeds server-side (no account enumeration) — so we always
       // advance to the confirmation, whether or not the email is registered.
-      await tenant("/auth/forgot-password", { method: "POST", body: { email: email.trim() }, auth: false, retry: false });
+      await tenant("/auth/forgot-password", {
+        method: "POST",
+        body: { email: email.trim() },
+        auth: false,
+        retry: false,
+      });
       setStage("forgot-sent");
     } catch (err) {
       setError(friendly(err));
@@ -153,7 +162,12 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="login-card">
-        <button type="button" className="login-close" aria-label="Close" onClick={onClose}>
+        <button
+          type="button"
+          className="login-close"
+          aria-label="Close"
+          onClick={onClose}
+        >
           <XIcon />
         </button>
 
@@ -171,10 +185,20 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
         {stage === "credentials" && (
           <div className="seg mt-5">
-            <button type="button" className="seg-tab" data-active={tab === "password"} onClick={() => setTab("password")}>
+            <button
+              type="button"
+              className="seg-tab"
+              data-active={tab === "password"}
+              onClick={() => setTab("password")}
+            >
               <KeyIcon width={15} height={15} /> Password
             </button>
-            <button type="button" className="seg-tab" data-active={tab === "pin"} onClick={() => setTab("pin")}>
+            <button
+              type="button"
+              className="seg-tab"
+              data-active={tab === "pin"}
+              onClick={() => setTab("pin")}
+            >
               <HashIcon width={15} height={15} /> Quick PIN
             </button>
           </div>
@@ -182,7 +206,11 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
         {/* --- Password tab --- */}
         {stage === "credentials" && tab === "password" && (
-          <form onSubmit={onCredentials} className="mt-5 flex flex-col gap-4" noValidate>
+          <form
+            onSubmit={onCredentials}
+            className="mt-5 flex flex-col gap-4"
+            noValidate
+          >
             <div className="flex flex-col gap-1.5">
               <label className="login-label" htmlFor="lm-email">
                 Email
@@ -222,15 +250,26 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
                   onClick={() => setShowPw((s) => !s)}
                   aria-label={showPw ? "Hide password" : "Show password"}
                 >
-                  {showPw ? <EyeOffIcon width={17} height={17} /> : <EyeIcon width={17} height={17} />}
+                  {showPw ? (
+                    <EyeOffIcon width={17} height={17} />
+                  ) : (
+                    <EyeIcon width={17} height={17} />
+                  )}
                 </button>
               </div>
             </div>
 
             <div className="flex items-center justify-between">
               <label className="login-check">
-                <input type="checkbox" className="sr-only" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-                <span className="login-check-box">{keep && <CheckIcon width={13} height={13} />}</span>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={keep}
+                  onChange={(e) => setKeep(e.target.checked)}
+                />
+                <span className="login-check-box">
+                  {keep && <CheckIcon width={13} height={13} />}
+                </span>
                 Keep me signed in
               </label>
               <button
@@ -256,7 +295,11 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
         {/* --- Quick PIN tab --- */}
         {stage === "credentials" && tab === "pin" && (
-          <form onSubmit={onPin} className="mt-5 flex flex-col gap-4" noValidate>
+          <form
+            onSubmit={onPin}
+            className="mt-5 flex flex-col gap-4"
+            noValidate
+          >
             <div className="flex flex-col gap-1.5">
               <label className="login-label" htmlFor="lm-pin-email">
                 Email
@@ -288,7 +331,9 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
                   autoComplete="off"
                   required
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  onChange={(e) =>
+                    setPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
                   placeholder="••••"
                 />
               </div>
@@ -296,19 +341,31 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
             {error && <p className="login-error">{error}</p>}
 
-            <button type="submit" className="login-submit" disabled={busy || pin.length < 4}>
+            <button
+              type="submit"
+              className="login-submit"
+              disabled={busy || pin.length < 4}
+            >
               {busy ? "Signing in…" : "Sign in with PIN"}
               {!busy && <ArrowRightIcon width={16} height={16} />}
             </button>
-            <p className="login-note">PIN works only on a device where you enabled it. New device? Use your password.</p>
+            <p className="login-note">
+              PIN works only on a device where you enabled it. New device? Use
+              your password.
+            </p>
           </form>
         )}
 
         {/* --- Forgot-password stage --- */}
         {stage === "forgot" && (
-          <form onSubmit={onForgot} className="mt-5 flex flex-col gap-4" noValidate>
+          <form
+            onSubmit={onForgot}
+            className="mt-5 flex flex-col gap-4"
+            noValidate
+          >
             <p className="login-note">
-              Enter your account email and we'll send you a link to reset your password.
+              Enter your account email and we'll send you a link to reset your
+              password.
             </p>
             <div className="flex flex-col gap-1.5">
               <label className="login-label" htmlFor="lm-forgot-email">
@@ -321,10 +378,10 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
                   type="email"
                   autoComplete="username"
                   required
-              // Hand-rolled dialog (login-scrim), NOT the Radix one — nothing else
-              // moves focus into it on open, so this is the dialog's initial-focus
-              // step rather than an unsolicited grab.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
+                  // Hand-rolled dialog (login-scrim), NOT the Radix one — nothing else
+                  // moves focus into it on open, so this is the dialog's initial-focus
+                  // step rather than an unsolicited grab.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -335,7 +392,11 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
             {error && <p className="login-error">{error}</p>}
 
-            <button type="submit" className="login-submit" disabled={busy || !email.trim()}>
+            <button
+              type="submit"
+              className="login-submit"
+              disabled={busy || !email.trim()}
+            >
               {busy ? "Sending…" : "Send reset link"}
               {!busy && <ArrowRightIcon width={16} height={16} />}
             </button>
@@ -356,8 +417,9 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         {stage === "forgot-sent" && (
           <div className="mt-6 flex flex-col gap-5">
             <p className="login-note">
-              If an account exists for <strong>{email.trim()}</strong>, we've sent a password-reset link. It
-              expires in 30 minutes. Check your inbox — and your spam folder just in case.
+              If an account exists for <strong>{email.trim()}</strong>, we've
+              sent a password-reset link. It expires in 30 minutes. Check your
+              inbox — and your spam folder just in case.
             </p>
             <button
               type="button"
@@ -374,13 +436,25 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
 
         {/* --- 2FA stage (retained) --- */}
         {stage === "twofa" && (
-          <form onSubmit={(e) => e.preventDefault()} className="mt-6 flex flex-col gap-5" noValidate>
-            <p className="login-note">Enter the 6-digit code from your authenticator app.</p>
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="mt-6 flex flex-col gap-5"
+            noValidate
+          >
+            <p className="login-note">
+              Enter the 6-digit code from your authenticator app.
+            </p>
             {/* Focus moves to the OTP field when the 2FA stage replaces the
                 password form — the element the user was typing in is gone by
                 then, so this is focus RECOVERY, not an unsolicited grab. */}
             {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-            <OtpInput value={code} onChange={setCode} onComplete={submitCode} autoFocus disabled={busy} />
+            <OtpInput
+              value={code}
+              onChange={setCode}
+              onComplete={submitCode}
+              autoFocus
+              disabled={busy}
+            />
             {error && <p className="login-error text-center">{error}</p>}
             <button
               type="button"

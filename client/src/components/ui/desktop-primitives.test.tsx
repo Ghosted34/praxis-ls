@@ -18,9 +18,19 @@ describe("InlineEdit", () => {
   beforeEach(() => clearActionError());
 
   it("shows the value as a control named by the FIELD and its content", () => {
-    render(<InlineEdit label="Service name" value="Customs clearance" onSave={vi.fn()} />);
+    render(
+      <InlineEdit
+        label="Service name"
+        value="Customs clearance"
+        onSave={vi.fn()}
+      />,
+    );
     // Not "Edit" — activating a control should not be a leap of faith.
-    expect(screen.getByRole("button", { name: "Service name, Customs clearance, edit" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Service name, Customs clearance, edit",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("edits and commits with Enter", async () => {
@@ -48,13 +58,17 @@ describe("InlineEdit", () => {
     // Blur fires after the key handler every time, so an Escape that only reset
     // state would still be saved a moment later by the blur path.
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<InlineEdit label="Service name" value="Original" onSave={onSave} />);
+    render(
+      <InlineEdit label="Service name" value="Original" onSave={onSave} />,
+    );
     await userEvent.click(screen.getByRole("button"));
     const input = screen.getByRole("textbox", { name: "Service name" });
     await userEvent.clear(input);
     await userEvent.type(input, "Abandoned{Escape}");
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /Original/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Original/ }),
+    ).toBeInTheDocument();
   });
 
   it("commits on blur — clicking away saves rather than discarding", async () => {
@@ -83,9 +97,13 @@ describe("InlineEdit", () => {
 
   it("reverts rather than sending an empty required value", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<InlineEdit label="Service name" required value="Kept" onSave={onSave} />);
+    render(
+      <InlineEdit label="Service name" required value="Kept" onSave={onSave} />,
+    );
     await userEvent.click(screen.getByRole("button"));
-    await userEvent.clear(screen.getByRole("textbox", { name: "Service name" }));
+    await userEvent.clear(
+      screen.getByRole("textbox", { name: "Service name" }),
+    );
     await userEvent.keyboard("{Enter}");
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Kept/ })).toBeInTheDocument();
@@ -110,18 +128,28 @@ describe("InlineEdit", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "Doomed{Enter}");
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Original/ })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Original/ }),
+      ).toBeInTheDocument(),
+    );
     expect(screen.getByTestId("banner")).not.toBeEmptyDOMElement();
   });
 
   it("tracks an external change while it is not being edited", async () => {
-    const { rerender } = render(<InlineEdit label="Name" value="First" onSave={vi.fn()} />);
+    const { rerender } = render(
+      <InlineEdit label="Name" value="First" onSave={vi.fn()} />,
+    );
     rerender(<InlineEdit label="Name" value="Refreshed" onSave={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /Refreshed/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Refreshed/ }),
+    ).toBeInTheDocument();
   });
 
   it("has no axe violations in either state", async () => {
-    const { container } = render(<InlineEdit label="Service name" value="Customs" onSave={vi.fn()} />);
+    const { container } = render(
+      <InlineEdit label="Service name" value="Customs" onSave={vi.fn()} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
     await userEvent.click(screen.getByRole("button"));
     expect(await axe(container)).toHaveNoViolations();
@@ -131,9 +159,18 @@ describe("InlineEdit", () => {
 describe("SplitPane", () => {
   beforeEach(() => localStorage.clear());
 
-  const renderPane = (props: Partial<React.ComponentProps<typeof SplitPane>> = {}) =>
+  const renderPane = (
+    props: Partial<React.ComponentProps<typeof SplitPane>> = {},
+  ) =>
     render(
-      <SplitPane storageKey="test" label="Index width" defaultSize={280} min={200} max={480} {...props}>
+      <SplitPane
+        storageKey="test"
+        label="Index width"
+        defaultSize={280}
+        min={200}
+        max={480}
+        {...props}
+      >
         {[<div key="a">Index</div>, <div key="b">Detail</div>]}
       </SplitPane>,
     );
@@ -190,19 +227,28 @@ describe("SplitPane", () => {
     unmount();
 
     renderPane();
-    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "296");
+    expect(screen.getByRole("separator")).toHaveAttribute(
+      "aria-valuenow",
+      "296",
+    );
   });
 
   it("does not adopt another screen's width", () => {
     localStorage.setItem("praxis.split.other", "420");
     renderPane();
-    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "280");
+    expect(screen.getByRole("separator")).toHaveAttribute(
+      "aria-valuenow",
+      "280",
+    );
   });
 
   it("ignores a corrupt stored width instead of collapsing to nothing", () => {
     localStorage.setItem("praxis.split.test", "not-a-number");
     renderPane();
-    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "280");
+    expect(screen.getByRole("separator")).toHaveAttribute(
+      "aria-valuenow",
+      "280",
+    );
   });
 
   it("renders both panes", () => {
@@ -223,19 +269,29 @@ describe("SplitPane", () => {
  */
 describe("InlineEdit focus handoff", () => {
   it("returns focus to the control after a keyboard commit", async () => {
-    render(<InlineEdit label="Name" value="A" onSave={vi.fn().mockResolvedValue(undefined)} />);
+    render(
+      <InlineEdit
+        label="Name"
+        value="A"
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
     const open = screen.getByRole("button");
     open.focus();
     await userEvent.keyboard("{Enter}");
     await userEvent.keyboard("{Control>}a{/Control}B{Enter}");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Name/ })).toHaveFocus());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Name/ })).toHaveFocus(),
+    );
   });
 
   it("returns focus to the control after Escape", async () => {
     render(<InlineEdit label="Name" value="A" onSave={vi.fn()} />);
     screen.getByRole("button").focus();
     await userEvent.keyboard("{Enter}{Escape}");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Name/ })).toHaveFocus());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Name/ })).toHaveFocus(),
+    );
   });
 
   it("does NOT yank focus back when the user clicked away", async () => {
@@ -243,7 +299,11 @@ describe("InlineEdit focus handoff", () => {
     // back would be the component fighting them.
     render(
       <>
-        <InlineEdit label="Name" value="A" onSave={vi.fn().mockResolvedValue(undefined)} />
+        <InlineEdit
+          label="Name"
+          value="A"
+          onSave={vi.fn().mockResolvedValue(undefined)}
+        />
         <button>Elsewhere</button>
       </>,
     );

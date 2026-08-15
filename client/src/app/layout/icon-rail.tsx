@@ -37,7 +37,17 @@ import { SearchIcon, TowerIcon, type IP } from "./nav-icons";
 
 function PlusIcon(p: IP) {
   return (
-    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" aria-hidden {...p}>
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      aria-hidden
+      {...p}
+    >
       <path d="M12 6v12M6 12h12" />
     </svg>
   );
@@ -67,7 +77,12 @@ function RailButton({
           {children}
         </Link>
       ) : (
-        <button type="button" className={cls} onClick={onSelect} aria-label={label}>
+        <button
+          type="button"
+          className={cls}
+          onClick={onSelect}
+          aria-label={label}
+        >
           {children}
         </button>
       )}
@@ -83,7 +98,10 @@ export function IconRail() {
   const reducedMotion = usePrefersReducedMotion();
 
   const families = React.useMemo(() => buildRibbon(access), [access]);
-  const pins = React.useMemo(() => resolveRailPins(prefs.railPins, families), [prefs.railPins, families]);
+  const pins = React.useMemo(
+    () => resolveRailPins(prefs.railPins, families),
+    [prefs.railPins, families],
+  );
 
   /*
    * Fire once, then record it — and DECIDE ONLY ONCE PER MOUNT.
@@ -111,7 +129,10 @@ export function IconRail() {
   }, [ready, prefs.railHintSeen, reducedMotion, setPrefs]);
 
   return (
-    <nav className="rail hidden flex-none flex-col items-center md:flex" aria-label="Shortcuts">
+    <nav
+      className="rail hidden flex-none flex-col items-center md:flex"
+      aria-label="Shortcuts"
+    >
       <RailButton label="Control Tower" to="/" active={pathname === "/"}>
         <TowerIcon width={18} height={18} />
       </RailButton>
@@ -132,7 +153,12 @@ export function IconRail() {
           const Icon = iconForArea(area.label);
           const to = pinRoute(area);
           return (
-            <RailButton key={area.key} label={area.label} to={to} active={pathname === to || pathname.startsWith(to + "/")}>
+            <RailButton
+              key={area.key}
+              label={area.label}
+              to={to}
+              active={pathname === to || pathname.startsWith(to + "/")}
+            >
               <Icon width={18} height={18} />
             </RailButton>
           );

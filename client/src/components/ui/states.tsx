@@ -21,12 +21,18 @@ export const Spinner = ({ className }: { className?: string }) => (
   <span
     role="img"
     aria-label="Loading"
-    className={cn("inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent", className)}
+    className={cn(
+      "inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent",
+      className,
+    )}
   />
 );
 
 export const LoadingRow = ({ label = "Loading…" }: { label?: string }) => (
-  <div role="status" className="flex items-center gap-3 p-6 text-muted-foreground">
+  <div
+    role="status"
+    className="flex items-center gap-3 p-6 text-muted-foreground"
+  >
     <Spinner /> {label}
   </div>
 );
@@ -69,14 +75,23 @@ export const EmptyState = ({
   icon?: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("rounded-lg border border-dashed p-10 text-center", className)}>
+  <div
+    className={cn(
+      "rounded-lg border border-dashed p-10 text-center",
+      className,
+    )}
+  >
     {icon && (
       <span aria-hidden className="mb-3 inline-flex text-muted-foreground">
         {icon}
       </span>
     )}
     <p className="font-medium">{title}</p>
-    {hint && <p className="mx-auto mt-1 max-w-reading text-sm text-muted-foreground">{hint}</p>}
+    {hint && (
+      <p className="mx-auto mt-1 max-w-reading text-sm text-muted-foreground">
+        {hint}
+      </p>
+    )}
     {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
   </div>
 );
@@ -101,14 +116,24 @@ export const EmptyState = ({
  * label or its own reload uses `<ScreenError>` directly; this is the zero-touch
  * default for everything else.
  */
-export const ErrorState = ({ message, action }: { message: string; action?: React.ReactNode }) => {
+export const ErrorState = ({
+  message,
+  action,
+}: {
+  message: string;
+  action?: React.ReactNode;
+}) => {
   const { status } = useConnection();
   // `autoRetry={false}`: the global reconnect invalidation owns the refetch, so
   // this must not also register a per-instance reconnect listener (many screens
   // can be mounted behind tabs, and each would refetch on the same signal).
-  if (status === "unreachable") return <ConnectionLost autoRetry={false} what="This screen" />;
+  if (status === "unreachable")
+    return <ConnectionLost autoRetry={false} what="This screen" />;
   return (
-    <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+    <div
+      role="alert"
+      className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+    >
       <p>{message}</p>
       {action && <div className="mt-3">{action}</div>}
     </div>

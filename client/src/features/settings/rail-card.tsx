@@ -21,14 +21,24 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useShell } from "@/app/layout/shell-context";
 import { buildRibbon, iconForArea } from "@/app/layout/ribbon-model";
-import { pinnableAreas, resolveRailPins, MAX_RAIL_PINS } from "@/app/layout/rail-model";
+import {
+  pinnableAreas,
+  resolveRailPins,
+  MAX_RAIL_PINS,
+} from "@/app/layout/rail-model";
 
 export function RailCard() {
   const { access, prefs, setPrefs } = useShell();
   const families = React.useMemo(() => buildRibbon(access), [access]);
   const candidates = React.useMemo(() => pinnableAreas(families), [families]);
-  const pinned = React.useMemo(() => resolveRailPins(prefs.railPins, families), [prefs.railPins, families]);
-  const pinnedKeys = React.useMemo(() => new Set(pinned.map((a) => a.key)), [pinned]);
+  const pinned = React.useMemo(
+    () => resolveRailPins(prefs.railPins, families),
+    [prefs.railPins, families],
+  );
+  const pinnedKeys = React.useMemo(
+    () => new Set(pinned.map((a) => a.key)),
+    [pinned],
+  );
 
   const full = pinned.length >= MAX_RAIL_PINS;
 
@@ -36,7 +46,9 @@ export function RailCard() {
     // Written as an explicit list rather than as a diff against the defaults:
     // once a user touches this, the answer is theirs, and the starter set stops
     // applying. That is what makes an empty rail expressible at all.
-    const next = pinnedKeys.has(key) ? pinned.filter((a) => a.key !== key).map((a) => a.key) : [...pinned.map((a) => a.key), key];
+    const next = pinnedKeys.has(key)
+      ? pinned.filter((a) => a.key !== key).map((a) => a.key)
+      : [...pinned.map((a) => a.key), key];
     setPrefs({ railPins: next.slice(0, MAX_RAIL_PINS) });
   }
 
@@ -47,7 +59,8 @@ export function RailCard() {
     >
       {candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nothing to pin yet — this list fills in with the areas your role can open.
+          Nothing to pin yet — this list fills in with the areas your role can
+          open.
         </p>
       ) : (
         <>
@@ -76,11 +89,16 @@ export function RailCard() {
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted-foreground">
-              {pinned.length} of {MAX_RAIL_PINS} pinned{full ? " — unpin one to add another." : "."}
+              {pinned.length} of {MAX_RAIL_PINS} pinned
+              {full ? " — unpin one to add another." : "."}
             </p>
             {/* null, not [] — "never chosen", which is what restores the
                 starter set rather than clearing the rail. */}
-            <Button variant="ghost" size="sm" onClick={() => setPrefs({ railPins: null })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPrefs({ railPins: null })}
+            >
               Reset to defaults
             </Button>
           </div>

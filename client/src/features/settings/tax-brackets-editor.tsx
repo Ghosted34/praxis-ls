@@ -70,8 +70,14 @@ export function buildBrackets(s: BracketsState): BracketsValue {
   if (s.scaleOn) {
     const upto = s.rows
       .map((r) => ({ upto: n(r.limit), rate: n(r.rate) }))
-      .filter((r) => r.upto != null && r.rate != null) as { upto: number; rate: number }[];
-    const annual: Record<string, number>[] = upto.map((r) => ({ upto: r.upto, rate: r.rate }));
+      .filter((r) => r.upto != null && r.rate != null) as {
+      upto: number;
+      rate: number;
+    }[];
+    const annual: Record<string, number>[] = upto.map((r) => ({
+      upto: r.upto,
+      rate: r.rate,
+    }));
     const top = n(s.topRate);
     if (top != null) {
       const lastLimit = upto.length ? Math.max(...upto.map((r) => r.upto)) : 0;
@@ -114,23 +120,35 @@ export function parseBrackets(value: unknown): BracketsState {
   if (!value || typeof value !== "object") return s;
   const v = value as Record<string, unknown>;
 
-  const annual = Array.isArray(v.annual_brackets) ? (v.annual_brackets as Record<string, unknown>[]) : null;
+  const annual = Array.isArray(v.annual_brackets)
+    ? (v.annual_brackets as Record<string, unknown>[])
+    : null;
   if (annual && annual.length) {
     s.scaleOn = true;
     const rows: ThresholdRow[] = [];
     for (const b of annual) {
-      if (b.upto != null) rows.push({ limit: String(b.upto), rate: b.rate != null ? String(b.rate) : "" });
-      else if (b.above != null) s.topRate = b.rate != null ? String(b.rate) : "";
+      if (b.upto != null)
+        rows.push({
+          limit: String(b.upto),
+          rate: b.rate != null ? String(b.rate) : "",
+        });
+      else if (b.above != null)
+        s.topRate = b.rate != null ? String(b.rate) : "";
     }
     s.rows = rows.length ? rows : [{ limit: "", rate: "" }];
   }
 
-  const ded = v.deductions && typeof v.deductions === "object" ? (v.deductions as Record<string, unknown>) : null;
+  const ded =
+    v.deductions && typeof v.deductions === "object"
+      ? (v.deductions as Record<string, unknown>)
+      : null;
   if (ded) {
     s.deductionsOn = true;
     s.cnpsPension = ded.cnps_pension === true;
-    if (ded.prof_allowance_pct != null) s.profAllowancePct = String(ded.prof_allowance_pct);
-    if (ded.annual_abatement != null) s.annualAbatement = String(ded.annual_abatement);
+    if (ded.prof_allowance_pct != null)
+      s.profAllowancePct = String(ded.prof_allowance_pct);
+    if (ded.annual_abatement != null)
+      s.annualAbatement = String(ded.annual_abatement);
   }
 
   if (v.cap_xaf != null) {
@@ -138,10 +156,16 @@ export function parseBrackets(value: unknown): BracketsState {
     s.capXaf = String(v.cap_xaf);
   }
 
-  const risk = v.risk_classes && typeof v.risk_classes === "object" ? (v.risk_classes as Record<string, unknown>) : null;
+  const risk =
+    v.risk_classes && typeof v.risk_classes === "object"
+      ? (v.risk_classes as Record<string, unknown>)
+      : null;
   if (risk) {
     s.riskOn = true;
-    const rows = Object.entries(risk).map(([name, rate]) => ({ name, rate: rate != null ? String(rate) : "" }));
+    const rows = Object.entries(risk).map(([name, rate]) => ({
+      name,
+      rate: rate != null ? String(rate) : "",
+    }));
     s.risk = rows.length ? rows : [{ name: "", rate: "" }];
   }
 
@@ -149,11 +173,25 @@ export function parseBrackets(value: unknown): BracketsState {
 }
 
 /** Small labelled toggle header for each optional sub-editor. */
-function Toggle({ on, onChange, title, hint }: { on: boolean; onChange: (v: boolean) => void; title: string; hint: string }) {
+function Toggle({
+  on,
+  onChange,
+  title,
+  hint,
+}: {
+  on: boolean;
+  onChange: (v: boolean) => void;
+  title: string;
+  hint: string;
+}) {
   return (
     <div>
       <label className="flex cursor-pointer items-center gap-2">
-        <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => onChange(e.target.checked)}
+        />
         <span className="text-sm font-medium">{title}</span>
       </label>
       <p className="pl-6 micro text-muted-foreground">{hint}</p>
@@ -161,49 +199,116 @@ function Toggle({ on, onChange, title, hint }: { on: boolean; onChange: (v: bool
   );
 }
 
-export function BracketsEditor({ state, onChange }: { state: BracketsState; onChange: (s: BracketsState) => void }) {
-  const set = (patch: Partial<BracketsState>) => onChange({ ...state, ...patch });
+export function BracketsEditor({
+  state,
+  onChange,
+}: {
+  state: BracketsState;
+  onChange: (s: BracketsState) => void;
+}) {
+  const set = (patch: Partial<BracketsState>) =>
+    onChange({ ...state, ...patch });
 
-  const setRow = (i: number, patch: Partial<ThresholdRow>) => set({ rows: state.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  const setRow = (i: number, patch: Partial<ThresholdRow>) =>
+    set({ rows: state.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const addRow = () => set({ rows: [...state.rows, { limit: "", rate: "" }] });
-  const removeRow = (i: number) => set({ rows: state.rows.length > 1 ? state.rows.filter((_, j) => j !== i) : state.rows });
+  const removeRow = (i: number) =>
+    set({
+      rows:
+        state.rows.length > 1
+          ? state.rows.filter((_, j) => j !== i)
+          : state.rows,
+    });
 
-  const setRisk = (i: number, patch: Partial<RiskRow>) => set({ risk: state.risk.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  const setRisk = (i: number, patch: Partial<RiskRow>) =>
+    set({ risk: state.risk.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const addRisk = () => set({ risk: [...state.risk, { name: "", rate: "" }] });
-  const removeRisk = (i: number) => set({ risk: state.risk.length > 1 ? state.risk.filter((_, j) => j !== i) : state.risk });
+  const removeRisk = (i: number) =>
+    set({
+      risk:
+        state.risk.length > 1
+          ? state.risk.filter((_, j) => j !== i)
+          : state.risk,
+    });
 
-  const lastLimit = state.rows.map((r) => Number(r.limit)).filter((x) => Number.isFinite(x) && x > 0).reduce((a, b) => Math.max(a, b), 0);
+  const lastLimit = state.rows
+    .map((r) => Number(r.limit))
+    .filter((x) => Number.isFinite(x) && x > 0)
+    .reduce((a, b) => Math.max(a, b), 0);
 
   return (
     <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
       <p className="micro text-muted-foreground">
-        Advanced parameters that don&apos;t fit a single rate — the IRPP scale, a contribution cap, or work-injury risk classes. Leave all off for a simple percentage code.
+        Advanced parameters that don&apos;t fit a single rate — the IRPP scale,
+        a contribution cap, or work-injury risk classes. Leave all off for a
+        simple percentage code.
       </p>
 
       {/* Progressive scale (IRPP) */}
       <div className="space-y-2">
-        <Toggle on={state.scaleOn} onChange={(v) => set({ scaleOn: v })} title="Progressive scale (barème)" hint="e.g. IRPP annual brackets — a rate per income band." />
+        <Toggle
+          on={state.scaleOn}
+          onChange={(v) => set({ scaleOn: v })}
+          title="Progressive scale (barème)"
+          hint="e.g. IRPP annual brackets — a rate per income band."
+        />
         {state.scaleOn && (
           <div className="space-y-2 pl-6">
             {state.rows.map((r, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="w-12 shrink-0 micro text-muted-foreground">Up to</span>
-                <Input type="number" min="0" step="1" className="num text-right" value={r.limit} onChange={(e) => setRow(i, { limit: e.target.value })} placeholder="2000000" />
+                <span className="w-12 shrink-0 micro text-muted-foreground">
+                  Up to
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="num text-right"
+                  value={r.limit}
+                  onChange={(e) => setRow(i, { limit: e.target.value })}
+                  placeholder="2000000"
+                />
                 <span className="micro text-muted-foreground">XAF →</span>
-                <Input type="number" min="0" step="0.01" className="num w-24 text-right" value={r.rate} onChange={(e) => setRow(i, { rate: e.target.value })} placeholder="10" />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="num w-24 text-right"
+                  value={r.rate}
+                  onChange={(e) => setRow(i, { rate: e.target.value })}
+                  placeholder="10"
+                />
                 <span className="micro text-muted-foreground">%</span>
-                <Button size="sm" variant="ghost" onClick={() => removeRow(i)} aria-label="Remove band">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeRow(i)}
+                  aria-label="Remove band"
+                >
                   ✕
                 </Button>
               </div>
             ))}
             <div className="flex items-center gap-2">
-              <span className="w-12 shrink-0 micro text-muted-foreground">Above</span>
-              <span className="num rounded-md border bg-background px-3 py-2 text-right text-sm text-muted-foreground" style={{ minWidth: "8rem" }}>
+              <span className="w-12 shrink-0 micro text-muted-foreground">
+                Above
+              </span>
+              <span
+                className="num rounded-md border bg-background px-3 py-2 text-right text-sm text-muted-foreground"
+                style={{ minWidth: "8rem" }}
+              >
                 {lastLimit ? num(lastLimit) : "—"}
               </span>
               <span className="micro text-muted-foreground">XAF →</span>
-              <Input type="number" min="0" step="0.01" className="num w-24 text-right" value={state.topRate} onChange={(e) => set({ topRate: e.target.value })} placeholder="35" />
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                className="num w-24 text-right"
+                value={state.topRate}
+                onChange={(e) => set({ topRate: e.target.value })}
+                placeholder="35"
+              />
               <span className="micro text-muted-foreground">%</span>
             </div>
             <Button size="sm" variant="outline" onClick={addRow}>
@@ -212,19 +317,50 @@ export function BracketsEditor({ state, onChange }: { state: BracketsState; onCh
 
             {/* Deductions applied before the scale (IRPP) */}
             <div className="mt-2 border-t pt-2">
-              <Toggle on={state.deductionsOn} onChange={(v) => set({ deductionsOn: v })} title="Pre-tax deductions" hint="Applied to the base before the scale (IRPP net-taxable)." />
+              <Toggle
+                on={state.deductionsOn}
+                onChange={(v) => set({ deductionsOn: v })}
+                title="Pre-tax deductions"
+                hint="Applied to the base before the scale (IRPP net-taxable)."
+              />
               {state.deductionsOn && (
                 <div className="mt-2 space-y-2 pl-6">
                   <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={state.cnpsPension} onChange={(e) => set({ cnpsPension: e.target.checked })} />
+                    <input
+                      type="checkbox"
+                      checked={state.cnpsPension}
+                      onChange={(e) => set({ cnpsPension: e.target.checked })}
+                    />
                     Deduct CNPS pension first
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="micro text-muted-foreground">Professional allowance</span>
-                    <Input type="number" min="0" step="0.01" className="num w-24 text-right" value={state.profAllowancePct} onChange={(e) => set({ profAllowancePct: e.target.value })} placeholder="30" />
+                    <span className="micro text-muted-foreground">
+                      Professional allowance
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="num w-24 text-right"
+                      value={state.profAllowancePct}
+                      onChange={(e) =>
+                        set({ profAllowancePct: e.target.value })
+                      }
+                      placeholder="30"
+                    />
                     <span className="micro text-muted-foreground">%</span>
-                    <span className="ml-3 micro text-muted-foreground">Annual abatement</span>
-                    <Input type="number" min="0" step="1" className="num w-32 text-right" value={state.annualAbatement} onChange={(e) => set({ annualAbatement: e.target.value })} placeholder="500000" />
+                    <span className="ml-3 micro text-muted-foreground">
+                      Annual abatement
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="num w-32 text-right"
+                      value={state.annualAbatement}
+                      onChange={(e) => set({ annualAbatement: e.target.value })}
+                      placeholder="500000"
+                    />
                     <span className="micro text-muted-foreground">XAF</span>
                   </div>
                 </div>
@@ -236,11 +372,24 @@ export function BracketsEditor({ state, onChange }: { state: BracketsState; onCh
 
       {/* Contribution cap (CNPS) */}
       <div className="space-y-2 border-t pt-3">
-        <Toggle on={state.capOn} onChange={(v) => set({ capOn: v })} title="Contribution cap" hint="Base is capped, e.g. CNPS ceiling 750,000 XAF/month." />
+        <Toggle
+          on={state.capOn}
+          onChange={(v) => set({ capOn: v })}
+          title="Contribution cap"
+          hint="Base is capped, e.g. CNPS ceiling 750,000 XAF/month."
+        />
         {state.capOn && (
           <div className="flex items-center gap-2 pl-6">
             <span className="micro text-muted-foreground">Cap</span>
-            <Input type="number" min="0" step="1" className="num w-40 text-right" value={state.capXaf} onChange={(e) => set({ capXaf: e.target.value })} placeholder="750000" />
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              className="num w-40 text-right"
+              value={state.capXaf}
+              onChange={(e) => set({ capXaf: e.target.value })}
+              placeholder="750000"
+            />
             <span className="micro text-muted-foreground">XAF</span>
           </div>
         )}
@@ -248,16 +397,39 @@ export function BracketsEditor({ state, onChange }: { state: BracketsState; onCh
 
       {/* Risk classes (work injury) */}
       <div className="space-y-2 border-t pt-3">
-        <Toggle on={state.riskOn} onChange={(v) => set({ riskOn: v })} title="Risk classes" hint="A rate per class, e.g. work-injury office / ops / high." />
+        <Toggle
+          on={state.riskOn}
+          onChange={(v) => set({ riskOn: v })}
+          title="Risk classes"
+          hint="A rate per class, e.g. work-injury office / ops / high."
+        />
         {state.riskOn && (
           <div className="space-y-2 pl-6">
             {state.risk.map((r, i) => (
               <div key={i} className="flex items-center gap-2">
-                <Input className="w-40" value={r.name} onChange={(e) => setRisk(i, { name: e.target.value })} placeholder="office" />
+                <Input
+                  className="w-40"
+                  value={r.name}
+                  onChange={(e) => setRisk(i, { name: e.target.value })}
+                  placeholder="office"
+                />
                 <span className="micro text-muted-foreground">→</span>
-                <Input type="number" min="0" step="0.01" className="num w-24 text-right" value={r.rate} onChange={(e) => setRisk(i, { rate: e.target.value })} placeholder="1.75" />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="num w-24 text-right"
+                  value={r.rate}
+                  onChange={(e) => setRisk(i, { rate: e.target.value })}
+                  placeholder="1.75"
+                />
                 <span className="micro text-muted-foreground">%</span>
-                <Button size="sm" variant="ghost" onClick={() => removeRisk(i)} aria-label="Remove class">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => removeRisk(i)}
+                  aria-label="Remove class"
+                >
                   ✕
                 </Button>
               </div>

@@ -1,7 +1,17 @@
 import { tenant } from "./api-client";
 
-export type Role = { role_id: string; code: string; name: string; is_system?: boolean };
-export type Module = { module_key: string; group_key: string; name: string; sort_order: number };
+export type Role = {
+  role_id: string;
+  code: string;
+  name: string;
+  is_system?: boolean;
+};
+export type Module = {
+  module_key: string;
+  group_key: string;
+  name: string;
+  sort_order: number;
+};
 export type Grant = {
   role_id: string;
   module_key: string;
@@ -12,7 +22,13 @@ export type Grant = {
   can_approve: boolean;
 };
 
-export const PERMS = ["can_read", "can_create", "can_update", "can_delete", "can_approve"] as const;
+export const PERMS = [
+  "can_read",
+  "can_create",
+  "can_update",
+  "can_delete",
+  "can_approve",
+] as const;
 export type PermKey = (typeof PERMS)[number];
 export const PERM_LABEL: Record<PermKey, string> = {
   can_read: "R",
@@ -51,4 +67,5 @@ export const fetchModules = () => tenant<Module[]>("/catalogue/modules");
  * while quietly destroying the grants below the cut.
  */
 export const fetchPermissions = () => tenant<Grant[]>("/permissions/matrix");
-export const upsertGrant = (g: Grant) => tenant<Grant>("/permissions/grant", { method: "PUT", body: g });
+export const upsertGrant = (g: Grant) =>
+  tenant<Grant>("/permissions/grant", { method: "PUT", body: g });

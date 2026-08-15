@@ -9,7 +9,13 @@
  */
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
@@ -36,7 +42,9 @@ describe("Textarea (F6 — no primitive existed; 18 raw elements, 3 class consta
 
   it("stays user-resizable — several of these hold a full OHADA narration", () => {
     const { container } = render(<Textarea />);
-    expect(container.querySelector("textarea")!.className).toContain("resize-y");
+    expect(container.querySelector("textarea")!.className).toContain(
+      "resize-y",
+    );
   });
 
   it("accepts typing and forwards a ref", async () => {
@@ -79,7 +87,9 @@ describe("Toast (F13 — 3 live regions in ~40,000 lines; async result announced
       </ToastProvider>,
     );
     await user.click(screen.getByRole("button", { name: "Post" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Invoice posted");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Invoice posted",
+    );
   });
 
   it("announces a failure assertively, via role=alert", async () => {
@@ -90,7 +100,9 @@ describe("Toast (F13 — 3 live regions in ~40,000 lines; async result announced
       </ToastProvider>,
     );
     await user.click(screen.getByRole("button", { name: "Fail" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Period is closed");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Period is closed",
+    );
   });
 
   it("can be dismissed", async () => {
@@ -102,8 +114,12 @@ describe("Toast (F13 — 3 live regions in ~40,000 lines; async result announced
     );
     await user.click(screen.getByRole("button", { name: "Post" }));
     await screen.findByRole("status");
-    await user.click(screen.getByRole("button", { name: "Dismiss notification" }));
-    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss notification" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+    );
   });
 
   it("fails loudly when used outside the provider, rather than silently doing nothing", () => {
@@ -148,42 +164,71 @@ describe("Toast auto-dismiss", () => {
 
 describe("Pagination (F8 — the API caps lists at 50 rows and nothing paged)", () => {
   it("reports the range, not just the page number", () => {
-    render(<Pagination page={1} pageSize={50} total={1284} onPageChange={() => {}} />);
+    render(
+      <Pagination
+        page={1}
+        pageSize={50}
+        total={1284}
+        onPageChange={() => {}}
+      />,
+    );
     expect(screen.getByText(/Showing 51–100 of 1,284/)).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 26")).toBeInTheDocument();
   });
 
   it("disables Previous on the first page and Next on the last", () => {
-    const { rerender } = render(<Pagination page={0} pageSize={50} total={120} onPageChange={() => {}} />);
+    const { rerender } = render(
+      <Pagination page={0} pageSize={50} total={120} onPageChange={() => {}} />,
+    );
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
 
-    rerender(<Pagination page={2} pageSize={50} total={120} onPageChange={() => {}} />);
+    rerender(
+      <Pagination page={2} pageSize={50} total={120} onPageChange={() => {}} />,
+    );
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
   it("degrades honestly to Prev/Next when the endpoint reports no total", () => {
-    render(<Pagination page={0} pageSize={50} hasMore onPageChange={() => {}} />);
+    render(
+      <Pagination page={0} pageSize={50} hasMore onPageChange={() => {}} />,
+    );
     expect(screen.getByText("Page 1")).toBeInTheDocument();
     expect(screen.queryByText(/of/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
   });
 
   it("renders nothing when there is only one page — no dead control", () => {
-    const { container } = render(<Pagination page={0} pageSize={50} total={12} onPageChange={() => {}} />);
+    const { container } = render(
+      <Pagination page={0} pageSize={50} total={12} onPageChange={() => {}} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 
   it("pages forward", async () => {
     const user = userEvent.setup();
     const onPageChange = vi.fn();
-    render(<Pagination page={0} pageSize={50} total={200} onPageChange={onPageChange} />);
+    render(
+      <Pagination
+        page={0}
+        pageSize={50}
+        total={200}
+        onPageChange={onPageChange}
+      />,
+    );
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(onPageChange).toHaveBeenCalledWith(1);
   });
 
   it("has no axe violations", async () => {
-    const { container } = render(<Pagination page={1} pageSize={50} total={1284} onPageChange={() => {}} />);
+    const { container } = render(
+      <Pagination
+        page={1}
+        pageSize={50}
+        total={1284}
+        onPageChange={() => {}}
+      />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -212,7 +257,9 @@ describe("ErrorBoundary (F12 — there was none anywhere; a render throw blanked
       </div>,
     );
     expect(screen.getByText("Still here")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Finance couldn't be displayed");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Finance couldn't be displayed",
+    );
   });
 
   it("surfaces the message for a bug report without dressing it as guidance", () => {
@@ -258,7 +305,10 @@ describe("ErrorBoundary (F12 — there was none anywhere; a render throw blanked
         <Boom />
       </ErrorBoundary>,
     );
-    expect(onError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ componentStack: expect.any(String) }));
+    expect(onError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ componentStack: expect.any(String) }),
+    );
   });
 
   it("renders children untouched when nothing throws", () => {
@@ -296,12 +346,18 @@ describe("EmptyState action slot (F11 — no empty state anywhere offered one)",
 
   it("ErrorState announces itself via role=alert", () => {
     render(<ErrorState message="You don't have permission to do this." />);
-    expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to do this.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "You don't have permission to do this.",
+    );
   });
 
   it("has no axe violations", async () => {
     const { container } = render(
-      <EmptyState title="No invoices" hint="Issue one from a costing." action={<button>New invoice</button>} />,
+      <EmptyState
+        title="No invoices"
+        hint="Issue one from a costing."
+        action={<button>New invoice</button>}
+      />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

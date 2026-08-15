@@ -21,7 +21,17 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { PageError } from "./shared";
 
-function GatewayForm({ open, onClose, onSaved, editing }: { open: boolean; onClose: () => void; onSaved: () => void; editing: Row | null }) {
+function GatewayForm({
+  open,
+  onClose,
+  onSaved,
+  editing,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  editing: Row | null;
+}) {
   const isEdit = !!editing;
   const [provider, setProvider] = React.useState("");
   const [role, setRole] = React.useState("");
@@ -67,27 +77,54 @@ function GatewayForm({ open, onClose, onSaved, editing }: { open: boolean; onClo
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Configure ${cell(editing?.provider)}` : "Add payment gateway"}
+      title={
+        isEdit ? `Configure ${cell(editing?.provider)}` : "Add payment gateway"
+      }
       description="Per-tenant gateway config. Credentials are encrypted and write-only — leave blank to keep the existing secret."
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Provider" hint="e.g. paydunya, orange, stripe" required>
-            <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="paydunya" disabled={isEdit} />
+            <Input
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              placeholder="paydunya"
+              disabled={isEdit}
+            />
           </Field>
           <Field label="Role" hint="e.g. primary, payout">
-            <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="primary" />
+            <Input
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="primary"
+            />
           </Field>
         </div>
-        <Field label="Credentials" hint={isEdit ? "Leave blank to keep the current key. JSON or token string." : "JSON or token string — stored encrypted."}>
-          <Textarea className="min-h-20 font-mono"
+        <Field
+          label="Credentials"
+          hint={
+            isEdit
+              ? "Leave blank to keep the current key. JSON or token string."
+              : "JSON or token string — stored encrypted."
+          }
+        >
+          <Textarea
+            className="min-h-20 font-mono"
             value={credentials}
             onChange={(e) => setCredentials(e.target.value)}
-            placeholder={isEdit && editing?.has_credentials ? "•••••• (unchanged)" : '{"public_key":"…","secret_key":"…"}'}
+            placeholder={
+              isEdit && editing?.has_credentials
+                ? "•••••• (unchanged)"
+                : '{"public_key":"…","secret_key":"…"}'
+            }
           />
         </Field>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
           Active
         </label>
         {error && <ErrorState message={error} />}
@@ -125,7 +162,10 @@ export function PaymentGatewaysPage() {
     setRowBusy(provider);
     setRowError(null);
     try {
-      await tenant(`/payment-gateways/${encodeURIComponent(provider)}/active`, { method: "PATCH", body: { active } });
+      await tenant(`/payment-gateways/${encodeURIComponent(provider)}/active`, {
+        method: "PATCH",
+        body: { active },
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -135,11 +175,18 @@ export function PaymentGatewaysPage() {
   }
 
   async function remove(provider: string) {
-    if (!window.confirm(`Delete the ${provider} gateway? Its stored credentials are removed.`)) return;
+    if (
+      !window.confirm(
+        `Delete the ${provider} gateway? Its stored credentials are removed.`,
+      )
+    )
+      return;
     setRowBusy(provider);
     setRowError(null);
     try {
-      await tenant(`/payment-gateways/${encodeURIComponent(provider)}`, { method: "DELETE" });
+      await tenant(`/payment-gateways/${encodeURIComponent(provider)}`, {
+        method: "DELETE",
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -150,7 +197,12 @@ export function PaymentGatewaysPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Payment gateways" description="Per-tenant gateway providers and their encrypted credentials. Keys are write-only and never returned." action={<Button onClick={openNew}>Add gateway</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Payment gateways"
+        description="Per-tenant gateway providers and their encrypted credentials. Keys are write-only and never returned."
+        action={<Button onClick={openNew}>Add gateway</Button>}
+      />
 
       <PageError message={rowError} />
 
@@ -159,7 +211,10 @@ export function PaymentGatewaysPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No gateways yet" hint="Add a provider like Paydunya, Orange or Stripe." />
+        <EmptyState
+          title="No gateways yet"
+          hint="Add a provider like Paydunya, Orange or Stripe."
+        />
       ) : (
         <Table>
           <THead>
@@ -180,20 +235,39 @@ export function PaymentGatewaysPage() {
                 <TR key={provider}>
                   <TD className="text-sm font-medium">{cell(r.provider)}</TD>
                   <TD className="text-sm">{cell(r.role)}</TD>
-                  <TD className="text-sm">{r.has_credentials ? <Pill tone="ok">Set</Pill> : "—"}</TD>
                   <TD className="text-sm">
-                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Disabled"}</Pill>
+                    {r.has_credentials ? <Pill tone="ok">Set</Pill> : "—"}
+                  </TD>
+                  <TD className="text-sm">
+                    <Pill tone={active ? "ok" : "mute"}>
+                      {active ? "Active" : "Disabled"}
+                    </Pill>
                   </TD>
                   <TD className="text-sm">{dateFmt(r.updated_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(r)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openEdit(r)}
+                      >
                         Configure
                       </Button>
-                      <Button size="sm" variant={active ? "outline" : "default"} loading={rowBusy === provider} onClick={() => setActive(provider, !active)}>
+                      <Button
+                        size="sm"
+                        variant={active ? "outline" : "default"}
+                        loading={rowBusy === provider}
+                        onClick={() => setActive(provider, !active)}
+                      >
                         {active ? "Disable" : "Enable"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" loading={rowBusy === provider} onClick={() => remove(provider)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        loading={rowBusy === provider}
+                        onClick={() => remove(provider)}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -205,7 +279,12 @@ export function PaymentGatewaysPage() {
         </Table>
       )}
 
-      <GatewayForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={reload} editing={editing} />
+      <GatewayForm
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+        editing={editing}
+      />
     </section>
   );
 }

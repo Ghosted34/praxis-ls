@@ -40,7 +40,11 @@ export function OfflineIndicator() {
     <div className="fixed inset-x-0 top-0 z-[65] flex justify-center px-3 pt-[calc(env(safe-area-inset-top)+8px)]">
       <div className="pointer-events-none flex items-center gap-2 rounded-full border bg-popover px-3.5 py-1.5 text-[13px] font-medium text-muted-foreground shadow-m">
         <span
-          className={probing ? "h-2 w-2 rounded-full bg-[rgb(var(--brand-blue))] motion-safe:animate-pulse" : "h-2 w-2 rounded-full bg-[rgb(var(--warn))]"}
+          className={
+            probing
+              ? "h-2 w-2 rounded-full bg-[rgb(var(--brand-blue))] motion-safe:animate-pulse"
+              : "h-2 w-2 rounded-full bg-[rgb(var(--warn))]"
+          }
           aria-hidden
         />
         {pwa.offlineText || "You're offline — some data may be out of date."}

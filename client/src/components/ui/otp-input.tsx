@@ -22,7 +22,10 @@ export function OtpInput({
   disabled?: boolean;
 }) {
   const refs = React.useRef<(HTMLInputElement | null)[]>([]);
-  const digits = React.useMemo(() => value.padEnd(length, " ").slice(0, length).split(""), [value, length]);
+  const digits = React.useMemo(
+    () => value.padEnd(length, " ").slice(0, length).split(""),
+    [value, length],
+  );
 
   React.useEffect(() => {
     if (autoFocus) refs.current[0]?.focus();
@@ -45,7 +48,8 @@ export function OtpInput({
         setAt(i - 1, "");
       }
     } else if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus();
-    else if (e.key === "ArrowRight" && i < length - 1) refs.current[i + 1]?.focus();
+    else if (e.key === "ArrowRight" && i < length - 1)
+      refs.current[i + 1]?.focus();
   }
 
   function onInput(i: number, e: React.ChangeEvent<HTMLInputElement>) {
@@ -57,7 +61,10 @@ export function OtpInput({
 
   function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, length);
     if (!pasted) return;
     onChange(pasted);
     if (pasted.length === length) onComplete?.(pasted);
@@ -65,7 +72,11 @@ export function OtpInput({
   }
 
   return (
-    <div className="flex justify-center gap-2" role="group" aria-label="One-time code">
+    <div
+      className="flex justify-center gap-2"
+      role="group"
+      aria-label="One-time code"
+    >
       {Array.from({ length }).map((_, i) => (
         <input
           key={i}

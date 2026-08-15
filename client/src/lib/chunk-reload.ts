@@ -32,7 +32,8 @@ const FLAG = "praxis.chunk-reloaded";
  *  the phrasing differs across Chromium, Firefox and Safari, and a missed match
  *  means an unnecessary error screen. */
 function isStaleChunkError(err: unknown): boolean {
-  const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  const msg =
+    err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   return (
     /Failed to fetch dynamically imported module/i.test(msg) ||
     /error loading dynamically imported module/i.test(msg) ||

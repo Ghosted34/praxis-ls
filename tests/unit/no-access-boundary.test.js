@@ -173,7 +173,8 @@ const token = () =>
     { expiresIn: "15m" },
   );
 const call = (method, path) =>
-  request(app)[method](path)
+  request(app)
+    [method](path)
     .set("Host", HOST)
     .set("Authorization", `Bearer ${token()}`);
 

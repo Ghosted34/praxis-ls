@@ -66,7 +66,8 @@ export function Dialog({
   size?: "md" | "lg" | "xl";
   bodyClassName?: string;
 }) {
-  const width = size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const width =
+    size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
 
   /**
    * Explicit focus restoration.
@@ -115,7 +116,9 @@ export function Dialog({
               {/* Radix wires this to aria-labelledby. The old Modal duplicated
                   the text into aria-label instead, so the accessible name and
                   the visible heading were two separate strings that could drift. */}
-              <RadixDialog.Title className="truncate text-h2 tracking-tight">{title}</RadixDialog.Title>
+              <RadixDialog.Title className="truncate text-h2 tracking-tight">
+                {title}
+              </RadixDialog.Title>
               {description && (
                 <RadixDialog.Description className="mt-0.5 text-sm text-muted-foreground">
                   {description}
@@ -133,7 +136,11 @@ export function Dialog({
             </div>
           </header>
 
-          <div className={cn("flex-1 overflow-y-auto px-6 py-5", bodyClassName)}>{children}</div>
+          <div
+            className={cn("flex-1 overflow-y-auto px-6 py-5", bodyClassName)}
+          >
+            {children}
+          </div>
 
           {footer && (
             <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] px-6 py-3.5">
@@ -219,7 +226,11 @@ export function ConfirmDialog({
         </>
       }
     >
-      {typeof body === "string" ? <p className="text-sm text-muted-foreground">{body}</p> : body}
+      {typeof body === "string" ? (
+        <p className="text-sm text-muted-foreground">{body}</p>
+      ) : (
+        body
+      )}
     </Dialog>
   );
 }

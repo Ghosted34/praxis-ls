@@ -34,7 +34,9 @@ export type SentMail = {
 
 export const listSenders = () => tenant<Sender[]>("/mail/senders");
 export const listSent = (identityId?: string) =>
-  tenant<SentMail[]>(`/mail/sent${identityId ? `?identity_id=${identityId}` : ""}`);
+  tenant<SentMail[]>(
+    `/mail/sent${identityId ? `?identity_id=${identityId}` : ""}`,
+  );
 
 export type InboundMail = {
   email_inbound_id: string;
@@ -49,19 +51,41 @@ export type InboundMail = {
   purpose?: string | null;
 };
 export const listInbox = (identityId?: string) =>
-  tenant<InboundMail[]>(`/mail/inbox${identityId ? `?identity_id=${identityId}` : ""}`);
+  tenant<InboundMail[]>(
+    `/mail/inbox${identityId ? `?identity_id=${identityId}` : ""}`,
+  );
 
 /* identity SMTP/from update, and messaging secrets via the settings store */
-export const updateSender = (id: string, patch: Partial<Pick<Sender, "from_name" | "reply_to" | "smtp_host" | "smtp_port" | "is_active">>) =>
-  tenant<Sender>(`/mail/senders/${id}`, { method: "PATCH", body: patch });
+export const updateSender = (
+  id: string,
+  patch: Partial<
+    Pick<
+      Sender,
+      "from_name" | "reply_to" | "smtp_host" | "smtp_port" | "is_active"
+    >
+  >,
+) => tenant<Sender>(`/mail/senders/${id}`, { method: "PATCH", body: patch });
 export const putSetting = (section: string, key: string, value: unknown) =>
-  tenant<{ ok?: boolean }>(`/settings/${section}/${key}`, { method: "PUT", body: { value } });
+  tenant<{ ok?: boolean }>(`/settings/${section}/${key}`, {
+    method: "PUT",
+    body: { value },
+  });
 
-export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean; sections?: string[] }) =>
-  tenant<Sender>("/mail/senders", { method: "POST", body });
+export const upsertSender = (body: {
+  purpose: string;
+  from_address?: string;
+  from_name?: string;
+  reply_to?: string;
+  smtp_host?: string;
+  smtp_port?: number;
+  is_active?: boolean;
+  sections?: string[];
+}) => tenant<Sender>("/mail/senders", { method: "POST", body });
 
 export const archiveSender = (id: string) =>
-  tenant<{ email_identity_id: string }>(`/mail/senders/${id}/archive`, { method: "POST" });
+  tenant<{ email_identity_id: string }>(`/mail/senders/${id}/archive`, {
+    method: "POST",
+  });
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Provider-agnostic email engine (Phase 1–3): connections, threads, send/reply.
@@ -89,9 +113,17 @@ export type Connection = {
 };
 
 export const setDefaultMailbox = (id: string) =>
-  tenant<{ email_connection_id: string; is_default: boolean }[]>(`/mail/connections/${id}/default`, { method: "POST" });
+  tenant<{ email_connection_id: string; is_default: boolean }[]>(
+    `/mail/connections/${id}/default`,
+    { method: "POST" },
+  );
 
-export type Recipient = { type: "client" | "supplier" | "employee" | "lead"; id: string; name: string; email: string };
+export type Recipient = {
+  type: "client" | "supplier" | "employee" | "lead";
+  id: string;
+  name: string;
+  email: string;
+};
 export const searchRecipients = (q: string) =>
   tenant<Recipient[]>(`/mail/recipients?q=${encodeURIComponent(q)}`);
 
@@ -119,48 +151,120 @@ export type Attachment = {
   size_bytes?: number | null;
 };
 
-export type TestResult = { ok: boolean; error?: string; stage?: string; code?: string };
+export type TestResult = {
+  ok: boolean;
+  error?: string;
+  stage?: string;
+  code?: string;
+};
 
 export type Autoconfig = {
-  source: string; provider?: string;
-  imap_host?: string; imap_port?: number; imap_secure?: boolean;
-  smtp_host?: string; smtp_port?: number; smtp_secure?: boolean;
+  source: string;
+  provider?: string;
+  imap_host?: string;
+  imap_port?: number;
+  imap_secure?: boolean;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_secure?: boolean;
   oauth_hint?: "microsoft_graph" | "google_gmail";
 };
-export const autodiscover = (email: string) => tenant<Autoconfig>(`/mail/autodiscover?email=${encodeURIComponent(email)}`);
+export const autodiscover = (email: string) =>
+  tenant<Autoconfig>(`/mail/autodiscover?email=${encodeURIComponent(email)}`);
 
 // Connections
 export const listConnections = () => tenant<Connection[]>("/mail/connections");
 export const connectImap = (body: {
-  email_address: string; display_name?: string;
-  imap_host: string; imap_port?: number; imap_secure?: boolean;
-  smtp_host: string; smtp_port?: number; smtp_secure?: boolean;
-  auth_user?: string; password: string;
-}) => tenant<Connection & { test?: TestResult }>("/mail/connections", { method: "POST", body });
-export const testConnection = (id: string) => tenant<TestResult>(`/mail/connections/${id}/test`, { method: "POST" });
-export const syncConnection = (id: string) => tenant<{ fetched?: number; inserted?: number; error?: string }>(`/mail/connections/${id}/sync`, { method: "POST" });
+  email_address: string;
+  display_name?: string;
+  imap_host: string;
+  imap_port?: number;
+  imap_secure?: boolean;
+  smtp_host: string;
+  smtp_port?: number;
+  smtp_secure?: boolean;
+  auth_user?: string;
+  password: string;
+}) =>
+  tenant<Connection & { test?: TestResult }>("/mail/connections", {
+    method: "POST",
+    body,
+  });
+export const testConnection = (id: string) =>
+  tenant<TestResult>(`/mail/connections/${id}/test`, { method: "POST" });
+export const syncConnection = (id: string) =>
+  tenant<{ fetched?: number; inserted?: number; error?: string }>(
+    `/mail/connections/${id}/sync`,
+    { method: "POST" },
+  );
 
 // OAuth — start returns the provider consent URL to redirect the browser to.
 export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
 export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";
-export const startMicrosoft = () => tenant<{ url: string }>("/mail/oauth/microsoft/start");
-export const startGoogle = () => tenant<{ url: string }>("/mail/oauth/google/start");
+export const startMicrosoft = () =>
+  tenant<{ url: string }>("/mail/oauth/microsoft/start");
+export const startGoogle = () =>
+  tenant<{ url: string }>("/mail/oauth/google/start");
 
 // Threads / messages
 export const listThread = (connectionId?: string) =>
-  tenant<ThreadMsg[]>(`/mail/thread${connectionId ? `?connection_id=${connectionId}` : ""}`);
-export const getMessage = (id: string) => tenant<ThreadMsg>(`/mail/thread/${id}`);
-export const listMsgAttachments = (id: string) => tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
-export const markThreadRead = (id: string) => tenant<{ email_inbound_id: string }>(`/mail/thread/${id}/read`, { method: "POST" });
+  tenant<ThreadMsg[]>(
+    `/mail/thread${connectionId ? `?connection_id=${connectionId}` : ""}`,
+  );
+export const getMessage = (id: string) =>
+  tenant<ThreadMsg>(`/mail/thread/${id}`);
+export const listMsgAttachments = (id: string) =>
+  tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
+export const markThreadRead = (id: string) =>
+  tenant<{ email_inbound_id: string }>(`/mail/thread/${id}/read`, {
+    method: "POST",
+  });
 export const linkThread = (id: string, entity_ref: string) =>
-  tenant<{ entity_ref: string }>(`/mail/thread/${id}/link`, { method: "POST", body: { entity_ref } });
-export const clientTimeline = (clientId: string) => tenant<ThreadMsg[]>(`/mail/client/${clientId}/timeline`);
+  tenant<{ entity_ref: string }>(`/mail/thread/${id}/link`, {
+    method: "POST",
+    body: { entity_ref },
+  });
+export const clientTimeline = (clientId: string) =>
+  tenant<ThreadMsg[]>(`/mail/client/${clientId}/timeline`);
 
-export const updateImapConnection = (id: string, body: { email_address?: string; display_name?: string; imap_host?: string; imap_port?: number; imap_secure?: boolean; smtp_host?: string; smtp_port?: number; smtp_secure?: boolean; auth_user?: string; password?: string }) =>
-  tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, { method: "PATCH", body });
+export const updateImapConnection = (
+  id: string,
+  body: {
+    email_address?: string;
+    display_name?: string;
+    imap_host?: string;
+    imap_port?: number;
+    imap_secure?: boolean;
+    smtp_host?: string;
+    smtp_port?: number;
+    smtp_secure?: boolean;
+    auth_user?: string;
+    password?: string;
+  },
+) =>
+  tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, {
+    method: "PATCH",
+    body,
+  });
 
 // Send / reply
-export const sendMail = (body: { connectionId: string; to: string | string[]; subject?: string; html?: string; text?: string; cc?: string[] }) =>
-  tenant<{ externalMessageId?: string }>("/mail/send", { method: "POST", body });
-export const replyMail = (inboundId: string, body: { connectionId: string; html?: string; text?: string }) =>
-  tenant<{ externalMessageId?: string }>(`/mail/thread/${inboundId}/reply`, { method: "POST", body });
+export const sendMail = (body: {
+  connectionId: string;
+  to: string | string[];
+  subject?: string;
+  html?: string;
+  text?: string;
+  cc?: string[];
+}) =>
+  tenant<{ externalMessageId?: string }>("/mail/send", {
+    method: "POST",
+    body,
+  });
+export const replyMail = (
+  inboundId: string,
+  body: { connectionId: string; html?: string; text?: string },
+) =>
+  tenant<{ externalMessageId?: string }>(`/mail/thread/${inboundId}/reply`, {
+    method: "POST",
+    body,
+  });

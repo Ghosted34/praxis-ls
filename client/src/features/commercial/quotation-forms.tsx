@@ -18,20 +18,57 @@ import { cell, money } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
-export type QLine = { dictionary_item_id: string | null; label: string; qty: string; unit_price: string; is_disbursement: boolean; tax_code_id: string | null };
-export const qLineTotal = (l: { qty?: unknown; unit_price?: unknown }) => (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
-const blankLine = (): QLine => ({ dictionary_item_id: null, label: "", qty: "1", unit_price: "0", is_disbursement: false, tax_code_id: null });
-const taxCodeLabel = (c: TaxCode) => `${c.code}${c.rate_percent != null ? ` · ${c.rate_percent}%` : ""}`;
+export type QLine = {
+  dictionary_item_id: string | null;
+  label: string;
+  qty: string;
+  unit_price: string;
+  is_disbursement: boolean;
+  tax_code_id: string | null;
+};
+export const qLineTotal = (l: { qty?: unknown; unit_price?: unknown }) =>
+  (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
+const blankLine = (): QLine => ({
+  dictionary_item_id: null,
+  label: "",
+  qty: "1",
+  unit_price: "0",
+  is_disbursement: false,
+  tax_code_id: null,
+});
+const taxCodeLabel = (c: TaxCode) =>
+  `${c.code}${c.rate_percent != null ? ` · ${c.rate_percent}%` : ""}`;
 
 export function entityText(en: Row): string {
-  return en.code ? `${cell(en.code)} · ${cell(en.legal_name)}` : cell(en.legal_name);
+  return en.code
+    ? `${cell(en.code)} · ${cell(en.legal_name)}`
+    : cell(en.legal_name);
 }
-export function entityLabelOf(entities: Row[] | null, id: string): string | null {
+export function entityLabelOf(
+  entities: Row[] | null,
+  id: string,
+): string | null {
   const en = (entities || []).find((e) => String(e.entity_id) === id);
   return en ? entityText(en) : null;
 }
 
-export function QuotationForm({ open, editing, entities, clients, opportunities, onClose, onSaved }: { open: boolean; editing: Row | null; entities: Row[] | null; clients: Row[] | null; opportunities: Row[] | null; onClose: () => void; onSaved: () => void }) {
+export function QuotationForm({
+  open,
+  editing,
+  entities,
+  clients,
+  opportunities,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Row | null;
+  entities: Row[] | null;
+  clients: Row[] | null;
+  opportunities: Row[] | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
   const [clientLabel, setClientLabel] = React.useState("");
@@ -57,13 +94,34 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
     if (!open) return;
     setEntityId(editing?.entity_id ? String(editing.entity_id) : "");
     setClientId(editing?.client_id ? String(editing.client_id) : "");
-    setOpportunityId(editing?.opportunity_id ? String(editing.opportunity_id) : "");
+    setOpportunityId(
+      editing?.opportunity_id ? String(editing.opportunity_id) : "",
+    );
     setCurrency(editing?.currency ? String(editing.currency) : "XAF");
-    setQuoteModel(editing?.quote_model ? String(editing.quote_model) : "HT_ON_TOP");
-    setValidUntil(editing?.valid_until ? String(editing.valid_until).slice(0, 10) : "");
-    setMarginPercent(editing?.margin_percent != null ? String(editing.margin_percent) : "");
+    setQuoteModel(
+      editing?.quote_model ? String(editing.quote_model) : "HT_ON_TOP",
+    );
+    setValidUntil(
+      editing?.valid_until ? String(editing.valid_until).slice(0, 10) : "",
+    );
+    setMarginPercent(
+      editing?.margin_percent != null ? String(editing.margin_percent) : "",
+    );
     const el = (editing?.lines as Row[] | undefined) || [];
-    setLines(el.length ? el.map((l) => ({ dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null, label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null })) : [blankLine()]);
+    setLines(
+      el.length
+        ? el.map((l) => ({
+            dictionary_item_id: l.dictionary_item_id
+              ? String(l.dictionary_item_id)
+              : null,
+            label: cell(l.label) === "—" ? "" : String(l.label),
+            qty: l.qty != null ? String(l.qty) : "1",
+            unit_price: l.unit_price != null ? String(l.unit_price) : "0",
+            is_disbursement: l.is_disbursement === true,
+            tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null,
+          }))
+        : [blankLine()],
+    );
     setError(null);
   }, [open, editing]);
 
@@ -108,16 +166,28 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
         setTaxCodesDegraded(true);
         setTaxCodesError(errMsg(e));
       });
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [open]);
 
-  const setLine = (i: number, patch: Partial<QLine>) => setLines((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const setLine = (i: number, patch: Partial<QLine>) =>
+    setLines((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const total = lines.reduce((a, l) => a + qLineTotal(l), 0);
 
   async function submit() {
     setBusy(true);
     setError(null);
-    const cleanLines = lines.filter((l) => l.label.trim()).map((l) => ({ dictionary_item_id: l.dictionary_item_id || null, label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, is_disbursement: l.is_disbursement, tax_code_id: l.is_disbursement ? null : l.tax_code_id || null }));
+    const cleanLines = lines
+      .filter((l) => l.label.trim())
+      .map((l) => ({
+        dictionary_item_id: l.dictionary_item_id || null,
+        label: l.label.trim(),
+        qty: Number(l.qty) || 1,
+        unit_price: Number(l.unit_price) || 0,
+        is_disbursement: l.is_disbursement,
+        tax_code_id: l.is_disbursement ? null : l.tax_code_id || null,
+      }));
     const common: Record<string, unknown> = {
       client_id: clientId || null,
       opportunity_id: opportunityId || null,
@@ -129,9 +199,15 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
     };
     try {
       if (editing) {
-        await tenant(`/quotations/${String(editing.quotation_id)}`, { method: "PATCH", body: common });
+        await tenant(`/quotations/${String(editing.quotation_id)}`, {
+          method: "PATCH",
+          body: common,
+        });
       } else {
-        await tenant("/quotations", { method: "POST", body: { ...common, entity_id: entityId || null } });
+        await tenant("/quotations", {
+          method: "POST",
+          body: { ...common, entity_id: entityId || null },
+        });
       }
       onSaved();
       onClose();
@@ -143,7 +219,13 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit quotation" : "New quotation"} description="A priced offer — lines, VAT model and validity; sent then accepted." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit quotation" : "New quotation"}
+      description="A priced offer — lines, VAT model and validity; sent then accepted."
+      size="xl"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           {!editing && (
@@ -172,36 +254,67 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
             />
           </Field>
           <Field label="Opportunity" hint="Optional pipeline link">
-            <Select value={opportunityId} onChange={(e) => setOpportunityId(e.target.value)}>
+            <Select
+              value={opportunityId}
+              onChange={(e) => setOpportunityId(e.target.value)}
+            >
               <option value="">— none —</option>
               {(opportunities || []).map((o) => (
-                <option key={String(o.opportunity_id)} value={String(o.opportunity_id)}>
+                <option
+                  key={String(o.opportunity_id)}
+                  value={String(o.opportunity_id)}
+                >
                   {cell(o.name)}
                 </option>
               ))}
             </Select>
           </Field>
           <Field label="Quote model">
-            <Select value={quoteModel} onChange={(e) => setQuoteModel(e.target.value)}>
+            <Select
+              value={quoteModel}
+              onChange={(e) => setQuoteModel(e.target.value)}
+            >
               <option value="HT_ON_TOP">HT + VAT on top</option>
               <option value="TTC">TTC (tax-inclusive)</option>
             </Select>
           </Field>
           <Field label="Currency">
-            <Input value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={3} placeholder="XAF" />
+            <Input
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              maxLength={3}
+              placeholder="XAF"
+            />
           </Field>
           <Field label="Valid until">
-            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+            <Input
+              type="date"
+              value={validUntil}
+              onChange={(e) => setValidUntil(e.target.value)}
+            />
           </Field>
           <Field label="Target margin %" hint="Optional">
-            <Input type="number" min="0" max="100" step="0.1" className="num text-right" value={marginPercent} onChange={(e) => setMarginPercent(e.target.value)} placeholder="20" />
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              className="num text-right"
+              value={marginPercent}
+              onChange={(e) => setMarginPercent(e.target.value)}
+              placeholder="20"
+            />
           </Field>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Line items</p>
-            <Button size="sm" variant="ghost" onClick={() => setLines((l) => [...l, blankLine()])}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setLines((l) => [...l, blankLine()])}
+            >
               + Line
             </Button>
           </div>
@@ -213,30 +326,73 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
                     path="/financial-dictionary"
                     value={l.label || null}
                     placeholder="Pick from dictionary or type a description…"
-                    getLabel={(r) => `${cell(r.code)} — ${cell(r.label_fr ?? r.label_en)}`}
+                    getLabel={(r) =>
+                      `${cell(r.code)} — ${cell(r.label_fr ?? r.label_en)}`
+                    }
                     getKey={(r) => String(r.dictionary_item_id)}
                     onSelect={(r) =>
                       setLine(i, {
                         dictionary_item_id: String(r.dictionary_item_id),
                         label: String(r.label_fr ?? r.label_en ?? r.code ?? ""),
-                        unit_price: r.default_price != null ? String(r.default_price) : l.unit_price,
+                        unit_price:
+                          r.default_price != null
+                            ? String(r.default_price)
+                            : l.unit_price,
                         is_disbursement: r.is_disbursement === true,
                       })
                     }
                     allowFreeText
-                    onFreeText={(t) => setLine(i, { label: t, dictionary_item_id: null })}
+                    onFreeText={(t) =>
+                      setLine(i, { label: t, dictionary_item_id: null })
+                    }
                   />
                 </div>
-                <Input type="number" min="0" step="1" className="num w-16 text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="qty" />
-                <Input type="number" min="0" step="1" className="num w-28 text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="unit price" />
-                <span className="w-28 text-right text-sm text-muted-foreground">{money(qLineTotal(l), currency)}</span>
-                <Button size="sm" variant="ghost" onClick={() => setLines((rs) => rs.filter((_, idx) => idx !== i))}>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="num w-16 text-right"
+                  value={l.qty}
+                  onChange={(e) => setLine(i, { qty: e.target.value })}
+                  placeholder="qty"
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="num w-28 text-right"
+                  value={l.unit_price}
+                  onChange={(e) => setLine(i, { unit_price: e.target.value })}
+                  placeholder="unit price"
+                />
+                <span className="w-28 text-right text-sm text-muted-foreground">
+                  {money(qLineTotal(l), currency)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setLines((rs) => rs.filter((_, idx) => idx !== i))
+                  }
+                >
                   ✕
                 </Button>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
-                <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Pass-through disbursement — never taxed">
-                  <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked, tax_code_id: e.target.checked ? null : l.tax_code_id })} />
+                <label
+                  className="flex items-center gap-1 text-xs text-muted-foreground"
+                  title="Pass-through disbursement — never taxed"
+                >
+                  <input
+                    type="checkbox"
+                    checked={l.is_disbursement}
+                    onChange={(e) =>
+                      setLine(i, {
+                        is_disbursement: e.target.checked,
+                        tax_code_id: e.target.checked ? null : l.tax_code_id,
+                      })
+                    }
+                  />
                   débours
                 </label>
                 <div className="flex items-center gap-1">
@@ -244,10 +400,14 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
                   <Select
                     value={l.tax_code_id ?? ""}
                     disabled={l.is_disbursement}
-                    onChange={(e) => setLine(i, { tax_code_id: e.target.value || null })}
+                    onChange={(e) =>
+                      setLine(i, { tax_code_id: e.target.value || null })
+                    }
                     className="h-8 py-0 text-xs"
                   >
-                    <option value="">{l.is_disbursement ? "— untaxed —" : "— no VAT —"}</option>
+                    <option value="">
+                      {l.is_disbursement ? "— untaxed —" : "— no VAT —"}
+                    </option>
                     {taxCodes.map((c) => (
                       <option key={c.tax_code_id} value={c.tax_code_id}>
                         {taxCodeLabel(c)}
@@ -265,8 +425,13 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
                 : "Some jurisdictions couldn't load their VAT codes; the picker above is partial."}
             </p>
           )}
-          <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {money(total, currency)}</div>
-          <p className="text-right text-xs text-muted-foreground">VAT is applied server-side from each line's tax code (débours lines are never taxed); totals refresh on save.</p>
+          <div className="flex justify-end pr-10 text-sm font-semibold">
+            Total (HT): {money(total, currency)}
+          </div>
+          <p className="text-right text-xs text-muted-foreground">
+            VAT is applied server-side from each line's tax code (débours lines
+            are never taxed); totals refresh on save.
+          </p>
         </div>
 
         {error && <ErrorState message={error} />}

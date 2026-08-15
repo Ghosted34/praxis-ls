@@ -24,7 +24,12 @@ import { FormButtons } from "@/components/ui/form-buttons";
 import { ErrorState } from "@/components/ui/states";
 import { errMsg } from "@/lib/use-resource";
 import { countries } from "@praxis/shared";
-import { createRateProvider, CARRIER_KINDS, type RateProvider, type RateProviderKind } from "@/lib/masterdata-api";
+import {
+  createRateProvider,
+  CARRIER_KINDS,
+  type RateProvider,
+  type RateProviderKind,
+} from "@/lib/masterdata-api";
 
 const KIND_LABEL: Record<RateProviderKind, string> = {
   SHIPPING_LINE: "Shipping line",
@@ -40,7 +45,12 @@ const KIND_LABEL: Record<RateProviderKind, string> = {
 
 /** Same rule as 0634's backfill, so the two cannot mint two rows for one name. */
 export const codeFromName = (name: string) =>
-  name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
+  name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
 
 export function CarrierQuickAdd({
   open,
@@ -113,13 +123,25 @@ export function CarrierQuickAdd({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2" hint={code ? `Stored as ${code}` : undefined}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Sotramaf" />
+          <Field
+            label="Name"
+            required
+            className="sm:col-span-2"
+            hint={code ? `Stored as ${code}` : undefined}
+          >
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Sotramaf"
+            />
           </Field>
           {/* One allowed kind means no question to ask. */}
           {allowed.length > 1 && (
             <Field label="Kind" required>
-              <Select value={kind} onChange={(e) => setKind(e.target.value as RateProviderKind)}>
+              <Select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as RateProviderKind)}
+              >
                 {allowed.map((k) => (
                   <option key={k} value={k}>
                     {KIND_LABEL[k] || k}
@@ -129,7 +151,10 @@ export function CarrierQuickAdd({
             </Field>
           )}
           <Field label="Country">
-            <Select value={country} onChange={(e) => setCountry(e.target.value)}>
+            <Select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+            >
               <option value="">—</option>
               {countries.COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -142,11 +167,20 @@ export function CarrierQuickAdd({
             label="SCAC / IATA"
             hint="The carrier's trade code, if it has one — shown beside the name in pickers."
           >
-            <Input value={carrierCode} onChange={(e) => setCarrierCode(e.target.value.toUpperCase())} placeholder="MAEU" />
+            <Input
+              value={carrierCode}
+              onChange={(e) => setCarrierCode(e.target.value.toUpperCase())}
+              placeholder="MAEU"
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} disabled={!canSubmit} onCancel={onClose} saveLabel="Add carrier" />
+        <FormButtons
+          busy={busy}
+          disabled={!canSubmit}
+          onCancel={onClose}
+          saveLabel="Add carrier"
+        />
       </form>
     </Modal>
   );

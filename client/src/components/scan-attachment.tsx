@@ -23,13 +23,25 @@
  */
 import * as React from "react";
 import * as api from "@/lib/masterdata-api";
-import { SCAN_ACCEPT, openVaultDoc, readFileAsDataUrl, scanFileProblem } from "@/lib/vault-file";
+import {
+  SCAN_ACCEPT,
+  openVaultDoc,
+  readFileAsDataUrl,
+  scanFileProblem,
+} from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
 
-const linkCls = "text-sm text-primary-ink underline underline-offset-2 hover:opacity-80 disabled:opacity-50";
+const linkCls =
+  "text-sm text-primary-ink underline underline-offset-2 hover:opacity-80 disabled:opacity-50";
 
 export function ScanAttachment({
-  vaultId, docType, entityRef, onAttached, onError, disabled, labelWhenEmpty = "Attach scan",
+  vaultId,
+  docType,
+  entityRef,
+  onAttached,
+  onError,
+  disabled,
+  labelWhenEmpty = "Attach scan",
 }: {
   /** The vault id already on the record, if it has been scanned. */
   vaultId?: string | null;
@@ -71,11 +83,14 @@ export function ScanAttachment({
     setUploadSuccess(false);
     onError?.(null);
     try {
-      const vaulted = await api.uploadVaultDocument({
-        data_url: await readFileAsDataUrl(file),
-        doc_type: docType,
-        entity_ref: entityRef,
-      }, setProgress);
+      const vaulted = await api.uploadVaultDocument(
+        {
+          data_url: await readFileAsDataUrl(file),
+          doc_type: docType,
+          entity_ref: entityRef,
+        },
+        setProgress,
+      );
       await onAttached(vaulted.doc_id);
       setProgress(100);
       setUploadSuccess(true);
@@ -103,12 +118,23 @@ export function ScanAttachment({
   return (
     <span className="inline-flex items-center gap-3">
       {vaultId && (
-        <button type="button" className={linkCls} disabled={busy !== null} onClick={() => void open()}>
+        <button
+          type="button"
+          className={linkCls}
+          disabled={busy !== null}
+          onClick={() => void open()}
+        >
           {busy === "open" ? "Opening…" : "View"}
         </button>
       )}
-      <label className={`cursor-pointer ${linkCls} ${busy || disabled ? "pointer-events-none opacity-50" : ""}`}>
-        {busy === "upload" ? "Uploading…" : vaultId ? "Replace" : labelWhenEmpty}
+      <label
+        className={`cursor-pointer ${linkCls} ${busy || disabled ? "pointer-events-none opacity-50" : ""}`}
+      >
+        {busy === "upload"
+          ? "Uploading…"
+          : vaultId
+            ? "Replace"
+            : labelWhenEmpty}
         <input
           type="file"
           className="sr-only"
@@ -123,11 +149,22 @@ export function ScanAttachment({
         />
       </label>
       {busy === "upload" && progress !== null && (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+        <span
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+          role="progressbar"
+          aria-label="Upload progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+        >
           <span className="num">{progress}%</span>
         </span>
       )}
-      {uploadSuccess && <span className="text-xs text-ok" role="status">✓</span>}
+      {uploadSuccess && (
+        <span className="text-xs text-ok" role="status">
+          ✓
+        </span>
+      )}
     </span>
   );
 }

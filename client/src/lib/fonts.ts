@@ -230,7 +230,9 @@ export const DEFAULT_MONO_FONT_ID = "jetbrains-mono";
  * whenever a slot is unset, so the declared default is the rendered one.
  */
 export const DEFAULT_STACK = FONTS.find((f) => f.id === DEFAULT_FONT_ID)!.stack;
-export const DEFAULT_MONO_STACK = FONTS.find((f) => f.id === DEFAULT_MONO_FONT_ID)!.stack;
+export const DEFAULT_MONO_STACK = FONTS.find(
+  (f) => f.id === DEFAULT_MONO_FONT_ID,
+)!.stack;
 
 /** Which slot a picker is filling. Decides how the groups are ordered. */
 export type FontSlot = "display" | "body" | "mono";
@@ -253,9 +255,15 @@ const SLOT_ORDER: Record<FontSlot, FontRole[]> = {
 };
 
 /** The library grouped and ordered for a given slot. */
-export function fontGroups(slot: FontSlot): { role: FontRole; label: string; fonts: FontDef[] }[] {
+export function fontGroups(
+  slot: FontSlot,
+): { role: FontRole; label: string; fonts: FontDef[] }[] {
   return SLOT_ORDER[slot]
-    .map((role) => ({ role, label: ROLE_LABEL[role], fonts: FONTS.filter((f) => f.role === role) }))
+    .map((role) => ({
+      role,
+      label: ROLE_LABEL[role],
+      fonts: FONTS.filter((f) => f.role === role),
+    }))
     .filter((g) => g.fonts.length > 0);
 }
 
@@ -265,11 +273,7 @@ export const fontById = (id: string | null | undefined): FontDef | undefined =>
 // ── Resolving a stored CSS string back to a library entry ──
 
 const norm = (s: string) =>
-  s
-    .replace(/["']/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  s.replace(/["']/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 
 /** The first family in a font-family list — the one the browser actually uses. */
 const firstFamily = (s: string) => norm(s).split(",")[0].trim();
@@ -284,11 +288,16 @@ const firstFamily = (s: string) => norm(s).split(",")[0].trim();
  * Montserrat installed and quietly rendered Georgia. Returns undefined for a
  * genuinely custom stack, which the picker surfaces as "Custom".
  */
-export function fontByValue(value: string | null | undefined): FontDef | undefined {
+export function fontByValue(
+  value: string | null | undefined,
+): FontDef | undefined {
   if (!value || !value.trim()) return undefined;
   const head = firstFamily(value);
   return FONTS.find(
-    (f) => head === firstFamily(f.stack) || head === norm(f.name) || head === `${norm(f.name)} variable`,
+    (f) =>
+      head === firstFamily(f.stack) ||
+      head === norm(f.name) ||
+      head === `${norm(f.name)} variable`,
   );
 }
 
@@ -322,7 +331,9 @@ export function loadFont(font: FontDef): Promise<unknown> {
  * three active values, so a session downloads at most three families, not
  * fifteen. Unknown/custom stacks resolve to nothing and cost no request.
  */
-export function loadFonts(values: (string | null | undefined)[]): Promise<unknown> {
+export function loadFonts(
+  values: (string | null | undefined)[],
+): Promise<unknown> {
   const defs = values.map(fontByValue).filter((f): f is FontDef => Boolean(f));
   const unique = new Map(defs.map((f) => [f.id, f]));
   // Never reject: a font chunk failing offline must not break the caller's

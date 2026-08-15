@@ -22,14 +22,30 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Dialog } from "@/components/ui/dialog";
 import { areaRoute, sectionRoute } from "./areas";
-import { buildRibbon, iconForArea, locate, type RibbonFamily } from "./ribbon-model";
+import {
+  buildRibbon,
+  iconForArea,
+  locate,
+  type RibbonFamily,
+} from "./ribbon-model";
 import { useShell } from "./shell-context";
 import { GridIcon } from "./nav-icons";
 
 /** Everything inside one family, as a phone reads it: area, then its screens. */
-function FamilySheet({ family, onClose }: { family: RibbonFamily | null; onClose: () => void }) {
+function FamilySheet({
+  family,
+  onClose,
+}: {
+  family: RibbonFamily | null;
+  onClose: () => void;
+}) {
   return (
-    <Dialog open={!!family} onClose={onClose} title={family?.label ?? ""} size="md">
+    <Dialog
+      open={!!family}
+      onClose={onClose}
+      title={family?.label ?? ""}
+      size="md"
+    >
       {family && (
         <div className="flex flex-col gap-5">
           {family.areas.map(({ area, sections }) => {
@@ -107,7 +123,11 @@ export function BottomNav({ onMenu }: { onMenu?: () => void }) {
 
   return (
     <>
-      <nav className="lux-botnav flex md:hidden" aria-label="Primary" aria-busy={!ready || undefined}>
+      <nav
+        className="lux-botnav flex md:hidden"
+        aria-label="Primary"
+        aria-busy={!ready || undefined}
+      >
         {!ready ? (
           /*
            * Three inert cells, so the bar occupies its real height and reads as
@@ -141,7 +161,10 @@ export function BottomNav({ onMenu }: { onMenu?: () => void }) {
             <button
               key={f.key}
               type="button"
-              className={cn("lux-botnav-btn", active?.key === f.key && "active")}
+              className={cn(
+                "lux-botnav-btn",
+                active?.key === f.key && "active",
+              )}
               aria-expanded={open === f.key}
               onClick={() => setOpen(f.key)}
             >
@@ -152,7 +175,10 @@ export function BottomNav({ onMenu }: { onMenu?: () => void }) {
         )}
       </nav>
 
-      <FamilySheet family={families.find((f) => f.key === open) ?? null} onClose={() => setOpen(null)} />
+      <FamilySheet
+        family={families.find((f) => f.key === open) ?? null}
+        onClose={() => setOpen(null)}
+      />
     </>
   );
 }

@@ -70,7 +70,10 @@ export function Checkbox({
       >
         <RadixCheckbox.Indicator className="text-primary-foreground">
           {checked === "indeterminate" ? (
-            <span aria-hidden className="block h-0.5 w-2 rounded-full bg-current" />
+            <span
+              aria-hidden
+              className="block h-0.5 w-2 rounded-full bg-current"
+            />
           ) : (
             <CheckIcon width={12} height={12} />
           )}
@@ -78,7 +81,10 @@ export function Checkbox({
       </RadixCheckbox.Root>
 
       <div className="min-w-0">
-        <label htmlFor={boxId} className={cn("text-sm text-foreground", disabled && "opacity-50")}>
+        <label
+          htmlFor={boxId}
+          className={cn("text-sm text-foreground", disabled && "opacity-50")}
+        >
           {label}
         </label>
         {hint && (
@@ -163,7 +169,13 @@ export function RadioGroup({
               <RadixRadio.Indicator className="block h-2 w-2 rounded-full bg-primary" />
             </RadixRadio.Item>
             <div className="min-w-0">
-              <label htmlFor={itemId} className={cn("text-sm text-foreground", o.disabled && "opacity-50")}>
+              <label
+                htmlFor={itemId}
+                className={cn(
+                  "text-sm text-foreground",
+                  o.disabled && "opacity-50",
+                )}
+              >
                 {o.label}
               </label>
               {o.hint && (

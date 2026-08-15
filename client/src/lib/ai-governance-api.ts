@@ -14,9 +14,21 @@ export type FeatureFlag = {
   est_cost_per_call_xaf?: number | null;
   last_changed_at?: string | null;
 };
-export const listFeatures = () => tenant<FeatureFlag[]>("/ai/governance/features");
-export const setFeature = (key: string, patch: Partial<Pick<FeatureFlag, "is_enabled" | "description" | "default_provider" | "default_model">>) =>
-  tenant<FeatureFlag>(`/ai/governance/features/${key}`, { method: "PATCH", body: patch });
+export const listFeatures = () =>
+  tenant<FeatureFlag[]>("/ai/governance/features");
+export const setFeature = (
+  key: string,
+  patch: Partial<
+    Pick<
+      FeatureFlag,
+      "is_enabled" | "description" | "default_provider" | "default_model"
+    >
+  >,
+) =>
+  tenant<FeatureFlag>(`/ai/governance/features/${key}`, {
+    method: "PATCH",
+    body: patch,
+  });
 
 export type Grant = {
   grant_id?: string;
@@ -28,10 +40,20 @@ export type Grant = {
 };
 export const listGrants = (userId?: string) =>
   tenant<Grant[]>(`/ai/governance/grants${userId ? `?user_id=${userId}` : ""}`);
-export const grantAccess = (body: { user_id: string; feature_key: string; monthly_cap_xaf?: number }) =>
-  tenant<Grant>("/ai/governance/grants", { method: "POST", body });
-export const revokeAccess = (body: { user_id: string; feature_key: string; reason?: string }) =>
-  tenant<{ ok: boolean }>("/ai/governance/grants/revoke", { method: "POST", body });
+export const grantAccess = (body: {
+  user_id: string;
+  feature_key: string;
+  monthly_cap_xaf?: number;
+}) => tenant<Grant>("/ai/governance/grants", { method: "POST", body });
+export const revokeAccess = (body: {
+  user_id: string;
+  feature_key: string;
+  reason?: string;
+}) =>
+  tenant<{ ok: boolean }>("/ai/governance/grants/revoke", {
+    method: "POST",
+    body,
+  });
 
 export type Budget = {
   period_start?: string | null;
@@ -42,8 +64,12 @@ export type Budget = {
   spent_xaf?: number | null;
 };
 export const getBudget = () => tenant<Budget>("/ai/governance/budget");
-export const setBudget = (body: { period_start: string; period_end: string; soft_cap_xaf: number; hard_cap_xaf: number }) =>
-  tenant<Budget>("/ai/governance/budget", { method: "POST", body });
+export const setBudget = (body: {
+  period_start: string;
+  period_end: string;
+  soft_cap_xaf: number;
+  hard_cap_xaf: number;
+}) => tenant<Budget>("/ai/governance/budget", { method: "POST", body });
 
 export type UsageRow = {
   created_at?: string | null;
@@ -72,7 +98,17 @@ export type Vendor = {
 export const listVendors = () => tenant<Vendor[]>("/ai/governance/vendors");
 export const setVendor = (
   vendor: string,
-  body: { api_key?: string; display_name?: string; endpoint_url?: string; default_model?: string; is_active?: boolean },
-) => tenant<Vendor>(`/ai/governance/vendors/${vendor}`, { method: "PUT", body });
+  body: {
+    api_key?: string;
+    display_name?: string;
+    endpoint_url?: string;
+    default_model?: string;
+    is_active?: boolean;
+  },
+) =>
+  tenant<Vendor>(`/ai/governance/vendors/${vendor}`, { method: "PUT", body });
 export const testVendor = (vendor: string) =>
-  tenant<{ ok: boolean; message?: string }>(`/ai/governance/vendors/${vendor}/test`, { method: "POST" });
+  tenant<{ ok: boolean; message?: string }>(
+    `/ai/governance/vendors/${vendor}/test`,
+    { method: "POST" },
+  );

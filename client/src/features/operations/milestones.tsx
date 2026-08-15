@@ -28,9 +28,21 @@ export function MilestonesPage() {
 
   const tplCols: Column<api.MilestoneTemplate>[] = [
     { key: "stage_seq", label: "#", className: "num" },
-    { key: "code", label: "Code", render: (r) => <span className="num">{r.code}</span> },
-    { key: "label_fr", label: "Label", render: (r) => r.label_fr || r.label_en || "—" },
-    { key: "default_offset_days", label: "Offset (days)", className: "num text-right" },
+    {
+      key: "code",
+      label: "Code",
+      render: (r) => <span className="num">{r.code}</span>,
+    },
+    {
+      key: "label_fr",
+      label: "Label",
+      render: (r) => r.label_fr || r.label_en || "—",
+    },
+    {
+      key: "default_offset_days",
+      label: "Offset (days)",
+      className: "num text-right",
+    },
   ];
 
   return (

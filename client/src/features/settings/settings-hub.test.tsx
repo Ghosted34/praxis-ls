@@ -24,12 +24,23 @@ import { render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
 import type { NavAccess } from "@/lib/nav-access";
-import { ShellContext, type ShellContextValue } from "@/app/layout/shell-context";
+import {
+  ShellContext,
+  type ShellContextValue,
+} from "@/app/layout/shell-context";
 import { EMPTY_SHELL_PREFS } from "@/lib/preferences";
 
 vi.mock("@/app/auth/auth-context", async () => {
-  const actual = await vi.importActual<typeof import("@/app/auth/auth-context")>("@/app/auth/auth-context");
-  return { ...actual, useAuth: () => ({ user: { user_id: "u-1", ai_enabled: false }, status: "authed" as const }) };
+  const actual = await vi.importActual<
+    typeof import("@/app/auth/auth-context")
+  >("@/app/auth/auth-context");
+  return {
+    ...actual,
+    useAuth: () => ({
+      user: { user_id: "u-1", ai_enabled: false },
+      status: "authed" as const,
+    }),
+  };
 });
 
 import { SettingsHub } from "./settings-hub";
@@ -37,14 +48,31 @@ import { AppLauncher } from "@/features/dashboard/components/app-launcher";
 import { useQuickActions } from "@/components/quick-actions";
 
 function shell(modules: string[], resolved = true): ShellContextValue {
-  const access: NavAccess = { modules, groups: [], byGroup: {}, isCeo: false, version: "v" };
-  return { access, ready: resolved, resolved, prefs: EMPTY_SHELL_PREFS, setPrefs: () => {}, grantNotice: null, dismissGrantNotice: () => {} };
+  const access: NavAccess = {
+    modules,
+    groups: [],
+    byGroup: {},
+    isCeo: false,
+    version: "v",
+  };
+  return {
+    access,
+    ready: resolved,
+    resolved,
+    prefs: EMPTY_SHELL_PREFS,
+    setPrefs: () => {},
+    grantNotice: null,
+    dismissGrantNotice: () => {},
+  };
 }
 
 /** A launcher-shaped fixture — the launcher builds tiles through
  *  `buildRibbon(access)` and that reads `byGroup` for the module → verb map,
  *  so a launcher test needs both the module list AND the verb partition. */
-function launcherShell(byGroup: Record<string, string[]>, resolved = true): ShellContextValue {
+function launcherShell(
+  byGroup: Record<string, string[]>,
+  resolved = true,
+): ShellContextValue {
   const modules = Object.values(byGroup).flat().sort();
   const access: NavAccess = {
     modules,
@@ -53,7 +81,15 @@ function launcherShell(byGroup: Record<string, string[]>, resolved = true): Shel
     isCeo: false,
     version: modules.join("|").slice(0, 12),
   };
-  return { access, ready: resolved, resolved, prefs: EMPTY_SHELL_PREFS, setPrefs: () => {}, grantNotice: null, dismissGrantNotice: () => {} };
+  return {
+    access,
+    ready: resolved,
+    resolved,
+    prefs: EMPTY_SHELL_PREFS,
+    setPrefs: () => {},
+    grantNotice: null,
+    dismissGrantNotice: () => {},
+  };
 }
 
 function mount(ui: React.ReactElement, value: ShellContextValue) {
@@ -118,7 +154,10 @@ describe("the Control Tower launcher offers only the apps you can open", () => {
     // A warehouse role gets the fulfill verb populated; Finance would need
     // transact modules and it has none, so Warehouse survives and Finance
     // is not offered as a tile at all.
-    mount(<AppLauncher onBrowseAll={() => {}} />, launcherShell({ fulfill: WAREHOUSE }));
+    mount(
+      <AppLauncher onBrowseAll={() => {}} />,
+      launcherShell({ fulfill: WAREHOUSE }),
+    );
     // Tile bodies are `<Link>` — the accessible name is the area's label.
     expect(screen.queryByRole("link", { name: "Finance" })).toBeNull();
     expect(screen.getByRole("link", { name: "Warehouse" })).toBeInTheDocument();
@@ -145,7 +184,13 @@ describe("the Control Tower launcher offers only the apps you can open", () => {
 describe("quick actions", () => {
   function Probe() {
     const actions = useQuickActions();
-    return <ul>{actions.map((a) => <li key={a.key}>{a.label}</li>)}</ul>;
+    return (
+      <ul>
+        {actions.map((a) => (
+          <li key={a.key}>{a.label}</li>
+        ))}
+      </ul>
+    );
   }
 
   it("drops Messages when Smart Comms is not this user's", () => {

@@ -25,7 +25,17 @@ import { slug } from "./store-shared";
 
 const TEMPLATE_STATUS = ["draft", "published", "archived"];
 
-function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; editing: Entry | null; onClose: () => void; onSaved: () => void }) {
+function TemplateForm({
+  open,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Entry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = React.useState("");
   const [docKey, setDocKey] = React.useState("");
   const [status, setStatus] = React.useState("draft");
@@ -54,17 +64,23 @@ function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; edit
     if (cssVars.trim()) {
       try {
         const parsed = JSON.parse(cssVars);
-        if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+        if (typeof parsed !== "object" || Array.isArray(parsed))
+          throw new Error("not an object");
         value.css_vars = parsed;
       } catch {
         setBusy(false);
-        setError("CSS variables must be a valid JSON object, e.g. {\"--brand\": \"#F5821F\"}.");
+        setError(
+          'CSS variables must be a valid JSON object, e.g. {"--brand": "#F5821F"}.',
+        );
         return;
       }
     }
     const key = editing?.key || slug(docKey || name);
     try {
-      await tenant(`/settings/document_template/${encodeURIComponent(key)}`, { method: "PUT", body: { value } });
+      await tenant(`/settings/document_template/${encodeURIComponent(key)}`, {
+        method: "PUT",
+        body: { value },
+      });
       onSaved();
       onClose();
     } catch (e) {
@@ -75,14 +91,36 @@ function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; edit
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit template" : "New document template"} description="A letterhead / document body the issuing module renders. Keyed by document type." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit template" : "New document template"}
+      description="A letterhead / document body the issuing module renders. Keyed by document type."
+      size="xl"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Invoice — default" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Invoice — default"
+            />
           </Field>
-          <Field label="Document type key" hint={editing ? "Locked after creation" : "e.g. invoice, purchase_order, receipt"}>
-            <Input value={docKey} onChange={(e) => setDocKey(e.target.value)} placeholder="invoice" disabled={!!editing} />
+          <Field
+            label="Document type key"
+            hint={
+              editing
+                ? "Locked after creation"
+                : "e.g. invoice, purchase_order, receipt"
+            }
+          >
+            <Input
+              value={docKey}
+              onChange={(e) => setDocKey(e.target.value)}
+              placeholder="invoice"
+              disabled={!!editing}
+            />
           </Field>
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -95,10 +133,23 @@ function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; edit
           </Field>
         </div>
         <Field label="Body (HTML)" hint="Rendered as the document body">
-          <Textarea value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} rows={8} placeholder="<h1>{{entity.legal_name}}</h1>…" />
+          <Textarea
+            value={bodyHtml}
+            onChange={(e) => setBodyHtml(e.target.value)}
+            rows={8}
+            placeholder="<h1>{{entity.legal_name}}</h1>…"
+          />
         </Field>
-        <Field label="CSS variables (JSON)" hint="Optional — overrides for this template, e.g. {&quot;--brand&quot;: &quot;#F5821F&quot;}">
-          <Textarea value={cssVars} onChange={(e) => setCssVars(e.target.value)} rows={3} placeholder="{}" />
+        <Field
+          label="CSS variables (JSON)"
+          hint='Optional — overrides for this template, e.g. {"--brand": "#F5821F"}'
+        >
+          <Textarea
+            value={cssVars}
+            onChange={(e) => setCssVars(e.target.value)}
+            rows={3}
+            placeholder="{}"
+          />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -129,7 +180,9 @@ export function DocumentTemplatesPage() {
     setRowBusy(key);
     setRowError(null);
     try {
-      await tenant(`/settings/document_template/${encodeURIComponent(key)}`, { method: "DELETE" });
+      await tenant(`/settings/document_template/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      });
       reload();
     } catch (e) {
       setRowError(errMsg(e));
@@ -140,7 +193,12 @@ export function DocumentTemplatesPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document templates" description="Letterhead and body templates per document type — invoices, POs, receipts, contracts." action={<Button onClick={() => edit(null)}>New template</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Document templates"
+        description="Letterhead and body templates per document type — invoices, POs, receipts, contracts."
+        action={<Button onClick={() => edit(null)}>New template</Button>}
+      />
 
       <PageError message={rowError} />
 
@@ -149,7 +207,10 @@ export function DocumentTemplatesPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No templates yet" hint="Create a template for a document type." />
+        <EmptyState
+          title="No templates yet"
+          hint="Create a template for a document type."
+        />
       ) : (
         <Table>
           <THead>
@@ -173,10 +234,19 @@ export function DocumentTemplatesPage() {
                   </TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => edit({ key, value: v })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => edit({ key, value: v })}
+                      >
                         Edit
                       </Button>
-                      <Button size="sm" variant="ghost" loading={rowBusy === key} onClick={() => del(key)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={rowBusy === key}
+                        onClick={() => del(key)}
+                      >
                         Delete
                       </Button>
                     </div>
@@ -188,7 +258,12 @@ export function DocumentTemplatesPage() {
         </Table>
       )}
 
-      <TemplateForm open={open} editing={editing} onClose={() => setOpen(false)} onSaved={reload} />
+      <TemplateForm
+        open={open}
+        editing={editing}
+        onClose={() => setOpen(false)}
+        onSaved={reload}
+      />
     </section>
   );
 }

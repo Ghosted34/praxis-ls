@@ -10,7 +10,15 @@ import * as React from "react";
 import { Pill } from "@/components/ui/pill";
 import * as api from "@/lib/masterdata-api";
 
-export function DedupeHint({ kind, name, legalName, email, registrations, excludeId, onOpen }: {
+export function DedupeHint({
+  kind,
+  name,
+  legalName,
+  email,
+  registrations,
+  excludeId,
+  onOpen,
+}: {
   kind: api.PartyKind;
   name?: string;
   legalName?: string;
@@ -25,13 +33,27 @@ export function DedupeHint({ kind, name, legalName, email, registrations, exclud
 
   React.useEffect(() => {
     const nm = (legalName || name || "").trim();
-    const hasSignal = nm.length >= 3 || (email || "").trim().length > 3 || (registrations || []).some((r) => r.number);
-    if (!hasSignal) { setCandidates([]); return; }
+    const hasSignal =
+      nm.length >= 3 ||
+      (email || "").trim().length > 3 ||
+      (registrations || []).some((r) => r.number);
+    if (!hasSignal) {
+      setCandidates([]);
+      return;
+    }
     const t = setTimeout(async () => {
       try {
-        const r = await api.dedupeCheck(kind, { name, legal_name: legalName, email, registrations, exclude_id: excludeId });
+        const r = await api.dedupeCheck(kind, {
+          name,
+          legal_name: legalName,
+          email,
+          registrations,
+          exclude_id: excludeId,
+        });
         setCandidates(r.candidates || []);
-      } catch { setCandidates([]); }
+      } catch {
+        setCandidates([]);
+      }
     }, 350);
     return () => clearTimeout(t);
     // regKey stringifies registrations so the effect re-runs on content change.
@@ -43,17 +65,41 @@ export function DedupeHint({ kind, name, legalName, email, registrations, exclud
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <Pill tone="orange">Possible duplicates</Pill>
-          <span className="micro">{candidates.length} similar {kind}{candidates.length === 1 ? "" : "s"} already exist — check before creating.</span>
+          <span className="micro">
+            {candidates.length} similar {kind}
+            {candidates.length === 1 ? "" : "s"} already exist — check before
+            creating.
+          </span>
         </span>
-        <button type="button" className="micro underline" onClick={() => setDismissed(true)}>Continue anyway</button>
+        <button
+          type="button"
+          className="micro underline"
+          onClick={() => setDismissed(true)}
+        >
+          Continue anyway
+        </button>
       </div>
       <ul className="mt-2 space-y-1">
         {candidates.map((c) => (
           <li key={c.id} className="text-sm">
-            {onOpen
-              ? <button type="button" className="text-primary-ink underline" onClick={() => onOpen(c.id)}>{c.name || c.ref || c.id.slice(0, 8)}</button>
-              : <span className="font-medium text-foreground">{c.name || c.ref || c.id.slice(0, 8)}</span>}
-            <span className="ml-2 micro">{[c.ref, c.reasons.join(", "), `score ${c.score}`].filter(Boolean).join(" · ")}</span>
+            {onOpen ? (
+              <button
+                type="button"
+                className="text-primary-ink underline"
+                onClick={() => onOpen(c.id)}
+              >
+                {c.name || c.ref || c.id.slice(0, 8)}
+              </button>
+            ) : (
+              <span className="font-medium text-foreground">
+                {c.name || c.ref || c.id.slice(0, 8)}
+              </span>
+            )}
+            <span className="ml-2 micro">
+              {[c.ref, c.reasons.join(", "), `score ${c.score}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
           </li>
         ))}
       </ul>

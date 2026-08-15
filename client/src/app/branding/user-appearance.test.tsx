@@ -51,12 +51,20 @@ const TENANT: Branding = {
   fontMono: '"JetBrains Mono Variable", "JetBrains Mono", monospace',
 };
 
-const NO_OVERRIDE: UserAppearance = { fontDisplay: null, fontBody: null, fontMono: null };
+const NO_OVERRIDE: UserAppearance = {
+  fontDisplay: null,
+  fontBody: null,
+  fontMono: null,
+};
 
-const cssVar = (name: string) => document.documentElement.style.getPropertyValue(name);
+const cssVar = (name: string) =>
+  document.documentElement.style.getPropertyValue(name);
 
 function signedIn(userId = "user-1") {
-  vi.mocked(useAuth).mockReturnValue({ status: "authed", user: { user_id: userId } } as never);
+  vi.mocked(useAuth).mockReturnValue({
+    status: "authed",
+    user: { user_id: userId },
+  } as never);
 }
 
 /** Exposes the context so a case can drive a live save. */
@@ -64,10 +72,23 @@ function Harness() {
   const { setUserAppearance, setBranding } = useBranding();
   return (
     <>
-      <button onClick={() => setUserAppearance({ ...NO_OVERRIDE, fontBody: '"Lora Variable", Lora, serif' })}>
+      <button
+        onClick={() =>
+          setUserAppearance({
+            ...NO_OVERRIDE,
+            fontBody: '"Lora Variable", Lora, serif',
+          })
+        }
+      >
         override body
       </button>
-      <button onClick={() => setBranding({ ...TENANT, fontBody: '"Lato", sans-serif' })}>rebrand</button>
+      <button
+        onClick={() =>
+          setBranding({ ...TENANT, fontBody: '"Lato", sans-serif' })
+        }
+      >
+        rebrand
+      </button>
     </>
   );
 }
@@ -99,9 +120,14 @@ describe("tenant + user appearance", () => {
   });
 
   it("lets a user's font win over the tenant's", async () => {
-    vi.mocked(fetchUserAppearance).mockResolvedValue({ ...NO_OVERRIDE, fontBody: '"Lora Variable", Lora, serif' });
+    vi.mocked(fetchUserAppearance).mockResolvedValue({
+      ...NO_OVERRIDE,
+      fontBody: '"Lora Variable", Lora, serif',
+    });
     mount();
-    await waitFor(() => expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'));
+    await waitFor(() =>
+      expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'),
+    );
   });
 
   /**
@@ -110,15 +136,23 @@ describe("tenant + user appearance", () => {
    * happened to be set to when the override was saved.
    */
   it("inherits every slot the user did not override", async () => {
-    vi.mocked(fetchUserAppearance).mockResolvedValue({ ...NO_OVERRIDE, fontBody: '"Lora Variable", Lora, serif' });
+    vi.mocked(fetchUserAppearance).mockResolvedValue({
+      ...NO_OVERRIDE,
+      fontBody: '"Lora Variable", Lora, serif',
+    });
     mount();
-    await waitFor(() => expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'));
+    await waitFor(() =>
+      expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'),
+    );
     expect(cssVar("--font-display")).toBe(TENANT.fontDisplay);
     expect(cssVar("--font-mono")).toBe(TENANT.fontMono);
   });
 
   it("never lets a user restyle the brand colour", async () => {
-    vi.mocked(fetchUserAppearance).mockResolvedValue({ ...NO_OVERRIDE, fontBody: "Lora" });
+    vi.mocked(fetchUserAppearance).mockResolvedValue({
+      ...NO_OVERRIDE,
+      fontBody: "Lora",
+    });
     mount();
     await waitFor(() => expect(cssVar("--font-body")).toBe("Lora"));
     // The tenant's primary survives the personal repaint untouched.
@@ -156,9 +190,14 @@ describe("tenant + user appearance", () => {
   });
 
   it("drops the personal layer on sign-out, so the next user starts clean", async () => {
-    vi.mocked(fetchUserAppearance).mockResolvedValue({ ...NO_OVERRIDE, fontBody: '"Lora Variable", Lora, serif' });
+    vi.mocked(fetchUserAppearance).mockResolvedValue({
+      ...NO_OVERRIDE,
+      fontBody: '"Lora Variable", Lora, serif',
+    });
     const { rerender } = mount();
-    await waitFor(() => expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'));
+    await waitFor(() =>
+      expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'),
+    );
 
     vi.mocked(useAuth).mockReturnValue({ status: "anon", user: null } as never);
     rerender(
@@ -186,9 +225,14 @@ describe("tenant + user appearance", () => {
    * pulls the families in force, not the fifteen in the library.
    */
   it("loads only the fonts actually in force", async () => {
-    vi.mocked(fetchUserAppearance).mockResolvedValue({ ...NO_OVERRIDE, fontBody: '"Lora Variable", Lora, serif' });
+    vi.mocked(fetchUserAppearance).mockResolvedValue({
+      ...NO_OVERRIDE,
+      fontBody: '"Lora Variable", Lora, serif',
+    });
     mount();
-    await waitFor(() => expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'));
+    await waitFor(() =>
+      expect(cssVar("--font-body")).toBe('"Lora Variable", Lora, serif'),
+    );
 
     expect(loadFonts).toHaveBeenLastCalledWith([
       TENANT.fontDisplay,

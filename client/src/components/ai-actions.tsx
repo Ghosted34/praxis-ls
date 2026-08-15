@@ -28,7 +28,11 @@ export function AiGate({ children }: { children: React.ReactNode }) {
   return useAiEnabled() ? <>{children}</> : null;
 }
 
-const AI_LABEL: Record<AiKind, string> = { read: "read", write: "action", assist: "AI-assist" };
+const AI_LABEL: Record<AiKind, string> = {
+  read: "read",
+  write: "action",
+  assist: "AI-assist",
+};
 const AI_CLASS: Record<AiKind, string> = {
   read: "bg-brand-blue/10 text-brand-blue-ink",
   write: "bg-warn-fill/12 text-warn",
@@ -37,7 +41,17 @@ const AI_CLASS: Record<AiKind, string> = {
 
 function SparkIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      width={14}
+      height={14}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
     </svg>
   );
@@ -57,22 +71,36 @@ export function AiActions({ actions }: { actions?: AiAction[] }) {
         <span className="text-primary-ink">
           <SparkIcon />
         </span>
-        <h2 className="text-sm font-semibold text-foreground">AI actions on this screen</h2>
-        <span className="text-xs text-muted-foreground">— callable via the assistant (⌘K → Ask) with human confirm on writes</span>
+        <h2 className="text-sm font-semibold text-foreground">
+          AI actions on this screen
+        </h2>
+        <span className="text-xs text-muted-foreground">
+          — callable via the assistant (⌘K → Ask) with human confirm on writes
+        </span>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {actions.map((a) => (
           <button
             key={a.label}
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("praxis:open-copilot", { detail: { prompt: a.describe } }))}
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent("praxis:open-copilot", {
+                  detail: { prompt: a.describe },
+                }),
+              )
+            }
             // Was `hover:-translate-y-0.5` (F17: hover lift is a landing-page
             // micro-interaction). The affordance is now a border and shadow
             // state change — the card says "pressable" without moving away
             // from the pointer.
             className="lux-card flex items-start gap-3 p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:shadow-[var(--shadow-m)]"
           >
-            <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${AI_CLASS[a.kind]}`}>{AI_LABEL[a.kind]}</span>
+            <span
+              className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${AI_CLASS[a.kind]}`}
+            >
+              {AI_LABEL[a.kind]}
+            </span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">{a.label}</p>
               <p className="text-xs text-muted-foreground">{a.describe}</p>

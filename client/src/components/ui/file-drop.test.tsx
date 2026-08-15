@@ -26,7 +26,9 @@ vi.mock("@/lib/pdfjs", () => ({
 import { FileDrop } from "./file-drop";
 
 const pdf = (name = "clearance.pdf") =>
-  new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], name, { type: "application/pdf" });
+  new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], name, {
+    type: "application/pdf",
+  });
 const png = (name = "scan.png") =>
   new File([new Uint8Array([0x89, 0x50])], name, { type: "image/png" });
 
@@ -45,7 +47,10 @@ beforeEach(() => {
     }),
   });
   getPage.mockResolvedValue({
-    getViewport: ({ scale }: { scale: number }) => ({ width: 200 * scale, height: 280 * scale }),
+    getViewport: ({ scale }: { scale: number }) => ({
+      width: 200 * scale,
+      height: 280 * scale,
+    }),
     render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
   });
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
@@ -81,9 +86,18 @@ afterEach(() => {
 
 describe("FileDrop preview", () => {
   it("paints a picked PDF onto a canvas and never mounts an iframe", async () => {
-    render(<FileDrop file={pdf()} onPick={vi.fn()} accept="application/pdf,image/png" label="Document file" />);
+    render(
+      <FileDrop
+        file={pdf()}
+        onPick={vi.fn()}
+        accept="application/pdf,image/png"
+        label="Document file"
+      />,
+    );
 
-    expect(await screen.findByRole("img", { name: /PDF preview/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("img", { name: /PDF preview/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByTitle("Selected PDF preview")).toBeNull();
     expect(document.querySelector("iframe")).toBeNull();
     await waitFor(() => expect(loadPdfjs).toHaveBeenCalled());
@@ -91,7 +105,14 @@ describe("FileDrop preview", () => {
   });
 
   it("still previews an image with <img>, not the PDF canvas", async () => {
-    render(<FileDrop file={png()} onPick={vi.fn()} accept="application/pdf,image/png" label="Document file" />);
+    render(
+      <FileDrop
+        file={png()}
+        onPick={vi.fn()}
+        accept="application/pdf,image/png"
+        label="Document file"
+      />,
+    );
 
     const img = await screen.findByAltText("Selected image preview");
     expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
@@ -101,10 +122,23 @@ describe("FileDrop preview", () => {
 
   it("opens the same preview in a dialog from Expand preview", async () => {
     const user = userEvent.setup();
-    render(<FileDrop file={pdf()} onPick={vi.fn()} accept="application/pdf" label="Document file" />);
+    render(
+      <FileDrop
+        file={pdf()}
+        onPick={vi.fn()}
+        accept="application/pdf"
+        label="Document file"
+      />,
+    );
 
-    await user.click(await screen.findByRole("button", { name: "Expand preview" }));
-    expect(await screen.findByRole("heading", { name: "Document preview" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: /PDF preview/i }).length).toBeGreaterThanOrEqual(1);
+    await user.click(
+      await screen.findByRole("button", { name: "Expand preview" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Document preview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("img", { name: /PDF preview/i }).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

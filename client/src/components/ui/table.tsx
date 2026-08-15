@@ -60,20 +60,34 @@ export const Table = ({
     )}
     style={sticky ? { maxHeight } : undefined}
   >
-    <table className={cn("w-full caption-bottom border-collapse", sticky && "table-sticky", className)} {...p} />
+    <table
+      className={cn(
+        "w-full caption-bottom border-collapse",
+        sticky && "table-sticky",
+        className,
+      )}
+      {...p}
+    />
   </div>
 );
-export const THead = ({ className, ...p }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+export const THead = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLTableSectionElement>) => (
   <thead className={cn("bg-secondary", className)} {...p} />
 );
 // forwardRef because keyboard row navigation (lib/use-roving-rows) needs the
 // live <tbody> to read `rows` and set tabindex on each row's controls — a
 // roving tabindex is a DOM property, not a React one.
-export const TBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  (p, ref) => <tbody ref={ref} {...p} />,
-);
+export const TBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>((p, ref) => <tbody ref={ref} {...p} />);
 TBody.displayName = "TBody";
-export const TR = ({ className, ...p }: React.HTMLAttributes<HTMLTableRowElement>) => (
+export const TR = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLTableRowElement>) => (
   <tr
     className={cn(
       "border-b border-[rgb(var(--ink)_/_0.05)] transition-colors last:border-b-0 hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)]",
@@ -93,7 +107,10 @@ export const TR = ({ className, ...p }: React.HTMLAttributes<HTMLTableRowElement
  * size; it is now 11px at 0.06em and uses the retuned --ink-3 via
  * text-muted-foreground, clearing WCAG AA (F13).
  */
-export const TH = ({ className, ...p }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+export const TH = ({
+  className,
+  ...p
+}: React.ThHTMLAttributes<HTMLTableCellElement>) => (
   <th
     className={cn(
       "whitespace-nowrap px-3 py-2 text-left align-middle text-micro font-semibold uppercase text-muted-foreground",
@@ -102,6 +119,9 @@ export const TH = ({ className, ...p }: React.ThHTMLAttributes<HTMLTableCellElem
     {...p}
   />
 );
-export const TD = ({ className, ...p }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+export const TD = ({
+  className,
+  ...p
+}: React.TdHTMLAttributes<HTMLTableCellElement>) => (
   <td className={cn("px-3 py-row align-middle text-sm", className)} {...p} />
 );

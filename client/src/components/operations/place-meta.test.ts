@@ -51,7 +51,9 @@ describe("placeKey — must agree with geo_place.repo.normalise", () => {
 
   it("collapses punctuation and whitespace, and lowercases", () => {
     expect(placeKey("  PORT-GENTIL ")).toBe("port gentil");
-    expect(placeKey("Zone Industrielle, Douala")).toBe("zone industrielle douala");
+    expect(placeKey("Zone Industrielle, Douala")).toBe(
+      "zone industrielle douala",
+    );
   });
 
   it("does NOT strip qualifiers — Paris and Paris CDG are different points", () => {
@@ -65,7 +67,10 @@ describe("placeKey — must agree with geo_place.repo.normalise", () => {
 });
 
 describe("matchStoredValue", () => {
-  const rows = [place({ geo_place_id: "a", name: "Douala" }), place({ geo_place_id: "b", name: "Douala Airport" })];
+  const rows = [
+    place({ geo_place_id: "a", name: "Douala" }),
+    place({ geo_place_id: "b", name: "Douala Airport" }),
+  ];
 
   it("matches the stored name to its place, ignoring case and padding", () => {
     expect(matchStoredValue("  douala ", rows)?.geo_place_id).toBe("a");
@@ -86,15 +91,31 @@ describe("matchStoredValue", () => {
 
 describe("codeOf", () => {
   it("prefers UN/LOCODE", () => {
-    expect(codeOf(place({ unlocode: "CMDLA", formatted: "DLA · whatever" }))).toBe("CMDLA");
+    expect(
+      codeOf(place({ unlocode: "CMDLA", formatted: "DLA · whatever" })),
+    ).toBe("CMDLA");
   });
 
   it("falls back to the IATA code an airport row carries in formatted", () => {
-    expect(codeOf(place({ unlocode: null, formatted: "NBO · Nairobi Jomo Kenyatta airport, Nairobi" }))).toBe("NBO");
+    expect(
+      codeOf(
+        place({
+          unlocode: null,
+          formatted: "NBO · Nairobi Jomo Kenyatta airport, Nairobi",
+        }),
+      ),
+    ).toBe("NBO");
   });
 
   it("does not invent a code from an ordinary address", () => {
-    expect(codeOf(place({ unlocode: null, formatted: "Zone Industrielle Bassa, Douala, Cameroon" }))).toBeNull();
+    expect(
+      codeOf(
+        place({
+          unlocode: null,
+          formatted: "Zone Industrielle Bassa, Douala, Cameroon",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("is null when there is nothing to read", () => {
@@ -104,13 +125,17 @@ describe("codeOf", () => {
 
 describe("addressOf", () => {
   it("drops the code prefix the badge already shows", () => {
-    expect(addressOf(place({ formatted: "NBO · Nairobi Jomo Kenyatta airport, Nairobi" }))).toBe(
-      "Nairobi Jomo Kenyatta airport, Nairobi",
-    );
+    expect(
+      addressOf(
+        place({ formatted: "NBO · Nairobi Jomo Kenyatta airport, Nairobi" }),
+      ),
+    ).toBe("Nairobi Jomo Kenyatta airport, Nairobi");
   });
 
   it("passes an ordinary address through", () => {
-    expect(addressOf(place({ formatted: "Zone Industrielle Bassa, Douala" }))).toBe("Zone Industrielle Bassa, Douala");
+    expect(
+      addressOf(place({ formatted: "Zone Industrielle Bassa, Douala" })),
+    ).toBe("Zone Industrielle Bassa, Douala");
   });
 
   it("is null when absent", () => {
@@ -126,11 +151,15 @@ describe("verificationOf — the four states", () => {
   it("a reference point says so, even though it is also verified", () => {
     // The distinction this whole feature exists to make storable: we know where
     // this is, and we are not claiming it is the exact address.
-    expect(verificationOf(place({ is_reference_point: true }))).toBe("reference");
+    expect(verificationOf(place({ is_reference_point: true }))).toBe(
+      "reference",
+    );
   });
 
   it("a background geocode with nobody's eyes on it is unverified", () => {
-    expect(verificationOf(place({ verified_at: null, source: "GEOAPIFY" }))).toBe("unverified");
+    expect(
+      verificationOf(place({ verified_at: null, source: "GEOAPIFY" })),
+    ).toBe("unverified");
   });
 
   it("no record at all is unknown — legacy free text", () => {
@@ -139,7 +168,12 @@ describe("verificationOf — the four states", () => {
   });
 
   it("every state has a label and a sentence — tone never carries meaning alone", () => {
-    for (const state of ["verified", "reference", "unverified", "unknown"] as const) {
+    for (const state of [
+      "verified",
+      "reference",
+      "unverified",
+      "unknown",
+    ] as const) {
       expect(VERIFICATION_COPY[state].label).toBeTruthy();
       expect(VERIFICATION_COPY[state].hint.length).toBeGreaterThan(20);
     }
@@ -148,11 +182,16 @@ describe("verificationOf — the four states", () => {
 
 describe("row facts", () => {
   it("a catalogue place reports its own verification state", () => {
-    expect(metaOfPlace(place({ verified_at: null }))).toMatchObject({ unverified: true, confidence: null });
+    expect(metaOfPlace(place({ verified_at: null }))).toMatchObject({
+      unverified: true,
+      confidence: null,
+    });
   });
 
   it("a reference point is flagged so the row can say so", () => {
-    expect(metaOfPlace(place({ is_reference_point: true })).isReferencePoint).toBe(true);
+    expect(
+      metaOfPlace(place({ is_reference_point: true })).isReferencePoint,
+    ).toBe(true);
   });
 
   it("a provider suggestion is never shown as unverified — it is not stored yet", () => {
@@ -166,7 +205,11 @@ describe("row facts", () => {
       kind: "ADDRESS",
       confidence: 0.84,
     };
-    expect(metaOfSuggestion(s)).toMatchObject({ unverified: false, confidence: 0.84, code: null });
+    expect(metaOfSuggestion(s)).toMatchObject({
+      unverified: false,
+      confidence: 0.84,
+      code: null,
+    });
   });
 
   it("a suggestion with no confidence reports null rather than 0", () => {

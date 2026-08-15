@@ -26,46 +26,99 @@ const listDictRefs = vi.fn();
 const getDossierContainers = vi.fn();
 
 vi.mock("@/lib/masterdata-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/masterdata-api")>("@/lib/masterdata-api");
-  return { ...actual, searchDict: (...a: unknown[]) => searchDict(...a), listDictRefs: (...a: unknown[]) => listDictRefs(...a) };
+  const actual = await vi.importActual<typeof import("@/lib/masterdata-api")>(
+    "@/lib/masterdata-api",
+  );
+  return {
+    ...actual,
+    searchDict: (...a: unknown[]) => searchDict(...a),
+    listDictRefs: (...a: unknown[]) => listDictRefs(...a),
+  };
 });
 vi.mock("@/lib/operations-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/operations-api")>("@/lib/operations-api");
-  return { ...actual, getDossierContainers: (...a: unknown[]) => getDossierContainers(...a) };
+  const actual = await vi.importActual<typeof import("@/lib/operations-api")>(
+    "@/lib/operations-api",
+  );
+  return {
+    ...actual,
+    getDossierContainers: (...a: unknown[]) => getDossierContainers(...a),
+  };
 });
 
 import { DictionaryFinder } from "./dictionary-finder";
 import type { EquipmentPick } from "./equipment-step";
 
 const PORT_CHARGES = {
-  dictionary_item_id: "d1", code: "#-2201", label_en: "Port Charges", label_fr: "Frais de port",
-  direction: "EXPENSE", category: "service", varies_by_equipment: true,
+  dictionary_item_id: "d1",
+  code: "#-2201",
+  label_en: "Port Charges",
+  label_fr: "Frais de port",
+  direction: "EXPENSE",
+  category: "service",
+  varies_by_equipment: true,
 };
 const OFFICE = {
-  dictionary_item_id: "d2", code: "#-9001", label_en: "Office Supplies", label_fr: "Fournitures",
-  direction: "EXPENSE", category: "overhead", varies_by_equipment: false,
+  dictionary_item_id: "d2",
+  code: "#-9001",
+  label_en: "Office Supplies",
+  label_fr: "Fournitures",
+  direction: "EXPENSE",
+  category: "overhead",
+  varies_by_equipment: false,
 };
 
 const TYPES = [
-  { ref_id: "rf20", kind: "CONTAINER_TYPE", code: "RF20", name_en: "20' Reefer", name_fr: "20' Frigo", extra: { teu: 1, size: "20", family: "REEFER" } },
-  { ref_id: "hc40", kind: "CONTAINER_TYPE", code: "FT40HC", name_en: "40' High Cube", name_fr: "40' HC", extra: { teu: 2, size: "40HC", family: "DRY" } },
-  { ref_id: "dry20", kind: "CONTAINER_TYPE", code: "FT20", name_en: "20' Dry", name_fr: "20' Sec", extra: { teu: 1, size: "20", family: "DRY" } },
+  {
+    ref_id: "rf20",
+    kind: "CONTAINER_TYPE",
+    code: "RF20",
+    name_en: "20' Reefer",
+    name_fr: "20' Frigo",
+    extra: { teu: 1, size: "20", family: "REEFER" },
+  },
+  {
+    ref_id: "hc40",
+    kind: "CONTAINER_TYPE",
+    code: "FT40HC",
+    name_en: "40' High Cube",
+    name_fr: "40' HC",
+    extra: { teu: 2, size: "40HC", family: "DRY" },
+  },
+  {
+    ref_id: "dry20",
+    kind: "CONTAINER_TYPE",
+    code: "FT20",
+    name_en: "20' Dry",
+    name_fr: "20' Sec",
+    extra: { teu: 1, size: "20", family: "DRY" },
+  },
 ];
 
 /** SEA-2026-0142: 3 × 20' RF and 2 × 40' HC. */
 const ON_FILE = {
-  enabled: true, mode: "GROUPED",
+  enabled: true,
+  mode: "GROUPED",
   lines: [
     { container_type_ref_id: "rf20", qty: 3 },
     { container_type_ref_id: "hc40", qty: 2 },
   ],
 };
 
-function view(props: Partial<React.ComponentProps<typeof DictionaryFinder>> = {}) {
+function view(
+  props: Partial<React.ComponentProps<typeof DictionaryFinder>> = {},
+) {
   const onPick = vi.fn();
   const onPickMulti = vi.fn();
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } } })}>
+    <QueryClientProvider
+      client={
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false, gcTime: 0, staleTime: 0 },
+          },
+        })
+      }
+    >
       <DictionaryFinder onPick={onPick} onPickMulti={onPickMulti} {...props} />
     </QueryClientProvider>,
   );
@@ -73,9 +126,18 @@ function view(props: Partial<React.ComponentProps<typeof DictionaryFinder>> = {}
 }
 
 /** Open the popover and search a term until its row appears. */
-async function search(user: ReturnType<typeof userEvent.setup>, term: string, rowName: RegExp) {
-  await user.click(screen.getByRole("button", { name: "Financial dictionary line" }));
-  await user.type(screen.getByRole("textbox", { name: "Financial dictionary line" }), term);
+async function search(
+  user: ReturnType<typeof userEvent.setup>,
+  term: string,
+  rowName: RegExp,
+) {
+  await user.click(
+    screen.getByRole("button", { name: "Financial dictionary line" }),
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: "Financial dictionary line" }),
+    term,
+  );
   return screen.findByRole("option", { name: rowName }, { timeout: 3000 });
 }
 
@@ -100,9 +162,14 @@ describe("DictionaryFinder · equipment step", () => {
     // The step, not the caller, is now on screen — and the file's boxes are on it.
     const rf = await screen.findByLabelText("Quantity, 20' Reefer");
     expect((rf as HTMLInputElement).value).toBe("3");
-    expect((screen.getByLabelText("Quantity, 40' High Cube") as HTMLInputElement).value).toBe("2");
+    expect(
+      (screen.getByLabelText("Quantity, 40' High Cube") as HTMLInputElement)
+        .value,
+    ).toBe("2");
     // A type NOT on the file is listed but untouched.
-    expect((screen.getByLabelText("Quantity, 20' Dry") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("Quantity, 20' Dry") as HTMLInputElement).value,
+    ).toBe("");
     // 3 × 1 TEU + 2 × 2 TEU.
     expect(screen.getByText(/7 TEU/)).toBeTruthy();
 
@@ -110,10 +177,17 @@ describe("DictionaryFinder · equipment step", () => {
 
     expect(onPick).not.toHaveBeenCalled();
     await waitFor(() => expect(onPickMulti).toHaveBeenCalledTimes(1));
-    const [id, label, hit, picks] = onPickMulti.mock.calls[0] as [string, string, unknown, EquipmentPick[]];
+    const [id, label, hit, picks] = onPickMulti.mock.calls[0] as [
+      string,
+      string,
+      unknown,
+      EquipmentPick[],
+    ];
     expect(id).toBe("d1");
     expect(label).toBe("Port Charges");
-    expect((hit as { varies_by_equipment: boolean }).varies_by_equipment).toBe(true);
+    expect((hit as { varies_by_equipment: boolean }).varies_by_equipment).toBe(
+      true,
+    );
     expect(picks).toEqual([
       { container_type_ref_id: "rf20", qty: 3, label: "20' Reefer" },
       { container_type_ref_id: "hc40", qty: 2, label: "40' High Cube" },
@@ -126,7 +200,13 @@ describe("DictionaryFinder · equipment step", () => {
 
     await user.click(await search(user, "office supplies", /Office Supplies/));
 
-    await waitFor(() => expect(onPick).toHaveBeenCalledWith("d2", "Office Supplies", expect.anything()));
+    await waitFor(() =>
+      expect(onPick).toHaveBeenCalledWith(
+        "d2",
+        "Office Supplies",
+        expect.anything(),
+      ),
+    );
     expect(onPickMulti).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Add lines" })).toBeNull();
   });
@@ -139,17 +219,31 @@ describe("DictionaryFinder · equipment step", () => {
 
     expect(getDossierContainers).not.toHaveBeenCalled();
     for (const name of ["20' Reefer", "40' High Cube", "20' Dry"]) {
-      expect((await screen.findByLabelText(`Quantity, ${name}`) as HTMLInputElement).value).toBe("");
+      expect(
+        (
+          (await screen.findByLabelText(
+            `Quantity, ${name}`,
+          )) as HTMLInputElement
+        ).value,
+      ).toBe("");
     }
     // Nothing chosen means nothing to add.
-    expect((screen.getByRole("button", { name: "Add lines" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Add lines" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     await user.click(screen.getByRole("checkbox", { name: /40' High Cube/ }));
-    expect((screen.getByLabelText("Quantity, 40' High Cube") as HTMLInputElement).value).toBe("1");
+    expect(
+      (screen.getByLabelText("Quantity, 40' High Cube") as HTMLInputElement)
+        .value,
+    ).toBe("1");
     await user.click(screen.getByRole("button", { name: "Add lines" }));
 
     await waitFor(() => expect(onPickMulti).toHaveBeenCalledTimes(1));
-    expect(onPickMulti.mock.calls[0][3]).toEqual([{ container_type_ref_id: "hc40", qty: 1, label: "40' High Cube" }]);
+    expect(onPickMulti.mock.calls[0][3]).toEqual([
+      { container_type_ref_id: "hc40", qty: 1, label: "40' High Cube" },
+    ]);
   });
 
   it("offers the escape hatch on an unflagged charge, and reaches the same step", async () => {
@@ -178,7 +272,15 @@ describe("DictionaryFinder · equipment step", () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
     render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } } })}>
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: {
+              queries: { retry: false, gcTime: 0, staleTime: 0 },
+            },
+          })
+        }
+      >
         <DictionaryFinder onPick={onPick} />
       </QueryClientProvider>,
     );
@@ -186,7 +288,13 @@ describe("DictionaryFinder · equipment step", () => {
     await user.click(await search(user, "port charges", /Port Charges/));
 
     // Flagged or not, an opted-out caller gets the one-argument flow it had.
-    await waitFor(() => expect(onPick).toHaveBeenCalledWith("d1", "Port Charges", expect.anything()));
+    await waitFor(() =>
+      expect(onPick).toHaveBeenCalledWith(
+        "d1",
+        "Port Charges",
+        expect.anything(),
+      ),
+    );
     expect(screen.queryByRole("button", { name: "Add lines" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ Equipment" })).toBeNull();
     expect(listDictRefs).not.toHaveBeenCalled();

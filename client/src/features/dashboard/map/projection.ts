@@ -15,7 +15,13 @@
  * in a Douala-centred network does; revisit if one ever routes via the Pacific.
  */
 import type { Lane, ShipmentMode } from "../model";
-import { boundsOf, clusterNodes, labelOffset, type ClusteredNode, type PlacedNode } from "./selection";
+import {
+  boundsOf,
+  clusterNodes,
+  labelOffset,
+  type ClusteredNode,
+  type PlacedNode,
+} from "./selection";
 
 export const MAP_W = 760;
 export const MAP_H = 470;
@@ -100,7 +106,10 @@ export type BuildOptions = {
  */
 const cssId = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, "-");
 
-export function buildMapModel(lanes: Lane[], options: BuildOptions = {}): MapModel | null {
+export function buildMapModel(
+  lanes: Lane[],
+  options: BuildOptions = {},
+): MapModel | null {
   if (!lanes.length) return null;
 
   // The fit is computed from the focused subset when there is one, and from
@@ -117,7 +126,10 @@ export function buildMapModel(lanes: Lane[], options: BuildOptions = {}): MapMod
   // One scale for both axes: true proportions. With real coastline drawn behind,
   // the "dead space" a tall narrow lane set leaves is filled by actual geography,
   // so stretching to fill (which would skew every landmass) buys nothing.
-  const scale = Math.min((MAP_W - MAP_PAD * 2) / spanLon, (MAP_H - MAP_PAD * 2) / spanLat);
+  const scale = Math.min(
+    (MAP_W - MAP_PAD * 2) / spanLon,
+    (MAP_H - MAP_PAD * 2) / spanLat,
+  );
   const px = (lon: number) => MAP_W / 2 + (lon - cLon) * scale;
   const py = (lat: number) => MAP_H / 2 - (lat - cLat) * scale;
 
@@ -145,7 +157,11 @@ export function buildMapModel(lanes: Lane[], options: BuildOptions = {}): MapMod
   }
   // Clamp to the poles — equirectangular has no geometry beyond ±90, and a
   // "100°" gridline would be nonsense.
-  for (let lat = snap(Math.max(latMin, -85)); lat <= Math.min(latMax, 85); lat += step) {
+  for (
+    let lat = snap(Math.max(latMin, -85));
+    lat <= Math.min(latMax, 85);
+    lat += step
+  ) {
     const y = py(lat);
     if (y < 12 || y > MAP_H - 22) continue; // clear of the top and the lon labels
     grid += `M0,${y.toFixed(1)} H${MAP_W}`;
@@ -156,7 +172,12 @@ export function buildMapModel(lanes: Lane[], options: BuildOptions = {}): MapMod
 
   // ── lanes ──
   const outLanes: MapLane[] = [];
-  const counts: Record<ShipmentMode, number> = { sea: 0, road: 0, air: 0, other: 0 };
+  const counts: Record<ShipmentMode, number> = {
+    sea: 0,
+    road: 0,
+    air: 0,
+    other: 0,
+  };
 
   // Lanes that share a corridor (Antwerp→Douala and Paris CDG→Douala start ~500km
   // apart but converge on the same port) project almost on top of each other. Bow
@@ -297,7 +318,8 @@ export function landPaths(model: MapModel, rings: Ring[]): string {
     let d = "";
     for (let i = 0; i < ring.length; i += 1) {
       const { x, y } = model.project(ring[i][0], ring[i][1]);
-      d += (i === 0 ? "M" : "L") + clamp(x).toFixed(1) + "," + clamp(y).toFixed(1);
+      d +=
+        (i === 0 ? "M" : "L") + clamp(x).toFixed(1) + "," + clamp(y).toFixed(1);
     }
     out.push(d + "Z");
   });

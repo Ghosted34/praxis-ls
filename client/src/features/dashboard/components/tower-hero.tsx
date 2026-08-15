@@ -31,7 +31,10 @@ export function TowerHero({
   // Computed once per mount: an operator who leaves the tower open across noon
   // does not need the greeting to change under them, and re-rendering on a timer
   // would be motion for its own sake.
-  const hello = React.useMemo(() => greeting(new Date(), firstName), [firstName]);
+  const hello = React.useMemo(
+    () => greeting(new Date(), firstName),
+    [firstName],
+  );
 
   const subline =
     `${activeFiles} operation file${activeFiles === 1 ? "" : "s"} in motion` +
@@ -49,16 +52,25 @@ export function TowerHero({
         */}
         <h1 className="font-display mt-1 text-[clamp(1.75rem,3.2vw,2.75rem)] font-semibold leading-[1.05] tracking-[-0.02em]">
           Your network,{" "}
-          <span className={cn("not-italic", isTest ? "text-[rgb(var(--warn))]" : "text-primary-ink")}>
+          <span
+            className={cn(
+              "not-italic",
+              isTest ? "text-[rgb(var(--warn))]" : "text-primary-ink",
+            )}
+          >
             {isTest ? "test" : "live"}
           </span>
           .
         </h1>
-        <p className="mt-2 max-w-[52ch] text-base text-muted-foreground">{subline}</p>
+        <p className="mt-2 max-w-[52ch] text-base text-muted-foreground">
+          {subline}
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => navigate("/operations/files")}>New operation file</Button>
+        <Button onClick={() => navigate("/operations/files")}>
+          New operation file
+        </Button>
         <Button variant="outline" onClick={() => navigate("/finance/invoices")}>
           New invoice
         </Button>

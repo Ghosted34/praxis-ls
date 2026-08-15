@@ -40,7 +40,12 @@ export class ApiError extends Error {
   fields?: FieldErrors;
   /** @deprecated alias of `fields`; the server will stop sending it. */
   details?: unknown;
-  constructor(code: string, message: string, status: number, fields?: FieldErrors) {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    fields?: FieldErrors,
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
@@ -50,7 +55,11 @@ export class ApiError extends Error {
   }
 }
 
-type Opts = Omit<RequestInit, "body"> & { body?: unknown; auth?: boolean; retry?: boolean };
+type Opts = Omit<RequestInit, "body"> & {
+  body?: unknown;
+  auth?: boolean;
+  retry?: boolean;
+};
 
 let refreshing: Promise<boolean> | null = null;
 
@@ -199,7 +208,10 @@ const GATEWAY_DOWN = new Set([502, 503, 504]);
  * bug sends them to reboot a router that is working perfectly.
  */
 export function isNetworkError(e: unknown): boolean {
-  return e instanceof ApiError && (e.code === NETWORK_DOWN || GATEWAY_DOWN.has(e.status));
+  return (
+    e instanceof ApiError &&
+    (e.code === NETWORK_DOWN || GATEWAY_DOWN.has(e.status))
+  );
 }
 
 /**
@@ -221,7 +233,8 @@ async function send(url: string, init: RequestInit): Promise<Response> {
     // unmounted screen), not the network failing. Reporting it as a drop would
     // put the whole app on the offline screen every time someone navigated away
     // from a slow list.
-    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    if (cause instanceof DOMException && cause.name === "AbortError")
+      throw cause;
     reportUnreachable();
     throw new ApiError(
       NETWORK_DOWN,
@@ -248,7 +261,10 @@ async function send(url: string, init: RequestInit): Promise<Response> {
  * want the count, so it cannot simply be discarded here — but every existing
  * caller expects the bare payload, hence the two entry points.
  */
-export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Promise<Paged<T>> {
+export async function apiPaged<T = unknown>(
+  path: string,
+  opts: Opts = {},
+): Promise<Paged<T>> {
   const { body, auth = true, retry = true, headers, ...rest } = opts;
   const h = new Headers(headers);
   if (body !== undefined) h.set("Content-Type", "application/json");
@@ -279,7 +295,12 @@ export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Prom
 
   if (!res.ok) {
     const err = (json && json.error) || {};
-    throw new ApiError(err.code || "ERROR", err.message || res.statusText, res.status, err.fields ?? err.details);
+    throw new ApiError(
+      err.code || "ERROR",
+      err.message || res.statusText,
+      res.status,
+      err.fields ?? err.details,
+    );
   }
   // Endpoints wrap payloads as { data: ... }; unwrap when present.
   //
@@ -292,11 +313,9 @@ export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Prom
   // downstream.
   const isEnvelope =
     json && typeof json === "object" && "ok" in json && "changed" in json;
-  const data = (isEnvelope
-    ? (json as unknown)
-    : json && "data" in json
-      ? json.data
-      : json) as T;
+  const data = (
+    isEnvelope ? (json as unknown) : json && "data" in json ? json.data : json
+  ) as T;
 
   // API F-26: `meta` in the body is the primary source now. The header is kept
   // as a fallback because it is absent CROSS-ORIGIN unless the API lists it in
@@ -322,11 +341,17 @@ export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Prom
     // Escape hatch for endpoints whose meta carries fields beyond the four
     // typed above (`/audit/my-feed` uses this for its `window` flag). See the
     // `Paged<T>.meta` doc — this is intentionally raw, not schematised.
-    meta: (meta && typeof meta === "object") ? (meta as Record<string, unknown>) : null,
+    meta:
+      meta && typeof meta === "object"
+        ? (meta as Record<string, unknown>)
+        : null,
   };
 }
 
-export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
+export async function api<T = unknown>(
+  path: string,
+  opts: Opts = {},
+): Promise<T> {
   return (await apiPaged<T>(path, opts)).data;
 }
 
@@ -335,7 +360,11 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
  * expose upload progress, so file uploads use XHR while keeping the same auth,
  * tenant header, response unwrapping and one-time refresh semantics as `api()`.
  */
-export async function apiWithProgress<T = unknown>(path: string, opts: Opts = {}, onProgress?: (percent: number) => void): Promise<T> {
+export async function apiWithProgress<T = unknown>(
+  path: string,
+  opts: Opts = {},
+  onProgress?: (percent: number) => void,
+): Promise<T> {
   const { body, auth = true, retry = true, headers, ...rest } = opts;
   const method = String(rest.method || "GET");
 
@@ -353,23 +382,43 @@ export async function apiWithProgress<T = unknown>(path: string, opts: Opts = {}
 
     onProgress?.(0);
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      if (event.lengthComputable)
+        onProgress?.(
+          Math.min(99, Math.round((event.loaded / event.total) * 100)),
+        );
     };
     xhr.onerror = () => {
       reportUnreachable();
-      reject(new ApiError(NETWORK_DOWN, "Can't reach the server — you appear to be offline.", 0));
+      reject(
+        new ApiError(
+          NETWORK_DOWN,
+          "Can't reach the server — you appear to be offline.",
+          0,
+        ),
+      );
     };
-    xhr.onabort = () => reject(new ApiError("UPLOAD_ABORTED", "The upload was cancelled.", 0));
+    xhr.onabort = () =>
+      reject(new ApiError("UPLOAD_ABORTED", "The upload was cancelled.", 0));
     xhr.onload = async () => {
       const text = xhr.responseText || "";
       let json: unknown = null;
-      try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON response */ }
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        /* non-JSON response */
+      }
 
       if (xhr.status === 401 && auth && retry) {
         const ok = await tryRefresh();
         if (ok) {
           try {
-            resolve(await apiWithProgress<T>(path, { ...opts, retry: false }, onProgress));
+            resolve(
+              await apiWithProgress<T>(
+                path,
+                { ...opts, retry: false },
+                onProgress,
+              ),
+            );
           } catch (e) {
             reject(e);
           }
@@ -381,24 +430,52 @@ export async function apiWithProgress<T = unknown>(path: string, opts: Opts = {}
       if (xhr.status >= 200 && xhr.status < 300) {
         reportReachable();
         onProgress?.(100);
-        const data = (json && typeof json === "object" && "data" in json ? (json as { data: T }).data : json) as T;
+        const data = (
+          json && typeof json === "object" && "data" in json
+            ? (json as { data: T }).data
+            : json
+        ) as T;
         resolve(data);
         return;
       }
 
-      const err = json && typeof json === "object" && "error" in json ? (json as { error?: { code?: string; message?: string; fields?: FieldErrors } }).error || {} : {};
-      reject(new ApiError(err.code || "ERROR", err.message || xhr.statusText, xhr.status, err.fields));
+      const err =
+        json && typeof json === "object" && "error" in json
+          ? (
+              json as {
+                error?: {
+                  code?: string;
+                  message?: string;
+                  fields?: FieldErrors;
+                };
+              }
+            ).error || {}
+          : {};
+      reject(
+        new ApiError(
+          err.code || "ERROR",
+          err.message || xhr.statusText,
+          xhr.status,
+          err.fields,
+        ),
+      );
     };
 
     xhr.send(body === undefined ? undefined : JSON.stringify(body));
   });
 }
 
-export const tenant = <T = unknown>(p: string, o?: Opts) => api<T>(`/tenant${p}`, o); 
-export const tenantWithProgress = <T = unknown>(p: string, body: unknown, onProgress: (percent: number) => void) =>
-  apiWithProgress<T>(`/tenant${p}`, { method: "POST", body }, onProgress);
-export const tenantPaged = <T = unknown>(p: string, o?: Opts) => apiPaged<T>(`/tenant${p}`, o);
-export const platform = <T = unknown>(p: string, o?: Opts) => api<T>(`/platform${p}`, o);
+export const tenant = <T = unknown>(p: string, o?: Opts) =>
+  api<T>(`/tenant${p}`, o);
+export const tenantWithProgress = <T = unknown>(
+  p: string,
+  body: unknown,
+  onProgress: (percent: number) => void,
+) => apiWithProgress<T>(`/tenant${p}`, { method: "POST", body }, onProgress);
+export const tenantPaged = <T = unknown>(p: string, o?: Opts) =>
+  apiPaged<T>(`/tenant${p}`, o);
+export const platform = <T = unknown>(p: string, o?: Opts) =>
+  api<T>(`/platform${p}`, o);
 
 /**
  * Fetch a binary endpoint (auth + env headers) and trigger a browser download.
@@ -414,7 +491,12 @@ export async function download(path: string, filename: string): Promise<void> {
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     let message = res.statusText;
-    try { const j = body ? JSON.parse(body) : null; message = (j && j.error && j.error.message) || message; } catch { /* @silent:parse — non-JSON body */ }
+    try {
+      const j = body ? JSON.parse(body) : null;
+      message = (j && j.error && j.error.message) || message;
+    } catch {
+      /* @silent:parse — non-JSON body */
+    }
     throw new ApiError("DOWNLOAD_FAILED", message, res.status);
   }
   const blob = await res.blob();
@@ -427,7 +509,8 @@ export async function download(path: string, filename: string): Promise<void> {
   a.remove();
   URL.revokeObjectURL(url);
 }
-export const tenantDownload = (p: string, filename: string) => download(`/tenant${p}`, filename);
+export const tenantDownload = (p: string, filename: string) =>
+  download(`/tenant${p}`, filename);
 
 /**
  * As `download`, but POSTs a JSON body first.
@@ -442,12 +525,20 @@ export const tenantDownload = (p: string, filename: string) => download(`/tenant
  * method, body and content-type, and the call sites read better naming which
  * one they mean than passing a flag.
  */
-export async function downloadPost(path: string, body: unknown, filename: string): Promise<void> {
+export async function downloadPost(
+  path: string,
+  body: unknown,
+  filename: string,
+): Promise<void> {
   const h = new Headers({ "Content-Type": "application/json" });
   h.set("X-Praxis-Env", tokenStore.getEnv());
   const t = tokenStore.getAccess();
   if (t) h.set("Authorization", `Bearer ${t}`);
-  const res = await send(`/api${path}`, { method: "POST", headers: h, body: JSON.stringify(body) });
+  const res = await send(`/api${path}`, {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     const raw = await res.text().catch(() => "");
     let message = res.statusText;

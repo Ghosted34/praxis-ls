@@ -21,8 +21,18 @@ import { QuotationForm } from "./quotation-forms";
 import { QuotationDetail } from "./quotation-detail";
 
 const QUOTATION_AI: AiAction[] = [
-  { label: "Draft quotation", kind: "assist", describe: "Draft a quotation's lines from an opportunity, dossier or costing (human-reviewed before send)." },
-  { label: "Send / accept", kind: "write", describe: "Send, reject, expire or accept a quotation (accept can spin a final-invoice draft)." },
+  {
+    label: "Draft quotation",
+    kind: "assist",
+    describe:
+      "Draft a quotation's lines from an opportunity, dossier or costing (human-reviewed before send).",
+  },
+  {
+    label: "Send / accept",
+    kind: "write",
+    describe:
+      "Send, reject, expire or accept a quotation (accept can spin a final-invoice draft).",
+  },
 ];
 
 const QUOTE_FILTERS = [
@@ -46,8 +56,20 @@ export function QuotationsPage() {
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [detail, setDetail] = React.useState<Row | null>(null);
 
-  const clientName = React.useMemo(() => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])), [clients]);
-  const filtered = React.useMemo(() => (rows || []).filter((r) => !filter || String(r.status) === filter), [rows, filter]);
+  const clientName = React.useMemo(
+    () =>
+      new Map(
+        (clients || []).map((c) => [
+          String(c.client_id),
+          cell(c.name ?? c.legal_name),
+        ]),
+      ),
+    [clients],
+  );
+  const filtered = React.useMemo(
+    () => (rows || []).filter((r) => !filter || String(r.status) === filter),
+    [rows, filter],
+  );
   const gated = error && /feature|not enabled|disabled/i.test(error);
 
   return (
@@ -56,38 +78,72 @@ export function QuotationsPage() {
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Quotations"
         description="Priced offers between opportunity and invoice — draft, send, accept."
-        action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New quotation</Button>}
+        action={
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            New quotation
+          </Button>
+        }
       />
       <HubTabs />
 
       <div className="mb-4">
-        <Chips label="Filter quotations by status" value={filter} options={QUOTE_FILTERS} onChange={setFilter} />
+        <Chips
+          label="Filter quotations by status"
+          value={filter}
+          options={QUOTE_FILTERS}
+          onChange={setFilter}
+        />
       </div>
 
       {error ? (
         gated ? (
-          <EmptyState title="Quotations aren't enabled for this tenant" hint="The commercial.quotation feature flag is off. Enable it in the developer dashboard to use quotations." />
+          <EmptyState
+            title="Quotations aren't enabled for this tenant"
+            hint="The commercial.quotation feature flag is off. Enable it in the developer dashboard to use quotations."
+          />
         ) : (
           <ErrorState message={error} />
         )
       ) : rows === null ? (
         <SkeletonTable />
       ) : filtered.length === 0 ? (
-        <EmptyState title={rows.length ? "No quotations match" : "No quotations yet"} hint={rows.length ? "Try another filter." : "Draft your first quotation."} />
+        <EmptyState
+          title={rows.length ? "No quotations match" : "No quotations yet"}
+          hint={
+            rows.length ? "Try another filter." : "Draft your first quotation."
+          }
+        />
       ) : (
         <div className="space-y-2">
           {filtered.map((r) => (
-            <button key={String(r.quotation_id)} type="button" onClick={() => setDetail(r)} className="lux-card flex w-full items-center gap-3 p-3 text-left transition-colors hover:border-primary/40">
+            <button
+              key={String(r.quotation_id)}
+              type="button"
+              onClick={() => setDetail(r)}
+              className="lux-card flex w-full items-center gap-3 p-3 text-left transition-colors hover:border-primary/40"
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">{r.doc_number ? `№ ${cell(r.doc_number)}` : "Draft"}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {r.doc_number ? `№ ${cell(r.doc_number)}` : "Draft"}
+                  </p>
                   <StatusPill status={String(r.status || "DRAFT")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
-                  {r.client_id ? clientName.get(String(r.client_id)) ?? "Client" : "No client"} · {dateFmt(r.created_at)}
+                  {r.client_id
+                    ? (clientName.get(String(r.client_id)) ?? "Client")
+                    : "No client"}{" "}
+                  · {dateFmt(r.created_at)}
                 </p>
               </div>
-              <span className="text-sm font-semibold text-foreground">{money(r.total_ttc ?? r.total_ht, r.currency)}</span>
+              <span className="text-sm font-semibold text-foreground">
+                {money(r.total_ttc ?? r.total_ht, r.currency)}
+              </span>
             </button>
           ))}
         </div>
@@ -95,7 +151,15 @@ export function QuotationsPage() {
 
       <AiActions actions={QUOTATION_AI} />
 
-      <QuotationForm open={formOpen} editing={editing} entities={entities} clients={clients} opportunities={opportunities} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <QuotationForm
+        open={formOpen}
+        editing={editing}
+        entities={entities}
+        clients={clients}
+        opportunities={opportunities}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+      />
       <QuotationDetail
         quotation={detail}
         entities={entities}

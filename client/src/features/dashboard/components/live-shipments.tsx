@@ -61,23 +61,41 @@ function ShipmentRow({
           selected ? "bg-accent/70" : "hover:bg-accent/60",
         )}
       >
-        <span aria-hidden className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-md", MODE_CHIP[s.mode])}>
+        <span
+          aria-hidden
+          className={cn(
+            "grid h-8 w-8 shrink-0 place-items-center rounded-md",
+            MODE_CHIP[s.mode],
+          )}
+        >
           <Icon width={16} height={16} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
-            <span className="num truncate text-label font-semibold text-primary-ink">{s.ref}</span>
+            <span className="num truncate text-label font-semibold text-primary-ink">
+              {s.ref}
+            </span>
             <Pill tone={s.tone}>{s.status}</Pill>
           </span>
           {/* Hide the whole line when neither end is known, rather than drawing
               a lone arrow pointing at nothing — which is what shipped before. */}
           {hasRoute && (
             <span className="mt-1 flex items-center gap-1.5 text-label font-medium text-foreground">
-              <ArrowRightIcon width={13} height={13} className="shrink-0 text-muted-foreground" />
-              <span className="truncate">{s.from && s.to ? `${s.from} → ${s.to}` : s.from || s.to}</span>
+              <ArrowRightIcon
+                width={13}
+                height={13}
+                className="shrink-0 text-muted-foreground"
+              />
+              <span className="truncate">
+                {s.from && s.to ? `${s.from} → ${s.to}` : s.from || s.to}
+              </span>
             </span>
           )}
-          {meta && <span className="mt-1 block truncate text-micro normal-case text-muted-foreground">{meta}</span>}
+          {meta && (
+            <span className="mt-1 block truncate text-micro normal-case text-muted-foreground">
+              {meta}
+            </span>
+          )}
           {s.progress !== null && (
             <span
               className="mt-2 block h-1.5 overflow-hidden rounded-full bg-[rgb(var(--ink)_/_0.08)]"
@@ -112,7 +130,9 @@ export function LiveShipments({
   return (
     <Card className="flex min-w-0 flex-col">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-        <h2 className="text-title font-semibold leading-none tracking-tight">Live shipments</h2>
+        <h2 className="text-title font-semibold leading-none tracking-tight">
+          Live shipments
+        </h2>
         <Pill tone={shipments.length ? "ok" : "mute"}>
           {`${shipments.length} active`}
         </Pill>
@@ -125,7 +145,6 @@ export function LiveShipments({
         // "there is more below". Below xl the card is auto-height and the whole
         // list shows.
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">
-
           {shipments.map((s) => (
             <ShipmentRow
               key={s.dossierId || s.ref}

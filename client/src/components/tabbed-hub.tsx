@@ -70,7 +70,9 @@ function useRibbonCarries(basePath: string): boolean {
   return React.useMemo(() => {
     if (!ready) return true;
     return buildRibbon(access).some((f) =>
-      f.areas.some((a) => a.area.basePath === basePath && a.sections.length > 0),
+      f.areas.some(
+        (a) => a.area.basePath === basePath && a.sections.length > 0,
+      ),
     );
   }, [access, ready, basePath]);
 }
@@ -82,23 +84,39 @@ function useRibbonCarries(basePath: string): boolean {
  * pages own their headers and never call <HubTabs/> (e.g. Master data) switch it on
  * so the bar still shows. Lets every hub share one implementation either way.
  */
-export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace = false }: { eyebrow: string; basePath: string; tabs: HubTab[]; inlineTabs?: boolean; inPlace?: boolean }) {
+export function TabbedHub({
+  eyebrow,
+  basePath,
+  tabs,
+  inlineTabs = false,
+  inPlace = false,
+}: {
+  eyebrow: string;
+  basePath: string;
+  tabs: HubTab[];
+  inlineTabs?: boolean;
+  inPlace?: boolean;
+}) {
   const { section } = useParams();
   const navigate = useNavigate();
   // `inPlace` swaps tab content in local state without touching the route, so the
   // hub stays on one page (no URL change / scroll reset). Routed hubs keep their
   // deep-linkable `<basePath>/:section` behaviour (the default).
-  const [localKey, setLocalKey] = React.useState(() => tabs.find((t) => t.key === section)?.key ?? tabs[0].key);
+  const [localKey, setLocalKey] = React.useState(
+    () => tabs.find((t) => t.key === section)?.key ?? tabs[0].key,
+  );
   const activeKey = inPlace ? localKey : section;
   const active = tabs.find((t) => t.key === activeKey) || tabs[0];
   const Active = active.Component;
-  const go = (key: string) => (inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`));
+  const go = (key: string) =>
+    inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`);
 
   // `inPlace` hubs swap content without a route change, so the ribbon cannot
   // follow them — it only knows the URL. Keep them in step: a ribbon click
   // changes the route, and this pulls the local key back onto it.
   React.useEffect(() => {
-    if (inPlace && section && tabs.some((t) => t.key === section)) setLocalKey(section);
+    if (inPlace && section && tabs.some((t) => t.key === section))
+      setLocalKey(section);
   }, [inPlace, section, tabs]);
 
   // Hidden on desktop ONLY while the ribbon is actually carrying this area's
@@ -119,7 +137,10 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   // keeps a hub from fetching every tab's data at once).
   const tabsNode = (
     <div className={cn(carried && "md:hidden")}>
-      <TabList label={`${eyebrow} sections`} tabs={tabs.map((t) => ({ value: t.key, label: t.label }))} />
+      <TabList
+        label={`${eyebrow} sections`}
+        tabs={tabs.map((t) => ({ value: t.key, label: t.label }))}
+      />
     </div>
   );
 
@@ -132,7 +153,11 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
             {tabsNode}
           </div>
         )}
-        <TabsContent key={active.key} value={active.key} className="animate-fade-in focus-visible:outline-none">
+        <TabsContent
+          key={active.key}
+          value={active.key}
+          className="animate-fade-in focus-visible:outline-none"
+        >
           <Active />
         </TabsContent>
       </HubTabsContext.Provider>
@@ -145,8 +170,17 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
 export function HubCrumb({ area, to }: { area: string; to?: string }) {
   return (
     <span className="micro">
-      <Link to="/" className="transition-colors hover:text-primary-ink">Hub</Link> ›{" "}
-      {to ? <Link to={to} className="transition-colors hover:text-primary-ink">{area}</Link> : area}
+      <Link to="/" className="transition-colors hover:text-primary-ink">
+        Hub
+      </Link>{" "}
+      ›{" "}
+      {to ? (
+        <Link to={to} className="transition-colors hover:text-primary-ink">
+          {area}
+        </Link>
+      ) : (
+        area
+      )}
     </span>
   );
 }

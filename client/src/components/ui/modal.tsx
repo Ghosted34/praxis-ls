@@ -118,18 +118,26 @@ export function Field({
   // read before the guidance.
   const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
-  const only = React.Children.count(children) === 1 ? React.Children.toArray(children)[0] : null;
-  const single = React.isValidElement(only) ? (only as React.ReactElement<Record<string, unknown>>) : null;
+  const only =
+    React.Children.count(children) === 1
+      ? React.Children.toArray(children)[0]
+      : null;
+  const single = React.isValidElement(only)
+    ? (only as React.ReactElement<Record<string, unknown>>)
+    : null;
 
   const ownId = single?.props?.id;
-  const controlId = htmlFor ?? (typeof ownId === "string" ? ownId : `${uid}-control`);
+  const controlId =
+    htmlFor ?? (typeof ownId === "string" ? ownId : `${uid}-control`);
 
   const control = single
     ? React.cloneElement(single, {
         id: controlId,
         "aria-labelledby": single.props["aria-labelledby"] ?? labelId,
         "aria-describedby":
-          [single.props["aria-describedby"], describedBy].filter(Boolean).join(" ") || undefined,
+          [single.props["aria-describedby"], describedBy]
+            .filter(Boolean)
+            .join(" ") || undefined,
         ...(error ? { "aria-invalid": true } : {}),
         ...(required ? { "aria-required": true } : {}),
       })
@@ -137,7 +145,11 @@ export function Field({
 
   return (
     <div className={cn("space-y-1.5", className)}>
-      <label id={labelId} htmlFor={controlId} className="block text-sm font-medium text-foreground">
+      <label
+        id={labelId}
+        htmlFor={controlId}
+        className="block text-sm font-medium text-foreground"
+      >
         {label}
         {/* The asterisk is decoration: `aria-required` on the control is what
             actually conveys this, and "Client star" is not a field name. */}
@@ -149,7 +161,11 @@ export function Field({
       </label>
 
       {control ?? (
-        <div role="group" aria-labelledby={labelId} aria-describedby={describedBy}>
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          aria-describedby={describedBy}
+        >
           {children}
         </div>
       )}
@@ -168,24 +184,25 @@ export function Field({
 }
 
 /** Native select styled to match Input. */
-export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => (
-    <select
-      ref={ref}
-      className={cn(
-        // Solid bg + explicit option colours so the native dropdown list is
-        // legible in dark mode (a transparent select renders its option popup
-        // with the browser default — light bg + light text = unreadable).
-        "flex h-10 w-full rounded-[10px] border border-input bg-background text-foreground px-3 py-2 text-[13px]",
-        "[&>option]:bg-background [&>option]:text-foreground",
-        "transition-colors focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] focus-visible:outline-none",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  ),
-);
+export const Select = React.forwardRef<
+  HTMLSelectElement,
+  React.SelectHTMLAttributes<HTMLSelectElement>
+>(({ className, children, ...props }, ref) => (
+  <select
+    ref={ref}
+    className={cn(
+      // Solid bg + explicit option colours so the native dropdown list is
+      // legible in dark mode (a transparent select renders its option popup
+      // with the browser default — light bg + light text = unreadable).
+      "flex h-10 w-full rounded-[10px] border border-input bg-background text-foreground px-3 py-2 text-[13px]",
+      "[&>option]:bg-background [&>option]:text-foreground",
+      "transition-colors focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] focus-visible:outline-none",
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      className,
+    )}
+    {...props}
+  >
+    {children}
+  </select>
+));
 Select.displayName = "Select";

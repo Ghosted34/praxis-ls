@@ -36,7 +36,8 @@ export type RibbonCommandRegistry = {
   retract: (id: number) => void;
 };
 
-export const RibbonCommandsContext = React.createContext<RibbonCommandRegistry | null>(null);
+export const RibbonCommandsContext =
+  React.createContext<RibbonCommandRegistry | null>(null);
 
 let nextId = 1;
 

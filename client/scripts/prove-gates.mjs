@@ -38,7 +38,10 @@ const repoRoot = join(client, "..");
 
 /* ── safety ───────────────────────────────────────────────────────────────── */
 
-const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).trim();
+const dirty = execFileSync("git", ["status", "--porcelain"], {
+  cwd: repoRoot,
+  encoding: "utf8",
+}).trim();
 if (dirty && !process.argv.includes("--allow-dirty")) {
   console.error(
     "\n✗ Working tree is dirty. This script edits real files and restores them;\n" +
@@ -118,14 +121,14 @@ const CASES = [
     cmd: ["npx", ["eslint", "src/components/ui/panel.tsx"]],
     file: "src/components/ui/panel.tsx",
     from: "import * as React",
-    to: 'export const Regression = () => <div onClick={() => {}}>x</div>;\nimport * as React',
+    to: "export const Regression = () => <div onClick={() => {}}>x</div>;\nimport * as React",
   },
   {
     name: "typecheck",
     defect: "a prop that does not exist on ListPage",
     cmd: ["npx", ["tsc", "-b", "--force"]],
     file: "src/components/list-page.tsx",
-    from: "  width = \"wide\",",
+    from: '  width = "wide",',
     to: "  width = 42,",
   },
   {
@@ -138,7 +141,8 @@ const CASES = [
   },
   {
     name: "schemas (one-sided)",
-    defect: "a shared schema the client stops importing — drift with an extra file",
+    defect:
+      "a shared schema the client stops importing — drift with an extra file",
     cmd: ["npm", ["run", "check:schemas"]],
     file: "src/features/masterdata/clients.tsx",
     from: 'import { clientMaster } from "@shared";',
@@ -155,7 +159,10 @@ const CASES = [
   {
     name: "layout gate (e2e)",
     defect: "F9 — a 36px row-action button puts the row back to 48px",
-    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "default rows"]],
+    cmd: [
+      "npx",
+      ["playwright", "test", "e2e/layout.spec.ts", "--grep", "default rows"],
+    ],
     file: "src/index.css",
     from: "    --row-control-h: 1.25rem;",
     to: "    --row-control-h: 2.25rem;",
@@ -163,8 +170,12 @@ const CASES = [
   },
   {
     name: "layout gate (touch target)",
-    defect: "WCAG 2.2 2.5.8 — a desktop density number lands on a phone tap target",
-    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "tap target"]],
+    defect:
+      "WCAG 2.2 2.5.8 — a desktop density number lands on a phone tap target",
+    cmd: [
+      "npx",
+      ["playwright", "test", "e2e/layout.spec.ts", "--grep", "tap target"],
+    ],
     file: "src/index.css",
     from: "    --row-control-h: 2.75rem; /* 44px — the platform touch guidance */",
     to: "    --row-control-h: 1.25rem;",
@@ -173,7 +184,10 @@ const CASES = [
   {
     name: "layout gate (2560px tier)",
     defect: "F2/F3 — the content column stops growing past 1664px",
-    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "2560px"]],
+    cmd: [
+      "npx",
+      ["playwright", "test", "e2e/layout.spec.ts", "--grep", "2560px"],
+    ],
     file: "tailwind.config.ts",
     from: 'wide: "135rem", // 2160',
     to: 'wide: "104rem", // 1664',
@@ -202,20 +216,28 @@ function build() {
 }
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const cases = only.length ? CASES.filter((c) => only.some((o) => c.name.startsWith(o))) : CASES;
+const cases = only.length
+  ? CASES.filter((c) => only.some((o) => c.name.startsWith(o)))
+  : CASES;
 if (!cases.length) {
-  console.error(`\nNo gate matches ${only.join(", ")}. Known: ${CASES.map((c) => c.name).join(", ")}\n`);
+  console.error(
+    `\nNo gate matches ${only.join(", ")}. Known: ${CASES.map((c) => c.name).join(", ")}\n`,
+  );
   process.exit(2);
 }
 
-console.warn(`\nProving ${cases.length} gate(s) catch a deliberately introduced regression.\n`);
+console.warn(
+  `\nProving ${cases.length} gate(s) catch a deliberately introduced regression.\n`,
+);
 
 let broken = 0;
 for (const c of cases) {
   const path = join(client, c.file);
   const original = readFileSync(path, "utf8");
   if (!original.includes(c.from)) {
-    console.error(`  ERROR  ${c.name} — anchor not found in ${c.file}. The gate may be fine; this SCRIPT is stale.`);
+    console.error(
+      `  ERROR  ${c.name} — anchor not found in ${c.file}. The gate may be fine; this SCRIPT is stale.`,
+    );
     broken++;
     continue;
   }
@@ -241,7 +263,11 @@ for (const c of cases) {
 }
 
 if (broken) {
-  console.error(`\n✗ ${broken} gate(s) did not behave as a gate. A gate that cannot fail is documentation.\n`);
+  console.error(
+    `\n✗ ${broken} gate(s) did not behave as a gate. A gate that cannot fail is documentation.\n`,
+  );
   process.exit(1);
 }
-console.warn(`\n✓ All ${cases.length} gates fail on the regression and pass without it.\n`);
+console.warn(
+  `\n✓ All ${cases.length} gates fail on the regression and pass without it.\n`,
+);

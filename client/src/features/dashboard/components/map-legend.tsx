@@ -41,7 +41,10 @@ export function MapLegend({
       {ROUTE_MODES.map((m) => {
         const Icon = MODE_ICON[m];
         return (
-          <span key={m} className="flex items-center gap-1.5 text-label font-semibold text-muted-foreground">
+          <span
+            key={m}
+            className="flex items-center gap-1.5 text-label font-semibold text-muted-foreground"
+          >
             <Icon style={{ color: stroke[m] }} />
             <span className="num">{counts[m]}</span> {MODE_LABEL[m]}
           </span>
@@ -66,7 +69,10 @@ export function MapLegend({
           className="flex items-center gap-1.5 text-label font-semibold text-[rgb(var(--warn))]"
           title="These files name a place that is not verified, so there is no coordinate to draw. They are listed instead — drawing them would be a guess."
         >
-          <span aria-hidden className="grid h-3.5 w-3.5 place-items-center rounded-full border-2 border-current" />
+          <span
+            aria-hidden
+            className="grid h-3.5 w-3.5 place-items-center rounded-full border-2 border-current"
+          />
           <span className="num">{unresolvedCount}</span> need a location
         </span>
       )}
@@ -98,7 +104,10 @@ export function MapLegend({
             className="flex items-center gap-1.5 text-micro font-medium normal-case text-muted-foreground"
             title="A hollow marker is a point NEAR the real address, agreed as a stand-in for the map. The file still carries the exact delivery instructions."
           >
-            <span aria-hidden className="h-2.5 w-2.5 rounded-full border-[1.5px] border-current bg-transparent" />
+            <span
+              aria-hidden
+              className="h-2.5 w-2.5 rounded-full border-[1.5px] border-current bg-transparent"
+            />
             Hollow marker = reference point, not the exact address
           </span>
         </>

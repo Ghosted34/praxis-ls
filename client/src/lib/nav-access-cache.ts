@@ -109,7 +109,9 @@ function drop(key: string): void {
  * one record to "whoever asks" is the shared-terminal leak this key exists to
  * prevent.
  */
-export function readCachedAccess(userId: string | null | undefined): NavAccess | null {
+export function readCachedAccess(
+  userId: string | null | undefined,
+): NavAccess | null {
   if (!userId) return null;
   const raw = read(ACCESS_KEY(userId));
   if (!raw) return null;
@@ -127,7 +129,10 @@ export function readCachedAccess(userId: string | null | undefined): NavAccess |
   }
 }
 
-export function writeCachedAccess(userId: string | null | undefined, access: NavAccess): void {
+export function writeCachedAccess(
+  userId: string | null | undefined,
+  access: NavAccess,
+): void {
   if (!userId) return;
   write(ACCESS_KEY(userId), JSON.stringify(access));
 }
@@ -168,7 +173,8 @@ export type AccessChange =
 /** Case-insensitive because one side of a comparison may have come from a cache
  *  written before the server started upper-casing, and a casing difference must
  *  never read as a revocation — that would hard-refresh the user for nothing. */
-const setOf = (keys: string[]): Set<string> => new Set(keys.map((k) => String(k).toUpperCase()));
+const setOf = (keys: string[]): Set<string> =>
+  new Set(keys.map((k) => String(k).toUpperCase()));
 
 /**
  * What changed between the answer the UI is drawn from and the fresh one.
@@ -177,7 +183,10 @@ const setOf = (keys: string[]): Set<string> => new Set(keys.map((k) => String(k)
  * not a grant — announcing every module a user has as newly granted on their
  * first login would make the banner meaningless.
  */
-export function classifyAccessChange(cached: NavAccess | null, fresh: NavAccess): AccessChange {
+export function classifyAccessChange(
+  cached: NavAccess | null,
+  fresh: NavAccess,
+): AccessChange {
   if (!cached) return { kind: "same" };
 
   const before = setOf(cached.modules);
@@ -200,4 +209,7 @@ export function classifyAccessChange(cached: NavAccess | null, fresh: NavAccess)
  * and pop the banner back up over a change the user has already dismissed and
  * which grants them nothing new.
  */
-export const accessSignature = (access: NavAccess): string => setOf(access.modules).size + ":" + [...setOf(access.modules)].sort().join(",");
+export const accessSignature = (access: NavAccess): string =>
+  setOf(access.modules).size +
+  ":" +
+  [...setOf(access.modules)].sort().join(",");

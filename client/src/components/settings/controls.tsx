@@ -45,7 +45,9 @@ export function SettingsCard({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg tracking-tight">{title}</h2>
-          {desc && <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>}
+          {desc && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
+          )}
         </div>
         {soon && <Soon />}
       </div>
@@ -77,7 +79,9 @@ export function Field({
 /** @deprecated Import `Textarea` from `@/components/ui/textarea` instead. This
  *  was one of the three local class constants F6 counted; it now just forwards,
  *  so existing settings screens keep working while they migrate. */
-export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function TextArea(
+  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+) {
   return <Textarea {...props} />;
 }
 
@@ -95,8 +99,12 @@ export function Toggle({
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3">
       <span>
-        <span className="block text-sm font-medium text-foreground">{label}</span>
-        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+        <span className="block text-sm font-medium text-foreground">
+          {label}
+        </span>
+        {hint && (
+          <span className="block text-xs text-muted-foreground">{hint}</span>
+        )}
       </span>
       <button
         type="button"
@@ -137,7 +145,9 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
-            value === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            value === o.value
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {o.label}
@@ -220,8 +230,14 @@ export function ColorRow({
         className="h-7 w-7 flex-none cursor-pointer rounded border bg-transparent p-0.5"
         aria-label={token}
       />
-      <code className="w-24 flex-none text-[11px] text-muted-foreground">{token}</code>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} className="h-8 text-xs" />
+      <code className="w-24 flex-none text-[11px] text-muted-foreground">
+        {token}
+      </code>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 text-xs"
+      />
     </div>
   );
 }
@@ -254,7 +270,11 @@ export function ImageField({
   const [err, setErr] = React.useState<string | null>(null);
 
   const box =
-    shape === "square" ? "h-12 w-12" : shape === "wide" ? "h-12 w-20 object-cover" : "h-8 w-auto max-w-[80px]";
+    shape === "square"
+      ? "h-12 w-12"
+      : shape === "wide"
+        ? "h-12 w-20 object-cover"
+        : "h-8 w-auto max-w-[80px]";
 
   async function readAsDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -268,12 +288,18 @@ export function ImageField({
   async function onFile(file?: File | null) {
     if (!file) return;
     setErr(null);
-    if (!file.type.startsWith("image/")) return setErr("That's not an image file.");
-    if (file.size > maxBytes) return setErr(`Image must be ${Math.round(maxBytes / 1024)} KB or smaller.`);
+    if (!file.type.startsWith("image/"))
+      return setErr("That's not an image file.");
+    if (file.size > maxBytes)
+      return setErr(
+        `Image must be ${Math.round(maxBytes / 1024)} KB or smaller.`,
+      );
     setUploading(true);
     try {
       const dataUrl = await readAsDataUrl(file);
-      const url = upload ? await upload(dataUrl) : (await uploadImage(dataUrl)).logoUrl;
+      const url = upload
+        ? await upload(dataUrl)
+        : (await uploadImage(dataUrl)).logoUrl;
       onChange(url);
     } catch (e) {
       setErr(
@@ -305,12 +331,28 @@ export function ImageField({
         {value ? (
           <img src={value} alt="" className={cn("rounded", box)} />
         ) : (
-          <span className={cn("flex items-center justify-center rounded bg-muted", shape === "logo" ? "h-8 w-8" : box)}>
+          <span
+            className={cn(
+              "flex items-center justify-center rounded bg-muted",
+              shape === "logo" ? "h-8 w-8" : box,
+            )}
+          >
             <span className="text-xs">IMG</span>
           </span>
         )}
-        <span>{uploading ? "Uploading…" : value ? "Replace" : "Drop an image or click to upload"}</span>
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+        <span>
+          {uploading
+            ? "Uploading…"
+            : value
+              ? "Replace"
+              : "Drop an image or click to upload"}
+        </span>
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => onFile(e.target.files?.[0])}
+        />
       </label>
       <div className="flex items-center gap-2">
         <Input
@@ -320,7 +362,12 @@ export function ImageField({
           className="h-8 text-xs"
         />
         {value && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange("")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange("")}
+          >
             Clear
           </Button>
         )}

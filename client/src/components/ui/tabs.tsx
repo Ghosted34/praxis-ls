@@ -65,7 +65,10 @@ export function TabList({
   className?: string;
 }) {
   return (
-    <RadixTabs.List aria-label={label} className={cn("mb-4 flex flex-wrap gap-x-5 border-b", className)}>
+    <RadixTabs.List
+      aria-label={label}
+      className={cn("mb-4 flex flex-wrap gap-x-5 border-b", className)}
+    >
       {tabs.map((t) => (
         <RadixTabs.Trigger
           key={t.value}
@@ -115,7 +118,11 @@ export function Tabs({
       {children}
       {tabs.map((t) =>
         t.content === undefined ? null : (
-          <RadixTabs.Content key={t.value} value={t.value} className="focus-visible:outline-none">
+          <RadixTabs.Content
+            key={t.value}
+            value={t.value}
+            className="focus-visible:outline-none"
+          >
             {t.content}
           </RadixTabs.Content>
         ),

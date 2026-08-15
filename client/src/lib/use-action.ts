@@ -146,9 +146,13 @@ export function useAction<A extends unknown[], R = unknown>(
   // Enforce the silent-reason contract at construction so a reviewer catches
   // it in dev — the ESLint rule catches it in code review; this catches
   // programmatic mistakes that route around the lint (dynamic opts objects).
-  if (opts.onError === "silent" && !opts.silentReason && process.env.NODE_ENV !== "production") {
+  if (
+    opts.onError === "silent" &&
+    !opts.silentReason &&
+    process.env.NODE_ENV !== "production"
+  ) {
     console.warn(
-      "[useAction] onError:\"silent\" requires silentReason (storage|parse|teardown). See doc/ERROR_HANDLING.md.",
+      '[useAction] onError:"silent" requires silentReason (storage|parse|teardown). See doc/ERROR_HANDLING.md.',
     );
   }
 
@@ -160,78 +164,81 @@ export function useAction<A extends unknown[], R = unknown>(
   fnRef.current = fn;
   optsRef.current = opts;
 
-  const run = React.useCallback(async (...args: A): Promise<R | undefined> => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await fnRef.current(...args);
-      const o = optsRef.current;
+  const run = React.useCallback(
+    async (...args: A): Promise<R | undefined> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await fnRef.current(...args);
+        const o = optsRef.current;
 
-      // Unwrap the envelope if the endpoint speaks it. `data` (when present)
-      // is what the caller expects; a missing `data` on `changed:true` means
-      // the endpoint is void-returning, which is fine — nothing to hand back.
-      // `payload` is typed as R because the caller's fn resolves to R; when the
-      // endpoint speaks the envelope we unwrap `data`, otherwise the whole
-      // result IS the payload. The `as R` casts are the deliberate escape
-      // valve — TS cannot see through the runtime envelope check, and R is by
-      // definition what the caller told us the payload is.
-      let payload: R = result;
-      let changed = true;
-      let idleMsg: string | undefined;
-      if (isEnvelope<R>(result)) {
-        changed = result.changed;
-        idleMsg = result.message;
-        if (result.data !== undefined) payload = result.data as R;
+        // Unwrap the envelope if the endpoint speaks it. `data` (when present)
+        // is what the caller expects; a missing `data` on `changed:true` means
+        // the endpoint is void-returning, which is fine — nothing to hand back.
+        // `payload` is typed as R because the caller's fn resolves to R; when the
+        // endpoint speaks the envelope we unwrap `data`, otherwise the whole
+        // result IS the payload. The `as R` casts are the deliberate escape
+        // valve — TS cannot see through the runtime envelope check, and R is by
+        // definition what the caller told us the payload is.
+        let payload: R = result;
+        let changed = true;
+        let idleMsg: string | undefined;
+        if (isEnvelope<R>(result)) {
+          changed = result.changed;
+          idleMsg = result.message;
+          if (result.data !== undefined) payload = result.data as R;
+        }
+
+        if (changed) {
+          const s = o.success;
+          if (s) toast.success(typeof s === "function" ? s(payload as R) : s);
+        } else if (o.idle) {
+          toast.info(o.idle);
+        } else if (idleMsg && o.success) {
+          // Endpoint said it was a no-op but the call site didn't provide idle
+          // copy. Fall back to the server's message rather than the success
+          // one — a "created" toast for a no-op would be a fresh lie.
+          toast.info(idleMsg);
+        }
+
+        o.onSuccess?.(payload as R);
+        return payload;
+      } catch (e) {
+        const o = optsRef.current;
+        const message = errMsg(e);
+        setError(message);
+
+        // The severity split. Expected failures — 4xx, CONFIG_MISSING,
+        // NETWORK_DOWN, AbortError — are the server making a decision or the
+        // network dropping, and neither is a fault to page on. Everything else
+        // is unexpected and reaches the reporter.
+        const expected = isExpectedError(e);
+        const severity: ActionSeverity = o.onError ?? "error";
+
+        if (severity !== "silent" && o.success !== undefined) {
+          // Only show a toast when the caller opted into user-visible feedback
+          // by providing `success` copy. A class D action (background best-effort)
+          // omits `success`; a failure is recorded but stays silent to the user.
+          toast.error(message);
+        }
+
+        if (!expected && severity !== "silent") {
+          reportClientError({
+            kind: "unhandledrejection",
+            message,
+            name: e instanceof Error ? e.name : "ActionError",
+            stack: e instanceof Error ? e.stack : undefined,
+            // fatal is server-side severity mapping — leave it to the sink.
+            fatal: severity === "error" || severity === "warning",
+          });
+        }
+        return undefined;
+      } finally {
+        setBusy(false);
       }
-
-      if (changed) {
-        const s = o.success;
-        if (s) toast.success(typeof s === "function" ? s(payload as R) : s);
-      } else if (o.idle) {
-        toast.info(o.idle);
-      } else if (idleMsg && o.success) {
-        // Endpoint said it was a no-op but the call site didn't provide idle
-        // copy. Fall back to the server's message rather than the success
-        // one — a "created" toast for a no-op would be a fresh lie.
-        toast.info(idleMsg);
-      }
-
-      o.onSuccess?.(payload as R);
-      return payload;
-    } catch (e) {
-      const o = optsRef.current;
-      const message = errMsg(e);
-      setError(message);
-
-      // The severity split. Expected failures — 4xx, CONFIG_MISSING,
-      // NETWORK_DOWN, AbortError — are the server making a decision or the
-      // network dropping, and neither is a fault to page on. Everything else
-      // is unexpected and reaches the reporter.
-      const expected = isExpectedError(e);
-      const severity: ActionSeverity = o.onError ?? "error";
-
-      if (severity !== "silent" && o.success !== undefined) {
-        // Only show a toast when the caller opted into user-visible feedback
-        // by providing `success` copy. A class D action (background best-effort)
-        // omits `success`; a failure is recorded but stays silent to the user.
-        toast.error(message);
-      }
-
-      if (!expected && severity !== "silent") {
-        reportClientError({
-          kind: "unhandledrejection",
-          message,
-          name: e instanceof Error ? e.name : "ActionError",
-          stack: e instanceof Error ? e.stack : undefined,
-          // fatal is server-side severity mapping — leave it to the sink.
-          fatal: severity === "error" || severity === "warning",
-        });
-      }
-      return undefined;
-    } finally {
-      setBusy(false);
-    }
-  }, [toast]);
+    },
+    [toast],
+  );
 
   const clearError = React.useCallback(() => setError(null), []);
 
@@ -251,19 +258,27 @@ export function useRowAction() {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const run = React.useCallback(async (id: string, fn: () => Promise<unknown>) => {
-    setBusyId(id);
-    setError(null);
-    try {
-      await fn();
-      return true;
-    } catch (e) {
-      setError(errMsg(e));
-      return false;
-    } finally {
-      setBusyId(null);
-    }
-  }, []);
+  const run = React.useCallback(
+    async (id: string, fn: () => Promise<unknown>) => {
+      setBusyId(id);
+      setError(null);
+      try {
+        await fn();
+        return true;
+      } catch (e) {
+        setError(errMsg(e));
+        return false;
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [],
+  );
 
-  return { busyId, error, run, clearError: React.useCallback(() => setError(null), []) };
+  return {
+    busyId,
+    error,
+    run,
+    clearError: React.useCallback(() => setError(null), []),
+  };
 }

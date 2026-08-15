@@ -177,18 +177,32 @@ export function ListPage<T extends Record<string, unknown>>({
 }) {
   // The distinction the audit says every screen misses: nothing here yet vs
   // nothing matches. Falls back to `empty` when a screen has no filters.
-  const showFilteredEmpty = filtered && rows !== null && rows.length === 0 && !!emptyFiltered;
+  const showFilteredEmpty =
+    filtered && rows !== null && rows.length === 0 && !!emptyFiltered;
 
   return (
     <PageContainer width={width}>
-      <PageHeader title={title} description={description} eyebrow={eyebrow} action={action} />
+      <PageHeader
+        title={title}
+        description={description}
+        eyebrow={eyebrow}
+        action={action}
+      />
 
       {tabs}
       {kpis}
-      {toolbar && <div className="mb-4 flex flex-wrap items-center justify-between gap-3">{toolbar}</div>}
+      {toolbar && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          {toolbar}
+        </div>
+      )}
 
       {showFilteredEmpty ? (
-        <EmptyState title={emptyFiltered.title} hint={emptyFiltered.hint} action={emptyFiltered.action} />
+        <EmptyState
+          title={emptyFiltered.title}
+          hint={emptyFiltered.hint}
+          action={emptyFiltered.action}
+        />
       ) : (
         <DataList<T>
           columns={columns}
@@ -222,7 +236,9 @@ export function ListPage<T extends Record<string, unknown>>({
 
       {/* Hidden while loading or errored: a pager under a skeleton is noise, and
           under an error message it implies there is a page 2 to reach. */}
-      {pagination && !loading && !error && rows !== null && rows.length > 0 && <Pagination {...pagination} />}
+      {pagination && !loading && !error && rows !== null && rows.length > 0 && (
+        <Pagination {...pagination} />
+      )}
 
       {children}
     </PageContainer>

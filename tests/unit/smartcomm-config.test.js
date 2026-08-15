@@ -165,7 +165,9 @@ describe("getConfig redaction", () => {
 });
 
 describe("emailTest validator (POST /config/email/test)", () => {
-  const { schemas } = require("../../src/modules/smartcomm/smartcomm.validator");
+  const {
+    schemas,
+  } = require("../../src/modules/smartcomm/smartcomm.validator");
 
   // Regression: the "Test" button on the shared SMTP login card posts no body,
   // and the service defaults purpose to NOTIFICATIONS. The validator previously

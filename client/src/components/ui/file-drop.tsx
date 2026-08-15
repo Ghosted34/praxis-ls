@@ -30,7 +30,9 @@ function fileSize(bytes: number): string {
 }
 
 function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
+  return (
+    file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name)
+  );
 }
 
 function isPdfFile(file: File): boolean {
@@ -97,7 +99,10 @@ export function FileDrop({
   }, [file, isImage]);
 
   const canPreview = isImage || isPdf;
-  const percent = uploadProgress == null ? null : Math.max(0, Math.min(100, Math.round(uploadProgress)));
+  const percent =
+    uploadProgress == null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(uploadProgress)));
 
   function previewBody(full = false) {
     if (!file) return null;
@@ -106,24 +111,39 @@ export function FileDrop({
         <img
           src={imageUrl}
           alt="Selected image preview"
-          className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"}
+          className={
+            full
+              ? "max-h-[70vh] max-w-full rounded-lg object-contain"
+              : "h-28 w-full rounded-md object-contain"
+          }
         />
       );
     }
     if (isPdf) return <PdfPreview file={file} full={full} />;
-    return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
+    return (
+      <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">
+        Preview unavailable for this file type.
+      </div>
+    );
   }
 
   return (
     <div className="space-y-1.5">
-      {label && <span className="block text-sm font-medium text-foreground">{label}</span>}
+      {label && (
+        <span className="block text-sm font-medium text-foreground">
+          {label}
+        </span>
+      )}
       {/* Drag-and-drop layered over a real <label>+<input type="file">, which is
           what keyboard and AT users activate. The drop target is a pointer
           shortcut; it does not replace the control. */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <label
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); onPick(e.dataTransfer.files?.[0] ?? null); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          onPick(e.dataTransfer.files?.[0] ?? null);
+        }}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-input px-4 py-6 text-center transition-colors hover:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] hover:bg-accent/40",
           disabled && "pointer-events-none opacity-60",
@@ -132,13 +152,20 @@ export function FileDrop({
         {file ? (
           <span className="flex flex-wrap items-center justify-center gap-2 text-sm">
             <span className="font-medium text-foreground">{file.name}</span>
-            <span className="micro text-muted-foreground">{fileSize(file.size)}</span>
+            <span className="micro text-muted-foreground">
+              {fileSize(file.size)}
+            </span>
           </span>
         ) : (
           <>
-            <UploadIcon width={22} height={22} className="text-muted-foreground" />
+            <UploadIcon
+              width={22}
+              height={22}
+              className="text-muted-foreground"
+            />
             <span className="text-sm text-foreground">
-              Drop a file here, or <span className="text-primary-ink underline">browse</span>
+              Drop a file here, or{" "}
+              <span className="text-primary-ink underline">browse</span>
             </span>
           </>
         )}
@@ -149,14 +176,22 @@ export function FileDrop({
           accept={accept}
           disabled={disabled}
           aria-label={label || "File"}
-          onChange={(e) => { const f = e.target.files?.[0] ?? null; e.target.value = ""; onPick(f); }}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            e.target.value = "";
+            onPick(f);
+          }}
         />
       </label>
       {file && canPreview && (
         <div className="rounded-lg border bg-muted/20 p-2">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="micro font-medium text-foreground">Preview</span>
-            <button type="button" className="micro text-primary-ink underline" onClick={() => setPreviewOpen(true)}>
+            <button
+              type="button"
+              className="micro text-primary-ink underline"
+              onClick={() => setPreviewOpen(true)}
+            >
               Expand preview
             </button>
           </div>
@@ -169,20 +204,43 @@ export function FileDrop({
             <span>{percent === 100 ? "Upload complete" : "Uploading…"}</span>
             <span className="num">{percent}%</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+          <div
+            className="h-1.5 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-label="Upload progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+          >
+            <div
+              className="h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${percent}%` }}
+            />
           </div>
         </div>
       )}
-      {uploadSuccess && <p className="text-xs text-ok" role="status">✓ Upload successful</p>}
+      {uploadSuccess && (
+        <p className="text-xs text-ok" role="status">
+          ✓ Upload successful
+        </p>
+      )}
       {file && (
-        <button type="button" className="micro text-primary-ink underline" onClick={() => onPick(null)}>
+        <button
+          type="button"
+          className="micro text-primary-ink underline"
+          onClick={() => onPick(null)}
+        >
           Remove file
         </button>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       {previewOpen && file && canPreview && (
-        <Modal open onClose={() => setPreviewOpen(false)} title="Document preview" size="xl">
+        <Modal
+          open
+          onClose={() => setPreviewOpen(false)}
+          title="Document preview"
+          size="xl"
+        >
           {previewBody(true)}
         </Modal>
       )}

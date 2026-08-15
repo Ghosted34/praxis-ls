@@ -60,7 +60,10 @@ export type ClientErrorReport = {
 /** Same normalisation as the server, so the two agree on what "identical" means. */
 function fingerprint(r: ClientErrorReport): string {
   const msg = r.message
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<uuid>")
+    .replace(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      "<uuid>",
+    )
     .replace(/\b\d+\b/g, "<n>")
     .slice(0, 200);
   const frame = (r.stack || "").split("\n")[1]?.trim().slice(0, 120) ?? "";
@@ -73,8 +76,14 @@ function send(body: ClientErrorReport): void {
 
     // A crash is frequently followed by a reload or a tab close. sendBeacon is
     // the only transport guaranteed to survive that; a plain fetch is cancelled.
-    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-      const ok = navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: "application/json" }));
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.sendBeacon === "function"
+    ) {
+      const ok = navigator.sendBeacon(
+        ENDPOINT,
+        new Blob([payload], { type: "application/json" }),
+      );
       if (ok) return;
     }
     void fetch(ENDPOINT, {
@@ -104,8 +113,11 @@ export function reportClientError(r: ClientErrorReport): void {
 
     send({
       ...r,
-      route: r.route ?? (typeof location !== "undefined" ? location.pathname : undefined),
-      url: r.url ?? (typeof location !== "undefined" ? location.href : undefined),
+      route:
+        r.route ??
+        (typeof location !== "undefined" ? location.pathname : undefined),
+      url:
+        r.url ?? (typeof location !== "undefined" ? location.href : undefined),
       stack: r.stack?.slice(0, 4000),
       componentStack: r.componentStack?.slice(0, 2000),
     });

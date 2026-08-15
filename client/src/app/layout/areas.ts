@@ -57,7 +57,12 @@ export type Area = {
  */
 export const AREAS: Area[] = [
   { key: "tower", label: "Control Tower", basePath: "", to: "/", sections: [] },
-  { key: "workspace", label: "My workspace", basePath: "/workspace", sections: [] },
+  {
+    key: "workspace",
+    label: "My workspace",
+    basePath: "/workspace",
+    sections: [],
+  },
   /**
    * Praxis AI — the assistant's workspace.
    *
@@ -79,7 +84,12 @@ export const AREAS: Area[] = [
    */
   { key: "ai", label: "Praxis AI", basePath: "/ai", sections: [] },
   { key: "comms", label: "Smart Comms", basePath: "/comms", sections: [] },
-  { key: "support", label: "Support & feedback", basePath: "/support", sections: [] },
+  {
+    key: "support",
+    label: "Support & feedback",
+    basePath: "/support",
+    sections: [],
+  },
 
   {
     key: "sales",
@@ -302,7 +312,11 @@ export const AREAS: Area[] = [
 const BY_PATH = new Map(AREAS.map((a) => [a.basePath, a]));
 
 /** One hub tab: a section, plus the page that renders it. */
-export type HubTab = { key: string; label: string; Component: React.ComponentType };
+export type HubTab = {
+  key: string;
+  label: string;
+  Component: React.ComponentType;
+};
 
 /**
  * Build a hub's tabs from the shared section list plus this hub's page
@@ -317,7 +331,10 @@ export type HubTab = { key: string; label: string; Component: React.ComponentTyp
  * only — a module that mixes the two breaks React Fast Refresh, which the lint
  * config reports.
  */
-export function hubTabs(basePath: string, components: Record<string, React.ComponentType>): HubTab[] {
+export function hubTabs(
+  basePath: string,
+  components: Record<string, React.ComponentType>,
+): HubTab[] {
   return sectionsOf(basePath)
     .filter((s) => !!components[s.key])
     .map((s) => ({ key: s.key, label: s.label, Component: components[s.key] }));
@@ -353,10 +370,15 @@ export function areaForPath(pathname: string): Area | undefined {
   let best: Area | undefined;
   for (const a of AREAS) {
     if (!a.basePath) continue;
-    if (pathname !== a.basePath && !pathname.startsWith(a.basePath + "/")) continue;
+    if (pathname !== a.basePath && !pathname.startsWith(a.basePath + "/"))
+      continue;
     if (!best || a.basePath.length > best.basePath.length) best = a;
   }
   if (best) return best;
   // A section routed outside its area (Governance's four) — match by route.
-  return AREAS.find((a) => a.sections.some((s) => s.to && (pathname === s.to || pathname.startsWith(s.to + "/"))));
+  return AREAS.find((a) =>
+    a.sections.some(
+      (s) => s.to && (pathname === s.to || pathname.startsWith(s.to + "/")),
+    ),
+  );
 }

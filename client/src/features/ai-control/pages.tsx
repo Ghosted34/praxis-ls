@@ -24,7 +24,15 @@ type GovUser = { user_id: string; full_name?: string | null; email: string };
 
 const shell = pageShell.wide;
 
-function Toggle({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: () => void }) {
+function Toggle({
+  on,
+  busy,
+  onClick,
+}: {
+  on: boolean;
+  busy?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -33,81 +41,222 @@ function Toggle({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: (
       aria-checked={on}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${on ? "bg-primary" : "bg-[rgb(var(--ink-3)/0.3)]"} ${busy ? "opacity-60" : ""}`}
     >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? "translate-x-6" : "translate-x-1"}`}
+      />
     </button>
   );
 }
 
 /* ═══════════════════════ Features (flags) ═══════════════════════ */
 export function AiFeaturesPage() {
-  const { rows, error, loading, reload } = useList<api.FeatureFlag>("/ai/governance/features");
+  const { rows, error, loading, reload } = useList<api.FeatureFlag>(
+    "/ai/governance/features",
+  );
   const [busy, setBusy] = React.useState<string | null>(null);
   const flags = rows || [];
 
   async function toggle(f: api.FeatureFlag) {
     setBusy(f.feature_key);
-    try { await api.setFeature(f.feature_key, { is_enabled: !f.is_enabled }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
+    try {
+      await api.setFeature(f.feature_key, { is_enabled: !f.is_enabled });
+      reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusy(null);
+    }
   }
 
   const columns: Column<api.FeatureFlag>[] = [
-    { key: "feature_key", label: "Feature", render: (f) => <span className="font-medium text-foreground">{f.feature_key}</span> },
-    { key: "description", label: "What it controls", render: (f) => <span className="text-muted-foreground">{f.description || "—"}</span> },
-    { key: "model", label: "Model", render: (f) => (f.default_model ? <span className="num text-muted-foreground">{f.default_provider ? `${f.default_provider} · ` : ""}{f.default_model}</span> : "—") },
-    { key: "state", label: "State", render: (f) => <Pill tone={f.is_enabled ? "ok" : "mute"}>{f.is_enabled ? "On" : "Off"}</Pill> },
-    { key: "_a", label: "", render: (f) => <div className="flex justify-end"><Toggle on={f.is_enabled} busy={busy === f.feature_key} onClick={() => toggle(f)} /></div> },
+    {
+      key: "feature_key",
+      label: "Feature",
+      render: (f) => (
+        <span className="font-medium text-foreground">{f.feature_key}</span>
+      ),
+    },
+    {
+      key: "description",
+      label: "What it controls",
+      render: (f) => (
+        <span className="text-muted-foreground">{f.description || "—"}</span>
+      ),
+    },
+    {
+      key: "model",
+      label: "Model",
+      render: (f) =>
+        f.default_model ? (
+          <span className="num text-muted-foreground">
+            {f.default_provider ? `${f.default_provider} · ` : ""}
+            {f.default_model}
+          </span>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "state",
+      label: "State",
+      render: (f) => (
+        <Pill tone={f.is_enabled ? "ok" : "mute"}>
+          {f.is_enabled ? "On" : "Off"}
+        </Pill>
+      ),
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (f) => (
+        <div className="flex justify-end">
+          <Toggle
+            on={f.is_enabled}
+            busy={busy === f.feature_key}
+            onClick={() => toggle(f)}
+          />
+        </div>
+      ),
+    },
   ];
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Feature flags" description="Turn AI capabilities on or off per tenant — the switch every Praxis affordance obeys." />
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Feature flags"
+        description="Turn AI capabilities on or off per tenant — the switch every Praxis affordance obeys."
+      />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Features" value={num(flags.length)} />
-        <KpiTile label="Enabled" value={num(flags.filter((f) => f.is_enabled).length)} />
-        <KpiTile label="Off" value={num(flags.filter((f) => !f.is_enabled).length)} />
+        <KpiTile
+          label="Enabled"
+          value={num(flags.filter((f) => f.is_enabled).length)}
+        />
+        <KpiTile
+          label="Off"
+          value={num(flags.filter((f) => !f.is_enabled).length)}
+        />
       </KpiRow>
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(f) => f.feature_key} empty={{ title: "No feature flags", hint: "Flags seed on tenant bootstrap." }} />
+      <DataList
+        columns={columns}
+        rows={rows}
+        error={error}
+        loading={loading}
+        rowKey={(f) => f.feature_key}
+        empty={{
+          title: "No feature flags",
+          hint: "Flags seed on tenant bootstrap.",
+        }}
+      />
     </section>
   );
 }
 
 /* ═══════════════════════ Access grants ═══════════════════════ */
-function GrantForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function GrantForm({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { rows: users } = useList<GovUser>("/users");
-  const { rows: features } = useList<api.FeatureFlag>("/ai/governance/features");
-  const [f, setF] = React.useState({ user_id: "", feature_key: "", monthly_cap_xaf: "" });
+  const { rows: features } = useList<api.FeatureFlag>(
+    "/ai/governance/features",
+  );
+  const [f, setF] = React.useState({
+    user_id: "",
+    feature_key: "",
+    monthly_cap_xaf: "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
     try {
-      await api.grantAccess({ user_id: f.user_id, feature_key: f.feature_key, monthly_cap_xaf: f.monthly_cap_xaf === "" ? undefined : Number(f.monthly_cap_xaf) });
-      onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+      await api.grantAccess({
+        user_id: f.user_id,
+        feature_key: f.feature_key,
+        monthly_cap_xaf:
+          f.monthly_cap_xaf === "" ? undefined : Number(f.monthly_cap_xaf),
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <Modal open onClose={onClose} title="Grant AI access" description="Give a user access to a feature, optionally with a personal monthly cap.">
+    <Modal
+      open
+      onClose={onClose}
+      title="Grant AI access"
+      description="Give a user access to a feature, optionally with a personal monthly cap."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="User" required>
-            <Select value={f.user_id} onChange={(e) => set("user_id", e.target.value)}>
+            <Select
+              value={f.user_id}
+              onChange={(e) => set("user_id", e.target.value)}
+            >
               <option value="">—</option>
-              {(users || []).map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name || u.email}</option>)}
+              {(users || []).map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.full_name || u.email}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Feature" required>
-            <Select value={f.feature_key} onChange={(e) => set("feature_key", e.target.value)}>
+            <Select
+              value={f.feature_key}
+              onChange={(e) => set("feature_key", e.target.value)}
+            >
               <option value="">—</option>
-              {(features || []).map((x) => <option key={x.feature_key} value={x.feature_key}>{x.feature_key}</option>)}
+              {(features || []).map((x) => (
+                <option key={x.feature_key} value={x.feature_key}>
+                  {x.feature_key}
+                </option>
+              ))}
             </Select>
           </Field>
-          <Field label="Monthly cap (XAF)" className="sm:col-span-2"><Input type="number" min="0" step="1" className="num text-right" value={f.monthly_cap_xaf} onChange={(e) => set("monthly_cap_xaf", e.target.value)} placeholder="Optional" /></Field>
+          <Field label="Monthly cap (XAF)" className="sm:col-span-2">
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              className="num text-right"
+              value={f.monthly_cap_xaf}
+              onChange={(e) => set("monthly_cap_xaf", e.target.value)}
+              placeholder="Optional"
+            />
+          </Field>
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={!f.user_id || !f.feature_key || busy}>Grant access</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={!f.user_id || !f.feature_key || busy}
+          >
+            Grant access
+          </Button>
         </div>
       </form>
     </Modal>
@@ -115,34 +264,105 @@ function GrantForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
 }
 
 export function AiGrantsPage() {
-  const { rows, error, loading, reload } = useList<api.Grant>("/ai/governance/grants");
+  const { rows, error, loading, reload } = useList<api.Grant>(
+    "/ai/governance/grants",
+  );
   const { rows: users } = useList<GovUser>("/users");
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const userName = React.useMemo(() => {
     const m: Record<string, string> = {};
-    (users || []).forEach((u) => { m[String(u.user_id)] = u.full_name || u.email; });
+    (users || []).forEach((u) => {
+      m[String(u.user_id)] = u.full_name || u.email;
+    });
     return m;
   }, [users]);
 
   async function revoke(g: api.Grant) {
     setBusy(g.user_id + g.feature_key);
-    try { await api.revokeAccess({ user_id: g.user_id, feature_key: g.feature_key }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
+    try {
+      await api.revokeAccess({
+        user_id: g.user_id,
+        feature_key: g.feature_key,
+      });
+      reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusy(null);
+    }
   }
 
   const columns: Column<api.Grant>[] = [
-    { key: "user", label: "User", render: (g) => <span className="font-medium text-foreground">{userName[g.user_id] || g.user_id.slice(0, 8)}</span> },
-    { key: "feature_key", label: "Feature", render: (g) => <Pill tone="mute">{g.feature_key}</Pill> },
-    { key: "cap", label: "Monthly cap", className: "num text-right", render: (g) => (g.monthly_cap_xaf != null ? money(g.monthly_cap_xaf) : "—") },
-    { key: "state", label: "State", render: (g) => <Pill tone={g.revoked_at ? "bad" : "ok"}>{g.revoked_at ? "Revoked" : "Active"}</Pill> },
-    { key: "_a", label: "", render: (g) => (!g.revoked_at ? <div className="flex justify-end"><Button size="sm" variant="outline" loading={busy === g.user_id + g.feature_key} onClick={() => revoke(g)}>Revoke</Button></div> : null) },
+    {
+      key: "user",
+      label: "User",
+      render: (g) => (
+        <span className="font-medium text-foreground">
+          {userName[g.user_id] || g.user_id.slice(0, 8)}
+        </span>
+      ),
+    },
+    {
+      key: "feature_key",
+      label: "Feature",
+      render: (g) => <Pill tone="mute">{g.feature_key}</Pill>,
+    },
+    {
+      key: "cap",
+      label: "Monthly cap",
+      className: "num text-right",
+      render: (g) =>
+        g.monthly_cap_xaf != null ? money(g.monthly_cap_xaf) : "—",
+    },
+    {
+      key: "state",
+      label: "State",
+      render: (g) => (
+        <Pill tone={g.revoked_at ? "bad" : "ok"}>
+          {g.revoked_at ? "Revoked" : "Active"}
+        </Pill>
+      ),
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (g) =>
+        !g.revoked_at ? (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              loading={busy === g.user_id + g.feature_key}
+              onClick={() => revoke(g)}
+            >
+              Revoke
+            </Button>
+          </div>
+        ) : null,
+    },
   ];
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Access grants" description="Per-user access to AI features (the feature flag must also be on)." action={<Button onClick={() => setOpen(true)}>Grant access</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Access grants"
+        description="Per-user access to AI features (the feature flag must also be on)."
+        action={<Button onClick={() => setOpen(true)}>Grant access</Button>}
+      />
       <HubTabs />
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(g) => g.grant_id || g.user_id + g.feature_key} empty={{ title: "No grants", hint: "Grant a user access to an AI feature." }} />
+      <DataList
+        columns={columns}
+        rows={rows}
+        error={error}
+        loading={loading}
+        rowKey={(g) => g.grant_id || g.user_id + g.feature_key}
+        empty={{
+          title: "No grants",
+          hint: "Grant a user access to an AI feature.",
+        }}
+      />
       {open && <GrantForm onClose={() => setOpen(false)} onSaved={reload} />}
     </section>
   );
@@ -153,55 +373,142 @@ export function AiBudgetPage() {
   const b = useResource(() => api.getBudget(), []);
   const [open, setOpen] = React.useState(false);
   const d = b.data;
-  const stateTone: Tone = d?.state === "BLOCK" ? "bad" : d?.state === "WARN" ? "warn" : "ok";
+  const stateTone: Tone =
+    d?.state === "BLOCK" ? "bad" : d?.state === "WARN" ? "warn" : "ok";
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Spend caps" description="Monthly AI budget — soft cap warns, hard cap blocks all AI calls." action={<Button onClick={() => setOpen(true)}>Set budget</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Spend caps"
+        description="Monthly AI budget — soft cap warns, hard cap blocks all AI calls."
+        action={<Button onClick={() => setOpen(true)}>Set budget</Button>}
+      />
       <HubTabs />
-      {b.loading ? <div className="py-8 text-center micro">Loading…</div> : b.error ? <ErrorState message={b.error} /> : (
+      {b.loading ? (
+        <div className="py-8 text-center micro">Loading…</div>
+      ) : b.error ? (
+        <ErrorState message={b.error} />
+      ) : (
         <KpiRow>
           <KpiTile label="Spent this period" value={money(d?.spent_xaf)} />
           <KpiTile label="Soft cap" value={money(d?.soft_cap_xaf)} />
           <KpiTile label="Hard cap" value={money(d?.hard_cap_xaf)} />
-          <KpiTile label="State" value={<Pill tone={stateTone}>{d?.state || "OK"}</Pill>} />
+          <KpiTile
+            label="State"
+            value={<Pill tone={stateTone}>{d?.state || "OK"}</Pill>}
+          />
         </KpiRow>
       )}
-      {d?.period_start && <p className="micro">Period {dateFmt(d.period_start)} → {dateFmt(d.period_end)}</p>}
-      {open && <BudgetForm current={d} onClose={() => setOpen(false)} onSaved={() => b.reload()} />}
+      {d?.period_start && (
+        <p className="micro">
+          Period {dateFmt(d.period_start)} → {dateFmt(d.period_end)}
+        </p>
+      )}
+      {open && (
+        <BudgetForm
+          current={d}
+          onClose={() => setOpen(false)}
+          onSaved={() => b.reload()}
+        />
+      )}
     </section>
   );
 }
 
-function BudgetForm({ current, onClose, onSaved }: { current?: api.Budget | null; onClose: () => void; onSaved: () => void }) {
+function BudgetForm({
+  current,
+  onClose,
+  onSaved,
+}: {
+  current?: api.Budget | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [f, setF] = React.useState({
     period_start: current?.period_start || todayISO(),
     period_end: current?.period_end || todayISO(),
-    soft_cap_xaf: current?.soft_cap_xaf != null ? String(current.soft_cap_xaf) : "",
-    hard_cap_xaf: current?.hard_cap_xaf != null ? String(current.hard_cap_xaf) : "",
+    soft_cap_xaf:
+      current?.soft_cap_xaf != null ? String(current.soft_cap_xaf) : "",
+    hard_cap_xaf:
+      current?.hard_cap_xaf != null ? String(current.hard_cap_xaf) : "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
     try {
-      await api.setBudget({ period_start: f.period_start, period_end: f.period_end, soft_cap_xaf: Number(f.soft_cap_xaf), hard_cap_xaf: Number(f.hard_cap_xaf) });
-      onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+      await api.setBudget({
+        period_start: f.period_start,
+        period_end: f.period_end,
+        soft_cap_xaf: Number(f.soft_cap_xaf),
+        hard_cap_xaf: Number(f.hard_cap_xaf),
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <Modal open onClose={onClose} title="Set AI budget" description="Caps apply to the whole tenant's AI spend for the period.">
+    <Modal
+      open
+      onClose={onClose}
+      title="Set AI budget"
+      description="Caps apply to the whole tenant's AI spend for the period."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Period start" required><Input type="date" value={f.period_start} onChange={(e) => set("period_start", e.target.value)} /></Field>
-          <Field label="Period end" required><Input type="date" value={f.period_end} onChange={(e) => set("period_end", e.target.value)} /></Field>
-          <Field label="Soft cap (XAF)" required><Input type="number" min="0" className="num text-right" value={f.soft_cap_xaf} onChange={(e) => set("soft_cap_xaf", e.target.value)} /></Field>
-          <Field label="Hard cap (XAF)" required><Input type="number" min="0" className="num text-right" value={f.hard_cap_xaf} onChange={(e) => set("hard_cap_xaf", e.target.value)} /></Field>
+          <Field label="Period start" required>
+            <Input
+              type="date"
+              value={f.period_start}
+              onChange={(e) => set("period_start", e.target.value)}
+            />
+          </Field>
+          <Field label="Period end" required>
+            <Input
+              type="date"
+              value={f.period_end}
+              onChange={(e) => set("period_end", e.target.value)}
+            />
+          </Field>
+          <Field label="Soft cap (XAF)" required>
+            <Input
+              type="number"
+              min="0"
+              className="num text-right"
+              value={f.soft_cap_xaf}
+              onChange={(e) => set("soft_cap_xaf", e.target.value)}
+            />
+          </Field>
+          <Field label="Hard cap (XAF)" required>
+            <Input
+              type="number"
+              min="0"
+              className="num text-right"
+              value={f.hard_cap_xaf}
+              onChange={(e) => set("hard_cap_xaf", e.target.value)}
+            />
+          </Field>
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Save budget</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy} disabled={busy}>
+            Save budget
+          </Button>
         </div>
       </form>
     </Modal>
@@ -209,32 +516,93 @@ function BudgetForm({ current, onClose, onSaved }: { current?: api.Budget | null
 }
 
 /* ═══════════════════════ Vendors / keys ═══════════════════════ */
-function VendorKeyForm({ vendor, onClose, onSaved }: { vendor: api.Vendor; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = React.useState({ api_key: "", default_model: vendor.default_model || "", endpoint_url: vendor.endpoint_url || "" });
+function VendorKeyForm({
+  vendor,
+  onClose,
+  onSaved,
+}: {
+  vendor: api.Vendor;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [f, setF] = React.useState({
+    api_key: "",
+    default_model: vendor.default_model || "",
+    endpoint_url: vendor.endpoint_url || "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
     try {
-      await api.setVendor(vendor.vendor, { api_key: f.api_key || undefined, default_model: f.default_model || undefined, endpoint_url: f.endpoint_url || undefined });
-      onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+      await api.setVendor(vendor.vendor, {
+        api_key: f.api_key || undefined,
+        default_model: f.default_model || undefined,
+        endpoint_url: f.endpoint_url || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <Modal open onClose={onClose} title={`${vendor.display_name || vendor.vendor} · credentials`} description="The API key is encrypted at rest and never returned to the browser.">
+    <Modal
+      open
+      onClose={onClose}
+      title={`${vendor.display_name || vendor.vendor} · credentials`}
+      description="The API key is encrypted at rest and never returned to the browser."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="API key" className="sm:col-span-2" hint={vendor.has_key ? "A key is already set — leave blank to keep it." : "Paste the provider API key."}>
-            <Input type="password" value={f.api_key} onChange={(e) => set("api_key", e.target.value)} placeholder={vendor.has_key ? "•••••••• (set)" : "sk-…"} />
+          <Field
+            label="API key"
+            className="sm:col-span-2"
+            hint={
+              vendor.has_key
+                ? "A key is already set — leave blank to keep it."
+                : "Paste the provider API key."
+            }
+          >
+            <Input
+              type="password"
+              value={f.api_key}
+              onChange={(e) => set("api_key", e.target.value)}
+              placeholder={vendor.has_key ? "•••••••• (set)" : "sk-…"}
+            />
           </Field>
-          <Field label="Default model"><Input value={f.default_model} onChange={(e) => set("default_model", e.target.value)} /></Field>
-          <Field label="Endpoint URL"><Input value={f.endpoint_url} onChange={(e) => set("endpoint_url", e.target.value)} placeholder="https://…" /></Field>
+          <Field label="Default model">
+            <Input
+              value={f.default_model}
+              onChange={(e) => set("default_model", e.target.value)}
+            />
+          </Field>
+          <Field label="Endpoint URL">
+            <Input
+              value={f.endpoint_url}
+              onChange={(e) => set("endpoint_url", e.target.value)}
+              placeholder="https://…"
+            />
+          </Field>
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Save</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy} disabled={busy}>
+            Save
+          </Button>
         </div>
       </form>
     </Modal>
@@ -246,58 +614,189 @@ function VendorKeyForm({ vendor, onClose, onSaved }: { vendor: api.Vendor; onClo
 // Vendor ids MUST match what the runtime resolves (embeddings.service uses
 // "embeddings"; llm.service PRIMARY is "deepseek"; ai-vision uses "gemini";
 // ai-transcribe uses "groq"). A DB row for the right id overrides the .env key.
-const VENDOR_PRESETS: { vendor: string; display_name: string; endpoint_url: string; default_model: string; note: string }[] = [
-  { vendor: "embeddings", display_name: "Embeddings (OpenAI)", endpoint_url: "https://api.openai.com/v1", default_model: "text-embedding-3-small", note: "pgvector recall — fixes the embeddings 401" },
-  { vendor: "deepseek", display_name: "DeepSeek", endpoint_url: "https://api.deepseek.com/v1", default_model: "deepseek-chat", note: "assistant / chat (primary)" },
-  { vendor: "gemini", display_name: "Google Gemini", endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai", default_model: "gemini-1.5-flash", note: "document vision" },
-  { vendor: "groq", display_name: "Groq", endpoint_url: "https://api.groq.com/openai/v1", default_model: "whisper-large-v3", note: "voice-to-text" },
+const VENDOR_PRESETS: {
+  vendor: string;
+  display_name: string;
+  endpoint_url: string;
+  default_model: string;
+  note: string;
+}[] = [
+  {
+    vendor: "embeddings",
+    display_name: "Embeddings (OpenAI)",
+    endpoint_url: "https://api.openai.com/v1",
+    default_model: "text-embedding-3-small",
+    note: "pgvector recall — fixes the embeddings 401",
+  },
+  {
+    vendor: "deepseek",
+    display_name: "DeepSeek",
+    endpoint_url: "https://api.deepseek.com/v1",
+    default_model: "deepseek-chat",
+    note: "assistant / chat (primary)",
+  },
+  {
+    vendor: "gemini",
+    display_name: "Google Gemini",
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+    default_model: "gemini-1.5-flash",
+    note: "document vision",
+  },
+  {
+    vendor: "groq",
+    display_name: "Groq",
+    endpoint_url: "https://api.groq.com/openai/v1",
+    default_model: "whisper-large-v3",
+    note: "voice-to-text",
+  },
 ];
 
-function AddVendorForm({ existing, onClose, onSaved }: { existing: string[]; onClose: () => void; onSaved: () => void }) {
+function AddVendorForm({
+  existing,
+  onClose,
+  onSaved,
+}: {
+  existing: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [preset, setPreset] = React.useState("openai");
   const p0 = VENDOR_PRESETS[0];
-  const [f, setF] = React.useState({ vendor: p0.vendor, display_name: p0.display_name, endpoint_url: p0.endpoint_url, default_model: p0.default_model, api_key: "" });
+  const [f, setF] = React.useState({
+    vendor: p0.vendor,
+    display_name: p0.display_name,
+    endpoint_url: p0.endpoint_url,
+    default_model: p0.default_model,
+    api_key: "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   function applyPreset(id: string) {
     setPreset(id);
     const p = VENDOR_PRESETS.find((x) => x.vendor === id);
-    setF(p
-      ? { vendor: p.vendor, display_name: p.display_name, endpoint_url: p.endpoint_url, default_model: p.default_model, api_key: "" }
-      : { vendor: "", display_name: "", endpoint_url: "", default_model: "", api_key: "" });
+    setF(
+      p
+        ? {
+            vendor: p.vendor,
+            display_name: p.display_name,
+            endpoint_url: p.endpoint_url,
+            default_model: p.default_model,
+            api_key: "",
+          }
+        : {
+            vendor: "",
+            display_name: "",
+            endpoint_url: "",
+            default_model: "",
+            api_key: "",
+          },
+    );
   }
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const id = f.vendor.trim().toLowerCase();
   const dup = existing.includes(id);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
     try {
-      await api.setVendor(id, { display_name: f.display_name || undefined, endpoint_url: f.endpoint_url || undefined, default_model: f.default_model || undefined, api_key: f.api_key || undefined });
-      onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+      await api.setVendor(id, {
+        display_name: f.display_name || undefined,
+        endpoint_url: f.endpoint_url || undefined,
+        default_model: f.default_model || undefined,
+        api_key: f.api_key || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <Modal open onClose={onClose} title="Add AI vendor" description="Register a provider + its API key (encrypted at rest). OpenAI-compatible endpoints.">
+    <Modal
+      open
+      onClose={onClose}
+      title="Add AI vendor"
+      description="Register a provider + its API key (encrypted at rest). OpenAI-compatible endpoints."
+    >
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Provider">
           <Select value={preset} onChange={(e) => applyPreset(e.target.value)}>
-            {VENDOR_PRESETS.map((p) => <option key={p.vendor} value={p.vendor}>{p.display_name} — {p.note}</option>)}
+            {VENDOR_PRESETS.map((p) => (
+              <option key={p.vendor} value={p.vendor}>
+                {p.display_name} — {p.note}
+              </option>
+            ))}
             <option value="custom">Custom…</option>
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Vendor id" required hint={dup ? "Already added — this will overwrite it." : "lowercase key, e.g. openai"}>
-            <Input value={f.vendor} onChange={(e) => set("vendor", e.target.value)} disabled={preset !== "custom"} />
+          <Field
+            label="Vendor id"
+            required
+            hint={
+              dup
+                ? "Already added — this will overwrite it."
+                : "lowercase key, e.g. openai"
+            }
+          >
+            <Input
+              value={f.vendor}
+              onChange={(e) => set("vendor", e.target.value)}
+              disabled={preset !== "custom"}
+            />
           </Field>
-          <Field label="Display name"><Input value={f.display_name} onChange={(e) => set("display_name", e.target.value)} /></Field>
+          <Field label="Display name">
+            <Input
+              value={f.display_name}
+              onChange={(e) => set("display_name", e.target.value)}
+            />
+          </Field>
         </div>
-        <Field label="Endpoint URL" hint="OpenAI-compatible base; the app appends /embeddings or /chat/completions."><Input value={f.endpoint_url} onChange={(e) => set("endpoint_url", e.target.value)} placeholder="https://api.openai.com/v1" /></Field>
-        <Field label="Default model"><Input value={f.default_model} onChange={(e) => set("default_model", e.target.value)} placeholder="text-embedding-3-small" /></Field>
-        <Field label="API key" required><Input type="password" value={f.api_key} onChange={(e) => set("api_key", e.target.value)} placeholder="sk-…" /></Field>
+        <Field
+          label="Endpoint URL"
+          hint="OpenAI-compatible base; the app appends /embeddings or /chat/completions."
+        >
+          <Input
+            value={f.endpoint_url}
+            onChange={(e) => set("endpoint_url", e.target.value)}
+            placeholder="https://api.openai.com/v1"
+          />
+        </Field>
+        <Field label="Default model">
+          <Input
+            value={f.default_model}
+            onChange={(e) => set("default_model", e.target.value)}
+            placeholder="text-embedding-3-small"
+          />
+        </Field>
+        <Field label="API key" required>
+          <Input
+            type="password"
+            value={f.api_key}
+            onChange={(e) => set("api_key", e.target.value)}
+            placeholder="sk-…"
+          />
+        </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={!id || !f.api_key || busy}>Add vendor</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={!id || !f.api_key || busy}
+          >
+            Add vendor
+          </Button>
         </div>
       </form>
     </Modal>
@@ -305,7 +804,9 @@ function AddVendorForm({ existing, onClose, onSaved }: { existing: string[]; onC
 }
 
 export function AiVendorsPage() {
-  const { rows, error, loading, reload } = useList<api.Vendor>("/ai/governance/vendors");
+  const { rows, error, loading, reload } = useList<api.Vendor>(
+    "/ai/governance/vendors",
+  );
   const [editing, setEditing] = React.useState<api.Vendor | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [testing, setTesting] = React.useState<string | null>(null);
@@ -313,59 +814,197 @@ export function AiVendorsPage() {
 
   async function toggleActive(v: api.Vendor) {
     setBusy(v.vendor);
-    try { await api.setVendor(v.vendor, { is_active: !v.is_active }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
+    try {
+      await api.setVendor(v.vendor, { is_active: !v.is_active });
+      reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusy(null);
+    }
   }
   async function test(v: api.Vendor) {
     setTesting(v.vendor);
-    try { const r = await api.testVendor(v.vendor); alert(r.ok ? "Connection OK" : `Failed: ${r.message || "unknown"}`); } catch (e) { alert(errMsg(e)); } finally { setTesting(null); }
+    try {
+      const r = await api.testVendor(v.vendor);
+      alert(r.ok ? "Connection OK" : `Failed: ${r.message || "unknown"}`);
+    } catch (e) {
+      alert(errMsg(e));
+    } finally {
+      setTesting(null);
+    }
   }
 
   const columns: Column<api.Vendor>[] = [
-    { key: "vendor", label: "Vendor", render: (v) => <span className="font-medium text-foreground">{v.display_name || v.vendor}</span> },
-    { key: "model", label: "Model", render: (v) => <span className="num text-muted-foreground">{v.current_model || v.default_model || "—"}</span> },
-    { key: "key", label: "Key", render: (v) => <Pill tone={v.has_key ? "ok" : "warn"}>{v.has_key ? "Set" : "Missing"}</Pill> },
-    { key: "active", label: "Active", render: (v) => <Toggle on={!!v.is_active} busy={busy === v.vendor} onClick={() => toggleActive(v)} /> },
-    { key: "_a", label: "", render: (v) => (
-      <RowActions>
-        <Button size="sm" variant="outline" loading={testing === v.vendor} onClick={() => test(v)}>Test</Button>
-        <Button size="sm" variant="ghost" onClick={() => setEditing(v)}>Key</Button>
-      </RowActions>
-    ) },
+    {
+      key: "vendor",
+      label: "Vendor",
+      render: (v) => (
+        <span className="font-medium text-foreground">
+          {v.display_name || v.vendor}
+        </span>
+      ),
+    },
+    {
+      key: "model",
+      label: "Model",
+      render: (v) => (
+        <span className="num text-muted-foreground">
+          {v.current_model || v.default_model || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "key",
+      label: "Key",
+      render: (v) => (
+        <Pill tone={v.has_key ? "ok" : "warn"}>
+          {v.has_key ? "Set" : "Missing"}
+        </Pill>
+      ),
+    },
+    {
+      key: "active",
+      label: "Active",
+      render: (v) => (
+        <Toggle
+          on={!!v.is_active}
+          busy={busy === v.vendor}
+          onClick={() => toggleActive(v)}
+        />
+      ),
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (v) => (
+        <RowActions>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={testing === v.vendor}
+            onClick={() => test(v)}
+          >
+            Test
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(v)}>
+            Key
+          </Button>
+        </RowActions>
+      ),
+    },
   ];
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Vendors & keys" description="LLM/vision/voice providers — model, encrypted API key, and a connection test." action={<Button onClick={() => setAdding(true)}>Add vendor</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Vendors & keys"
+        description="LLM/vision/voice providers — model, encrypted API key, and a connection test."
+        action={<Button onClick={() => setAdding(true)}>Add vendor</Button>}
+      />
       <HubTabs />
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(v) => v.vendor} empty={{ title: "No vendors yet", hint: "Add a provider (e.g. OpenAI for embeddings) and paste its API key." }} />
-      {editing && <VendorKeyForm vendor={editing} onClose={() => setEditing(null)} onSaved={reload} />}
-      {adding && <AddVendorForm existing={(rows || []).map((v) => v.vendor)} onClose={() => setAdding(false)} onSaved={reload} />}
+      <DataList
+        columns={columns}
+        rows={rows}
+        error={error}
+        loading={loading}
+        rowKey={(v) => v.vendor}
+        empty={{
+          title: "No vendors yet",
+          hint: "Add a provider (e.g. OpenAI for embeddings) and paste its API key.",
+        }}
+      />
+      {editing && (
+        <VendorKeyForm
+          vendor={editing}
+          onClose={() => setEditing(null)}
+          onSaved={reload}
+        />
+      )}
+      {adding && (
+        <AddVendorForm
+          existing={(rows || []).map((v) => v.vendor)}
+          onClose={() => setAdding(false)}
+          onSaved={reload}
+        />
+      )}
     </section>
   );
 }
 
 /* ═══════════════════════ Usage ═══════════════════════ */
 export function AiUsagePage() {
-  const { rows, error, loading } = useList<api.UsageRow>("/ai/governance/usage");
+  const { rows, error, loading } = useList<api.UsageRow>(
+    "/ai/governance/usage",
+  );
   const list = rows || [];
   const total = list.reduce((s, r) => s + Number(r.cost_xaf || 0), 0);
   const columns: Column<api.UsageRow>[] = [
-    { key: "created_at", label: "When", render: (r) => <span className="num">{dateFmt(r.created_at)}</span> },
-    { key: "feature_key", label: "Feature", render: (r) => (r.feature_key ? <Pill tone="mute">{r.feature_key}</Pill> : "—") },
-    { key: "model", label: "Model", render: (r) => <span className="num text-muted-foreground">{r.provider ? `${r.provider} · ` : ""}{r.model || "—"}</span> },
-    { key: "tokens", label: "Tokens", className: "num text-right", render: (r) => `${num(r.input_tokens || 0)} / ${num(r.output_tokens || 0)}` },
-    { key: "cost", label: "Cost · XAF", className: "num text-right", render: (r) => money(r.cost_xaf) },
-    { key: "ok", label: "", render: (r) => (r.was_successful === false ? <Pill tone="bad">failed</Pill> : null) },
+    {
+      key: "created_at",
+      label: "When",
+      render: (r) => <span className="num">{dateFmt(r.created_at)}</span>,
+    },
+    {
+      key: "feature_key",
+      label: "Feature",
+      render: (r) =>
+        r.feature_key ? <Pill tone="mute">{r.feature_key}</Pill> : "—",
+    },
+    {
+      key: "model",
+      label: "Model",
+      render: (r) => (
+        <span className="num text-muted-foreground">
+          {r.provider ? `${r.provider} · ` : ""}
+          {r.model || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "tokens",
+      label: "Tokens",
+      className: "num text-right",
+      render: (r) =>
+        `${num(r.input_tokens || 0)} / ${num(r.output_tokens || 0)}`,
+    },
+    {
+      key: "cost",
+      label: "Cost · XAF",
+      className: "num text-right",
+      render: (r) => money(r.cost_xaf),
+    },
+    {
+      key: "ok",
+      label: "",
+      render: (r) =>
+        r.was_successful === false ? <Pill tone="bad">failed</Pill> : null,
+    },
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Usage" description="Metered AI calls and their cost, per the active budget period." />
+      <PageHeader
+        eyebrow={<HubCrumb area="AI Control" to="/ai-control" />}
+        title="Usage"
+        description="Metered AI calls and their cost, per the active budget period."
+      />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Calls" value={num(list.length)} />
         <KpiTile label="Total cost" value={money(total)} />
       </KpiRow>
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r, i) => String(r.usage_id || i)} empty={{ title: "No usage yet", hint: "AI calls are metered here as they happen." }} />
+      <DataList
+        columns={columns}
+        rows={rows}
+        error={error}
+        loading={loading}
+        rowKey={(r, i) => String(r.usage_id || i)}
+        empty={{
+          title: "No usage yet",
+          hint: "AI calls are metered here as they happen.",
+        }}
+      />
     </section>
   );
 }

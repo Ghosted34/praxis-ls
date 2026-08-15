@@ -82,30 +82,53 @@ export function ServiceTypeForm({
               disabled={!isNew}
             />
             {isNew ? (
-              <p className="micro mt-1">Permanent identifier, SCREAMING_SNAKE. Cannot be changed later.</p>
+              <p className="micro mt-1">
+                Permanent identifier, SCREAMING_SNAKE. Cannot be changed later.
+              </p>
             ) : (
-              <p className="micro mt-1">Fixed — other records reference this key.</p>
+              <p className="micro mt-1">
+                Fixed — other records reference this key.
+              </p>
             )}
           </Field>
           <Field label="Territory">
-            <Select value={f.territory} onChange={(e) => set("territory", e.target.value)}>
+            <Select
+              value={f.territory}
+              onChange={(e) => set("territory", e.target.value)}
+            >
               <option value="">—</option>
               {api.TERRITORIES.map((t) => (
-                <option key={t} value={t}>{t.replace(/_/g, " ").toLowerCase()}</option>
+                <option key={t} value={t}>
+                  {t.replace(/_/g, " ").toLowerCase()}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label="Name (FR)" required>
-            <Input value={f.name_fr} onChange={(e) => set("name_fr", e.target.value)} placeholder="Fret maritime import" />
+            <Input
+              value={f.name_fr}
+              onChange={(e) => set("name_fr", e.target.value)}
+              placeholder="Fret maritime import"
+            />
           </Field>
           <Field label="Name (EN)">
-            <Input value={f.name_en} onChange={(e) => set("name_en", e.target.value)} placeholder="Sea freight import" />
+            <Input
+              value={f.name_en}
+              onChange={(e) => set("name_en", e.target.value)}
+              placeholder="Sea freight import"
+            />
           </Field>
         </div>
         {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy || !f.name_fr || (isNew && !f.key)}>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={busy || !f.name_fr || (isNew && !f.key)}
+          >
             {isNew ? "Create" : "Save"}
           </Button>
         </div>

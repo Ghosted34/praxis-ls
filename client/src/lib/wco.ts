@@ -33,7 +33,10 @@ type WindowControlsOverlay = {
 
 function overlay(): WindowControlsOverlay | null {
   if (typeof navigator === "undefined") return null;
-  return (navigator as Navigator & { windowControlsOverlay?: WindowControlsOverlay }).windowControlsOverlay ?? null;
+  return (
+    (navigator as Navigator & { windowControlsOverlay?: WindowControlsOverlay })
+      .windowControlsOverlay ?? null
+  );
 }
 
 /** Running as an installed app rather than in a tab. */

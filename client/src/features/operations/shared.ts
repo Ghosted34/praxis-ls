@@ -33,7 +33,8 @@ const TONES: Record<string, Tone> = {
   DELIVERED: "ok",
 };
 
-export const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
+export const tone = (s?: string | null): Tone =>
+  TONES[String(s || "").toUpperCase()] || "mute";
 
 /** "SEA_FREIGHT_IMPORT" → "Sea freight import". */
 export const humanizeKey = (k?: string | null): string => {
@@ -43,7 +44,11 @@ export const humanizeKey = (k?: string | null): string => {
 };
 
 /** id → name lookup from a list payload. */
-export const nameMap = <T extends Record<string, unknown>>(rows: T[] | null, idKey: string, nameKey: string) => {
+export const nameMap = <T extends Record<string, unknown>>(
+  rows: T[] | null,
+  idKey: string,
+  nameKey: string,
+) => {
   const m: Record<string, string> = {};
   (rows || []).forEach((r) => {
     m[String(r[idKey])] = String(r[nameKey] ?? "");
@@ -61,4 +66,6 @@ export const routeLabel = (r: api.Dossier): string =>
 
 /** A dossier's milestone completion, 0-100. */
 export const milestonePct = (r: api.Dossier): number =>
-  r.milestone_total ? Math.round((100 * (r.milestone_done || 0)) / r.milestone_total) : 0;
+  r.milestone_total
+    ? Math.round((100 * (r.milestone_done || 0)) / r.milestone_total)
+    : 0;

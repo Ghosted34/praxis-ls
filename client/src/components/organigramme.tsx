@@ -23,10 +23,21 @@ import { type ScopeTreeNode } from "@/lib/scope-api";
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden
-      className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}>
-      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden
+      className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+    >
+      <path
+        d="M9 6l6 6-6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -43,7 +54,11 @@ export type OrganigrammeProps = {
 };
 
 function Node({
-  node, selectedId, onSelect, renderNodeExtra, defaultExpanded,
+  node,
+  selectedId,
+  onSelect,
+  renderNodeExtra,
+  defaultExpanded,
 }: { node: ScopeTreeNode } & Omit<OrganigrammeProps, "nodes">) {
   const hasChildren = node.children.length > 0;
   const [open, setOpen] = React.useState(defaultExpanded ?? node.depth < 1);
@@ -57,7 +72,9 @@ function Node({
           content height without measurement. */}
       <div
         className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
-          selected ? "border-[rgb(var(--primary))] bg-primary/10" : "border-border hover:bg-accent"
+          selected
+            ? "border-[rgb(var(--primary))] bg-primary/10"
+            : "border-border hover:bg-accent"
         }`}
       >
         <button
@@ -85,7 +102,9 @@ function Node({
         {node.member_count === 0 ? (
           <Pill tone="warn">no one assigned</Pill>
         ) : node.member_count != null ? (
-          <span className="micro shrink-0">{node.member_count} {node.member_count === 1 ? "person" : "people"}</span>
+          <span className="micro shrink-0">
+            {node.member_count} {node.member_count === 1 ? "person" : "people"}
+          </span>
         ) : null}
       </div>
 
@@ -95,8 +114,14 @@ function Node({
           {hasChildren && (
             <ul className="space-y-2">
               {node.children.map((c) => (
-                <Node key={c.scope_id} node={c} selectedId={selectedId} onSelect={onSelect}
-                  renderNodeExtra={renderNodeExtra} defaultExpanded={defaultExpanded} />
+                <Node
+                  key={c.scope_id}
+                  node={c}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                  renderNodeExtra={renderNodeExtra}
+                  defaultExpanded={defaultExpanded}
+                />
               ))}
             </ul>
           )}
@@ -106,20 +131,32 @@ function Node({
   );
 }
 
-export function Organigramme({ nodes, selectedId, onSelect, renderNodeExtra, defaultExpanded }: OrganigrammeProps) {
+export function Organigramme({
+  nodes,
+  selectedId,
+  onSelect,
+  renderNodeExtra,
+  defaultExpanded,
+}: OrganigrammeProps) {
   if (!nodes.length) {
     return (
       <p className="micro">
-        No scopes yet. Add your head office first, then branches and departments beneath it — that tree
-        is the organigramme approvals route through.
+        No scopes yet. Add your head office first, then branches and departments
+        beneath it — that tree is the organigramme approvals route through.
       </p>
     );
   }
   return (
     <ul className="space-y-2">
       {nodes.map((n) => (
-        <Node key={n.scope_id} node={n} selectedId={selectedId} onSelect={onSelect}
-          renderNodeExtra={renderNodeExtra} defaultExpanded={defaultExpanded} />
+        <Node
+          key={n.scope_id}
+          node={n}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          renderNodeExtra={renderNodeExtra}
+          defaultExpanded={defaultExpanded}
+        />
       ))}
     </ul>
   );

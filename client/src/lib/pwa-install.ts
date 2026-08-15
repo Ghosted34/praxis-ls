@@ -51,7 +51,9 @@ export function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   const mm = window.matchMedia?.("(display-mode: standalone)")?.matches;
   // iOS Safari exposes navigator.standalone instead of the display-mode query.
-  const iosStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+  const iosStandalone =
+    (window.navigator as unknown as { standalone?: boolean }).standalone ===
+    true;
   return !!mm || iosStandalone;
 }
 
@@ -60,12 +62,16 @@ export function isIOS(): boolean {
   const ua = navigator.userAgent || "";
   const iOSDevice = /iphone|ipad|ipod/i.test(ua);
   // iPadOS 13+ reports as Mac; detect the touch-Mac case too.
-  const iPadOS = navigator.platform === "MacIntel" && (navigator as unknown as { maxTouchPoints: number }).maxTouchPoints > 1;
+  const iPadOS =
+    navigator.platform === "MacIntel" &&
+    (navigator as unknown as { maxTouchPoints: number }).maxTouchPoints > 1;
   return iOSDevice || iPadOS;
 }
 
 /** Trigger the native install dialog (Android/desktop). */
-export async function promptInstall(): Promise<"accepted" | "dismissed" | "unavailable"> {
+export async function promptInstall(): Promise<
+  "accepted" | "dismissed" | "unavailable"
+> {
   if (!deferred) return "unavailable";
   await deferred.prompt();
   const { outcome } = await deferred.userChoice;

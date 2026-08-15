@@ -474,6 +474,8 @@ export const createVacancy = (body: {
   scope_id?: string;
   department?: string;
   description?: string;
+  /** Who is hiring. Optional — a single-entity tenant is resolved server-side. */
+  entity_id?: string;
 }) => tenant<Vacancy>("/vacancies", { method: "POST", body });
 /** Edit the advert itself. The wizard drafts straight into a saved DRAFT row,
  *  so this — not `createVacancy` — is what the editor writes through. */
@@ -526,20 +528,32 @@ export const setApplicantStatus = (
  * what makes them specific to the role rather than generic. */
 export type IntakeQuestion = {
   key: string;
-  /** text | number | textarea | salary — drives which control is rendered. */
+  /** text | number | textarea | salary | entity — drives which control is
+   *  rendered. Unknown kinds fall back to a text box rather than to nothing. */
   type: string;
   question: string;
   hint?: string | null;
   optional?: boolean;
   min?: number;
   max?: number;
+  /** `entity` questions only: who could be hiring, and in which currency. The
+   *  currency rides along so picking one relabels the salary question without
+   *  another round trip. */
+  options?: { value: string; label: string; currency?: string | null }[];
 };
+/** One company a vacancy can be opened under. */
+export type HiringEntity = { entity_id: string; name: string; currency?: string | null };
 export type IntakeStart = {
   questions: IntakeQuestion[];
-  /** Fixed + generated, so the wizard can show "Question 1 of 10" honestly. */
+  /** Fixed + generated + the entity question when there is a choice to make, so
+   *  the wizard's "Question 1 of N" is whatever the server says it is. */
   total: number;
-  /** The hiring entity's currency — the salary inputs are labelled with it. */
+  /** The salary label BEFORE anything is answered. On a tenant with several
+   *  entities it is a fallback: the entity question's options carry the real
+   *  one, and the wizard relabels once that question is answered. */
   currency: string;
+  /** Already settled — a single-entity tenant, or an `entity_id` that was
+   *  passed in. Null when the interview is going to ask. */
   entity: { entity_id: string; name?: string | null } | null;
 };
 /** Answers are open by shape: the generated questions bring their own keys. */
@@ -547,6 +561,10 @@ export type IntakeAnswers = Record<string, string | number | boolean | null>;
 
 export const intakeQuestions = (entityId?: string) =>
   tenant<IntakeStart>("/vacancies/intake/questions" + qs({ entity_id: entityId }));
+/** The choosable employers. Served by the recruitment module, not master data,
+ *  so posting a role does not require the grant to browse the group structure. */
+export const hiringEntities = () =>
+  tenant<HiringEntity[]>("/vacancies/hiring-entities");
 export const intakeFollowUps = (body: { entity_id?: string | null; answers: IntakeAnswers }) =>
   tenant<{ questions: IntakeQuestion[] }>("/vacancies/intake/follow-ups", { method: "POST", body });
 /** Drafts AND saves, as a DRAFT vacancy — four minutes of answers must survive

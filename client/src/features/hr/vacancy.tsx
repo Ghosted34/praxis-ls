@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
@@ -145,6 +146,13 @@ function NewVacancyForm({
     scope_id: null,
     department: null,
   });
+  // Who is hiring. Asked here for the same reason the interview asks it: the
+  // vacancy is what carries `entity_id` to the employee record at hire, and a
+  // vacancy attached to no company is the link in that chain that breaks. Only
+  // shown when there is a choice — one company is not a question.
+  const entities = useResource(() => api.hiringEntities(), []);
+  const choices = entities.data || [];
+  const [entityId, setEntityId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
@@ -157,6 +165,7 @@ function NewVacancyForm({
         scope_id: dept.scope_id || undefined,
         department: dept.department || undefined,
         description: f.description || undefined,
+        entity_id: entityId || undefined,
       });
       onSaved(v);
       onClose();
@@ -181,6 +190,23 @@ function NewVacancyForm({
             placeholder="Driver — heavy goods"
           />
         </Field>
+        {choices.length > 1 && (
+          <Field
+            label="Company"
+            hint="Which corporate entity is hiring. It sets the vacancy's currency."
+          >
+            <Select
+              value={entityId}
+              onValueChange={setEntityId}
+              placeholder="Choose the hiring company…"
+              options={choices.map((c) => ({
+                value: c.entity_id,
+                label: c.name,
+                hint: c.currency ? `Salaries in ${c.currency}` : undefined,
+              }))}
+            />
+          </Field>
+        )}
         <Field
           label="Department"
           hint="From your organigramme — Security › Scopes."

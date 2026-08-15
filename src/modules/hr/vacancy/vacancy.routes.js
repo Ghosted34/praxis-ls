@@ -49,6 +49,11 @@ router.get("/talent-pool", requirePermission(M, "view"), controller.searchPool);
  * work has to survive a closed tab after a four-minute interview, so it is
  * saved rather than previewed.
  */
+/* Which companies a vacancy can be opened under. `view`, and on THIS module
+ * rather than the corporate-entity module, because a recruiter who can post a
+ * role is not necessarily granted the master-data list — and a create form that
+ * cannot name the employer produces vacancies attached to nobody. */
+router.get("/hiring-entities", requirePermission(M, "view"), controller.hiringEntities);
 router.get("/intake/questions", requirePermission(M, "view"), controller.intakeQuestions);
 router.post("/intake/follow-ups", requirePermission(M, "create"), validator.intake, controller.intakeFollowUps);
 router.post("/draft", requirePermission(M, "create"), validator.intake, controller.draftVacancy);

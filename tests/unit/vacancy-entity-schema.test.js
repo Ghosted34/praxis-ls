@@ -136,3 +136,68 @@ describe("vacancy.repo — the hiring entity read (0526)", () => {
     );
   });
 });
+
+/**
+ * Which company is hiring, asked only when it is a real question.
+ *
+ * `soleEntity` returns a row only when the tenant has EXACTLY ONE active
+ * entity — two or more is a null, and the caller is expected to ask. Nothing
+ * asked. So on a multi-entity tenant the interview ran with no entity at all:
+ * the salary band fell back to a hard-coded currency, the prompt lost the
+ * labour market and the grounding block, and the vacancy was written with
+ * `entity_id` NULL — which 0526 calls the link from advert to hire that loses
+ * the thread. The question is what closes it, and the count has to include it.
+ */
+describe("vacancy.service — the hiring-entity question (0526)", () => {
+  const service = require("../../src/modules/hr/vacancy/vacancy.service");
+  const drafting = require("../../src/modules/hr/vacancy/vacancy.draft");
+  const repo = require("../../src/modules/hr/vacancy/vacancy.repo");
+
+  const ONE = { entity_id: "e1", legal_name: "JBS Praxis SA", default_currency: "XAF" };
+  const TWO = [ONE, { entity_id: "e2", trading_name: "JBS Nigeria", default_currency: "NGN" }];
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it("does not ask a tenant with one company a question with one answer", async () => {
+    jest.spyOn(repo, "soleEntity").mockResolvedValue(ONE);
+    const list = jest.spyOn(repo, "listHiringEntities");
+
+    const out = await service.intakeQuestions({}, {});
+    expect(out.questions).toBe(drafting.BASE_QUESTIONS);
+    expect(out.total).toBe(drafting.TOTAL_QUESTIONS);
+    expect(out.currency).toBe("XAF");
+    expect(out.entity).toEqual({ entity_id: "e1", name: "JBS Praxis SA" });
+    // Settled already — no reason to go looking for alternatives.
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("asks a multi-entity tenant first, and counts the question", async () => {
+    jest.spyOn(repo, "soleEntity").mockResolvedValue(null);
+    jest.spyOn(repo, "listHiringEntities").mockResolvedValue(TWO);
+
+    const out = await service.intakeQuestions({}, {});
+    expect(out.questions).toHaveLength(drafting.BASE_QUESTIONS.length + 1);
+    expect(out.total).toBe(drafting.TOTAL_QUESTIONS + 1);
+
+    const [first] = out.questions;
+    expect(first).toMatchObject({ key: "entity_id", type: "entity" });
+    // Each choice carries its own currency, so picking one relabels the salary
+    // question without another round trip.
+    expect(first.options).toEqual([
+      { value: "e1", label: "JBS Praxis SA", currency: "XAF" },
+      { value: "e2", label: "JBS Nigeria", currency: "NGN" },
+    ]);
+    // Nothing is settled until they answer.
+    expect(out.entity).toBeNull();
+  });
+
+  it("stops asking once an entity has been chosen", async () => {
+    jest.spyOn(repo, "getEntity").mockResolvedValue({ ...ONE, entity_id: "e2", default_currency: "NGN" });
+    const list = jest.spyOn(repo, "listHiringEntities");
+
+    const out = await service.intakeQuestions({}, { entityId: "e2" });
+    expect(out.questions).toBe(drafting.BASE_QUESTIONS);
+    expect(out.currency).toBe("NGN");
+    expect(list).not.toHaveBeenCalled();
+  });
+});

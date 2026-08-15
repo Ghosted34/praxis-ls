@@ -45,6 +45,8 @@ module.exports = {
   }),
 
   /* ── Drafting from an interview (0526) ── */
+  hiringEntities: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.hiringEntities(c)) })),
   intakeQuestions: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.intakeQuestions(c, { entityId: req.query.entity_id || null })) })),
   intakeFollowUps: asyncHandler(async (req, res) =>

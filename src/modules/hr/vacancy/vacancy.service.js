@@ -109,13 +109,43 @@ module.exports = {
     return (await repo.getEntity(client, entityId)) || (await repo.soleEntity(client));
   },
 
-  /** The fixed questions, plus the entity so the wizard can label the salary
-   *  inputs in the right currency before anything has been answered. */
+  /** Every entity a vacancy could be opened under. Also the plain create form's
+   *  source, so a vacancy made without the interview still knows who is hiring. */
+  async hiringEntities(client) {
+    const rows = await repo.listHiringEntities(client);
+    return rows.map((e) => ({
+      entity_id: e.entity_id,
+      name: e.trading_name || e.legal_name,
+      currency: e.default_currency || null,
+    }));
+  },
+
+  /**
+   * The questions, and who is asking them.
+   *
+   * On a tenant with several active entities the set OPENS with "which company
+   * is hiring?", and `total` counts it — the wizard's "Question 1 of N" is
+   * whatever the server says it is, so a question set that grows does not need
+   * a client release. On a single-entity tenant the answer is resolved here
+   * instead and the question is not asked.
+   *
+   * `currency` is the one the salary question is labelled in before anything is
+   * answered; once the entity question IS answered, its option carries the
+   * currency and the wizard relabels without another round trip.
+   */
   async intakeQuestions(client, { entityId = null } = {}) {
     const entity = await this.draftEntity(client, entityId);
+    // Only looked up when the answer is not already settled — a single-entity
+    // tenant pays for one query here, not two.
+    const rows = entity ? [] : await repo.listHiringEntities(client);
+    const questions =
+      rows.length > 1
+        ? [drafting.entityQuestion(rows), ...drafting.BASE_QUESTIONS]
+        : drafting.BASE_QUESTIONS;
+
     return {
-      questions: drafting.BASE_QUESTIONS,
-      total: drafting.TOTAL_QUESTIONS,
+      questions,
+      total: questions.length + drafting.FOLLOW_UP_COUNT,
       currency: (entity && entity.default_currency) || "XAF",
       entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.legal_name } : null,
     };

@@ -114,7 +114,7 @@ export function Form<TFieldValues extends FieldValues>({
         const msg = (error as any)?.message || "Invalid";
 
         // Escape the path for the selector (in case of array paths like "items[0].name")
-        const selectorPath = path.replace(/"/g, '\\"');
+        const selectorPath = path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         const el = document.querySelector(`[name="${selectorPath}"]`) as HTMLElement;
 
         if (el) {

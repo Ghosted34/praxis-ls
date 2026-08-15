@@ -1153,6 +1153,21 @@
       ]
     },
     {
+      "id": "sales_quote_requests",
+      "title": "Quote requests",
+      "route": "/sales/quote-requests",
+      "area": "sales",
+      "module_key": "MOD-20",
+      "purpose": "Logistics-scope intake register (MOD-20-intake). 5 KPI tiles (TOTAL / RECEIVED / UNDER_REVIEW / QUOTED / CONVERTED) partition the result set under every filter; conversion produces an opportunity in the pipeline.",
+      "actions": [
+        "list_quote_requests",
+        "get_quote_request",
+        "create_quote_request",
+        "transition_quote_request",
+        "convert_quote_request"
+      ]
+    },
+    {
       "id": "sales_opportunities",
       "title": "Opportunities",
       "route": "/sales/opportunities",

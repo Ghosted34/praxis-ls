@@ -60,7 +60,15 @@ import { useOptions, optionLabel } from "./shared";
 type LineRow = { account_code: string; debit: string; credit: string };
 const blankLine = (): LineRow => ({ account_code: "", debit: "", credit: "" });
 
-function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose: () => void; onPosted: () => void }) {
+function JournalEntryForm({
+  open,
+  onClose,
+  onPosted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onPosted: () => void;
+}) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: accounts } = useOptions(fin.loadPostableAccounts, open);
   const toast = useToast();
@@ -111,8 +119,12 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
           // `values` is the SCHEMA'S OUTPUT: debit/credit are already numbers,
           // the date is round-trip validated, and an empty side is `undefined` —
           // which is why the hand-rolled payload builder is gone.
-          await fin.postJournalEntry(values as Parameters<typeof fin.postJournalEntry>[0]);
-          toast.success(values.validate ? "Entry validated and posted" : "Draft saved");
+          await fin.postJournalEntry(
+            values as Parameters<typeof fin.postJournalEntry>[0],
+          );
+          toast.success(
+            values.validate ? "Entry validated and posted" : "Draft saved",
+          );
           onPosted();
           onClose();
         }}
@@ -139,7 +151,12 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
           >
             {(field) => (
               <>
-                <Input list="journal-codes" {...field} value={String(field.value ?? "")} placeholder="VT" />
+                <Input
+                  list="journal-codes"
+                  {...field}
+                  value={String(field.value ?? "")}
+                  placeholder="VT"
+                />
                 <datalist id="journal-codes">
                   <option value="VT">Ventes</option>
                   <option value="AC">Achats</option>
@@ -151,7 +168,9 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
             )}
           </FormField>
           <FormField form={form} name="entry_date" label="Entry date" required>
-            {(field) => <Input type="date" {...field} value={String(field.value ?? "")} />}
+            {(field) => (
+              <Input type="date" {...field} value={String(field.value ?? "")} />
+            )}
           </FormField>
           <FormField
             form={form}
@@ -160,17 +179,34 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
             required
             hint="Mandatory — the ledger rejects entries without a source ref."
           >
-            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="INV-2026-0001" />}
+            {(field) => (
+              <Input
+                {...field}
+                value={String(field.value ?? "")}
+                placeholder="INV-2026-0001"
+              />
+            )}
           </FormField>
         </div>
         <FormField form={form} name="description" label="Description">
-          {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Narrative (optional)" />}
+          {(field) => (
+            <Input
+              {...field}
+              value={String(field.value ?? "")}
+              placeholder="Narrative (optional)"
+            />
+          )}
         </FormField>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Lines</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => lineFields.append(blankLine())}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => lineFields.append(blankLine())}
+            >
               Add line
             </Button>
           </div>
@@ -183,7 +219,9 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
                   // The offending line, marked. `checkPostable` reports the FIRST
                   // problem and which line it is on, so the operator is pointed
                   // at one thing rather than handed a list.
-                  !postable.ok && postable.line === i && "ring-1 ring-[rgb(var(--bad))]",
+                  !postable.ok &&
+                    postable.line === i &&
+                    "ring-1 ring-[rgb(var(--bad))]",
                 )}
               >
                 <FormField
@@ -203,7 +241,12 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
                     </Select>
                   )}
                 </FormField>
-                <FormField form={form} name={`lines.${i}.debit`} label={`Debit, line ${i + 1}`} className="[&>label]:sr-only">
+                <FormField
+                  form={form}
+                  name={`lines.${i}.debit`}
+                  label={`Debit, line ${i + 1}`}
+                  className="[&>label]:sr-only"
+                >
                   {(field) => (
                     <Input
                       type="number"
@@ -216,7 +259,12 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
                     />
                   )}
                 </FormField>
-                <FormField form={form} name={`lines.${i}.credit`} label={`Credit, line ${i + 1}`} className="[&>label]:sr-only">
+                <FormField
+                  form={form}
+                  name={`lines.${i}.credit`}
+                  label={`Credit, line ${i + 1}`}
+                  className="[&>label]:sr-only"
+                >
                   {(field) => (
                     <Input
                       type="number"
@@ -249,16 +297,28 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
               whichever invariant is actually unmet, in the same sentence the API
               would have returned.
             */}
-            <span role="status" className={postable.ok ? "text-muted-foreground" : "font-medium text-[rgb(var(--bad))]"}>
+            <span
+              role="status"
+              className={
+                postable.ok
+                  ? "text-muted-foreground"
+                  : "font-medium text-[rgb(var(--bad))]"
+              }
+            >
               {postable.ok ? "Balanced" : postable.message}
             </span>
             <span className="num tabular-nums text-muted-foreground">
-              Dr {amount(debitMinor / 100)} &nbsp;·&nbsp; Cr {amount(creditMinor / 100)}
+              Dr {amount(debitMinor / 100)} &nbsp;·&nbsp; Cr{" "}
+              {amount(creditMinor / 100)}
             </span>
           </div>
         </div>
 
-        <FormField form={form} name="validate" label="Validate immediately (locks the entry; otherwise saved as a draft)">
+        <FormField
+          form={form}
+          name="validate"
+          label="Validate immediately (locks the entry; otherwise saved as a draft)"
+        >
           {(field) => (
             <Checkbox
               checked={!!field.value}
@@ -271,7 +331,12 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
         <FormError form={form} />
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={form.formState.isSubmitting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={form.formState.isSubmitting}
+          >
             Cancel
           </Button>
           {/*
@@ -279,7 +344,11 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
             schema's own errors are raised by <Form> on submit; this gate is the
             domain invariant, which Zod deliberately does not carry.
           */}
-          <Button type="submit" loading={form.formState.isSubmitting} disabled={!postable.ok || form.formState.isSubmitting}>
+          <Button
+            type="submit"
+            loading={form.formState.isSubmitting}
+            disabled={!postable.ok || form.formState.isSubmitting}
+          >
             {validate ? "Validate & post" : "Save draft"}
           </Button>
         </div>
@@ -315,7 +384,10 @@ function JournalReverseForm({
     setBusy(true);
     setError(null);
     try {
-      await fin.reverseJournalEntry(id, { reason: reason || undefined, entry_date: entryDate || undefined });
+      await fin.reverseJournalEntry(id, {
+        reason: reason || undefined,
+        entry_date: entryDate || undefined,
+      });
       onReversed();
       onClose();
     } catch (e) {
@@ -325,20 +397,40 @@ function JournalReverseForm({
     }
   }
 
-  const label = entry ? String(entry.description ?? entry.source_doc_ref ?? id) : "";
+  const label = entry
+    ? String(entry.description ?? entry.source_doc_ref ?? id)
+    : "";
 
   return (
-    <Modal open={!!entry} onClose={onClose} title="Reverse entry" description="Posts a linked contra entry (reversal-not-edit); the original stays immutable.">
+    <Modal
+      open={!!entry}
+      onClose={onClose}
+      title="Reverse entry"
+      description="Posts a linked contra entry (reversal-not-edit); the original stays immutable."
+    >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Reversing <span className="font-medium text-foreground">{label}</span>.
+          Reversing <span className="font-medium text-foreground">{label}</span>
+          .
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Reversal date" required hint="Date the contra entry posts on.">
-            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+          <Field
+            label="Reversal date"
+            required
+            hint="Date the contra entry posts on."
+          >
+            <Input
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+            />
           </Field>
           <Field label="Reason">
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why it's being reversed" />
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why it's being reversed"
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}
@@ -346,7 +438,12 @@ function JournalReverseForm({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={submit} loading={busy} disabled={!id || !entryDate || busy}>
+          <Button
+            variant="destructive"
+            onClick={submit}
+            loading={busy}
+            disabled={!id || !entryDate || busy}
+          >
             Reverse entry
           </Button>
         </div>
@@ -364,11 +461,16 @@ const JOURNAL_COLS = [
 ];
 
 export function JournalsPage() {
-  const [rows, setRows] = React.useState<Record<string, unknown>[] | null>(null);
+  const [rows, setRows] = React.useState<Record<string, unknown>[] | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [nonce, setNonce] = React.useState(0);
   const [postOpen, setPostOpen] = React.useState(false);
-  const [reverseTarget, setReverseTarget] = React.useState<Record<string, unknown> | null>(null);
+  const [reverseTarget, setReverseTarget] = React.useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const reload = () => setNonce((n) => n + 1);
 
   React.useEffect(() => {
@@ -379,7 +481,8 @@ export function JournalsPage() {
       .then((d) => live && setRows(Array.isArray(d) ? d : []))
       .catch((e) => {
         if (!live) return;
-        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view this.");
+        if (e instanceof ApiError && e.status === 403)
+          setError("You don't have permission to view this.");
         else setError(e instanceof ApiError ? e.message : "Failed to load.");
       });
     return () => {
@@ -387,7 +490,8 @@ export function JournalsPage() {
     };
   }, [nonce]);
 
-  const isValidated = (r: Record<string, unknown>) => String(r.status ?? "").toLowerCase() === "validated";
+  const isValidated = (r: Record<string, unknown>) =>
+    String(r.status ?? "").toLowerCase() === "validated";
   const isReversal = (r: Record<string, unknown>) => !!r.corrects_entry_id;
 
   const list = rows ?? [];
@@ -397,17 +501,34 @@ export function JournalsPage() {
       label: c.label,
       render: (r) => (
         <span className="text-sm">
-          {c.key === "entry_date" ? dateFmt(r[c.key] as string) : smartCell(r[c.key])}
-          {c.key === "description" && isReversal(r) && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">reversal</span>}
+          {c.key === "entry_date"
+            ? dateFmt(r[c.key] as string)
+            : smartCell(r[c.key])}
+          {c.key === "description" && isReversal(r) && (
+            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              reversal
+            </span>
+          )}
         </span>
       ),
     })),
     {
-      key: "_a", label: "", render: (r) => (
-        isValidated(r) && !isReversal(r)
-          ? <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => setReverseTarget(r)}>Reverse</Button></div>
-          : <span className="text-xs text-muted-foreground">—</span>
-      ),
+      key: "_a",
+      label: "",
+      render: (r) =>
+        isValidated(r) && !isReversal(r) ? (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setReverseTarget(r)}
+            >
+              Reverse
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
     },
   ];
 
@@ -421,7 +542,10 @@ export function JournalsPage() {
       />
       <KpiRow>
         <KpiTile label="Entries" value={String(list.length)} />
-        <KpiTile label="Validated" value={String(list.filter(isValidated).length)} />
+        <KpiTile
+          label="Validated"
+          value={String(list.filter(isValidated).length)}
+        />
       </KpiRow>
       <DataList
         columns={columns}
@@ -429,11 +553,22 @@ export function JournalsPage() {
         loading={rows === null}
         error={error}
         rowKey={(r, i) => String(r.entry_id ?? r.entry_no ?? i)}
-        empty={{ title: "No entries yet", hint: "Post a journal entry to get started." }}
+        empty={{
+          title: "No entries yet",
+          hint: "Post a journal entry to get started.",
+        }}
       />
 
-      <JournalEntryForm open={postOpen} onClose={() => setPostOpen(false)} onPosted={reload} />
-      <JournalReverseForm entry={reverseTarget} onClose={() => setReverseTarget(null)} onReversed={reload} />
+      <JournalEntryForm
+        open={postOpen}
+        onClose={() => setPostOpen(false)}
+        onPosted={reload}
+      />
+      <JournalReverseForm
+        entry={reverseTarget}
+        onClose={() => setReverseTarget(null)}
+        onReversed={reload}
+      />
     </section>
   );
 }

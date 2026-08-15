@@ -15,7 +15,10 @@ import { axe } from "jest-axe";
 
 import type { NavAccess } from "@/lib/nav-access";
 import { EMPTY_SHELL_PREFS, type ShellPrefs } from "@/lib/preferences";
-import { ShellContext, type ShellContextValue } from "@/app/layout/shell-context";
+import {
+  ShellContext,
+  type ShellContextValue,
+} from "@/app/layout/shell-context";
 import { AppLauncher } from "./components/app-launcher";
 import { Briefing } from "./components/briefing";
 import { KpiStrip, kpiCards } from "./components/kpi-strip";
@@ -37,16 +40,80 @@ const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 function ceoShell(prefs: Partial<ShellPrefs> = {}): ShellContextValue {
   const byGroup: Record<string, string[]> = {
     monitor: ["MOD-00A", "MOD-64", "MOD-74"],
-    engage: ["MOD-20", "MOD-21", "MOD-22", "MOD-23", "MOD-24", "MOD-26", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
-    fulfill: [
-      "MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38",
-      "MOD-39", "MOD-40", "MOD-41", "MOD-42", "MOD-43", "MOD-44", "MOD-45",
+    engage: [
+      "MOD-20",
+      "MOD-21",
+      "MOD-22",
+      "MOD-23",
+      "MOD-24",
+      "MOD-26",
+      "MOD-27",
+      "MOD-28",
+      "MOD-60",
+      "MOD-61",
+      "MOD-62",
     ],
-    transact: ["MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59", "MOD-46", "MOD-47", "MOD-49"],
-    empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-13", "MOD-14", "MOD-15", "MOD-16", "MOD-17", "MOD-18", "MOD-19", "MOD-71"],
+    fulfill: [
+      "MOD-29",
+      "MOD-30",
+      "MOD-31",
+      "MOD-32",
+      "MOD-33",
+      "MOD-34",
+      "MOD-35",
+      "MOD-36",
+      "MOD-37",
+      "MOD-38",
+      "MOD-39",
+      "MOD-40",
+      "MOD-41",
+      "MOD-42",
+      "MOD-43",
+      "MOD-44",
+      "MOD-45",
+    ],
+    transact: [
+      "MOD-51",
+      "MOD-52",
+      "MOD-53",
+      "MOD-54",
+      "MOD-56",
+      "MOD-58",
+      "MOD-59",
+      "MOD-46",
+      "MOD-47",
+      "MOD-49",
+    ],
+    empower: [
+      "MOD-02",
+      "MOD-11",
+      "MOD-12",
+      "MOD-13",
+      "MOD-14",
+      "MOD-15",
+      "MOD-16",
+      "MOD-17",
+      "MOD-18",
+      "MOD-19",
+      "MOD-71",
+    ],
     configure: [
-      "MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65",
-      "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75", "MOD-00B",
+      "MOD-01",
+      "MOD-03",
+      "MOD-04",
+      "MOD-05",
+      "MOD-07",
+      "MOD-08",
+      "MOD-09",
+      "MOD-10",
+      "MOD-63",
+      "MOD-65",
+      "MOD-66",
+      "MOD-67",
+      "MOD-68",
+      "MOD-70",
+      "MOD-75",
+      "MOD-00B",
     ],
   };
   const modules = Object.values(byGroup).flat().sort();
@@ -68,7 +135,10 @@ function ceoShell(prefs: Partial<ShellPrefs> = {}): ShellContextValue {
   };
 }
 
-const wrapWithShell = (ui: React.ReactNode, shell: ShellContextValue = ceoShell()) =>
+const wrapWithShell = (
+  ui: React.ReactNode,
+  shell: ShellContextValue = ceoShell(),
+) =>
   render(
     <MemoryRouter>
       <ShellContext.Provider value={shell}>{ui}</ShellContext.Provider>
@@ -127,19 +197,45 @@ const LANES: Lane[] = [
     status: "In progress",
     legType: "MAIN_CARRIAGE",
     seq: 1,
-    from: { name: "Shanghai", lat: 31.2, lng: 121.5, kind: "SEAPORT", state: "verified" },
-    to: { name: "Douala", lat: 4.05, lng: 9.7, kind: "SEAPORT", state: "verified" },
+    from: {
+      name: "Shanghai",
+      lat: 31.2,
+      lng: 121.5,
+      kind: "SEAPORT",
+      state: "verified",
+    },
+    to: {
+      name: "Douala",
+      lat: 4.05,
+      lng: 9.7,
+      kind: "SEAPORT",
+      state: "verified",
+    },
   },
 ];
 
 describe("TowerHero", () => {
   it("renders the page's single h1", () => {
-    wrap(<TowerHero firstName="Amara" activeFiles={7} approvals={2} isTest={false} />);
+    wrap(
+      <TowerHero
+        firstName="Amara"
+        activeFiles={7}
+        approvals={2}
+        isTest={false}
+      />,
+    );
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("greets the signed-in user, not the mock's hardcoded name", () => {
-    wrap(<TowerHero firstName="Grace" activeFiles={1} approvals={0} isTest={false} />);
+    wrap(
+      <TowerHero
+        firstName="Grace"
+        activeFiles={1}
+        approvals={0}
+        isTest={false}
+      />,
+    );
     expect(screen.getByText(/Grace/)).toBeInTheDocument();
   });
 
@@ -147,19 +243,36 @@ describe("TowerHero", () => {
     // The mock hardcoded "Your network, live." — a lie in TEST mode, where every
     // figure on the page comes from the sandbox schema.
     wrap(<TowerHero firstName="Amara" activeFiles={3} approvals={0} isTest />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Your network, test.");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Your network, test.",
+    );
   });
 
   it("pluralises and mentions approvals only when there are some", () => {
-    const { unmount } = wrap(<TowerHero firstName="A" activeFiles={1} approvals={0} isTest={false} />);
+    const { unmount } = wrap(
+      <TowerHero firstName="A" activeFiles={1} approvals={0} isTest={false} />,
+    );
     expect(screen.getByText("1 operation file in motion.")).toBeInTheDocument();
     unmount();
-    wrap(<TowerHero firstName="A" activeFiles={7} approvals={2} isTest={false} />);
-    expect(screen.getByText("7 operation files in motion — 2 awaiting your approval.")).toBeInTheDocument();
+    wrap(
+      <TowerHero firstName="A" activeFiles={7} approvals={2} isTest={false} />,
+    );
+    expect(
+      screen.getByText(
+        "7 operation files in motion — 2 awaiting your approval.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {
-    const { container } = wrap(<TowerHero firstName="Amara" activeFiles={7} approvals={2} isTest={false} />);
+    const { container } = wrap(
+      <TowerHero
+        firstName="Amara"
+        activeFiles={7}
+        approvals={2}
+        isTest={false}
+      />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -173,19 +286,33 @@ describe("KpiStrip", () => {
   });
 
   it("hides a card whose metric is null rather than showing a false zero", () => {
-    wrap(<KpiStrip kpis={{ ...KPIS, fleetTotal: null, fleetActive: null }} onOpen={vi.fn()} />);
+    wrap(
+      <KpiStrip
+        kpis={{ ...KPIS, fleetTotal: null, fleetActive: null }}
+        onOpen={vi.fn()}
+      />,
+    );
     expect(screen.queryByText("Fleet utilisation")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(3);
   });
 
   it("hides the fleet card for a tenant with an empty register", () => {
-    expect(kpiCards({ ...KPIS, fleetTotal: 0 }).some((c) => c.id === "fleet")).toBe(false);
+    expect(
+      kpiCards({ ...KPIS, fleetTotal: 0 }).some((c) => c.id === "fleet"),
+    ).toBe(false);
   });
 
   it("renders nothing at all when no metric is readable", () => {
     const { container } = wrap(
       <KpiStrip
-        kpis={{ revenue: null, currency: "XAF", sla: null, overdue: null, fleetActive: null, fleetTotal: null }}
+        kpis={{
+          revenue: null,
+          currency: "XAF",
+          sla: null,
+          overdue: null,
+          fleetActive: null,
+          fleetTotal: null,
+        }}
         onOpen={vi.fn()}
       />,
     );
@@ -203,7 +330,9 @@ describe("KpiStrip", () => {
   it("opens the drill-down for the card that was activated", async () => {
     const onOpen = vi.fn();
     wrap(<KpiStrip kpis={KPIS} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button", { name: /Receivables · past due/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Receivables · past due/ }),
+    );
     expect(onOpen).toHaveBeenCalledWith("overdue");
   });
 
@@ -230,16 +359,34 @@ describe("LiveShipments", () => {
     // the full file lives inside that panel, one click further on.
     const user = userEvent.setup();
     const onSelect = vi.fn();
-    wrap(<LiveShipments shipments={SHIPMENTS} selected={null} onSelect={onSelect} />);
-    expect(screen.queryByRole("link", { name: /SBX-OPS-2026-0142/ })).not.toBeInTheDocument();
+    wrap(
+      <LiveShipments
+        shipments={SHIPMENTS}
+        selected={null}
+        onSelect={onSelect}
+      />,
+    );
+    expect(
+      screen.queryByRole("link", { name: /SBX-OPS-2026-0142/ }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /SBX-OPS-2026-0142/ }));
     expect(onSelect).toHaveBeenCalledWith("d-142");
   });
 
   it("marks the selected row as pressed, so it is not colour alone", () => {
-    wrap(<LiveShipments shipments={SHIPMENTS} selected="d-142" onSelect={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /SBX-OPS-2026-0142/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /SBX-OPS-2026-0137/ })).toHaveAttribute("aria-pressed", "false");
+    wrap(
+      <LiveShipments
+        shipments={SHIPMENTS}
+        selected="d-142"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /SBX-OPS-2026-0142/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: /SBX-OPS-2026-0137/ }),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   it("draws a progress bar only for dossiers that have milestones", () => {
@@ -251,7 +398,9 @@ describe("LiveShipments", () => {
 
   it("shows the milestone and ETA, not a raw vessel string", () => {
     wrap(<LiveShipments shipments={SHIPMENTS} />);
-    expect(screen.getByText("Costing approval · 04 Jul 2026")).toBeInTheDocument();
+    expect(
+      screen.getByText("Costing approval · 04 Jul 2026"),
+    ).toBeInTheDocument();
   });
 
   it("offers a real empty state with a next step", () => {
@@ -268,33 +417,81 @@ describe("LiveShipments", () => {
 
 describe("Briefing", () => {
   it("lists only what needs doing", () => {
-    wrap(<Briefing activeFiles={7} approvals={0} complianceFlags={2} unpostedJournals={0} isTest={false} />);
-    expect(screen.getByRole("link", { name: /7 active operation files/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /2 open compliance flags/ })).toBeInTheDocument();
+    wrap(
+      <Briefing
+        activeFiles={7}
+        approvals={0}
+        complianceFlags={2}
+        unpostedJournals={0}
+        isTest={false}
+      />,
+    );
+    expect(
+      screen.getByRole("link", { name: /7 active operation files/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /2 open compliance flags/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/awaiting approval/)).not.toBeInTheDocument();
     expect(screen.queryByText(/unposted journal/)).not.toBeInTheDocument();
   });
 
   it("routes every fact to the screen that resolves it", () => {
-    wrap(<Briefing activeFiles={1} approvals={1} complianceFlags={1} unpostedJournals={1} isTest={false} />);
-    expect(screen.getByRole("link", { name: /awaiting approval/ })).toHaveAttribute("href", "/approvals");
-    expect(screen.getByRole("link", { name: /compliance flag/ })).toHaveAttribute("href", "/vault/compliance-flags");
-    expect(screen.getByRole("link", { name: /unposted journal/ })).toHaveAttribute("href", "/finance/journals");
+    wrap(
+      <Briefing
+        activeFiles={1}
+        approvals={1}
+        complianceFlags={1}
+        unpostedJournals={1}
+        isTest={false}
+      />,
+    );
+    expect(
+      screen.getByRole("link", { name: /awaiting approval/ }),
+    ).toHaveAttribute("href", "/approvals");
+    expect(
+      screen.getByRole("link", { name: /compliance flag/ }),
+    ).toHaveAttribute("href", "/vault/compliance-flags");
+    expect(
+      screen.getByRole("link", { name: /unposted journal/ }),
+    ).toHaveAttribute("href", "/finance/journals");
   });
 
   it("says so plainly when nothing is outstanding", () => {
-    wrap(<Briefing activeFiles={0} approvals={0} complianceFlags={0} unpostedJournals={0} isTest={false} />);
+    wrap(
+      <Briefing
+        activeFiles={0}
+        approvals={0}
+        complianceFlags={0}
+        unpostedJournals={0}
+        isTest={false}
+      />,
+    );
     expect(screen.getByText(/Nothing is waiting on you/)).toBeInTheDocument();
   });
 
   it("names the data environment", () => {
-    wrap(<Briefing activeFiles={1} approvals={0} complianceFlags={0} unpostedJournals={0} isTest />);
+    wrap(
+      <Briefing
+        activeFiles={1}
+        approvals={0}
+        complianceFlags={0}
+        unpostedJournals={0}
+        isTest
+      />,
+    );
     expect(screen.getByText(/Sandbox data/)).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {
     const { container } = wrap(
-      <Briefing activeFiles={7} approvals={2} complianceFlags={1} unpostedJournals={3} isTest={false} />,
+      <Briefing
+        activeFiles={7}
+        approvals={2}
+        complianceFlags={1}
+        unpostedJournals={3}
+        isTest={false}
+      />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -315,7 +512,9 @@ describe("AppLauncher", () => {
     // a nested <ul>, so `getAllByRole('listitem')` would sweep the subnav
     // links too — count DIRECT children of the grid instead.
     const [grid] = screen.getAllByRole("list");
-    const items = Array.from(grid.children).filter((n) => n.tagName === "LI") as HTMLElement[];
+    const items = Array.from(grid.children).filter(
+      (n) => n.tagName === "LI",
+    ) as HTMLElement[];
     // 11 pins + 1 More trigger = 12 slots exactly.
     expect(items).toHaveLength(12);
     // The last slot is always the More trigger.
@@ -381,7 +580,9 @@ describe("AppLauncher", () => {
   it("opens the command palette through context, not a synthetic keyboard event", async () => {
     const onBrowseAll = vi.fn();
     wrapWithShell(<AppLauncher onBrowseAll={onBrowseAll} />);
-    await userEvent.click(screen.getByRole("button", { name: /Browse everything/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Browse everything/ }),
+    );
     expect(onBrowseAll).toHaveBeenCalledOnce();
   });
 
@@ -398,22 +599,32 @@ describe("ShipmentMap", () => {
     wrap(<ShipmentMap lanes={LANES} selected={null} onSelect={noop} />);
     // Legs across files, not "routes": one file's route is now several segments,
     // and the count that matters to a reader is both numbers.
-    expect(screen.getByRole("img", { name: /1 sea, 0 road and 0 air legs across 1 operation file/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: /1 sea, 0 road and 0 air legs across 1 operation file/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("explains itself rather than drawing an empty ocean", () => {
     wrap(<ShipmentMap lanes={[]} selected={null} onSelect={noop} />);
-    expect(screen.getByText(/need a verified origin and destination/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/need a verified origin and destination/),
+    ).toBeInTheDocument();
     expect(screen.getByText("No routes to plot")).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {
-    const { container } = wrap(<ShipmentMap lanes={LANES} selected={null} onSelect={noop} />);
+    const { container } = wrap(
+      <ShipmentMap lanes={LANES} selected={null} onSelect={noop} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 
   it("has no axe violations with a file selected", async () => {
-    const { container } = wrap(<ShipmentMap lanes={LANES} selected="d-142" onSelect={noop} />);
+    const { container } = wrap(
+      <ShipmentMap lanes={LANES} selected="d-142" onSelect={noop} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

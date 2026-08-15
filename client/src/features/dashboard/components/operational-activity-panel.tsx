@@ -26,7 +26,11 @@ import { cn } from "@/lib/cn";
 import { MODE_ICON } from "../mode-icons";
 import type { ActivityRecord } from "../model";
 
-function ActivityRow({ record, selected, onSelect }: {
+function ActivityRow({
+  record,
+  selected,
+  onSelect,
+}: {
   record: ActivityRecord;
   selected: boolean;
   onSelect: () => void;
@@ -48,7 +52,9 @@ function ActivityRow({ record, selected, onSelect }: {
           aria-hidden
           className={cn(
             "grid h-8 w-8 shrink-0 place-items-center rounded-md",
-            needs ? "bg-[rgb(var(--warn)_/_0.14)] text-[rgb(var(--warn))]" : "bg-muted text-muted-foreground",
+            needs
+              ? "bg-[rgb(var(--warn)_/_0.14)] text-[rgb(var(--warn))]"
+              : "bg-muted text-muted-foreground",
           )}
         >
           {needs ? (
@@ -59,8 +65,12 @@ function ActivityRow({ record, selected, onSelect }: {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
-            <span className="num truncate text-label font-semibold text-primary-ink">{record.ref}</span>
-            <Pill tone={needs ? "warn" : record.tone}>{needs ? "Needs a location" : record.status}</Pill>
+            <span className="num truncate text-label font-semibold text-primary-ink">
+              {record.ref}
+            </span>
+            <Pill tone={needs ? "warn" : record.tone}>
+              {needs ? "Needs a location" : record.status}
+            </Pill>
           </span>
           <span className="mt-0.5 block truncate text-micro normal-case text-muted-foreground">
             {record.serviceName}
@@ -89,19 +99,27 @@ export function OperationalActivityPanel({
   // Exceptions first, then by reference so the order is stable between refreshes.
   const ordered = [...records].sort(
     (a, b) =>
-      Number(b.reason === "needs-location") - Number(a.reason === "needs-location") ||
-      a.ref.localeCompare(b.ref),
+      Number(b.reason === "needs-location") -
+        Number(a.reason === "needs-location") || a.ref.localeCompare(b.ref),
   );
-  const needsCount = ordered.filter((r) => r.reason === "needs-location").length;
+  const needsCount = ordered.filter(
+    (r) => r.reason === "needs-location",
+  ).length;
 
   return (
     // A named landmark, so a screen-reader user can jump straight to the exception
     // list instead of walking the map's routes to reach it — and so the tower's
     // panels are separate destinations rather than one undifferentiated blob.
-    <Card role="region" aria-label="Not on the map" className="flex min-w-0 flex-col">
+    <Card
+      role="region"
+      aria-label="Not on the map"
+      className="flex min-w-0 flex-col"
+    >
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <h2 className="text-title font-semibold leading-none tracking-tight">Not on the map</h2>
+          <h2 className="text-title font-semibold leading-none tracking-tight">
+            Not on the map
+          </h2>
           <p className="mt-1 text-micro normal-case text-muted-foreground">
             Facility work, and files whose location is not verified yet.
           </p>

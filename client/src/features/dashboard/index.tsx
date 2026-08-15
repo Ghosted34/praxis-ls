@@ -73,7 +73,9 @@ function summariseFilters(f: ControlTowerFilters): string {
     f.to && `to ${f.to}`,
     f.include_completed && "including completed",
   ].filter(Boolean) as string[];
-  return parts.length ? `Open operation files — ${parts.join(", ")}` : "All open operation files";
+  return parts.length
+    ? `Open operation files — ${parts.join(", ")}`
+    : "All open operation files";
 }
 
 export function DashboardPage() {
@@ -88,7 +90,10 @@ export function DashboardPage() {
   const [meeting, setMeeting] = React.useState(false);
 
   const firstName = React.useMemo(
-    () => firstNameOf(user as { display_name?: string | null; email?: string | null } | null),
+    () =>
+      firstNameOf(
+        user as { display_name?: string | null; email?: string | null } | null,
+      ),
     [user],
   );
 
@@ -149,7 +154,12 @@ export function DashboardPage() {
       <TowerFilters value={filters} page={data.page} onChange={setFilters} />
 
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={() => setMeeting(true)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setMeeting(true)}
+        >
           Meeting view
         </Button>
       </div>
@@ -182,7 +192,11 @@ export function DashboardPage() {
           <OperationalActivityPanel
             records={data.activity}
             selected={selected}
-            onSelect={(dossierId) => setSelected((current) => (current === dossierId ? null : dossierId))}
+            onSelect={(dossierId) =>
+              setSelected((current) =>
+                current === dossierId ? null : dossierId,
+              )
+            }
           />
         </div>
       )}
@@ -207,7 +221,11 @@ export function DashboardPage() {
       */}
       <RecentActivity />
 
-      <KpiDrilldown id={openKpi} kpis={data.kpis} onClose={() => setOpenKpi(null)} />
+      <KpiDrilldown
+        id={openKpi}
+        kpis={data.kpis}
+        onClose={() => setOpenKpi(null)}
+      />
 
       <MeetingMode
         open={meeting}

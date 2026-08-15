@@ -17,7 +17,7 @@ export interface Screen {
   public?: boolean;
 }
 
-export const SCREENS: Screen[] = (registry.screens as Screen[]);
+export const SCREENS: Screen[] = registry.screens as Screen[];
 export const screenByRoute = (route: string): Screen | undefined =>
   SCREENS.find((s) => s.route === route);
 export const screensForModule = (moduleKey: string): Screen[] =>

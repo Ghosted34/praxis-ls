@@ -32,13 +32,23 @@ import * as React from "react";
 import { Link, NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { areaRoute, sectionRoute, type Area, type AreaSection } from "./areas";
-import { buildRibbon, iconForArea, locate, type RibbonArea, type RibbonFamily } from "./ribbon-model";
+import {
+  buildRibbon,
+  iconForArea,
+  locate,
+  type RibbonArea,
+  type RibbonFamily,
+} from "./ribbon-model";
 import { useShell } from "./shell-context";
 import { useRibbonCommandList } from "./ribbon-commands";
 import { RibbonSkeleton } from "./shell-skeleton";
 import { readCachedRibbonPinned } from "@/lib/nav-access-cache";
 import { ChevronIcon, MoreIcon } from "./nav-icons";
-import { DropdownMenu, DropdownItem, DropdownLabel } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownItem,
+  DropdownLabel,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip } from "@/components/ui/tooltip";
 
 /**
@@ -108,7 +118,13 @@ function PinIcon({ pinned }: { pinned: boolean }) {
 }
 
 /** Row B's left cluster: what this family contains, scoped to where you are. */
-function NavCluster({ family, active }: { family: RibbonFamily; active?: RibbonArea }) {
+function NavCluster({
+  family,
+  active,
+}: {
+  family: RibbonFamily;
+  active?: RibbonArea;
+}) {
   const area = active ?? family.areas[0];
   if (!area) return null;
 
@@ -117,20 +133,39 @@ function NavCluster({ family, active }: { family: RibbonFamily; active?: RibbonA
   // right answer for `monitor`, whose four members are each a single screen —
   // and it means the row is never a lone dropdown with nothing beside it.
   const asAreas = area.sections.length === 0;
-  const items: { key: string; label: string; to: string; end?: boolean }[] = asAreas
-    ? family.areas.map((a) => ({ key: a.area.key, label: a.area.label, to: areaRoute(a.area), end: true }))
-    : area.sections.map((s: AreaSection) => ({ key: s.key, label: s.label, to: sectionRoute(area.area, s) }));
+  const items: { key: string; label: string; to: string; end?: boolean }[] =
+    asAreas
+      ? family.areas.map((a) => ({
+          key: a.area.key,
+          label: a.area.label,
+          to: areaRoute(a.area),
+          end: true,
+        }))
+      : area.sections.map((s: AreaSection) => ({
+          key: s.key,
+          label: s.label,
+          to: sectionRoute(area.area, s),
+        }));
 
   return (
     <div className="flex min-w-0 items-center gap-1">
-      {!asAreas && family.areas.length > 1 && <AreaSwitcher family={family} current={area.area} />}
-      <nav className="flex min-w-0 items-center gap-0.5" aria-label={asAreas ? `${family.label} areas` : `${area.area.label} sections`}>
+      {!asAreas && family.areas.length > 1 && (
+        <AreaSwitcher family={family} current={area.area} />
+      )}
+      <nav
+        className="flex min-w-0 items-center gap-0.5"
+        aria-label={
+          asAreas ? `${family.label} areas` : `${area.area.label} sections`
+        }
+      >
         {items.map((it, i) => (
           <NavLink
             key={it.key}
             to={it.to}
             end={it.end}
-            className={({ isActive }) => cn("ribbon-item", revealClass(i), isActive && "active")}
+            className={({ isActive }) =>
+              cn("ribbon-item", revealClass(i), isActive && "active")
+            }
           >
             {it.label}
           </NavLink>
@@ -151,7 +186,9 @@ function NavCluster({ family, active }: { family: RibbonFamily; active?: RibbonA
           }
         >
           <DropdownLabel>
-            <span className="micro">{asAreas ? family.label : area.area.label}</span>
+            <span className="micro">
+              {asAreas ? family.label : area.area.label}
+            </span>
           </DropdownLabel>
           {items.map((it) => (
             <DropdownItem key={it.key} to={it.to}>
@@ -165,7 +202,13 @@ function NavCluster({ family, active }: { family: RibbonFamily; active?: RibbonA
 }
 
 /** Which area of the family you are in, and how to reach its siblings. */
-function AreaSwitcher({ family, current }: { family: RibbonFamily; current: Area }) {
+function AreaSwitcher({
+  family,
+  current,
+}: {
+  family: RibbonFamily;
+  current: Area;
+}) {
   return (
     <DropdownMenu
       align="start"
@@ -195,10 +238,17 @@ function AreaSwitcher({ family, current }: { family: RibbonFamily; current: Area
 /** Row B's right cluster. Right-aligned, and never empty while you are inside
  *  an area — getting back to a hub's landing page previously meant finding the
  *  breadcrumb. */
-function CommandCluster({ area, pathname }: { area?: RibbonArea; pathname: string }) {
+function CommandCluster({
+  area,
+  pathname,
+}: {
+  area?: RibbonArea;
+  pathname: string;
+}) {
   const commands = useRibbonCommandList();
   const landing = area ? areaRoute(area.area) : "";
-  const showLanding = !!area && area.sections.length > 0 && pathname !== landing;
+  const showLanding =
+    !!area && area.sections.length > 0 && pathname !== landing;
 
   /*
    * NOTHING TO SAY, SO SAY NOTHING.
@@ -250,7 +300,8 @@ export function Ribbon({ pathname }: { pathname: string }) {
   // appearance, a document viewer — so the row does not snap back to the first
   // family the moment you open one.
   const [chosen, setChosen] = React.useState<string | null>(null);
-  const family = routeFamily ?? families.find((f) => f.key === chosen) ?? families[0];
+  const family =
+    routeFamily ?? families.find((f) => f.key === chosen) ?? families[0];
 
   // Read once per mount, not per render: the live value is `prefs.ribbonPinned`
   // the moment it exists, so re-reading storage would only ever return the same
@@ -292,7 +343,10 @@ export function Ribbon({ pathname }: { pathname: string }) {
   const showRowB = pinned || peek;
 
   return (
-    <header className="ribbon relative z-30 hidden flex-none flex-col md:flex" aria-label="Ribbon">
+    <header
+      className="ribbon relative z-30 hidden flex-none flex-col md:flex"
+      aria-label="Ribbon"
+    >
       <div className="ribbon-row flex items-center gap-3 px-4 md:px-6">
         {/*
           LINKS, NOT `role="tab"`. It looks like a segmented control and it
@@ -331,7 +385,9 @@ export function Ribbon({ pathname }: { pathname: string }) {
 
         <div className="flex-1" />
 
-        <Tooltip content={pinned ? "Collapse the ribbon" : "Keep the ribbon open"}>
+        <Tooltip
+          content={pinned ? "Collapse the ribbon" : "Keep the ribbon open"}
+        >
           <button
             type="button"
             aria-pressed={pinned}
@@ -357,7 +413,8 @@ export function Ribbon({ pathname }: { pathname: string }) {
             // Unpinned, the row floats over the content instead of pushing it
             // down — a table that jumps 46px because you glanced at the nav is
             // the thing an unpinned ribbon exists to avoid.
-            !pinned && "absolute left-0 right-0 top-full border-b bg-card shadow-[var(--shadow-l)]",
+            !pinned &&
+              "absolute left-0 right-0 top-full border-b bg-card shadow-[var(--shadow-l)]",
           )}
         >
           <NavCluster family={family} active={routeArea} />

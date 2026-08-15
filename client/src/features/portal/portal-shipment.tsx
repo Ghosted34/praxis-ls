@@ -21,9 +21,14 @@ import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { dateFmt } from "@/lib/format";
-import { portalClientChain, portalRaiseTicket, type PortalChain } from "@/lib/portal-api";
+import {
+  portalClientChain,
+  portalRaiseTicket,
+  type PortalChain,
+} from "@/lib/portal-api";
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
+const msg = (e: unknown) =>
+  e instanceof Error ? e.message : "Something went wrong.";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "To do",
@@ -34,14 +39,24 @@ const STATUS_LABEL: Record<string, string> = {
 
 const statusTone = (s: string): "ok" | "warn" | "mute" | "blue" => {
   switch (String(s || "").toUpperCase()) {
-    case "DONE": return "ok";
-    case "IN_PROGRESS": return "blue";
-    case "BLOCKED": return "warn";
-    default: return "mute";
+    case "DONE":
+      return "ok";
+    case "IN_PROGRESS":
+      return "blue";
+    case "BLOCKED":
+      return "warn";
+    default:
+      return "mute";
   }
 };
 
-export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBack?: () => void }) {
+export function PortalShipment({
+  dossierId,
+  onBack,
+}: {
+  dossierId: string;
+  onBack?: () => void;
+}) {
   const [chain, setChain] = React.useState<PortalChain | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [asking, setAsking] = React.useState<string | null>(null);
@@ -56,7 +71,9 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
     portalClientChain(dossierId)
       .then((c) => alive && setChain(c))
       .catch((e) => alive && setError(msg(e)));
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [dossierId]);
 
   if (error) return <ErrorState message={error} />;
@@ -69,11 +86,17 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
     <div className="space-y-6">
       <div>
         {onBack && (
-          <button type="button" onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
             ← All shipments
           </button>
         )}
-        <h1 className="font-display text-2xl text-foreground">{chain.dossier.ref}</h1>
+        <h1 className="font-display text-2xl text-foreground">
+          {chain.dossier.ref}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {service ? `${service} · ` : ""}
           {done} of {chain.milestones.length} steps complete
@@ -82,13 +105,21 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
 
       <Panel title="Progress">
         {chain.milestones.length === 0 ? (
-          <EmptyState title="Nothing to show yet" hint="Steps appear here as your file is set up." />
+          <EmptyState
+            title="Nothing to show yet"
+            hint="Steps appear here as your file is set up."
+          />
         ) : (
           <ol className="divide-y divide-border">
             {chain.milestones.map((m) => (
-              <li key={m.code + String(m.stage_seq)} className="flex items-center justify-between gap-3 py-3">
+              <li
+                key={m.code + String(m.stage_seq)}
+                className="flex items-center justify-between gap-3 py-3"
+              >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{m.label_en || m.label}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {m.label_en || m.label}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {m.status === "DONE" && m.completed_at
                       ? `Completed ${dateFmt(m.completed_at)}`
@@ -96,7 +127,9 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
                         ? `Expected ${dateFmt(m.planned_due)}`
                         : "Scheduled once the shipment is under way"}
                     {/* Only present at all when the forwarder has chosen to share it. */}
-                    {m.forecast_due && m.planned_due && m.forecast_due !== m.planned_due
+                    {m.forecast_due &&
+                    m.planned_due &&
+                    m.forecast_due !== m.planned_due
                       ? ` · now tracking ${dateFmt(m.forecast_due)}`
                       : ""}
                   </p>
@@ -112,7 +145,9 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
                   >
                     Ask about this
                   </button>
-                  <Pill tone={statusTone(m.status)}>{STATUS_LABEL[m.status] || m.status}</Pill>
+                  <Pill tone={statusTone(m.status)}>
+                    {STATUS_LABEL[m.status] || m.status}
+                  </Pill>
                 </div>
               </li>
             ))}
@@ -123,7 +158,8 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
       {asking && (
         <Panel title="Ask about this step">
           <p className="mb-2 text-xs text-muted-foreground">
-            Your query goes to the team handling this shipment and stays attached to the file.
+            Your query goes to the team handling this shipment and stays
+            attached to the file.
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -143,7 +179,9 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
                   await portalRaiseTicket({
                     dossier_id: chain.dossier.dossier_id,
                     subject: subject.trim(),
-                    body: stage ? `About: ${stage.label_en || stage.label}` : undefined,
+                    body: stage
+                      ? `About: ${stage.label_en || stage.label}`
+                      : undefined,
                   });
                   setSent(true);
                   setSubject("");
@@ -158,7 +196,11 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
             >
               Send
             </button>
-            <button type="button" onClick={() => setAsking(null)} className="px-2 text-sm text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setAsking(null)}
+              className="px-2 text-sm text-muted-foreground"
+            >
               Cancel
             </button>
           </div>
@@ -168,7 +210,8 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
       {sent && (
         <Panel title="Query sent">
           <p className="text-sm text-muted-foreground">
-            Thank you — the team handling this shipment has it, and you will see the reply here.
+            Thank you — the team handling this shipment has it, and you will see
+            the reply here.
           </p>
         </Panel>
       )}
@@ -176,8 +219,8 @@ export function PortalShipment({ dossierId, onBack }: { dossierId: string; onBac
       {chain.assumptions.length > 0 && (
         <Panel title="What these dates assume">
           <p className="mb-3 text-xs text-muted-foreground">
-            Your schedule depends on parties whose hours we do not control. These are the conditions it
-            was built on.
+            Your schedule depends on parties whose hours we do not control.
+            These are the conditions it was built on.
           </p>
           <ul className="space-y-2">
             {chain.assumptions.map((a) => (

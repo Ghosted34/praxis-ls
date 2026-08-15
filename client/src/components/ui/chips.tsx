@@ -61,7 +61,14 @@ export function Chips({
   const ref = React.useRef<HTMLDivElement>(null);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const keys = ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"];
+    const keys = [
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowUp",
+      "Home",
+      "End",
+    ];
     if (!keys.includes(e.key)) return;
     e.preventDefault();
     const n = options.length;
@@ -71,11 +78,21 @@ export function Chips({
         ? options[0]
         : e.key === "End"
           ? options[n - 1]
-          : options[(((i + (e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1)) % n) + n) % n];
+          : options[
+              (((i +
+                (e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1)) %
+                n) +
+                n) %
+                n
+            ];
     if (!next || next.value === value) return;
     onChange(next.value);
     requestAnimationFrame(() => {
-      ref.current?.querySelector<HTMLButtonElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
+      ref.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-value="${CSS.escape(next.value)}"]`,
+        )
+        ?.focus();
     });
   }
 
@@ -89,7 +106,13 @@ export function Chips({
      * this div focusable would add a dead tab stop in front of the real one.
      */
     // eslint-disable-next-line jsx-a11y/interactive-supports-focus
-    <div ref={ref} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} className={cn("chips", className)}>
+    <div
+      ref={ref}
+      role="radiogroup"
+      aria-label={label}
+      onKeyDown={onKeyDown}
+      className={cn("chips", className)}
+    >
       {options.map((o) => {
         const on = o.value === value;
         return (

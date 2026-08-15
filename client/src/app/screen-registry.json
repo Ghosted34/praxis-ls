@@ -107,10 +107,7 @@
       "area": "governance",
       "module_key": "MOD-67",
       "purpose": "In-app notifications incl. Watch-the-Watcher alerts.",
-      "actions": [
-        "my_notifications",
-        "my_unread_count"
-      ]
+      "actions": ["my_notifications", "my_unread_count"]
     },
     {
       "id": "workflows",
@@ -134,10 +131,7 @@
       "area": "governance",
       "module_key": "MOD-67",
       "purpose": "Runtime approval queue for approvable events.",
-      "actions": [
-        "act_approval",
-        "list_approvals"
-      ]
+      "actions": ["act_approval", "list_approvals"]
     },
     {
       "id": "appearance",
@@ -173,11 +167,7 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Tenant configuration hub.",
-      "actions": [
-        "list_settings",
-        "get_settings_section",
-        "set_setting"
-      ]
+      "actions": ["list_settings", "get_settings_section", "set_setting"]
     },
     {
       "id": "settings_numbering",
@@ -186,10 +176,7 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Configure per-document numbering (prefix, padding, reset).",
-      "actions": [
-        "get_numbering_scheme",
-        "set_numbering_scheme"
-      ]
+      "actions": ["get_numbering_scheme", "set_numbering_scheme"]
     },
     {
       "id": "master_treasury_accounts",
@@ -214,9 +201,7 @@
       "area": "master",
       "module_key": "MOD-09",
       "purpose": "Full dossier for a single treasury account — Overview, Statement, Reconciliation, Sub-account (CoA leaf), Signatories, Documents, Timeline. Each manifest action is declared on exactly one screen (ai-readiness): `get_treasury_account` is the dossier's unique read, `list_treasury_accounts` / `list_treasury_categories` live on the list page above.",
-      "actions": [
-        "get_treasury_account"
-      ]
+      "actions": ["get_treasury_account"]
     },
     {
       "id": "master_clients",
@@ -332,11 +317,7 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Encrypted, write-only third-party AI provider keys.",
-      "actions": [
-        "list_ai_vendors",
-        "set_ai_vendor",
-        "test_ai_vendor"
-      ]
+      "actions": ["list_ai_vendors", "set_ai_vendor", "test_ai_vendor"]
     },
     {
       "id": "settings_pipeline_stages",
@@ -345,9 +326,7 @@
       "area": "settings",
       "module_key": "MOD-24",
       "purpose": "CRM opportunity pipeline stages (read-only).",
-      "actions": [
-        "list_pipeline_stages"
-      ]
+      "actions": ["list_pipeline_stages"]
     },
     {
       "id": "fleet_vehicles",
@@ -415,12 +394,7 @@
       "area": "fleet",
       "module_key": "MOD-43",
       "purpose": "Fuel purchases per vehicle.",
-      "actions": [
-        "list_fuel",
-        "get_fuel",
-        "create_fuel",
-        "update_fuel"
-      ]
+      "actions": ["list_fuel", "get_fuel", "create_fuel", "update_fuel"]
     },
     {
       "id": "fleet_drivers",
@@ -647,12 +621,7 @@
       "area": "hr",
       "module_key": "MOD-16",
       "purpose": "Standard operating procedure documents with versioning.",
-      "actions": [
-        "list_sops",
-        "get_sop",
-        "create_sop",
-        "update_sop"
-      ]
+      "actions": ["list_sops", "get_sop", "create_sop", "update_sop"]
     },
     {
       "id": "hr_trainings",
@@ -679,12 +648,7 @@
       "area": "hr",
       "module_key": "MOD-19",
       "purpose": "Candidate talent pool.",
-      "actions": [
-        "list_talent",
-        "get_talent",
-        "create_talent",
-        "update_talent"
-      ]
+      "actions": ["list_talent", "get_talent", "create_talent", "update_talent"]
     },
     {
       "id": "hr_payroll",
@@ -808,10 +772,7 @@
       "area": "finance",
       "module_key": "MOD-07",
       "purpose": "TVA return, IS/minimum tax, withholding declarations.",
-      "actions": [
-        "get_vat_return",
-        "get_corporate_tax"
-      ]
+      "actions": ["get_vat_return", "get_corporate_tax"]
     },
     {
       "id": "fin_chart",
@@ -834,10 +795,7 @@
       "area": "finance",
       "module_key": "MOD-52",
       "purpose": "Proforma and advance-payment invoices — advance posts to 4191, not revenue.",
-      "actions": [
-        "get_advance",
-        "record_proforma_payment"
-      ]
+      "actions": ["get_advance", "record_proforma_payment"]
     },
     {
       "id": "ai_features",
@@ -951,10 +909,7 @@
       "area": "costing",
       "module_key": "MOD-47",
       "purpose": "Actual costs booked against a dossier.",
-      "actions": [
-        "reconcile_dossier",
-        "record_cost"
-      ]
+      "actions": ["reconcile_dossier", "record_cost"]
     },
     {
       "id": "costing_cash_requests",
@@ -1268,10 +1223,7 @@
       "area": "vault",
       "module_key": "MOD-64",
       "purpose": "Signature blocks used on documents.",
-      "actions": [
-        "list_signatures",
-        "sign_document"
-      ]
+      "actions": ["list_signatures", "sign_document"]
     },
     {
       "id": "vault_verification",
@@ -1280,9 +1232,7 @@
       "area": "vault",
       "module_key": "MOD-66",
       "purpose": "QR verification of an issued document.",
-      "actions": [
-        "verify_document"
-      ]
+      "actions": ["verify_document"]
     },
     {
       "id": "vault_compliance",
@@ -1395,12 +1345,7 @@
       "area": "master",
       "module_key": "MOD-08",
       "purpose": "Currency catalogue and live FX rates.",
-      "actions": [
-        "list_currencies",
-        "fx_rate",
-        "fx_convert",
-        "set_fx_rate"
-      ]
+      "actions": ["list_currencies", "fx_rate", "fx_convert", "set_fx_rate"]
     },
     {
       "id": "master_tax_jurisdictions",

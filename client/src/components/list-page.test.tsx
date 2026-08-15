@@ -24,17 +24,44 @@ import { Input } from "./ui/input";
 import { StatusPill } from "./ui/pill";
 import { money, dateFmt } from "@/lib/format";
 
-type Invoice = { invoice_id: string; doc_number: string; status: string; total_ttc: number; due_on: string };
+type Invoice = {
+  invoice_id: string;
+  doc_number: string;
+  status: string;
+  total_ttc: number;
+  due_on: string;
+};
 
 const ROWS: Invoice[] = [
-  { invoice_id: "i1", doc_number: "INV-2026-0041", status: "SENT", total_ttc: 1500000, due_on: "2026-04-20" },
-  { invoice_id: "i2", doc_number: "INV-2026-0042", status: "DRAFT", total_ttc: 250000, due_on: "2026-05-02" },
+  {
+    invoice_id: "i1",
+    doc_number: "INV-2026-0041",
+    status: "SENT",
+    total_ttc: 1500000,
+    due_on: "2026-04-20",
+  },
+  {
+    invoice_id: "i2",
+    doc_number: "INV-2026-0042",
+    status: "DRAFT",
+    total_ttc: 250000,
+    due_on: "2026-05-02",
+  },
 ];
 
 const columns: Column<Invoice>[] = [
   { key: "doc_number", label: "Invoice", className: "num font-medium" },
-  { key: "status", label: "Status", render: (r) => <StatusPill status={r.status} /> },
-  { key: "total_ttc", label: "Amount · XAF", className: "num text-right", render: (r) => money(r.total_ttc) },
+  {
+    key: "status",
+    label: "Status",
+    render: (r) => <StatusPill status={r.status} />,
+  },
+  {
+    key: "total_ttc",
+    label: "Amount · XAF",
+    className: "num text-right",
+    render: (r) => money(r.total_ttc),
+  },
   { key: "due_on", label: "Due", render: (r) => dateFmt(r.due_on) },
 ];
 
@@ -52,7 +79,10 @@ function DocumentedListScreen({
 }) {
   const [q, setQ] = React.useState("");
   const shown = React.useMemo(
-    () => (rows ?? []).filter((r) => r.doc_number.toLowerCase().includes(q.trim().toLowerCase())),
+    () =>
+      (rows ?? []).filter((r) =>
+        r.doc_number.toLowerCase().includes(q.trim().toLowerCase()),
+      ),
     [rows, q],
   );
 
@@ -62,7 +92,12 @@ function DocumentedListScreen({
       description="Every money event posts to the ledger."
       action={<Button onClick={onNew}>New invoice</Button>}
       toolbar={
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search invoices…" className="max-w-xs" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search invoices…"
+          className="max-w-xs"
+        />
       }
       columns={columns}
       rows={rows === null ? null : shown}
@@ -91,9 +126,15 @@ function DocumentedListScreen({
 describe("ListPage — the documented example (F5)", () => {
   it("renders the header, its h1, and the primary action", () => {
     render(<DocumentedListScreen rows={ROWS} />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Invoices");
-    expect(screen.getByRole("button", { name: "New invoice" })).toBeInTheDocument();
-    expect(screen.getByText("Every money event posts to the ledger.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Invoices",
+    );
+    expect(
+      screen.getByRole("button", { name: "New invoice" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Every money event posts to the ledger."),
+    ).toBeInTheDocument();
   });
 
   /** DataList renders the table AND the phone card fallback; both are in the
@@ -114,8 +155,15 @@ describe("ListPage — the documented example (F5)", () => {
   });
 
   it("shows the error, announced", () => {
-    render(<DocumentedListScreen rows={null} error="You don't have permission to do this." />);
-    expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to do this.");
+    render(
+      <DocumentedListScreen
+        rows={null}
+        error="You don't have permission to do this."
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "You don't have permission to do this.",
+    );
   });
 
   /**
@@ -126,17 +174,26 @@ describe("ListPage — the documented example (F5)", () => {
   it("offers a CREATE action when the list is genuinely empty", () => {
     render(<DocumentedListScreen rows={[]} />);
     expect(screen.getByText("No invoices")).toBeInTheDocument();
-    expect(screen.getByText("Issue a final invoice from an approved costing.")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "New invoice" }).length).toBeGreaterThan(1);
+    expect(
+      screen.getByText("Issue a final invoice from an approved costing."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "New invoice" }).length,
+    ).toBeGreaterThan(1);
   });
 
   it("offers a CLEAR action when filters hid everything", async () => {
     const user = userEvent.setup();
     render(<DocumentedListScreen rows={ROWS} />);
-    await user.type(screen.getByPlaceholderText("Search invoices…"), "ZZZ-nothing");
+    await user.type(
+      screen.getByPlaceholderText("Search invoices…"),
+      "ZZZ-nothing",
+    );
 
     expect(screen.getByText("No invoices match")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Clear search" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Clear search" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("No invoices")).not.toBeInTheDocument();
   });
 
@@ -149,7 +206,12 @@ describe("ListPage — the documented example (F5)", () => {
   });
 
   it("hides pagination while loading and while errored", () => {
-    const pagination = { page: 0, pageSize: 50, total: 500, onPageChange: vi.fn() };
+    const pagination = {
+      page: 0,
+      pageSize: 50,
+      total: 500,
+      onPageChange: vi.fn(),
+    };
     const { rerender } = render(
       <ListPage
         title="Invoices"
@@ -162,7 +224,9 @@ describe("ListPage — the documented example (F5)", () => {
         pagination={pagination}
       />,
     );
-    expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Pagination" }),
+    ).not.toBeInTheDocument();
 
     rerender(
       <ListPage
@@ -176,7 +240,9 @@ describe("ListPage — the documented example (F5)", () => {
         pagination={pagination}
       />,
     );
-    expect(screen.getByRole("navigation", { name: "Pagination" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Pagination" }),
+    ).toBeInTheDocument();
   });
 
   it("has no axe violations, populated or empty", async () => {

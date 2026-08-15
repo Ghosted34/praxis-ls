@@ -61,7 +61,10 @@ const ITEM_W = ["w-16", "w-20", "w-14", "w-24", "w-16"];
  */
 export function RibbonSkeleton() {
   return (
-    <header className="ribbon relative z-30 hidden flex-none flex-col md:flex" aria-hidden>
+    <header
+      className="ribbon relative z-30 hidden flex-none flex-col md:flex"
+      aria-hidden
+    >
       <div className="ribbon-row flex items-center gap-3 px-4 md:px-6">
         <div className="ribbon-track">
           {TAB_W.map((w, i) => (

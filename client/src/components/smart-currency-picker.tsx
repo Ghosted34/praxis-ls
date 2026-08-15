@@ -45,7 +45,10 @@ const SEARCH_INDEX: Map<string, string> = (() => {
   }
   const idx = new Map<string, string>();
   for (const cur of CATALOGUE) {
-    idx.set(cur.code, `${cur.code} ${cur.name} ${(byCur.get(cur.code) || []).join(" ")}`.toLowerCase());
+    idx.set(
+      cur.code,
+      `${cur.code} ${cur.name} ${(byCur.get(cur.code) || []).join(" ")}`.toLowerCase(),
+    );
   }
   return idx;
 })();
@@ -68,7 +71,10 @@ export function SmartCurrencyPicker({
   const [q, setQ] = React.useState("");
   const searchRef = React.useRef<HTMLInputElement>(null);
   const current = (value || "").toUpperCase();
-  const excluded = React.useMemo(() => new Set(exclude.map((c) => c.toUpperCase())), [exclude]);
+  const excluded = React.useMemo(
+    () => new Set(exclude.map((c) => c.toUpperCase())),
+    [exclude],
+  );
   const selected = CATALOGUE.find((c) => c.code === current);
 
   React.useEffect(() => {
@@ -110,13 +116,17 @@ export function SmartCurrencyPicker({
               <>
                 <span aria-hidden>{flagOf(selected.country_code)}</span>
                 <span className="num font-medium">{selected.code}</span>
-                <span className="truncate text-muted-foreground">{selected.name}</span>
+                <span className="truncate text-muted-foreground">
+                  {selected.name}
+                </span>
               </>
             ) : (
               <span className="text-muted-foreground">Select a currency…</span>
             )}
           </span>
-          <span aria-hidden className="text-muted-foreground">▾</span>
+          <span aria-hidden className="text-muted-foreground">
+            ▾
+          </span>
         </button>
       }
     >
@@ -130,9 +140,15 @@ export function SmartCurrencyPicker({
           className="h-8 w-full rounded-md border bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
-      <div className="max-h-72 overflow-auto p-1" role="listbox" aria-label={label}>
+      <div
+        className="max-h-72 overflow-auto p-1"
+        role="listbox"
+        aria-label={label}
+      >
         {filtered.length === 0 ? (
-          <div className="px-2 py-4 text-center text-sm text-muted-foreground">No match.</div>
+          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+            No match.
+          </div>
         ) : (
           filtered.map((c) => (
             <PopoverClose asChild key={c.code}>
@@ -143,14 +159,29 @@ export function SmartCurrencyPicker({
                 onClick={() => pick(c.code)}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                  c.code === current ? "bg-primary/10 text-foreground" : "text-foreground",
+                  c.code === current
+                    ? "bg-primary/10 text-foreground"
+                    : "text-foreground",
                 )}
               >
-                <span aria-hidden className="w-5 text-center">{flagOf(c.country_code)}</span>
+                <span aria-hidden className="w-5 text-center">
+                  {flagOf(c.country_code)}
+                </span>
                 <span className="num w-10 font-medium">{c.code}</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{c.name}</span>
-                <span aria-hidden className="w-8 text-right text-muted-foreground">{c.symbol}</span>
-                {c.code === current && <span aria-hidden className="text-primary-ink">✓</span>}
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {c.name}
+                </span>
+                <span
+                  aria-hidden
+                  className="w-8 text-right text-muted-foreground"
+                >
+                  {c.symbol}
+                </span>
+                {c.code === current && (
+                  <span aria-hidden className="text-primary-ink">
+                    ✓
+                  </span>
+                )}
               </button>
             </PopoverClose>
           ))

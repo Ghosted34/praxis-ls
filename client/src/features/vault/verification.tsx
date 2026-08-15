@@ -36,7 +36,9 @@ export function VerificationPage() {
       const qs = new URLSearchParams();
       qs.set("hash", hash.trim());
       qs.set(kind, target.trim());
-      const r = await tenant<Row>(`/document-verification/verify?${qs.toString()}`);
+      const r = await tenant<Row>(
+        `/document-verification/verify?${qs.toString()}`,
+      );
       setResult(r);
     } catch (e) {
       setError(errMsg(e));
@@ -49,7 +51,11 @@ export function VerificationPage() {
 
   return (
     <section className={pageShell.reading}>
-      <PageHeader eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />} title="Document verification" description="Check a document's fingerprint against the vault — confirms it hasn't been tampered with." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
+        title="Document verification"
+        description="Check a document's fingerprint against the vault — confirms it hasn't been tampered with."
+      />
       <HubTabs />
       <form
         className="lux-card space-y-4 p-4"
@@ -69,11 +75,26 @@ export function VerificationPage() {
             ]}
           />
         </Field>
-        <Field label={kind === "entity_ref" ? "Document reference" : "Document ID"} required>
-          <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={kind === "entity_ref" ? "DOSSIER-2026-0042" : "uuid…"} />
+        <Field
+          label={kind === "entity_ref" ? "Document reference" : "Document ID"}
+          required
+        >
+          <Input
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            placeholder={kind === "entity_ref" ? "DOSSIER-2026-0042" : "uuid…"}
+          />
         </Field>
-        <Field label="Hash" required hint="The fingerprint from the QR / document (min 4 chars)">
-          <Input value={hash} onChange={(e) => setHash(e.target.value)} placeholder="a1b2c3d4…" />
+        <Field
+          label="Hash"
+          required
+          hint="The fingerprint from the QR / document (min 4 chars)"
+        >
+          <Input
+            value={hash}
+            onChange={(e) => setHash(e.target.value)}
+            placeholder="a1b2c3d4…"
+          />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end">
@@ -84,9 +105,16 @@ export function VerificationPage() {
       </form>
 
       {result && (
-        <div className={`lux-card mt-4 p-4 ${verified ? "border-ok/40" : "border-bad/40"}`}>
-          <Callout tone={verified ? "ok" : "bad"} title={verified ? "Verified" : "Not verified"}>
-            {verified ? "The stored hash matches this document — no tampering." : "The stored hash does not match this document."}
+        <div
+          className={`lux-card mt-4 p-4 ${verified ? "border-ok/40" : "border-bad/40"}`}
+        >
+          <Callout
+            tone={verified ? "ok" : "bad"}
+            title={verified ? "Verified" : "Not verified"}
+          >
+            {verified
+              ? "The stored hash matches this document — no tampering."
+              : "The stored hash does not match this document."}
           </Callout>
           <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
             <div className="flex justify-between gap-4">
@@ -103,7 +131,9 @@ export function VerificationPage() {
             </div>
             <div className="flex justify-between gap-4 sm:col-span-2">
               <dt className="text-muted-foreground">Stored hash</dt>
-              <dd className="truncate font-mono text-xs">{cell(result.content_hash)}</dd>
+              <dd className="truncate font-mono text-xs">
+                {cell(result.content_hash)}
+              </dd>
             </div>
           </dl>
         </div>

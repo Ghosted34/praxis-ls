@@ -21,71 +21,169 @@ import * as api from "@/lib/wms-api";
 
 const shell = pageShell.wide;
 
-function CountSheet({ locations, onClose, onSaved }: { locations: api.WarehouseLocation[]; onClose: () => void; onSaved: () => void }) {
+function CountSheet({
+  locations,
+  onClose,
+  onSaved,
+}: {
+  locations: api.WarehouseLocation[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const inv = useResource(() => api.listInventory(), []);
   const [locationId, setLocationId] = React.useState("");
   const [counts, setCounts] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const items = React.useMemo(() => (inv.data || []).filter((i) => i.location_id === locationId), [inv.data, locationId]);
+  const items = React.useMemo(
+    () => (inv.data || []).filter((i) => i.location_id === locationId),
+    [inv.data, locationId],
+  );
   React.useEffect(() => {
     const c: Record<string, string> = {};
-    items.forEach((i) => { c[i.inventory_item_id] = String(i.qty_on_hand); });
+    items.forEach((i) => {
+      c[i.inventory_item_id] = String(i.qty_on_hand);
+    });
     setCounts(c);
   }, [locationId, inv.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const varianceOf = (i: api.InventoryItem) => Number(counts[i.inventory_item_id] ?? i.qty_on_hand) - Number(i.qty_on_hand);
+  const varianceOf = (i: api.InventoryItem) =>
+    Number(counts[i.inventory_item_id] ?? i.qty_on_hand) -
+    Number(i.qty_on_hand);
   const offCount = items.filter((i) => varianceOf(i) !== 0).length;
 
   async function submit() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      const discrepancy = items.map((i) => ({ inventory_item_id: i.inventory_item_id, expected: Number(i.qty_on_hand), counted: Number(counts[i.inventory_item_id] ?? i.qty_on_hand) }));
+      const discrepancy = items.map((i) => ({
+        inventory_item_id: i.inventory_item_id,
+        expected: Number(i.qty_on_hand),
+        counted: Number(counts[i.inventory_item_id] ?? i.qty_on_hand),
+      }));
       await api.createCycleCount({ location_id: locationId, discrepancy });
-      onSaved(); onClose();
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <Modal open onClose={onClose} size="xl" title="Cycle count" description="Count physical stock against the system and submit any variance.">
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title="Cycle count"
+      description="Count physical stock against the system and submit any variance."
+    >
       <div className="space-y-4">
         <Field label="Location" required>
-          <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+          <Select
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+          >
             <option value="">Choose a location…</option>
-            {locations.map((l) => <option key={l.location_id} value={l.location_id}>{api.locationLabel(l)}</option>)}
+            {locations.map((l) => (
+              <option key={l.location_id} value={l.location_id}>
+                {api.locationLabel(l)}
+              </option>
+            ))}
           </Select>
         </Field>
 
         {!locationId ? (
-          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">Pick a location to load its stock.</div>
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+            Pick a location to load its stock.
+          </div>
         ) : inv.loading ? (
           <div className="py-4 text-center micro">Loading stock…</div>
         ) : items.length === 0 ? (
-          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">No stock recorded at this location.</div>
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+            No stock recorded at this location.
+          </div>
         ) : (
           <>
             <LineTable
               rows={items}
               rowKey={(i) => i.inventory_item_id}
               columns={[
-                { label: "Item", render: (i) => <>{i.description}{i.sku ? <span className="ml-2 num text-xs text-muted-foreground">{i.sku}</span> : null}</> },
-                { label: "Expected", align: "right", render: (i) => <span className="num">{num(i.qty_on_hand)}</span> },
-                { label: "Counted", align: "right", render: (i) => <Input type="number" className="num ml-auto w-24 text-right" value={counts[i.inventory_item_id] ?? ""} onChange={(e) => setCounts((s) => ({ ...s, [i.inventory_item_id]: e.target.value }))} /> },
                 {
-                  label: "Variance", align: "right",
+                  label: "Item",
+                  render: (i) => (
+                    <>
+                      {i.description}
+                      {i.sku ? (
+                        <span className="ml-2 num text-xs text-muted-foreground">
+                          {i.sku}
+                        </span>
+                      ) : null}
+                    </>
+                  ),
+                },
+                {
+                  label: "Expected",
+                  align: "right",
+                  render: (i) => (
+                    <span className="num">{num(i.qty_on_hand)}</span>
+                  ),
+                },
+                {
+                  label: "Counted",
+                  align: "right",
+                  render: (i) => (
+                    <Input
+                      type="number"
+                      className="num ml-auto w-24 text-right"
+                      value={counts[i.inventory_item_id] ?? ""}
+                      onChange={(e) =>
+                        setCounts((s) => ({
+                          ...s,
+                          [i.inventory_item_id]: e.target.value,
+                        }))
+                      }
+                    />
+                  ),
+                },
+                {
+                  label: "Variance",
+                  align: "right",
                   render: (i) => {
                     const v = varianceOf(i);
-                    return <span className={"num " + (v === 0 ? "text-muted-foreground" : v > 0 ? "text-ok" : "text-bad")}>{v > 0 ? `+${num(v)}` : num(v)}</span>;
+                    return (
+                      <span
+                        className={
+                          "num " +
+                          (v === 0
+                            ? "text-muted-foreground"
+                            : v > 0
+                              ? "text-ok"
+                              : "text-bad")
+                        }
+                      >
+                        {v > 0 ? `+${num(v)}` : num(v)}
+                      </span>
+                    );
                   },
                 },
               ]}
             />
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{offCount === 0 ? "No variance" : `${offCount} line${offCount > 1 ? "s" : ""} off`}</span>
+              <span className="text-sm text-muted-foreground">
+                {offCount === 0
+                  ? "No variance"
+                  : `${offCount} line${offCount > 1 ? "s" : ""} off`}
+              </span>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-                <Button onClick={submit} loading={busy}>Submit count</Button>
+                <Button variant="outline" onClick={onClose} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button onClick={submit} loading={busy}>
+                  Submit count
+                </Button>
               </div>
             </div>
           </>
@@ -102,31 +200,89 @@ export function CycleCountsPage() {
   const [open, setOpen] = React.useState(false);
   const locMap = React.useMemo(() => {
     const m: Record<string, string> = {};
-    (locs.data || []).forEach((l) => { m[l.location_id] = api.locationLabel(l); });
+    (locs.data || []).forEach((l) => {
+      m[l.location_id] = api.locationLabel(l);
+    });
     return m;
   }, [locs.data]);
 
   const cols: Column<api.CycleCount>[] = [
-    { key: "loc", label: "Location", render: (c) => <span className="font-medium text-foreground">{locMap[c.location_id || ""] || "—"}</span> },
-    { key: "when", label: "Counted", render: (c) => <span className="num">{dateFmt(c.created_at)}</span> },
-    { key: "lines", label: "Lines", className: "num text-right", render: (c) => num(c.discrepancy_summary?.lines ?? 0) },
     {
-      key: "result", label: "Result",
+      key: "loc",
+      label: "Location",
+      render: (c) => (
+        <span className="font-medium text-foreground">
+          {locMap[c.location_id || ""] || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "when",
+      label: "Counted",
+      render: (c) => <span className="num">{dateFmt(c.created_at)}</span>,
+    },
+    {
+      key: "lines",
+      label: "Lines",
+      className: "num text-right",
+      render: (c) => num(c.discrepancy_summary?.lines ?? 0),
+    },
+    {
+      key: "result",
+      label: "Result",
       render: (c) => {
         const s = c.discrepancy_summary;
         if (!s || !s.has_discrepancy) return <Pill tone="ok">Match</Pill>;
-        return <Pill tone="bad">{s.off_lines} off · net {num(s.net_variance)}</Pill>;
+        return (
+          <Pill tone="bad">
+            {s.off_lines} off · net {num(s.net_variance)}
+          </Pill>
+        );
       },
     },
-    { key: "_a", label: "", render: (c) => <div className="flex justify-end"><DocButton docType="CYCLE_COUNT_SHEET" id={c.cycle_count_id} title={`Cycle count ${c.cycle_count_id.slice(0, 8)}`} label="View" /></div> },
+    {
+      key: "_a",
+      label: "",
+      render: (c) => (
+        <div className="flex justify-end">
+          <DocButton
+            docType="CYCLE_COUNT_SHEET"
+            id={c.cycle_count_id}
+            title={`Cycle count ${c.cycle_count_id.slice(0, 8)}`}
+            label="View"
+          />
+        </div>
+      ),
+    },
   ];
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Cycle counts" description="Count stock against the system by location; variances raise reconciliation." action={<Button onClick={() => setOpen(true)}>New count</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
+        title="Cycle counts"
+        description="Count stock against the system by location; variances raise reconciliation."
+        action={<Button onClick={() => setOpen(true)}>New count</Button>}
+      />
       <HubTabs />
-      <DataList columns={cols} rows={counts.data} error={counts.error} loading={counts.loading} rowKey={(c) => c.cycle_count_id} empty={{ title: "No counts yet", hint: "Run a count on a location to check stock accuracy." }} />
-      {open && <CountSheet locations={locs.data || []} onClose={() => setOpen(false)} onSaved={counts.reload} />}
+      <DataList
+        columns={cols}
+        rows={counts.data}
+        error={counts.error}
+        loading={counts.loading}
+        rowKey={(c) => c.cycle_count_id}
+        empty={{
+          title: "No counts yet",
+          hint: "Run a count on a location to check stock accuracy.",
+        }}
+      />
+      {open && (
+        <CountSheet
+          locations={locs.data || []}
+          onClose={() => setOpen(false)}
+          onSaved={counts.reload}
+        />
+      )}
       <ScreenAi path="wms/cycle-counts" />
     </section>
   );

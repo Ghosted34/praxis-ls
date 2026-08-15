@@ -36,8 +36,12 @@ describe("fieldLabel", () => {
 describe("DataView", () => {
   it("renders an array of objects as a table with humanised headers", () => {
     render(<DataView data={[{ client_id: "c1", total_ttc: 1500 }]} />);
-    expect(screen.getByRole("columnheader", { name: "Client" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Total TTC" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Client" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Total TTC" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("1,500")).toBeInTheDocument();
   });
 
@@ -57,7 +61,9 @@ describe("DataView", () => {
 
   it("shows an empty state for null instead of the string 'null'", () => {
     render(<DataView data={null} emptyTitle="This report returned no rows" />);
-    expect(screen.getByText("This report returned no rows")).toBeInTheDocument();
+    expect(
+      screen.getByText("This report returned no rows"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("null")).not.toBeInTheDocument();
   });
 
@@ -77,7 +83,9 @@ describe("DataView", () => {
   });
 
   it("has no axe violations in the table form", async () => {
-    const { container } = render(<DataView data={[{ client_id: "c1", total_ttc: 1500 }]} />);
+    const { container } = render(
+      <DataView data={[{ client_id: "c1", total_ttc: 1500 }]} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 

@@ -34,7 +34,8 @@ export const SMTP_GUIDES: Record<string, SmtpGuide> = {
   },
   SMTP_SEND_REJECTED: {
     title: "The mail server refused the message",
-    intro: "The connection and login worked, but the server would not take the message.",
+    intro:
+      "The connection and login worked, but the server would not take the message.",
     steps: [
       "Check sending quotas/limits on the mailbox or relay (daily caps are the usual cause).",
       "Confirm the From domain is verified/allowed on your relay (SES/SendGrid/Postmark).",
@@ -54,7 +55,8 @@ export const SMTP_GUIDES: Record<string, SmtpGuide> = {
   // the connected mailbox's own server refused the send.
   SENDER_NOT_AUTHORIZED: {
     title: "Your mailbox isn't authorised to send as the From address",
-    intro: "The mailbox's own mail server refused the message — this is the mailbox's SMTP setup, not Praxis.",
+    intro:
+      "The mailbox's own mail server refused the message — this is the mailbox's SMTP setup, not Praxis.",
     steps: [
       "Make the From address a REAL mailbox on that server — create the mailbox or alias if it doesn't exist.",
       "Match From to the login: the address you send as must be the account you connected with (or an alias of it).",
@@ -90,15 +92,29 @@ export function smtpCodeFor(err: unknown, message?: unknown): string | null {
   if (code && SMTP_GUIDES[code]) return code;
   const text = [
     message != null ? String(message) : "",
-    err instanceof ApiError ? err.message : err instanceof Error ? err.message : "",
+    err instanceof ApiError
+      ? err.message
+      : err instanceof Error
+        ? err.message
+        : "",
   ]
     .join(" ")
     .toLowerCase();
   if (text.includes("sender verify")) return "SMTP_SENDER_REJECTED";
   if (text.includes("535") || text.includes("eauth")) return "SMTP_AUTH_FAILED";
-  if (text.includes("authori") || text.includes("not allowed to send") || text.includes("not author")) return "SENDER_NOT_AUTHORIZED";
+  if (
+    text.includes("authori") ||
+    text.includes("not allowed to send") ||
+    text.includes("not author")
+  )
+    return "SENDER_NOT_AUTHORIZED";
   if (text.includes("login")) return "MAILBOX_AUTH_FAILED";
-  if (/\b5\d\d\b/.test(text) || text.includes("rejected") || text.includes("refused")) return "SMTP_SEND_REJECTED";
+  if (
+    /\b5\d\d\b/.test(text) ||
+    text.includes("rejected") ||
+    text.includes("refused")
+  )
+    return "SMTP_SEND_REJECTED";
   return null;
 }
 

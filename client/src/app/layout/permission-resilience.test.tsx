@@ -26,7 +26,15 @@
  * ribbon and the real gate all run.
  */
 import * as React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+} from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -42,7 +50,10 @@ import { writeCachedAccess, readCachedAccess } from "@/lib/nav-access-cache";
 const server = { current: null as NavAccess | null, pending: false, calls: 0 };
 
 vi.mock("@/lib/nav-access", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/nav-access")>("@/lib/nav-access");
+  const actual =
+    await vi.importActual<typeof import("@/lib/nav-access")>(
+      "@/lib/nav-access",
+    );
   return {
     ...actual,
     fetchNavAccess: async () => {
@@ -53,15 +64,37 @@ vi.mock("@/lib/nav-access", async () => {
   };
 });
 
-const storedPrefs = { current: { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true } as ShellPrefs };
+const storedPrefs = {
+  current: {
+    ribbonPinned: null,
+    railPins: null,
+    towerPins: null,
+    railHintSeen: true,
+  } as ShellPrefs,
+};
 vi.mock("@/lib/preferences", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/preferences")>("@/lib/preferences");
-  return { ...actual, fetchShellPrefs: async () => storedPrefs.current, saveShellPrefs: async () => storedPrefs.current };
+  const actual =
+    await vi.importActual<typeof import("@/lib/preferences")>(
+      "@/lib/preferences",
+    );
+  return {
+    ...actual,
+    fetchShellPrefs: async () => storedPrefs.current,
+    saveShellPrefs: async () => storedPrefs.current,
+  };
 });
 
 vi.mock("@/app/auth/auth-context", async () => {
-  const actual = await vi.importActual<typeof import("@/app/auth/auth-context")>("@/app/auth/auth-context");
-  return { ...actual, useAuth: () => ({ user: { user_id: USER, ai_enabled: true }, status: "authed" as const }) };
+  const actual = await vi.importActual<
+    typeof import("@/app/auth/auth-context")
+  >("@/app/auth/auth-context");
+  return {
+    ...actual,
+    useAuth: () => ({
+      user: { user_id: USER, ai_enabled: true },
+      status: "authed" as const,
+    }),
+  };
 });
 
 import { ShellProvider } from "./shell-providers";
@@ -75,17 +108,27 @@ const USER = "u-shell-test";
 /** A payload in the endpoint's real shape. */
 function grant(byGroup: Record<string, string[]>, isCeo = false): NavAccess {
   const modules = Object.values(byGroup).flat().sort();
-  return { modules, groups: Object.keys(byGroup), byGroup, isCeo, version: modules.join("|").slice(0, 12) };
+  return {
+    modules,
+    groups: Object.keys(byGroup),
+    byGroup,
+    isCeo,
+    version: modules.join("|").slice(0, 12),
+  };
 }
 
-const WAREHOUSE = grant({ fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"] });
+const WAREHOUSE = grant({
+  fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"],
+});
 /** The same, plus a finance family. A pure GAIN over WAREHOUSE. */
 const WAREHOUSE_PLUS_FINANCE = grant({
   fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"],
   transact: ["MOD-51", "MOD-52"],
 });
 /** WAREHOUSE with one module taken away. A pure LOSS. */
-const WAREHOUSE_LESS_ONE = grant({ fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37"] });
+const WAREHOUSE_LESS_ONE = grant({
+  fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37"],
+});
 
 let reload: ReturnType<typeof vi.fn>;
 /** The throttle in ShellProvider reads `Date.now()`. Driving it by hand beats
@@ -96,9 +139,14 @@ beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: (query: string) => ({
-      matches: false, media: query, onchange: null,
-      addEventListener: () => {}, removeEventListener: () => {},
-      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
     }),
   });
 });
@@ -108,11 +156,19 @@ beforeEach(() => {
   server.current = null;
   server.pending = false;
   server.calls = 0;
-  storedPrefs.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
+  storedPrefs.current = {
+    ribbonPinned: null,
+    railPins: null,
+    towerPins: null,
+    railHintSeen: true,
+  };
   clock = 1_000_000;
   vi.spyOn(Date, "now").mockImplementation(() => clock);
   reload = vi.fn();
-  Object.defineProperty(window, "location", { value: { reload, pathname: "/" }, writable: true });
+  Object.defineProperty(window, "location", {
+    value: { reload, pathname: "/" },
+    writable: true,
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -133,7 +189,8 @@ const ribbonOf = (c: HTMLElement) => c.querySelector<HTMLElement>(".ribbon");
  *  renderings of the same markup differ by a counter and nothing else. Blanking
  *  it keeps the comparison about STRUCTURE, which is the only thing that can
  *  move a pixel. */
-const structureOf = (el: HTMLElement) => el.outerHTML.replace(/radix-:r[0-9a-z]+:/g, "radix-id");
+const structureOf = (el: HTMLElement) =>
+  el.outerHTML.replace(/radix-:r[0-9a-z]+:/g, "radix-id");
 
 /* ── 1. the first frame ────────────────────────────────────────────────────── */
 
@@ -159,7 +216,9 @@ describe("the shell holds its structure from the first paint", () => {
     const ribbon = ribbonOf(container);
     expect(ribbon).not.toBeNull();
     // A shimmer, which is the reused `Skeleton` primitive…
-    expect(ribbon!.querySelectorAll(".animate-pulse").length).toBeGreaterThan(4);
+    expect(ribbon!.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
+      4,
+    );
     // …and emphatically not a spinner, nor an empty box.
     expect(ribbon!.querySelector(".animate-spin")).toBeNull();
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -224,7 +283,9 @@ describe("the shell holds its structure from the first paint", () => {
     server.pending = true;
 
     const { container } = renderShell(<Ribbon pathname="/wms" />);
-    expect(ribbonOf(container)!.querySelectorAll(".ribbon-row")).toHaveLength(1);
+    expect(ribbonOf(container)!.querySelectorAll(".ribbon-row")).toHaveLength(
+      1,
+    );
   });
 
   it("is axe-clean while it is still a skeleton", async () => {
@@ -270,7 +331,9 @@ describe("a revoked module takes effect immediately", () => {
     );
 
     await waitFor(() => expect(reload).toHaveBeenCalled());
-    expect(screen.queryByText(/access permissions have been updated/i)).toBeNull();
+    expect(
+      screen.queryByText(/access permissions have been updated/i),
+    ).toBeNull();
   });
 
   it("does NOT reload on a first login, when there is nothing to compare against", async () => {
@@ -305,7 +368,9 @@ describe("a granted module does not throw away what you were typing", () => {
     server.current = WAREHOUSE_PLUS_FINANCE;
     renderShell(<AccessBanner />);
     expect(
-      await screen.findByText("Your access permissions have been updated. Reload to apply changes."),
+      await screen.findByText(
+        "Your access permissions have been updated. Reload to apply changes.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -317,7 +382,9 @@ describe("a granted module does not throw away what you were typing", () => {
 
     const { container } = renderShell(<Ribbon pathname="/wms" />);
     await waitFor(() =>
-      expect(container.querySelector('[aria-label="Workflow"]')!.textContent).toContain("Transact"),
+      expect(
+        container.querySelector('[aria-label="Workflow"]')!.textContent,
+      ).toContain("Transact"),
     );
   });
 
@@ -329,7 +396,9 @@ describe("a granted module does not throw away what you were typing", () => {
     await screen.findByText(/access permissions have been updated/i);
 
     await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByText(/access permissions have been updated/i)).toBeNull();
+    expect(
+      screen.queryByText(/access permissions have been updated/i),
+    ).toBeNull();
 
     // Now make the shell ask again — past the throttle, with the SAME answer.
     // A dismissal keyed on anything but the change itself pops the banner back
@@ -340,7 +409,9 @@ describe("a granted module does not throw away what you were typing", () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitFor(() => expect(server.calls).toBeGreaterThan(before));
-    expect(screen.queryByText(/access permissions have been updated/i)).toBeNull();
+    expect(
+      screen.queryByText(/access permissions have been updated/i),
+    ).toBeNull();
   });
 
   it("raises it again for a FURTHER grant on top of a dismissed one", async () => {
@@ -361,7 +432,9 @@ describe("a granted module does not throw away what you were typing", () => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(await screen.findByText(/access permissions have been updated/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/access permissions have been updated/i),
+    ).toBeInTheDocument();
   });
 
   it("is axe-clean", async () => {
@@ -470,7 +543,9 @@ describe("a direct URL into a module you cannot see", () => {
     await screen.findByRole("heading", { level: 1 });
     expect(screen.getByText("MOD-51")).toBeInTheDocument();
     expect(screen.getByText(/revenue recognition/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Request access" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Request access" }),
+    ).toBeInTheDocument();
   });
 
   it("lets the screen through when the grant is there", async () => {
@@ -495,7 +570,9 @@ describe("a direct URL into a module you cannot see", () => {
       "/finance/invoices",
     );
     expect(screen.queryByText("the finance ledger")).toBeNull();
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("is axe-clean", async () => {
@@ -519,6 +596,9 @@ describe("RibbonSkeleton", () => {
     // the half nobody asked about.
     const { container } = render(<RibbonSkeleton />);
     expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.querySelector(".ribbon")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".ribbon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 });

@@ -22,7 +22,10 @@ const SAFE_HREF = /^(https?:|mailto:)/i;
  * most needed to read as a total. There is one inline grammar in this app and
  * this is it; a second renderer for the pane would drift from this one.
  */
-export function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+export function renderInline(
+  text: string,
+  keyPrefix: string,
+): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   // earliest-match scanner over the four inline patterns
   const pattern =
@@ -51,7 +54,13 @@ export function renderInline(text: string, keyPrefix: string): React.ReactNode[]
       const href = mm[2].trim();
       nodes.push(
         SAFE_HREF.test(href) ? (
-          <a key={k} href={href} target="_blank" rel="noopener noreferrer" className="text-primary-ink underline">
+          <a
+            key={k}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary-ink underline"
+          >
             {mm[1]}
           </a>
         ) : (
@@ -112,7 +121,8 @@ function parseBlocks(src: string): Block[] {
     if (/^```/.test(line.trim())) {
       const buf: string[] = [];
       i++;
-      while (i < lines.length && !/^```/.test(lines[i].trim())) buf.push(lines[i++]);
+      while (i < lines.length && !/^```/.test(lines[i].trim()))
+        buf.push(lines[i++]);
       i++; // closing fence
       blocks.push({ type: "code", text: buf.join("\n") });
       continue;
@@ -134,13 +144,18 @@ function parseBlocks(src: string): Block[] {
     // blockquote
     if (/^>\s?/.test(line)) {
       const buf: string[] = [];
-      while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+      while (i < lines.length && /^>\s?/.test(lines[i]))
+        buf.push(lines[i++].replace(/^>\s?/, ""));
       blocks.push({ type: "quote", text: buf.join(" ") });
       continue;
     }
 
     // table: a header row followed by a delimiter row
-    if (line.includes("|") && i + 1 < lines.length && isDelimiterRow(lines[i + 1])) {
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      isDelimiterRow(lines[i + 1])
+    ) {
       const header = splitRow(line);
       const align = splitRow(lines[i + 1]).map(alignOf);
       i += 2;
@@ -155,7 +170,8 @@ function parseBlocks(src: string): Block[] {
     // unordered list
     if (/^\s*[-*]\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*]\s+/, ""));
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i]))
+        items.push(lines[i++].replace(/^\s*[-*]\s+/, ""));
       blocks.push({ type: "ul", items });
       continue;
     }
@@ -163,7 +179,8 @@ function parseBlocks(src: string): Block[] {
     // ordered list
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+\.\s+/, ""));
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i]))
+        items.push(lines[i++].replace(/^\s*\d+\.\s+/, ""));
       blocks.push({ type: "ol", items });
       continue;
     }
@@ -178,7 +195,11 @@ function parseBlocks(src: string): Block[] {
       !/^\s*\d+\.\s+/.test(lines[i]) &&
       !/^>\s?/.test(lines[i]) &&
       !/^```/.test(lines[i].trim()) &&
-      !(lines[i].includes("|") && i + 1 < lines.length && isDelimiterRow(lines[i + 1]))
+      !(
+        lines[i].includes("|") &&
+        i + 1 < lines.length &&
+        isDelimiterRow(lines[i + 1])
+      )
     ) {
       buf.push(lines[i++]);
     }
@@ -213,7 +234,9 @@ export function Markdown({ text }: { text: string }) {
             return (
               <ul key={key} className="list-disc space-y-0.5 pl-5">
                 {b.items.map((it, ii) => (
-                  <li key={`${key}-${ii}`}>{renderInline(it, `${key}-${ii}`)}</li>
+                  <li key={`${key}-${ii}`}>
+                    {renderInline(it, `${key}-${ii}`)}
+                  </li>
                 ))}
               </ul>
             );
@@ -221,32 +244,47 @@ export function Markdown({ text }: { text: string }) {
             return (
               <ol key={key} className="list-decimal space-y-0.5 pl-5">
                 {b.items.map((it, ii) => (
-                  <li key={`${key}-${ii}`}>{renderInline(it, `${key}-${ii}`)}</li>
+                  <li key={`${key}-${ii}`}>
+                    {renderInline(it, `${key}-${ii}`)}
+                  </li>
                 ))}
               </ol>
             );
           case "code":
             return (
-              <pre key={key} className="overflow-x-auto rounded-lg bg-muted p-2 text-[0.8em]">
+              <pre
+                key={key}
+                className="overflow-x-auto rounded-lg bg-muted p-2 text-[0.8em]"
+              >
                 <code>{b.text}</code>
               </pre>
             );
           case "quote":
             return (
-              <blockquote key={key} className="border-l-2 border-border pl-3 text-muted-foreground">
+              <blockquote
+                key={key}
+                className="border-l-2 border-border pl-3 text-muted-foreground"
+              >
                 {renderInline(b.text, key)}
               </blockquote>
             );
           case "table": {
             const alignClass = (a: Align) =>
-              a === "center" ? "text-center" : a === "right" ? "text-right" : "text-left";
+              a === "center"
+                ? "text-center"
+                : a === "right"
+                  ? "text-right"
+                  : "text-left";
             return (
               <div key={key} className="overflow-x-auto">
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-border">
                       {b.header.map((h, hi) => (
-                        <th key={`${key}-h-${hi}`} className={`px-2 py-1 font-semibold ${alignClass(b.align[hi] ?? null)}`}>
+                        <th
+                          key={`${key}-h-${hi}`}
+                          className={`px-2 py-1 font-semibold ${alignClass(b.align[hi] ?? null)}`}
+                        >
                           {renderInline(h, `${key}-h-${hi}`)}
                         </th>
                       ))}
@@ -254,10 +292,19 @@ export function Markdown({ text }: { text: string }) {
                   </thead>
                   <tbody>
                     {b.rows.map((row, ri) => (
-                      <tr key={`${key}-r-${ri}`} className="border-b border-border/50">
+                      <tr
+                        key={`${key}-r-${ri}`}
+                        className="border-b border-border/50"
+                      >
                         {b.header.map((_, ci) => (
-                          <td key={`${key}-r-${ri}-${ci}`} className={`px-2 py-1 align-top ${alignClass(b.align[ci] ?? null)}`}>
-                            {renderInline(row[ci] ?? "", `${key}-r-${ri}-${ci}`)}
+                          <td
+                            key={`${key}-r-${ri}-${ci}`}
+                            className={`px-2 py-1 align-top ${alignClass(b.align[ci] ?? null)}`}
+                          >
+                            {renderInline(
+                              row[ci] ?? "",
+                              `${key}-r-${ri}-${ci}`,
+                            )}
                           </td>
                         ))}
                       </tr>

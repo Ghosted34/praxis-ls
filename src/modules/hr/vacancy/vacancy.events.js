@@ -7,4 +7,9 @@ module.exports = {
   STATUS_CHANGED: "vacancy.status_changed",
   APPLICANT_ADDED: "vacancy.applicant_added",
   APPLICANT_UPDATED: "vacancy.applicant_updated",
+  APPLICANT_SCORED: "vacancy.applicant_scored",
+  APPLICANT_RATED: "vacancy.applicant_rated",
+  CRITERIA_CHANGED: "vacancy.criteria_changed",
+  QUESTIONS_CHANGED: "vacancy.questions_changed",
+  PUBLISHED: "vacancy.published",
 };

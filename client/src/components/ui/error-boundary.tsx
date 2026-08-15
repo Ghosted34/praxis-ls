@@ -59,7 +59,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
     // Left in deliberately: without a reporting pipeline this console line is
     // the only record that the boundary fired, and a silent boundary is worse
     // than a white screen — the bug simply stops being observed.
-    console.error(`[ErrorBoundary${this.props.name ? ` · ${this.props.name}` : ""}]`, error, info.componentStack);
+    console.error(
+      `[ErrorBoundary${this.props.name ? ` · ${this.props.name}` : ""}]`,
+      error,
+      info.componentStack,
+    );
     // OBS-E2: this used to be console-only plus an `onError` hook that no caller
     // ever passed, so a boundary firing in production left no record anywhere.
     // Reporting is now the default rather than something each call site has to
@@ -84,17 +88,25 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (this.props.fallback) return this.props.fallback;
 
     return (
-      <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-6">
+      <div
+        role="alert"
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-6"
+      >
         <h2 className="text-title font-semibold text-foreground">
-          {this.props.name ? `${this.props.name} couldn't be displayed` : "Something went wrong on this screen"}
+          {this.props.name
+            ? `${this.props.name} couldn't be displayed`
+            : "Something went wrong on this screen"}
         </h2>
         <p className="mt-1 max-w-reading text-sm text-muted-foreground">
-          The rest of the app is still working. Try again, and if it keeps happening tell support what you were doing
-          — the details have been logged.
+          The rest of the app is still working. Try again, and if it keeps
+          happening tell support what you were doing — the details have been
+          logged.
         </p>
         {/* The message is shown but not dressed up as guidance: it is for the
             person reporting the bug, not instructions the user can act on. */}
-        <p className="mt-3 break-words font-mono text-micro text-muted-foreground">{this.state.error.message}</p>
+        <p className="mt-3 break-words font-mono text-micro text-muted-foreground">
+          {this.state.error.message}
+        </p>
         <div className="mt-4 flex gap-2">
           <Button onClick={this.reset}>Try again</Button>
           <Button variant="outline" onClick={() => window.location.reload()}>

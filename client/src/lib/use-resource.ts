@@ -64,9 +64,9 @@ export function errMsg(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 403) return "You don't have permission to do this.";
     if (e.status === 422 && e.fields && typeof e.fields === "object") {
-      const parts = Object.entries(e.fields as Record<string, string[] | string>).map(
-        ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`,
-      );
+      const parts = Object.entries(
+        e.fields as Record<string, string[] | string>,
+      ).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`);
       if (parts.length) return parts.join("; ");
     }
     return e.message || "Something went wrong.";
@@ -230,7 +230,8 @@ export function useListPaged<T = Record<string, unknown>>(
   search.set("limit", String(pageSize));
   search.set("offset", String(safePage * pageSize));
   Object.entries(filters).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && String(v).trim() !== "") search.set(k, String(v).trim());
+    if (v !== undefined && v !== null && String(v).trim() !== "")
+      search.set(k, String(v).trim());
   });
   const url = path ? `${path}?${search.toString()}` : null;
 
@@ -292,10 +293,19 @@ function resourceKey(fn: () => unknown, deps: React.DependencyList) {
     }
     return String(d);
   });
-  return [TENANT_KEY, tokenStore.getEnv(), "resource", fn.toString(), serialisedDeps] as const;
+  return [
+    TENANT_KEY,
+    tokenStore.getEnv(),
+    "resource",
+    fn.toString(),
+    serialisedDeps,
+  ] as const;
 }
 
-export function useResource<T>(fn: () => Promise<T>, deps: React.DependencyList) {
+export function useResource<T>(
+  fn: () => Promise<T>,
+  deps: React.DependencyList,
+) {
   const qc = useQueryClient();
   // The fetcher closes over render-scope values, so it must not be frozen into
   // the query — the KEY is what identifies the request; the latest closure is

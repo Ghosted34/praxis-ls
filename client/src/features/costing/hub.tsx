@@ -1,6 +1,11 @@
 import { TabbedHub } from "@/components/tabbed-hub";
 import { hubTabs } from "@/app/layout/areas";
-import { CostingPage, CostTrackingPage, CashRequestsPage, RegiePage } from "./pages";
+import {
+  CostingPage,
+  CostTrackingPage,
+  CashRequestsPage,
+  RegiePage,
+} from "./pages";
 
 export function CostingHub() {
   return (

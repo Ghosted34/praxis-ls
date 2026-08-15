@@ -49,10 +49,15 @@ type QReply = {
 
 const listTickets = (dossierId?: string) =>
   tenant<QTicket[]>(`/q-tickets${dossierId ? `?dossier_id=${dossierId}` : ""}`);
-const getTicket = (id: string) => tenant<{ ticket: QTicket; replies: QReply[] }>(`/q-tickets/${id}`);
+const getTicket = (id: string) =>
+  tenant<{ ticket: QTicket; replies: QReply[] }>(`/q-tickets/${id}`);
 const postReply = (id: string, body: string, internal: boolean) =>
-  tenant(`/q-tickets/${id}/replies`, { method: "POST", body: { body, internal } });
-const resolveTicket = (id: string) => tenant(`/q-tickets/${id}/resolve`, { method: "POST", body: {} });
+  tenant(`/q-tickets/${id}/replies`, {
+    method: "POST",
+    body: { body, internal },
+  });
+const resolveTicket = (id: string) =>
+  tenant(`/q-tickets/${id}/resolve`, { method: "POST", body: {} });
 
 const TONE: Record<string, "ok" | "warn" | "blue" | "mute"> = {
   OPEN: "warn",
@@ -65,7 +70,15 @@ const LABEL: Record<string, string> = {
   RESOLVED: "Resolved",
 };
 
-function TicketThread({ ticketId, onChanged, onClose }: { ticketId: string; onChanged: () => void; onClose: () => void }) {
+function TicketThread({
+  ticketId,
+  onChanged,
+  onClose,
+}: {
+  ticketId: string;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
   const data = useResource(() => getTicket(ticketId), [ticketId]);
   const [body, setBody] = React.useState("");
   const [internal, setInternal] = React.useState(false);
@@ -114,13 +127,23 @@ function TicketThread({ ticketId, onChanged, onClose }: { ticketId: string; onCh
           ? `${t.dossier_ref || "File"}${t.milestone_label ? ` · ${t.milestone_label}` : ""} · raised ${dateTimeFmt(t.created_at)}${t.raised_by ? ` by ${t.raised_by}` : ""}`
           : undefined
       }
-      headerRight={t ? <Pill tone={TONE[t.status] || "mute"}>{LABEL[t.status] || t.status}</Pill> : null}
+      headerRight={
+        t ? (
+          <Pill tone={TONE[t.status] || "mute"}>
+            {LABEL[t.status] || t.status}
+          </Pill>
+        ) : null
+      }
       footer={
         <>
           {t && t.status !== "RESOLVED" && (
-            <Button variant="outline" onClick={close} loading={busy}>Mark resolved</Button>
+            <Button variant="outline" onClick={close} loading={busy}>
+              Mark resolved
+            </Button>
           )}
-          <Button onClick={send} loading={busy} disabled={busy || !body.trim()}>Reply</Button>
+          <Button onClick={send} loading={busy} disabled={busy || !body.trim()}>
+            Reply
+          </Button>
         </>
       }
     >
@@ -143,7 +166,9 @@ function TicketThread({ ticketId, onChanged, onClose }: { ticketId: string; onCh
             >
               <p className="micro mb-1 flex items-center gap-2">
                 {r.is_from_client ? "Client" : r.author_label || "Our team"}
-                {r.is_internal && <Pill tone="mute">internal — not shown to the client</Pill>}
+                {r.is_internal && (
+                  <Pill tone="mute">internal — not shown to the client</Pill>
+                )}
                 <span className="ml-auto">{dateTimeFmt(r.created_at)}</span>
               </p>
               <p className="text-sm text-foreground">{r.body}</p>
@@ -151,7 +176,12 @@ function TicketThread({ ticketId, onChanged, onClose }: { ticketId: string; onCh
           ))}
 
           <Field label="Reply">
-            <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="Chasing the inspector now — expect release tomorrow." />
+            <Textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={3}
+              placeholder="Chasing the inspector now — expect release tomorrow."
+            />
           </Field>
           <Checkbox
             checked={internal}
@@ -166,7 +196,15 @@ function TicketThread({ ticketId, onChanged, onClose }: { ticketId: string; onCh
 }
 
 /** Raise a ticket from our side — a query that arrives by phone still belongs on the file. */
-function RaiseDialog({ dossierId, onClose, onDone }: { dossierId: string; onClose: () => void; onDone: () => void }) {
+function RaiseDialog({
+  dossierId,
+  onClose,
+  onDone,
+}: {
+  dossierId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [subject, setSubject] = React.useState("");
   const [body, setBody] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -176,7 +214,14 @@ function RaiseDialog({ dossierId, onClose, onDone }: { dossierId: string; onClos
     setBusy(true);
     setError(null);
     try {
-      await tenant("/q-tickets", { method: "POST", body: { dossier_id: dossierId, subject: subject.trim(), body: body.trim() || undefined } });
+      await tenant("/q-tickets", {
+        method: "POST",
+        body: {
+          dossier_id: dossierId,
+          subject: subject.trim(),
+          body: body.trim() || undefined,
+        },
+      });
       onDone();
       onClose();
     } catch (e) {
@@ -194,17 +239,33 @@ function RaiseDialog({ dossierId, onClose, onDone }: { dossierId: string; onClos
       description="For a question that arrived by phone or email — it belongs on the file, where the next person to open it will see it."
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} loading={busy} disabled={busy || !subject.trim()}>Log query</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={busy || !subject.trim()}
+          >
+            Log query
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <Field label="Subject" required>
-          <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Why is customs still pending?" />
+          <Input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Why is customs still pending?"
+          />
         </Field>
         <Field label="Detail">
-          <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} />
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={3}
+          />
         </Field>
         {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
       </div>
@@ -226,16 +287,21 @@ export function QTickets({ dossierId }: { dossierId?: string }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="micro">
-          Client queries raised against a milestone. Answering here keeps the question, the answer and
-          the file in one place.
+          Client queries raised against a milestone. Answering here keeps the
+          question, the answer and the file in one place.
         </p>
         {dossierId && (
-          <Button size="sm" variant="outline" onClick={() => setRaising(true)}>Log a query</Button>
+          <Button size="sm" variant="outline" onClick={() => setRaising(true)}>
+            Log a query
+          </Button>
         )}
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No open queries" hint="Queries a client raises from the portal land here." />
+        <EmptyState
+          title="No open queries"
+          hint="Queries a client raises from the portal land here."
+        />
       ) : (
         <ul className="space-y-1.5">
           {rows.map((t) => (
@@ -253,16 +319,28 @@ export function QTickets({ dossierId }: { dossierId?: string }) {
                     {t.raised_by ? ` · ${t.raised_by}` : ""}
                   </p>
                 </div>
-                <Pill tone={TONE[t.status] || "mute"}>{LABEL[t.status] || t.status}</Pill>
+                <Pill tone={TONE[t.status] || "mute"}>
+                  {LABEL[t.status] || t.status}
+                </Pill>
               </button>
             </li>
           ))}
         </ul>
       )}
 
-      {open && <TicketThread ticketId={open} onChanged={list.reload} onClose={() => setOpen(null)} />}
+      {open && (
+        <TicketThread
+          ticketId={open}
+          onChanged={list.reload}
+          onClose={() => setOpen(null)}
+        />
+      )}
       {raising && dossierId && (
-        <RaiseDialog dossierId={dossierId} onClose={() => setRaising(false)} onDone={list.reload} />
+        <RaiseDialog
+          dossierId={dossierId}
+          onClose={() => setRaising(false)}
+          onDone={list.reload}
+        />
       )}
     </div>
   );

@@ -31,7 +31,11 @@ const areaDir = join(clientRoot, "src", "features", AREA);
 const file = join(areaDir, "widget-orders.tsx");
 
 function run(cmd: string, args: string[]) {
-  return execFileSync(cmd, args, { cwd: clientRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync(cmd, args, {
+    cwd: clientRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 /**
@@ -63,7 +67,13 @@ describe("scripts/new-screen.mjs", () => {
     // and passed in CI, which is the worst combination: a test that is green on
     // the machine nobody reads and red on the machine everybody uses.
     mkdirSync(areaDir, { recursive: true });
-    run("node", ["scripts/new-screen.mjs", "--area", AREA, "--name", "Widget orders"]);
+    run("node", [
+      "scripts/new-screen.mjs",
+      "--area",
+      AREA,
+      "--name",
+      "Widget orders",
+    ]);
 
     expect(existsSync(file), "the generator did not write the file").toBe(true);
     const src = readFileSync(file, "utf8");
@@ -86,7 +96,11 @@ describe("scripts/new-screen.mjs", () => {
 
     // LINT, including jsx-a11y at error — the scaffold must not ship a
     // violation for someone to inherit.
-    expect(() => runTool("eslint/bin/eslint.js", [`src/features/${AREA}/widget-orders.tsx`])).not.toThrow();
+    expect(() =>
+      runTool("eslint/bin/eslint.js", [
+        `src/features/${AREA}/widget-orders.tsx`,
+      ]),
+    ).not.toThrow();
 
     // The palette gate scans untracked files too (Phase 4 fixed that), so a
     // scaffold that reached for a raw Tailwind colour would be caught here.
@@ -95,13 +109,37 @@ describe("scripts/new-screen.mjs", () => {
 
   it("refuses to overwrite without --force, and rejects a bad width", () => {
     // A generator that silently clobbers work is one nobody runs twice.
-    expect(() => run("node", ["scripts/new-screen.mjs", "--area", AREA, "--name", "Widget orders"])).toThrow();
     expect(() =>
-      run("node", ["scripts/new-screen.mjs", "--area", AREA, "--name", "Other", "--width", "enormous"]),
+      run("node", [
+        "scripts/new-screen.mjs",
+        "--area",
+        AREA,
+        "--name",
+        "Widget orders",
+      ]),
+    ).toThrow();
+    expect(() =>
+      run("node", [
+        "scripts/new-screen.mjs",
+        "--area",
+        AREA,
+        "--name",
+        "Other",
+        "--width",
+        "enormous",
+      ]),
     ).toThrow();
   }, 60_000);
 
   it("refuses an area that does not exist rather than inventing one", () => {
-    expect(() => run("node", ["scripts/new-screen.mjs", "--area", "not-a-real-area", "--name", "X"])).toThrow();
+    expect(() =>
+      run("node", [
+        "scripts/new-screen.mjs",
+        "--area",
+        "not-a-real-area",
+        "--name",
+        "X",
+      ]),
+    ).toThrow();
   }, 60_000);
 });

@@ -4,7 +4,15 @@
  * loading is lazy and de-duplicated.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FONTS, fontById, fontByValue, fontGroups, loadFont, loadFonts, __resetFontCache } from "./fonts";
+import {
+  FONTS,
+  fontById,
+  fontByValue,
+  fontGroups,
+  loadFont,
+  loadFonts,
+  __resetFontCache,
+} from "./fonts";
 
 beforeEach(() => __resetFontCache());
 
@@ -34,7 +42,9 @@ describe("the library", () => {
     expect(names).not.toContain("Segoe UI");
     expect(names).not.toContain("SF Pro");
     expect(names).not.toContain("Helvetica Neue");
-    expect(names).toEqual(expect.arrayContaining(["Noto Sans", "Plus Jakarta Sans", "Work Sans"]));
+    expect(names).toEqual(
+      expect.arrayContaining(["Noto Sans", "Plus Jakarta Sans", "Work Sans"]),
+    );
   });
 
   it("names the bundled face first in every stack, ahead of the fallbacks", () => {
@@ -114,7 +124,10 @@ describe("loading", () => {
    * fonts again for the life of the tab.
    */
   it("does not cache a failure", async () => {
-    const load = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(undefined);
     const font = { ...FONTS[0], load };
     await expect(loadFont(font)).rejects.toThrow("offline");
     await expect(loadFont(font)).resolves.toBeUndefined();
@@ -127,8 +140,18 @@ describe("loading", () => {
    */
   it("loads only the families the active stacks name", async () => {
     const loaded: string[] = [];
-    const spies = FONTS.map((f) => vi.spyOn(f, "load").mockImplementation(async () => void loaded.push(f.id)));
-    await loadFonts(['"Montserrat Variable", "Montserrat", sans-serif', "Lora", null, "", '"Acme", sans-serif']);
+    const spies = FONTS.map((f) =>
+      vi
+        .spyOn(f, "load")
+        .mockImplementation(async () => void loaded.push(f.id)),
+    );
+    await loadFonts([
+      '"Montserrat Variable", "Montserrat", sans-serif',
+      "Lora",
+      null,
+      "",
+      '"Acme", sans-serif',
+    ]);
     expect(loaded.sort()).toEqual(["lora", "montserrat"]);
     spies.forEach((s) => s.mockRestore());
   });

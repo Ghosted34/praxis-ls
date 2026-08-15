@@ -387,7 +387,11 @@ export function SupplyChainPuzzle({ className }: { className?: string }) {
         <WinBanner moves={moves} best={best} newBest={newBest} onNext={reset} />
       ) : (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
-          <p role="status" aria-live="polite" className="font-medium text-muted-foreground">
+          <p
+            role="status"
+            aria-live="polite"
+            className="font-medium text-muted-foreground"
+          >
             {moves} {moves === 1 ? "move" : "moves"}
           </p>
           {best !== null && (

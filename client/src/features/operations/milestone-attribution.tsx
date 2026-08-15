@@ -47,7 +47,9 @@ type StageRow = {
 };
 
 const getAttribution = () =>
-  tenant<{ by_tier: TierRow[]; by_stage: StageRow[] }>("/milestones/attribution");
+  tenant<{ by_tier: TierRow[]; by_stage: StageRow[] }>(
+    "/milestones/attribution",
+  );
 
 /** Working hours read better as days once they pass a working week. */
 const asDuration = (hours: number) => {
@@ -79,8 +81,9 @@ export function MilestoneAttribution() {
   return (
     <div className="space-y-4">
       <p className="micro max-w-3xl">
-        Every completed stage that ran past its commitment is charged to the tier that owns it — the one
-        that actually slipped, not the one whose dates moved as a result. Hours are working hours.
+        Every completed stage that ran past its commitment is charged to the
+        tier that owns it — the one that actually slipped, not the one whose
+        dates moved as a result. Hours are working hours.
       </p>
 
       <Table>
@@ -98,8 +101,12 @@ export function MilestoneAttribution() {
             <TR key={t.owner_tier}>
               <TD>
                 <div className="flex items-center gap-2">
-                  <span className="text-foreground">{api.OWNER_TIER_LABEL[t.owner_tier]}</span>
-                  {t.owner_tier === worst.owner_tier && <Pill tone="bad">most time lost</Pill>}
+                  <span className="text-foreground">
+                    {api.OWNER_TIER_LABEL[t.owner_tier]}
+                  </span>
+                  {t.owner_tier === worst.owner_tier && (
+                    <Pill tone="bad">most time lost</Pill>
+                  )}
                 </div>
               </TD>
               <TD className="num text-right">{num(t.slips)}</TD>
@@ -120,10 +127,12 @@ export function MilestoneAttribution() {
       </Table>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground">Where the time goes</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground">
+          Where the time goes
+        </h3>
         <p className="micro mb-2">
-          The stages behind each tier&apos;s number, so a scorecard entry can be explained rather than
-          just asserted.
+          The stages behind each tier&apos;s number, so a scorecard entry can be
+          explained rather than just asserted.
         </p>
         <Table>
           <THead>

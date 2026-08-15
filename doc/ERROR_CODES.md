@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (297)
+## All codes (303)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -108,6 +108,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
+| `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
+| `DEVICE_REVOKED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
@@ -129,6 +131,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
+| `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
@@ -184,8 +187,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 302× | — |
+| `NOT_FOUND` | 404 | 313× | — |
 | `NOT_LEAF` | 422 | 1× | — |
+| `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -209,6 +213,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ENTITY_REF` | 422 | 4× | — |
 | `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
+| `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 1× | — |
@@ -272,6 +277,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SAME_PASSWORD` | 422 | 1× | — |
 | `SCAN_REQUIRED` | 422 | 3× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
+| `SCORING_UNAVAILABLE` | 502 | 1× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
@@ -316,7 +322,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 118× | — |
+| `VALIDATION_ERROR` | 422 | 120× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

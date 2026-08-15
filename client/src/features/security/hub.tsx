@@ -33,20 +33,33 @@ import { MySecurityPage } from "./my-security";
 const shell = pageShell.wide;
 
 /** Horizontal proportion bar — one segment per status. */
-function Bar({ parts }: { parts: { label: string; value: number; tone: string }[] }) {
+function Bar({
+  parts,
+}: {
+  parts: { label: string; value: number; tone: string }[];
+}) {
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;
   return (
     <div className="space-y-3">
       <div className="flex h-2.5 overflow-hidden rounded-full bg-[rgb(var(--ink-3)/0.15)]">
         {parts.map((p) => (
-          <span key={p.label} style={{ width: `${(p.value / total) * 100}%`, background: `rgb(var(${p.tone}))` }} />
+          <span
+            key={p.label}
+            style={{
+              width: `${(p.value / total) * 100}%`,
+              background: `rgb(var(${p.tone}))`,
+            }}
+          />
         ))}
       </div>
       <ul className="space-y-2 text-sm">
         {parts.map((p) => (
           <li key={p.label} className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: `rgb(var(${p.tone}))` }} />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: `rgb(var(${p.tone}))` }}
+              />
               <span className="text-muted-foreground">{p.label}</span>
             </span>
             <span className="num font-medium">{num(p.value)}</span>
@@ -57,18 +70,30 @@ function Bar({ parts }: { parts: { label: string; value: number; tone: string }[
   );
 }
 
-
 function Overview() {
   const navigate = useNavigate();
   const users = useList<User>("/users");
   const roles = useList<Role>("/roles");
-  const sessions = useList<{ session_id: string; created_at?: string | null; ip?: string | null; killed_at?: string | null }>("/sessions/mine");
-  const fieldVis = useList<{ field_visibility_id: string }>("/field-visibility");
+  const sessions = useList<{
+    session_id: string;
+    created_at?: string | null;
+    ip?: string | null;
+    killed_at?: string | null;
+  }>("/sessions/mine");
+  const fieldVis = useList<{ field_visibility_id: string }>(
+    "/field-visibility",
+  );
 
   const all = users.rows || [];
-  const active = all.filter((u) => String(u.status || "").toUpperCase() === "ACTIVE").length;
-  const suspended = all.filter((u) => String(u.status || "").toUpperCase() === "SUSPENDED").length;
-  const locked = all.filter((u) => String(u.status || "").toUpperCase() === "LOCKED").length;
+  const active = all.filter(
+    (u) => String(u.status || "").toUpperCase() === "ACTIVE",
+  ).length;
+  const suspended = all.filter(
+    (u) => String(u.status || "").toUpperCase() === "SUSPENDED",
+  ).length;
+  const locked = all.filter(
+    (u) => String(u.status || "").toUpperCase() === "LOCKED",
+  ).length;
   const twofa = all.filter((u) => u.is_2fa_enabled).length;
   const twofaPct = all.length ? Math.round((twofa / all.length) * 100) : 0;
   const stale = all.filter((u) => !u.last_login_at).length;
@@ -82,15 +107,35 @@ function Overview() {
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Security & access"
         description="Access is data, not code: role × capability × scope × CRUD-per-module × field visibility. Identity resolves against the live schema, so these rows are the same under both LIVE and TEST."
-        action={<Button onClick={() => navigate("/security/users")}>Manage users</Button>}
+        action={
+          <Button onClick={() => navigate("/security/users")}>
+            Manage users
+          </Button>
+        }
       />
       <HubTabs />
 
       <KpiRow>
-        <KpiTile label="Users" value={num(all.length)} hint={`${active} active`} />
-        <KpiTile label="Roles" value={num((roles.rows || []).length)} hint={`${(roles.rows || []).filter((r) => !r.is_system).length} tenant-defined`} />
-        <KpiTile label="2FA coverage" value={all.length ? `${twofaPct}%` : "—"} hint={`${twofa} of ${all.length} enrolled`} />
-        <KpiTile label="Masking rules" value={num((fieldVis.rows || []).length)} hint="Confidential fields" />
+        <KpiTile
+          label="Users"
+          value={num(all.length)}
+          hint={`${active} active`}
+        />
+        <KpiTile
+          label="Roles"
+          value={num((roles.rows || []).length)}
+          hint={`${(roles.rows || []).filter((r) => !r.is_system).length} tenant-defined`}
+        />
+        <KpiTile
+          label="2FA coverage"
+          value={all.length ? `${twofaPct}%` : "—"}
+          hint={`${twofa} of ${all.length} enrolled`}
+        />
+        <KpiTile
+          label="Masking rules"
+          value={num((fieldVis.rows || []).length)}
+          hint="Confidential fields"
+        />
       </KpiRow>
 
       <div className="mb-6 grid gap-4 md:grid-cols-2">
@@ -104,14 +149,25 @@ function Overview() {
           />
           {stale > 0 && (
             <div className="mt-4 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-              <span className="num font-medium text-foreground">{num(stale)}</span> account{stale === 1 ? " has" : "s have"} never signed in.
+              <span className="num font-medium text-foreground">
+                {num(stale)}
+              </span>{" "}
+              account{stale === 1 ? " has" : "s have"} never signed in.
             </div>
           )}
         </Panel>
 
-        <Panel title="Two-factor authentication" subtitle="Enrolment across tenant users">
+        <Panel
+          title="Two-factor authentication"
+          subtitle="Enrolment across tenant users"
+        >
           <div className="flex items-center gap-5">
-            <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(rgb(var(--${coverageTone})) ${twofaPct}%, rgb(var(--ink-3) / 0.15) ${twofaPct}%)` }}>
+            <div
+              className="relative h-28 w-28 shrink-0 rounded-full"
+              style={{
+                background: `conic-gradient(rgb(var(--${coverageTone})) ${twofaPct}%, rgb(var(--ink-3) / 0.15) ${twofaPct}%)`,
+              }}
+            >
               <div className="absolute inset-[18%] flex flex-col items-center justify-center rounded-full bg-card">
                 <span className="num text-xl font-semibold">{twofaPct}%</span>
                 <span className="micro">enrolled</span>
@@ -124,15 +180,26 @@ function Overview() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Not enrolled</span>
-                <span className="num font-medium">{num(all.length - twofa)}</span>
+                <span className="num font-medium">
+                  {num(all.length - twofa)}
+                </span>
               </div>
-              <Button size="sm" variant="outline" onClick={() => navigate("/security/my-security")}>Set up mine</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/security/my-security")}
+              >
+                Set up mine
+              </Button>
             </div>
           </div>
         </Panel>
       </div>
 
-      <Panel title="My active sessions" subtitle="Revoking invalidates the refresh token immediately">
+      <Panel
+        title="My active sessions"
+        subtitle="Revoking invalidates the refresh token immediately"
+      >
         {sessions.error ? (
           <span className="micro">{sessions.error}</span>
         ) : (sessions.rows || []).length === 0 ? (
@@ -140,18 +207,35 @@ function Overview() {
         ) : (
           <ul className="space-y-2 text-sm">
             {(sessions.rows || []).slice(0, 5).map((s) => (
-              <li key={s.session_id} className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0">
+              <li
+                key={s.session_id}
+                className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0"
+              >
                 <span className="flex items-center gap-2">
-                  {s.killed_at ? <Pill tone="bad">Revoked</Pill> : <Pill tone="ok">Active</Pill>}
-                  <span className="num text-muted-foreground">{s.ip || "unknown IP"}</span>
+                  {s.killed_at ? (
+                    <Pill tone="bad">Revoked</Pill>
+                  ) : (
+                    <Pill tone="ok">Active</Pill>
+                  )}
+                  <span className="num text-muted-foreground">
+                    {s.ip || "unknown IP"}
+                  </span>
                 </span>
-                <span className="num text-muted-foreground">{dateFmt(s.created_at)}</span>
+                <span className="num text-muted-foreground">
+                  {dateFmt(s.created_at)}
+                </span>
               </li>
             ))}
           </ul>
         )}
         <div className="mt-4">
-          <Button size="sm" variant="outline" onClick={() => navigate("/security/sessions")}>All sessions</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/security/sessions")}
+          >
+            All sessions
+          </Button>
         </div>
       </Panel>
     </section>
@@ -171,5 +255,7 @@ const TABS = hubTabs("/security", {
 });
 
 export function SecurityHub() {
-  return <TabbedHub eyebrow="Security & access" basePath="/security" tabs={TABS} />;
+  return (
+    <TabbedHub eyebrow="Security & access" basePath="/security" tabs={TABS} />
+  );
 }

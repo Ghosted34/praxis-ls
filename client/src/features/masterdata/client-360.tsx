@@ -31,9 +31,13 @@ export function ClientsPage() {
   const [settings, setSettings] = React.useState(false);
 
   const rows = React.useMemo(() => clients.data || [], [clients.data]);
-  const filtered = q ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())) : rows;
+  const filtered = q
+    ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
+    : rows;
   const selected = rows.find((c) => c.client_id === selId) || null;
-  React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].client_id); }, [rows, selId]);
+  React.useEffect(() => {
+    if (!selId && rows.length) setSelId(rows[0].client_id);
+  }, [rows, selId]);
 
   return (
     <section className={shell}>
@@ -43,33 +47,78 @@ export function ClientsPage() {
         description="Customer master with a live 360 — compliance, KYC, banks, terms and receivables."
         action={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>⚙ Settings</Button>
+            <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>
+              ⚙ Settings
+            </Button>
             <Button onClick={() => setEditing("new")}>New client</Button>
           </div>
         }
       />
       <HubTabs />
-      {clients.error ? <ErrorState message={clients.error} /> : (
-        <SplitPane storageKey="master.clients" label="Client list width" defaultSize={260} min={200} max={480}>
+      {clients.error ? (
+        <ErrorState message={clients.error} />
+      ) : (
+        <SplitPane
+          storageKey="master.clients"
+          label="Client list width"
+          defaultSize={260}
+          min={200}
+          max={480}
+        >
           <div className="space-y-2">
-            <Input placeholder="Search client…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input
+              placeholder="Search client…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
-              {clients.loading ? <LoadingRow label="Loading clients…" /> : filtered.length === 0 ? <div className="px-3 py-4 micro">No clients.</div> : filtered.map((c) => (
-                <button key={c.client_id} onClick={() => setSelId(c.client_id)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${c.client_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
-                  <span className="truncate font-medium">{c.name}</span>
-                  <Pill tone={c.is_active ? "ok" : "mute"}>{c.is_active ? "Active" : "Off"}</Pill>
-                </button>
-              ))}
+              {clients.loading ? (
+                <LoadingRow label="Loading clients…" />
+              ) : filtered.length === 0 ? (
+                <div className="px-3 py-4 micro">No clients.</div>
+              ) : (
+                filtered.map((c) => (
+                  <button
+                    key={c.client_id}
+                    onClick={() => setSelId(c.client_id)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${c.client_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                  >
+                    <span className="truncate font-medium">{c.name}</span>
+                    <Pill tone={c.is_active ? "ok" : "mute"}>
+                      {c.is_active ? "Active" : "Off"}
+                    </Pill>
+                  </button>
+                ))
+              )}
             </div>
           </div>
-          {selected
-            ? <PartyDossier kind="client" partyId={selected.client_id} onEdit={() => setEditing(selected)} onChanged={clients.reload} />
-            : <EmptyState title="No client selected" hint="Choose a client from the list." />}
+          {selected ? (
+            <PartyDossier
+              kind="client"
+              partyId={selected.client_id}
+              onEdit={() => setEditing(selected)}
+              onChanged={clients.reload}
+            />
+          ) : (
+            <EmptyState
+              title="No client selected"
+              hint="Choose a client from the list."
+            />
+          )}
         </SplitPane>
       )}
-      {editing !== null && <ClientForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={clients.reload} />}
-      <MasterDataSettings open={settings} onClose={() => setSettings(false)} initialSide="CLIENT" />
+      {editing !== null && (
+        <ClientForm
+          row={editing === "new" ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={clients.reload}
+        />
+      )}
+      <MasterDataSettings
+        open={settings}
+        onClose={() => setSettings(false)}
+        initialSide="CLIENT"
+      />
       <ScreenAi path="master/clients" />
     </section>
   );

@@ -15,7 +15,11 @@ import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harness";
+import {
+  apiClientMock,
+  authContextMock,
+  renderScreen,
+} from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
@@ -36,21 +40,37 @@ const CLIENT_360 = {
     hard_blocked_at: null,
   },
   kpis: {
-    outstanding: 0, overdue: 0, oldest_due_date: null,
-    credit_limit: 5_000_000, credit_available: 5_000_000,
-    ytd_revenue: 0, dossiers_in_progress: 0,
+    outstanding: 0,
+    overdue: 0,
+    oldest_due_date: null,
+    credit_limit: 5_000_000,
+    credit_available: 5_000_000,
+    ytd_revenue: 0,
+    dossiers_in_progress: 0,
     aging: { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 },
   },
   compliance: { compliance_state: "OK", can_verify: false, flags: [] },
   gl_parity: { ok: true, ledger: 0, subledger: 0, delta: 0 },
-  contacts: [], addresses: [], banks: [], documents: [], registrations: [], beneficial_owners: [],
-  dossiers: [], invoices: [], receipts: [], advances: [],
-  aliases: [], duplicate_candidates: [], pending_changes: [],
+  contacts: [],
+  addresses: [],
+  banks: [],
+  documents: [],
+  registrations: [],
+  beneficial_owners: [],
+  dossiers: [],
+  invoices: [],
+  receipts: [],
+  advances: [],
+  aliases: [],
+  duplicate_candidates: [],
+  pending_changes: [],
 };
 
 const routes = (extra: Record<string, unknown> = {}) => ({
   "/clients/c1/360": CLIENT_360,
-  "/party-document-types": [{ document_type_id: "dt1", code: "NIU", name: "Tax ID (NIU)" }],
+  "/party-document-types": [
+    { document_type_id: "dt1", code: "NIU", name: "Tax ID (NIU)" },
+  ],
   ...extra,
 });
 
@@ -59,11 +79,15 @@ const pdf = (name = "clearance.pdf", size = 1024) =>
 
 const openAddDocument = async (extra?: Record<string, unknown>) => {
   const user = userEvent.setup();
-  renderScreen(<PartyDossier kind="client" partyId="c1" onEdit={() => {}} />, { routes: routes(extra) });
+  renderScreen(<PartyDossier kind="client" partyId="c1" onEdit={() => {}} />, {
+    routes: routes(extra),
+  });
   await user.click(await screen.findByRole("button", { name: /^Documents/i }));
   await user.click(await screen.findByRole("button", { name: "+ Add" }));
   // The dialog title, not the submit button of the same words.
-  expect(await screen.findByRole("heading", { name: "Add document" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Add document" }),
+  ).toBeInTheDocument();
   return user;
 };
 
@@ -93,7 +117,9 @@ describe("Clients · Documents — the Add document form", () => {
 
     const file = screen.getByLabelText("Document file");
     expect(file).toHaveAttribute("type", "file");
-    expect(file.getAttribute("accept")).toBe("application/pdf,image/png,image/jpeg,image/webp");
+    expect(file.getAttribute("accept")).toBe(
+      "application/pdf,image/png,image/jpeg,image/webp",
+    );
   });
 
   it("records the document and attaches the file in one submit", async () => {
@@ -108,6 +134,10 @@ describe("Clients · Documents — the Add document form", () => {
     // The success toast only reads "scan attached" when the file branch ran to
     // completion after the record was created.
     expect(await screen.findByText(/scan attached/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Add document" })).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "Add document" }),
+      ).toBeNull(),
+    );
   });
 });

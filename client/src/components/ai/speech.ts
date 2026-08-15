@@ -50,7 +50,8 @@ function setSpeaking(id: string | null) {
 }
 
 export function useSpeech() {
-  const supported = typeof window !== "undefined" && "speechSynthesis" in window;
+  const supported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
   const [current, setCurrent] = React.useState<string | null>(speaking);
 
   React.useEffect(() => {
@@ -99,7 +100,14 @@ type RecognitionLike = {
   start: () => void;
   stop: () => void;
   abort: () => void;
-  onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onresult:
+    | ((e: {
+        resultIndex: number;
+        results: ArrayLike<
+          ArrayLike<{ transcript: string }> & { isFinal: boolean }
+        >;
+      }) => void)
+    | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
 };
@@ -107,7 +115,8 @@ type RecognitionLike = {
 function recognitionCtor(): (new () => RecognitionLike) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as Record<string, unknown>;
-  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => RecognitionLike) | null;
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as
+    (new () => RecognitionLike) | null;
 }
 
 /**
@@ -174,5 +183,11 @@ export function useDictation(onText: (text: string) => void) {
     [],
   );
 
-  return { supported, listening, start, stop, toggle: () => (listening ? stop() : start()) };
+  return {
+    supported,
+    listening,
+    start,
+    stop,
+    toggle: () => (listening ? stop() : start()),
+  };
 }

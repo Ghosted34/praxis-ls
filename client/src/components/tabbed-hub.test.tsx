@@ -34,7 +34,10 @@ const accessFails = { current: false };
 const accessPending = { current: false };
 
 vi.mock("@/lib/nav-access", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/nav-access")>("@/lib/nav-access");
+  const actual =
+    await vi.importActual<typeof import("@/lib/nav-access")>(
+      "@/lib/nav-access",
+    );
   return {
     ...actual,
     fetchNavAccess: () => {
@@ -46,7 +49,10 @@ vi.mock("@/lib/nav-access", async () => {
 });
 
 vi.mock("@/lib/preferences", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/preferences")>("@/lib/preferences");
+  const actual =
+    await vi.importActual<typeof import("@/lib/preferences")>(
+      "@/lib/preferences",
+    );
   return {
     ...actual,
     fetchShellPrefs: async () => actual.EMPTY_SHELL_PREFS,
@@ -68,7 +74,9 @@ function grant(byGroup: Record<string, string[]>): NavAccess {
 }
 
 /** Warehouse, fully granted — the ribbon will carry /wms's six sections. */
-const WMS = grant({ fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"] });
+const WMS = grant({
+  fulfill: ["MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38"],
+});
 
 const Page = () => <p>inventory</p>;
 const TABS = [
@@ -99,7 +107,9 @@ function renderHub() {
 
 /** The strip's wrapper carries the desktop-hiding class, or does not. */
 function stripIsHiddenOnDesktop() {
-  const strip = screen.getAllByRole("tablist", { name: "Warehouse sections" })[0];
+  const strip = screen.getAllByRole("tablist", {
+    name: "Warehouse sections",
+  })[0];
   return strip.parentElement!.className.includes("md:hidden");
 }
 
@@ -121,7 +131,10 @@ describe("the in-page strip yields to the ribbon, and only to the ribbon", () =>
     // The strip is present AND not hidden — both halves matter: rendering it
     // and then hiding it at `md` is the bug, not the fix.
     await waitFor(() => expect(stripIsHiddenOnDesktop()).toBe(false));
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Locations", "Inventory"]);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Locations",
+      "Inventory",
+    ]);
   });
 
   it("stays on desktop when the read succeeded but this area is not in the ribbon", async () => {

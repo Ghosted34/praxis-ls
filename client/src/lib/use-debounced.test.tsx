@@ -30,10 +30,14 @@ describe("useDebounced", () => {
     // Still the old value: this is the whole point — no request yet.
     expect(screen.getByTestId("out")).toHaveTextContent("a");
 
-    act(() => { vi.advanceTimersByTime(299); });
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
     expect(screen.getByTestId("out")).toHaveTextContent("a");
 
-    act(() => { vi.advanceTimersByTime(1); });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(screen.getByTestId("out")).toHaveTextContent("ab");
   });
 
@@ -43,13 +47,17 @@ describe("useDebounced", () => {
     // Typing "SBX-2026" one character at a time, faster than the delay.
     "SBX-2026".split("").forEach((_, i) => {
       rerender(<Probe value={"SBX-2026".slice(0, i + 1)} />);
-      act(() => { vi.advanceTimersByTime(50); });
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
     });
 
     // Nothing has settled yet — eight keystrokes, zero requests.
     expect(screen.getByTestId("out")).toHaveTextContent("");
 
-    act(() => { vi.advanceTimersByTime(300); });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.getByTestId("out")).toHaveTextContent("SBX-2026");
   });
 
@@ -58,6 +66,10 @@ describe("useDebounced", () => {
     rerender(<Probe value="b" />);
     unmount();
     // A surviving timer would call setState on an unmounted component.
-    expect(() => act(() => { vi.runAllTimers(); })).not.toThrow();
+    expect(() =>
+      act(() => {
+        vi.runAllTimers();
+      }),
+    ).not.toThrow();
   });
 });

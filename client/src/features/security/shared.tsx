@@ -43,8 +43,19 @@ export type Role = {
 };
 
 export type Capability = { capability_id: string; code: string; name: string };
-export type Scope = { scope_id: string; entity_id?: string | null; code: string; name: string; parent_scope_id?: string | null };
-export type FieldVis = { field_visibility_id: string; role_id?: string | null; field_key: string; visibility: string };
+export type Scope = {
+  scope_id: string;
+  entity_id?: string | null;
+  code: string;
+  name: string;
+  parent_scope_id?: string | null;
+};
+export type FieldVis = {
+  field_visibility_id: string;
+  role_id?: string | null;
+  field_key: string;
+  visibility: string;
+};
 export type Session = {
   session_id: string;
   user_id?: string | null;
@@ -68,8 +79,6 @@ export const statusTone = (s?: string | null): Tone => {
   if (u === "LOCKED") return "bad";
   return "mute";
 };
-
-
 
 /** Confirm-then-delete modal shared by the four registry screens. */
 export function ConfirmDelete({
@@ -101,15 +110,29 @@ export function ConfirmDelete({
     }
   }
   return (
-    <Modal open onClose={onClose} title={title} description="This archives the record. Existing assignments referencing it are removed by the database.">
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      description="This archives the record. Existing assignments referencing it are removed by the database."
+    >
       <div className="space-y-4">
         <div className="rounded-lg border border-[rgb(var(--bad))]/40 bg-[rgb(var(--bad)/0.08)] px-3 py-2 text-sm">
           <span className="num font-medium">{what}</span>
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="button" onClick={go} loading={busy}>Delete</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button type="button" onClick={go} loading={busy}>
+            Delete
+          </Button>
         </div>
       </div>
     </Modal>

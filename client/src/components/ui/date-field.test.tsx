@@ -17,7 +17,9 @@ import { DateField } from "./date-field";
 
 describe("DateField", () => {
   it("renders a stored ISO value day-first", () => {
-    render(<DateField value="2026-07-03" onChange={() => {}} aria-label="Issued" />);
+    render(
+      <DateField value="2026-07-03" onChange={() => {}} aria-label="Issued" />,
+    );
     expect(screen.getByLabelText("Issued")).toHaveValue("03/07/2026");
   });
 

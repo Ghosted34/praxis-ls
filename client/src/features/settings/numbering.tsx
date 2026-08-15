@@ -21,17 +21,34 @@ import { Field, Select } from "@/components/ui/modal";
 
 const RESET_OPTIONS = ["yearly", "never"];
 
-type Scheme = { prefix?: string; code?: string; padding?: number; reset?: string; separator?: string };
+type Scheme = {
+  prefix?: string;
+  code?: string;
+  padding?: number;
+  reset?: string;
+  separator?: string;
+};
 
 function previewOf(s: Scheme): string {
   const sep = s.separator ?? "-";
   const year = new Date().getUTCFullYear();
   const seq = String(1).padStart(Math.max(1, Number(s.padding) || 4), "0");
-  const parts = [s.prefix, s.code, s.reset === "never" ? null : year, seq].filter((p) => p !== null && p !== undefined && p !== "");
+  const parts = [
+    s.prefix,
+    s.code,
+    s.reset === "never" ? null : year,
+    seq,
+  ].filter((p) => p !== null && p !== undefined && p !== "");
   return parts.join(sep);
 }
 
-function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: string }) {
+function NumberingEditor({
+  moduleKey,
+  label,
+}: {
+  moduleKey: string;
+  label: string;
+}) {
   const [scheme, setScheme] = React.useState<Scheme | null>(null);
   const [isDefault, setIsDefault] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
@@ -44,7 +61,9 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
     setLoading(true);
     setError(null);
     setSaved(false);
-    tenant<{ scheme: Scheme; is_default: boolean }>(`/numbering-schemes/${encodeURIComponent(moduleKey)}`)
+    tenant<{ scheme: Scheme; is_default: boolean }>(
+      `/numbering-schemes/${encodeURIComponent(moduleKey)}`,
+    )
       .then((d) => {
         if (!live) return;
         setScheme(d.scheme || {});
@@ -76,7 +95,10 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
           separator: scheme.separator || undefined,
         },
       };
-      const d = await tenant<{ scheme: Scheme; is_default: boolean }>(`/numbering-schemes/${encodeURIComponent(moduleKey)}`, { method: "PUT", body });
+      const d = await tenant<{ scheme: Scheme; is_default: boolean }>(
+        `/numbering-schemes/${encodeURIComponent(moduleKey)}`,
+        { method: "PUT", body },
+      );
       setScheme(d.scheme || scheme);
       setIsDefault(d.is_default !== false);
       setSaved(true);
@@ -96,23 +118,49 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
       <div className="mb-3 flex items-center justify-between">
         <div>
           <span className="text-sm font-medium">{label}</span>
-          <span className="ml-2 text-xs text-muted-foreground">{moduleKey}</span>
-          {isDefault && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">default</span>}
+          <span className="ml-2 text-xs text-muted-foreground">
+            {moduleKey}
+          </span>
+          {isDefault && (
+            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              default
+            </span>
+          )}
         </div>
-        <code className="rounded bg-background px-2 py-1 text-xs">{previewOf(scheme)}</code>
+        <code className="rounded bg-background px-2 py-1 text-xs">
+          {previewOf(scheme)}
+        </code>
       </div>
       <div className="grid gap-4 sm:grid-cols-5">
         <Field label="Prefix">
-          <Input value={scheme.prefix ?? ""} onChange={(e) => patch({ prefix: e.target.value })} placeholder="INV" />
+          <Input
+            value={scheme.prefix ?? ""}
+            onChange={(e) => patch({ prefix: e.target.value })}
+            placeholder="INV"
+          />
         </Field>
         <Field label="Code" hint="Segment after prefix">
-          <Input value={scheme.code ?? ""} onChange={(e) => patch({ code: e.target.value })} placeholder="51" />
+          <Input
+            value={scheme.code ?? ""}
+            onChange={(e) => patch({ code: e.target.value })}
+            placeholder="51"
+          />
         </Field>
         <Field label="Padding">
-          <Input type="number" min="1" max="10" className="num text-right" value={scheme.padding ?? 4} onChange={(e) => patch({ padding: Number(e.target.value) })} />
+          <Input
+            type="number"
+            min="1"
+            max="10"
+            className="num text-right"
+            value={scheme.padding ?? 4}
+            onChange={(e) => patch({ padding: Number(e.target.value) })}
+          />
         </Field>
         <Field label="Reset">
-          <Select value={scheme.reset ?? "yearly"} onChange={(e) => patch({ reset: e.target.value })}>
+          <Select
+            value={scheme.reset ?? "yearly"}
+            onChange={(e) => patch({ reset: e.target.value })}
+          >
             {RESET_OPTIONS.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -121,7 +169,12 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
           </Select>
         </Field>
         <Field label="Separator">
-          <Input maxLength={3} value={scheme.separator ?? "-"} onChange={(e) => patch({ separator: e.target.value })} placeholder="-" />
+          <Input
+            maxLength={3}
+            value={scheme.separator ?? "-"}
+            onChange={(e) => patch({ separator: e.target.value })}
+            placeholder="-"
+          />
         </Field>
       </div>
       {error && (
@@ -145,7 +198,10 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
 // document_vault doc_type registry); the page is driven by it instead of the
 // full module catalogue, which listed every MOD-xx (IAM, WMS, HR…) — none of
 // which issue documents — and required IAM-view access just to load.
-const DOC_NUMBER_MODULES: { group: string; items: { key: string; label: string }[] }[] = [
+const DOC_NUMBER_MODULES: {
+  group: string;
+  items: { key: string; label: string }[];
+}[] = [
   {
     group: "Documents",
     items: [
@@ -186,15 +242,24 @@ const DOC_MODULE_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export function NumberingPage() {
-  const [selected, setSelected] = React.useState<string>(DOC_NUMBER_MODULES[0].items[0].key);
+  const [selected, setSelected] = React.useState<string>(
+    DOC_NUMBER_MODULES[0].items[0].key,
+  );
 
   return (
     <section className={pageShell.reading}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document numbering" description="Per-document numbering schemes — prefix, padding, reset cadence and separator." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Document numbering"
+        description="Per-document numbering schemes — prefix, padding, reset cadence and separator."
+      />
 
       <div className="space-y-4">
         <Field label="Document type">
-          <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <Select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
             {/* Disabled header rows group the list while staying direct <option>
                 children, so the Select's option-colour styling still applies
                 (an <optgroup> would nest them and lose it in dark mode). */}
@@ -210,7 +275,11 @@ export function NumberingPage() {
             ))}
           </Select>
         </Field>
-        <NumberingEditor key={selected} moduleKey={selected} label={DOC_MODULE_LABEL[selected] || selected} />
+        <NumberingEditor
+          key={selected}
+          moduleKey={selected}
+          label={DOC_MODULE_LABEL[selected] || selected}
+        />
       </div>
     </section>
   );

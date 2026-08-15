@@ -254,7 +254,8 @@
   /* Custom scrollbar for the in-app scroll containers (Firefox + WebKit). */
   * {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--foreground) 30%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--foreground) 30%, transparent)
+      transparent;
   }
   *::-webkit-scrollbar {
     width: 10px;
@@ -415,7 +416,14 @@
      .lux-botnav-btn had no focus indicator at all, so the primary navigation
      and every filter chip were invisible to keyboard users (F13, WCAG 2.4.7).
      :focus-visible keeps it off for pointer users. */
-  :where(a, button, [role="button"], [role="menuitem"], [role="tab"], summary):focus-visible {
+  :where(
+    a,
+    button,
+    [role="button"],
+    [role="menuitem"],
+    [role="tab"],
+    summary
+  ):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
     border-radius: calc(var(--radius) - 4px);
@@ -541,7 +549,10 @@
   }
   /* Text uses the AA-tuned status token; the ground uses the -fill variant so
      the pill keeps its saturation without dragging the label below 4.5:1. */
-  .st-blue { color: rgb(var(--brand-blue-ink)); background: rgb(var(--brand-blue) / 0.12); }
+  .st-blue {
+    color: rgb(var(--brand-blue-ink));
+    background: rgb(var(--brand-blue) / 0.12);
+  }
   /*
    * The accent status pill. Its GROUND already tracked the tenant — `applyBrand`
    * writes `--brand-orange` from `brand.primary` (lib/theme.ts) — but its TEXT
@@ -554,20 +565,42 @@
    * is DERIVED to clear 4.5:1 against the surface by `toAccessibleInk`. Found by
    * the Phase 3 white-label smoke test.
    */
-  .st-orange { color: var(--primary-ink); background: rgb(var(--brand-orange) / 0.14); }
-  .st-ok { color: rgb(var(--ok)); background: rgb(var(--ok-fill) / 0.13); }
-  .st-warn { color: rgb(var(--warn)); background: rgb(var(--warn-fill) / 0.14); }
-  .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad-fill) / 0.12); }
-  .st-mute { color: rgb(var(--ink) / 0.72); background: rgb(var(--ink) / 0.06); }
+  .st-orange {
+    color: var(--primary-ink);
+    background: rgb(var(--brand-orange) / 0.14);
+  }
+  .st-ok {
+    color: rgb(var(--ok));
+    background: rgb(var(--ok-fill) / 0.13);
+  }
+  .st-warn {
+    color: rgb(var(--warn));
+    background: rgb(var(--warn-fill) / 0.14);
+  }
+  .st-bad {
+    color: rgb(var(--bad));
+    background: rgb(var(--bad-fill) / 0.12);
+  }
+  .st-mute {
+    color: rgb(var(--ink) / 0.72);
+    background: rgb(var(--ink) / 0.06);
+  }
   /* Was referenced by features/scaffold/screen-scaffold.tsx and never defined,
      so every read-only scaffold rendered a colourless pill (audit F12).
      Uses --brand-blue, which IS retuned under .dark — --brand-blue-deep is not,
      and would have been unreadable on a dark surface. */
-  .st-info { color: rgb(var(--brand-blue-ink)); background: rgb(var(--brand-blue) / 0.12); }
+  .st-info {
+    color: rgb(var(--brand-blue-ink));
+    background: rgb(var(--brand-blue) / 0.12);
+  }
 
   /* Filter chips (Lovable) — surface pill, orange-tinted when active. Tint
      tracks --primary via color-mix so tenant re-branding recolours them. */
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
   .chip {
     display: inline-flex;
     align-items: center;
@@ -580,11 +613,17 @@
     color: rgb(var(--ink) / 0.75);
     background: var(--card);
     border: 1px solid var(--border);
-    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   /* Hover was `transform: translateY(-1px)` — a landing-page micro-interaction
      that is fussy at data density (F17). State now reads through colour. */
-  .chip:hover { background: var(--accent); color: var(--foreground); }
+  .chip:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
   .chip.on {
     /* --primary-ink, not --primary: the active chip label is TEXT (F13). */
     color: var(--primary-ink);
@@ -599,10 +638,28 @@
   }
 
   /* Section header — sans w600 title + hairline rule + optional link */
-  .sec { display: flex; align-items: center; gap: 12px; margin: 24px 2px 12px; }
-  .sec h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
-  .sec .ln { flex: 1; height: 1px; background: var(--border); }
-  .sec a { font-size: 12px; font-weight: 600; color: var(--primary-ink); }
+  .sec {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 2px 12px;
+  }
+  .sec h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+  }
+  .sec .ln {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .sec a {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-ink);
+  }
 
   /* Top command bar. The 20px backdrop-blur + saturate(150%) glass effect was
      removed: it is a 2020-21 trend that is already dated, and content scrolling
@@ -621,8 +678,14 @@
     color: #eafcff;
     font-family: var(--font-display);
     font-size: 20px;
-    background: linear-gradient(140deg, rgb(var(--brand-blue-bright)), rgb(var(--brand-blue-deep)));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 4px 12px rgb(var(--brand-blue-deep) / 0.4);
+    background: linear-gradient(
+      140deg,
+      rgb(var(--brand-blue-bright)),
+      rgb(var(--brand-blue-deep))
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.25),
+      0 4px 12px rgb(var(--brand-blue-deep) / 0.4);
     border: 1px solid rgb(var(--brand-orange) / 0.4);
   }
   /* Top nav link with orange active underline */
@@ -685,7 +748,9 @@
     color: var(--foreground);
     background: var(--card);
     border: 1px solid var(--border);
-    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
   }
   .btn-surface:hover:not(:disabled) {
     background: var(--accent);
@@ -728,8 +793,16 @@
 /* Login gradient backdrop — Lovable mesh, tenant-primary tinted. */
 .login-backdrop {
   background:
-    radial-gradient(38% 42% at 82% -8%, rgb(var(--brand-orange) / 0.22), transparent 70%),
-    radial-gradient(44% 46% at 6% 110%, rgb(var(--brand-blue-bright) / 0.26), transparent 72%),
+    radial-gradient(
+      38% 42% at 82% -8%,
+      rgb(var(--brand-orange) / 0.22),
+      transparent 70%
+    ),
+    radial-gradient(
+      44% 46% at 6% 110%,
+      rgb(var(--brand-blue-bright) / 0.26),
+      transparent 72%
+    ),
     var(--background);
 }
 
@@ -762,8 +835,17 @@
   inset: 0;
   z-index: -2;
   background:
-    radial-gradient(120% 90% at 88% 10%, color-mix(in srgb, var(--primary) 40%, transparent), transparent 60%),
-    linear-gradient(180deg, color-mix(in srgb, var(--primary) 22%, #0a0507) 0%, rgb(10 5 7 / 0.72) 46%, #0a0507 100%);
+    radial-gradient(
+      120% 90% at 88% 10%,
+      color-mix(in srgb, var(--primary) 40%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--primary) 22%, #0a0507) 0%,
+      rgb(10 5 7 / 0.72) 46%,
+      #0a0507 100%
+    );
 }
 .landing::after {
   content: "";
@@ -788,10 +870,14 @@
   font-size: 1.15rem;
   letter-spacing: 0.01em;
 }
-.landing-brand .accent { color: var(--primary); }
+.landing-brand .accent {
+  color: var(--primary);
+}
 .landing-brand-glyph {
   color: var(--primary);
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--primary) 70%, transparent));
+  filter: drop-shadow(
+    0 0 14px color-mix(in srgb, var(--primary) 70%, transparent)
+  );
 }
 .landing-ghost-btn {
   display: inline-flex;
@@ -803,9 +889,14 @@
   border: 1px solid rgb(255 255 255 / 0.14);
   background: rgb(255 255 255 / 0.04);
   color: #e9dfe2;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
-.landing-ghost-btn:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.landing-ghost-btn:hover {
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+}
 .landing-content {
   position: relative;
   height: calc(100% - 5.4rem);
@@ -823,19 +914,39 @@
   align-items: center;
   text-align: center;
 }
-.landing[data-layout="centered"] .landing-eyebrow { align-self: center; }
+.landing[data-layout="centered"] .landing-eyebrow {
+  align-self: center;
+}
 .landing[data-layout="centered"] .landing-headline,
 .landing[data-layout="centered"] .landing-sub,
-.landing[data-layout="centered"] .landing-body { margin-inline: auto; }
-.landing[data-layout="centered"] .landing-pills { justify-content: center; }
+.landing[data-layout="centered"] .landing-body {
+  margin-inline: auto;
+}
+.landing[data-layout="centered"] .landing-pills {
+  justify-content: center;
+}
 
-.landing-content > * { animation: landing-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.landing-content > :nth-child(2) { animation-delay: 0.06s; }
-.landing-content > :nth-child(3) { animation-delay: 0.12s; }
-.landing-content > :nth-child(4) { animation-delay: 0.18s; }
-.landing-content > :nth-child(5) { animation-delay: 0.24s; }
-.landing-content > :nth-child(6) { animation-delay: 0.3s; }
-.landing-content > :nth-child(7) { animation-delay: 0.36s; }
+.landing-content > * {
+  animation: landing-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.landing-content > :nth-child(2) {
+  animation-delay: 0.06s;
+}
+.landing-content > :nth-child(3) {
+  animation-delay: 0.12s;
+}
+.landing-content > :nth-child(4) {
+  animation-delay: 0.18s;
+}
+.landing-content > :nth-child(5) {
+  animation-delay: 0.24s;
+}
+.landing-content > :nth-child(6) {
+  animation-delay: 0.3s;
+}
+.landing-content > :nth-child(7) {
+  animation-delay: 0.36s;
+}
 .landing-eyebrow {
   display: inline-flex;
   align-items: center;
@@ -887,7 +998,11 @@
   color: rgb(232 220 224 / 0.66);
   max-width: 54ch;
 }
-.landing-pills { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.landing-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
 .landing-pill {
   display: inline-flex;
   align-items: center;
@@ -928,13 +1043,23 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--primary-foreground);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 88%, #fff 4%), color-mix(in srgb, var(--primary) 78%, #000 12%));
-  box-shadow: 0 12px 34px color-mix(in srgb, var(--primary) 45%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.25);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 88%, #fff 4%),
+    color-mix(in srgb, var(--primary) 78%, #000 12%)
+  );
+  box-shadow:
+    0 12px 34px color-mix(in srgb, var(--primary) 45%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.25);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .landing-enter:hover {
   transform: translateY(-1px);
-  box-shadow: 0 16px 42px color-mix(in srgb, var(--primary) 55%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.3);
+  box-shadow:
+    0 16px 42px color-mix(in srgb, var(--primary) 55%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.3);
 }
 .landing-enter .arrow {
   display: grid;
@@ -966,9 +1091,16 @@
   border-radius: 1.15rem;
   padding: 1.75rem;
   color: #f2e9ec;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 12%, #140a0d) 0%, #100708 100%);
-  border: 1px solid color-mix(in srgb, var(--primary) 26%, rgb(255 255 255 / 0.08));
-  box-shadow: 0 30px 80px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary) 12%, #140a0d) 0%,
+    #100708 100%
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--primary) 26%, rgb(255 255 255 / 0.08));
+  box-shadow:
+    0 30px 80px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
   animation: landing-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .login-card-kicker {
@@ -996,7 +1128,9 @@
   right: 1rem;
   color: rgb(232 220 224 / 0.55);
 }
-.login-close:hover { color: #fff; }
+.login-close:hover {
+  color: #fff;
+}
 .seg {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1018,12 +1152,20 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgb(232 220 224 / 0.7);
-  transition: background 0.18s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
-.seg-tab:hover { color: #fff; }
+.seg-tab:hover {
+  color: #fff;
+}
 .seg-tab[data-active="true"] {
   color: var(--primary-foreground);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 86%, #fff 4%), color-mix(in srgb, var(--primary) 76%, #000 12%));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 86%, #fff 4%),
+    color-mix(in srgb, var(--primary) 76%, #000 12%)
+  );
   box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 .login-label {
@@ -1042,13 +1184,18 @@
   border-radius: 0.7rem;
   background: rgb(255 255 255 / 0.045);
   border: 1px solid rgb(255 255 255 / 0.1);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .login-field:focus-within {
   border-color: color-mix(in srgb, var(--primary) 60%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
 }
-.login-field svg { color: rgb(232 220 224 / 0.5); flex: none; }
+.login-field svg {
+  color: rgb(232 220 224 / 0.5);
+  flex: none;
+}
 .login-field input {
   flex: 1;
   min-width: 0;
@@ -1058,17 +1205,24 @@
   color: #f6eef1;
   font-size: 0.9rem;
 }
-.login-field input::placeholder { color: rgb(232 220 224 / 0.4); }
+.login-field input::placeholder {
+  color: rgb(232 220 224 / 0.4);
+}
 .login-field input:-webkit-autofill,
 .login-field input:-webkit-autofill:hover,
 .login-field input:-webkit-autofill:focus {
   -webkit-text-fill-color: #f6eef1;
-  -webkit-box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
+  -webkit-box-shadow: 0 0 0 1000px
+    color-mix(in srgb, var(--primary) 10%, #180d10) inset;
   box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
   transition: background-color 5000s ease-in-out 0s;
 }
-.login-field button { color: rgb(232 220 224 / 0.55); }
-.login-field button:hover { color: #fff; }
+.login-field button {
+  color: rgb(232 220 224 / 0.55);
+}
+.login-field button:hover {
+  color: #fff;
+}
 .login-check {
   display: inline-flex;
   align-items: center;
@@ -1086,15 +1240,22 @@
   border-radius: 0.35rem;
   border: 1px solid rgb(255 255 255 / 0.25);
   color: var(--primary-foreground);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
-.login-check input:checked + .login-check-box { background: var(--primary); border-color: var(--primary); }
+.login-check input:checked + .login-check-box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
 .login-link {
   font-size: 0.82rem;
   font-weight: 600;
   color: color-mix(in srgb, var(--primary) 70%, #d8b3bb);
 }
-.login-link:hover { color: var(--primary); }
+.login-link:hover {
+  color: var(--primary);
+}
 .login-submit {
   display: inline-flex;
   align-items: center;
@@ -1108,12 +1269,23 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--primary-foreground);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 88%, #fff 4%), color-mix(in srgb, var(--primary) 76%, #000 12%));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 88%, #fff 4%),
+    color-mix(in srgb, var(--primary) 76%, #000 12%)
+  );
   box-shadow: 0 10px 26px color-mix(in srgb, var(--primary) 42%, transparent);
-  transition: transform 0.16s ease, opacity 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    opacity 0.16s ease;
 }
-.login-submit:hover:not(:disabled) { transform: translateY(-1px); }
-.login-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+.login-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.login-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .login-note {
   font-size: 0.82rem;
   line-height: 1.5;
@@ -1140,21 +1312,40 @@
 }
 
 @keyframes landing-kenburns {
-  from { transform: scale(1) translate3d(0, 0, 0); }
-  to { transform: scale(1.09) translate3d(-1.5%, -1%, 0); }
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.09) translate3d(-1.5%, -1%, 0);
+  }
 }
 @keyframes landing-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @media (max-width: 640px) {
-  .landing-content { height: calc(100% - 5rem); padding-bottom: 2.5rem; }
-  .landing-body { display: none; }
+  .landing-content {
+    height: calc(100% - 5rem);
+    padding-bottom: 2.5rem;
+  }
+  .landing-body {
+    display: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .landing-bg { animation: none; }
+  .landing-bg {
+    animation: none;
+  }
   .landing-content > *,
-  .login-card { animation: none; }
+  .login-card {
+    animation: none;
+  }
 }
 
 /**
@@ -1165,18 +1356,32 @@
  * "this is new", short enough to be subliminal.
  */
 @keyframes fadeUp {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
-.animate-fade-up { animation: fadeUp 0.12s var(--ease) both; }
+.animate-fade-up {
+  animation: fadeUp 0.12s var(--ease) both;
+}
 
 /* Modal entrance — a short rise is still worth keeping: a dialog is a context
    change, not a list refresh. Trimmed from 0.28s/24px to 0.16s/8px. */
 @keyframes modalRise {
-  from { opacity: 0; transform: translateY(8px) scale(0.99); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.animate-modal-rise { animation: modalRise 0.16s var(--ease) both; }
+.animate-modal-rise {
+  animation: modalRise 0.16s var(--ease) both;
+}
 
 /* Reduced motion — kill all animation/transition globally (reference parity). */
 @media (prefers-reduced-motion: reduce) {
@@ -1210,48 +1415,94 @@
  * reveal is a plain opacity transition rather than part of the preset.
  */
 @keyframes splash-rise {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes splash-breathe {
-  0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.045); filter: brightness(1.12); }
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.045);
+    filter: brightness(1.12);
+  }
 }
 @keyframes splash-sweep {
-  from { transform: translateX(-140%) skewX(-18deg); }
-  to { transform: translateX(240%) skewX(-18deg); }
+  from {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(240%) skewX(-18deg);
+  }
 }
 @keyframes splash-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 @keyframes splash-drift {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
-  50% { transform: translate3d(3%, -2.5%, 0) scale(1.12); opacity: 1; }
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(3%, -2.5%, 0) scale(1.12);
+    opacity: 1;
+  }
 }
 
 /* fade — one-shot entrance. The quiet default. */
-.splash-fade { animation: splash-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-fade {
+  animation: splash-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 
 /* pulse — the mark breathes while the app loads. Loops because it is a
    progress signal: it stops when the splash lifts. */
-.splash-pulse { animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both, splash-breathe 2.2s ease-in-out 0.5s infinite; }
+.splash-pulse {
+  animation:
+    splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both,
+    splash-breathe 2.2s ease-in-out 0.5s infinite;
+}
 
 /* shimmer — a light sweep crossing the mark. The sweep is a pseudo-element so
    it clips to the mark's box and never touches layout. */
-.splash-shimmer { position: relative; overflow: hidden; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-shimmer {
+  position: relative;
+  overflow: hidden;
+  animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 .splash-shimmer::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.42), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.42),
+    transparent
+  );
   animation: splash-sweep 1.8s ease-in-out 0.4s infinite;
   pointer-events: none;
 }
 
 /* ring — a brand-coloured arc orbits the mark. `--splash-accent` is set inline
    from the tenant's theme colour. */
-.splash-ring { position: relative; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-ring {
+  position: relative;
+  animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 .splash-ring::before {
   content: "";
   position: absolute;
@@ -1259,7 +1510,11 @@
   border-radius: 999px;
   border: 2px solid transparent;
   border-top-color: var(--splash-accent, currentColor);
-  border-right-color: color-mix(in srgb, var(--splash-accent, currentColor) 35%, transparent);
+  border-right-color: color-mix(
+    in srgb,
+    var(--splash-accent, currentColor) 35%,
+    transparent
+  );
   animation: splash-orbit 1.15s linear infinite;
   pointer-events: none;
 }
@@ -1267,7 +1522,9 @@
 /* mesh — the BACKDROP animates instead of the mark: two soft brand-coloured
    blooms drifting behind a still logo. Applied to the splash backdrop, so it
    composes with any of the marks above. */
-.splash-mesh-layer { animation: splash-drift 6s ease-in-out infinite; }
+.splash-mesh-layer {
+  animation: splash-drift 6s ease-in-out infinite;
+}
 
 /**
  * ── WINDOW CONTROLS OVERLAY ───────────────────────────────────────────────────
@@ -1314,15 +1571,50 @@
  * change, through WCO, and through a browser tab where every env() falls back
  * to zero and the strip is just the app's utility bar.
  */
-:root { --wco-h: 44px; }
-[data-density="compact"] { --wco-h: 38px; }
-[data-density="comfortable"] { --wco-h: 52px; }
-:root { --titlebar-h: max(var(--wco-h), env(titlebar-area-height, 0px)); }
+:root {
+  --wco-h: 44px;
+}
+[data-density="compact"] {
+  --wco-h: 38px;
+}
+[data-density="comfortable"] {
+  --wco-h: 52px;
+}
+:root {
+  --titlebar-h: max(var(--wco-h), env(titlebar-area-height, 0px));
+}
 
 .wco {
   padding-left: env(titlebar-area-x, 0px);
-  padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
+  padding-right: calc(
+    100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%)
+  );
   min-height: var(--titlebar-h);
+}
+
+/**
+ * A TOUCH CONTROL IN THE TITLE BAR IS AS TALL AS THE STRIP LETS IT BE.
+ *
+ * Below `lg` the search button is icon-only and below `sm` the environment chip
+ * appears beside it, so the strip now carries controls a thumb has to hit
+ * rather than only ones a pointer does. Both want ≥40px; the strip is 38px at
+ * compact density, and a control taller than the bar does not overflow it (the
+ * bar is `min-height`) — it silently makes compact density 40px, which is the
+ * one thing a user who picked compact asked it not to be.
+ *
+ * So the height is the smaller of the two: 40px where there is room, the
+ * strip's own height where there is not. DERIVED rather than a pair of
+ * hand-tuned numbers, for the same reason `.wco-mark` computes its offset from
+ * `--rail-w` — change `--wco-h` for a density and this follows.
+ *
+ * A class, not a Tailwind arbitrary value, because two files need it (the
+ * search button in app-shell.tsx and the chip in env-switcher.tsx) and a
+ * duplicated `min()` expression is a drift waiting to happen. `lg:h-auto` on
+ * the search button unsets it above the breakpoint, where the labelled pill
+ * keeps its original intrinsic height.
+ */
+.wco-touch {
+  height: min(2.5rem, var(--wco-h));
 }
 
 /**
@@ -1350,7 +1642,9 @@
  */
 @media (min-width: 768px) {
   .wco-mark {
-    margin-left: calc((var(--rail-w) - var(--rail-border) - var(--wco-mark-size)) / 2);
+    margin-left: calc(
+      (var(--rail-w) - var(--rail-border) - var(--wco-mark-size)) / 2
+    );
   }
 }
 
@@ -1365,8 +1659,21 @@
  * `client/src/app/layout/top-shell.test.tsx` asserts this holds for every
  * interactive element actually rendered in the strip.
  */
-.wco { -webkit-app-region: drag; app-region: drag; }
-.wco :is(button, a, input, select, textarea, [role="button"], [role="tab"], [tabindex]:not([tabindex="-1"])),
+.wco {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.wco
+  :is(
+    button,
+    a,
+    input,
+    select,
+    textarea,
+    [role="button"],
+    [role="tab"],
+    [tabindex]:not([tabindex="-1"])
+  ),
 .wco .no-drag {
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -1416,14 +1723,24 @@
 }
 
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */
-.shadow-l { box-shadow: var(--shadow-l); }
-@keyframes lux-slide-in-left {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+.shadow-l {
+  box-shadow: var(--shadow-l);
 }
-.lux-sidebar-in { animation: lux-slide-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes lux-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.lux-sidebar-in {
+  animation: lux-slide-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .lux-sidebar-in { animation: none; }
+  .lux-sidebar-in {
+    animation: none;
+  }
 }
 
 /*
@@ -1457,8 +1774,12 @@
     background: var(--card);
     border-bottom: 1px solid var(--border);
   }
-  [data-density="compact"] .ribbon { --ribbon-row-h: 40px; }
-  [data-density="comfortable"] .ribbon { --ribbon-row-h: 54px; }
+  [data-density="compact"] .ribbon {
+    --ribbon-row-h: 40px;
+  }
+  [data-density="comfortable"] .ribbon {
+    --ribbon-row-h: 54px;
+  }
 
   .ribbon-row {
     min-height: var(--ribbon-row-h);
@@ -1495,7 +1816,9 @@
     font-weight: 500;
     white-space: nowrap;
     color: var(--muted-foreground);
-    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   .ribbon-tab:hover {
     color: var(--foreground);
@@ -1516,7 +1839,9 @@
     height: 30px;
     border-radius: 8px;
     color: var(--muted-foreground);
-    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   .ribbon-pin:hover {
     background: var(--accent);
@@ -1537,7 +1862,9 @@
     font-size: 13px;
     white-space: nowrap;
     color: var(--muted-foreground);
-    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   .ribbon-item:hover {
     background: rgb(var(--ink) / 0.04);
@@ -1620,7 +1947,9 @@
     flex: none;
     border-radius: 10px;
     color: var(--muted-foreground);
-    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   .rail-btn:hover {
     background: var(--accent);
@@ -1654,10 +1983,19 @@
 }
 
 @keyframes rail-jiggle {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-3px); }
-  45% { transform: translateX(3px); }
-  70% { transform: translateX(-2px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  45% {
+    transform: translateX(3px);
+  }
+  70% {
+    transform: translateX(-2px);
+  }
 }
 .rail-jiggle {
   animation: rail-jiggle 240ms ease-in-out both;

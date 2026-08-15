@@ -19,10 +19,23 @@ import { cn } from "@/lib/cn";
 export function Skeleton({ className }: { className?: string }) {
   // --ink-3 is a bare channel triplet, so the alpha here is reliable (unlike the
   // full-rgb semantic tokens, where Tailwind opacity modifiers don't apply).
-  return <div className={cn("animate-pulse rounded-md bg-[rgb(var(--ink-3)/0.15)]", className)} />;
+  return (
+    <div
+      className={cn(
+        "animate-pulse rounded-md bg-[rgb(var(--ink-3)/0.15)]",
+        className,
+      )}
+    />
+  );
 }
 
-export function SkeletonTable({ rows = 6, cols = 4 }: { rows?: number; cols?: number }) {
+export function SkeletonTable({
+  rows = 6,
+  cols = 4,
+}: {
+  rows?: number;
+  cols?: number;
+}) {
   return (
     <div className="lux-card space-y-2 p-4" role="status" aria-label="Loading">
       {Array.from({ length: rows }).map((_, r) => (
@@ -51,7 +64,11 @@ export function PageSkeleton({
   cols?: number;
 }) {
   return (
-    <section className="animate-fade-in" role="status" aria-label="Loading page">
+    <section
+      className="animate-fade-in"
+      role="status"
+      aria-label="Loading page"
+    >
       <header className="mb-4">
         <Skeleton className="h-7 w-64" />
         <Skeleton className="mt-2 h-4 w-96 max-w-full" />

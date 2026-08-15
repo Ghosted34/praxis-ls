@@ -61,7 +61,13 @@ import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
 import { LocationVerificationBadge } from "./location-verification-badge";
 import { ManualPlaceDialog } from "./manual-place-dialog";
-import { matchStoredValue, metaOfPlace, metaOfSuggestion, placeKey, verificationOf } from "./place-meta";
+import {
+  matchStoredValue,
+  metaOfPlace,
+  metaOfSuggestion,
+  placeKey,
+  verificationOf,
+} from "./place-meta";
 import { PlaceResultRow } from "./place-result";
 
 /** Long enough that the catalogue query is not issued per keystroke, short
@@ -137,7 +143,9 @@ export function PlacePicker({
 
   const [open, setOpen] = React.useState(false);
   const [term, setTerm] = React.useState("");
-  const [result, setResult] = React.useState<api.PlaceSearchResult | null>(null);
+  const [result, setResult] = React.useState<api.PlaceSearchResult | null>(
+    null,
+  );
   const [loading, setLoading] = React.useState(false);
   const [searchingWorld, setSearchingWorld] = React.useState(false);
   const [active, setActive] = React.useState(0);
@@ -163,7 +171,9 @@ export function PlacePicker({
    * flashing "No place record" for a perfectly good port while the lookup is in
    * flight — a badge that briefly lies is worse than one that arrives late.
    */
-  const [resolved, setResolved] = React.useState<api.GeoPlace | null | undefined>(undefined);
+  const [resolved, setResolved] = React.useState<
+    api.GeoPlace | null | undefined
+  >(undefined);
 
   const boxRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -225,7 +235,9 @@ export function PlacePicker({
             requested: next?.provider?.requested === true,
             status: next?.provider?.status || "NOT_REQUESTED",
             message: next?.provider?.message ?? null,
-            results: Array.isArray(next?.provider?.results) ? next.provider.results : [],
+            results: Array.isArray(next?.provider?.results)
+              ? next.provider.results
+              : [],
           },
         });
         setActive(0);
@@ -246,7 +258,10 @@ export function PlacePicker({
   React.useEffect(() => {
     if (!open) return;
     // Never a provider call from typing. That is what the button is for.
-    const handle = setTimeout(() => void runSearch(term, { provider: false }), DEBOUNCE_MS);
+    const handle = setTimeout(
+      () => void runSearch(term, { provider: false }),
+      DEBOUNCE_MS,
+    );
     return () => clearTimeout(handle);
   }, [term, open, runSearch]);
 
@@ -274,7 +289,10 @@ export function PlacePicker({
     api
       .searchGeoPlaces({ q: text, limit: 5 })
       .then((res) => {
-        const hit = matchStoredValue(text, Array.isArray(res?.places) ? res.places : []);
+        const hit = matchStoredValue(
+          text,
+          Array.isArray(res?.places) ? res.places : [],
+        );
         resolvedCache.set(key, hit);
         if (live) setResolved(hit);
       })
@@ -351,7 +369,10 @@ export function PlacePicker({
 
   /* ── confirming a provider suggestion ───────────────────────────────────── */
 
-  async function confirm(suggestion: api.PlaceSuggestion, isReference: boolean) {
+  async function confirm(
+    suggestion: api.PlaceSuggestion,
+    isReference: boolean,
+  ) {
     setSearchingWorld(true);
     setError(null);
     try {
@@ -419,8 +440,10 @@ export function PlacePicker({
   const trimmed = term.trim();
   const searched = result !== null;
   const thin = searched && places.length <= THIN_RESULTS && !result.has_exact;
-  const canSearchWorld = trimmed.length >= MIN_PROVIDER_CHARS && thin && !result.provider.requested;
-  const providerFailed = result?.provider.requested && result.provider.status !== "OK";
+  const canSearchWorld =
+    trimmed.length >= MIN_PROVIDER_CHARS && thin && !result.provider.requested;
+  const providerFailed =
+    result?.provider.requested && result.provider.status !== "OK";
   const nothingAnywhere = searched && rows.length === 0;
 
   const status = loading
@@ -461,7 +484,12 @@ export function PlacePicker({
             }}
             className="flex w-full items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className={cn("min-w-0 truncate", value ? "text-foreground" : "text-muted-foreground")}>
+            <span
+              className={cn(
+                "min-w-0 truncate",
+                value ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {value || placeholder || "Search a place…"}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
@@ -473,13 +501,17 @@ export function PlacePicker({
           </button>
           {showLegacyPrompt && (
             <p className="micro text-muted-foreground">
-              Text only — not linked to a place, so it will not appear on the map.{" "}
-              <span className="font-medium text-primary-ink">Open the search to fix it.</span>
+              Text only — not linked to a place, so it will not appear on the
+              map.{" "}
+              <span className="font-medium text-primary-ink">
+                Open the search to fix it.
+              </span>
             </p>
           )}
           {state === "unverified" && (
             <p className="micro text-muted-foreground">
-              Resolved automatically and never confirmed. Open the search to check it.
+              Resolved automatically and never confirmed. Open the search to
+              check it.
             </p>
           )}
         </div>
@@ -500,7 +532,9 @@ export function PlacePicker({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={
-            stage.kind === "browsing" && rows[active] ? `${baseId}-opt-${active}` : undefined
+            stage.kind === "browsing" && rows[active]
+              ? `${baseId}-opt-${active}`
+              : undefined
           }
           value={term}
           placeholder={placeholder || "Type a port, airport, city or address…"}
@@ -533,10 +567,17 @@ export function PlacePicker({
           ) : (
             <>
               {(loading || searchingWorld) && (
-                <p className="px-2.5 py-2 text-sm text-muted-foreground">{status}</p>
+                <p className="px-2.5 py-2 text-sm text-muted-foreground">
+                  {status}
+                </p>
               )}
 
-              <ul id={listId} role="listbox" aria-label={label ? `${label} results` : "Places"} className="m-0 list-none p-0">
+              <ul
+                id={listId}
+                role="listbox"
+                aria-label={label ? `${label} results` : "Places"}
+                className="m-0 list-none p-0"
+              >
                 {!loading &&
                   rows.map((row, i) =>
                     row.type === "place" ? (
@@ -550,7 +591,10 @@ export function PlacePicker({
                         />
                       </li>
                     ) : (
-                      <li key={`s-${row.suggestion.provider_place_id}`} role="none">
+                      <li
+                        key={`s-${row.suggestion.provider_place_id}`}
+                        role="none"
+                      >
                         {i === places.length && (
                           <p className="px-2.5 pb-1 pt-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">
                             From worldwide search — confirm to use
@@ -561,7 +605,12 @@ export function PlacePicker({
                           id={`${baseId}-opt-${i}`}
                           selected={i === active}
                           onHover={() => setActive(i)}
-                          onPick={() => setStage({ kind: "confirming", suggestion: row.suggestion })}
+                          onPick={() =>
+                            setStage({
+                              kind: "confirming",
+                              suggestion: row.suggestion,
+                            })
+                          }
                         />
                       </li>
                     ),
@@ -592,12 +641,14 @@ export function PlacePicker({
                 </div>
               )}
 
-              {nothingAnywhere && !result.provider.requested && trimmed.length < MIN_PROVIDER_CHARS && (
-                <p className="px-2.5 py-2 text-sm text-muted-foreground">
-                  Nothing in the catalogue. Type at least {MIN_PROVIDER_CHARS} characters to search
-                  worldwide.
-                </p>
-              )}
+              {nothingAnywhere &&
+                !result.provider.requested &&
+                trimmed.length < MIN_PROVIDER_CHARS && (
+                  <p className="px-2.5 py-2 text-sm text-muted-foreground">
+                    Nothing in the catalogue. Type at least {MIN_PROVIDER_CHARS}{" "}
+                    characters to search worldwide.
+                  </p>
+                )}
 
               {/*
                 The escalation ladder, and it only appears once the catalogue has
@@ -638,8 +689,8 @@ export function PlacePicker({
                   ) : (
                     nothingAnywhere && (
                       <p className="px-2.5 py-1.5 text-micro normal-case text-muted-foreground">
-                        Still nothing? Someone with permission to add operations reference data can
-                        create this place.
+                        Still nothing? Someone with permission to add operations
+                        reference data can create this place.
                       </p>
                     )
                   )}
@@ -694,21 +745,31 @@ function ConfirmStep({
   onBack: () => void;
   onConfirm: () => void;
 }) {
-  const confidence = typeof suggestion.confidence === "number" ? Math.round(suggestion.confidence * 100) : null;
+  const confidence =
+    typeof suggestion.confidence === "number"
+      ? Math.round(suggestion.confidence * 100)
+      : null;
   return (
     <div className="space-y-3 p-1.5">
       <div>
         <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">
           Confirm this place
         </p>
-        <p className="mt-1 text-sm font-medium text-foreground">{suggestion.name}</p>
+        <p className="mt-1 text-sm font-medium text-foreground">
+          {suggestion.name}
+        </p>
         {suggestion.formatted && (
-          <p className="text-micro normal-case text-muted-foreground">{suggestion.formatted}</p>
+          <p className="text-micro normal-case text-muted-foreground">
+            {suggestion.formatted}
+          </p>
         )}
         <p className="mt-1 text-micro normal-case text-muted-foreground">
           {[
             suggestion.country,
-            suggestion.kind ? api.PLACE_KIND_LABEL[suggestion.kind as api.PlaceKind] || suggestion.kind : null,
+            suggestion.kind
+              ? api.PLACE_KIND_LABEL[suggestion.kind as api.PlaceKind] ||
+                suggestion.kind
+              : null,
             confidence !== null ? `${confidence}% provider confidence` : null,
           ]
             .filter(Boolean)
@@ -722,17 +783,39 @@ function ConfirmStep({
         label="This is near the real place, not the exact spot"
       />
       <p className="micro text-muted-foreground">
-        Tick this and it is saved as a reference point. The file keeps your delivery instructions;
-        the map stops claiming a precision nobody promised.
+        Tick this and it is saved as a reference point. The file keeps your
+        delivery instructions; the map stops claiming a precision nobody
+        promised.
       </p>
 
-      {error && <Callout tone="bad" title="Could not save it">{error}</Callout>}
+      {error && (
+        <Callout tone="bad" title="Could not save it">
+          {error}
+        </Callout>
+      )}
 
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => { e.preventDefault(); onBack(); }} disabled={busy}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onBack();
+          }}
+          disabled={busy}
+        >
           Back
         </Button>
-        <Button type="button" size="sm" loading={busy} onMouseDown={(e) => { e.preventDefault(); onConfirm(); }}>
+        <Button
+          type="button"
+          size="sm"
+          loading={busy}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onConfirm();
+          }}
+        >
           Use this place
         </Button>
       </div>

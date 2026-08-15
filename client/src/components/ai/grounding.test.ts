@@ -11,7 +11,16 @@
  * `areas.test.ts` was written to catch for the ribbon.
  */
 import { describe, it, expect } from "vitest";
-import { artifactTitle, documentBody, extractSources, extractTable, extractTables, isLongForm, kindOf, mergeSources } from "./grounding";
+import {
+  artifactTitle,
+  documentBody,
+  extractSources,
+  extractTable,
+  extractTables,
+  isLongForm,
+  kindOf,
+  mergeSources,
+} from "./grounding";
 
 describe("extractSources", () => {
   it("reads the internal links a grounded answer already writes", () => {
@@ -19,8 +28,16 @@ describe("extractSources", () => {
       "Two are overdue: [INV-2026-0031](/finance/invoices/8f2c) and [INV-2026-0044](/finance/invoices/91ab).",
     );
     expect(sources).toEqual([
-      { label: "INV-2026-0031", href: "/finance/invoices/8f2c", kind: "record" },
-      { label: "INV-2026-0044", href: "/finance/invoices/91ab", kind: "record" },
+      {
+        label: "INV-2026-0031",
+        href: "/finance/invoices/8f2c",
+        kind: "record",
+      },
+      {
+        label: "INV-2026-0044",
+        href: "/finance/invoices/91ab",
+        kind: "record",
+      },
     ]);
   });
 
@@ -44,11 +61,17 @@ describe("extractSources", () => {
     const sources = extractSources(
       "See the [ageing report](/finance/reports/ageing), [invoice](/finance/invoices/1) and [the IMO page](https://imo.org/x).",
     );
-    expect(sources.map((s) => s.kind)).toEqual(["report", "record", "external"]);
+    expect(sources.map((s) => s.kind)).toEqual([
+      "report",
+      "record",
+      "external",
+    ]);
   });
 
   it("ignores anchors and mailto — navigation inside a message is not a citation", () => {
-    expect(extractSources("[top](#top) and [write to us](mailto:a@b.co)")).toEqual([]);
+    expect(
+      extractSources("[top](#top) and [write to us](mailto:a@b.co)"),
+    ).toEqual([]);
   });
 
   it("returns nothing for prose with no links, rather than inventing a citation", () => {
@@ -60,19 +83,28 @@ describe("mergeSources", () => {
   it("lets the backend's authoritative source win on the same href", () => {
     const derived = extractSources("[INV-31](/finance/invoices/8f2c)");
     const merged = mergeSources(derived, [
-      { label: "INV-2026-0031 · Ndongo Ltd", href: "/finance/invoices/8f2c", kind: "record" },
+      {
+        label: "INV-2026-0031 · Ndongo Ltd",
+        href: "/finance/invoices/8f2c",
+        kind: "record",
+      },
     ]);
     expect(merged).toHaveLength(1);
     expect(merged[0].label).toBe("INV-2026-0031 · Ndongo Ltd");
   });
 
   it("keeps a derived source the retrieval layer did not log", () => {
-    const merged = mergeSources(extractSources("[A](/a)"), [{ label: "B", href: "/b" }]);
+    const merged = mergeSources(extractSources("[A](/a)"), [
+      { label: "B", href: "/b" },
+    ]);
     expect(merged.map((s) => s.href).sort()).toEqual(["/a", "/b"]);
   });
 
   it("classifies a supplied source that arrived without a kind", () => {
-    const [only] = mergeSources([], [{ label: "Ageing", href: "/finance/reports/ageing" }]);
+    const [only] = mergeSources(
+      [],
+      [{ label: "Ageing", href: "/finance/reports/ageing" }],
+    );
     expect(only.kind).toBe("report");
   });
 
@@ -144,13 +176,21 @@ describe("extractTable", () => {
   });
 
   it("falls back to a positional label when a table has no heading", () => {
-    const two = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
-    expect(extractTables(two).map((t) => t.title)).toEqual(["Table 1", "Table 2"]);
+    const two =
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
+    expect(extractTables(two).map((t) => t.title)).toEqual([
+      "Table 1",
+      "Table 2",
+    ]);
   });
 
   it("does not let one heading label two tables", () => {
-    const two = "## Position\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
-    expect(extractTables(two).map((t) => t.title)).toEqual(["Position", "Table 2"]);
+    const two =
+      "## Position\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
+    expect(extractTables(two).map((t) => t.title)).toEqual([
+      "Position",
+      "Table 2",
+    ]);
   });
 
   it("pads a ragged row rather than dropping it", () => {
@@ -171,11 +211,17 @@ describe("extractTable", () => {
 
 describe("isLongForm", () => {
   it("leaves a short reply in the thread", () => {
-    expect(isLongForm("Three invoices are overdue. Chase Ndongo Ltd first.")).toBe(false);
+    expect(
+      isLongForm("Three invoices are overdue. Chase Ndongo Ltd first."),
+    ).toBe(false);
   });
 
   it("promotes a sectioned draft — a model writing a document gives it headings", () => {
-    expect(isLongForm(`## Proforma advance\n\n${"Terms and conditions apply. ".repeat(20)}`)).toBe(true);
+    expect(
+      isLongForm(
+        `## Proforma advance\n\n${"Terms and conditions apply. ".repeat(20)}`,
+      ),
+    ).toBe(true);
   });
 
   it("does not promote a short answer merely because it has a heading", () => {
@@ -185,11 +231,15 @@ describe("isLongForm", () => {
 
 describe("artifactTitle", () => {
   it("names the artefact from its first heading", () => {
-    expect(artifactTitle("## Proforma advance — Ndongo Ltd\n\nBody")).toBe("Proforma advance — Ndongo Ltd");
+    expect(artifactTitle("## Proforma advance — Ndongo Ltd\n\nBody")).toBe(
+      "Proforma advance — Ndongo Ltd",
+    );
   });
 
   it("falls back to the first line, stripped of markdown", () => {
-    expect(artifactTitle("**Draft reminder** for [INV-31](/finance/invoices/1)")).toBe("Draft reminder for INV-31");
+    expect(
+      artifactTitle("**Draft reminder** for [INV-31](/finance/invoices/1)"),
+    ).toBe("Draft reminder for INV-31");
   });
 
   it("truncates a title too long to sit in a pane header", () => {
@@ -268,7 +318,8 @@ describe("documentBody", () => {
 
   it("falls back to the full text rather than returning a scrap", () => {
     // Trimming both ends here would leave almost nothing; the guard returns all.
-    const tiny = "Here's the note.\n\n---\n\nShort.\n\n---\n\nWould you like me to expand it?";
+    const tiny =
+      "Here's the note.\n\n---\n\nShort.\n\n---\n\nWould you like me to expand it?";
     expect(documentBody(tiny)).toBe(tiny);
   });
 });

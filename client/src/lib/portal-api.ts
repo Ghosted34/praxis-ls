@@ -41,7 +41,10 @@ export class PortalError extends Error {
 
 type Opts = Omit<RequestInit, "body"> & { body?: unknown; auth?: boolean };
 
-export async function portalApi<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
+export async function portalApi<T = unknown>(
+  path: string,
+  opts: Opts = {},
+): Promise<T> {
   const { body, auth = true, headers, ...rest } = opts;
   const h = new Headers(headers);
   if (body !== undefined) h.set("Content-Type", "application/json");
@@ -66,18 +69,38 @@ export async function portalApi<T = unknown>(path: string, opts: Opts = {}): Pro
   }
   if (!res.ok) {
     const err = (json && json.error) || {};
-    throw new PortalError(err.code || "ERROR", err.message || res.statusText, res.status);
+    throw new PortalError(
+      err.code || "ERROR",
+      err.message || res.statusText,
+      res.status,
+    );
   }
   return (json && "data" in json ? json.data : json) as T;
 }
 
 // ── Shapes returned by the backend (portal.service / portal_auth.service) ──
 
-export type PortalUser = { portal_user_id: string; email: string; full_name?: string | null };
-export type PortalGrant = { allowed: boolean; client_id: string | null; expires_at: string | null };
-export type PortalMe = { portal_user: PortalUser; grants: Record<"CLIENT" | "INVESTOR" | "AUDITOR", PortalGrant> };
+export type PortalUser = {
+  portal_user_id: string;
+  email: string;
+  full_name?: string | null;
+};
+export type PortalGrant = {
+  allowed: boolean;
+  client_id: string | null;
+  expires_at: string | null;
+};
+export type PortalMe = {
+  portal_user: PortalUser;
+  grants: Record<"CLIENT" | "INVESTOR" | "AUDITOR", PortalGrant>;
+};
 
-export type PortalDossier = { dossier_id: string; ref: string; status: string; created_at: string };
+export type PortalDossier = {
+  dossier_id: string;
+  ref: string;
+  status: string;
+  created_at: string;
+};
 export type PortalInvoice = {
   invoice_id: string;
   doc_number: string | null;
@@ -101,7 +124,11 @@ export const portalLogin = (email: string, password: string) =>
   });
 
 export const portalForgot = (email: string) =>
-  portalApi<{ ok: true }>("/auth/forgot", { method: "POST", auth: false, body: { email } });
+  portalApi<{ ok: true }>("/auth/forgot", {
+    method: "POST",
+    auth: false,
+    body: { email },
+  });
 
 export const portalAccept = (token: string, password: string) =>
   portalApi<{ access_token: string; portal_user: PortalUser }>("/auth/accept", {
@@ -110,8 +137,18 @@ export const portalAccept = (token: string, password: string) =>
     body: { token, password },
   });
 
-type IncomeStatement = { charges: number; produits: number; hao_net: number; result: number };
-type BalanceSheet = { active: number; passif: number; result: number; balanced: boolean };
+type IncomeStatement = {
+  charges: number;
+  produits: number;
+  hao_net: number;
+  result: number;
+};
+type BalanceSheet = {
+  active: number;
+  passif: number;
+  result: number;
+  balanced: boolean;
+};
 
 export type InvestorView = {
   portal: "INVESTOR";
@@ -129,7 +166,10 @@ export type InvestorView = {
   };
   income_statement: IncomeStatement;
   balance_sheet: BalanceSheet;
-  cash_position: { accounts: { account_code: string; balance: number }[]; total_cash: number };
+  cash_position: {
+    accounts: { account_code: string; balance: number }[];
+    total_cash: number;
+  };
   cash_flow: Record<string, unknown>;
 };
 
@@ -143,7 +183,11 @@ export type AuditTrailEntry = {
   actor_name: string | null;
   actor_email: string | null;
 };
-export type TrialBalanceRow = { account_code: string; debit: string | number; credit: string | number };
+export type TrialBalanceRow = {
+  account_code: string;
+  debit: string | number;
+  credit: string | number;
+};
 export type AuditorView = {
   portal: "AUDITOR";
   basis: "OHADA";
@@ -153,7 +197,10 @@ export type AuditorView = {
   income_statement: IncomeStatement;
   balance_sheet: BalanceSheet;
   cash_flow: Record<string, unknown>;
-  trial_balance: { rows: TrialBalanceRow[]; totals: { debit: number; credit: number; balanced?: boolean } };
+  trial_balance: {
+    rows: TrialBalanceRow[];
+    totals: { debit: number; credit: number; balanced?: boolean };
+  };
   procurement_spend: unknown;
   audit_trail: AuditTrailEntry[];
 };
@@ -176,9 +223,19 @@ export type PortalChainStage = {
   completed_at?: string | null;
   stage_seq?: number;
 };
-export type PortalAssumption = { code: string; text_fr: string; text_en?: string | null };
+export type PortalAssumption = {
+  code: string;
+  text_fr: string;
+  text_en?: string | null;
+};
 export type PortalChain = {
-  dossier: { dossier_id: string; ref: string; status: string; service_fr?: string | null; service_en?: string | null };
+  dossier: {
+    dossier_id: string;
+    ref: string;
+    status: string;
+    service_fr?: string | null;
+    service_en?: string | null;
+  };
   milestones: PortalChainStage[];
   assumptions: PortalAssumption[];
 };
@@ -203,7 +260,9 @@ export const portalRaiseTicket = (body: {
   body?: string;
 }) => portalApi<PortalTicket>("/client/tickets", { method: "POST", body });
 const periodQs = (q?: { from?: string; to?: string }) =>
-  new URLSearchParams(Object.entries(q || {}).filter(([, v]) => !!v) as [string, string][]).toString();
+  new URLSearchParams(
+    Object.entries(q || {}).filter(([, v]) => !!v) as [string, string][],
+  ).toString();
 export const portalInvestorView = (q?: { from?: string; to?: string }) => {
   const s = periodQs(q);
   return portalApi<InvestorView>(`/investor${s ? `?${s}` : ""}`);

@@ -66,7 +66,9 @@ export function useAiScopes(): AiScope[] {
     // Before the access read resolves, offer only `all`. A list that grows
     // under the pointer is worse than a list that starts short.
     if (!resolved) return [ALL_SCOPE];
-    const areas = buildRibbon(access).flatMap((f) => f.areas.map((a) => a.area));
+    const areas = buildRibbon(access).flatMap((f) =>
+      f.areas.map((a) => a.area),
+    );
     const seen = new Set<string>();
     const scopes: AiScope[] = [ALL_SCOPE];
     for (const area of areas) {
@@ -84,7 +86,10 @@ export function useAiScopes(): AiScope[] {
 }
 
 /** Resolve a stored scope key back to a scope, falling back to `all`. */
-export function scopeByKey(scopes: AiScope[], key: string | null | undefined): AiScope {
+export function scopeByKey(
+  scopes: AiScope[],
+  key: string | null | undefined,
+): AiScope {
   return scopes.find((s) => s.key === key) ?? scopes[0] ?? ALL_SCOPE;
 }
 
@@ -94,7 +99,8 @@ export function scopeForPath(scopes: AiScope[], pathname: string): AiScope {
   let len = 0;
   for (const s of scopes) {
     if (!s.basePath) continue;
-    const hit = pathname === s.basePath || pathname.startsWith(s.basePath + "/");
+    const hit =
+      pathname === s.basePath || pathname.startsWith(s.basePath + "/");
     if (hit && s.basePath.length > len) {
       len = s.basePath.length;
       best = s;
@@ -187,49 +193,124 @@ export type Suggestion = {
  */
 const AREA_STARTERS: Record<string, Suggestion[]> = {
   finance: [
-    { label: "What's overdue?", prompt: "What's overdue in receivables, and who should I chase first?" },
-    { label: "Cash position", prompt: "What's my cash position this week against what's due out?" },
-    { label: "Explain a variance", prompt: "Which invoices moved most against last month, and why?" },
+    {
+      label: "What's overdue?",
+      prompt: "What's overdue in receivables, and who should I chase first?",
+    },
+    {
+      label: "Cash position",
+      prompt: "What's my cash position this week against what's due out?",
+    },
+    {
+      label: "Explain a variance",
+      prompt: "Which invoices moved most against last month, and why?",
+    },
   ],
   operations: [
-    { label: "What's blocked?", prompt: "Which operation files are blocked, and what is blocking each one?" },
-    { label: "Files at risk", prompt: "Which open operation files are at risk of missing their milestone dates?" },
-    { label: "Today's movements", prompt: "Summarise today's transit orders and delivery notes." },
+    {
+      label: "What's blocked?",
+      prompt:
+        "Which operation files are blocked, and what is blocking each one?",
+    },
+    {
+      label: "Files at risk",
+      prompt:
+        "Which open operation files are at risk of missing their milestone dates?",
+    },
+    {
+      label: "Today's movements",
+      prompt: "Summarise today's transit orders and delivery notes.",
+    },
   ],
   procurement: [
-    { label: "Awaiting approval", prompt: "Which purchase requests are waiting on me, and for how long?" },
-    { label: "Supplier invoices", prompt: "Which supplier invoices are unmatched against goods received?" },
-    { label: "Spend by supplier", prompt: "Break down this month's committed spend by supplier." },
+    {
+      label: "Awaiting approval",
+      prompt: "Which purchase requests are waiting on me, and for how long?",
+    },
+    {
+      label: "Supplier invoices",
+      prompt: "Which supplier invoices are unmatched against goods received?",
+    },
+    {
+      label: "Spend by supplier",
+      prompt: "Break down this month's committed spend by supplier.",
+    },
   ],
   sales: [
-    { label: "Pipeline health", prompt: "How is the pipeline moving this month, and where is it stalling?" },
-    { label: "Stale opportunities", prompt: "Which opportunities have had no activity in the last two weeks?" },
-    { label: "Draft a follow-up", prompt: "Draft a follow-up note for my oldest open proposal." },
+    {
+      label: "Pipeline health",
+      prompt:
+        "How is the pipeline moving this month, and where is it stalling?",
+    },
+    {
+      label: "Stale opportunities",
+      prompt: "Which opportunities have had no activity in the last two weeks?",
+    },
+    {
+      label: "Draft a follow-up",
+      prompt: "Draft a follow-up note for my oldest open proposal.",
+    },
   ],
   commercial: [
-    { label: "Margin check", prompt: "Which quotations are priced below our target margin?" },
-    { label: "Pricing variance", prompt: "Where has quoted pricing drifted from the tariff this month?" },
+    {
+      label: "Margin check",
+      prompt: "Which quotations are priced below our target margin?",
+    },
+    {
+      label: "Pricing variance",
+      prompt: "Where has quoted pricing drifted from the tariff this month?",
+    },
   ],
   costing: [
-    { label: "Cost overruns", prompt: "Which files are running over their costing estimate?" },
-    { label: "Open cash requests", prompt: "What cash requests are open, and what are they for?" },
+    {
+      label: "Cost overruns",
+      prompt: "Which files are running over their costing estimate?",
+    },
+    {
+      label: "Open cash requests",
+      prompt: "What cash requests are open, and what are they for?",
+    },
   ],
   hr: [
     { label: "Who's out?", prompt: "Who is on leave or absent this week?" },
-    { label: "Contracts expiring", prompt: "Which employee contracts expire in the next 60 days?" },
+    {
+      label: "Contracts expiring",
+      prompt: "Which employee contracts expire in the next 60 days?",
+    },
   ],
   wms: [
-    { label: "Stock exceptions", prompt: "Where is stock short, over, or sitting in the wrong location?" },
-    { label: "Inbound today", prompt: "What is due inbound today and what has been received against it?" },
+    {
+      label: "Stock exceptions",
+      prompt: "Where is stock short, over, or sitting in the wrong location?",
+    },
+    {
+      label: "Inbound today",
+      prompt:
+        "What is due inbound today and what has been received against it?",
+    },
   ],
   fleet: [
-    { label: "Compliance due", prompt: "Which vehicles have compliance documents expiring soon?" },
-    { label: "Open work orders", prompt: "What maintenance work orders are open and how old are they?" },
+    {
+      label: "Compliance due",
+      prompt: "Which vehicles have compliance documents expiring soon?",
+    },
+    {
+      label: "Open work orders",
+      prompt: "What maintenance work orders are open and how old are they?",
+    },
   ],
   vault: [
-    { label: "Expiring documents", prompt: "Which compliance documents expire in the next 30 days?" },
+    {
+      label: "Expiring documents",
+      prompt: "Which compliance documents expire in the next 30 days?",
+    },
   ],
-  comms: [{ label: "What needs a reply?", prompt: "What in my inbox is still waiting on a reply from me?" }],
+  comms: [
+    {
+      label: "What needs a reply?",
+      prompt: "What in my inbox is still waiting on a reply from me?",
+    },
+  ],
 };
 
 /**
@@ -241,8 +322,14 @@ const AREA_STARTERS: Record<string, Suggestion[]> = {
  */
 function genericStarters(screen: ScreenContext): Suggestion[] {
   return [
-    { label: `Summarise ${screen.label}`, prompt: `Summarise what I'm looking at on ${screen.label}.` },
-    { label: "What changed?", prompt: `What changed in ${screen.label} recently, and what needs my attention?` },
+    {
+      label: `Summarise ${screen.label}`,
+      prompt: `Summarise what I'm looking at on ${screen.label}.`,
+    },
+    {
+      label: "What changed?",
+      prompt: `What changed in ${screen.label} recently, and what needs my attention?`,
+    },
   ];
 }
 
@@ -262,8 +349,21 @@ export function suggestionsFor(screen: ScreenContext | null): Suggestion[] {
 
 /** Cross-module questions — the workspace's landing deck and the fallback set. */
 export const DESK_STARTERS: Suggestion[] = [
-  { label: "What needs me today?", prompt: "What across my desk needs my attention today, in priority order?" },
-  { label: "Overdue receivables", prompt: "What's overdue in receivables, and who should I chase first?" },
-  { label: "Open operation files", prompt: "Summarise my open operation files and flag the ones at risk." },
-  { label: "Waiting on my approval", prompt: "What is waiting on my approval, and how long has each been waiting?" },
+  {
+    label: "What needs me today?",
+    prompt: "What across my desk needs my attention today, in priority order?",
+  },
+  {
+    label: "Overdue receivables",
+    prompt: "What's overdue in receivables, and who should I chase first?",
+  },
+  {
+    label: "Open operation files",
+    prompt: "Summarise my open operation files and flag the ones at risk.",
+  },
+  {
+    label: "Waiting on my approval",
+    prompt:
+      "What is waiting on my approval, and how long has each been waiting?",
+  },
 ];

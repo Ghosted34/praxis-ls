@@ -29,11 +29,13 @@
  */
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
-import { cn } from "@/lib/cn";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useCanOpenRoute } from "@/lib/route-access";
-import { useClockPunch } from "@/components/clock-punch";
-import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownItem,
+  DropdownLabel,
+} from "@/components/ui/dropdown-menu";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const s = (p: IP) => ({
@@ -64,12 +66,6 @@ const HelpIcon = (p: IP) => (
     <circle cx="12" cy="12" r="9" />
     <path d="M9.5 9a2.5 2.5 0 013.5-1.8c1 .5 1.5 1.6 1 2.6-.4.9-1.5 1.2-2 2-.2.4-.2.8-.2 1.2" />
     <circle cx="12" cy="17" r="0.6" fill="currentColor" />
-  </svg>
-);
-const ClockIcon = (p: IP) => (
-  <svg {...s(p)}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
   </svg>
 );
 const BurstIcon = (p: IP) => (
@@ -122,9 +118,25 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
       });
     }
     if (canOpen("/comms")) {
-      list.push({ key: "msg", label: "Messages", Icon: ChatIcon, onSelect: () => { navigate("/comms"); done(); } });
+      list.push({
+        key: "msg",
+        label: "Messages",
+        Icon: ChatIcon,
+        onSelect: () => {
+          navigate("/comms");
+          done();
+        },
+      });
     }
-    list.push({ key: "help", label: "Help", Icon: HelpIcon, onSelect: () => { navigate("/help"); done(); } });
+    list.push({
+      key: "help",
+      label: "Help",
+      Icon: HelpIcon,
+      onSelect: () => {
+        navigate("/help");
+        done();
+      },
+    });
     return list;
   }, [aiEnabled, canOpen, navigate, onDone]);
 }
@@ -132,7 +144,6 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
 /** The top-bar menu. Desktop only — `md:hidden` keeps the FAB below that. */
 export function QuickActionsMenu({ badge = 0 }: { badge?: number }) {
   const actions = useQuickActions();
-  const clock = useClockPunch();
 
   return (
     <DropdownMenu
@@ -142,7 +153,9 @@ export function QuickActionsMenu({ badge = 0 }: { badge?: number }) {
           // Named including the count, because a badge is a picture: a screen
           // reader user should hear "Quick actions, 3 unread" from the button
           // itself rather than have to open it to find out.
-          aria-label={badge > 0 ? `Quick actions, ${badge} unread` : "Quick actions"}
+          aria-label={
+            badge > 0 ? `Quick actions, ${badge} unread` : "Quick actions"
+          }
           className="relative flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <BurstIcon />
@@ -165,24 +178,11 @@ export function QuickActionsMenu({ badge = 0 }: { badge?: number }) {
           <a.Icon /> {a.label}
         </DropdownItem>
       ))}
-      <DropdownSeparator />
-      <DropdownItem
-        disabled={clock.busy}
-        onSelect={() => {
-          void clock.toggle();
-        }}
-      >
-        <ClockIcon />
-        <span className="flex-1">{clock.action}</span>
-        <span
-          className={cn(
-            "text-micro tabular-nums",
-            clock.msg?.bad ? "text-[rgb(var(--bad))]" : clock.clockedIn ? "text-[rgb(var(--ok))]" : "text-muted-foreground",
-          )}
-        >
-          {clock.label}
-        </span>
-      </DropdownItem>
+      {/* The punch used to live here as a menu item. It now has its own chip in
+          the title bar, two controls to the left of this trigger — keeping both
+          would put two clocks side by side in the same strip, one of them
+          invisible until opened. Below `sm`, where the chip is hidden, the
+          touch cluster's <ClockPunch> is the surface. */}
     </DropdownMenu>
   );
 }

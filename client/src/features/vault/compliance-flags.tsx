@@ -21,7 +21,12 @@ import { Chips } from "@/components/ui/chips";
 import { Segmented } from "@/components/ui/segmented";
 
 const COMPLIANCE_AI: AiAction[] = [
-  { label: "Triage open flags", kind: "assist", describe: "Summarise open compliance flags by severity and suggest what to fix first." },
+  {
+    label: "Triage open flags",
+    kind: "assist",
+    describe:
+      "Summarise open compliance flags by severity and suggest what to fix first.",
+  },
 ];
 
 const SEVERITY_FILTERS = [
@@ -45,8 +50,12 @@ export function ComplianceFlagsPage() {
   // "include resolved" refetched BOTH lists, including the catalogue that never
   // changes; as separate cached queries only the flags list moves, and flipping
   // the toggle back is instant because the previous URL is still in cache.
-  const { rows: flags, error: flagsError } = useList<Row>(`/compliance${includeResolved ? "?include_resolved=true" : ""}`);
-  const { rows: rules, error: rulesError } = useList<Row>("/compliance/catalogue");
+  const { rows: flags, error: flagsError } = useList<Row>(
+    `/compliance${includeResolved ? "?include_resolved=true" : ""}`,
+  );
+  const { rows: rules, error: rulesError } = useList<Row>(
+    "/compliance/catalogue",
+  );
 
   const error = actionError ?? flagsError ?? rulesError;
   const setError = setActionError;
@@ -56,8 +65,12 @@ export function ComplianceFlagsPage() {
     setError(null);
     setSummary(null);
     try {
-      const res = await tenant<Row>("/compliance/run", { method: "POST", body: {} });
-      const s = (res && typeof res === "object" ? (res as Row).summary : null) ?? res;
+      const res = await tenant<Row>("/compliance/run", {
+        method: "POST",
+        body: {},
+      });
+      const s =
+        (res && typeof res === "object" ? (res as Row).summary : null) ?? res;
       setSummary(typeof s === "string" ? s : smartCell(s));
       reload();
     } catch (e) {
@@ -78,7 +91,11 @@ export function ComplianceFlagsPage() {
     }
   }
 
-  const filtered = React.useMemo(() => (flags || []).filter((f) => !severity || String(f.severity) === severity), [flags, severity]);
+  const filtered = React.useMemo(
+    () =>
+      (flags || []).filter((f) => !severity || String(f.severity) === severity),
+    [flags, severity],
+  );
 
   return (
     <section className={pageShell.wide}>
@@ -86,7 +103,7 @@ export function ComplianceFlagsPage() {
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Compliance flags"
         description="Run the rule scans and clear the flags they raise."
-        action={(
+        action={
           <div className="flex items-center gap-3">
             <Segmented
               label="Compliance section"
@@ -97,13 +114,21 @@ export function ComplianceFlagsPage() {
                 { value: "rules", label: "Rules" },
               ]}
             />
-            {tab === "flags" && <Button onClick={runChecks} loading={running}>Run checks</Button>}
+            {tab === "flags" && (
+              <Button onClick={runChecks} loading={running}>
+                Run checks
+              </Button>
+            )}
           </div>
-        )}
+        }
       />
       <HubTabs />
 
-      {summary && <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">Last run: {summary}</div>}
+      {summary && (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
+          Last run: {summary}
+        </div>
+      )}
       {error && (
         <div className="mb-3">
           <ErrorState message={error} />
@@ -113,33 +138,65 @@ export function ComplianceFlagsPage() {
       {tab === "flags" ? (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <Chips label="Filter flags by severity" value={severity} options={SEVERITY_FILTERS} onChange={setSeverity} />
+            <Chips
+              label="Filter flags by severity"
+              value={severity}
+              options={SEVERITY_FILTERS}
+              onChange={setSeverity}
+            />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" checked={includeResolved} onChange={(e) => setIncludeResolved(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={includeResolved}
+                onChange={(e) => setIncludeResolved(e.target.checked)}
+              />
               Include resolved
             </label>
           </div>
           {flags === null ? (
             <SkeletonTable />
           ) : filtered.length === 0 ? (
-            <EmptyState title={flags.length ? "No flags match" : "No open flags"} hint={flags.length ? "Try another severity." : "Run the checks to scan for compliance issues."} />
+            <EmptyState
+              title={flags.length ? "No flags match" : "No open flags"}
+              hint={
+                flags.length
+                  ? "Try another severity."
+                  : "Run the checks to scan for compliance issues."
+              }
+            />
           ) : (
             <div className="space-y-2">
               {filtered.map((f) => {
                 const id = String(f.compliance_flag_id ?? f.flag_id);
                 const resolved = f.resolved_at || f.is_resolved;
                 return (
-                  <div key={id} className="lux-card flex items-center gap-3 p-3">
+                  <div
+                    key={id}
+                    className="lux-card flex items-center gap-3 p-3"
+                  >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-foreground">{cell(f.rule_key)}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {cell(f.rule_key)}
+                        </p>
                         <StatusPill status={String(f.severity || "—")} />
-                        {resolved ? <span className="text-xs text-muted-foreground">resolved</span> : null}
+                        {resolved ? (
+                          <span className="text-xs text-muted-foreground">
+                            resolved
+                          </span>
+                        ) : null}
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">{cell(f.message)} · {cell(f.entity_ref)}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {cell(f.message)} · {cell(f.entity_ref)}
+                      </p>
                     </div>
                     {!resolved && (
-                      <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => resolve(id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={rowBusy === id}
+                        onClick={() => resolve(id)}
+                      >
                         Resolve
                       </Button>
                     )}
@@ -154,13 +211,20 @@ export function ComplianceFlagsPage() {
       ) : (
         <div className="space-y-2">
           {(rules || []).map((r) => (
-            <div key={String(r.rule_key)} className="lux-card flex items-center gap-3 p-3">
+            <div
+              key={String(r.rule_key)}
+              className="lux-card flex items-center gap-3 p-3"
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">{cell(r.rule_key)}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {cell(r.rule_key)}
+                  </p>
                   <StatusPill status={String(r.severity || "—")} />
                 </div>
-                <p className="truncate text-xs text-muted-foreground">{cell(r.describe)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {cell(r.describe)}
+                </p>
               </div>
             </div>
           ))}

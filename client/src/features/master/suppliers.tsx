@@ -23,13 +23,34 @@ import type { AiAction } from "@/features/scaffold/screen-specs";
 import { EntitySelect } from "./shared";
 
 const SUPPLIER_AI: AiAction[] = [
-  { label: "Find duplicate suppliers", kind: "assist", describe: "Scan the supplier master for likely duplicates by name / NIU." },
-  { label: "Summarise supplier", kind: "read", describe: "Summarise a supplier's payment method, rating and recent activity." },
+  {
+    label: "Find duplicate suppliers",
+    kind: "assist",
+    describe: "Scan the supplier master for likely duplicates by name / NIU.",
+  },
+  {
+    label: "Summarise supplier",
+    kind: "read",
+    describe:
+      "Summarise a supplier's payment method, rating and recent activity.",
+  },
 ];
 
 const PAYMENT_METHODS = ["", "BANK", "CASH", "MOBILE_MONEY", "CHEQUE"];
 
-function SupplierForm({ open, editing, entities, onClose, onSaved }: { open: boolean; editing: Row | null; entities: Row[] | null; onClose: () => void; onSaved: () => void }) {
+function SupplierForm({
+  open,
+  editing,
+  entities,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Row | null;
+  entities: Row[] | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [entityId, setEntityId] = React.useState("");
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState("");
@@ -80,7 +101,11 @@ function SupplierForm({ open, editing, entities, onClose, onSaved }: { open: boo
     };
     if (editing) body.is_active = active;
     try {
-      if (editing) await tenant(`/suppliers/${String(editing.supplier_id)}`, { method: "PATCH", body });
+      if (editing)
+        await tenant(`/suppliers/${String(editing.supplier_id)}`, {
+          method: "PATCH",
+          body,
+        });
       else await tenant("/suppliers", { method: "POST", body });
       onSaved();
       onClose();
@@ -92,26 +117,65 @@ function SupplierForm({ open, editing, entities, onClose, onSaved }: { open: boo
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit supplier" : "New supplier"} description="Vendor registry entry — referenced across procurement and payables." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit supplier" : "New supplier"}
+      description="Vendor registry entry — referenced across procurement and payables."
+      size="lg"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" required className="sm:col-span-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Sonara Fuels SA" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Sonara Fuels SA"
+            />
           </Field>
-          <Field label="Corporate entity" hint="Which of your legal entities pays this vendor" className="sm:col-span-2">
-            <EntitySelect entities={entities} value={entityId} onChange={setEntityId} />
+          <Field
+            label="Corporate entity"
+            hint="Which of your legal entities pays this vendor"
+            className="sm:col-span-2"
+          >
+            <EntitySelect
+              entities={entities}
+              value={entityId}
+              onChange={setEntityId}
+            />
           </Field>
           <Field label="Category" hint="e.g. Freight, Customs, Fuel">
-            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Freight" />
+            <Input
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="Freight"
+            />
           </Field>
           <Field label="Rating (1–5)">
-            <Input type="number" min="1" max="5" step="1" className="num text-right" value={rating} onChange={(e) => setRating(e.target.value)} placeholder="4" />
+            <Input
+              type="number"
+              min="1"
+              max="5"
+              step="1"
+              className="num text-right"
+              value={rating}
+              onChange={(e) => setRating(e.target.value)}
+              placeholder="4"
+            />
           </Field>
           <Field label="NIU">
-            <Input value={niu} onChange={(e) => setNiu(e.target.value)} placeholder="M0987654321B" />
+            <Input
+              value={niu}
+              onChange={(e) => setNiu(e.target.value)}
+              placeholder="M0987654321B"
+            />
           </Field>
           <Field label="RCCM">
-            <Input value={rccm} onChange={(e) => setRccm(e.target.value)} placeholder="RC/DLA/2019/B/5678" />
+            <Input
+              value={rccm}
+              onChange={(e) => setRccm(e.target.value)}
+              placeholder="RC/DLA/2019/B/5678"
+            />
           </Field>
           <Field label="Payment method">
             <Select value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -125,21 +189,37 @@ function SupplierForm({ open, editing, entities, onClose, onSaved }: { open: boo
           {isMomo && (
             <>
               <Field label="Mobile-money network">
-                <Input value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value)} placeholder="MTN / Orange" />
+                <Input
+                  value={momoNetwork}
+                  onChange={(e) => setMomoNetwork(e.target.value)}
+                  placeholder="MTN / Orange"
+                />
               </Field>
               <Field label="Mobile-money number">
-                <Input value={momoNumber} onChange={(e) => setMomoNumber(e.target.value)} placeholder="6XXXXXXXX" />
+                <Input
+                  value={momoNumber}
+                  onChange={(e) => setMomoNumber(e.target.value)}
+                  placeholder="6XXXXXXXX"
+                />
               </Field>
             </>
           )}
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={nonResident} onChange={(e) => setNonResident(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={nonResident}
+            onChange={(e) => setNonResident(e.target.checked)}
+          />
           Non-resident (foreign supplier — affects withholding)
         </label>
         {editing && (
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+            />
             Active
           </label>
         )}
@@ -175,14 +255,22 @@ export function SuppliersPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Suppliers" description="Vendor registry referenced across procurement and payables." action={<Button onClick={openNew}>New supplier</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Master data" to="/master" />}
+        title="Suppliers"
+        description="Vendor registry referenced across procurement and payables."
+        action={<Button onClick={openNew}>New supplier</Button>}
+      />
 
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No suppliers yet" hint="Create the first supplier to reference it in purchase orders and supplier invoices." />
+        <EmptyState
+          title="No suppliers yet"
+          hint="Create the first supplier to reference it in purchase orders and supplier invoices."
+        />
       ) : (
         <Table>
           <THead>
@@ -202,13 +290,23 @@ export function SuppliersPage() {
                 <TD className="text-sm font-medium">{cell(r.name)}</TD>
                 <TD className="text-sm">{cell(r.supplier_type)}</TD>
                 <TD className="text-sm">{cell(r.niu)}</TD>
-                <TD className="text-sm">{r.payment_method ? cell(r.payment_method).replace("_", " ") : "—"}</TD>
-                <TD className="num text-sm">{r.rating != null ? `${cell(r.rating)}/5` : "—"}</TD>
+                <TD className="text-sm">
+                  {r.payment_method
+                    ? cell(r.payment_method).replace("_", " ")
+                    : "—"}
+                </TD>
+                <TD className="num text-sm">
+                  {r.rating != null ? `${cell(r.rating)}/5` : "—"}
+                </TD>
                 <TD className="text-sm">
                   <ActivePill active={r.is_active !== false} />
                 </TD>
                 <TD>
-                  <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openEdit(r)}
+                  >
                     Edit
                   </Button>
                 </TD>
@@ -220,7 +318,13 @@ export function SuppliersPage() {
 
       <AiActions actions={SUPPLIER_AI} />
 
-      <SupplierForm open={formOpen} editing={editing} entities={entities} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <SupplierForm
+        open={formOpen}
+        editing={editing}
+        entities={entities}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+      />
     </section>
   );
 }

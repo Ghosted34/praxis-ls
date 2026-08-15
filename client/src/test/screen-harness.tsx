@@ -48,7 +48,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  */
 export type RouteFixture =
   | unknown
-  | { __error: { status: number; message: string; code?: string; fields?: Record<string, string[]> } };
+  | {
+      __error: {
+        status: number;
+        message: string;
+        code?: string;
+        fields?: Record<string, string[]>;
+      };
+    };
 
 export type ScreenFixtures = {
   /**
@@ -78,8 +85,17 @@ export function apiError(
 
 function isErrorFixture(
   v: unknown,
-): v is { __error: { status: number; message: string; code?: string; fields?: Record<string, string[]> } } {
-  return !!v && typeof v === "object" && "__error" in (v as Record<string, unknown>);
+): v is {
+  __error: {
+    status: number;
+    message: string;
+    code?: string;
+    fields?: Record<string, string[]>;
+  };
+} {
+  return (
+    !!v && typeof v === "object" && "__error" in (v as Record<string, unknown>)
+  );
 }
 
 /**
@@ -89,11 +105,18 @@ function isErrorFixture(
  * strings and ids (`/operations/${id}/milestones`), and a fixture map that had
  * to enumerate every one would be a test of the harness rather than the screen.
  */
-export function resolveFixture(path: string, routes: Record<string, RouteFixture>): RouteFixture {
+export function resolveFixture(
+  path: string,
+  routes: Record<string, RouteFixture>,
+): RouteFixture {
   const bare = path.split("?")[0];
   let best: string | null = null;
   for (const key of Object.keys(routes)) {
-    if ((bare === key || bare.startsWith(key)) && (best === null || key.length > best.length)) best = key;
+    if (
+      (bare === key || bare.startsWith(key)) &&
+      (best === null || key.length > best.length)
+    )
+      best = key;
   }
   return best === null ? [] : routes[best];
 }
@@ -120,7 +143,10 @@ export const fixtures: { current: ScreenFixtures } = { current: {} };
  */
 export async function apiClientMock() {
   const { vi } = await import("vitest");
-  const actual = await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+  const actual =
+    await vi.importActual<typeof import("@/lib/api-client")>(
+      "@/lib/api-client",
+    );
 
   async function fake(path: string) {
     const f = fixtures.current;
@@ -141,7 +167,11 @@ export async function apiClientMock() {
     ...actual,
     api: (p: string) => fake(p),
     tenant: (p: string) => fake(p),
-    tenantWithProgress: async (p: string, _body: unknown, onProgress: (percent: number) => void) => {
+    tenantWithProgress: async (
+      p: string,
+      _body: unknown,
+      onProgress: (percent: number) => void,
+    ) => {
       onProgress?.(0);
       const value = await fake(p);
       onProgress?.(100);
@@ -152,8 +182,22 @@ export async function apiClientMock() {
     // stay null because a screen test's fixture is already the whole result;
     // `hasMore` false so a screen never renders a next-page button that could
     // never resolve; `meta` null because no fixture sends one.
-    tenantPaged: async (p: string) => ({ data: await fake(p), total: null, limit: null, offset: null, hasMore: false, meta: null }),
-    apiPaged: async (p: string) => ({ data: await fake(p), total: null, limit: null, offset: null, hasMore: false, meta: null }),
+    tenantPaged: async (p: string) => ({
+      data: await fake(p),
+      total: null,
+      limit: null,
+      offset: null,
+      hasMore: false,
+      meta: null,
+    }),
+    apiPaged: async (p: string) => ({
+      data: await fake(p),
+      total: null,
+      limit: null,
+      offset: null,
+      hasMore: false,
+      meta: null,
+    }),
     download: async () => {},
     tenantDownload: async () => {},
   };
@@ -176,12 +220,21 @@ export async function apiClientMock() {
  */
 export async function authContextMock(user: Record<string, unknown> = {}) {
   const { vi } = await import("vitest");
-  const actual = await vi.importActual<typeof import("@/app/auth/auth-context")>("@/app/auth/auth-context");
+  const actual = await vi.importActual<
+    typeof import("@/app/auth/auth-context")
+  >("@/app/auth/auth-context");
   const noop = async () => {};
   return {
     ...actual,
     useAuth: () => ({
-      user: { user_id: "u-test", full_name: "Test Operator", email: "test@example.test", ai_enabled: true, channels: { comms: true }, ...user },
+      user: {
+        user_id: "u-test",
+        full_name: "Test Operator",
+        email: "test@example.test",
+        ai_enabled: true,
+        channels: { comms: true },
+        ...user,
+      },
       status: "authed" as const,
       pendingToken: null,
       login: async () => ({ pending2fa: false }),
@@ -204,13 +257,21 @@ export async function authContextMock(user: Record<string, unknown> = {}) {
 function testQueryClient() {
   return new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0, staleTime: 0, refetchOnWindowFocus: false },
+      queries: {
+        retry: false,
+        gcTime: 0,
+        staleTime: 0,
+        refetchOnWindowFocus: false,
+      },
       mutations: { retry: false },
     },
   });
 }
 
-export function renderScreen(ui: React.ReactElement, f: ScreenFixtures = {}): RenderResult {
+export function renderScreen(
+  ui: React.ReactElement,
+  f: ScreenFixtures = {},
+): RenderResult {
   fixtures.current = f;
   const client = testQueryClient();
   const at = f.path ?? "/";

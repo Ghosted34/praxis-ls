@@ -31,17 +31,36 @@ import { toDateInput } from "@/lib/format";
 export type EntityFormValues = Record<string, string>;
 
 export const EMPTY_VALUES: EntityFormValues = {
-  code: "", legal_name: "", trading_name: "", legal_form: "", country_code: "",
-  industry: "", website: "", email: "", phone: "", headcount: "", timezone: "",
+  code: "",
+  legal_name: "",
+  trading_name: "",
+  legal_form: "",
+  country_code: "",
+  industry: "",
+  website: "",
+  email: "",
+  phone: "",
+  headcount: "",
+  timezone: "",
   description: "",
-  incorporation_date: "", incorporation_place: "", incorporation_country: "",
+  incorporation_date: "",
+  incorporation_place: "",
+  incorporation_country: "",
   dissolution_date: "",
-  share_capital: "", share_capital_paid_up: "", share_capital_currency: "",
-  doc_prefix: "", default_language: "", fiscal_year_start_month: "",
-  accounting_framework: "", numbering_reset: "",
-  default_currency: "", default_tax_jurisdiction_id: "", payroll_country: "",
+  share_capital: "",
+  share_capital_paid_up: "",
+  share_capital_currency: "",
+  doc_prefix: "",
+  default_language: "",
+  fiscal_year_start_month: "",
+  accounting_framework: "",
+  numbering_reset: "",
+  default_currency: "",
+  default_tax_jurisdiction_id: "",
+  payroll_country: "",
   vat_registered: "",
-  parent_entity_id: "", relationship_type: "",
+  parent_entity_id: "",
+  relationship_type: "",
   registration_status: "",
 };
 
@@ -88,19 +107,26 @@ export function entityFormBody(v: EntityFormValues): Record<string, unknown> {
 
     doc_prefix: v.doc_prefix.trim() || undefined,
     default_language: v.default_language || undefined,
-    fiscal_year_start_month: v.fiscal_year_start_month === "" ? undefined : Number(v.fiscal_year_start_month),
-    accounting_framework: (v.accounting_framework || null) as api.AccountingFramework | null,
-    numbering_reset: (v.numbering_reset || null) as "NEVER" | "ANNUAL" | "MONTHLY" | null,
+    fiscal_year_start_month:
+      v.fiscal_year_start_month === ""
+        ? undefined
+        : Number(v.fiscal_year_start_month),
+    accounting_framework: (v.accounting_framework ||
+      null) as api.AccountingFramework | null,
+    numbering_reset: (v.numbering_reset || null) as
+      "NEVER" | "ANNUAL" | "MONTHLY" | null,
 
     default_currency: text(v.default_currency),
     default_tax_jurisdiction_id: v.default_tax_jurisdiction_id || null,
     payroll_country: text(v.payroll_country),
     // Tri-state on purpose: "we have not said" is not the same as "no", and the
     // dossier renders the difference (`—` against "No").
-    vat_registered: v.vat_registered === "" ? null : v.vat_registered === "true",
+    vat_registered:
+      v.vat_registered === "" ? null : v.vat_registered === "true",
 
     parent_entity_id: v.parent_entity_id || null,
-    relationship_type: (v.relationship_type || null) as api.EntityRelationship | null,
+    relationship_type: (v.relationship_type ||
+      null) as api.EntityRelationship | null,
   };
 }
 
@@ -121,8 +147,11 @@ export function valuesFrom(row: api.Entity | null): EntityFormValues {
   if (!row) {
     return {
       ...EMPTY_VALUES,
-      country_code: "CM", default_language: "fr", fiscal_year_start_month: "1",
-      accounting_framework: "OHADA", registration_status: "DRAFT",
+      country_code: "CM",
+      default_language: "fr",
+      fiscal_year_start_month: "1",
+      accounting_framework: "OHADA",
+      registration_status: "DRAFT",
     };
   }
   const v: EntityFormValues = { ...EMPTY_VALUES };

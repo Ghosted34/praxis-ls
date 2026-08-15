@@ -21,9 +21,27 @@ import { useResource } from "@/lib/use-resource";
 import { money, num, dateFmt, humanizeRef } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
-type Approval = { approval_task_id?: string; id?: string; entity_ref?: string | null; step_kind?: string | null; amount_xaf?: number | string | null; status?: string | null; created_at?: string | null };
-type Note = { notification_id?: string; id?: string; title?: string | null; priority?: string | null; event_type_key?: string | null; created_at?: string | null };
-type Mine = { approvals_awaiting_me?: Approval[]; unread_notifications?: Note[] };
+type Approval = {
+  approval_task_id?: string;
+  id?: string;
+  entity_ref?: string | null;
+  step_kind?: string | null;
+  amount_xaf?: number | string | null;
+  status?: string | null;
+  created_at?: string | null;
+};
+type Note = {
+  notification_id?: string;
+  id?: string;
+  title?: string | null;
+  priority?: string | null;
+  event_type_key?: string | null;
+  created_at?: string | null;
+};
+type Mine = {
+  approvals_awaiting_me?: Approval[];
+  unread_notifications?: Note[];
+};
 
 const prioTone = (p?: string | null): Tone => {
   const u = String(p || "").toUpperCase();
@@ -31,7 +49,6 @@ const prioTone = (p?: string | null): Tone => {
   if (u === "MEDIUM") return "warn";
   return "mute";
 };
-
 
 export function WorkspacePage() {
   const r = useResource(() => tenant<Mine>("/workspace"), []);
@@ -41,7 +58,10 @@ export function WorkspacePage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader title="My workspace" description="What's on your desk right now — approvals awaiting you and alerts you haven't opened." />
+      <PageHeader
+        title="My workspace"
+        description="What's on your desk right now — approvals awaiting you and alerts you haven't opened."
+      />
       {r.loading ? (
         <div className="py-10 text-center micro">Loading…</div>
       ) : r.error ? (
@@ -49,41 +69,84 @@ export function WorkspacePage() {
       ) : (
         <>
           <KpiRow>
-            <KpiTile label="Awaiting my approval" value={num(approvals.length)} />
+            <KpiTile
+              label="Awaiting my approval"
+              value={num(approvals.length)}
+            />
             <KpiTile label="Unread alerts" value={num(notes.length)} />
           </KpiRow>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Awaiting me" action={<Link to="/approvals" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">Open queue →</Link>}>
+            <Panel
+              title="Awaiting me"
+              action={
+                <Link
+                  to="/approvals"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+                >
+                  Open queue →
+                </Link>
+              }
+            >
               {approvals.length ? (
                 <ul className="space-y-2">
                   {approvals.slice(0, 8).map((a, i) => (
-                    <li key={a.approval_task_id || a.id || i} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                    <li
+                      key={a.approval_task_id || a.id || i}
+                      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                    >
                       <span className="flex items-center gap-2">
                         {a.step_kind && <Pill tone="blue">{a.step_kind}</Pill>}
                         <span>{humanizeRef(a.entity_ref) || "—"}</span>
                       </span>
-                      <span className="num text-muted-foreground">{money(a.amount_xaf)}</span>
+                      <span className="num text-muted-foreground">
+                        {money(a.amount_xaf)}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              ) : <p className="micro">Nothing awaiting your validation or approval.</p>}
+              ) : (
+                <p className="micro">
+                  Nothing awaiting your validation or approval.
+                </p>
+              )}
             </Panel>
 
-            <Panel title="Unread alerts" action={<Link to="/notifications" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">All notifications →</Link>}>
+            <Panel
+              title="Unread alerts"
+              action={
+                <Link
+                  to="/notifications"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+                >
+                  All notifications →
+                </Link>
+              }
+            >
               {notes.length ? (
                 <ul className="space-y-2">
                   {notes.slice(0, 8).map((n, i) => (
-                    <li key={n.notification_id || n.id || i} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                    <li
+                      key={n.notification_id || n.id || i}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                    >
                       <span className="flex items-center gap-2 truncate">
-                        <Pill tone={prioTone(n.priority)}>{n.priority || "INFO"}</Pill>
-                        <span className="truncate">{n.title || n.event_type_key || "Notification"}</span>
+                        <Pill tone={prioTone(n.priority)}>
+                          {n.priority || "INFO"}
+                        </Pill>
+                        <span className="truncate">
+                          {n.title || n.event_type_key || "Notification"}
+                        </span>
                       </span>
-                      <span className="micro shrink-0">{dateFmt(n.created_at)}</span>
+                      <span className="micro shrink-0">
+                        {dateFmt(n.created_at)}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              ) : <p className="micro">You're all caught up.</p>}
+              ) : (
+                <p className="micro">You're all caught up.</p>
+              )}
             </Panel>
           </div>
 

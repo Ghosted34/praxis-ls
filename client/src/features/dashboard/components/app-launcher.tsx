@@ -81,7 +81,10 @@ function SubnavStrip({ items }: { items: TowerSubnav[] }) {
   return (
     <ul className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
       {items.map((s, i) => (
-        <li key={s.key} className="flex items-center gap-2 text-label text-muted-foreground">
+        <li
+          key={s.key}
+          className="flex items-center gap-2 text-label text-muted-foreground"
+        >
           <Link
             to={s.to}
             className="rounded-sm underline-offset-2 hover:text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -90,7 +93,11 @@ function SubnavStrip({ items }: { items: TowerSubnav[] }) {
           >
             {s.label}
           </Link>
-          {i < items.length - 1 && <span aria-hidden className="text-muted-foreground/60">·</span>}
+          {i < items.length - 1 && (
+            <span aria-hidden className="text-muted-foreground/60">
+              ·
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -190,9 +197,15 @@ function MoreCard({
       >
         <MoreIcon />
       </span>
-      <span className="text-base font-semibold leading-tight">{open ? "Less" : "More"}</span>
+      <span className="text-base font-semibold leading-tight">
+        {open ? "Less" : "More"}
+      </span>
       <span className="mt-0.5 text-label text-muted-foreground">
-        {count === 0 ? "Everything is pinned" : open ? "Hide the rest" : `${count} more module${count === 1 ? "" : "s"}`}
+        {count === 0
+          ? "Everything is pinned"
+          : open
+            ? "Hide the rest"
+            : `${count} more module${count === 1 ? "" : "s"}`}
       </span>
     </button>
   );
@@ -225,12 +238,17 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
   const { pinned, rest, subnavByKey } = React.useMemo(() => {
     if (!resolved) {
       const fallback = unresolvedFallbackAreas().slice(0, MAX_TOWER_PINS);
-      return { pinned: fallback, rest: [], subnavByKey: new Map<string, TowerSubnav[]>() };
+      return {
+        pinned: fallback,
+        rest: [],
+        subnavByKey: new Map<string, TowerSubnav[]>(),
+      };
     }
     const pins = resolveTowerPins(prefs.towerPins, families);
     const remaining = unpinnedTowerAreas(pins, families);
     const map = new Map<string, TowerSubnav[]>();
-    for (const a of [...pins, ...remaining]) map.set(a.key, previewSections(a, families));
+    for (const a of [...pins, ...remaining])
+      map.set(a.key, previewSections(a, families));
     return { pinned: pins, rest: remaining, subnavByKey: map };
   }, [resolved, prefs.towerPins, families]);
 
@@ -240,7 +258,8 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
   // Alternating tint by GRID POSITION so a re-order does not break the
   // "no orange band" pattern. The `<More>` card counts as a slot, so `rest`
   // continues the alternation past the trigger.
-  const tintAt = (i: number): "primary" | "blue" => (i % 2 === 0 ? "primary" : "blue");
+  const tintAt = (i: number): "primary" | "blue" =>
+    i % 2 === 0 ? "primary" : "blue";
 
   return (
     <section aria-labelledby="ct-apps">
@@ -267,7 +286,11 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         {pinned.map((area, i) => (
           <li key={area.key}>
-            <Tile area={area} subnav={subnavByKey.get(area.key) ?? []} tint={tintAt(i)} />
+            <Tile
+              area={area}
+              subnav={subnavByKey.get(area.key) ?? []}
+              tint={tintAt(i)}
+            />
           </li>
         ))}
         <li key="__more">
@@ -313,7 +336,11 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
       >
         {rest.map((area, i) => (
           <li key={area.key}>
-            <Tile area={area} subnav={subnavByKey.get(area.key) ?? []} tint={tintAt(pinned.length + 1 + i)} />
+            <Tile
+              area={area}
+              subnav={subnavByKey.get(area.key) ?? []}
+              tint={tintAt(pinned.length + 1 + i)}
+            />
           </li>
         ))}
       </ul>

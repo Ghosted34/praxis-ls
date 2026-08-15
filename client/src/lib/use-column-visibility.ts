@@ -47,7 +47,11 @@ function read(key: string): Set<string> {
   try {
     const raw = localStorage.getItem(PREFIX + key);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    return new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : []);
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((v): v is string => typeof v === "string")
+        : [],
+    );
   } catch {
     // A corrupt or unreadable preference must degrade to "show everything",
     // never to a blank table.
@@ -68,7 +72,9 @@ export function useColumnVisibility<T>(
   storageKey: string,
   columns: Column<T>[],
 ): ColumnVisibility<T> {
-  const [hidden, setHidden] = React.useState<ReadonlySet<string>>(() => read(storageKey));
+  const [hidden, setHidden] = React.useState<ReadonlySet<string>>(() =>
+    read(storageKey),
+  );
 
   // A screen that swaps its column spec (a hub whose tab changes the table)
   // must re-read under the new key rather than carry the old one's hidden set.
@@ -99,7 +105,10 @@ export function useColumnVisibility<T>(
 
   // Locked: column 0 (the record's identity) and any column with no heading,
   // which by this app's convention is the row-actions cell.
-  const lockable = React.useCallback((c: Column<T>, i: number) => i === 0 || !c.label, []);
+  const lockable = React.useCallback(
+    (c: Column<T>, i: number) => i === 0 || !c.label,
+    [],
+  );
 
   const shown = React.useMemo(
     () => columns.filter((c, i) => lockable(c, i) || !hidden.has(c.key)),
@@ -110,7 +119,11 @@ export function useColumnVisibility<T>(
     () =>
       columns
         .filter((c, i) => !lockable(c, i))
-        .map((c) => ({ key: c.key, label: c.label, visible: !hidden.has(c.key) })),
+        .map((c) => ({
+          key: c.key,
+          label: c.label,
+          visible: !hidden.has(c.key),
+        })),
     [columns, hidden, lockable],
   );
 

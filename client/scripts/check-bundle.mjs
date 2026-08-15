@@ -42,7 +42,8 @@ const ASSETS = path.resolve(dirname, "../dist/assets");
  * this script exists to catch. Route-level code splitting relies on exactly that
  * property, and flagging those edges would make the gate unusable.
  */
-const STATIC_IMPORT = /(?:^|[;}\s])(?:import|export)\s*(?:[\w*{},\s$]*?\s*from\s*)?["'](\.\/[^"']+\.js)["']/g;
+const STATIC_IMPORT =
+  /(?:^|[;}\s])(?:import|export)\s*(?:[\w*{},\s$]*?\s*from\s*)?["'](\.\/[^"']+\.js)["']/g;
 
 function findCycle(graph) {
   const state = new Map(); // unvisited | visiting | done
@@ -50,7 +51,8 @@ function findCycle(graph) {
 
   function walk(node) {
     if (state.get(node) === "done") return null;
-    if (state.get(node) === "visiting") return [...stack.slice(stack.indexOf(node)), node];
+    if (state.get(node) === "visiting")
+      return [...stack.slice(stack.indexOf(node)), node];
 
     state.set(node, "visiting");
     stack.push(node);
@@ -72,13 +74,17 @@ function findCycle(graph) {
 
 async function main() {
   if (!existsSync(ASSETS)) {
-    console.error(`✗ ${path.relative(process.cwd(), ASSETS)} not found — run \`npm run build\` first.`);
+    console.error(
+      `✗ ${path.relative(process.cwd(), ASSETS)} not found — run \`npm run build\` first.`,
+    );
     process.exit(1);
   }
 
   const files = (await readdir(ASSETS)).filter((f) => f.endsWith(".js"));
   if (files.length === 0) {
-    console.error("✗ No JS chunks in dist/assets — the build produced nothing to check.");
+    console.error(
+      "✗ No JS chunks in dist/assets — the build produced nothing to check.",
+    );
     process.exit(1);
   }
 
@@ -95,18 +101,30 @@ async function main() {
 
   const cycle = findCycle(graph);
   if (cycle) {
-    console.error("✗ Circular chunk graph in dist/assets — this ships a blank page.\n");
+    console.error(
+      "✗ Circular chunk graph in dist/assets — this ships a blank page.\n",
+    );
     console.error(`    ${cycle.join("\n  → ")}\n`);
-    console.error("  One chunk in this cycle reads another's exports before they are assigned,");
-    console.error("  which throws during module evaluation — before React renders, so no");
-    console.error("  ErrorBoundary catches it and the user sees nothing at all.");
-    console.error("\n  Do NOT resolve this by adding a manualChunks bucket. See the CHUNKING");
+    console.error(
+      "  One chunk in this cycle reads another's exports before they are assigned,",
+    );
+    console.error(
+      "  which throws during module evaluation — before React renders, so no",
+    );
+    console.error(
+      "  ErrorBoundary catches it and the user sees nothing at all.",
+    );
+    console.error(
+      "\n  Do NOT resolve this by adding a manualChunks bucket. See the CHUNKING",
+    );
     console.error("  note in client/vite.config.ts.");
     process.exit(1);
   }
 
   const edgeCount = [...graph.values()].reduce((n, e) => n + e.size, 0);
-  console.warn(`✓ Chunk graph is acyclic — ${graph.size} chunks, ${edgeCount} static edges.`);
+  console.warn(
+    `✓ Chunk graph is acyclic — ${graph.size} chunks, ${edgeCount} static edges.`,
+  );
 }
 
 main().catch((err) => {

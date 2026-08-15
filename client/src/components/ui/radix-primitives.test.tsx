@@ -29,7 +29,12 @@ function DialogHarness() {
   return (
     <>
       <button onClick={() => setOpen(true)}>Open form</button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="New client" description="Creates a master-data record.">
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New client"
+        description="Creates a master-data record."
+      >
         <Field label="Name">
           <Input />
         </Field>
@@ -74,7 +79,9 @@ describe("Dialog (replaces Modal — F13: no focus trap, no focus restore)", () 
     await user.click(trigger);
     await user.keyboard("{Escape}");
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     // Radix restores focus after the content unmounts, so this settles a tick later.
     await waitFor(() => expect(trigger).toHaveFocus());
   });
@@ -84,7 +91,9 @@ describe("Dialog (replaces Modal — F13: no focus trap, no focus restore)", () 
     render(<DialogHarness />);
     await user.click(screen.getByRole("button", { name: "Open form" }));
     await user.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("has no axe violations", async () => {
@@ -125,7 +134,11 @@ function TabsHarness() {
       onValueChange={setTab}
       label="Dossier sections"
       tabs={[
-        { value: "milestones", label: "Milestones", content: <p>Milestone body</p> },
+        {
+          value: "milestones",
+          label: "Milestones",
+          content: <p>Milestone body</p>,
+        },
         { value: "money", label: "Money", content: <p>Money body</p> },
         { value: "people", label: "People", content: <p>People body</p> },
       ]}
@@ -136,9 +149,14 @@ function TabsHarness() {
 describe("Tabs (F13: 'Tabs are not tabs')", () => {
   it("exposes a real tablist / tab / tabpanel structure", () => {
     render(<TabsHarness />);
-    expect(screen.getByRole("tablist", { name: "Dossier sections" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tablist", { name: "Dossier sections" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(3);
-    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Milestone body");
   });
 
@@ -169,11 +187,17 @@ describe("Tabs (F13: 'Tabs are not tabs')", () => {
     await user.keyboard("{ArrowRight}");
 
     expect(screen.getByRole("tab", { name: "Money" })).toHaveFocus();
-    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Milestone body");
 
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("tab", { name: "Money" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Money" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Money body");
   });
 
@@ -182,9 +206,15 @@ describe("Tabs (F13: 'Tabs are not tabs')", () => {
     render(<TabsHarness />);
     await user.tab();
     await user.keyboard("{End}{Enter}");
-    expect(screen.getByRole("tab", { name: "People" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "People" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await user.keyboard("{Home}{Enter}");
-    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Milestones" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("has no axe violations", async () => {
@@ -218,7 +248,9 @@ describe("DropdownMenu (F13: role='menu' with ZERO onKeyDown handlers)", () => {
     await user.keyboard("{Enter}");
 
     // Named by its trigger, per the WAI-ARIA menu-button pattern.
-    expect(await screen.findByRole("menu", { name: "Actions" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("menu", { name: "Actions" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("menuitem")).toHaveLength(3);
   });
 
@@ -228,7 +260,9 @@ describe("DropdownMenu (F13: role='menu' with ZERO onKeyDown handlers)", () => {
     const trigger = screen.getByRole("button", { name: "Actions" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     await user.click(trigger);
-    await waitFor(() => expect(trigger).toHaveAttribute("aria-expanded", "true"));
+    await waitFor(() =>
+      expect(trigger).toHaveAttribute("aria-expanded", "true"),
+    );
   });
 
   /** The promise role="menu" makes and the old code never kept. */
@@ -260,7 +294,9 @@ describe("DropdownMenu (F13: role='menu' with ZERO onKeyDown handlers)", () => {
     const trigger = screen.getByRole("button", { name: "Actions" });
     await user.click(trigger);
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
     expect(trigger).toHaveFocus();
   });
 
@@ -298,7 +334,9 @@ function SelectHarness() {
 describe("Select", () => {
   it("takes its accessible name from the surrounding Field", () => {
     render(<SelectHarness />);
-    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
   });
 
   it("opens with the keyboard and selects with Enter", async () => {
@@ -310,7 +348,11 @@ describe("Select", () => {
     const listbox = await screen.findByRole("listbox");
     expect(listbox).toBeInTheDocument();
     await user.keyboard("{ArrowDown}{Enter}");
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent(/Open|Won/));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Status" }),
+      ).toHaveTextContent(/Open|Won/),
+    );
   });
 
   it("closes on Escape and restores focus", async () => {
@@ -320,7 +362,9 @@ describe("Select", () => {
     await user.click(trigger);
     await screen.findByRole("listbox");
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument(),
+    );
     expect(trigger).toHaveFocus();
   });
 
@@ -336,20 +380,40 @@ describe("Checkbox", () => {
   it("is labelled, and the label is a click target", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<Checkbox checked={false} onCheckedChange={onChange} label="Include resolved" />);
+    render(
+      <Checkbox
+        checked={false}
+        onCheckedChange={onChange}
+        label="Include resolved"
+      />,
+    );
     await user.click(screen.getByText("Include resolved"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
   it("expresses the indeterminate state, which a native checkbox cannot declare", () => {
-    render(<Checkbox checked="indeterminate" onCheckedChange={() => {}} label="Select all rows" />);
-    expect(screen.getByRole("checkbox", { name: "Select all rows" })).toHaveAttribute("aria-checked", "mixed");
+    render(
+      <Checkbox
+        checked="indeterminate"
+        onCheckedChange={() => {}}
+        label="Select all rows"
+      />,
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "Select all rows" }),
+    ).toHaveAttribute("aria-checked", "mixed");
   });
 
   it("toggles with Space", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(<Checkbox checked={false} onCheckedChange={onChange} label="Include resolved" />);
+    render(
+      <Checkbox
+        checked={false}
+        onCheckedChange={onChange}
+        label="Include resolved"
+      />,
+    );
     await user.tab();
     await user.keyboard(" ");
     expect(onChange).toHaveBeenCalledWith(true);
@@ -357,7 +421,12 @@ describe("Checkbox", () => {
 
   it("has no axe violations", async () => {
     const { container } = render(
-      <Checkbox checked={false} onCheckedChange={() => {}} label="Include resolved" hint="Adds closed flags." />,
+      <Checkbox
+        checked={false}
+        onCheckedChange={() => {}}
+        label="Include resolved"
+        hint="Adds closed flags."
+      />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -382,7 +451,9 @@ describe("RadioGroup", () => {
 
   it("is a named group with the selected option checked", () => {
     render(<H />);
-    expect(screen.getByRole("radiogroup", { name: "Payment method" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: "Payment method" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Bank transfer" })).toBeChecked();
   });
 
@@ -416,7 +487,10 @@ describe("RadioGroup", () => {
 describe("Popover (the notification bell was a panel wearing a menu's ARIA)", () => {
   function H() {
     return (
-      <Popover label="Notifications" trigger={<button aria-label="Notifications">Bell</button>}>
+      <Popover
+        label="Notifications"
+        trigger={<button aria-label="Notifications">Bell</button>}
+      >
         <p>Latest</p>
         <button>Mark all read</button>
       </Popover>
@@ -427,9 +501,13 @@ describe("Popover (the notification bell was a panel wearing a menu's ARIA)", ()
     const user = userEvent.setup();
     render(<H />);
     await user.click(screen.getByRole("button", { name: "Notifications" }));
-    expect(await screen.findByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: "Notifications" }),
+    ).toBeInTheDocument();
     // Nested interactive content — invalid inside a menuitem, fine here.
-    expect(screen.getByRole("button", { name: "Mark all read" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Mark all read" }),
+    ).toBeInTheDocument();
   });
 
   it("closes on Escape and restores focus to the trigger", async () => {
@@ -439,7 +517,9 @@ describe("Popover (the notification bell was a panel wearing a menu's ARIA)", ()
     await user.click(trigger);
     await screen.findByRole("dialog");
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     expect(trigger).toHaveFocus();
   });
 });

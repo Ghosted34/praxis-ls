@@ -26,23 +26,27 @@ function row(action: string, entity_ref: string | null = null): AuditFeedRow {
 
 describe("humanize", () => {
   it("reads a vacancy applicant update as a sentence, not 'You did applicant updated on a vacancy'", () => {
-    expect(humanize(row("vacancy.applicant_updated", "vacancy:v1")).text).toBe("You updated an applicant");
+    expect(humanize(row("vacancy.applicant_updated", "vacancy:v1")).text).toBe(
+      "You updated an applicant",
+    );
     expect(humanize(row("vacancy.applicant_added", "vacancy:v1")).text).toBe(
       "You added an applicant to a vacancy",
     );
   });
 
   it("reads the hire-provisioning event", () => {
-    expect(humanize(row("employee_provisioned", "employee:e1")).text).toBe("You hired an applicant");
+    expect(humanize(row("employee_provisioned", "employee:e1")).text).toBe(
+      "You hired an applicant",
+    );
   });
 
   it("reads a client/supplier Smart Copy conversion, not 'You did converted from client on a supplier'", () => {
-    expect(humanize(row("supplier.converted_from_client", "supplier:s1")).text).toBe(
-      "You converted a client into a supplier",
-    );
-    expect(humanize(row("client.converted_from_supplier", "client:c1")).text).toBe(
-      "You converted a supplier into a client",
-    );
+    expect(
+      humanize(row("supplier.converted_from_client", "supplier:s1")).text,
+    ).toBe("You converted a client into a supplier");
+    expect(
+      humanize(row("client.converted_from_supplier", "client:c1")).text,
+    ).toBe("You converted a supplier into a client");
   });
 
   it("reads a role change — the actually-emitted key is 'role.changed', not 'role.updated'", () => {
@@ -52,18 +56,24 @@ describe("humanize", () => {
   });
 
   it("reads a user capability change", () => {
-    expect(humanize(row("user.capability.changed", "user_capability:u1")).text).toBe(
-      "You changed a user's capabilities",
-    );
+    expect(
+      humanize(row("user.capability.changed", "user_capability:u1")).text,
+    ).toBe("You changed a user's capabilities");
   });
 
   it("reads party block/unblock/verify via the generic verb+noun composition", () => {
-    expect(humanize(row("supplier.blocked", "supplier:s1")).text).toBe("You blocked a supplier");
-    expect(humanize(row("client.unblocked", "client:c1")).text).toBe("You unblocked a client");
-    expect(humanize(row("client.verified", "client:c1")).text).toBe("You verified a client");
-    expect(humanize(row("campaign_sender.verified", "campaign_sender:cs1")).text).toBe(
-      "You verified a campaign sender",
+    expect(humanize(row("supplier.blocked", "supplier:s1")).text).toBe(
+      "You blocked a supplier",
     );
+    expect(humanize(row("client.unblocked", "client:c1")).text).toBe(
+      "You unblocked a client",
+    );
+    expect(humanize(row("client.verified", "client:c1")).text).toBe(
+      "You verified a client",
+    );
+    expect(
+      humanize(row("campaign_sender.verified", "campaign_sender:cs1")).text,
+    ).toBe("You verified a campaign sender");
   });
 
   it("composes '<field>_changed' actions instead of the ungrammatical generic fallback", () => {

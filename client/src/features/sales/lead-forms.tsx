@@ -19,7 +19,17 @@ import { SearchSelect } from "@/components/ui/search-select";
 
 const LEAD_SOURCES = ["MANUAL", "WEBSITE", "REFERRAL", "CAMPAIGN"];
 
-export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; editing: Row | null; onClose: () => void; onSaved: () => void }) {
+export function LeadForm({
+  open,
+  editing,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  editing: Row | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [company, setCompany] = React.useState("");
   const [contact, setContact] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -36,7 +46,9 @@ export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; e
     setEmail(editing?.email ? String(editing.email) : "");
     setPhone(editing?.phone ? String(editing.phone) : "");
     setSource(editing?.source ? String(editing.source) : "MANUAL");
-    setInterest(editing?.service_interest ? String(editing.service_interest) : "");
+    setInterest(
+      editing?.service_interest ? String(editing.service_interest) : "",
+    );
     setError(null);
   }, [open, editing]);
 
@@ -54,7 +66,11 @@ export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; e
       service_interest: interest.trim() || undefined,
     };
     try {
-      if (editing) await tenant(`/leads/${String(editing.lead_id)}`, { method: "PATCH", body });
+      if (editing)
+        await tenant(`/leads/${String(editing.lead_id)}`, {
+          method: "PATCH",
+          body,
+        });
       else await tenant("/leads", { method: "POST", body });
       onSaved();
       onClose();
@@ -66,10 +82,21 @@ export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; e
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit lead" : "Capture lead"} description="Top of the sales funnel — qualify, then convert into a client." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit lead" : "Capture lead"}
+      description="Top of the sales funnel — qualify, then convert into a client."
+      size="lg"
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Company" required className="sm:col-span-2" hint="Search existing clients, or type a new company">
+          <Field
+            label="Company"
+            required
+            className="sm:col-span-2"
+            hint="Search existing clients, or type a new company"
+          >
             <SearchSelect
               path="/clients"
               value={company || null}
@@ -82,16 +109,33 @@ export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; e
             />
           </Field>
           <Field label="Contact name">
-            <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Jane Doe" />
+            <Input
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="Jane Doe"
+            />
           </Field>
           <Field label="Service interest" hint="What they're after">
-            <Input value={interest} onChange={(e) => setInterest(e.target.value)} placeholder="Freight forwarding" />
+            <Input
+              value={interest}
+              onChange={(e) => setInterest(e.target.value)}
+              placeholder="Freight forwarding"
+            />
           </Field>
           <Field label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@acme.cm" />
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@acme.cm"
+            />
           </Field>
           <Field label="Phone">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+237 6XX XXX XXX" />
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+237 6XX XXX XXX"
+            />
           </Field>
           <Field label="Source">
             <Select value={source} onChange={(e) => setSource(e.target.value)}>
@@ -117,7 +161,15 @@ export function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; e
   );
 }
 
-export function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onClose: () => void; onDone: () => void }) {
+export function ConvertModal({
+  lead,
+  onClose,
+  onDone,
+}: {
+  lead: Row | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const open = !!lead;
   const [legalName, setLegalName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -143,7 +195,10 @@ export function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onCl
       phone: phone.trim() || undefined,
     };
     try {
-      await tenant(`/leads/${String(lead.lead_id)}/convert`, { method: "POST", body: { client } });
+      await tenant(`/leads/${String(lead.lead_id)}/convert`, {
+        method: "POST",
+        body: { client },
+      });
       onDone();
       onClose();
     } catch (e) {
@@ -154,15 +209,28 @@ export function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onCl
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Convert to client" description="Promote this qualified lead into the client master and link it back(→).">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Convert to client"
+      description="Promote this qualified lead into the client master and link it back(→)."
+    >
       <div className="space-y-4">
         <div className="grid gap-4">
           <Field label="Legal name" required>
-            <Input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Acme Logistics SARL" />
+            <Input
+              value={legalName}
+              onChange={(e) => setLegalName(e.target.value)}
+              placeholder="Acme Logistics SARL"
+            />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Email">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </Field>
             <Field label="Phone">
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -174,7 +242,11 @@ export function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onCl
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={busy} disabled={!legalName.trim() || busy}>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={!legalName.trim() || busy}
+          >
             Convert to client
           </Button>
         </div>
@@ -183,7 +255,15 @@ export function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onCl
   );
 }
 
-export function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null; onClose: () => void; onDone: () => void }) {
+export function TriageModal({
+  enquiry,
+  onClose,
+  onDone,
+}: {
+  enquiry: Row | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const open = !!enquiry;
   const [toLead, setToLead] = React.useState(true);
   const [close, setClose] = React.useState(false);
@@ -202,7 +282,10 @@ export function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null;
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/intake/enquiries/${String(enquiry.contact_enquiry_id)}/triage`, { method: "POST", body: { to_lead: toLead, close } });
+      await tenant(
+        `/intake/enquiries/${String(enquiry.contact_enquiry_id)}/triage`,
+        { method: "POST", body: { to_lead: toLead, close } },
+      );
       onDone();
       onClose();
     } catch (e) {
@@ -213,23 +296,46 @@ export function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null;
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Triage enquiry" description="Route this website/email enquiry into the funnel.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Triage enquiry"
+      description="Route this website/email enquiry into the funnel."
+    >
       <div className="space-y-4">
         {enquiry && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-            <p className="font-medium">{cell(enquiry.subject) === "—" ? "(no subject)" : cell(enquiry.subject)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {[cell(enquiry.name), cell(enquiry.email)].filter((x) => x !== "—").join(" · ") || "Anonymous"}
+            <p className="font-medium">
+              {cell(enquiry.subject) === "—"
+                ? "(no subject)"
+                : cell(enquiry.subject)}
             </p>
-            {enquiry.message ? <p className="mt-2 text-xs text-muted-foreground">{cell(enquiry.message)}</p> : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {[cell(enquiry.name), cell(enquiry.email)]
+                .filter((x) => x !== "—")
+                .join(" · ") || "Anonymous"}
+            </p>
+            {enquiry.message ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {cell(enquiry.message)}
+              </p>
+            ) : null}
           </div>
         )}
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={toLead} onChange={(e) => setToLead(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={toLead}
+            onChange={(e) => setToLead(e.target.checked)}
+          />
           Create a lead from this enquiry
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={close} onChange={(e) => setClose(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={close}
+            onChange={(e) => setClose(e.target.checked)}
+          />
           Close the enquiry (no further action)
         </label>
         {error && <ErrorState message={error} />}
@@ -246,7 +352,15 @@ export function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null;
   );
 }
 
-export function ReviewModal({ partnership, onClose, onDone }: { partnership: Row | null; onClose: () => void; onDone: () => void }) {
+export function ReviewModal({
+  partnership,
+  onClose,
+  onDone,
+}: {
+  partnership: Row | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const open = !!partnership;
   const [status, setStatus] = React.useState("REVIEWING");
   const [busy, setBusy] = React.useState(false);
@@ -263,7 +377,10 @@ export function ReviewModal({ partnership, onClose, onDone }: { partnership: Row
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/intake/partnerships/${String(partnership.partnership_request_id)}/review`, { method: "POST", body: { status } });
+      await tenant(
+        `/intake/partnerships/${String(partnership.partnership_request_id)}/review`,
+        { method: "POST", body: { status } },
+      );
       onDone();
       onClose();
     } catch (e) {
@@ -274,13 +391,26 @@ export function ReviewModal({ partnership, onClose, onDone }: { partnership: Row
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Review partnership request" description="Decide on an inbound partnership proposal.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Review partnership request"
+      description="Decide on an inbound partnership proposal."
+    >
       <div className="space-y-4">
         {partnership && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
             <p className="font-medium">{cell(partnership.company_name)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{[cell(partnership.contact_name), cell(partnership.email)].filter((x) => x !== "—").join(" · ") || "—"}</p>
-            {partnership.proposal_text ? <p className="mt-2 text-xs text-muted-foreground">{cell(partnership.proposal_text)}</p> : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {[cell(partnership.contact_name), cell(partnership.email)]
+                .filter((x) => x !== "—")
+                .join(" · ") || "—"}
+            </p>
+            {partnership.proposal_text ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {cell(partnership.proposal_text)}
+              </p>
+            ) : null}
           </div>
         )}
         <Field label="Decision">

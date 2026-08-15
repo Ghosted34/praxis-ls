@@ -36,19 +36,65 @@ import { cn } from "@/lib/cn";
 
 export type CalloutTone = "ok" | "warn" | "bad" | "info";
 
-const TONE: Record<CalloutTone, { box: string; ink: string; live: "polite" | "assertive" }> = {
+const TONE: Record<
+  CalloutTone,
+  { box: string; ink: string; live: "polite" | "assertive" }
+> = {
   ok: { box: "border-ok/40 bg-ok-fill/10", ink: "text-ok", live: "polite" },
-  warn: { box: "border-warn/40 bg-warn-fill/10", ink: "text-warn", live: "assertive" },
-  bad: { box: "border-bad/40 bg-bad-fill/10", ink: "text-bad", live: "assertive" },
-  info: { box: "border-brand-blue/40 bg-brand-blue/10", ink: "text-brand-blue-ink", live: "polite" },
+  warn: {
+    box: "border-warn/40 bg-warn-fill/10",
+    ink: "text-warn",
+    live: "assertive",
+  },
+  bad: {
+    box: "border-bad/40 bg-bad-fill/10",
+    ink: "text-bad",
+    live: "assertive",
+  },
+  info: {
+    box: "border-brand-blue/40 bg-brand-blue/10",
+    ink: "text-brand-blue-ink",
+    live: "polite",
+  },
 };
 
 function Glyph({ tone }: { tone: CalloutTone }) {
-  const common = { viewBox: "0 0 20 20", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true, className: "mt-0.5 shrink-0" };
-  if (tone === "ok") return <svg {...common}><path d="M4 10.5l4 4 8-8" /></svg>;
-  if (tone === "bad") return <svg {...common}><path d="M5 5l10 10M15 5L5 15" /></svg>;
-  if (tone === "warn") return <svg {...common}><path d="M10 3l7.5 13.5h-15L10 3zM10 8v4M10 14.5v.01" /></svg>;
-  return <svg {...common}><circle cx="10" cy="10" r="7.5" /><path d="M10 9v4.5M10 6.5v.01" /></svg>;
+  const common = {
+    viewBox: "0 0 20 20",
+    width: 16,
+    height: 16,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    className: "mt-0.5 shrink-0",
+  };
+  if (tone === "ok")
+    return (
+      <svg {...common}>
+        <path d="M4 10.5l4 4 8-8" />
+      </svg>
+    );
+  if (tone === "bad")
+    return (
+      <svg {...common}>
+        <path d="M5 5l10 10M15 5L5 15" />
+      </svg>
+    );
+  if (tone === "warn")
+    return (
+      <svg {...common}>
+        <path d="M10 3l7.5 13.5h-15L10 3zM10 8v4M10 14.5v.01" />
+      </svg>
+    );
+  return (
+    <svg {...common}>
+      <circle cx="10" cy="10" r="7.5" />
+      <path d="M10 9v4.5M10 6.5v.01" />
+    </svg>
+  );
 }
 
 export function Callout({
@@ -71,13 +117,19 @@ export function Callout({
     <div
       role="status"
       aria-live={t.live}
-      className={cn("flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm", t.box, className)}
+      className={cn(
+        "flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm",
+        t.box,
+        className,
+      )}
     >
       <span className={t.ink}>
         <Glyph tone={tone} />
       </span>
       <div className="min-w-0 flex-1">
-        {title ? <span className={cn("font-semibold", t.ink)}>{title}</span> : null}
+        {title ? (
+          <span className={cn("font-semibold", t.ink)}>{title}</span>
+        ) : null}
         {title && children ? " " : null}
         {children ? <span className="text-foreground">{children}</span> : null}
       </div>

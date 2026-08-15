@@ -22,13 +22,24 @@ import { Checkbox, RadioGroup } from "./checkbox";
 import { Segmented } from "./segmented";
 import { Chips } from "./chips";
 import { Tabs } from "./tabs";
-import { DropdownMenu, DropdownItem, DropdownSeparator, DropdownLabel } from "./dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownItem,
+  DropdownSeparator,
+  DropdownLabel,
+} from "./dropdown-menu";
 import { Popover } from "./popover";
 import { Tooltip } from "./tooltip";
 import { Pill, StatusPill, statusTone } from "./pill";
 import { Stat } from "./stat";
 import { Panel } from "./panel";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "./card";
 import { Avatar } from "./avatar";
 import { EmptyState, ErrorState, LoadingRow, Spinner } from "./states";
 import { Pagination } from "./pagination";
@@ -40,7 +51,13 @@ import { KpiRow, KpiTile } from "./kpi-tile";
 import { SearchSelect } from "./search-select";
 
 /** Consistent scaffolding so a story reads as "here is the thing, in each state". */
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="mb-6">
       <p className="mb-2 text-micro uppercase text-muted-foreground">{label}</p>
@@ -101,7 +118,10 @@ export const FormControls = () => {
             <Input disabled defaultValue="INV-2026-0041" />
           </Field>
           <Field label="Narration" hint="Appears on the journal entry.">
-            <Textarea rows={3} placeholder="Freight forwarding, Douala–Yaoundé" />
+            <Textarea
+              rows={3}
+              placeholder="Freight forwarding, Douala–Yaoundé"
+            />
           </Field>
         </div>
       </Row>
@@ -120,9 +140,21 @@ export const FormControls = () => {
               onValueChange={setSel}
               placeholder="Any status"
               options={[
-                { value: "OPEN", label: <Pill tone="blue">Open</Pill>, text: "Open" },
-                { value: "WON", label: <Pill tone="ok">Won</Pill>, text: "Won" },
-                { value: "LOST", label: <Pill tone="bad">Lost</Pill>, text: "Lost" },
+                {
+                  value: "OPEN",
+                  label: <Pill tone="blue">Open</Pill>,
+                  text: "Open",
+                },
+                {
+                  value: "WON",
+                  label: <Pill tone="ok">Won</Pill>,
+                  text: "Won",
+                },
+                {
+                  value: "LOST",
+                  label: <Pill tone="bad">Lost</Pill>,
+                  text: "Lost",
+                },
               ]}
             />
           </Field>
@@ -141,16 +173,34 @@ export const FormControls = () => {
 
       <Row label="Checkbox and RadioGroup">
         <div className="w-full space-y-4">
-          <Checkbox checked={checked} onCheckedChange={setChecked} label="Include resolved" hint="Adds closed flags." />
-          <Checkbox checked="indeterminate" onCheckedChange={() => {}} label="Select all rows" />
-          <Checkbox checked={false} onCheckedChange={() => {}} label="Disabled" disabled />
+          <Checkbox
+            checked={checked}
+            onCheckedChange={setChecked}
+            label="Include resolved"
+            hint="Adds closed flags."
+          />
+          <Checkbox
+            checked="indeterminate"
+            onCheckedChange={() => {}}
+            label="Select all rows"
+          />
+          <Checkbox
+            checked={false}
+            onCheckedChange={() => {}}
+            label="Disabled"
+            disabled
+          />
           <Field label="Payment method" required>
             <RadioGroup
               value={radio}
               onValueChange={setRadio}
               options={[
                 { value: "BANK", label: "Bank transfer" },
-                { value: "MOMO", label: "Mobile money", hint: "MTN and Orange." },
+                {
+                  value: "MOMO",
+                  label: "Mobile money",
+                  hint: "MTN and Orange.",
+                },
                 { value: "CASH", label: "Cash", disabled: true },
               ]}
             />
@@ -160,7 +210,11 @@ export const FormControls = () => {
 
       <Row label="FormButtons">
         <div className="w-full">
-          <FormButtons busy={false} onCancel={() => {}} saveLabel="Create client" />
+          <FormButtons
+            busy={false}
+            onCancel={() => {}}
+            saveLabel="Create client"
+          />
         </div>
       </Row>
       <Row label="FormButtons — saving">
@@ -236,14 +290,25 @@ export const StatusAndData = () => (
       <Pill tone="mute">Draft</Pill>
     </Row>
     <Row label="StatusPill — replaces Badge's 27-entry raw-palette map (F14)">
-      {["NEW", "IN_PROGRESS", "QUALIFIED", "WON", "LOST", "DRAFT", "SOME_UNKNOWN_STATE"].map((s) => (
+      {[
+        "NEW",
+        "IN_PROGRESS",
+        "QUALIFIED",
+        "WON",
+        "LOST",
+        "DRAFT",
+        "SOME_UNKNOWN_STATE",
+      ].map((s) => (
         <StatusPill key={s} status={s} />
       ))}
     </Row>
     <Row label="Avatar">
       <Avatar name="Ada Lovelace" />
       <Avatar name="Ada Lovelace" size="sm" />
-      <Avatar name="Douala Terminal Services" title="Douala Terminal Services" />
+      <Avatar
+        name="Douala Terminal Services"
+        title="Douala Terminal Services"
+      />
     </Row>
     <Row label="Stat — tone carries meaning, not decoration">
       <div className="grid w-full grid-cols-2 gap-2 xl:grid-cols-4">
@@ -264,8 +329,22 @@ export const StatusAndData = () => (
     </Row>
     <Row label="DataView — replaces the raw JSON.stringify fallbacks (A4)">
       <div className="w-full space-y-3">
-        <DataView data={[{ client_id: "c-1", total_ttc: 1500000, created_at: "2026-03-21T10:30:00Z" }]} />
-        <DataView data={{ report_key: "receivables_ageing", montant_ht: 980000, niu: "M0123456789" }} />
+        <DataView
+          data={[
+            {
+              client_id: "c-1",
+              total_ttc: 1500000,
+              created_at: "2026-03-21T10:30:00Z",
+            },
+          ]}
+        />
+        <DataView
+          data={{
+            report_key: "receivables_ageing",
+            montant_ht: 980000,
+            niu: "M0123456789",
+          }}
+        />
         <DataView data={null} emptyTitle="This report returned no rows" />
       </div>
     </Row>
@@ -282,15 +361,25 @@ export const Surfaces = () => (
         <CardDescription>Smart receivables ledger · XAF</CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground">Card is the one surface. Panel is built on it.</p>
+        <p className="text-sm text-muted-foreground">
+          Card is the one surface. Panel is built on it.
+        </p>
       </CardContent>
     </Card>
 
-    <Panel title="Cash position" subtitle="Treasury · bank · cash · mobile money">
-      <p className="text-sm text-muted-foreground">Panel replaced six independent copies of this block (A3).</p>
+    <Panel
+      title="Cash position"
+      subtitle="Treasury · bank · cash · mobile money"
+    >
+      <p className="text-sm text-muted-foreground">
+        Panel replaced six independent copies of this block (A3).
+      </p>
     </Panel>
 
-    <Panel title="Awaiting your approval" action={<Button variant="outline">See all</Button>}>
+    <Panel
+      title="Awaiting your approval"
+      action={<Button variant="outline">See all</Button>}
+    >
       <p className="text-sm text-muted-foreground">With an action.</p>
     </Panel>
   </div>
@@ -320,7 +409,13 @@ export const Overlays = () => {
         onClose={() => setDialog(false)}
         title="New client"
         description="Creates a master-data record."
-        footer={<FormButtons busy={false} onCancel={() => setDialog(false)} saveLabel="Create client" />}
+        footer={
+          <FormButtons
+            busy={false}
+            onCancel={() => setDialog(false)}
+            saveLabel="Create client"
+          />
+        }
       >
         <div className="space-y-4">
           <Field label="Legal name" required>
@@ -334,8 +429,14 @@ export const Overlays = () => {
 
       {/* Same component: ui/modal re-exports Dialog so all 56 importers inherit
           the focus trap without being edited. */}
-      <Modal open={legacy} onClose={() => setLegacy(false)} title="Opened through the old import path">
-        <p className="text-sm text-muted-foreground">Identical behaviour — that is the point of the alias.</p>
+      <Modal
+        open={legacy}
+        onClose={() => setLegacy(false)}
+        title="Opened through the old import path"
+      >
+        <p className="text-sm text-muted-foreground">
+          Identical behaviour — that is the point of the alias.
+        </p>
       </Modal>
 
       <ConfirmDialog
@@ -364,7 +465,9 @@ export const Overlays = () => {
 
         <Popover
           label="Notifications"
-          trigger={<Button variant="outline">Popover (content, not actions)</Button>}
+          trigger={
+            <Button variant="outline">Popover (content, not actions)</Button>
+          }
         >
           <div className="w-72 p-3">
             <p className="text-sm">A panel may contain its own controls.</p>
@@ -394,10 +497,26 @@ export const TabsStory = () => {
       onValueChange={setTab}
       label="Dossier sections"
       tabs={[
-        { value: "milestones", label: "Milestones", content: <p className="text-sm">Milestone chain.</p> },
-        { value: "money", label: "Money", content: <p className="text-sm">Costs and invoicing.</p> },
-        { value: "people", label: "People", content: <p className="text-sm">Assigned staff.</p> },
-        { value: "docs", label: "Documents", content: <p className="text-sm">Attachments.</p> },
+        {
+          value: "milestones",
+          label: "Milestones",
+          content: <p className="text-sm">Milestone chain.</p>,
+        },
+        {
+          value: "money",
+          label: "Money",
+          content: <p className="text-sm">Costs and invoicing.</p>,
+        },
+        {
+          value: "people",
+          label: "People",
+          content: <p className="text-sm">Assigned staff.</p>,
+        },
+        {
+          value: "docs",
+          label: "Documents",
+          content: <p className="text-sm">Attachments.</p>,
+        },
       ]}
     />
   );
@@ -434,12 +553,20 @@ export const States = () => (
     <Row label="Error — role=alert, and the real server message">
       <div className="w-full space-y-3">
         <ErrorState message="You don't have permission to do this." />
-        <ErrorState message="Period 2026-03 is already closed." action={<Button variant="outline">Reopen period</Button>} />
+        <ErrorState
+          message="Period 2026-03 is already closed."
+          action={<Button variant="outline">Reopen period</Button>}
+        />
       </div>
     </Row>
     <Row label="Pagination — the API caps lists at 50 rows (F8)">
       <div className="w-full space-y-4">
-        <Pagination page={1} pageSize={50} total={1284} onPageChange={() => {}} />
+        <Pagination
+          page={1}
+          pageSize={50}
+          total={1284}
+          onPageChange={() => {}}
+        />
         <Pagination page={0} pageSize={50} hasMore onPageChange={() => {}} />
       </div>
     </Row>
@@ -453,10 +580,16 @@ function ToastDemo() {
   return (
     <div className="flex flex-wrap gap-3">
       <Button onClick={() => toast.success("Invoice posted")}>Success</Button>
-      <Button variant="outline" onClick={() => toast.error("Period 2026-03 is already closed.")}>
+      <Button
+        variant="outline"
+        onClick={() => toast.error("Period 2026-03 is already closed.")}
+      >
         Error
       </Button>
-      <Button variant="ghost" onClick={() => toast.info("Export queued — we'll email it.")}>
+      <Button
+        variant="ghost"
+        onClick={() => toast.info("Export queued — we'll email it.")}
+      >
         Info
       </Button>
     </div>
@@ -474,10 +607,13 @@ export const Boundary = () => {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Before Phase 2 there was no error boundary anywhere — this throw blanked the entire SPA (F12).
+        Before Phase 2 there was no error boundary anywhere — this throw blanked
+        the entire SPA (F12).
       </p>
       <Button onClick={() => setCrash(true)}>Trigger a render throw</Button>
-      <ErrorBoundary name="Finance">{crash ? <Boom /> : <p className="text-sm">Nothing wrong yet.</p>}</ErrorBoundary>
+      <ErrorBoundary name="Finance">
+        {crash ? <Boom /> : <p className="text-sm">Nothing wrong yet.</p>}
+      </ErrorBoundary>
     </div>
   );
 };
@@ -488,19 +624,52 @@ export const Boundary = () => {
  *  Badge's hardcoded raw-Tailwind table, in one place to eyeball in both themes. */
 export const StatusToneReference = () => {
   const statuses = [
-    "DRAFT", "CLOSED", "ENDED", "EXPIRED", "CANCELLED",
-    "NEW", "OPEN", "TRIAGED", "SENT", "ISSUED", "SCHEDULED",
-    "IN_PROGRESS", "CONTACTED", "REVIEWING", "IN_REVIEW", "PENDING", "PAUSED", "SIGNED_OFF", "YELLOW",
+    "DRAFT",
+    "CLOSED",
+    "ENDED",
+    "EXPIRED",
+    "CANCELLED",
+    "NEW",
+    "OPEN",
+    "TRIAGED",
+    "SENT",
+    "ISSUED",
+    "SCHEDULED",
+    "IN_PROGRESS",
+    "CONTACTED",
+    "REVIEWING",
+    "IN_REVIEW",
+    "PENDING",
+    "PAUSED",
+    "SIGNED_OFF",
+    "YELLOW",
     "QUALIFIED",
-    "CONVERTED", "WON", "ACCEPTED", "ACTIVE", "PUBLISHED", "APPROVED", "SIGNED", "DONE", "GREEN",
-    "LOST", "REJECTED", "DECLINED", "FAILED", "RED",
+    "CONVERTED",
+    "WON",
+    "ACCEPTED",
+    "ACTIVE",
+    "PUBLISHED",
+    "APPROVED",
+    "SIGNED",
+    "DONE",
+    "GREEN",
+    "LOST",
+    "REJECTED",
+    "DECLINED",
+    "FAILED",
+    "RED",
   ];
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
       {statuses.map((s) => (
-        <div key={s} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+        <div
+          key={s}
+          className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+        >
           <StatusPill status={s} />
-          <code className="text-micro text-muted-foreground">{statusTone(s)}</code>
+          <code className="text-micro text-muted-foreground">
+            {statusTone(s)}
+          </code>
         </div>
       ))}
     </div>

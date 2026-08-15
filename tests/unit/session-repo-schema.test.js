@@ -29,7 +29,11 @@ function fakeClient() {
     async query(text, params) {
       this.calls.push({ text, params });
       // Extract every "<verb> [ONLY] <table>" reference and validate.
-      const refs = [...text.matchAll(/\b(?:FROM|UPDATE|INTO|JOIN)\s+(?:ONLY\s+)?([a-z_][a-z0-9_]*)/gi)]
+      const refs = [
+        ...text.matchAll(
+          /\b(?:FROM|UPDATE|INTO|JOIN)\s+(?:ONLY\s+)?([a-z_][a-z0-9_]*)/gi,
+        ),
+      ]
         .map((m) => m[1].toLowerCase())
         .filter((t) => !["only"].includes(t));
       for (const t of refs) {
@@ -47,7 +51,9 @@ function fakeClient() {
 describe("session.repo — schema-name regressions", () => {
   it("killAllForUser targets user_session (B5)", async () => {
     const client = fakeClient();
-    await expect(repo.killAllForUser(client, "u1", "actor1")).resolves.toEqual([]);
+    await expect(repo.killAllForUser(client, "u1", "actor1")).resolves.toEqual(
+      [],
+    );
     const sql = client.calls[0].text;
     expect(sql).toMatch(/UPDATE\s+user_session\b/i);
     expect(sql).not.toMatch(/UPDATE\s+session\b/i);
@@ -74,22 +80,35 @@ describe("error-handler — 42P01/42703 map to 500 SCHEMA_ERROR", () => {
 
   // Silence the reporter and logger side-effects — the test cares about the
   // response shape.
-  jest.mock("../../src/shared/observability/error-reporter", () => ({ report: jest.fn() }));
+  jest.mock("../../src/shared/observability/error-reporter", () => ({
+    report: jest.fn(),
+  }));
 
   function run(err) {
-    const req = { method: "POST", path: "/x", originalUrl: "/x", request_id: "r" };
+    const req = {
+      method: "POST",
+      path: "/x",
+      originalUrl: "/x",
+      request_id: "r",
+    };
     let payload = null;
     let status = null;
     const res = {
-      status(s) { status = s; return this; },
-      json(body) { payload = body; return this; },
+      status(s) {
+        status = s;
+        return this;
+      },
+      json(body) {
+        payload = body;
+        return this;
+      },
     };
     errorHandler(err, req, res, () => {});
     return { status, payload };
   }
 
   it("maps 42P01 undefined_table to 500 SCHEMA_ERROR", () => {
-    const err = new Error("relation \"session\" does not exist");
+    const err = new Error('relation "session" does not exist');
     err.code = "42P01";
     const { status, payload } = run(err);
     expect(status).toBe(500);

@@ -14,7 +14,8 @@ const lin = (c: number) => {
   const s = c / 255;
   return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 };
-const luminance = (r: number, g: number, b: number) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+const luminance = (r: number, g: number, b: number) =>
+  0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 const contrast = (a: [number, number, number], b: [number, number, number]) => {
   const la = luminance(...a);
   const lb = luminance(...b);
@@ -36,7 +37,11 @@ const DARK_BACKGROUND: [number, number, number] = [11, 13, 17]; // --background,
 /** `.st-orange`'s ground: the brand colour at 14% over the surface. */
 const PILL_TINT = 0.14;
 const tint = (c: [number, number, number], s: [number, number, number]) =>
-  c.map((v, i) => Math.round(v * PILL_TINT + s[i] * (1 - PILL_TINT))) as [number, number, number];
+  c.map((v, i) => Math.round(v * PILL_TINT + s[i] * (1 - PILL_TINT))) as [
+    number,
+    number,
+    number,
+  ];
 
 function hexRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -59,8 +64,12 @@ describe("applyBrand — accessible accent text", () => {
   for (const [name, hex] of brands) {
     it(`derives an AA-passing --primary-ink for ${name} (${hex})`, () => {
       applyBrand({ primary: hex });
-      expect(contrast(readVar("--primary-ink-light"), WHITE)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(readVar("--primary-ink-dark"), DARK_CARD)).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(readVar("--primary-ink-light"), WHITE),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(readVar("--primary-ink-dark"), DARK_CARD),
+      ).toBeGreaterThanOrEqual(4.5);
     });
 
     /**
@@ -90,7 +99,9 @@ describe("applyBrand — accessible accent text", () => {
         const ink = readVar(inkVar);
         for (const surface of surfaces) {
           expect(contrast(ink, surface)).toBeGreaterThanOrEqual(4.5);
-          expect(contrast(ink, tint(accent, surface))).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(ink, tint(accent, surface))).toBeGreaterThanOrEqual(
+            4.5,
+          );
         }
       }
     });
@@ -98,7 +109,9 @@ describe("applyBrand — accessible accent text", () => {
 
   it("leaves --primary itself untouched — brand fills must not shift", () => {
     applyBrand({ primary: "#F5821F" });
-    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("#F5821F");
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      "#F5821F",
+    );
   });
 
   it("does not alter a colour that already passes", () => {
@@ -109,14 +122,22 @@ describe("applyBrand — accessible accent text", () => {
 
   it("ignores a non-hex accent rather than writing an invalid value", () => {
     applyBrand({ primary: "not-a-colour" });
-    expect(document.documentElement.style.getPropertyValue("--primary-ink-light")).toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-ink-light"),
+    ).toBe("");
   });
 
   it("resetBrand clears the derived ink vars", () => {
     applyBrand({ primary: "#1C9BD7" });
-    expect(document.documentElement.style.getPropertyValue("--primary-ink-light")).not.toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-ink-light"),
+    ).not.toBe("");
     resetBrand();
-    expect(document.documentElement.style.getPropertyValue("--primary-ink-light")).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--primary-ink-dark")).toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-ink-light"),
+    ).toBe("");
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-ink-dark"),
+    ).toBe("");
   });
 });

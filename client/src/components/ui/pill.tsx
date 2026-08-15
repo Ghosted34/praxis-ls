@@ -96,7 +96,15 @@ export function statusTone(status?: string | null): Tone {
  * @example <StatusPill status={row.status} />           // "IN_REVIEW" → amber "In review"
  * @example <StatusPill status={row.stage} tone="ok" />  // override the mapping
  */
-export function StatusPill({ status, tone, className }: { status?: string | null; tone?: Tone; className?: string }) {
+export function StatusPill({
+  status,
+  tone,
+  className,
+}: {
+  status?: string | null;
+  tone?: Tone;
+  className?: string;
+}) {
   return (
     <Pill tone={tone ?? statusTone(status)} className={className}>
       {status || "—"}
@@ -107,12 +115,24 @@ export function StatusPill({ status, tone, className }: { status?: string | null
 /** String children are humanized ("POSTED_LOCKED" → "Posted locked", "OPEN" →
  *  "Open") — the Lovable reference never shows SCREAMING enum tokens. Pass a
  *  non-string child (e.g. <span>…</span>) to opt out. */
-export function Pill({ tone = "mute", children, className }: { tone?: Tone; children: React.ReactNode; className?: string }) {
+export function Pill({
+  tone = "mute",
+  children,
+  className,
+}: {
+  tone?: Tone;
+  children: React.ReactNode;
+  className?: string;
+}) {
   const content = typeof children === "string" ? enumLabel(children) : children;
-  return <span className={cn("status", TONE_CLASS[tone], className)}>{content}</span>;
+  return (
+    <span className={cn("status", TONE_CLASS[tone], className)}>{content}</span>
+  );
 }
 
 /** Active/Inactive convenience for the `is_active` flag most master-data rows carry. */
 export function ActivePill({ active }: { active: boolean }) {
-  return <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Inactive"}</Pill>;
+  return (
+    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Inactive"}</Pill>
+  );
 }

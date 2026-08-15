@@ -23,7 +23,11 @@ type CommandPaletteApi = {
 
 /** No-ops outside the shell, so a screen rendered in isolation (a test, the
  *  component workbench) does not have to stand one up to render. */
-const NOOP: CommandPaletteApi = { open: () => {}, close: () => {}, toggle: () => {} };
+const NOOP: CommandPaletteApi = {
+  open: () => {},
+  close: () => {},
+  toggle: () => {},
+};
 
 const Ctx = React.createContext<CommandPaletteApi>(NOOP);
 

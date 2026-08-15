@@ -16,11 +16,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { NavAccess } from "./nav-access";
 import {
-  accessSignature, classifyAccessChange, clearCachedAccess, readCachedAccess,
-  readCachedRibbonPinned, writeCachedAccess, writeCachedRibbonPinned,
+  accessSignature,
+  classifyAccessChange,
+  clearCachedAccess,
+  readCachedAccess,
+  readCachedRibbonPinned,
+  writeCachedAccess,
+  writeCachedRibbonPinned,
 } from "./nav-access-cache";
 
-const access = (modules: string[], over: Partial<NavAccess> = {}): NavAccess => ({
+const access = (
+  modules: string[],
+  over: Partial<NavAccess> = {},
+): NavAccess => ({
   modules,
   groups: ["fulfill"],
   byGroup: { fulfill: modules },
@@ -33,7 +41,9 @@ beforeEach(() => localStorage.clear());
 
 describe("classifyAccessChange — a grant and a revocation are not the same event", () => {
   it("calls a lost module a revocation", () => {
-    expect(classifyAccessChange(access(["MOD-29", "MOD-33"]), access(["MOD-29"]))).toEqual({
+    expect(
+      classifyAccessChange(access(["MOD-29", "MOD-33"]), access(["MOD-29"])),
+    ).toEqual({
       kind: "revoked",
       lost: ["MOD-33"],
       gained: [],
@@ -41,7 +51,9 @@ describe("classifyAccessChange — a grant and a revocation are not the same eve
   });
 
   it("calls a new module a grant", () => {
-    expect(classifyAccessChange(access(["MOD-29"]), access(["MOD-29", "MOD-33"]))).toEqual({
+    expect(
+      classifyAccessChange(access(["MOD-29"]), access(["MOD-29", "MOD-33"])),
+    ).toEqual({
       kind: "granted",
       gained: ["MOD-33"],
     });
@@ -51,7 +63,12 @@ describe("classifyAccessChange — a grant and a revocation are not the same eve
     // A role swap is the common shape of this — one module out, another in. The
     // loss is the half with a clock on it, so it decides; the gain rides along
     // on the same reload rather than being announced separately.
-    expect(classifyAccessChange(access(["MOD-29", "MOD-33"]), access(["MOD-29", "MOD-51"]))).toEqual({
+    expect(
+      classifyAccessChange(
+        access(["MOD-29", "MOD-33"]),
+        access(["MOD-29", "MOD-51"]),
+      ),
+    ).toEqual({
       kind: "revoked",
       lost: ["MOD-33"],
       gained: ["MOD-51"],
@@ -62,41 +79,64 @@ describe("classifyAccessChange — a grant and a revocation are not the same eve
     // The server sorts, but a cached record was written by whatever version of
     // this app was deployed at the time. An order-sensitive comparison would
     // hard-refresh a user for nothing.
-    expect(classifyAccessChange(access(["MOD-33", "MOD-29"]), access(["MOD-29", "MOD-33"])).kind).toBe("same");
+    expect(
+      classifyAccessChange(
+        access(["MOD-33", "MOD-29"]),
+        access(["MOD-29", "MOD-33"]),
+      ).kind,
+    ).toBe("same");
   });
 
   it("is not fooled by casing", () => {
     // Same argument, sharper consequence: a lower-cased cache against an
     // upper-cased response would read as losing EVERY module at once and
     // reload the page on the first revalidation of every session.
-    expect(classifyAccessChange(access(["mod-29", "mod-33"]), access(["MOD-29", "MOD-33"])).kind).toBe("same");
+    expect(
+      classifyAccessChange(
+        access(["mod-29", "mod-33"]),
+        access(["MOD-29", "MOD-33"]),
+      ).kind,
+    ).toBe("same");
   });
 
   it("reports no change when the digest moved but the visible set did not", () => {
     // `version` covers more than the module list, so a module being regrouped
     // mints a new digest over an identical set. That must be adopted silently:
     // it neither exposes nor removes anything.
-    const before = access(["MOD-29"], { version: "aaaaaaaaaaaa", groups: ["fulfill"] });
-    const after = access(["MOD-29"], { version: "bbbbbbbbbbbb", groups: ["monitor"] });
+    const before = access(["MOD-29"], {
+      version: "aaaaaaaaaaaa",
+      groups: ["fulfill"],
+    });
+    const after = access(["MOD-29"], {
+      version: "bbbbbbbbbbbb",
+      groups: ["monitor"],
+    });
     expect(classifyAccessChange(before, after).kind).toBe("same");
   });
 
   it("calls a first paint 'same', not a grant of everything", () => {
     // Nothing to compare against is not the same as having gained it all —
     // otherwise every first login would raise the banner over its own contents.
-    expect(classifyAccessChange(null, access(["MOD-29", "MOD-33"])).kind).toBe("same");
+    expect(classifyAccessChange(null, access(["MOD-29", "MOD-33"])).kind).toBe(
+      "same",
+    );
   });
 
   it("calls losing everything a revocation, not a failure to answer", () => {
     // The provider only gets here with a body that parsed, so an empty set is a
     // real answer: this user now sees nothing.
-    expect(classifyAccessChange(access(["MOD-29"]), access([]))).toMatchObject({ kind: "revoked", lost: ["MOD-29"] });
+    expect(classifyAccessChange(access(["MOD-29"]), access([]))).toMatchObject({
+      kind: "revoked",
+      lost: ["MOD-29"],
+    });
   });
 });
 
 describe("accessSignature — what 'the same change' means to a dismissed banner", () => {
   it("is stable across order and casing", () => {
-    expect(accessSignature(access(["MOD-33", "mod-29"]))).toBe(accessSignature(access(["MOD-29", "MOD-33"])));
+    expect(accessSignature(access(["MOD-33", "mod-29"]))).toBe(
+      accessSignature(access(["MOD-29", "MOD-33"])),
+    );
   });
 
   it("ignores the server's digest, so a regroup does not resurrect a dismissal", () => {
@@ -106,7 +146,9 @@ describe("accessSignature — what 'the same change' means to a dismissed banner
   });
 
   it("differs once the set differs", () => {
-    expect(accessSignature(access(["MOD-29"]))).not.toBe(accessSignature(access(["MOD-29", "MOD-33"])));
+    expect(accessSignature(access(["MOD-29"]))).not.toBe(
+      accessSignature(access(["MOD-29", "MOD-33"])),
+    );
   });
 });
 
@@ -134,7 +176,7 @@ describe("the cache is per user", () => {
 
 describe("the cache cannot be the thing that breaks the shell", () => {
   it.each([
-    ["a truncated record", "{\"modules\":[\"MOD-29\""],
+    ["a truncated record", '{"modules":["MOD-29"'],
     ["a bare string", '"nope"'],
     ["null", "null"],
     ["an array", "[]"],
@@ -147,7 +189,10 @@ describe("the cache cannot be the thing that breaks the shell", () => {
     // The shell calls `groups.filter` and `Object.entries(byGroup)` on its FIRST
     // render, before any network call can correct a bad record — so a cache that
     // returned this verbatim would be a way to crash the app offline.
-    localStorage.setItem("praxis.nav-access.1.u-1", JSON.stringify({ modules: ["MOD-29"] }));
+    localStorage.setItem(
+      "praxis.nav-access.1.u-1",
+      JSON.stringify({ modules: ["MOD-29"] }),
+    );
     const out = readCachedAccess("u-1");
     expect(out).not.toBeNull();
     expect(out!.groups).toEqual([]);

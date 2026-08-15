@@ -13,11 +13,21 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { LoginModal } from "@/features/auth/login-modal";
-import { BrandGlyph, ArrowRightIcon, SunIcon, MoonIcon, MonitorIcon } from "@/components/ui/icons";
+import {
+  BrandGlyph,
+  ArrowRightIcon,
+  SunIcon,
+  MoonIcon,
+  MonitorIcon,
+} from "@/components/ui/icons";
 import { getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
 import { fetchLogin, type LoginConfig } from "@/lib/branding";
 
-const NEXT: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "system", system: "light" };
+const NEXT: Record<ThemeMode, ThemeMode> = {
+  light: "dark",
+  dark: "system",
+  system: "light",
+};
 const ICON = { light: SunIcon, dark: MoonIcon, system: MonitorIcon };
 
 function ThemeCycle() {
@@ -71,9 +81,13 @@ export function LandingPage() {
   const eyebrow = hero.eyebrow || "Welcome to your operational command center";
   const kicker = brandName.toUpperCase();
   const headline =
-    login?.headline || hero.headline || `Everything ${brandName} runs, in one workspace.`;
+    login?.headline ||
+    hero.headline ||
+    `Everything ${brandName} runs, in one workspace.`;
   const subheadline =
-    login?.subtext || hero.subheadline || "Sign in to manage operations end to end — from the floor to global dispatch.";
+    login?.subtext ||
+    hero.subheadline ||
+    "Sign in to manage operations end to end — from the floor to global dispatch.";
   const body = hero.body || null;
   const pills = hero.pills || [];
   const backgroundUrl = login?.backgroundUrl || hero.imageUrl || null;
@@ -84,11 +98,19 @@ export function LandingPage() {
     <div
       className="landing"
       data-layout={layout}
-      style={login?.accentOverride ? ({ "--primary": login.accentOverride } as React.CSSProperties) : undefined}
+      style={
+        login?.accentOverride
+          ? ({ "--primary": login.accentOverride } as React.CSSProperties)
+          : undefined
+      }
     >
       <div
         className="landing-bg"
-        style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
+        style={
+          backgroundUrl
+            ? { backgroundImage: `url(${backgroundUrl})` }
+            : undefined
+        }
       />
       <div className="landing-veil" />
 
@@ -96,13 +118,19 @@ export function LandingPage() {
         <div className="landing-brand">
           {showLogo &&
             (branding.logoUrl ? (
-              <img src={branding.logoUrl} alt={brandName} style={{ height: 30, width: "auto" }} />
+              <img
+                src={branding.logoUrl}
+                alt={brandName}
+                style={{ height: 30, width: "auto" }}
+              />
             ) : (
               <>
                 <BrandGlyph className="landing-brand-glyph" />
                 <span>
                   {brandName.split(" ")[0]}{" "}
-                  <span className="accent">{brandName.split(" ").slice(1).join(" ") || ""}</span>
+                  <span className="accent">
+                    {brandName.split(" ").slice(1).join(" ") || ""}
+                  </span>
                 </span>
               </>
             ))}

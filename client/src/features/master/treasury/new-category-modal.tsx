@@ -20,7 +20,10 @@ import * as api from "@/lib/treasury-api";
 type Kind = "BANK" | "CASH" | "MOMO";
 
 export function NewCategoryModal({
-  open, onClose, onCreated, presetKind,
+  open,
+  onClose,
+  onCreated,
+  presetKind,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,7 +35,9 @@ export function NewCategoryModal({
 }) {
   const [code, setCode] = React.useState("");
   const [label, setLabel] = React.useState("");
-  const [legacyKind, setLegacyKind] = React.useState<Kind>(presetKind ?? "MOMO");
+  const [legacyKind, setLegacyKind] = React.useState<Kind>(
+    presetKind ?? "MOMO",
+  );
   const [parent, setParent] = React.useState("");
   const [reqCust, setReqCust] = React.useState(false);
   const [bankIdentity, setBankIdentity] = React.useState(false);
@@ -42,7 +47,9 @@ export function NewCategoryModal({
 
   React.useEffect(() => {
     if (!open) return;
-    setCode(""); setLabel(""); setParent("");
+    setCode("");
+    setLabel("");
+    setParent("");
     setLegacyKind(presetKind ?? "MOMO");
     setReqCust(false);
     setBankIdentity(false);
@@ -61,7 +68,8 @@ export function NewCategoryModal({
   const canSubmit = !!code.trim() && !!label.trim() && !!parent.trim() && !busy;
 
   async function submit() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
       const created = await api.createCategory({
         code: code.trim().toUpperCase(),
@@ -82,28 +90,62 @@ export function NewCategoryModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New treasury category" description="A treasury account type — e.g. Airtel SmartCash, Wave, Trust account. Mapped to a class-5 CoA parent; new accounts of this type get a 6-digit leaf under it.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New treasury category"
+      description="A treasury account type — e.g. Airtel SmartCash, Wave, Trust account. Mapped to a class-5 CoA parent; new accounts of this type get a 6-digit leaf under it."
+    >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Code" required hint="UPPER_SNAKE (e.g. AIRTEL_SMART_CASH)">
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AIRTEL_SMART_CASH" />
+          <Field
+            label="Code"
+            required
+            hint="UPPER_SNAKE (e.g. AIRTEL_SMART_CASH)"
+          >
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="AIRTEL_SMART_CASH"
+            />
           </Field>
           <Field label="Label" required>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Airtel SmartCash" />
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Airtel SmartCash"
+            />
           </Field>
-          <Field label="Kind" required hint="Wide bucket used by legacy readers">
-            <Select value={legacyKind} onChange={(e) => setLegacyKind(e.target.value as Kind)}>
+          <Field
+            label="Kind"
+            required
+            hint="Wide bucket used by legacy readers"
+          >
+            <Select
+              value={legacyKind}
+              onChange={(e) => setLegacyKind(e.target.value as Kind)}
+            >
               <option value="BANK">Bank</option>
               <option value="CASH">Cash</option>
               <option value="MOMO">Mobile Money</option>
             </Select>
           </Field>
-          <Field label="CoA parent (class 5)" required hint="Non-postable class-5 code (e.g. 5383)">
-            <Input value={parent} onChange={(e) => setParent(e.target.value)} placeholder="5383" />
+          <Field
+            label="CoA parent (class 5)"
+            required
+            hint="Non-postable class-5 code (e.g. 5383)"
+          >
+            <Input
+              value={parent}
+              onChange={(e) => setParent(e.target.value)}
+              placeholder="5383"
+            />
           </Field>
         </div>
         <div className="space-y-2 rounded-lg border p-3">
-          <div className="micro text-muted-foreground">Field groups the create form shows</div>
+          <div className="micro text-muted-foreground">
+            Field groups the create form shows
+          </div>
           <Checkbox
             checked={bankIdentity}
             onCheckedChange={(v) => setBankIdentity(v === true)}
@@ -123,8 +165,12 @@ export function NewCategoryModal({
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={submit} loading={busy} disabled={!canSubmit}>Create category</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
+            Create category
+          </Button>
         </div>
       </div>
     </Modal>

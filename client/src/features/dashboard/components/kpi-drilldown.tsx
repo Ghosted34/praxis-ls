@@ -34,7 +34,11 @@ function DrillTable({ drill }: { drill: Drill }) {
         <THead>
           <TR>
             {drill.columns.map((c) => (
-              <TH key={c.label} scope="col" className={c.align === "right" ? "text-right" : undefined}>
+              <TH
+                key={c.label}
+                scope="col"
+                className={c.align === "right" ? "text-right" : undefined}
+              >
                 {c.label}
               </TH>
             ))}
@@ -48,9 +52,16 @@ function DrillTable({ drill }: { drill: Drill }) {
                 return (
                   <TD
                     key={drill.columns[i]?.label ?? i}
-                    className={cn(align === "right" && "num text-right", i === 0 && "font-medium text-foreground")}
+                    className={cn(
+                      align === "right" && "num text-right",
+                      i === 0 && "font-medium text-foreground",
+                    )}
                   >
-                    {typeof cell === "string" ? cell : <Pill tone={cell.tone}>{cell.text}</Pill>}
+                    {typeof cell === "string" ? (
+                      cell
+                    ) : (
+                      <Pill tone={cell.tone}>{cell.text}</Pill>
+                    )}
                   </TD>
                 );
               })}
@@ -58,7 +69,9 @@ function DrillTable({ drill }: { drill: Drill }) {
           ))}
         </TBody>
       </Table>
-      {drill.note && <p className="mt-2 text-label text-muted-foreground">{drill.note}</p>}
+      {drill.note && (
+        <p className="mt-2 text-label text-muted-foreground">{drill.note}</p>
+      )}
     </>
   );
 }
@@ -92,7 +105,11 @@ export function KpiDrilldown({
       onClose={onClose}
       title={title}
       size="xl"
-      headerRight={drill ? <Pill tone={drill.badge.tone}>{drill.badge.text}</Pill> : undefined}
+      headerRight={
+        drill ? (
+          <Pill tone={drill.badge.tone}>{drill.badge.text}</Pill>
+        ) : undefined
+      }
       footer={
         cta ? (
           <Button
@@ -116,8 +133,12 @@ export function KpiDrilldown({
           <dl className="flex flex-wrap gap-x-6 gap-y-2">
             {drill.meta.map((m) => (
               <div key={m.label}>
-                <dt className="text-micro uppercase text-muted-foreground">{m.label}</dt>
-                <dd className="num mt-0.5 text-base font-semibold">{m.value}</dd>
+                <dt className="text-micro uppercase text-muted-foreground">
+                  {m.label}
+                </dt>
+                <dd className="num mt-0.5 text-base font-semibold">
+                  {m.value}
+                </dd>
               </div>
             ))}
           </dl>

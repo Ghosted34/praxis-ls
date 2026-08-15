@@ -44,36 +44,82 @@ export type MilestonePolicy = {
   notifyTiers?: string[];
 };
 
-type Stored = MilestonePolicy & { by_service?: Record<string, MilestonePolicy> };
+type Stored = MilestonePolicy & {
+  by_service?: Record<string, MilestonePolicy>;
+};
 
-const DEFAULTS: Required<Pick<MilestonePolicy, "earlyCompletion" | "onFloorReached" | "riskHours" | "dueHours">> = {
+const DEFAULTS: Required<
+  Pick<
+    MilestonePolicy,
+    "earlyCompletion" | "onFloorReached" | "riskHours" | "dueHours"
+  >
+> = {
   earlyCompletion: "HOLD",
   onFloorReached: "HOLD_AND_ALERT",
   riskHours: 24,
   dueHours: 48,
 };
 
-const EARLY_OPTIONS: { value: NonNullable<MilestonePolicy["earlyCompletion"]>; label: string; hint: string }[] = [
-  { value: "HOLD", label: "Hold the promise", hint: "The forecast improves; the date the client was given does not move." },
-  { value: "PULL_ON_CONFIRMATION", label: "Pull forward once readiness is confirmed", hint: "Someone confirms the next stage can actually start early." },
-  { value: "PULL_ALWAYS", label: "Always pull the promise forward", hint: "The commitment tracks the forecast in both directions." },
+const EARLY_OPTIONS: {
+  value: NonNullable<MilestonePolicy["earlyCompletion"]>;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "HOLD",
+    label: "Hold the promise",
+    hint: "The forecast improves; the date the client was given does not move.",
+  },
+  {
+    value: "PULL_ON_CONFIRMATION",
+    label: "Pull forward once readiness is confirmed",
+    hint: "Someone confirms the next stage can actually start early.",
+  },
+  {
+    value: "PULL_ALWAYS",
+    label: "Always pull the promise forward",
+    hint: "The commitment tracks the forecast in both directions.",
+  },
 ];
 
-const FLOOR_OPTIONS: { value: NonNullable<MilestonePolicy["onFloorReached"]>; label: string; hint: string }[] = [
-  { value: "HOLD_AND_ALERT", label: "Hold the date and raise the breach", hint: "The commitment stands, the forecast runs past it, and the owners are told." },
-  { value: "AUTO_RELEASE", label: "Release the lock and move the date", hint: "The schedule stays internally consistent; the SLA quietly moves." },
-  { value: "REQUIRE_REPLAN", label: "Stop and require a re-plan", hint: "No further automatic movement until a human decides." },
+const FLOOR_OPTIONS: {
+  value: NonNullable<MilestonePolicy["onFloorReached"]>;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "HOLD_AND_ALERT",
+    label: "Hold the date and raise the breach",
+    hint: "The commitment stands, the forecast runs past it, and the owners are told.",
+  },
+  {
+    value: "AUTO_RELEASE",
+    label: "Release the lock and move the date",
+    hint: "The schedule stays internally consistent; the SLA quietly moves.",
+  },
+  {
+    value: "REQUIRE_REPLAN",
+    label: "Stop and require a re-plan",
+    hint: "No further automatic movement until a human decides.",
+  },
 ];
 
-const readPolicy = () => tenant<{ value?: Stored } | Stored>("/settings/operations/milestone_policy");
+const readPolicy = () =>
+  tenant<{ value?: Stored } | Stored>("/settings/operations/milestone_policy");
 const writePolicy = (value: Stored) =>
-  tenant("/settings/operations/milestone_policy", { method: "PUT", body: { value } });
+  tenant("/settings/operations/milestone_policy", {
+    method: "PUT",
+    body: { value },
+  });
 
 /** The stored shape has moved around; accept either envelope. */
 function unwrap(raw: unknown): Stored {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
-  const v = r.value && typeof r.value === "object" ? (r.value as Stored) : (r as Stored);
+  const v =
+    r.value && typeof r.value === "object"
+      ? (r.value as Stored)
+      : (r as Stored);
   return v || {};
 }
 
@@ -101,13 +147,17 @@ export function MilestonePolicyForm({
 
   React.useEffect(() => {
     if (form || !stored.data) return;
-    if (!serviceTypeId) { setForm(tenantWide); return; }
+    if (!serviceTypeId) {
+      setForm(tenantWide);
+      return;
+    }
     const override = all.by_service?.[serviceTypeId];
     setOverriding(!!override);
     setForm({ ...tenantWide, ...(override || {}) });
   }, [stored.data, form, serviceTypeId, all, tenantWide]);
 
-  const set = (patch: MilestonePolicy) => setForm((f) => ({ ...(f || {}), ...patch }));
+  const set = (patch: MilestonePolicy) =>
+    setForm((f) => ({ ...(f || {}), ...patch }));
 
   async function save() {
     if (!form) return;
@@ -143,7 +193,11 @@ export function MilestonePolicyForm({
       open
       onClose={onClose}
       size="lg"
-      title={scoped ? `Scheduling policy — ${serviceTypeName || "this service"}` : "Scheduling & SLA policy"}
+      title={
+        scoped
+          ? `Scheduling policy — ${serviceTypeName || "this service"}`
+          : "Scheduling & SLA policy"
+      }
       description={
         scoped
           ? "How this service type schedules and what happens when its SLA cannot be met. Falls back to the tenant default unless overridden."
@@ -151,8 +205,12 @@ export function MilestonePolicyForm({
       }
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} loading={busy} disabled={busy || !form}>Save policy</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} loading={busy} disabled={busy || !form}>
+            Save policy
+          </Button>
         </>
       }
     >
@@ -177,15 +235,28 @@ export function MilestonePolicyForm({
           >
             <Select
               value={form.earlyCompletion || "HOLD"}
-              onChange={(e) => set({ earlyCompletion: e.target.value as MilestonePolicy["earlyCompletion"] })}
+              onChange={(e) =>
+                set({
+                  earlyCompletion: e.target
+                    .value as MilestonePolicy["earlyCompletion"],
+                })
+              }
               disabled={disabled}
             >
               {EARLY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </Select>
           </Field>
-          <p className="micro">{EARLY_OPTIONS.find((o) => o.value === (form.earlyCompletion || "HOLD"))?.hint}</p>
+          <p className="micro">
+            {
+              EARLY_OPTIONS.find(
+                (o) => o.value === (form.earlyCompletion || "HOLD"),
+              )?.hint
+            }
+          </p>
 
           <Field
             label="When an SLA date can no longer be met"
@@ -193,20 +264,37 @@ export function MilestonePolicyForm({
           >
             <Select
               value={form.onFloorReached || "HOLD_AND_ALERT"}
-              onChange={(e) => set({ onFloorReached: e.target.value as MilestonePolicy["onFloorReached"] })}
+              onChange={(e) =>
+                set({
+                  onFloorReached: e.target
+                    .value as MilestonePolicy["onFloorReached"],
+                })
+              }
               disabled={disabled}
             >
               {FLOOR_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </Select>
           </Field>
-          <p className="micro">{FLOOR_OPTIONS.find((o) => o.value === (form.onFloorReached || "HOLD_AND_ALERT"))?.hint}</p>
+          <p className="micro">
+            {
+              FLOOR_OPTIONS.find(
+                (o) => o.value === (form.onFloorReached || "HOLD_AND_ALERT"),
+              )?.hint
+            }
+          </p>
 
           {form.onFloorReached === "AUTO_RELEASE" && (
-            <Callout tone="warn" title="Releasing the lock moves the client's date">
-              Every release is recorded and the owners are notified, but a date that moves whenever it
-              is inconvenient stops being a commitment. Prefer holding it and acting on the alert.
+            <Callout
+              tone="warn"
+              title="Releasing the lock moves the client's date"
+            >
+              Every release is recorded and the owners are notified, but a date
+              that moves whenever it is inconvenient stops being a commitment.
+              Prefer holding it and acting on the alert.
             </Callout>
           )}
 
@@ -214,7 +302,12 @@ export function MilestonePolicyForm({
             <Field label="Flag as at risk within (working hours)">
               <Input
                 value={String(form.riskHours ?? DEFAULTS.riskHours)}
-                onChange={(e) => set({ riskHours: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
+                onChange={(e) =>
+                  set({
+                    riskHours:
+                      Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                  })
+                }
                 className="num"
                 disabled={disabled}
               />
@@ -222,7 +315,12 @@ export function MilestonePolicyForm({
             <Field label="Flag as due within (working hours)">
               <Input
                 value={String(form.dueHours ?? DEFAULTS.dueHours)}
-                onChange={(e) => set({ dueHours: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
+                onChange={(e) =>
+                  set({
+                    dueHours:
+                      Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                  })
+                }
                 className="num"
                 disabled={disabled}
               />
@@ -238,8 +336,9 @@ export function MilestonePolicyForm({
           />
 
           <p className="micro">
-            The scan that raises these runs twice a day by default, at 06:00 and 18:00 in the entity&apos;s
-            timezone, and only when a milestone&apos;s health actually changes.
+            The scan that raises these runs twice a day by default, at 06:00 and
+            18:00 in the entity&apos;s timezone, and only when a
+            milestone&apos;s health actually changes.
           </p>
 
           {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}

@@ -32,11 +32,81 @@ function grant(byGroup: Record<string, string[]>): NavAccess {
 
 const ALL = grant({
   monitor: ["MOD-00A", "MOD-64", "MOD-74"],
-  engage: ["MOD-20", "MOD-21", "MOD-22", "MOD-23", "MOD-24", "MOD-26", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
-  fulfill: ["MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38", "MOD-39", "MOD-40", "MOD-41", "MOD-42", "MOD-43", "MOD-44", "MOD-45"],
-  transact: ["MOD-46", "MOD-47", "MOD-49", "MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59"],
-  empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-13", "MOD-14", "MOD-15", "MOD-16", "MOD-17", "MOD-18", "MOD-19", "MOD-71"],
-  configure: ["MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65", "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75", "MOD-00B"],
+  engage: [
+    "MOD-20",
+    "MOD-21",
+    "MOD-22",
+    "MOD-23",
+    "MOD-24",
+    "MOD-26",
+    "MOD-27",
+    "MOD-28",
+    "MOD-60",
+    "MOD-61",
+    "MOD-62",
+  ],
+  fulfill: [
+    "MOD-29",
+    "MOD-30",
+    "MOD-31",
+    "MOD-32",
+    "MOD-33",
+    "MOD-34",
+    "MOD-35",
+    "MOD-36",
+    "MOD-37",
+    "MOD-38",
+    "MOD-39",
+    "MOD-40",
+    "MOD-41",
+    "MOD-42",
+    "MOD-43",
+    "MOD-44",
+    "MOD-45",
+  ],
+  transact: [
+    "MOD-46",
+    "MOD-47",
+    "MOD-49",
+    "MOD-51",
+    "MOD-52",
+    "MOD-53",
+    "MOD-54",
+    "MOD-56",
+    "MOD-58",
+    "MOD-59",
+  ],
+  empower: [
+    "MOD-02",
+    "MOD-11",
+    "MOD-12",
+    "MOD-13",
+    "MOD-14",
+    "MOD-15",
+    "MOD-16",
+    "MOD-17",
+    "MOD-18",
+    "MOD-19",
+    "MOD-71",
+  ],
+  configure: [
+    "MOD-01",
+    "MOD-03",
+    "MOD-04",
+    "MOD-05",
+    "MOD-07",
+    "MOD-08",
+    "MOD-09",
+    "MOD-10",
+    "MOD-63",
+    "MOD-65",
+    "MOD-66",
+    "MOD-67",
+    "MOD-68",
+    "MOD-70",
+    "MOD-75",
+    "MOD-00B",
+  ],
 });
 
 /** verb → the area keys under it, for a user who can see everything. */
@@ -65,7 +135,15 @@ describe("an area lands under exactly one verb", () => {
       fulfill: ["operations", "wms", "fleet"],
       transact: ["finance", "costing"],
       empower: ["hr"],
-      configure: ["master", "vault", "security", "governance", "ai-control", "settings", "godmode"],
+      configure: [
+        "master",
+        "vault",
+        "security",
+        "governance",
+        "ai-control",
+        "settings",
+        "godmode",
+      ],
     });
   });
 
@@ -94,7 +172,9 @@ describe("an area lands under exactly one verb", () => {
   });
 
   it("drops a family whose modules resolve to no screen in this client", () => {
-    const out = buildRibbon(grant({ fulfill: ["MOD-29"], empower: ["MOD-999"] }));
+    const out = buildRibbon(
+      grant({ fulfill: ["MOD-29"], empower: ["MOD-999"] }),
+    );
     expect(out.map((f) => f.key)).toEqual(["fulfill"]);
   });
 
@@ -110,8 +190,13 @@ describe("every area is drawn differently", () => {
       const icon = iconForArea(area.label);
       byGlyph.set(icon, [...(byGlyph.get(icon) ?? []), area.label]);
     }
-    const collisions = [...byGlyph.values()].filter((labels) => labels.length > 1);
-    expect(collisions, `areas sharing one icon: ${JSON.stringify(collisions)}`).toEqual([]);
+    const collisions = [...byGlyph.values()].filter(
+      (labels) => labels.length > 1,
+    );
+    expect(
+      collisions,
+      `areas sharing one icon: ${JSON.stringify(collisions)}`,
+    ).toEqual([]);
   });
 });
 

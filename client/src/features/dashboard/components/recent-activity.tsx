@@ -94,7 +94,10 @@ function MoneyIcon(p: React.SVGProps<SVGSVGElement>) {
  * drift. `message` uses the send icon because the SPECIALS map produces
  * "You sent a message …" — a mail icon would suggest inbox, not authoring.
  */
-const KIND_ICON: Record<Kind, (p: React.SVGProps<SVGSVGElement>) => React.JSX.Element> = {
+const KIND_ICON: Record<
+  Kind,
+  (p: React.SVGProps<SVGSVGElement>) => React.JSX.Element
+> = {
   security: ShieldIcon,
   message: SendIcon,
   send: SendIcon,
@@ -170,13 +173,17 @@ function ActivityRow({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-medium text-foreground">{text}</span>
+            <span className="truncate text-sm font-medium text-foreground">
+              {text}
+            </span>
             <span className="micro shrink-0 whitespace-nowrap text-muted-foreground">
               {fmtRelative(row.created_at)}
             </span>
           </span>
           <span className="mt-0.5 flex items-center gap-2 truncate text-micro text-muted-foreground">
-            <span className="truncate">{friendlyModule(row.module_key, row.action)}</span>
+            <span className="truncate">
+              {friendlyModule(row.module_key, row.action)}
+            </span>
             {rowIsSensitive && <Pill tone="warn">Sensitive</Pill>}
           </span>
         </span>
@@ -197,14 +204,15 @@ export function RecentActivity() {
 
   // "Last 24 hours" is honest only when we're on page 1 with recent rows;
   // deeper pages read "Latest actions" so the section head never over-claims.
-  const sectionMeta = meta?.window === "24h" ? "Last 24 hours" : "Latest actions";
+  const sectionMeta =
+    meta?.window === "24h" ? "Last 24 hours" : "Latest actions";
 
   const total = meta?.total ?? 0;
   const pageSize = meta?.page_size ?? 10;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasPager = total > pageSize;
   const canPrev = page > 1 && !q.isFetching;
-  const canNext = (meta?.has_more === true) && !q.isFetching;
+  const canNext = meta?.has_more === true && !q.isFetching;
 
   // Loading with NO prior data → skeleton rows. Once a page has rendered,
   // `placeholderData: (prev) => prev` keeps the previous list visible while a
@@ -212,13 +220,14 @@ export function RecentActivity() {
   const isInitialLoading = q.isLoading && !q.data;
 
   return (
-    <section
-      aria-label="Recent activity"
-      className="mb-5"
-    >
+    <section aria-label="Recent activity" className="mb-5">
       <div className="mb-3 mt-6 flex items-baseline justify-between gap-3">
-        <h2 className="text-title font-semibold tracking-tight">Recent activity</h2>
-        <span className="micro uppercase tracking-wide text-muted-foreground">{sectionMeta}</span>
+        <h2 className="text-title font-semibold tracking-tight">
+          Recent activity
+        </h2>
+        <span className="micro uppercase tracking-wide text-muted-foreground">
+          {sectionMeta}
+        </span>
       </div>
 
       <Card className="overflow-hidden">
@@ -239,7 +248,11 @@ export function RecentActivity() {
             <ErrorState
               // Type narrowing: `q.error` is Error (TanStack-typed), not the
               // formatted string useList produces — display .message.
-              message={q.error instanceof Error ? q.error.message : "Couldn't load recent activity."}
+              message={
+                q.error instanceof Error
+                  ? q.error.message
+                  : "Couldn't load recent activity."
+              }
               action={
                 <Button size="sm" variant="outline" onClick={() => q.refetch()}>
                   Retry
@@ -255,7 +268,10 @@ export function RecentActivity() {
             className="border-0"
           />
         ) : (
-          <ul className="divide-y divide-border/60" aria-busy={q.isFetching ? "true" : "false"}>
+          <ul
+            className="divide-y divide-border/60"
+            aria-busy={q.isFetching ? "true" : "false"}
+          >
             {rows.map((row, i) => (
               <ActivityRow
                 key={row.ledger_id}

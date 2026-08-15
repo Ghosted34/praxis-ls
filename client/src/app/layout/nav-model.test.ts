@@ -35,7 +35,10 @@ describe("areaEntries", () => {
     const reachable = new Set(areaEntries(NAV).map((e) => e.to));
     NAV.forEach((g) => {
       const anyReachable = g.items.some((i) => reachable.has(i.to));
-      expect(anyReachable, `${g.heading} is in no index — neither ⌘K nor the drawer lists it`).toBe(true);
+      expect(
+        anyReachable,
+        `${g.heading} is in no index — neither ⌘K nor the drawer lists it`,
+      ).toBe(true);
     });
   });
 
@@ -55,6 +58,8 @@ describe("areaEntries", () => {
 
   it("drops an area the tenant cannot see", () => {
     const withoutFleet = NAV.filter((g) => g.heading !== "Fleet");
-    expect(areaEntries(withoutFleet).some((e) => e.to === "/fleet")).toBe(false);
+    expect(areaEntries(withoutFleet).some((e) => e.to === "/fleet")).toBe(
+      false,
+    );
   });
 });

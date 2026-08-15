@@ -78,16 +78,22 @@ const domains = Object.keys(shared).filter((k) => !INTERNAL.has(k));
 /* ── who imports it ───────────────────────────────────────────────────────── */
 
 function filesUnder(dir, re) {
-  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", dir], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  })
+  return execFileSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", dir],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  )
     .split("\0")
     .filter((f) => f && re.test(f) && existsSync(join(repoRoot, f)));
 }
 
 const apiFiles = filesUnder("src", /\.js$/);
-const clientFiles = filesUnder("client/src", /\.tsx?$/).filter((f) => !/\.test\.tsx?$/.test(f));
+const clientFiles = filesUnder("client/src", /\.tsx?$/).filter(
+  (f) => !/\.test\.tsx?$/.test(f),
+);
 
 /** Which domains a file names, from its `@praxis/shared` / `@shared` import. */
 function importedDomains(text) {
@@ -103,7 +109,10 @@ function importedDomains(text) {
    * imported — pwaDesign — as used by nobody. A gate that reports a false
    * failure gets an exemption added to shut it up, and then it is worth nothing.
    */
-  for (const m of text.matchAll(/require\(\s*["']@(?:praxis\/)?shared["']\s*\)\s*\.\s*(\w+)/g)) found.add(m[1]);
+  for (const m of text.matchAll(
+    /require\(\s*["']@(?:praxis\/)?shared["']\s*\)\s*\.\s*(\w+)/g,
+  ))
+    found.add(m[1]);
 
   /*
    * Form 2 — destructuring the package root: `const { ledger } = require(…)`,
@@ -119,7 +128,11 @@ function importedDomains(text) {
       // earlier version used the character class `[:as]`, which also split
       // inside identifiers ("journalEntry" contains an "a") and reported every
       // domain as unused. A leading `type` is TypeScript's inline type import.
-      const name = part.trim().replace(/^type\s+/, "").split(/\s*(?::|\bas\b)\s*/)[0].trim();
+      const name = part
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s*(?::|\bas\b)\s*/)[0]
+        .trim();
       if (name) found.add(name);
     }
   }
@@ -128,8 +141,14 @@ function importedDomains(text) {
 
 const apiUses = new Set();
 const clientUses = new Set();
-for (const f of apiFiles) importedDomains(readFileSync(join(repoRoot, f), "utf8")).forEach((d) => apiUses.add(d));
-for (const f of clientFiles) importedDomains(readFileSync(join(repoRoot, f), "utf8")).forEach((d) => clientUses.add(d));
+for (const f of apiFiles)
+  importedDomains(readFileSync(join(repoRoot, f), "utf8")).forEach((d) =>
+    apiUses.add(d),
+  );
+for (const f of clientFiles)
+  importedDomains(readFileSync(join(repoRoot, f), "utf8")).forEach((d) =>
+    clientUses.add(d),
+  );
 
 /* ── rule 3: a migrated validator must not re-declare rules ───────────────── */
 
@@ -139,7 +158,9 @@ const ALLOW_LOCAL_SCHEMA = {
 };
 
 const migratedValidators = apiFiles.filter(
-  (f) => /\.validator\.js$/.test(f) && /@praxis\/shared/.test(readFileSync(join(repoRoot, f), "utf8")),
+  (f) =>
+    /\.validator\.js$/.test(f) &&
+    /@praxis\/shared/.test(readFileSync(join(repoRoot, f), "utf8")),
 );
 const regressed = migratedValidators.filter((f) => {
   if (ALLOW_LOCAL_SCHEMA[f]) return false;
@@ -169,7 +190,8 @@ const WRITTEN_ELSEWHERE = {
   niu: "legacy single-value column — the registrations collection replaced it",
   rccm: "legacy single-value column — the registrations collection replaced it",
   address: "legacy free-text column — the addresses collection replaced it",
-  bank_block: "legacy jsonb — treasury accounts replaced it (letterhead falls back to it for old data only)",
+  bank_block:
+    "legacy jsonb — treasury accounts replaced it (letterhead falls back to it for old data only)",
   // Written by their own endpoints rather than the PATCH body.
   logo_light_ref: "POST /entities/:id/logo, from the form's upload control",
   logo_dark_ref: "POST /entities/:id/logo, from the form's upload control",
@@ -183,7 +205,8 @@ const WRITTEN_ELSEWHERE = {
  * unwritable purely because the Structure modal passes it shorthand, and a gate
  * that cries wolf is a gate someone switches off.
  */
-const literalKeys = (src) => [...src.matchAll(/^\s+([a-z_][a-z0-9_]*)\s*(?::|,\s*$)/gim)].map((m) => m[1]);
+const literalKeys = (src) =>
+  [...src.matchAll(/^\s+([a-z_][a-z0-9_]*)\s*(?::|,\s*$)/gim)].map((m) => m[1]);
 
 /** Everything between `marker` and the first line that closes it at `depth` 0. */
 function sliceBody(text, marker, closer) {
@@ -193,22 +216,41 @@ function sliceBody(text, marker, closer) {
   return end === -1 ? null : text.slice(start, end);
 }
 
-const entityFormSrc = existsSync(join(repoRoot, ENTITY_FORM)) ? readFileSync(join(repoRoot, ENTITY_FORM), "utf8") : "";
-const dossierSrc = existsSync(join(repoRoot, ENTITY_DOSSIER)) ? readFileSync(join(repoRoot, ENTITY_DOSSIER), "utf8") : "";
+const entityFormSrc = existsSync(join(repoRoot, ENTITY_FORM))
+  ? readFileSync(join(repoRoot, ENTITY_FORM), "utf8")
+  : "";
+const dossierSrc = existsSync(join(repoRoot, ENTITY_DOSSIER))
+  ? readFileSync(join(repoRoot, ENTITY_DOSSIER), "utf8")
+  : "";
 
 // The form's PATCH/POST body. Its keys ARE what the form sends — `entityFormBody`
 // is the single place the controls are mapped onto the request.
-const formBody = sliceBody(entityFormSrc, "export function entityFormBody", "\n}");
+const formBody = sliceBody(
+  entityFormSrc,
+  "export function entityFormBody",
+  "\n}",
+);
 // The Structure tab owns the four columns that describe the edge to the parent,
 // because POST /structure emits its own audit event for a re-parenting.
-const structureBody = sliceBody(dossierSrc, "api.setEntityStructure(", "\n      });");
+const structureBody = sliceBody(
+  dossierSrc,
+  "api.setEntityStructure(",
+  "\n      });",
+);
 
-const entityControls = new Set([...literalKeys(formBody || ""), ...literalKeys(structureBody || "")]);
+const entityControls = new Set([
+  ...literalKeys(formBody || ""),
+  ...literalKeys(structureBody || ""),
+]);
 const masterKeys = shared.entityCommon?.masterShapeKeys ?? [];
-const uncovered = masterKeys.filter((k) => !entityControls.has(k) && !WRITTEN_ELSEWHERE[k]);
+const uncovered = masterKeys.filter(
+  (k) => !entityControls.has(k) && !WRITTEN_ELSEWHERE[k],
+);
 // An exemption for a field that IS in a form is stale — it will outlive the
 // reason it was written and quietly excuse the next gap.
-const staleExemptions = Object.keys(WRITTEN_ELSEWHERE).filter((k) => entityControls.has(k));
+const staleExemptions = Object.keys(WRITTEN_ELSEWHERE).filter((k) =>
+  entityControls.has(k),
+);
 
 /* ── rule 5: the nested collections have controls too ─────────────────────── */
 
@@ -234,11 +276,13 @@ const CHILD_WRITTEN_ELSEWHERE = {
   // A vault id is not typed, it is produced: the Documents tab uploads the scan
   // to MOD-64 and patches back the id it is given. A uuid text box would satisfy
   // this gate and help nobody.
-  "documents.vault_id": "the Attach scan control — POST /documents, then a PATCH with the returned id",
+  "documents.vault_id":
+    "the Attach scan control — POST /documents, then a PATCH with the returned id",
 };
 
 /** `{ key: "x", … }` — the one form every FieldSpec is written in. */
-const specKeys = (src) => [...src.matchAll(/\bkey:\s*"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
+const specKeys = (src) =>
+  [...src.matchAll(/\bkey:\s*"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
 
 const nestedShapes = shared.entityCommon?.nestedShapeKeys ?? {};
 const childGaps = [];
@@ -246,10 +290,14 @@ const missingBuilders = [];
 for (const [seg, keys] of Object.entries(nestedShapes)) {
   const [marker, closer] = CHILD_BUILDERS[seg] || [];
   const body = marker ? sliceBody(dossierSrc, marker, closer) : null;
-  if (!body) { missingBuilders.push(seg); continue; }
+  if (!body) {
+    missingBuilders.push(seg);
+    continue;
+  }
   const have = new Set(specKeys(body));
   for (const k of keys) {
-    if (!have.has(k) && !CHILD_WRITTEN_ELSEWHERE[`${seg}.${k}`]) childGaps.push(`${seg}.${k}`);
+    if (!have.has(k) && !CHILD_WRITTEN_ELSEWHERE[`${seg}.${k}`])
+      childGaps.push(`${seg}.${k}`);
   }
 }
 
@@ -276,20 +324,28 @@ const oneSided = domains
   .map((d) => ({ d, api: apiUses.has(d), client: clientUses.has(d) }))
   .filter((r) => !r.api || !r.client);
 
-console.warn(`\nShared schemas — ${domains.length} domain(s): ${domains.join(", ")}\n`);
+console.warn(
+  `\nShared schemas — ${domains.length} domain(s): ${domains.join(", ")}\n`,
+);
 for (const d of domains) {
   const api = apiUses.has(d) ? "API ✓" : "API ✗";
   const cl = clientUses.has(d) ? "client ✓" : "client ✗";
-  console.warn(`  ${apiUses.has(d) && clientUses.has(d) ? "PASS" : "FAIL"}  ${d.padEnd(16)} ${api}   ${cl}`);
+  console.warn(
+    `  ${apiUses.has(d) && clientUses.has(d) ? "PASS" : "FAIL"}  ${d.padEnd(16)} ${api}   ${cl}`,
+  );
 }
 
 let failed = 0;
 
 if (oneSided.length) {
   failed += oneSided.length;
-  console.error(`\n✗ ${oneSided.length} domain(s) are in packages/shared but not shared:\n`);
+  console.error(
+    `\n✗ ${oneSided.length} domain(s) are in packages/shared but not shared:\n`,
+  );
   for (const r of oneSided) {
-    const missing = !r.api ? "the API still validates with its own copy" : "the client still has its own rules";
+    const missing = !r.api
+      ? "the API still validates with its own copy"
+      : "the client still has its own rules";
     console.error(`    ${r.d} — ${missing}`);
   }
   console.error(
@@ -300,7 +356,9 @@ if (oneSided.length) {
 
 if (regressed.length) {
   failed += regressed.length;
-  console.error(`\n✗ ${regressed.length} migrated validator(s) declare their own schema again:\n`);
+  console.error(
+    `\n✗ ${regressed.length} migrated validator(s) declare their own schema again:\n`,
+  );
   for (const f of regressed) console.error(`    ${relative(".", f)}`);
   console.error(
     "\n  A migrated validator is an ADAPTER: it maps the shared schema's result\n" +
@@ -315,8 +373,12 @@ if (!formBody || !structureBody) {
   failed += 1;
   console.error(
     "\n✗ Could not read the corporate-entity write surface:\n" +
-      (formBody ? "" : `    ${ENTITY_FORM} — no \`export function entityFormBody\`\n`) +
-      (structureBody ? "" : `    ${ENTITY_DOSSIER} — no \`api.setEntityStructure(\` call\n`) +
+      (formBody
+        ? ""
+        : `    ${ENTITY_FORM} — no \`export function entityFormBody\`\n`) +
+      (structureBody
+        ? ""
+        : `    ${ENTITY_DOSSIER} — no \`api.setEntityStructure(\` call\n`) +
       "\n  Rule 4 reads those two bodies to learn which columns a person can\n" +
       "  actually write. If one was renamed, point this script at the new name —\n" +
       "  do not delete the check, or the twenty-field gap it was written for\n" +
@@ -326,27 +388,41 @@ if (!formBody || !structureBody) {
 
 if (uncovered.length) {
   failed += uncovered.length;
-  console.error(`\n✗ ${uncovered.length} corporate-entity field(s) the API accepts but no control can write:\n`);
+  console.error(
+    `\n✗ ${uncovered.length} corporate-entity field(s) the API accepts but no control can write:\n`,
+  );
   for (const k of uncovered) console.error(`    ${k}`);
   console.error(
     "\n  The dossier renders these, so each one reads `—` forever and the\n" +
       "  readiness checklist that asks for them can never be satisfied.\n" +
-      "  Add a control in " + ENTITY_FORM + ", or — if something else\n" +
+      "  Add a control in " +
+      ENTITY_FORM +
+      ", or — if something else\n" +
       "  writes it — say what, in WRITTEN_ELSEWHERE.\n",
   );
 }
 
 if (staleExemptions.length) {
   failed += staleExemptions.length;
-  console.error(`\n✗ ${staleExemptions.length} WRITTEN_ELSEWHERE entr(y/ies) name a field that IS in a form now:\n`);
-  for (const k of staleExemptions) console.error(`    ${k} — ${WRITTEN_ELSEWHERE[k]}`);
-  console.error("\n  Drop the entry: an exemption nobody needs is one that excuses the next gap.\n");
+  console.error(
+    `\n✗ ${staleExemptions.length} WRITTEN_ELSEWHERE entr(y/ies) name a field that IS in a form now:\n`,
+  );
+  for (const k of staleExemptions)
+    console.error(`    ${k} — ${WRITTEN_ELSEWHERE[k]}`);
+  console.error(
+    "\n  Drop the entry: an exemption nobody needs is one that excuses the next gap.\n",
+  );
 }
 
 if (missingBuilders.length) {
   failed += missingBuilders.length;
-  console.error(`\n✗ Could not find the field builder for ${missingBuilders.length} nested collection(s):\n`);
-  for (const s of missingBuilders) console.error(`    ${s} — expected \`${(CHILD_BUILDERS[s] || ["(unregistered)"])[0]}\` in ${ENTITY_DOSSIER}`);
+  console.error(
+    `\n✗ Could not find the field builder for ${missingBuilders.length} nested collection(s):\n`,
+  );
+  for (const s of missingBuilders)
+    console.error(
+      `    ${s} — expected \`${(CHILD_BUILDERS[s] || ["(unregistered)"])[0]}\` in ${ENTITY_DOSSIER}`,
+    );
   console.error(
     "\n  Rule 5 reads those builders to learn which fields a person can set on a\n" +
       "  child record. Point CHILD_BUILDERS at the new name rather than removing\n" +
@@ -356,7 +432,9 @@ if (missingBuilders.length) {
 
 if (childGaps.length) {
   failed += childGaps.length;
-  console.error(`\n✗ ${childGaps.length} nested field(s) the API accepts but no control can write:\n`);
+  console.error(
+    `\n✗ ${childGaps.length} nested field(s) the API accepts but no control can write:\n`,
+  );
   for (const k of childGaps) console.error(`    ${k}`);
   console.error(
     "\n  Same failure as rule 4, one level down: the dossier renders these columns\n" +
@@ -367,7 +445,9 @@ if (childGaps.length) {
 
 if (letterheadGaps.length) {
   failed += letterheadGaps.length;
-  console.error(`\n✗ ${letterheadGaps.length} letterhead column(s) the designer never mentions:\n`);
+  console.error(
+    `\n✗ ${letterheadGaps.length} letterhead column(s) the designer never mentions:\n`,
+  );
   for (const k of letterheadGaps) console.error(`    ${k}`);
   console.error(
     "\n  PUT /entities/:id/letterhead accepts these and the designer offers no way\n" +
@@ -376,8 +456,19 @@ if (letterheadGaps.length) {
 }
 
 if (failed) process.exit(1);
-const childCount = Object.values(nestedShapes).reduce((n, ks) => n + ks.length, 0);
-console.warn(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.`);
-console.warn(`✓ All ${masterKeys.length} corporate-entity master fields are writable (${Object.keys(WRITTEN_ELSEWHERE).length} outside the form, each with a reason).`);
-console.warn(`✓ All ${childCount} nested fields across ${Object.keys(nestedShapes).length} collections have controls.`);
-console.warn(`✓ All ${letterheadKeys.length} letterhead columns are reachable in the designer.\n`);
+const childCount = Object.values(nestedShapes).reduce(
+  (n, ks) => n + ks.length,
+  0,
+);
+console.warn(
+  `\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.`,
+);
+console.warn(
+  `✓ All ${masterKeys.length} corporate-entity master fields are writable (${Object.keys(WRITTEN_ELSEWHERE).length} outside the form, each with a reason).`,
+);
+console.warn(
+  `✓ All ${childCount} nested fields across ${Object.keys(nestedShapes).length} collections have controls.`,
+);
+console.warn(
+  `✓ All ${letterheadKeys.length} letterhead columns are reachable in the designer.\n`,
+);

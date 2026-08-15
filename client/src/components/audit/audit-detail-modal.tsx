@@ -72,7 +72,9 @@ export type AuditLedgerEntry = {
 
 /** Compact JSON viewer — labelled field list rather than raw text (audit A4). */
 function Json({ value }: { value: unknown }) {
-  return <DataView data={value} emptyTitle="—" className="max-h-64 overflow-auto" />;
+  return (
+    <DataView data={value} emptyTitle="—" className="max-h-64 overflow-auto" />
+  );
 }
 
 /**
@@ -84,7 +86,10 @@ function Json({ value }: { value: unknown }) {
  * page already resolves user ids into a name map via `useActorNames`).
  * Empty → em dash, so the row never leaves the modal blank.
  */
-function actorLabel(row: AuditLedgerEntry, actorName?: Record<string, string>): string {
+function actorLabel(
+  row: AuditLedgerEntry,
+  actorName?: Record<string, string>,
+): string {
   if (row.actor_name_snapshot) return row.actor_name_snapshot;
   if (row.actor_email_snapshot) return row.actor_email_snapshot;
   if (actorName && row.actor_user_id && actorName[row.actor_user_id]) {
@@ -107,7 +112,8 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
   // fields — for the Control Tower widget that's always; for Governance
   // that's never. `useResource` returns null until it resolves, so we render
   // with the partial row and swap in fetched data as it arrives.
-  const needsFetch = row.before_json === undefined && row.after_json === undefined;
+  const needsFetch =
+    row.before_json === undefined && row.after_json === undefined;
   // `ledger_scope` (set by /audit/my-feed) tells the server which of the two
   // ledger schemas this row is actually in — auth/RBAC rows live in
   // identity/live, everything else in the tenant/env schema — so the fetch
@@ -117,14 +123,29 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
   // "guess tenant, then fall back" for backward compatibility.
   const scopeQuery = row.ledger_scope ? `?scope=${row.ledger_scope}` : "";
   const detail = useResource<AuditLedgerEntry | null>(
-    () => (needsFetch ? tenant<AuditLedgerEntry>(`/audit/${row.ledger_id}${scopeQuery}`) : Promise.resolve(row)),
+    () =>
+      needsFetch
+        ? tenant<AuditLedgerEntry>(`/audit/${row.ledger_id}${scopeQuery}`)
+        : Promise.resolve(row),
     // Only re-fetch when the id changes, not on every re-render.
     [row.ledger_id, needsFetch],
   );
 
   const full = detail.data || row;
-  const humanised = humanize(full as AuditLedgerEntry & { created_at: string; is_sensitive: boolean; metadata: Record<string, unknown> | null; actor_name_snapshot: string | null; module_key: string | null; entity_ref: string | null });
-  const isSensitive = row.is_sensitive === true || full.is_sensitive === true || humanised.sensitive;
+  const humanised = humanize(
+    full as AuditLedgerEntry & {
+      created_at: string;
+      is_sensitive: boolean;
+      metadata: Record<string, unknown> | null;
+      actor_name_snapshot: string | null;
+      module_key: string | null;
+      entity_ref: string | null;
+    },
+  );
+  const isSensitive =
+    row.is_sensitive === true ||
+    full.is_sensitive === true ||
+    humanised.sensitive;
 
   return (
     <Modal
@@ -155,18 +176,25 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
                 entity-label.js doesn't map yet, or before the fetch lands. */}
             <span>{full.entity_label || row.entity_ref || "—"}</span>
             {full.entity_label && row.entity_ref ? (
-              <span className="num text-muted-foreground"> · {row.entity_ref}</span>
+              <span className="num text-muted-foreground">
+                {" "}
+                · {row.entity_ref}
+              </span>
             ) : null}
           </div>
           <div>
             <div className="micro uppercase tracking-wide">Actor</div>
             <span>{actorLabel(full, actorName)}</span>
-            {row.actor_role ? <span className="text-muted-foreground"> · {row.actor_role}</span> : null}
+            {row.actor_role ? (
+              <span className="text-muted-foreground"> · {row.actor_role}</span>
+            ) : null}
           </div>
           <div>
             <div className="micro uppercase tracking-wide">When</div>
             <span className="num">{dateTimeFmt(row.created_at)}</span>
-            {full.ip ? <span className="num text-muted-foreground"> · {full.ip}</span> : null}
+            {full.ip ? (
+              <span className="num text-muted-foreground"> · {full.ip}</span>
+            ) : null}
           </div>
         </div>
 
@@ -188,7 +216,9 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
         )}
 
         <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
         </div>
       </div>
     </Modal>

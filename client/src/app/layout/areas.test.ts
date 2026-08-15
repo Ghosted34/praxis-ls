@@ -16,7 +16,14 @@
  * require a new route to be listed.
  */
 import { describe, it, expect } from "vitest";
-import { AREAS, areaForPath, areaRoute, hubTabs, sectionRoute, sectionsOf } from "./areas";
+import {
+  AREAS,
+  areaForPath,
+  areaRoute,
+  hubTabs,
+  sectionRoute,
+  sectionsOf,
+} from "./areas";
 import { moduleForRoute, SCREENS } from "@/app/screen-registry";
 
 /** Every hub in the app, and the component keys it hands `hubTabs`. Kept as
@@ -24,43 +31,116 @@ import { moduleForRoute, SCREENS } from "@/app/screen-registry";
  *  would pull sixty lazy screens into this test's module graph to compare two
  *  lists of strings. */
 const HUB_COMPONENT_KEYS: Record<string, string[]> = {
-  "/sales": ["leads", "opportunities", "proposals", "meetings", "campaigns", "success-stories"],
-  "/commercial": ["quotations", "margin-simulation", "extra-charge-simulation", "pricing-variance"],
-  "/procurement": ["purchase-requests", "purchase-orders", "goods-received", "supplier-invoices"],
+  "/sales": [
+    "leads",
+    "opportunities",
+    "proposals",
+    "meetings",
+    "campaigns",
+    "success-stories",
+  ],
+  "/commercial": [
+    "quotations",
+    "margin-simulation",
+    "extra-charge-simulation",
+    "pricing-variance",
+  ],
+  "/procurement": [
+    "purchase-requests",
+    "purchase-orders",
+    "goods-received",
+    "supplier-invoices",
+  ],
   "/operations": ["files", "milestones", "transit-orders", "delivery-notes"],
-  "/wms": ["locations", "inventory", "inbound", "outbound", "equipment", "cycle-counts"],
-  "/fleet": ["vehicles", "compliance", "work-orders", "dispatch", "fuel", "drivers", "incidents"],
+  "/wms": [
+    "locations",
+    "inventory",
+    "inbound",
+    "outbound",
+    "equipment",
+    "cycle-counts",
+  ],
+  "/fleet": [
+    "vehicles",
+    "compliance",
+    "work-orders",
+    "dispatch",
+    "fuel",
+    "drivers",
+    "incidents",
+  ],
   "/finance": [
-    "invoices", "proformas", "receivables", "journals", "credit-notes",
-    "chart-of-accounts", "statements", "tax", "assets", "debt",
+    "invoices",
+    "proformas",
+    "receivables",
+    "journals",
+    "credit-notes",
+    "chart-of-accounts",
+    "statements",
+    "tax",
+    "assets",
+    "debt",
   ],
   "/costing": ["costing", "cost-tracking", "cash-requests", "regie"],
   "/hr": [
-    "employees", "payroll", "vacancies", "contracts", "appraisals", "queries",
-    "sanctions", "attendance", "leave", "trainings", "sops", "talent-pool",
+    "employees",
+    "payroll",
+    "vacancies",
+    "contracts",
+    "appraisals",
+    "queries",
+    "sanctions",
+    "attendance",
+    "leave",
+    "trainings",
+    "sops",
+    "talent-pool",
   ],
   "/master": [
-    "clients", "suppliers", "corporate-entities", "treasury-accounts",
-    "currencies", "expense-rates", "financial-dictionary", "tax-jurisdictions",
+    "clients",
+    "suppliers",
+    "corporate-entities",
+    "treasury-accounts",
+    "currencies",
+    "expense-rates",
+    "financial-dictionary",
+    "tax-jurisdictions",
     "service-types",
   ],
-  "/vault": ["overview", "documents", "signatures", "verification", "compliance-flags", "reports"],
+  "/vault": [
+    "overview",
+    "documents",
+    "signatures",
+    "verification",
+    "compliance-flags",
+    "reports",
+  ],
   "/security": [
-    "overview", "users", "roles", "permissions", "capabilities", "scopes",
-    "field-visibility", "sessions", "my-security",
+    "overview",
+    "users",
+    "roles",
+    "permissions",
+    "capabilities",
+    "scopes",
+    "field-visibility",
+    "sessions",
+    "my-security",
   ],
   "/ai-control": ["features", "access", "budget", "usage"],
 };
 
 const Stub = () => null;
-const stubs = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, Stub]));
+const stubs = (keys: string[]) =>
+  Object.fromEntries(keys.map((k) => [k, Stub]));
 
 describe("the ribbon's row B and the hub's tabs are one list", () => {
   it.each(Object.entries(HUB_COMPONENT_KEYS))(
     "%s renders exactly the sections the ribbon offers",
     (basePath, keys) => {
       const tabs = hubTabs(basePath, stubs(keys));
-      expect(tabs.map((t) => t.key)).toEqual(sectionsOf(basePath).map((s) => s.key));
+      expect(tabs.map((t) => t.key)).toEqual(
+        sectionsOf(basePath).map((s) => s.key),
+      );
     },
   );
 
@@ -69,12 +149,15 @@ describe("the ribbon's row B and the hub's tabs are one list", () => {
    * taking a whole area down for a typo would be the worse failure. That makes
    * the drop invisible at runtime, so it has to be visible here.
    */
-  it.each(Object.entries(HUB_COMPONENT_KEYS))("%s has a page for every section", (basePath, keys) => {
-    const missing = sectionsOf(basePath)
-      .map((s) => s.key)
-      .filter((k) => !keys.includes(k));
-    expect(missing).toEqual([]);
-  });
+  it.each(Object.entries(HUB_COMPONENT_KEYS))(
+    "%s has a page for every section",
+    (basePath, keys) => {
+      const missing = sectionsOf(basePath)
+        .map((s) => s.key)
+        .filter((k) => !keys.includes(k));
+      expect(missing).toEqual([]);
+    },
+  );
 
   it("drops a section with no page, rather than crashing the area", () => {
     const tabs = hubTabs("/costing", { costing: Stub });
@@ -91,7 +174,9 @@ describe("every destination can be permission-filtered", () => {
    */
   it("registers every section's route", () => {
     const unregistered = AREAS.flatMap((a) =>
-      a.sections.map((s) => sectionRoute(a, s)).filter((route) => moduleForRoute(route) === undefined),
+      a.sections
+        .map((s) => sectionRoute(a, s))
+        .filter((route) => moduleForRoute(route) === undefined),
     );
     expect(unregistered).toEqual([]);
   });
@@ -114,14 +199,18 @@ describe("every destination can be permission-filtered", () => {
    *  absent from the ribbon rather than visible in it. */
   it("gates at least one route in every area", () => {
     const ungated = AREAS.filter((a) =>
-      [areaRoute(a), ...a.sections.map((s) => sectionRoute(a, s))].every((r) => !moduleForRoute(r)),
+      [areaRoute(a), ...a.sections.map((s) => sectionRoute(a, s))].every(
+        (r) => !moduleForRoute(r),
+      ),
     );
     expect(ungated.map((a) => a.key)).toEqual([]);
   });
 
   it("keeps the registry free of duplicate routes, so the lookup is unambiguous", () => {
     const seen = new Set<string>();
-    const dupes = SCREENS.map((s) => s.route).filter((r) => (seen.has(r) ? true : (seen.add(r), false)));
+    const dupes = SCREENS.map((s) => s.route).filter((r) =>
+      seen.has(r) ? true : (seen.add(r), false),
+    );
     expect(dupes).toEqual([]);
   });
 });

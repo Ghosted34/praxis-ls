@@ -57,10 +57,18 @@ const MIN_ACCENT_CONTRAST = 1.6;
 export function escapesSafeZone(cfg: EffectivePwa): boolean {
   const { size, left, top } = iconLayout(cfg, true);
   const epsilon = 0.001; // the recommended default lands exactly on the boundary
-  return left < 0.1 - epsilon || top < 0.1 - epsilon || left + size > 0.9 + epsilon || top + size > 0.9 + epsilon;
+  return (
+    left < 0.1 - epsilon ||
+    top < 0.1 - epsilon ||
+    left + size > 0.9 + epsilon ||
+    top + size > 0.9 + epsilon
+  );
 }
 
-export function iconWarnings(cfg: EffectivePwa, source: SourceMeta): PwaWarning[] {
+export function iconWarnings(
+  cfg: EffectivePwa,
+  source: SourceMeta,
+): PwaWarning[] {
   const out: PwaWarning[] = [];
 
   if (!cfg.iconUrl) {
@@ -75,7 +83,10 @@ export function iconWarnings(cfg: EffectivePwa, source: SourceMeta): PwaWarning[
   }
 
   if (source) {
-    const ratio = Math.max(source.width / source.height, source.height / source.width);
+    const ratio = Math.max(
+      source.width / source.height,
+      source.height / source.width,
+    );
     if (ratio > SQUARE_TOLERANCE) {
       out.push({
         id: "not-square",
@@ -115,13 +126,15 @@ export function iconWarnings(cfg: EffectivePwa, source: SourceMeta): PwaWarning[
   }
 
   const bg = parseHex(cfg.maskableBackground);
-  const plain = cfg.iconBackground === "transparent" ? null : parseHex(cfg.iconBackground);
+  const plain =
+    cfg.iconBackground === "transparent" ? null : parseHex(cfg.iconBackground);
   if (bg && plain && contrast(bg, plain) < 1.1) {
     out.push({
       id: "same-backgrounds",
       tone: "info",
       title: "Both icon backgrounds are the same colour",
-      detail: "Not a problem — just confirming the maskable variant won't look different from the plain one.",
+      detail:
+        "Not a problem — just confirming the maskable variant won't look different from the plain one.",
     });
   }
 
@@ -200,7 +213,8 @@ export function manifestWarnings(cfg: EffectivePwa): PwaWarning[] {
       id: "long-name",
       tone: "info",
       title: "Long app name",
-      detail: "The full name shows in the install dialog and app settings. The short name is what a home screen shows.",
+      detail:
+        "The full name shows in the install dialog and app settings. The short name is what a home screen shows.",
     });
   }
   return out;

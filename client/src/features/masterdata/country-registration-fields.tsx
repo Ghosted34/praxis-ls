@@ -17,12 +17,20 @@ import type { PartyRegistrationInput } from "@/lib/masterdata-api";
 export type RegValues = Record<string, string>;
 
 /** The registration requirements for a country (empty until one is chosen). */
-export function useCountryRegistrations(country?: string | null): RegistrationRequirement[] {
-  return React.useMemo(() => (country ? countries.requirementsFor(country) : []), [country]);
+export function useCountryRegistrations(
+  country?: string | null,
+): RegistrationRequirement[] {
+  return React.useMemo(
+    () => (country ? countries.requirementsFor(country) : []),
+    [country],
+  );
 }
 
 /** True when a value is present but does not match its requirement's regex. */
-export function regInvalid(req: RegistrationRequirement, value: string): boolean {
+export function regInvalid(
+  req: RegistrationRequirement,
+  value: string,
+): boolean {
   const v = (value || "").trim();
   if (!v || !req.regex) return false;
   try {
@@ -40,7 +48,11 @@ export function toRegistrationsPayload(
 ): PartyRegistrationInput[] {
   return reqs
     .filter((r) => (values[r.kind] || "").trim())
-    .map((r) => ({ kind: r.kind, number: (values[r.kind] || "").trim(), country_code: country || undefined }));
+    .map((r) => ({
+      kind: r.kind,
+      number: (values[r.kind] || "").trim(),
+      country_code: country || undefined,
+    }));
 }
 
 export function CountryRegistrationFields({
@@ -56,10 +68,19 @@ export function CountryRegistrationFields({
 }) {
   const reqs = useCountryRegistrations(country);
   if (!country) {
-    return <p className="sm:col-span-2 micro text-muted-foreground">Select a country to see its required tax &amp; legal IDs.</p>;
+    return (
+      <p className="sm:col-span-2 micro text-muted-foreground">
+        Select a country to see its required tax &amp; legal IDs.
+      </p>
+    );
   }
   if (reqs.length === 0) {
-    return <p className="sm:col-span-2 micro text-muted-foreground">No specific registration IDs are configured for this country — add any via the 360 “Registrations” tab.</p>;
+    return (
+      <p className="sm:col-span-2 micro text-muted-foreground">
+        No specific registration IDs are configured for this country — add any
+        via the 360 “Registrations” tab.
+      </p>
+    );
   }
   return (
     <>
@@ -68,7 +89,10 @@ export function CountryRegistrationFields({
         const invalid = regInvalid(r, v);
         return (
           <div key={r.kind} className="space-y-1.5">
-            <label htmlFor={`reg-${r.kind}`} className="block text-sm font-medium text-foreground">
+            <label
+              htmlFor={`reg-${r.kind}`}
+              className="block text-sm font-medium text-foreground"
+            >
               {lang === "fr" ? r.label_fr : r.label_en}
               {r.required && <span className="text-bad"> *</span>}
             </label>
@@ -77,9 +101,13 @@ export function CountryRegistrationFields({
               value={v}
               placeholder={r.placeholder}
               aria-invalid={invalid || undefined}
-              onChange={(e) => onChange({ ...values, [r.kind]: e.target.value })}
+              onChange={(e) =>
+                onChange({ ...values, [r.kind]: e.target.value })
+              }
             />
-            {invalid && <p className="micro text-bad">Invalid {r.kind} format.</p>}
+            {invalid && (
+              <p className="micro text-bad">Invalid {r.kind} format.</p>
+            )}
           </div>
         );
       })}

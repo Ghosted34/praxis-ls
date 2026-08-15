@@ -20,7 +20,9 @@ import {
   type PlacedNode,
 } from "./selection";
 
-const lane = (over: Partial<Lane> & { id: string; dossierId: string }): Lane => ({
+const lane = (
+  over: Partial<Lane> & { id: string; dossierId: string },
+): Lane => ({
   ref: `REF-${over.dossierId}`,
   mode: "sea",
   status: "In transit",
@@ -33,9 +35,27 @@ const lane = (over: Partial<Lane> & { id: string; dossierId: string }): Lane => 
 
 /** An end-to-end file: five legs, one file. */
 const END_TO_END: Lane[] = [
-  lane({ id: "f1:3", dossierId: "f1", seq: 3, legType: "INLAND_TRANSIT", mode: "road" }),
-  lane({ id: "f1:1", dossierId: "f1", seq: 1, legType: "PICKUP", mode: "road" }),
-  lane({ id: "f1:2", dossierId: "f1", seq: 2, legType: "MAIN_CARRIAGE", mode: "sea" }),
+  lane({
+    id: "f1:3",
+    dossierId: "f1",
+    seq: 3,
+    legType: "INLAND_TRANSIT",
+    mode: "road",
+  }),
+  lane({
+    id: "f1:1",
+    dossierId: "f1",
+    seq: 1,
+    legType: "PICKUP",
+    mode: "road",
+  }),
+  lane({
+    id: "f1:2",
+    dossierId: "f1",
+    seq: 2,
+    legType: "MAIN_CARRIAGE",
+    mode: "sea",
+  }),
 ];
 
 const TWO_FILES: Lane[] = [
@@ -142,7 +162,12 @@ describe("boundsOf", () => {
   it("boxes every endpoint", () => {
     expect(
       boundsOf([
-        lane({ id: "1", dossierId: "x", from: { name: "a", lat: -5, lng: 20 }, to: { name: "b", lat: 40, lng: -3 } }),
+        lane({
+          id: "1",
+          dossierId: "x",
+          from: { name: "a", lat: -5, lng: 20 },
+          to: { name: "b", lat: 40, lng: -3 },
+        }),
       ]),
     ).toEqual({ minLon: -3, maxLon: 20, minLat: -5, maxLat: 40 });
   });
@@ -153,12 +178,20 @@ describe("boundsOf", () => {
 });
 
 describe("clusterNodes", () => {
-  const node = (x: number, y: number, name: string, emphasis = false): PlacedNode => ({ x, y, name, emphasis });
+  const node = (
+    x: number,
+    y: number,
+    name: string,
+    emphasis = false,
+  ): PlacedNode => ({ x, y, name, emphasis });
 
   it("collapses markers that land on top of each other", () => {
     // Douala, Douala Airport, Kribi and Limbe are four distinct places that
     // project into the same forty pixels at an Atlantic zoom.
-    const out = clusterNodes([node(100, 100, "Douala"), node(104, 103, "Douala Airport")], 14);
+    const out = clusterNodes(
+      [node(100, 100, "Douala"), node(104, 103, "Douala Airport")],
+      14,
+    );
     expect(out).toHaveLength(1);
     expect(out[0].count).toBe(2);
     expect(out[0].names).toEqual(["Douala", "Douala Airport"]);
@@ -166,28 +199,42 @@ describe("clusterNodes", () => {
 
   it("keeps the FIRST node's position, not the centroid", () => {
     // An averaged pin sits in the sea between two ports and points at neither.
-    const out = clusterNodes([node(100, 100, "Douala"), node(110, 100, "Kribi")], 14);
+    const out = clusterNodes(
+      [node(100, 100, "Douala"), node(110, 100, "Kribi")],
+      14,
+    );
     expect(out[0].x).toBe(100);
   });
 
   it("leaves distant markers alone", () => {
-    expect(clusterNodes([node(0, 0, "A"), node(500, 300, "B")], 14)).toHaveLength(2);
+    expect(
+      clusterNodes([node(0, 0, "A"), node(500, 300, "B")], 14),
+    ).toHaveLength(2);
   });
 
   it("a cluster containing a destination is drawn as one", () => {
     // Losing a terminus into a waypoint is the wrong way round to drop info.
-    const out = clusterNodes([node(100, 100, "Waypoint", false), node(102, 101, "Terminus", true)], 14);
+    const out = clusterNodes(
+      [node(100, 100, "Waypoint", false), node(102, 101, "Terminus", true)],
+      14,
+    );
     expect(out[0].emphasis).toBe(true);
   });
 
   it("does not repeat a name that appears twice", () => {
-    const out = clusterNodes([node(100, 100, "Douala"), node(101, 101, "Douala")], 14);
+    const out = clusterNodes(
+      [node(100, 100, "Douala"), node(101, 101, "Douala")],
+      14,
+    );
     expect(out[0].names).toEqual(["Douala"]);
     expect(out[0].count).toBe(2);
   });
 
   it("an ordinary marker reports a count of 1", () => {
-    expect(clusterNodes([node(0, 0, "A")], 14)[0]).toMatchObject({ count: 1, names: ["A"] });
+    expect(clusterNodes([node(0, 0, "A")], 14)[0]).toMatchObject({
+      count: 1,
+      names: ["A"],
+    });
   });
 });
 
@@ -209,7 +256,11 @@ describe("labelOffset", () => {
   });
 
   it("gives up rather than looping forever on a dense cluster", () => {
-    const placed = Array.from({ length: 40 }, (_, i) => ({ x: 100, y: 100 + i, dy: 0 }));
+    const placed = Array.from({ length: 40 }, (_, i) => ({
+      x: 100,
+      y: 100 + i,
+      dy: 0,
+    }));
     expect(Number.isFinite(labelOffset(placed, 100, 100))).toBe(true);
   });
 });

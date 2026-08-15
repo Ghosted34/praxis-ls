@@ -9,7 +9,12 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/states";
-import { portalToken, portalLogin, portalForgot, portalAccept } from "@/lib/portal-api";
+import {
+  portalToken,
+  portalLogin,
+  portalForgot,
+  portalAccept,
+} from "@/lib/portal-api";
 import { PortalFrame, msg } from "./portal-chrome";
 
 export function PortalLogin() {
@@ -60,24 +65,55 @@ export function PortalLogin() {
 
       {sent ? (
         <p className="mt-6 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-          If that address has portal access, we've sent a link to set a new password. It can only be used once.
+          If that address has portal access, we've sent a link to set a new
+          password. It can only be used once.
         </p>
       ) : null}
 
       <form onSubmit={submit} className="mt-6 space-y-4">
         <div>
-          <label className="mb-1 block text-sm text-foreground" htmlFor="portal-email">Email</label>
-          <Input id="portal-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <label
+            className="mb-1 block text-sm text-foreground"
+            htmlFor="portal-email"
+          >
+            Email
+          </label>
+          <Input
+            id="portal-email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-foreground" htmlFor="portal-password">Password</label>
-          <Input id="portal-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <label
+            className="mb-1 block text-sm text-foreground"
+            htmlFor="portal-password"
+          >
+            Password
+          </label>
+          <Input
+            id="portal-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </div>
-        {error ? <p className="text-sm text-[hsl(var(--bad))]">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-[hsl(var(--bad))]">{error}</p>
+        ) : null}
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </Button>
-        <button type="button" onClick={forgot} className="w-full text-sm text-muted-foreground transition-colors hover:text-primary-ink">
+        <button
+          type="button"
+          onClick={forgot}
+          className="w-full text-sm text-muted-foreground transition-colors hover:text-primary-ink"
+        >
           Forgot your password?
         </button>
       </form>
@@ -121,7 +157,9 @@ export function PortalSetPassword() {
       <PortalFrame>
         <ErrorState message="That link is incomplete. Please use the link exactly as it appears in your email." />
         <p className="mt-4 text-sm">
-          <Link to="/client-portal/login" className="text-primary-ink">Back to sign in</Link>
+          <Link to="/client-portal/login" className="text-primary-ink">
+            Back to sign in
+          </Link>
         </p>
       </PortalFrame>
     );
@@ -129,18 +167,42 @@ export function PortalSetPassword() {
 
   return (
     <PortalFrame>
-      <h1 className="font-display text-2xl text-foreground">Choose a password</h1>
-      <p className="mt-1 text-sm text-muted-foreground">This link can only be used once.</p>
+      <h1 className="font-display text-2xl text-foreground">
+        Choose a password
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        This link can only be used once.
+      </p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <div>
-          <label className="mb-1 block text-sm text-foreground" htmlFor="pw">New password</label>
-          <Input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <label className="mb-1 block text-sm text-foreground" htmlFor="pw">
+            New password
+          </label>
+          <Input
+            id="pw"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-sm text-foreground" htmlFor="pw2">Confirm password</label>
-          <Input id="pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+          <label className="mb-1 block text-sm text-foreground" htmlFor="pw2">
+            Confirm password
+          </label>
+          <Input
+            id="pw2"
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+          />
         </div>
-        {error ? <p className="text-sm text-[hsl(var(--bad))]">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-[hsl(var(--bad))]">{error}</p>
+        ) : null}
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? "Saving…" : "Set password and continue"}
         </Button>
@@ -151,7 +213,10 @@ export function PortalSetPassword() {
 
 /* ── the portal itself ──────────────────────────────────────────────────── */
 
-export const label = (s: string) => (s || "").replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
-
+export const label = (s: string) =>
+  (s || "")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/^./, (c) => c.toUpperCase());
 
 /* ── investor terminal ──────────────────────────────────────────────────── */

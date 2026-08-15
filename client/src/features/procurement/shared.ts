@@ -11,11 +11,29 @@ import { type Tone } from "@/components/ui/pill";
 
 export const shell = pageShell.wide;
 export const TONES: Record<string, Tone> = {
-  DRAFT: "mute", SUBMITTED: "warn", APPROVED: "ok", REJECTED: "bad", ORDERED: "blue",
-  APPROVED_LOCKED: "ok", ISSUED_LOCKED: "blue", RECEIVED: "ok", CLOSED: "mute", CANCELLED: "bad",
-  POSTED_LOCKED: "ok", MATCHED: "ok",
+  DRAFT: "mute",
+  SUBMITTED: "warn",
+  APPROVED: "ok",
+  REJECTED: "bad",
+  ORDERED: "blue",
+  APPROVED_LOCKED: "ok",
+  ISSUED_LOCKED: "blue",
+  RECEIVED: "ok",
+  CLOSED: "mute",
+  CANCELLED: "bad",
+  POSTED_LOCKED: "ok",
+  MATCHED: "ok",
 };
-export const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
-export const map = <T extends Record<string, unknown>>(rows: T[] | null, id: string, name: string) => {
-  const m: Record<string, string> = {}; (rows || []).forEach((r) => { m[String(r[id])] = String(r[name] ?? ""); }); return m;
+export const tone = (s?: string | null): Tone =>
+  TONES[String(s || "").toUpperCase()] || "mute";
+export const map = <T extends Record<string, unknown>>(
+  rows: T[] | null,
+  id: string,
+  name: string,
+) => {
+  const m: Record<string, string> = {};
+  (rows || []).forEach((r) => {
+    m[String(r[id])] = String(r[name] ?? "");
+  });
+  return m;
 };

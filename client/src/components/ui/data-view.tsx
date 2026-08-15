@@ -75,7 +75,11 @@ export function DataView({
               <thead className="sticky top-0 bg-muted/60">
                 <tr>
                   {cols.map((c) => (
-                    <th key={c} scope="col" className="px-3 py-2 text-left text-label font-medium text-muted-foreground">
+                    <th
+                      key={c}
+                      scope="col"
+                      className="px-3 py-2 text-left text-label font-medium text-muted-foreground"
+                    >
                       {fieldLabel(c)}
                     </th>
                   ))}
@@ -97,7 +101,9 @@ export function DataView({
         );
       }
 
-      return <p className="text-sm">{data.map((v) => smartCell(v)).join(", ")}</p>;
+      return (
+        <p className="text-sm">{data.map((v) => smartCell(v)).join(", ")}</p>
+      );
     }
 
     if (isRecord(data)) {
@@ -106,8 +112,13 @@ export function DataView({
       return (
         <dl className="divide-y rounded-lg border">
           {pairs.map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between gap-4 px-3 py-2">
-              <dt className="shrink-0 text-label text-muted-foreground">{fieldLabel(k)}</dt>
+            <div
+              key={k}
+              className="flex items-baseline justify-between gap-4 px-3 py-2"
+            >
+              <dt className="shrink-0 text-label text-muted-foreground">
+                {fieldLabel(k)}
+              </dt>
               <dd className="min-w-0 break-words text-right text-sm">
                 {Array.isArray(v) && v.every(isRecord) && v.length ? (
                   <DataView data={v} />

@@ -32,7 +32,14 @@ import { ShipmentDetailsPanel } from "./shipment-details";
 import { ContainerEditor } from "./container-editor";
 import { ItineraryEditor } from "./itinerary-editor";
 
-type Tab360 = "details" | "itinerary" | "milestones" | "queries" | "money" | "people" | "documents";
+type Tab360 =
+  | "details"
+  | "itinerary"
+  | "milestones"
+  | "queries"
+  | "money"
+  | "people"
+  | "documents";
 const TABS_360: { value: Tab360; label: string }[] = [
   // First: what is actually moving is the question every other tab is about.
   { value: "details", label: "Details" },
@@ -56,7 +63,10 @@ const TABS_360: { value: Tab360; label: string }[] = [
  */
 function DetailsTab({ dossierId }: { dossierId: string }) {
   const [editing, setEditing] = React.useState(false);
-  const details = useResource(() => api.getShipmentDetails(dossierId), [dossierId]);
+  const details = useResource(
+    () => api.getShipmentDetails(dossierId),
+    [dossierId],
+  );
   const block = details.data?.containers;
 
   return (
@@ -65,7 +75,11 @@ function DetailsTab({ dossierId }: { dossierId: string }) {
         data={details.data}
         action={
           block?.enabled ? (
-            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditing(true)}
+            >
               {block.lines.length ? "Edit containers" : "Add containers"}
             </Button>
           ) : null
@@ -118,10 +132,16 @@ function ReadinessBanner({
     <div className="rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5 text-sm text-foreground">
-          {readiness.milestones_complete && <Pill tone="ok">Milestones complete</Pill>}
+          {readiness.milestones_complete && (
+            <Pill tone="ok">Milestones complete</Pill>
+          )}
           {readiness.fully_collected && <Pill tone="ok">Fully collected</Pill>}
           <span className="text-muted-foreground">
-            {done ? "This file is complete." : readiness.ready_to_complete ? "Ready to complete." : "In progress."}
+            {done
+              ? "This file is complete."
+              : readiness.ready_to_complete
+                ? "Ready to complete."
+                : "In progress."}
           </span>
         </div>
         {readiness.ready_to_complete && !done && (
@@ -154,15 +174,24 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
       <div className="space-y-1.5">
         <div className="micro mb-2">Billed (locked final invoices)</div>
         <MoneyRow label="Service HT" value={money(m.service_ht)} />
-        <MoneyRow label="Disbursement (pass-through)" value={money(m.disbursement_total)} />
+        <MoneyRow
+          label="Disbursement (pass-through)"
+          value={money(m.disbursement_total)}
+        />
         <MoneyRow label="TVA" value={money(m.vat_total)} />
         <MoneyRow label="Revenue HT" value={money(m.revenue_ht)} />
         <MoneyRow label="Total TTC" value={money(m.billed_ttc)} strong />
       </div>
       <div className="space-y-1.5">
         <div className="micro mb-2">Costs</div>
-        <MoneyRow label="Planned service cost" value={money(m.planned_service_cost)} />
-        <MoneyRow label="Planned débours" value={money(m.planned_disbursement)} />
+        <MoneyRow
+          label="Planned service cost"
+          value={money(m.planned_service_cost)}
+        />
+        <MoneyRow
+          label="Planned débours"
+          value={money(m.planned_disbursement)}
+        />
         <MoneyRow label="Planned total" value={money(m.planned_cost)} />
         <MoneyRow label="Actual (GL)" value={money(m.actual_cost)} strong />
       </div>
@@ -184,7 +213,12 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
                   : "font-medium text-primary-ink"
               }
             />
-            <MoneyRow label="Margin %" value={m.margin_percent != null ? `${num(m.margin_percent)}%` : "—"} />
+            <MoneyRow
+              label="Margin %"
+              value={
+                m.margin_percent != null ? `${num(m.margin_percent)}%` : "—"
+              }
+            />
           </>
         )}
       </div>
@@ -196,21 +230,35 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
           label={`Variance${m.budget?.variance_percent != null ? ` (${num(m.budget.variance_percent)}%)` : ""}`}
           value={money(m.budget?.variance)}
           strong
-          toneCls={m.budget?.over_budget ? "font-medium text-[rgb(var(--warn))]" : "font-medium text-foreground"}
+          toneCls={
+            m.budget?.over_budget
+              ? "font-medium text-[rgb(var(--warn))]"
+              : "font-medium text-foreground"
+          }
         />
       </div>
     </div>
   );
 }
 
-function PeopleTab({ people }: { people: api.DossierOverview["people"] | undefined }) {
+function PeopleTab({
+  people,
+}: {
+  people: api.DossierOverview["people"] | undefined;
+}) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <div className="space-y-1.5">
         <div className="mb-2 flex items-center gap-2">
           <span className="micro">Costing</span>
-          {people?.costing?.doc_number && <span className="num micro">{people.costing.doc_number}</span>}
-          {people?.costing?.status && <Pill tone={tone(people.costing.status)}>{people.costing.status}</Pill>}
+          {people?.costing?.doc_number && (
+            <span className="num micro">{people.costing.doc_number}</span>
+          )}
+          {people?.costing?.status && (
+            <Pill tone={tone(people.costing.status)}>
+              {people.costing.status}
+            </Pill>
+          )}
         </div>
         {people?.costing ? (
           <>
@@ -224,8 +272,14 @@ function PeopleTab({ people }: { people: api.DossierOverview["people"] | undefin
       <div className="space-y-1.5">
         <div className="mb-2 flex items-center gap-2">
           <span className="micro">Final invoice</span>
-          {people?.invoice?.doc_number && <span className="num micro">{people.invoice.doc_number}</span>}
-          {people?.invoice?.status && <Pill tone={tone(people.invoice.status)}>{people.invoice.status}</Pill>}
+          {people?.invoice?.doc_number && (
+            <span className="num micro">{people.invoice.doc_number}</span>
+          )}
+          {people?.invoice?.status && (
+            <Pill tone={tone(people.invoice.status)}>
+              {people.invoice.status}
+            </Pill>
+          )}
         </div>
         {people?.invoice ? (
           <>
@@ -247,7 +301,10 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Invoices" value={num(d.invoicing.count)} />
-        <Stat label="Purchase orders" value={`${num(d.procurement.po_count)} · ${money(d.procurement.po_total)}`} />
+        <Stat
+          label="Purchase orders"
+          value={`${num(d.procurement.po_count)} · ${money(d.procurement.po_total)}`}
+        />
         <Stat label="Transit orders" value={num(d.documents.transit_orders)} />
         <Stat label="Delivery notes" value={num(d.documents.delivery_notes)} />
       </div>
@@ -258,11 +315,19 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
         empty="No invoices on this file."
         keyOf={(r) => r.invoice_id}
         render={(r) => (
-          <DocRow label={<span className="num text-sm text-foreground">{r.ref || r.invoice_id.slice(0, 8)}</span>}>
+          <DocRow
+            label={
+              <span className="num text-sm text-foreground">
+                {r.ref || r.invoice_id.slice(0, 8)}
+              </span>
+            }
+          >
             {r.status && <Pill tone={tone(r.status)}>{r.status}</Pill>}
             <span className="num micro">{money(r.total_ttc)}</span>
             <DocButton
-              docType={r.type === "CREDIT_NOTE" ? "CREDIT_NOTE" : "FINAL_INVOICE"}
+              docType={
+                r.type === "CREDIT_NOTE" ? "CREDIT_NOTE" : "FINAL_INVOICE"
+              }
               id={r.invoice_id}
               title={r.ref || `Invoice ${r.invoice_id.slice(0, 8)}`}
               label="View"
@@ -295,7 +360,13 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
         empty="No transit orders on this file."
         keyOf={(r) => r.transit_order_id}
         render={(r) => (
-          <DocRow label={<span className="num text-sm text-foreground">{r.ref || r.transit_order_id.slice(0, 8)}</span>}>
+          <DocRow
+            label={
+              <span className="num text-sm text-foreground">
+                {r.ref || r.transit_order_id.slice(0, 8)}
+              </span>
+            }
+          >
             {r.customs_regime && <Pill tone="mute">{r.customs_regime}</Pill>}
             <span className="micro">{r.service_direction || "—"}</span>
             <span className="num micro">{money(r.declared_value)}</span>
@@ -314,8 +385,16 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
         empty="No delivery notes on this file."
         keyOf={(r) => r.delivery_note_id}
         render={(r) => (
-          <DocRow label={<span className="num text-sm text-foreground">{r.ref || r.delivery_note_id.slice(0, 8)}</span>}>
-            <span className="text-sm text-muted-foreground">{r.consignee || "—"}</span>
+          <DocRow
+            label={
+              <span className="num text-sm text-foreground">
+                {r.ref || r.delivery_note_id.slice(0, 8)}
+              </span>
+            }
+          >
+            <span className="text-sm text-muted-foreground">
+              {r.consignee || "—"}
+            </span>
             <span className="micro">{dateFmt(r.created_at)}</span>
             <DocButton
               docType="DELIVERY_NOTE"
@@ -339,7 +418,10 @@ export function Dossier360Modal({
   clientLabel: string;
   onClose: () => void;
 }) {
-  const ov = useResource(() => api.getOverview(dossier.dossier_id), [dossier.dossier_id]);
+  const ov = useResource(
+    () => api.getOverview(dossier.dossier_id),
+    [dossier.dossier_id],
+  );
   const [tab, setTab] = React.useState<Tab360>("milestones");
   const d = ov.data;
   const svc = serviceLabel(dossier);
@@ -361,24 +443,44 @@ export function Dossier360Modal({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Planned cost" value={money(d.costing.planned_cost)} />
             <Stat label="Actual cost" value={money(d.costs.actual_cost)} />
-            <Stat label="Billed" value={money(d.invoicing.billed_ttc)} tone="ok" />
-            <Stat label="Outstanding" value={money(d.invoicing.outstanding)} tone="warn" />
+            <Stat
+              label="Billed"
+              value={money(d.invoicing.billed_ttc)}
+              tone="ok"
+            />
+            <Stat
+              label="Outstanding"
+              value={money(d.invoicing.outstanding)}
+              tone="warn"
+            />
           </div>
 
-          {d.readiness && (d.readiness.ready_to_complete || d.readiness.fully_collected || d.dossier.status === "COMPLETED") && (
-            <ReadinessBanner
-              readiness={d.readiness}
-              status={d.dossier.status}
-              dossierId={dossier.dossier_id}
-              onChanged={() => ov.reload()}
-            />
-          )}
+          {d.readiness &&
+            (d.readiness.ready_to_complete ||
+              d.readiness.fully_collected ||
+              d.dossier.status === "COMPLETED") && (
+              <ReadinessBanner
+                readiness={d.readiness}
+                status={d.dossier.status}
+                dossierId={dossier.dossier_id}
+                onChanged={() => ov.reload()}
+              />
+            )}
 
-          <Segmented label="Dossier 360 section" value={tab} options={TABS_360} onChange={setTab} />
+          <Segmented
+            label="Dossier 360 section"
+            value={tab}
+            options={TABS_360}
+            onChange={setTab}
+          />
 
           {tab === "details" && <DetailsTab dossierId={dossier.dossier_id} />}
-          {tab === "itinerary" && <ItineraryEditor dossierId={dossier.dossier_id} />}
-          {tab === "milestones" && <MilestonesTab dossierId={dossier.dossier_id} />}
+          {tab === "itinerary" && (
+            <ItineraryEditor dossierId={dossier.dossier_id} />
+          )}
+          {tab === "milestones" && (
+            <MilestonesTab dossierId={dossier.dossier_id} />
+          )}
           {tab === "queries" && <QTickets dossierId={dossier.dossier_id} />}
           {tab === "money" && <MoneyTab m={d.money} />}
           {tab === "people" && <PeopleTab people={d.people} />}

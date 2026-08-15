@@ -36,11 +36,23 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
-export const Card = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...p} />
+export const Card = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className,
+    )}
+    {...p}
+  />
 );
 
-export const CardHeader = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
+export const CardHeader = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col gap-1 p-5 pb-3", className)} {...p} />
 );
 
@@ -59,18 +71,36 @@ export const CardTitle = ({
   // Generic wrapper: children arrive through {...p}, so heading-has-content
   // cannot see them here. The call sites are what need content, and those are
   // checked.
-   
-  <Tag className={cn("text-title font-semibold leading-none tracking-tight", className)} {...p} />
+
+  <Tag
+    className={cn(
+      "text-title font-semibold leading-none tracking-tight",
+      className,
+    )}
+    {...p}
+  />
 );
 
-export const CardDescription = ({ className, ...p }: React.HTMLAttributes<HTMLParagraphElement>) => (
+export const CardDescription = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLParagraphElement>) => (
   <p className={cn("text-label text-muted-foreground", className)} {...p} />
 );
 
-export const CardContent = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
+export const CardContent = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("p-5 pt-0", className)} {...p} />
 );
 
-export const CardFooter = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex items-center gap-2 border-t px-5 py-3", className)} {...p} />
+export const CardFooter = ({
+  className,
+  ...p
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn("flex items-center gap-2 border-t px-5 py-3", className)}
+    {...p}
+  />
 );

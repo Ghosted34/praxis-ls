@@ -53,16 +53,23 @@ export function Pagination({
   className?: string;
 }) {
   const from = page * pageSize + 1;
-  const to = total === undefined ? (page + 1) * pageSize : Math.min((page + 1) * pageSize, total);
+  const to =
+    total === undefined
+      ? (page + 1) * pageSize
+      : Math.min((page + 1) * pageSize, total);
   const canPrev = page > 0;
   const canNext = total === undefined ? !!hasMore : to < total;
-  const pageCount = total === undefined ? undefined : Math.max(1, Math.ceil(total / pageSize));
+  const pageCount =
+    total === undefined ? undefined : Math.max(1, Math.ceil(total / pageSize));
 
   // Nothing to page through: render nothing rather than a dead control.
   if (!canPrev && !canNext) return null;
 
   return (
-    <nav aria-label="Pagination" className={cn("mt-4 flex items-center justify-between gap-4", className)}>
+    <nav
+      aria-label="Pagination"
+      className={cn("mt-4 flex items-center justify-between gap-4", className)}
+    >
       {/* aria-live so the range is announced after a page change — otherwise a
           screen-reader user hears only that the button was pressed. */}
       <p aria-live="polite" className="text-label text-muted-foreground">
@@ -78,13 +85,23 @@ export function Pagination({
       </p>
 
       <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={() => onPageChange(page - 1)} disabled={!canPrev}>
+        <Button
+          variant="outline"
+          onClick={() => onPageChange(page - 1)}
+          disabled={!canPrev}
+        >
           Previous
         </Button>
         <span className="text-label tabular-nums text-muted-foreground">
-          {pageCount === undefined ? `Page ${page + 1}` : `Page ${page + 1} of ${num(pageCount)}`}
+          {pageCount === undefined
+            ? `Page ${page + 1}`
+            : `Page ${page + 1} of ${num(pageCount)}`}
         </span>
-        <Button variant="outline" onClick={() => onPageChange(page + 1)} disabled={!canNext}>
+        <Button
+          variant="outline"
+          onClick={() => onPageChange(page + 1)}
+          disabled={!canNext}
+        >
           Next
         </Button>
       </div>

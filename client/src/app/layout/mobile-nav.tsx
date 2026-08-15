@@ -22,14 +22,30 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Dialog } from "@/components/ui/dialog";
 import { areaRoute, sectionRoute } from "./areas";
-import { buildRibbon, iconForArea, locate, type RibbonFamily } from "./ribbon-model";
+import {
+  buildRibbon,
+  iconForArea,
+  locate,
+  type RibbonFamily,
+} from "./ribbon-model";
 import { useShell } from "./shell-context";
-import { GridIcon, SearchIcon } from "./nav-icons";
+import { GridIcon } from "./nav-icons";
 
 /** Everything inside one family, as a phone reads it: area, then its screens. */
-function FamilySheet({ family, onClose }: { family: RibbonFamily | null; onClose: () => void }) {
+function FamilySheet({
+  family,
+  onClose,
+}: {
+  family: RibbonFamily | null;
+  onClose: () => void;
+}) {
   return (
-    <Dialog open={!!family} onClose={onClose} title={family?.label ?? ""} size="md">
+    <Dialog
+      open={!!family}
+      onClose={onClose}
+      title={family?.label ?? ""}
+      size="md"
+    >
       {family && (
         <div className="flex flex-col gap-5">
           {family.areas.map(({ area, sections }) => {
@@ -68,20 +84,27 @@ function FamilySheet({ family, onClose }: { family: RibbonFamily | null; onClose
 }
 
 /**
- * The bottom bar. One thumb target per family, plus search.
+ * The bottom bar. One thumb target per family, and nothing else.
  *
- * Seven targets on a 360px screen is 51px each, which is above the 44px
- * platform minimum but not by much — so the label is 10px and the padding is
- * tight, and that is the trade being made rather than an oversight. Most users
- * have fewer than six families; a CEO with all six is the dense case.
+ * SEARCH USED TO BE THE LAST CELL, and taking it out is the point rather than a
+ * side effect. The title bar's search button is now unconditional (it was
+ * `lg:flex`, which left 768–1023px with no touch path to search at all), so
+ * this cell had become a second control opening the same palette — and it was
+ * charging every family a share of the width for it.
+ *
+ * The arithmetic that pays for: six families on a 360px screen is ~58px each
+ * against the 44px platform minimum, where seven was 51px and the 10px label
+ * plus tight padding was the price of clearing it at all. Most users have fewer
+ * than six families; a CEO with all six is the dense case, and it is now the
+ * dense case with headroom.
  *
  * THREE STATES, AND THE BAR HAS TO SAY WHICH. `buildRibbon(NO_ACCESS)` returns
- * nothing, so a bar that only read `access` rendered a lone Search button and
- * looked exactly the same whether the permissions read was still in flight, had
- * failed, or had honestly come back with nothing this user can reach. A phone
- * user then has one control and no way to tell which of those happened — and on
- * a phone the bottom bar IS the navigation, so "looks finished but is empty" is
- * the worst of the three to present.
+ * nothing, so a bar that only read `access` looked exactly the same whether the
+ * permissions read was still in flight, had failed, or had honestly come back
+ * with nothing this user can reach. With Search gone the empty case is now
+ * empty — a bar of pure background — which makes the distinction MORE
+ * load-bearing, not less: on a phone the bottom bar IS the navigation, so
+ * "finished, and blank" is the worst of the three to present.
  *
  *   loading   placeholders, `aria-busy` — visibly unfinished, nothing to press
  *   nothing   a route into the hamburger drawer, which is the complete,
@@ -89,7 +112,7 @@ function FamilySheet({ family, onClose }: { family: RibbonFamily | null; onClose
  *             the permissions read did
  *   families  the real bar
  */
-export function BottomNav({ onSearch, onMenu }: { onSearch: () => void; onMenu?: () => void }) {
+export function BottomNav({ onMenu }: { onMenu?: () => void }) {
   const { access, ready } = useShell();
   const { pathname } = useLocation();
   const families = React.useMemo(() => buildRibbon(access), [access]);
@@ -100,7 +123,11 @@ export function BottomNav({ onSearch, onMenu }: { onSearch: () => void; onMenu?:
 
   return (
     <>
-      <nav className="lux-botnav flex md:hidden" aria-label="Primary" aria-busy={!ready || undefined}>
+      <nav
+        className="lux-botnav flex md:hidden"
+        aria-label="Primary"
+        aria-busy={!ready || undefined}
+      >
         {!ready ? (
           /*
            * Three inert cells, so the bar occupies its real height and reads as
@@ -134,7 +161,10 @@ export function BottomNav({ onSearch, onMenu }: { onSearch: () => void; onMenu?:
             <button
               key={f.key}
               type="button"
-              className={cn("lux-botnav-btn", active?.key === f.key && "active")}
+              className={cn(
+                "lux-botnav-btn",
+                active?.key === f.key && "active",
+              )}
               aria-expanded={open === f.key}
               onClick={() => setOpen(f.key)}
             >
@@ -143,13 +173,12 @@ export function BottomNav({ onSearch, onMenu }: { onSearch: () => void; onMenu?:
             </button>
           ))
         )}
-        <button type="button" className="lux-botnav-btn" onClick={onSearch}>
-          <SearchIcon width={20} height={20} />
-          <span>Search</span>
-        </button>
       </nav>
 
-      <FamilySheet family={families.find((f) => f.key === open) ?? null} onClose={() => setOpen(null)} />
+      <FamilySheet
+        family={families.find((f) => f.key === open) ?? null}
+        onClose={() => setOpen(null)}
+      />
     </>
   );
 }

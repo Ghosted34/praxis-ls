@@ -56,7 +56,8 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { cn } from "@/lib/cn";
 
 const key = (roleId: string, moduleKey: string) => `${roleId}::${moduleKey}`;
-const GROUP_LABEL = (g: string) => g.charAt(0).toUpperCase() + g.slice(1).replace(/_/g, " ");
+const GROUP_LABEL = (g: string) =>
+  g.charAt(0).toUpperCase() + g.slice(1).replace(/_/g, " ");
 
 /**
  * Dot colour per permission, strongest-wins. Every colour is a theme token so
@@ -76,11 +77,18 @@ const PERM_COLOR: Record<PermKey, string> = {
 };
 
 /** Weakest → strongest. The cell dot shows the strongest granted permission. */
-const STRENGTH: PermKey[] = ["can_read", "can_create", "can_update", "can_delete", "can_approve"];
+const STRENGTH: PermKey[] = [
+  "can_read",
+  "can_create",
+  "can_update",
+  "can_delete",
+  "can_approve",
+];
 
 function strongest(g: Grant | undefined): PermKey | null {
   if (!g) return null;
-  for (let i = STRENGTH.length - 1; i >= 0; i--) if (g[STRENGTH[i]]) return STRENGTH[i];
+  for (let i = STRENGTH.length - 1; i >= 0; i--)
+    if (g[STRENGTH[i]]) return STRENGTH[i];
   return null;
 }
 
@@ -92,7 +100,15 @@ function grantSummary(g: Grant | undefined): string {
 
 function LockIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      aria-hidden
+    >
       <rect x="4" y="10" width="16" height="11" rx="2" />
       <path d="M8 10V7a4 4 0 0 1 8 0v3" />
     </svg>
@@ -101,7 +117,13 @@ function LockIcon() {
 
 function CrownIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden>
+    <svg
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      fill="currentColor"
+      aria-hidden
+    >
       <path d="M3 7l4 4 5-6 5 6 4-4v11H3z" />
     </svg>
   );
@@ -146,7 +168,8 @@ export function PermissionMatrixPage() {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
     const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest?.("[data-grant-editor]")) setOpen(null);
+      if (!(e.target as HTMLElement).closest?.("[data-grant-editor]"))
+        setOpen(null);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onDown);
@@ -179,7 +202,10 @@ export function PermissionMatrixPage() {
     return out;
   }, [modules, query]);
 
-  const flatModules = React.useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  const flatModules = React.useMemo(
+    () => groups.flatMap((g) => g.items),
+    [groups],
+  );
 
   async function toggle(role: Role, mod: Module, perm: PermKey) {
     const k = key(role.role_id, mod.module_key);
@@ -229,7 +255,10 @@ export function PermissionMatrixPage() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           {PERMS.map((p) => (
-            <span key={p} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              key={p}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: PERM_COLOR[p] }}
@@ -306,14 +335,21 @@ export function PermissionMatrixPage() {
                         <span className="text-muted-foreground">
                           {r.is_system ? <LockIcon /> : null}
                         </span>
-                        <span className="font-mono text-xs font-medium">{r.code}</span>
+                        <span className="font-mono text-xs font-medium">
+                          {r.code}
+                        </span>
                         {isCeo && (
-                          <span className="text-primary-ink" title="Bypasses RBAC by design">
+                          <span
+                            className="text-primary-ink"
+                            title="Bypasses RBAC by design"
+                          >
                             <CrownIcon />
                           </span>
                         )}
                       </div>
-                      <div className="truncate text-xs text-muted-foreground">{r.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {r.name}
+                      </div>
                     </td>
 
                     {flatModules.map((m) => {
@@ -326,7 +362,10 @@ export function PermissionMatrixPage() {
                       // rather than offering toggles that change nothing.
                       if (isCeo) {
                         return (
-                          <td key={m.module_key} className="border-l px-1 py-2 text-center">
+                          <td
+                            key={m.module_key}
+                            className="border-l px-1 py-2 text-center"
+                          >
                             <span
                               title={`CEO bypasses RBAC — full access to ${m.name} regardless of grants`}
                               className="inline-block h-2.5 w-2.5 rounded-full opacity-90"
@@ -338,9 +377,13 @@ export function PermissionMatrixPage() {
 
                       const top = strongest(g);
                       const isOpen =
-                        open?.role.role_id === r.role_id && open?.mod.module_key === m.module_key;
+                        open?.role.role_id === r.role_id &&
+                        open?.mod.module_key === m.module_key;
                       return (
-                        <td key={m.module_key} className="border-l px-1 py-1 text-center">
+                        <td
+                          key={m.module_key}
+                          className="border-l px-1 py-1 text-center"
+                        >
                           <button
                             data-grant-editor
                             title={`${r.code} · ${m.name}\n${grantSummary(g)}`}
@@ -349,7 +392,11 @@ export function PermissionMatrixPage() {
                               setOpen(
                                 isOpen
                                   ? null
-                                  : { role: r, mod: m, rect: e.currentTarget.getBoundingClientRect() },
+                                  : {
+                                      role: r,
+                                      mod: m,
+                                      rect: e.currentTarget.getBoundingClientRect(),
+                                    },
                               )
                             }
                             className={cn(
@@ -383,62 +430,83 @@ export function PermissionMatrixPage() {
           becomes the containing block for the fixed element and shoves it far
           from the clicked cell. Anchored just below the cell, flipping above
           when there isn't room, and clamped to stay on screen. */}
-      {open && openGrant && createPortal(
-        <div
-          data-grant-editor
-          role="dialog"
-          aria-label={`Permissions for ${open.role.code} on ${open.mod.name}`}
-          style={(() => {
-            const PW = 240, PH = 232, GAP = 6, PAD = 8;
-            const roomBelow = open.rect.bottom + GAP + PH <= window.innerHeight;
-            return {
-              position: "fixed" as const,
-              top: roomBelow ? open.rect.bottom + GAP : Math.max(PAD, open.rect.top - GAP - PH),
-              left: Math.max(PAD, Math.min(open.rect.left, window.innerWidth - PW - PAD)),
-              width: PW,
-            };
-          })()}
-          className="z-50 rounded-xl border bg-popover p-3 text-popover-foreground shadow-l"
-        >
-          <div className="mb-1 font-mono text-xs font-semibold">{open.role.code}</div>
-          <div className="mb-2 truncate text-xs text-muted-foreground" title={open.mod.module_key}>
-            {open.mod.name}
-          </div>
-          <div className="space-y-1">
-            {PERMS.map((p) => {
-              const on = openGrant[p];
-              return (
-                <button
-                  key={p}
-                  onClick={() => toggle(open.role, open.mod, p)}
-                  aria-pressed={on}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    on ? "bg-accent" : "hover:bg-accent/60",
-                  )}
-                >
-                  <span
-                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{
-                      background: on ? PERM_COLOR[p] : "transparent",
-                      border: on ? undefined : "1px solid var(--input)",
-                    }}
-                  />
-                  <span className={cn(!on && "text-muted-foreground")}>{PERM_TITLE[p]}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>,
-        document.body,
-      )}
+      {open &&
+        openGrant &&
+        createPortal(
+          <div
+            data-grant-editor
+            role="dialog"
+            aria-label={`Permissions for ${open.role.code} on ${open.mod.name}`}
+            style={(() => {
+              const PW = 240,
+                PH = 232,
+                GAP = 6,
+                PAD = 8;
+              const roomBelow =
+                open.rect.bottom + GAP + PH <= window.innerHeight;
+              return {
+                position: "fixed" as const,
+                top: roomBelow
+                  ? open.rect.bottom + GAP
+                  : Math.max(PAD, open.rect.top - GAP - PH),
+                left: Math.max(
+                  PAD,
+                  Math.min(open.rect.left, window.innerWidth - PW - PAD),
+                ),
+                width: PW,
+              };
+            })()}
+            className="z-50 rounded-xl border bg-popover p-3 text-popover-foreground shadow-l"
+          >
+            <div className="mb-1 font-mono text-xs font-semibold">
+              {open.role.code}
+            </div>
+            <div
+              className="mb-2 truncate text-xs text-muted-foreground"
+              title={open.mod.module_key}
+            >
+              {open.mod.name}
+            </div>
+            <div className="space-y-1">
+              {PERMS.map((p) => {
+                const on = openGrant[p];
+                return (
+                  <button
+                    key={p}
+                    onClick={() => toggle(open.role, open.mod, p)}
+                    aria-pressed={on}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                      on ? "bg-accent" : "hover:bg-accent/60",
+                    )}
+                  >
+                    <span
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{
+                        background: on ? PERM_COLOR[p] : "transparent",
+                        border: on ? undefined : "1px solid var(--input)",
+                      }}
+                    />
+                    <span className={cn(!on && "text-muted-foreground")}>
+                      {PERM_TITLE[p]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <p className="mt-3 text-xs text-muted-foreground">
-        CEO bypasses RBAC by design (<span className="font-mono">role.code = &apos;CEO&apos;</span>), so its
-        row is shown as full access and isn&apos;t editable. Seeded defaults come from{" "}
-        <span className="font-mono">9021_seed_default_permissions.sql</span>. Note that a granted module
-        can still return 403 if its <em>feature</em> is off for the tenant — that gate is separate from
-        RBAC and applies to everyone.
+        CEO bypasses RBAC by design (
+        <span className="font-mono">role.code = &apos;CEO&apos;</span>), so its
+        row is shown as full access and isn&apos;t editable. Seeded defaults
+        come from{" "}
+        <span className="font-mono">9021_seed_default_permissions.sql</span>.
+        Note that a granted module can still return 403 if its <em>feature</em>{" "}
+        is off for the tenant — that gate is separate from RBAC and applies to
+        everyone.
       </p>
     </section>
   );

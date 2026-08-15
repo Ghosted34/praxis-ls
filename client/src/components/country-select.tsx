@@ -25,5 +25,12 @@ export function CountrySelect({
   allowEmpty?: boolean;
   label?: string;
 }) {
-  return <SmartCountryPicker value={value} onChange={onChange} allowEmpty={allowEmpty} label={label} />;
+  return (
+    <SmartCountryPicker
+      value={value}
+      onChange={onChange}
+      allowEmpty={allowEmpty}
+      label={label}
+    />
+  );
 }

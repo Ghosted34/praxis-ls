@@ -53,7 +53,10 @@ export const PraxisMarkLarge = (p: IP) => (
   <svg {...s(p)} width={28} height={28} strokeWidth={1.5}>
     <circle cx="12" cy="12" r="4.5" />
     <path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5" />
-    <path d="M4.9 4.9l2.4 2.4M16.7 16.7l2.4 2.4M19.1 4.9l-2.4 2.4M7.3 16.7l-2.4 2.4" opacity="0.55" />
+    <path
+      d="M4.9 4.9l2.4 2.4M16.7 16.7l2.4 2.4M19.1 4.9l-2.4 2.4M7.3 16.7l-2.4 2.4"
+      opacity="0.55"
+    />
   </svg>
 );
 

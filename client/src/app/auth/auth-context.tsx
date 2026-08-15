@@ -12,7 +12,12 @@
  * a code and calls verify2fa().
  */
 import * as React from "react";
-import { tenant, ApiError, tryRefresh, SESSION_ENDED_EVENT } from "@/lib/api-client";
+import {
+  tenant,
+  ApiError,
+  tryRefresh,
+  SESSION_ENDED_EVENT,
+} from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
@@ -41,10 +46,17 @@ type AuthState = {
   user: User | null;
   status: "loading" | "authed" | "anon";
   pendingToken: string | null;
-  login: (email: string, password: string, keepSignedIn?: boolean) => Promise<LoginResult>;
+  login: (
+    email: string,
+    password: string,
+    keepSignedIn?: boolean,
+  ) => Promise<LoginResult>;
   verify2fa: (code: string) => Promise<void>;
   pinLogin: (email: string, pin: string) => Promise<void>;
-  registerPin: (pin: string, label?: string | null) => Promise<{ device_id: string }>;
+  registerPin: (
+    pin: string,
+    label?: string | null,
+  ) => Promise<{ device_id: string }>;
   logout: () => Promise<void>;
   /** Merge fields into the cached user (e.g. after an avatar upload). */
   patchUser: (partial: Partial<User>) => void;
@@ -153,12 +165,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(
     () =>
       onReconnect(() => {
-        if (statusRef.current !== "authed" && tokenStore.getRefresh()) restore();
+        if (statusRef.current !== "authed" && tokenStore.getRefresh())
+          restore();
       }),
     [restore],
   );
 
-  function acceptTokens(r: { access_token: string; refresh_token: string; user: User }) {
+  function acceptTokens(r: {
+    access_token: string;
+    refresh_token: string;
+    user: User;
+  }) {
     tokenStore.setAccess(r.access_token);
     tokenStore.setRefresh(r.refresh_token);
     persistUser(r.user);
@@ -198,65 +215,110 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
   }, []);
 
-  const login: AuthState["login"] = React.useCallback(async (email, password, keepSignedIn = true) => {
-    // Record the persistence choice before any tokens land. It also carries the
-    // 2FA path: acceptTokens() runs later in verify2fa() and reads this flag.
-    tokenStore.setPersist(keepSignedIn);
-    // The server needs the choice too: it exempts the session from the 30-minute
-// idle kill (0494). Storing the token for 30 days while the server killed the
-// session after half an hour is what users reported as "token expired".
-    const r = await tenant<LoginResponse>("/auth/login", { method: "POST", auth: false, body: { email, password, keep_signed_in: keepSignedIn } });
-    if ("pending_2fa" in r) {
-      setPendingToken(r.pending_token);
-      return { pending2fa: true };
-    }
-    acceptTokens(r);
-    return { pending2fa: false };
-  }, []);
+  const login: AuthState["login"] = React.useCallback(
+    async (email, password, keepSignedIn = true) => {
+      // Record the persistence choice before any tokens land. It also carries the
+      // 2FA path: acceptTokens() runs later in verify2fa() and reads this flag.
+      tokenStore.setPersist(keepSignedIn);
+      // The server needs the choice too: it exempts the session from the 30-minute
+      // idle kill (0494). Storing the token for 30 days while the server killed the
+      // session after half an hour is what users reported as "token expired".
+      const r = await tenant<LoginResponse>("/auth/login", {
+        method: "POST",
+        auth: false,
+        body: { email, password, keep_signed_in: keepSignedIn },
+      });
+      if ("pending_2fa" in r) {
+        setPendingToken(r.pending_token);
+        return { pending2fa: true };
+      }
+      acceptTokens(r);
+      return { pending2fa: false };
+    },
+    [],
+  );
 
-  const verify2fa: AuthState["verify2fa"] = React.useCallback(async (code) => {
-    if (!pendingToken) throw new Error("No 2FA challenge in progress");
-    const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/2fa/verify", {
-      method: "POST",
-      auth: false,
-      // Carried through 2FA as well, or ticking the box then completing TOTP
-      // would lose the choice (0494).
-      body: { pending_token: pendingToken, code, keep_signed_in: tokenStore.getPersist() },
-    });
-    acceptTokens(r);
-    // `pendingToken`, NOT []. This closes over render state: an empty array
-    // captures the value from the first render — `null`, always — so the guard
-    // above would throw on every legitimate challenge, and if it did not, the
-    // request would carry `pending_token: null`. 2FA would simply never
-    // complete. PERF S14's empty arrays are right for the handlers that touch
-    // only setters and module helpers; this is not one of them.
-  }, [pendingToken]);
+  const verify2fa: AuthState["verify2fa"] = React.useCallback(
+    async (code) => {
+      if (!pendingToken) throw new Error("No 2FA challenge in progress");
+      const r = await tenant<{
+        access_token: string;
+        refresh_token: string;
+        user: User;
+      }>("/auth/2fa/verify", {
+        method: "POST",
+        auth: false,
+        // Carried through 2FA as well, or ticking the box then completing TOTP
+        // would lose the choice (0494).
+        body: {
+          pending_token: pendingToken,
+          code,
+          keep_signed_in: tokenStore.getPersist(),
+        },
+      });
+      acceptTokens(r);
+      // `pendingToken`, NOT []. This closes over render state: an empty array
+      // captures the value from the first render — `null`, always — so the guard
+      // above would throw on every legitimate challenge, and if it did not, the
+      // request would carry `pending_token: null`. 2FA would simply never
+      // complete. PERF S14's empty arrays are right for the handlers that touch
+      // only setters and module helpers; this is not one of them.
+    },
+    [pendingToken],
+  );
 
-  const pinLogin: AuthState["pinLogin"] = React.useCallback(async (email, pin) => {
-    const dev = pinStore.get(email);
-    if (!dev) throw new ApiError("NO_PIN_DEVICE", "No Quick PIN is set up on this device for that email.", 400);
-    tokenStore.setPersist(true);
-    const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/pin/login", {
-      method: "POST",
-      auth: false,
-      body: { email: email.trim(), device_id: dev.device_id, pin, keep_signed_in: true },
-    });
-    acceptTokens(r);
-  }, []);
+  const pinLogin: AuthState["pinLogin"] = React.useCallback(
+    async (email, pin) => {
+      const dev = pinStore.get(email);
+      if (!dev)
+        throw new ApiError(
+          "NO_PIN_DEVICE",
+          "No Quick PIN is set up on this device for that email.",
+          400,
+        );
+      tokenStore.setPersist(true);
+      const r = await tenant<{
+        access_token: string;
+        refresh_token: string;
+        user: User;
+      }>("/auth/pin/login", {
+        method: "POST",
+        auth: false,
+        body: {
+          email: email.trim(),
+          device_id: dev.device_id,
+          pin,
+          keep_signed_in: true,
+        },
+      });
+      acceptTokens(r);
+    },
+    [],
+  );
 
-  const registerPin: AuthState["registerPin"] = React.useCallback(async (pin, label = null) => {
-    const r = await tenant<{ device_id: string; label?: string | null }>("/auth/pin/register", {
-      method: "POST",
-      body: { pin, label },
-    });
-    if (user) pinStore.set(user.email, { device_id: r.device_id, label: r.label ?? label });
-    return { device_id: r.device_id };
-    // `user`, NOT [] — same reason as verify2fa. On the first render `user` is
-    // null, so an empty array makes the `if (user)` branch permanently false:
-    // the server registers the PIN device and the browser never records it, so
-    // the next PIN login fails with NO_PIN_DEVICE against a device that exists.
-    // Silent, and only on the happy path.
-  }, [user]);
+  const registerPin: AuthState["registerPin"] = React.useCallback(
+    async (pin, label = null) => {
+      const r = await tenant<{ device_id: string; label?: string | null }>(
+        "/auth/pin/register",
+        {
+          method: "POST",
+          body: { pin, label },
+        },
+      );
+      if (user)
+        pinStore.set(user.email, {
+          device_id: r.device_id,
+          label: r.label ?? label,
+        });
+      return { device_id: r.device_id };
+      // `user`, NOT [] — same reason as verify2fa. On the first render `user` is
+      // null, so an empty array makes the `if (user)` branch permanently false:
+      // the server registers the PIN device and the browser never records it, so
+      // the next PIN login fails with NO_PIN_DEVICE against a device that exists.
+      // Silent, and only on the happy path.
+    },
+    [user],
+  );
 
   const logout: AuthState["logout"] = React.useCallback(async () => {
     try {
@@ -279,13 +341,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("anon");
   }, []);
 
-  const patchUser = React.useCallback((partial: Partial<User>) =>
-    setUser((u) => {
-      if (!u) return u;
-      const next = { ...u, ...partial };
-      persistUser(next);
-      return next;
-    }), []);
+  const patchUser = React.useCallback(
+    (partial: Partial<User>) =>
+      setUser((u) => {
+        if (!u) return u;
+        const next = { ...u, ...partial };
+        persistUser(next);
+        return next;
+      }),
+    [],
+  );
 
   /**
    * PERF S14. This was an inline object literal containing six handlers that
@@ -317,8 +382,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * for no behavioural gain.
    */
   const value = React.useMemo(
-    () => ({ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser }),
-    [user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser],
+    () => ({
+      user,
+      status,
+      pendingToken,
+      login,
+      verify2fa,
+      pinLogin,
+      registerPin,
+      logout,
+      patchUser,
+    }),
+    [
+      user,
+      status,
+      pendingToken,
+      login,
+      verify2fa,
+      pinLogin,
+      registerPin,
+      logout,
+      patchUser,
+    ],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

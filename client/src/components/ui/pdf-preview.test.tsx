@@ -23,7 +23,9 @@ vi.mock("@/lib/pdfjs", () => ({
 
 import { PdfPreview } from "./pdf-preview";
 
-const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "kyc.pdf", { type: "application/pdf" });
+const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "kyc.pdf", {
+  type: "application/pdf",
+});
 
 beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:pdf");
@@ -68,7 +70,10 @@ describe("PdfPreview", () => {
       }),
     });
     getPage.mockResolvedValue({
-      getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 140 * scale }),
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 100 * scale,
+        height: 140 * scale,
+      }),
       render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
     });
 

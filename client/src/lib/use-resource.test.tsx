@@ -21,7 +21,9 @@ function wrapper() {
   // A fresh client per test: retries off and no gc, so one test's cache can
   // never satisfy another's assertion about request counts.
   const qc = makeQueryClient();
-  qc.setDefaultOptions({ queries: { retry: false, gcTime: 0, staleTime: 30_000 } });
+  qc.setDefaultOptions({
+    queries: { retry: false, gcTime: 0, staleTime: 30_000 },
+  });
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -41,17 +43,24 @@ afterEach(() => {
 
 describe("errMsg (F12 — the double-wrap defect)", () => {
   it("turns a 403 into the permission sentence", () => {
-    expect(errMsg(new ApiError("FORBIDDEN", "nope", 403))).toBe("You don't have permission to do this.");
-  });
-
-  it("keeps the server's own message for other statuses", () => {
-    expect(errMsg(new ApiError("CONFLICT", "Period 2026-03 is already closed.", 409))).toBe(
-      "Period 2026-03 is already closed.",
+    expect(errMsg(new ApiError("FORBIDDEN", "nope", 403))).toBe(
+      "You don't have permission to do this.",
     );
   });
 
+  it("keeps the server's own message for other statuses", () => {
+    expect(
+      errMsg(
+        new ApiError("CONFLICT", "Period 2026-03 is already closed.", 409),
+      ),
+    ).toBe("Period 2026-03 is already closed.");
+  });
+
   it("unpacks 422 details into field-level text (Finance's version, now canonical)", () => {
-    const e = new ApiError("VALIDATION", "Invalid", 422, { amount: ["must be positive"], date: "required" });
+    const e = new ApiError("VALIDATION", "Invalid", 422, {
+      amount: ["must be positive"],
+      date: "required",
+    });
     expect(errMsg(e)).toBe("amount: must be positive; date: required");
   });
 
@@ -90,7 +99,9 @@ describe("useList", () => {
     render(<ListProbe path="/clients" />, { wrapper: wrapper() });
 
     expect(screen.getByTestId("loading")).toHaveTextContent("true");
-    await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("2"));
+    await waitFor(() =>
+      expect(screen.getByTestId("count")).toHaveTextContent("2"),
+    );
     expect(screen.getByTestId("loading")).toHaveTextContent("false");
   });
 
@@ -99,20 +110,28 @@ describe("useList", () => {
     render(<ListProbe path="/clients" />, { wrapper: wrapper() });
 
     await waitFor(() =>
-      expect(screen.getByTestId("error")).toHaveTextContent("You don't have permission to do this."),
+      expect(screen.getByTestId("error")).toHaveTextContent(
+        "You don't have permission to do this.",
+      ),
     );
   });
 
   it("does not fetch when the path is null (the shadow hook's `enabled` argument)", async () => {
     render(<ListProbe path={null} />, { wrapper: wrapper() });
-    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("true"));
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("true"),
+    );
     expect(tenantSpy).not.toHaveBeenCalled();
   });
 
   it("coerces a non-array body to [] rather than letting a table throw", async () => {
-    tenantSpy.mockResolvedValue({ unexpected: "shape" } as unknown as { id: string }[]);
+    tenantSpy.mockResolvedValue({ unexpected: "shape" } as unknown as {
+      id: string;
+    }[]);
     render(<ListProbe path="/clients" />, { wrapper: wrapper() });
-    await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("0"));
+    await waitFor(() =>
+      expect(screen.getByTestId("count")).toHaveTextContent("0"),
+    );
   });
 
   /**
@@ -130,7 +149,9 @@ describe("useList", () => {
         <ListProbe path="/clients" />
       </Wrapper>,
     );
-    await waitFor(() => expect(screen.getAllByTestId("count")[0]).toHaveTextContent("1"));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("count")[0]).toHaveTextContent("1"),
+    );
     expect(tenantSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -151,7 +172,9 @@ describe("useList", () => {
     // real backend (which returns different data per env) inside the spy.
     tenantSpy.mockImplementation(async () => {
       const env = tokenStore.getEnv();
-      return env === "sandbox" ? [{ id: "sandbox-1" }, { id: "sandbox-2" }] : [{ id: "live-1" }];
+      return env === "sandbox"
+        ? [{ id: "sandbox-1" }, { id: "sandbox-2" }]
+        : [{ id: "live-1" }];
     });
 
     const originalEnv = tokenStore.getEnv();
@@ -165,7 +188,9 @@ describe("useList", () => {
           <ListProbe path="/clients" />
         </Wrapper>,
       );
-      await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("1"));
+      await waitFor(() =>
+        expect(screen.getByTestId("count")).toHaveTextContent("1"),
+      );
 
       // The env-switch: header flips, and the shell would remount its content
       // under `key={env}` in real life. Simulate the remount by unmounting and
@@ -183,7 +208,9 @@ describe("useList", () => {
       // The sandbox count is 2. Before the fix this waitFor would time out
       // because the LIVE-keyed cache entry answered instantly with count=1
       // and TanStack considered it fresh (staleTime=30s).
-      await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("2"));
+      await waitFor(() =>
+        expect(screen.getByTestId("count")).toHaveTextContent("2"),
+      );
       expect(tenantSpy).toHaveBeenCalledTimes(2);
     } finally {
       tokenStore.setEnv(originalEnv);
@@ -193,7 +220,13 @@ describe("useList", () => {
 
 /* ───────────────────────────────  useResource  ───────────────────────────── */
 
-function ResourceProbe({ label, fetcher }: { label: string; fetcher: () => Promise<{ v: string }> }) {
+function ResourceProbe({
+  label,
+  fetcher,
+}: {
+  label: string;
+  fetcher: () => Promise<{ v: string }>;
+}) {
   const { data, error, loading } = useResource(fetcher, [label]);
   return (
     <div>
@@ -206,17 +239,30 @@ function ResourceProbe({ label, fetcher }: { label: string; fetcher: () => Promi
 
 describe("useResource", () => {
   it("returns data and a formatted error string", async () => {
-    render(<ResourceProbe label="a" fetcher={() => Promise.resolve({ v: "hello" })} />, { wrapper: wrapper() });
-    await waitFor(() => expect(screen.getByTestId("a-value")).toHaveTextContent("hello"));
+    render(
+      <ResourceProbe
+        label="a"
+        fetcher={() => Promise.resolve({ v: "hello" })}
+      />,
+      { wrapper: wrapper() },
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("a-value")).toHaveTextContent("hello"),
+    );
   });
 
   it("formats a rejection through errMsg exactly once", async () => {
     render(
-      <ResourceProbe label="b" fetcher={() => Promise.reject(new ApiError("FORBIDDEN", "nope", 403))} />,
+      <ResourceProbe
+        label="b"
+        fetcher={() => Promise.reject(new ApiError("FORBIDDEN", "nope", 403))}
+      />,
       { wrapper: wrapper() },
     );
     await waitFor(() =>
-      expect(screen.getByTestId("b-error")).toHaveTextContent("You don't have permission to do this."),
+      expect(screen.getByTestId("b-error")).toHaveTextContent(
+        "You don't have permission to do this.",
+      ),
     );
   });
 
@@ -230,18 +276,30 @@ describe("useResource", () => {
     const Wrapper = wrapper();
     render(
       <Wrapper>
-        <ResourceProbe label="same" fetcher={() => Promise.resolve({ v: "FIRST" })} />
-      </Wrapper>,
-    );
-    await waitFor(() => expect(screen.getByTestId("same-value")).toHaveTextContent("FIRST"));
-
-    render(
-      <Wrapper>
-        <ResourceProbe label="same" fetcher={() => Promise.resolve({ v: "SECOND-DIFFERENT-BODY" })} />
+        <ResourceProbe
+          label="same"
+          fetcher={() => Promise.resolve({ v: "FIRST" })}
+        />
       </Wrapper>,
     );
     await waitFor(() =>
-      expect(screen.getAllByTestId("same-value").some((n) => n.textContent === "SECOND-DIFFERENT-BODY")).toBe(true),
+      expect(screen.getByTestId("same-value")).toHaveTextContent("FIRST"),
+    );
+
+    render(
+      <Wrapper>
+        <ResourceProbe
+          label="same"
+          fetcher={() => Promise.resolve({ v: "SECOND-DIFFERENT-BODY" })}
+        />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByTestId("same-value")
+          .some((n) => n.textContent === "SECOND-DIFFERENT-BODY"),
+      ).toBe(true),
     );
   });
 });

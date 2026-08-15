@@ -51,24 +51,35 @@ export const toDraft = (options: FieldOption[]): DraftOption[] =>
 export function optionProblems(rows: FieldOption[]): string[] {
   const problems: string[] = [];
   if (!rows.length) {
-    problems.push("A dropdown needs at least one option — an empty one cannot be answered.");
+    problems.push(
+      "A dropdown needs at least one option — an empty one cannot be answered.",
+    );
   }
   if (rows.some((r) => !String(r.value || "").trim())) {
     problems.push("Every option needs a stored value.");
   }
-  if (rows.some((r) => !String(r.label_fr || "").trim() && !String(r.label_en || "").trim())) {
+  if (
+    rows.some(
+      (r) =>
+        !String(r.label_fr || "").trim() && !String(r.label_en || "").trim(),
+    )
+  ) {
     problems.push("Every option needs a label in at least one language.");
   }
   const seen = new Set<string>();
   const duplicates = new Set<string>();
   rows.forEach((r) => {
-    const v = String(r.value || "").trim().toUpperCase();
+    const v = String(r.value || "")
+      .trim()
+      .toUpperCase();
     if (!v) return;
     if (seen.has(v)) duplicates.add(v);
     seen.add(v);
   });
   if (duplicates.size) {
-    problems.push(`Two options cannot share a value — ${[...duplicates].join(", ")} appears twice.`);
+    problems.push(
+      `Two options cannot share a value — ${[...duplicates].join(", ")} appears twice.`,
+    );
   }
   return problems;
 }

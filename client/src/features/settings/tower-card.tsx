@@ -31,12 +31,18 @@ import {
 export function TowerCard() {
   const { access, prefs, setPrefs } = useShell();
   const families = React.useMemo(() => buildRibbon(access), [access]);
-  const candidates = React.useMemo(() => pinnableTowerAreas(families), [families]);
+  const candidates = React.useMemo(
+    () => pinnableTowerAreas(families),
+    [families],
+  );
   const pinned = React.useMemo(
     () => resolveTowerPins(prefs.towerPins, families),
     [prefs.towerPins, families],
   );
-  const pinnedKeys = React.useMemo(() => new Set(pinned.map((a) => a.key)), [pinned]);
+  const pinnedKeys = React.useMemo(
+    () => new Set(pinned.map((a) => a.key)),
+    [pinned],
+  );
 
   const full = pinned.length >= MAX_TOWER_PINS;
 
@@ -58,7 +64,8 @@ export function TowerCard() {
     >
       {candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nothing to pin yet — this list fills in with the areas your role can open.
+          Nothing to pin yet — this list fills in with the areas your role can
+          open.
         </p>
       ) : (
         <>
@@ -87,11 +94,16 @@ export function TowerCard() {
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted-foreground">
-              {pinned.length} of {MAX_TOWER_PINS} pinned{full ? " — unpin one to add another." : "."}
+              {pinned.length} of {MAX_TOWER_PINS} pinned
+              {full ? " — unpin one to add another." : "."}
             </p>
             {/* null, not [] — "never chosen", which restores the starter set
                 rather than clearing the grid. */}
-            <Button variant="ghost" size="sm" onClick={() => setPrefs({ towerPins: null })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPrefs({ towerPins: null })}
+            >
               Reset to defaults
             </Button>
           </div>

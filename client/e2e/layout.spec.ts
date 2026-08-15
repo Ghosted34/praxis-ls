@@ -595,3 +595,129 @@ test.describe("phone", () => {
     await expect(selectionBar).toContainText("60 accounts selected");
   });
 });
+
+/**
+ * THE TITLE BAR STRIP, AT THE SIX WIDTHS WHERE IT WAS WRONG.
+ *
+ * Two of its controls existed for a pointer and not for a thumb, and the gap
+ * between them was a range of widths rather than a device:
+ *
+ *   SEARCH was `lg:flex` in the strip and `md:hidden` in the bottom bar, so
+ *   768–1023px had NEITHER. ⌘K still worked, which is exactly why it survived
+ *   review — the keyboard hides the hole from the people who could see it.
+ *   That is why 768 and 1024 are in this list: they are the boundaries, not
+ *   round numbers.
+ *
+ *   THE ENVIRONMENT TOGGLE was `sm:inline-flex` while the sandbox banner that
+ *   offers "Switch to live" renders at every width, so a phone was a one-way
+ *   door out of TEST. 320 is here because that is where the strip is closest to
+ *   wrapping, and a wrapped title bar is a window whose caption buttons overlap
+ *   the app's own.
+ *
+ * MEASURED, NOT SCREENSHOTTED, for the reason this file's header gives. The
+ * numbers below are the ones this run produces today: at 320/360/414 the drag
+ * spacer is 18/58/112px against 86/126/180 before the change, the strip stays
+ * one 44px row at every width, and nothing scrolls sideways. The spacer floor
+ * is the assertion that costs something — add one more control to the strip and
+ * 320px is where it is felt first.
+ */
+test.describe("title bar strip", () => {
+  /** 320 iPhone SE · 360 the common Android · 414 large phone · 768/1024 the
+   *  two edges of the old search dead zone · 1440 desktop. */
+  const STRIP_WIDTHS = [320, 360, 414, 768, 1024, 1440] as const;
+
+  for (const width of STRIP_WIDTHS) {
+    test(`carries search and the environment control at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const { errors } = await openScreen(
+        page,
+        "/finance/chart-of-accounts",
+        /Chart of accounts/i,
+      );
+
+      const strip = page.locator(".wco");
+      const phone = width < 640; // Tailwind `sm`
+
+      // ONE search button, at every width — the icon-only case included. The
+      // accessible name is on `aria-label`, so it survives the label being
+      // hidden, and this query is the same one a screen reader would make.
+      await expect(strip.getByRole("button", { name: "Search" })).toBeVisible();
+
+      // The label and the ⌘K badge are the progressive half: from `lg` up the
+      // button is the pill it always was.
+      const label = strip.getByText("Search…");
+      if (width >= 1024) await expect(label).toBeVisible();
+      else await expect(label).toBeHidden();
+
+      // Exactly one of the two environment renderings, never both and never
+      // neither. `EnvChip` below `sm`, the segmented `EnvToggle` above it.
+      const chip = strip.getByRole("button", { name: /^Data environment:/ });
+      const segmented = strip.getByRole("group", { name: "Data environment" });
+      await expect(phone ? chip : segmented).toBeVisible();
+      await expect(phone ? segmented : chip).toBeHidden();
+
+      // Below `sm` the theme toggle has stood down; the same choice is in the
+      // account menu. This is the 36px the two controls above were paid for.
+      const themeToggle = strip.getByRole("button", { name: /^Theme:/ });
+      if (phone) await expect(themeToggle).toBeHidden();
+      else await expect(themeToggle).toBeVisible();
+
+      // ONE ROW. A strip that wraps is roughly double height, so this catches
+      // the failure without pinning the exact number (46px at `md` and up is
+      // the avatar button, and predates this).
+      const box = (await strip.boundingBox())!;
+      expect(box.height).toBeLessThanOrEqual(48);
+      expect(await hasHorizontalScroll(page)).toBe(false);
+
+      // THE DRAG HANDLE SURVIVES. It is the only region a user can grab to move
+      // an installed window, and it is whatever the controls leave — so it is
+      // the first thing a seventh control in this strip would consume.
+      const spacer = await page.evaluate(() => {
+        const el = Array.from(document.querySelector(".wco")!.children).find(
+          (c) => c.classList.contains("flex-1"),
+        );
+        return el ? Math.round(el.getBoundingClientRect().width) : -1;
+      });
+      expect(spacer).toBeGreaterThanOrEqual(16);
+
+      expect(errors).toEqual([]);
+    });
+  }
+
+  /**
+   * THE DEAD ZONE, ASSERTED FROM BOTH SIDES. At 768px the bottom bar is gone
+   * (`md:hidden`) — which is what made the strip's `lg:flex` search a hole
+   * rather than a duplication.
+   */
+  test("closes the 768–1023px gap where neither search control rendered", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    await expect(page.locator(".lux-botnav")).toBeHidden();
+    await expect(
+      page.locator(".wco").getByRole("button", { name: "Search" }),
+    ).toBeVisible();
+  });
+
+  /**
+   * And the other half of that trade: the bottom bar gave its Search cell back
+   * to the families. Six thumb targets on a 360px screen instead of seven.
+   */
+  test("gives the bottom bar's Search width back to the families", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 900 });
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const botnav = page.locator(".lux-botnav");
+    await expect(botnav).toBeVisible();
+    await expect(botnav.getByRole("button", { name: /search/i })).toHaveCount(
+      0,
+    );
+    await expect(botnav.getByRole("button")).toHaveCount(6);
+  });
+});

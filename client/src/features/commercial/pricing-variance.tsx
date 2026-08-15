@@ -23,7 +23,11 @@ import { Chips } from "@/components/ui/chips";
 import { SearchSelect } from "@/components/ui/search-select";
 
 const PV_AI: AiAction[] = [
-  { label: "Flag at-risk dossiers", kind: "assist", describe: "Summarise dossiers whose pricing variance is amber/red and why." },
+  {
+    label: "Flag at-risk dossiers",
+    kind: "assist",
+    describe: "Summarise dossiers whose pricing variance is amber/red and why.",
+  },
 ];
 
 const PV_FILTERS = [
@@ -33,7 +37,19 @@ const PV_FILTERS = [
   { value: "RED", label: "Red" },
 ];
 
-function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: { open: boolean; dossiers: Row[] | null; quotations: Row[] | null; onClose: () => void; onDone: () => void }) {
+function ComputeVarianceModal({
+  open,
+  dossiers,
+  quotations,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  dossiers: Row[] | null;
+  quotations: Row[] | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [dossierId, setDossierId] = React.useState("");
   const [quotationId, setQuotationId] = React.useState("");
   const [quotedPrice, setQuotedPrice] = React.useState("");
@@ -85,12 +101,23 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
     return d ? cell(d.reference ?? d.title ?? d.dossier_id) : null;
   })();
   const quotationLabel = (() => {
-    const q = (quotations || []).find((x) => String(x.quotation_id) === quotationId);
-    return q ? (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${money(q.total_ht, q.currency)}`) : null;
+    const q = (quotations || []).find(
+      (x) => String(x.quotation_id) === quotationId,
+    );
+    return q
+      ? q.doc_number
+        ? `№ ${cell(q.doc_number)}`
+        : `Draft · ${money(q.total_ht, q.currency)}`
+      : null;
   })();
 
   return (
-    <Modal open={open} onClose={onClose} title="Compute pricing variance" description="Quote vs actual cost → a R/Y/G flag. Actual cost stays finance-only.">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Compute pricing variance"
+      description="Quote vs actual cost → a R/Y/G flag. Actual cost stays finance-only."
+    >
       <div className="space-y-4">
         <Field label="Dossier" required>
           <SearchSelect
@@ -102,22 +129,44 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
             onSelect={(d) => setDossierId(String(d.dossier_id))}
           />
         </Field>
-        <Field label="Quotation" hint="Supplies the quoted price (or enter one below)">
+        <Field
+          label="Quotation"
+          hint="Supplies the quoted price (or enter one below)"
+        >
           <SearchSelect
             path="/quotations"
             value={quotationLabel}
             placeholder="Search quotations…"
-            getLabel={(q) => (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${money(q.total_ht, q.currency)}`)}
+            getLabel={(q) =>
+              q.doc_number
+                ? `№ ${cell(q.doc_number)}`
+                : `Draft · ${money(q.total_ht, q.currency)}`
+            }
             getKey={(q) => String(q.quotation_id)}
             onSelect={(q) => setQuotationId(String(q.quotation_id))}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Quoted price" hint="Override">
-            <Input type="number" min="0" className="num text-right" value={quotedPrice} onChange={(e) => setQuotedPrice(e.target.value)} />
+            <Input
+              type="number"
+              min="0"
+              className="num text-right"
+              value={quotedPrice}
+              onChange={(e) => setQuotedPrice(e.target.value)}
+            />
           </Field>
-          <Field label="Actual cost" hint="Finance-only; blank = from cost entries">
-            <Input type="number" min="0" className="num text-right" value={actualCost} onChange={(e) => setActualCost(e.target.value)} />
+          <Field
+            label="Actual cost"
+            hint="Finance-only; blank = from cost entries"
+          >
+            <Input
+              type="number"
+              min="0"
+              className="num text-right"
+              value={actualCost}
+              onChange={(e) => setActualCost(e.target.value)}
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}
@@ -142,8 +191,20 @@ export function PricingVariancePage() {
   const [filter, setFilter] = React.useState("");
   const [computeOpen, setComputeOpen] = React.useState(false);
 
-  const filtered = React.useMemo(() => (rows || []).filter((r) => !filter || String(r.flag) === filter), [rows, filter]);
-  const dossierRef = React.useMemo(() => new Map((dossiers || []).map((d) => [String(d.dossier_id), cell(d.reference ?? d.title ?? d.dossier_id)])), [dossiers]);
+  const filtered = React.useMemo(
+    () => (rows || []).filter((r) => !filter || String(r.flag) === filter),
+    [rows, filter],
+  );
+  const dossierRef = React.useMemo(
+    () =>
+      new Map(
+        (dossiers || []).map((d) => [
+          String(d.dossier_id),
+          cell(d.reference ?? d.title ?? d.dossier_id),
+        ]),
+      ),
+    [dossiers],
+  );
 
   return (
     <section className={pageShell.wide}>
@@ -151,12 +212,19 @@ export function PricingVariancePage() {
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Pricing variance"
         description="Quote vs actual cost as a red/yellow/green flag. Raw cost stays finance-only."
-        action={<Button onClick={() => setComputeOpen(true)}>Compute variance</Button>}
+        action={
+          <Button onClick={() => setComputeOpen(true)}>Compute variance</Button>
+        }
       />
       <HubTabs />
 
       <div className="mb-4">
-        <Chips label="Filter variances by flag" value={filter} options={PV_FILTERS} onChange={setFilter} />
+        <Chips
+          label="Filter variances by flag"
+          value={filter}
+          options={PV_FILTERS}
+          onChange={setFilter}
+        />
       </div>
 
       {error ? (
@@ -164,21 +232,42 @@ export function PricingVariancePage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : filtered.length === 0 ? (
-        <EmptyState title={rows.length ? "No rows match" : "No variance computed yet"} hint={rows.length ? "Try another flag." : "Compute variance for a dossier to see its R/Y/G flag."} />
+        <EmptyState
+          title={rows.length ? "No rows match" : "No variance computed yet"}
+          hint={
+            rows.length
+              ? "Try another flag."
+              : "Compute variance for a dossier to see its R/Y/G flag."
+          }
+        />
       ) : (
         <div className="space-y-2">
           {filtered.map((r) => (
-            <div key={String(r.pricing_variance_id)} className="lux-card flex items-center gap-3 p-3">
+            <div
+              key={String(r.pricing_variance_id)}
+              className="lux-card flex items-center gap-3 p-3"
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">{dossierRef.get(String(r.dossier_id)) ?? `Dossier ${String(r.dossier_id).slice(0, 8)}`}</p>
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {dossierRef.get(String(r.dossier_id)) ??
+                      `Dossier ${String(r.dossier_id).slice(0, 8)}`}
+                  </p>
                   <StatusPill status={String(r.flag || "—")} />
                 </div>
-                <p className="truncate text-xs text-muted-foreground">Computed {dateFmt(r.computed_at)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Computed {dateFmt(r.computed_at)}
+                </p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold text-foreground">{r.variance_percent != null ? `${cell(r.variance_percent)}%` : "—"}</p>
-                <p className="text-xs text-muted-foreground">quote {money(r.quoted_price)}</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {r.variance_percent != null
+                    ? `${cell(r.variance_percent)}%`
+                    : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  quote {money(r.quoted_price)}
+                </p>
               </div>
             </div>
           ))}
@@ -186,7 +275,13 @@ export function PricingVariancePage() {
       )}
 
       <AiActions actions={PV_AI} />
-      <ComputeVarianceModal open={computeOpen} dossiers={dossiers} quotations={quotations} onClose={() => setComputeOpen(false)} onDone={reload} />
+      <ComputeVarianceModal
+        open={computeOpen}
+        dossiers={dossiers}
+        quotations={quotations}
+        onClose={() => setComputeOpen(false)}
+        onDone={reload}
+      />
     </section>
   );
 }

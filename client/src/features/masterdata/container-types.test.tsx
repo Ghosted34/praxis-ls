@@ -21,15 +21,30 @@ const listDictRefs = vi.fn();
 const createDictRef = vi.fn();
 
 vi.mock("@/lib/masterdata-api", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/masterdata-api")>("@/lib/masterdata-api");
-  return { ...actual, listDictRefs: (...a: unknown[]) => listDictRefs(...a), createDictRef: (...a: unknown[]) => createDictRef(...a), updateDictRef: vi.fn() };
+  const actual = await vi.importActual<typeof import("@/lib/masterdata-api")>(
+    "@/lib/masterdata-api",
+  );
+  return {
+    ...actual,
+    listDictRefs: (...a: unknown[]) => listDictRefs(...a),
+    createDictRef: (...a: unknown[]) => createDictRef(...a),
+    updateDictRef: vi.fn(),
+  };
 });
 
 import { FinancialDictionarySettings } from "./financial-dictionary-settings";
 
 const view = () =>
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } } })}>
+    <QueryClientProvider
+      client={
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false, gcTime: 0, staleTime: 0 },
+          },
+        })
+      }
+    >
       <ToastProvider>
         <FinancialDictionarySettings open onClose={() => {}} />
       </ToastProvider>
@@ -38,7 +53,9 @@ const view = () =>
 
 /** Open the Container types tab and reveal the add form. */
 async function openAddForm(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "Container types" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Container types" }),
+  );
   await user.click(await screen.findByRole("button", { name: "+ Add new" }));
 }
 
@@ -46,7 +63,15 @@ beforeEach(() => {
   listDictRefs.mockReset();
   createDictRef.mockReset();
   listDictRefs.mockResolvedValue([
-    { ref_id: "ct1", kind: "CONTAINER_TYPE", code: "FT40HC", name_fr: "40' HC", name_en: "40' High Cube", is_system: true, extra: { teu: 2, size: "40HC", family: "DRY" } },
+    {
+      ref_id: "ct1",
+      kind: "CONTAINER_TYPE",
+      code: "FT40HC",
+      name_fr: "40' HC",
+      name_en: "40' High Cube",
+      is_system: true,
+      extra: { teu: 2, size: "40HC", family: "DRY" },
+    },
   ]);
   createDictRef.mockResolvedValue({ ref_id: "ct2" });
 });
@@ -54,7 +79,9 @@ beforeEach(() => {
 describe("Dictionary settings · Container types", () => {
   it("offers the tab at all — the kind used to be seed-only", async () => {
     view();
-    expect(await screen.findByRole("button", { name: "Container types" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Container types" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Load modes" })).toBeTruthy();
   });
 
@@ -108,7 +135,13 @@ describe("Dictionary settings · Container types", () => {
       // `marks_token` was left blank, so the derived value is stored rather than
       // nothing — a type with no token prints `01*` on a bill of lading.
       // "High cube" is a TYPE in legacy's vocabulary, hence 50'HC not 50HC'DC.
-      extra: { teu: 2.5, size: "50HC", family: "DRY", aliases: ["50hq", "50dc"], marks_token: "50'HC" },
+      extra: {
+        teu: 2.5,
+        size: "50HC",
+        family: "DRY",
+        aliases: ["50hq", "50dc"],
+        marks_token: "50'HC",
+      },
     });
   });
 
@@ -149,11 +182,25 @@ describe("Dictionary settings · Container types", () => {
   it("shows the equipment facts on the row, and names a type that has none", async () => {
     const user = userEvent.setup();
     listDictRefs.mockResolvedValue([
-      { ref_id: "ct1", kind: "CONTAINER_TYPE", code: "FT40HC", name_fr: "40' HC", extra: { teu: 2, size: "40HC", family: "DRY" } },
-      { ref_id: "ct2", kind: "CONTAINER_TYPE", code: "LEGACY", name_fr: "Ancien", extra: {} },
+      {
+        ref_id: "ct1",
+        kind: "CONTAINER_TYPE",
+        code: "FT40HC",
+        name_fr: "40' HC",
+        extra: { teu: 2, size: "40HC", family: "DRY" },
+      },
+      {
+        ref_id: "ct2",
+        kind: "CONTAINER_TYPE",
+        code: "LEGACY",
+        name_fr: "Ancien",
+        extra: {},
+      },
     ]);
     view();
-    await user.click(await screen.findByRole("button", { name: "Container types" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Container types" }),
+    );
 
     expect(await screen.findByText(/2 TEU · 40HC · DRY/)).toBeTruthy();
     // A row seeded before the fields were captured is called out rather than

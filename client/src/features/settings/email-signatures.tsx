@@ -36,7 +36,10 @@ export function EmailSignaturesPage() {
     setSaveError(null);
     setSaved(false);
     try {
-      await tenant("/settings/email_signature/template", { method: "PUT", body: { value: { html } } });
+      await tenant("/settings/email_signature/template", {
+        method: "PUT",
+        body: { value: { html } },
+      });
       setSaved(true);
       reload();
     } catch (e) {
@@ -48,7 +51,11 @@ export function EmailSignaturesPage() {
 
   return (
     <section className={pageShell.reading}>
-      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Email signatures" description="The tenant-wide brand signature template. Per-staff rendering is managed on each user's profile." />
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="Email signatures"
+        description="The tenant-wide brand signature template. Per-staff rendering is managed on each user's profile."
+      />
 
       {error ? (
         <ErrorState message={error} />
@@ -56,12 +63,22 @@ export function EmailSignaturesPage() {
         <SkeletonTable />
       ) : (
         <div className="lux-card space-y-4 p-4">
-          <Field label="Signature template (HTML)" hint="Use tokens like {{user.full_name}}, {{user.email}}, {{tenant.name}}">
-            <Textarea value={html} onChange={(e) => setHtml(e.target.value)} rows={10} placeholder="<p>{{user.full_name}}<br/>{{tenant.name}}</p>" />
+          <Field
+            label="Signature template (HTML)"
+            hint="Use tokens like {{user.full_name}}, {{user.email}}, {{tenant.name}}"
+          >
+            <Textarea
+              value={html}
+              onChange={(e) => setHtml(e.target.value)}
+              rows={10}
+              placeholder="<p>{{user.full_name}}<br/>{{tenant.name}}</p>"
+            />
           </Field>
           {saveError && <ErrorState message={saveError} />}
           <div className="flex items-center justify-end gap-3">
-            {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
+            {saved && (
+              <span className="text-sm text-muted-foreground">Saved.</span>
+            )}
             <Button onClick={save} loading={busy}>
               Save signature
             </Button>

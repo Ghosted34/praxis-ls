@@ -25,13 +25,37 @@ import { SearchSelect } from "@/components/ui/search-select";
 /* ═══════════════════════════════════ MEETINGS ═══════════════════════════════════ */
 
 const MEETINGS_AI: AiAction[] = [
-  { label: "Summarise minutes", kind: "assist", describe: "Summarise a meeting's notes/transcript into concise minutes and action items." },
-  { label: "Draft follow-up", kind: "write", describe: "Draft a follow-up email from the meeting minutes (human-confirmed before send)." },
+  {
+    label: "Summarise minutes",
+    kind: "assist",
+    describe:
+      "Summarise a meeting's notes/transcript into concise minutes and action items.",
+  },
+  {
+    label: "Draft follow-up",
+    kind: "write",
+    describe:
+      "Draft a follow-up email from the meeting minutes (human-confirmed before send).",
+  },
 ];
 
-function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean; leads: Row[] | null; clients: Row[] | null; onClose: () => void; onSaved: () => void }) {
+function MeetingForm({
+  open,
+  leads,
+  clients,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  leads: Row[] | null;
+  clients: Row[] | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [subject, setSubject] = React.useState("");
-  const [withKind, setWithKind] = React.useState<"none" | "lead" | "client">("none");
+  const [withKind, setWithKind] = React.useState<"none" | "lead" | "client">(
+    "none",
+  );
   const [withId, setWithId] = React.useState("");
   const [scheduledAt, setScheduledAt] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -51,7 +75,9 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
     setError(null);
     const body: Record<string, unknown> = {
       subject: subject.trim(),
-      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+      scheduled_at: scheduledAt
+        ? new Date(scheduledAt).toISOString()
+        : undefined,
       lead_id: withKind === "lead" && withId ? withId : undefined,
       client_id: withKind === "client" && withId ? withId : undefined,
     };
@@ -68,13 +94,27 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
 
   const selLead = (leads || []).find((l) => String(l.lead_id) === withId);
   const selClient = (clients || []).find((c) => String(c.client_id) === withId);
-  const withLabel = !withId ? null : withKind === "lead" ? String(selLead?.company_name ?? "") : String(selClient?.name ?? selClient?.legal_name ?? "");
+  const withLabel = !withId
+    ? null
+    : withKind === "lead"
+      ? String(selLead?.company_name ?? "")
+      : String(selClient?.name ?? selClient?.legal_name ?? "");
 
   return (
-    <Modal open={open} onClose={onClose} title="Schedule meeting" description="Log a meeting against a lead or client — the CRM activity trail." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Schedule meeting"
+      description="Log a meeting against a lead or client — the CRM activity trail."
+      size="lg"
+    >
       <div className="space-y-4">
         <Field label="Subject" required>
-          <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Kickoff call — freight contract" />
+          <Input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Kickoff call — freight contract"
+          />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="With">
@@ -95,15 +135,34 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
               <SearchSelect
                 path={withKind === "lead" ? "/leads" : "/clients"}
                 value={withLabel}
-                placeholder={withKind === "lead" ? "Search leads…" : "Search clients…"}
-                getLabel={(r) => (withKind === "lead" ? String(r.company_name ?? "") : String(r.name ?? r.legal_name ?? ""))}
-                getKey={(r) => String(withKind === "lead" ? r.lead_id : r.client_id)}
-                onSelect={(r) => setWithId(String(withKind === "lead" ? r.lead_id : r.client_id))}
+                placeholder={
+                  withKind === "lead" ? "Search leads…" : "Search clients…"
+                }
+                getLabel={(r) =>
+                  withKind === "lead"
+                    ? String(r.company_name ?? "")
+                    : String(r.name ?? r.legal_name ?? "")
+                }
+                getKey={(r) =>
+                  String(withKind === "lead" ? r.lead_id : r.client_id)
+                }
+                onSelect={(r) =>
+                  setWithId(
+                    String(withKind === "lead" ? r.lead_id : r.client_id),
+                  )
+                }
               />
             </Field>
           )}
-          <Field label="Scheduled at" className={withKind === "none" ? "sm:col-span-2" : undefined}>
-            <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+          <Field
+            label="Scheduled at"
+            className={withKind === "none" ? "sm:col-span-2" : undefined}
+          >
+            <Input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+            />
           </Field>
         </div>
         {error && <ErrorState message={error} />}
@@ -111,7 +170,11 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={busy} disabled={!subject.trim() || busy}>
+          <Button
+            onClick={submit}
+            loading={busy}
+            disabled={!subject.trim() || busy}
+          >
             Schedule meeting
           </Button>
         </div>
@@ -120,7 +183,15 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
   );
 }
 
-function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; onClose: () => void; onChanged: () => void }) {
+function MeetingDetail({
+  meeting,
+  onClose,
+  onChanged,
+}: {
+  meeting: Row | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const open = !!meeting;
   const [data, setData] = React.useState<Row | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -149,7 +220,10 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/meetings/${String(meeting.meeting_id)}/notes`, { method: "POST", body: { body: body.trim(), is_minutes: isMinutes } });
+      await tenant(`/meetings/${String(meeting.meeting_id)}/notes`, {
+        method: "POST",
+        body: { body: body.trim(), is_minutes: isMinutes },
+      });
       setBody("");
       setIsMinutes(false);
       setTick((t) => t + 1);
@@ -164,7 +238,13 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
   const notes = (data?.notes as Row[] | undefined) || [];
 
   return (
-    <Modal open={open} onClose={onClose} title={meeting ? cell(meeting.subject) : "Meeting"} description="Notes and minutes for this meeting." size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={meeting ? cell(meeting.subject) : "Meeting"}
+      description="Notes and minutes for this meeting."
+      size="lg"
+    >
       <div className="space-y-4">
         {error && <ErrorState message={error} />}
         {data === null && !error ? (
@@ -172,15 +252,31 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
         ) : (
           <div className="space-y-2">
             {notes.length === 0 ? (
-              <EmptyState title="No notes yet" hint="Add the first note or minutes below." />
+              <EmptyState
+                title="No notes yet"
+                hint="Add the first note or minutes below."
+              />
             ) : (
               notes.map((n) => (
-                <div key={String(n.meeting_note_id)} className="rounded-lg border bg-muted/30 p-3">
+                <div
+                  key={String(n.meeting_note_id)}
+                  className="rounded-lg border bg-muted/30 p-3"
+                >
                   <div className="mb-1 flex items-center gap-2">
-                    {n.is_minutes ? <StatusPill status="minutes" /> : <span className="text-xs text-muted-foreground">note</span>}
-                    <span className="text-xs text-muted-foreground">{dateFmt(n.created_at)}</span>
+                    {n.is_minutes ? (
+                      <StatusPill status="minutes" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        note
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {dateFmt(n.created_at)}
+                    </span>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm text-foreground">{cell(n.body)}</p>
+                  <p className="whitespace-pre-wrap text-sm text-foreground">
+                    {cell(n.body)}
+                  </p>
                 </div>
               ))
             )}
@@ -189,7 +285,8 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
 
         <div className="space-y-2 border-t pt-4">
           <Field label="Add note">
-            <Textarea value={body}
+            <Textarea
+              value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={3}
               className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
@@ -197,14 +294,22 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
             />
           </Field>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isMinutes} onChange={(e) => setIsMinutes(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={isMinutes}
+              onChange={(e) => setIsMinutes(e.target.checked)}
+            />
             Mark as minutes
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={busy}>
               Close
             </Button>
-            <Button onClick={addNote} loading={busy} disabled={!body.trim() || busy}>
+            <Button
+              onClick={addNote}
+              loading={busy}
+              disabled={!body.trim() || busy}
+            >
               Add note
             </Button>
           </div>
@@ -222,12 +327,28 @@ export function MeetingsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [detail, setDetail] = React.useState<Row | null>(null);
 
-  const leadName = React.useMemo(() => new Map((leads || []).map((l) => [String(l.lead_id), cell(l.company_name)])), [leads]);
-  const clientName = React.useMemo(() => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])), [clients]);
+  const leadName = React.useMemo(
+    () =>
+      new Map(
+        (leads || []).map((l) => [String(l.lead_id), cell(l.company_name)]),
+      ),
+    [leads],
+  );
+  const clientName = React.useMemo(
+    () =>
+      new Map(
+        (clients || []).map((c) => [
+          String(c.client_id),
+          cell(c.name ?? c.legal_name),
+        ]),
+      ),
+    [clients],
+  );
 
   function withLabel(r: Row): string {
     if (r.lead_id) return `Lead · ${leadName.get(String(r.lead_id)) ?? "—"}`;
-    if (r.client_id) return `Client · ${clientName.get(String(r.client_id)) ?? "—"}`;
+    if (r.client_id)
+      return `Client · ${clientName.get(String(r.client_id)) ?? "—"}`;
     return "—";
   }
 
@@ -237,7 +358,9 @@ export function MeetingsPage() {
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Meetings"
         description="Scheduling and minutes against a lead or client — the CRM activity log."
-        action={<Button onClick={() => setFormOpen(true)}>Schedule meeting</Button>}
+        action={
+          <Button onClick={() => setFormOpen(true)}>Schedule meeting</Button>
+        }
       />
       <HubTabs />
 
@@ -246,7 +369,10 @@ export function MeetingsPage() {
       ) : rows === null ? (
         <SkeletonTable />
       ) : rows.length === 0 ? (
-        <EmptyState title="No meetings yet" hint="Schedule the first meeting against a lead or client." />
+        <EmptyState
+          title="No meetings yet"
+          hint="Schedule the first meeting against a lead or client."
+        />
       ) : (
         <div className="space-y-2">
           {rows.map((r) => (
@@ -257,16 +383,34 @@ export function MeetingsPage() {
               className="lux-card flex w-full items-center gap-3 p-3 text-left transition-colors hover:border-primary/40"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-ink">
-                <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg
+                  viewBox="0 0 24 24"
+                  width={16}
+                  height={16}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.7}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
                   <rect x="3" y="4" width="18" height="18" rx="2" />
                   <path d="M16 2v4M8 2v4M3 10h18" />
                 </svg>
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{cell(r.subject)}</p>
-                <p className="truncate text-xs text-muted-foreground">{withLabel(r)}</p>
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {cell(r.subject)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {withLabel(r)}
+                </p>
               </div>
-              <span className="hidden text-xs text-muted-foreground sm:block">{r.scheduled_at ? new Date(String(r.scheduled_at)).toLocaleString() : "Unscheduled"}</span>
+              <span className="hidden text-xs text-muted-foreground sm:block">
+                {r.scheduled_at
+                  ? new Date(String(r.scheduled_at)).toLocaleString()
+                  : "Unscheduled"}
+              </span>
             </button>
           ))}
         </div>
@@ -274,8 +418,18 @@ export function MeetingsPage() {
 
       <AiActions actions={MEETINGS_AI} />
 
-      <MeetingForm open={formOpen} leads={leads} clients={clients} onClose={() => setFormOpen(false)} onSaved={reload} />
-      <MeetingDetail meeting={detail} onClose={() => setDetail(null)} onChanged={reload} />
+      <MeetingForm
+        open={formOpen}
+        leads={leads}
+        clients={clients}
+        onClose={() => setFormOpen(false)}
+        onSaved={reload}
+      />
+      <MeetingDetail
+        meeting={detail}
+        onClose={() => setDetail(null)}
+        onChanged={reload}
+      />
     </section>
   );
 }

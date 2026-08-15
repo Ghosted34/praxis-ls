@@ -62,7 +62,8 @@ const FleetIcon = (p: IP) => (
 );
 
 const ICON_TONE: Record<Tone, string> = {
-  orange: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary-ink",
+  orange:
+    "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary-ink",
   ok: "bg-[rgb(var(--ok-fill)_/_0.13)] text-[rgb(var(--ok))]",
   warn: "bg-[rgb(var(--warn-fill)_/_0.14)] text-[rgb(var(--warn))]",
   bad: "bg-[rgb(var(--bad-fill)_/_0.12)] text-[rgb(var(--bad))]",
@@ -136,12 +137,21 @@ export function kpiCards(k: ControlTowerKpis): Card[] {
   return cards;
 }
 
-export function KpiStrip({ kpis, onOpen }: { kpis: ControlTowerKpis; onOpen: (id: KpiId) => void }) {
+export function KpiStrip({
+  kpis,
+  onOpen,
+}: {
+  kpis: ControlTowerKpis;
+  onOpen: (id: KpiId) => void;
+}) {
   const cards = kpiCards(kpis);
   if (!cards.length) return null;
 
   return (
-    <section aria-label="Headline metrics" className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section
+      aria-label="Headline metrics"
+      className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+    >
       {cards.map((c) => (
         <button
           key={c.id}
@@ -157,17 +167,31 @@ export function KpiStrip({ kpis, onOpen }: { kpis: ControlTowerKpis; onOpen: (id
           )}
         >
           <span className="mb-3 flex items-center justify-between gap-2">
-            <span aria-hidden className={cn("grid h-9 w-9 place-items-center rounded-md", ICON_TONE[c.tone])}>
+            <span
+              aria-hidden
+              className={cn(
+                "grid h-9 w-9 place-items-center rounded-md",
+                ICON_TONE[c.tone],
+              )}
+            >
               <c.Icon />
             </span>
             <Pill tone={c.tone}>{c.badge}</Pill>
           </span>
-          <span className="text-micro uppercase text-muted-foreground">{c.label}</span>
+          <span className="text-micro uppercase text-muted-foreground">
+            {c.label}
+          </span>
           <span className="num font-display mt-1.5 text-[26px] font-semibold leading-none">
             {c.value}
-            {c.unit && <small className="ml-1.5 text-sm font-medium text-muted-foreground">{c.unit}</small>}
+            {c.unit && (
+              <small className="ml-1.5 text-sm font-medium text-muted-foreground">
+                {c.unit}
+              </small>
+            )}
           </span>
-          <span className="mt-1.5 text-label text-muted-foreground">{c.hint}</span>
+          <span className="mt-1.5 text-label text-muted-foreground">
+            {c.hint}
+          </span>
         </button>
       ))}
     </section>

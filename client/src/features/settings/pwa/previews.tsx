@@ -61,7 +61,10 @@ export function TitleBarPreview({
   return (
     <figure className="m-0 w-full">
       <div className="overflow-hidden rounded-lg border shadow-m">
-        <div className="relative flex items-center gap-2 px-2.5 py-2" style={{ background: bar.base }}>
+        <div
+          className="relative flex items-center gap-2 px-2.5 py-2"
+          style={{ background: bar.base }}
+        >
           {/* The artwork layer, rendered exactly as `.wco-art` does in the real
               shell: a separate low-opacity plane UNDER the content, so the text
               above it keeps full contrast no matter what image is chosen. */}
@@ -79,13 +82,20 @@ export function TitleBarPreview({
             />
           )}
           <AppIcon cfg={cfg} size={16} className="relative" />
-          <span className="relative min-w-0 flex-1 truncate text-[11px] font-medium" style={{ color: ink }}>
+          <span
+            className="relative min-w-0 flex-1 truncate text-[11px] font-medium"
+            style={{ color: ink }}
+          >
             {cfg.name}
           </span>
           {/* Minimise / maximise / close, as glyphs rather than an image so they
               take the computed ink colour — which is also the fastest way to see
               that a mid-tone bar leaves them hard to make out. */}
-          <span aria-hidden className="relative flex items-center gap-2 text-[10px] leading-none" style={{ color: ink }}>
+          <span
+            aria-hidden
+            className="relative flex items-center gap-2 text-[10px] leading-none"
+            style={{ color: ink }}
+          >
             <span>&#8211;</span>
             <span>&#9633;</span>
             <span>&#10005;</span>
@@ -93,7 +103,9 @@ export function TitleBarPreview({
         </div>
         <div className="h-11" style={{ background: app }} />
       </div>
-      <figcaption className="micro mt-2 text-center">{caption ?? "Desktop title bar"}</figcaption>
+      <figcaption className="micro mt-2 text-center">
+        {caption ?? "Desktop title bar"}
+      </figcaption>
     </figure>
   );
 }
@@ -126,29 +138,45 @@ export function PhoneFrame({
  * on purpose: a tenant who previews their icon against their own colour will
  * approve an icon that disappears on every real phone.
  */
-export function HomeScreenPreview({ cfg, mask }: { cfg: EffectivePwa; mask: MaskShape }) {
+export function HomeScreenPreview({
+  cfg,
+  mask,
+}: {
+  cfg: EffectivePwa;
+  mask: MaskShape;
+}) {
   const maskable = mask !== "rounded"; // iOS uses the plain icon; Android masks
   return (
-    <PhoneFrame caption={`Home screen · ${MASK_LABEL[mask].toLowerCase()} crop`}>
+    <PhoneFrame
+      caption={`Home screen · ${MASK_LABEL[mask].toLowerCase()} crop`}
+    >
       <div
         className="absolute inset-0 flex flex-col items-center justify-start gap-5 px-4 pt-10"
         style={{
           // A mid-tone wallpaper: light enough to expose a dark icon's edges,
           // dark enough to expose a white one's.
-          background: "linear-gradient(160deg, #6b7a90 0%, #2f3946 55%, #1b2028 100%)",
+          background:
+            "linear-gradient(160deg, #6b7a90 0%, #2f3946 55%, #1b2028 100%)",
         }}
       >
-        <div className="text-center text-[11px] font-medium text-white/90">9:41</div>
+        <div className="text-center text-[11px] font-medium text-white/90">
+          9:41
+        </div>
         <div className="flex flex-col items-center gap-1.5">
           <AppIcon cfg={cfg} maskable={maskable} mask={mask} size={58} />
-          <span className="max-w-[80px] truncate text-[10px] text-white drop-shadow">{cfg.shortName}</span>
+          <span className="max-w-[80px] truncate text-[10px] text-white drop-shadow">
+            {cfg.shortName}
+          </span>
         </div>
         {/* Two neighbours, so the tenant judges their icon in a row rather than
             in isolation — which is the only way anyone ever sees it. */}
         <div className="flex gap-4 opacity-60">
           {["#4b5563", "#374151"].map((c) => (
             <div key={c} className="flex flex-col items-center gap-1.5">
-              <div className="h-[46px] w-[46px] rounded-[14px]" style={{ background: c }} />
+              <div
+                className="h-[46px] w-[46px] rounded-[14px]"
+                style={{ background: c }}
+              />
               <span className="h-1.5 w-8 rounded-full bg-white/50" />
             </div>
           ))}
@@ -163,7 +191,13 @@ export function HomeScreenPreview({ cfg, mask }: { cfg: EffectivePwa; mask: Mask
  * the screen's core evidence: it is where a wordmark logo visibly fails, and
  * where the padding slider visibly fixes it.
  */
-export function MaskRow({ cfg, safeZone }: { cfg: EffectivePwa; safeZone: boolean }) {
+export function MaskRow({
+  cfg,
+  safeZone,
+}: {
+  cfg: EffectivePwa;
+  safeZone: boolean;
+}) {
   const shapes: MaskShape[] = ["circle", "squircle", "rounded"];
   return (
     // No wrapping: the three sit in one row because the comparison IS the
@@ -172,7 +206,13 @@ export function MaskRow({ cfg, safeZone }: { cfg: EffectivePwa; safeZone: boolea
     <div className="flex w-full items-start justify-between gap-2">
       {shapes.map((shape) => (
         <div key={shape} className="flex min-w-0 flex-col items-center gap-1.5">
-          <AppIcon cfg={cfg} maskable mask={shape} size={72} safeZone={safeZone} />
+          <AppIcon
+            cfg={cfg}
+            maskable
+            mask={shape}
+            size={72}
+            safeZone={safeZone}
+          />
           <span className="micro truncate">{MASK_LABEL[shape]}</span>
         </div>
       ))}
@@ -186,8 +226,9 @@ export function MaskRow({ cfg, safeZone }: { cfg: EffectivePwa; safeZone: boolea
 export function MaskLegend() {
   return (
     <p className="text-[11px] leading-snug text-muted-foreground">
-      Android launchers crop to their own shape — a circle on Pixel, a squircle on Samsung, a rounded square
-      elsewhere. iOS uses the plain icon and rounds it itself.
+      Android launchers crop to their own shape — a circle on Pixel, a squircle
+      on Samsung, a rounded square elsewhere. iOS uses the plain icon and rounds
+      it itself.
     </p>
   );
 }
@@ -212,17 +253,28 @@ export function TitleBarStatus() {
     // `geometrychange` fires when the overlay appears, disappears or resizes —
     // so this stays correct if the window is restored, snapped or moved between
     // displays rather than reporting whatever was true at mount.
-    const wco = (navigator as Navigator & { windowControlsOverlay?: { addEventListener: (t: "geometrychange", f: () => void) => void; removeEventListener: (t: "geometrychange", f: () => void) => void } }).windowControlsOverlay;
+    const wco = (
+      navigator as Navigator & {
+        windowControlsOverlay?: {
+          addEventListener: (t: "geometrychange", f: () => void) => void;
+          removeEventListener: (t: "geometrychange", f: () => void) => void;
+        };
+      }
+    ).windowControlsOverlay;
     const onChange = () => setState(readWcoState());
     wco?.addEventListener("geometrychange", onChange);
     return () => wco?.removeEventListener("geometrychange", onChange);
   }, []);
 
-  const REPORT: Record<WcoState, { tone: "ok" | "info" | "warn"; title: string; detail: string }> = {
+  const REPORT: Record<
+    WcoState,
+    { tone: "ok" | "info" | "warn"; title: string; detail: string }
+  > = {
     active: {
       tone: "ok",
       title: "Active in this window.",
-      detail: "The app is drawing its own title bar — what you see at the top of this window is the design below.",
+      detail:
+        "The app is drawing its own title bar — what you see at the top of this window is the design below.",
     },
     windowed: {
       tone: "info",

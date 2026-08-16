@@ -3,6 +3,7 @@
  * Routes mirror src/modules/hr/attendance.
  */
 import { tenant } from "./api-client";
+import { tokenStore } from "./token-store";
 
 export type WorkSite = {
   work_site_id: string;
@@ -459,6 +460,10 @@ export type AiBreakdown = {
   /** False when the CV could not be opened — the score stands, with a dimension
    *  missing, and the panel must say so rather than implying a full read. */
   cv_read?: boolean;
+  /** WHY it was not read, when it was not. `no_provider` is an administrator's
+   *  problem and says nothing about the candidate's file; `unreadable` is the
+   *  file itself. The panel says something different for each. */
+  cv_unread_reason?: "no_provider" | "unreadable";
 };
 export type VacancyCriterion = {
   vacancy_criterion_id: string;
@@ -655,6 +660,45 @@ export const scoreAllApplicants = (vacancyId: string) =>
     `/vacancies/${vacancyId}/score-all`,
     { method: "POST", body: {} },
   );
+
+/**
+ * Open the candidate's CV in a new tab.
+ *
+ * Served by the recruitment module, not the vault's own download: that one
+ * demands MOD-64 plus a per-document grant, so a recruiter working a pipeline
+ * would have needed rights over the whole document vault to read the file a
+ * candidate sent them. A plain `<a href>` cannot carry the bearer token, so the
+ * bytes are fetched and handed to the tab as a blob URL — the same shape
+ * `openVaultDoc` uses.
+ */
+export async function openApplicantCv(
+  vacancyId: string,
+  applicantId: string,
+): Promise<void> {
+  const token = tokenStore.getAccess();
+  const res = await fetch(
+    `/api/tenant/vacancies/${vacancyId}/applicants/${applicantId}/cv`,
+    {
+      headers: {
+        "X-Praxis-Env": tokenStore.getEnv(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404
+        ? "There is no CV on this application."
+        : res.status === 409
+          ? "The file is still being stored — try again in a moment."
+          : "Couldn't open the CV.",
+    );
+  }
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, "_blank", "noopener");
+  // Revoked late: the new tab has to finish loading from it first.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 export const listCriteria = (vacancyId: string) =>
   tenant<VacancyCriterion[]>(`/vacancies/${vacancyId}/criteria`);

@@ -456,6 +456,7 @@ function Pipeline({
     React.useState<api.Applicant | null>(null);
   const [copied, setCopied] = React.useState(false);
   const [rescored, setRescored] = React.useState<string | null>(null);
+  const [criteriaOpen, setCriteriaOpen] = React.useState(false);
 
   const paused = vacancy.status === "PAUSED";
   /**
@@ -680,6 +681,13 @@ function Pipeline({
           >
             Re-score all with AI
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCriteriaOpen(true)}
+          >
+            Scoring criteria
+          </Button>
           <Button size="sm" onClick={() => setAdding(true)}>
             Add applicant
           </Button>
@@ -785,7 +793,26 @@ function Pipeline({
         ))}
       </div>
 
-      <CriteriaEditor vacancyId={vacancy.vacancy_id} />
+      {/* Behind a click, not under the board. It is a setup step somebody
+          performs once per role and then reads never — sitting open under the
+          pipeline it was permanent furniture between a recruiter and the
+          candidates they came to look at. */}
+      {criteriaOpen && (
+        <Modal
+          open
+          size="lg"
+          onClose={() => setCriteriaOpen(false)}
+          title="Scoring criteria"
+          description="What the AI weighs beyond the job description, for every candidate on this role."
+          footer={
+            <Button variant="outline" onClick={() => setCriteriaOpen(false)}>
+              Done
+            </Button>
+          }
+        >
+          <CriteriaEditor vacancyId={vacancy.vacancy_id} />
+        </Modal>
+      )}
 
       {adding && (
         <AddApplicantForm

@@ -108,6 +108,10 @@ router.post("/:id/questions", requirePermission(M, "edit"), validator.question, 
 router.post("/:id/questions/generate", requirePermission(M, "edit"), controller.generateQuestions);
 router.delete("/:id/questions/:questionId", requirePermission(M, "edit"), controller.removeQuestion);
 
+// The CV itself. `view`, on THIS module: a recruiter reading the file a
+// candidate sent them should not need a grant over the document vault, which is
+// what the vault's own download demands.
+router.get("/:id/applicants/:applicantId/cv", requirePermission(M, "view"), controller.applicantCv);
 router.get("/:id/applicants/:applicantId/answers", requirePermission(M, "view"), controller.listAnswers);
 router.post("/:id/applicants/:applicantId/answers", requirePermission(M, "edit"), validator.answer, controller.rateAnswer);
 

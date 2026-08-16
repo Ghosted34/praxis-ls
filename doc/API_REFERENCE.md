@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1103 |
+| Routes | 1114 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1103 mounted routes, grouped by path prefix.
+All 1114 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -936,8 +936,19 @@ All 1103 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/leave/:id` | — |
 | GET | `/api/tenant/leave/:id` | — |
 | PATCH | `/api/tenant/leave/:id` | — |
+| POST | `/api/tenant/leave/:id/cancel` | — |
 | POST | `/api/tenant/leave/:id/decision` | — |
+| POST | `/api/tenant/leave/adjustments` | — |
+| GET | `/api/tenant/leave/balances/:employeeId` | — |
+| GET | `/api/tenant/leave/holidays` | — |
+| POST | `/api/tenant/leave/holidays` | — |
+| DELETE | `/api/tenant/leave/holidays/:id` | — |
+| GET | `/api/tenant/leave/ledger/:employeeId` | — |
 | GET | `/api/tenant/leave/mine` | — |
+| GET | `/api/tenant/leave/mine/balances` | — |
+| GET | `/api/tenant/leave/types` | — |
+| POST | `/api/tenant/leave/types` | — |
+| PATCH | `/api/tenant/leave/types/:id` | — |
 
 ### `tenant/locations`
 

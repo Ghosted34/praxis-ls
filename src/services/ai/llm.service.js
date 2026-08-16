@@ -65,9 +65,10 @@ function extractInlineToolCalls(content) {
   return { toolCalls: calls, text };
 }
 
-async function callVendor(vendor, { messages, tools, temperature }) {
+async function callVendor(vendor, { messages, tools, temperature, responseFormat }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
   const body = { model: vendor.model, messages, temperature };
+  if (responseFormat) body.response_format = responseFormat;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
   const { data } = await axios.post(`${base}/chat/completions`, body, {
     headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" },
@@ -177,6 +178,7 @@ async function* callVendorStream(vendor, { messages, tools, temperature }) {
           }
         }
       } catch {
+        /* @silent:parse — one malformed SSE frame is isolated; subsequent frames remain usable. */
         // Malformed SSE line — skip silently (common with some vendors).
       }
     }
@@ -217,12 +219,12 @@ function classifyVendorError(err) {
   return "transient";
 }
 
-async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY }) {
+async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, responseFormat }) {
   for (const name of [vendorName, FALLBACK]) {
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-      return await callVendor(vendor, { messages, tools, temperature });
+      return await callVendor(vendor, { messages, tools, temperature, responseFormat });
     } catch (err) {
       const kind = classifyVendorError(err);
       if (kind === "config") {

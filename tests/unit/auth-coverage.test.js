@@ -31,6 +31,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "hr/careers",
     "Public job adverts + applications. Callers have no accounts by definition.",
   ],
+  [
+    "sales/proposal_public",
+    "Expiring proposal links are intentionally readable by prospects without accounts; every route is limited and every refusal is a uniform 404.",
+  ],
 ]);
 
 /**

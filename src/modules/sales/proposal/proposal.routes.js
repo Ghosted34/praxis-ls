@@ -34,5 +34,8 @@ router.patch("/:id", requirePermission(MODULE, "edit"), validator.update,
 // Validator FIRST, so the target state is checked against the enum before it
 // selects its own gate.
 router.post("/:id/transition", validator.transition, requireTransitionPermission(MODULE, TRANSITION_ACTION), controller.transition);
+router.post("/:id/generate", requirePermission(MODULE, "edit"), validator.generate, controller.generate);
+router.post("/:id/share", requirePermission(MODULE, "edit"), validator.share, controller.share);
+router.post("/:id/share/revoke", requirePermission(MODULE, "edit"), controller.revokeShare);
 router.post("/:id/accept", requirePermission(MODULE, "approve"), validator.accept, controller.accept);
 module.exports = { basePath: "/proposals", feature: null, router };

@@ -65,6 +65,7 @@ const PortalApp = lazyNamed(
 );
 // Public careers. Lazy like everything else — it is the one route most visitors
 // to this origin will never load, and staff never load it at all.
+const PublicProposalPage = lazyNamed(() => import("@/features/sales/public-proposal"), "PublicProposalPage");
 const CareersPage = lazyNamed(
   () => import("@/features/careers/careers-page"),
   "CareersPage",
@@ -385,6 +386,7 @@ export function App() {
             Two routes rather than a splat, so `/careers/anything/else` falls to
             the catch-all rather than rendering a detail view for a token that
             has a slash in it. */}
+            <Route path="/proposal/:token" element={<PublicProposalPage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/careers/:token" element={<CareersPage />} />
 

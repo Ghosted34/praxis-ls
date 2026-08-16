@@ -23,6 +23,17 @@ async function list(client, q = {}) {
   const { rows } = await client.query("SELECT * FROM proposal " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
+
+async function byShareHash(client, hash) {
+  return (await client.query(`SELECT proposal_id, doc_number, client_id, title, status, language, currency,
+    service_category, incoterm, origin_location, destination_location, cargo_description,
+    estimated_weight, project_cargo_flag, customs_clearance_target, transit_time_target,
+    free_days_demurrage, payment_conditions, validity_days, pdf_vault_id,
+    share_expires_at, share_revoked_at, viewed_at, downloaded_at
+    FROM proposal WHERE share_token_hash=$1`, [hash])).rows[0] || null;
+}
+async function stampViewed(client,id){return (await client.query("UPDATE proposal SET viewed_at=COALESCE(viewed_at,now()) WHERE proposal_id=$1 RETURNING viewed_at",[id])).rows[0];}
+async function stampDownloaded(client,id){return (await client.query("UPDATE proposal SET downloaded_at=COALESCE(downloaded_at,now()) WHERE proposal_id=$1 RETURNING downloaded_at",[id])).rows[0];}
 /** Create a quotation from an accepted proposal's lines. */
 async function createQuotation(client, { proposal, entityId, totalHt, docNumber }) {
   const { rows } = await client.query(
@@ -32,4 +43,4 @@ async function createQuotation(client, { proposal, entityId, totalHt, docNumber 
   );
   return rows[0].quotation_id;
 }
-module.exports = { insert, get, insertLine, insertNarrative, update, deleteLines, deleteNarratives, listLines, listNarratives, list, createQuotation };
+module.exports = { byShareHash, stampViewed, stampDownloaded, insert, get, insertLine, insertNarrative, update, deleteLines, deleteNarratives, listLines, listNarratives, list, createQuotation };

@@ -22,10 +22,12 @@
  * and so are the vault, storage, numbering and event layers.
  */
 
-const RPATH = "../../src/modules/sales/partnership_request/partnership_request.repo";
+const mockRPATH = "../../src/modules/sales/partnership_request/partnership_request.repo";
 
-jest.mock(RPATH, () => {
-  const actual = jest.requireActual(RPATH);
+jest.mock("../../src/modules/sales/partnership_request/partnership_request.repo", () => {
+  const actual = jest.requireActual(
+    "../../src/modules/sales/partnership_request/partnership_request.repo",
+  );
   return {
     ...actual,
     get: jest.fn(),
@@ -63,7 +65,7 @@ jest.mock("../../src/shared/events/emit", () => ({
 }));
 
 const rules = require("../../src/modules/sales/partnership_request/partnership_request.rules");
-const repo = require(RPATH);
+const repo = require(mockRPATH);
 const supplierRepo = require("../../src/modules/master/supplier_master/supplier_master.repo");
 const partyWrite = require("../../src/modules/master/_shared/party-write.service");
 const service = require("../../src/modules/sales/partnership_request/partnership_request.service");
@@ -264,7 +266,7 @@ describe("a draft supplier buys nothing", () => {
 /* ─── the memberships, on the way in ──────────────────────────────────────── */
 
 describe("network memberships", () => {
-  const { normaliseMemberships } = jest.requireActual(RPATH);
+  const { normaliseMemberships } = jest.requireActual(mockRPATH);
 
   it("takes an array, a JSON string or the legacy's comma-separated text", () => {
     expect(normaliseMemberships(["WCA", "JCTrans"])).toEqual(["WCA", "JCTrans"]);

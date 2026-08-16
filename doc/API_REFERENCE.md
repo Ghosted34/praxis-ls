@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1103 |
-| Modules mounted | 113 |
+| Routes | 1114 |
+| Modules mounted | 117 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1103 mounted routes, grouped by path prefix.
+All 1114 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -591,13 +591,6 @@ All 1103 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/delivery-notes/` | — |
 | POST | `/api/tenant/delivery-notes/` | — |
 | GET | `/api/tenant/delivery-notes/:id` | — |
-| PATCH | `/api/tenant/delivery-notes/:id` | — |
-| POST | `/api/tenant/delivery-notes/:id/cancel` | — |
-| POST | `/api/tenant/delivery-notes/:id/deliver` | — |
-| POST | `/api/tenant/delivery-notes/:id/issue` | — |
-| POST | `/api/tenant/delivery-notes/:id/transition` | — |
-| GET | `/api/tenant/delivery-notes/available-containers` | — |
-| GET | `/api/tenant/delivery-notes/summary` | — |
 
 ### `tenant/dispatch`
 
@@ -943,8 +936,19 @@ All 1103 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/leave/:id` | — |
 | GET | `/api/tenant/leave/:id` | — |
 | PATCH | `/api/tenant/leave/:id` | — |
+| POST | `/api/tenant/leave/:id/cancel` | — |
 | POST | `/api/tenant/leave/:id/decision` | — |
+| POST | `/api/tenant/leave/adjustments` | — |
+| GET | `/api/tenant/leave/balances/:employeeId` | — |
+| GET | `/api/tenant/leave/holidays` | — |
+| POST | `/api/tenant/leave/holidays` | — |
+| DELETE | `/api/tenant/leave/holidays/:id` | — |
+| GET | `/api/tenant/leave/ledger/:employeeId` | — |
 | GET | `/api/tenant/leave/mine` | — |
+| GET | `/api/tenant/leave/mine/balances` | — |
+| GET | `/api/tenant/leave/types` | — |
+| POST | `/api/tenant/leave/types` | — |
+| PATCH | `/api/tenant/leave/types/:id` | — |
 
 ### `tenant/locations`
 
@@ -1253,7 +1257,25 @@ All 1103 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/proposals/:id` | — |
 | PATCH | `/api/tenant/proposals/:id` | — |
 | POST | `/api/tenant/proposals/:id/accept` | — |
+| POST | `/api/tenant/proposals/:id/generate` | — |
+| POST | `/api/tenant/proposals/:id/share` | — |
+| POST | `/api/tenant/proposals/:id/share/revoke` | — |
 | POST | `/api/tenant/proposals/:id/transition` | — |
+
+### `tenant/public`
+
+| Method | Path | Body validated |
+|---|---|---|
+| POST | `/api/tenant/public/intake/contact-enquiries` | — |
+| POST | `/api/tenant/public/intake/newsletter` | — |
+| POST | `/api/tenant/public/intake/partnerships` | — |
+| POST | `/api/tenant/public/intake/quote-requests` | — |
+| GET | `/api/tenant/public/portfolio/` | — |
+| GET | `/api/tenant/public/portfolio/:slug` | — |
+| GET | `/api/tenant/public/portfolio/media/:id` | — |
+| GET | `/api/tenant/public/proposals/:token` | — |
+| GET | `/api/tenant/public/proposals/:token/pdf` | — |
+| GET | `/api/tenant/public/tracking/:reference` | — |
 
 ### `tenant/purchase-orders`
 
@@ -1515,6 +1537,8 @@ All 1103 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/success-stories/:id/publish` | — |
 | POST | `/api/tenant/success-stories/:id/sign-off` | — |
 | POST | `/api/tenant/success-stories/:id/unpublish` | — |
+| GET | `/api/tenant/success-stories/eligible-dossiers` | — |
+| POST | `/api/tenant/success-stories/generate` | — |
 
 ### `tenant/succession`
 
@@ -1663,14 +1687,6 @@ All 1103 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/transit-orders/` | — |
 | GET | `/api/tenant/transit-orders/:id` | — |
 | PATCH | `/api/tenant/transit-orders/:id` | — |
-| POST | `/api/tenant/transit-orders/:id/cancel` | — |
-| PATCH | `/api/tenant/transit-orders/:id/documents` | — |
-| POST | `/api/tenant/transit-orders/:id/issue` | — |
-| POST | `/api/tenant/transit-orders/:id/lodge` | — |
-| POST | `/api/tenant/transit-orders/:id/sign` | — |
-| POST | `/api/tenant/transit-orders/:id/transition` | — |
-| GET | `/api/tenant/transit-orders/document-types` | — |
-| GET | `/api/tenant/transit-orders/summary` | — |
 
 ### `tenant/treasury-accounts`
 

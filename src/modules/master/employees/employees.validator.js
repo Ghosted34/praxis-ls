@@ -21,6 +21,10 @@ const base = {
   email: z.string().email().optional().or(z.literal("")),
   employment_type: z.union([z.enum(EMPLOYMENT_TYPES), z.string().max(40)]).optional(),
   cnps_number: z.string().max(40).optional(),
+  // Date service started (0696). Leave accrues per month of SERVICE, so the
+  // accrual job has no anchor without it; the migration backfills it from
+  // created_at and this is how a real start date replaces that proxy.
+  hired_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in the form YYYY-MM-DD").optional().nullable(),
   base_salary: z.number().nonnegative().optional(),
   risk_class_rate: z.number().min(0).max(1).optional(),
   bank_block: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),

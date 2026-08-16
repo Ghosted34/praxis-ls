@@ -1,11 +1,11 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 113,
-  "route_count": 1103,
+  "modules_mounted": 117,
+  "route_count": 1114,
   "tiers": {
-    "public": 22,
-    "self-scoped": 66,
+    "public": 32,
+    "self-scoped": 67,
     "gated": 1015
   },
   "routes": {
@@ -280,6 +280,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/leave/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/leave/holidays/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1353,18 +1359,6 @@
       "validated": false,
       "tier": "gated"
     },
-    "GET /api/tenant/delivery-notes/available-containers": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "GET /api/tenant/delivery-notes/summary": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
     "GET /api/tenant/dispatch/": {
       "auth": true,
       "rbac": true,
@@ -1893,11 +1887,41 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/leave/balances/:employeeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/leave/holidays": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/leave/ledger/:employeeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/leave/mine": {
       "auth": true,
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "GET /api/tenant/leave/mine/balances": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/leave/types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/locations/": {
       "auth": true,
@@ -2445,6 +2469,42 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/public/portfolio/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/portfolio/:slug": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/portfolio/media/:id": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/proposals/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/proposals/:token/pdf": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/tracking/:reference": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/purchase-orders/": {
       "auth": true,
       "rbac": true,
@@ -2883,6 +2943,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/success-stories/eligible-dossiers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/succession/": {
       "auth": true,
       "rbac": true,
@@ -3094,18 +3160,6 @@
       "tier": "gated"
     },
     "GET /api/tenant/transit-orders/:id": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "GET /api/tenant/transit-orders/document-types": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "GET /api/tenant/transit-orders/summary": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3507,12 +3561,6 @@
       "validated": false,
       "tier": "gated"
     },
-    "PATCH /api/tenant/delivery-notes/:id": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
     "PATCH /api/tenant/dispatch/:id": {
       "auth": true,
       "rbac": true,
@@ -3670,6 +3718,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/leave/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/leave/types/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3934,12 +3988,6 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/transit-orders/:id": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "PATCH /api/tenant/transit-orders/:id/documents": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4779,30 +4827,6 @@
       "validated": false,
       "tier": "gated"
     },
-    "POST /api/tenant/delivery-notes/:id/cancel": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/delivery-notes/:id/deliver": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/delivery-notes/:id/issue": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/delivery-notes/:id/transition": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
     "POST /api/tenant/dispatch/": {
       "auth": true,
       "rbac": true,
@@ -5223,7 +5247,31 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/leave/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/leave/:id/decision": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/adjustments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/holidays": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/types": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5643,11 +5691,53 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/proposals/:id/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/proposals/:id/share": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/proposals/:id/share/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/proposals/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "POST /api/tenant/public/intake/contact-enquiries": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/newsletter": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/partnerships": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/quote-requests": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/purchase-orders/": {
       "auth": true,
@@ -5985,6 +6075,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/success-stories/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/succession/": {
       "auth": true,
       "rbac": true,
@@ -6208,36 +6304,6 @@
       "tier": "gated"
     },
     "POST /api/tenant/transit-orders/": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/transit-orders/:id/cancel": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/transit-orders/:id/issue": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/transit-orders/:id/lodge": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/transit-orders/:id/sign": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/transit-orders/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -3,6 +3,8 @@ const service = require("./success_story.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
+  eligible: asyncHandler(async(req,res)=>res.json({data:await req.tenantDb(c=>service.eligible(c))})),
+  generate: asyncHandler(async(req,res)=>res.json({data:await req.tenantDb(c=>service.generate(c,{dossierIds:req.body.dossier_ids,roughNotes:req.body.rough_notes,actor:actor(req),env:req.env||"live"}))})),
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Success story not found", 404); res.json({ data: r }); }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),

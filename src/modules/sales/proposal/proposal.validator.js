@@ -23,9 +23,13 @@ const schemas = {
   create: z.object({ ...header, lines: z.array(line).optional(), narratives: z.array(narrative).optional() }),
   update: z.object({ ...header, title: z.string().min(1).max(500).optional(), lines: z.array(line).optional(), narratives: z.array(narrative).optional() }),
   transition: z.object({ to: z.enum(["IN_REVIEW", "SENT", "DRAFT", "REJECTED"]), entity_id: z.string().uuid().optional().nullable() }),
+  generate: z.object({ client_operations: z.string().max(10000).optional(), pain_points: z.string().max(10000).optional(), proposed_strategy: z.string().max(10000).optional(), tone: z.string().max(200).optional() }),
+  share: z.object({ expires_in_days: z.number().int().min(1).max(365).optional() }),
   accept: z.object({ create_quotation: z.boolean().optional(), entity_id: z.string().uuid().optional().nullable() }),
+  aiShare: z.object({ proposal_id: z.string().uuid(), expires_in_days: z.number().int().min(1).max(365).optional() }),
   aiTransition: z.object({ proposal_id: z.string().uuid(), to: z.enum(["IN_REVIEW", "SENT", "DRAFT", "REJECTED"]), entity_id: z.string().uuid().optional().nullable() }),
   aiAccept: z.object({ proposal_id: z.string().uuid(), create_quotation: z.boolean().optional(), entity_id: z.string().uuid().optional().nullable() }),
 };
+schemas.aiGenerate = schemas.generate.extend({ proposal_id: z.string().uuid() });
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), accept: mw("accept"), schemas };
+module.exports = { generate: mw("generate"), share: mw("share"), create: mw("create"), update: mw("update"), transition: mw("transition"), accept: mw("accept"), schemas };

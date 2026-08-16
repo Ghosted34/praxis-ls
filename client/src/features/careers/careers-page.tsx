@@ -36,6 +36,7 @@ import { useBranding } from "@/app/branding/branding-context";
 // A standalone renderer, not shell furniture — see the note above about what
 // this page may import.
 import { Markdown } from "@/components/markdown";
+import { withScheme } from "@/lib/format";
 import * as api from "@/lib/careers-api";
 
 const shell = "mx-auto w-full max-w-3xl px-4 py-10 sm:px-6";
@@ -238,7 +239,7 @@ function ApplyForm({
           expected_salary: f.expected_salary
             ? Number(f.expected_salary)
             : undefined,
-          portfolio_url: f.portfolio_url.trim() || undefined,
+          portfolio_url: withScheme(f.portfolio_url) || undefined,
           cover_note: f.cover_note.trim() || undefined,
           cv_data_url: cv?.dataUrl,
           cv_filename: cv?.name,
@@ -395,9 +396,14 @@ function ApplyForm({
           type="url"
           required={needsPortfolio}
           className={field}
-          placeholder="https://…"
+          placeholder="linkedin.com/in/you"
           value={f.portfolio_url}
           onChange={(e) => set("portfolio_url", e.target.value)}
+          // On blur, not on every keystroke: rewriting the value while somebody
+          // is still typing moves their cursor. By the time the form is
+          // submitted the field holds a URL the browser — and the server's
+          // `z.string().url()` — will accept.
+          onBlur={(e) => set("portfolio_url", withScheme(e.target.value))}
         />
       </div>
 

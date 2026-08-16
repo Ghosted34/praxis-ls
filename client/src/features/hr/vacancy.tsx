@@ -24,7 +24,7 @@ import {
 } from "@/components/department-select";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { tokenStore } from "@/lib/token-store";
-import { enumLabel } from "@/lib/format";
+import { enumLabel, withScheme } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { LoadingRow } from "@/components/ui/states";
 import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
@@ -156,7 +156,7 @@ function AddApplicantForm({
           .filter(Boolean),
         experience_years: num(f.experience_years),
         expected_salary: num(f.expected_salary),
-        portfolio_url: f.portfolio_url || undefined,
+        portfolio_url: withScheme(f.portfolio_url) || undefined,
         cover_note: f.cover_note || undefined,
         source: f.source || undefined,
       });
@@ -256,8 +256,13 @@ function AddApplicantForm({
           <Field label="Portfolio link">
             <Input
               type="url"
+              placeholder="linkedin.com/in/them"
               value={f.portfolio_url}
               onChange={(e) => set("portfolio_url", e.target.value)}
+              // Same repair as the public form: a pasted LinkedIn address has
+              // no scheme, and both `type="url"` and the server's validator
+              // refuse it without one.
+              onBlur={(e) => set("portfolio_url", withScheme(e.target.value))}
             />
           </Field>
         </div>

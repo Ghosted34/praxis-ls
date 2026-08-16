@@ -168,6 +168,26 @@ describe("applying", () => {
     expect(screen.getByRole("button", { name: /Send application/i })).toBeEnabled();
   });
 
+  it("accepts the LinkedIn address people actually type", async () => {
+    const user = userEvent.setup();
+    view();
+    await fillIdentity(user);
+    const port = screen.getByLabelText(/Portfolio/);
+    await user.type(port, "www.linkedin.com/in/elisha-godwin-a408543b2");
+    // Blur is what repairs it, so `type="url"` has something valid to validate
+    // when the form is submitted — otherwise the browser blocks with a native
+    // "Please enter a URL" and the application is never sent.
+    await user.tab();
+    expect(port).toHaveValue(
+      "https://www.linkedin.com/in/elisha-godwin-a408543b2",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Send application/i }));
+    expect(apply.mock.calls[0][1].portfolio_url).toBe(
+      "https://www.linkedin.com/in/elisha-godwin-a408543b2",
+    );
+  });
+
   it("shows a rejected file's real reason rather than sending it", async () => {
     const user = userEvent.setup();
     view();

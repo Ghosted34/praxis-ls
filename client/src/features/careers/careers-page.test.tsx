@@ -15,15 +15,21 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 const getVacancy = vi.fn();
+const apply = vi.fn();
 vi.mock("@/lib/careers-api", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/careers-api")>(
       "@/lib/careers-api",
     );
-  return { ...actual, getVacancy: (...a: unknown[]) => getVacancy(...a) };
+  return {
+    ...actual,
+    getVacancy: (...a: unknown[]) => getVacancy(...a),
+    apply: (...a: unknown[]) => apply(...a),
+  };
 });
 vi.mock("@/app/branding/branding-context", () => ({
   useBranding: () => ({ branding: { name: "Smart Logistics", logoUrl: null } }),
@@ -50,7 +56,16 @@ function view(role: Record<string, unknown> = ROLE) {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  apply.mockResolvedValue({ received: true, reference: "A1B2C3", cv_attached: true });
+});
+
+/** Fill the two fields the form insists on, whatever the role asks for. */
+async function fillIdentity(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText("Full name"), "Ada Mballa");
+  await user.type(screen.getByLabelText("Email"), "ada@example.com");
+}
 
 describe("the public careers page", () => {
   it("renders the advert as markdown, not as its own source", async () => {
@@ -84,5 +99,84 @@ describe("the public careers page", () => {
     view({ ...ROLE, environment: "live" });
     await screen.findByRole("heading", { name: "Responsibilities" });
     expect(screen.queryByText(/test posting/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("applying", () => {
+  it("sends what was typed, splits the skills, and confirms with a reference", async () => {
+    const user = userEvent.setup();
+    view();
+    await fillIdentity(user);
+    await user.type(screen.getByLabelText(/Skills/), "Bookkeeping, Excel , ");
+    await user.click(screen.getByRole("button", { name: /Send application/i }));
+
+    expect(apply).toHaveBeenCalledWith(
+      "tok",
+      expect.objectContaining({
+        full_name: "Ada Mballa",
+        email: "ada@example.com",
+        // Split here because the scorer matches these against the role's
+        // required skills; blanks would be scored as a skill nobody can meet.
+        skills: ["Bookkeeping", "Excel"],
+      }),
+    );
+    // The one thing an applicant wants to know, answered plainly.
+    expect(await screen.findByText(/Application received/)).toBeInTheDocument();
+    expect(screen.getByText("A1B2C3")).toBeInTheDocument();
+    expect(screen.getByText(/Your CV was attached/)).toBeInTheDocument();
+  });
+
+  it("attaches a CV as a data URL, with its filename", async () => {
+    const user = userEvent.setup();
+    view();
+    await fillIdentity(user);
+    const file = new File(["%PDF-1.4 hello"], "ada-cv.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText("CV"), file);
+    await user.click(screen.getByRole("button", { name: /Send application/i }));
+
+    const body = apply.mock.calls[0][1];
+    expect(body.cv_filename).toBe("ada-cv.pdf");
+    expect(String(body.cv_data_url)).toMatch(/^data:application\/pdf;base64,/);
+  });
+
+  it("says so when the application went but the CV did not", async () => {
+    const user = userEvent.setup();
+    apply.mockResolvedValue({ received: true, reference: "Z9", cv_attached: false });
+    view();
+    await fillIdentity(user);
+    await user.click(screen.getByRole("button", { name: /Send application/i }));
+
+    // The server keeps the application when storage fails, so this is a real
+    // state — and a candidate who thinks we have their CV when we do not is
+    // a candidate lost.
+    expect(await screen.findByText(/could not attach your CV/i)).toBeInTheDocument();
+  });
+
+  it("marks what this role insists on, before anything is written", async () => {
+    const user = userEvent.setup();
+    view({ ...ROLE, apply_config: { require_cover_letter: true } });
+    await fillIdentity(user);
+
+    expect(
+      screen.getByLabelText("Your covering note (required)"),
+    ).toBeInTheDocument();
+    // Refused here rather than after the candidate has written everything and
+    // pressed send, which is what the server alone would have done.
+    expect(screen.getByRole("button", { name: /Send application/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Your covering note (required)"), "I would like to apply.");
+    expect(screen.getByRole("button", { name: /Send application/i })).toBeEnabled();
+  });
+
+  it("shows a rejected file's real reason rather than sending it", async () => {
+    const user = userEvent.setup();
+    view();
+    await fillIdentity(user);
+    // 9 MB — over the 8 MB cap, refused in the browser before it is read.
+    const big = new File([new Uint8Array(9 * 1024 * 1024)], "huge.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText("CV"), big);
+
+    expect(await screen.findByText(/the limit is 8 MB/)).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
   });
 });

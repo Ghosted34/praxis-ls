@@ -175,7 +175,18 @@ const EMPTY: FormState = {
 const field = "w-full rounded-lg border bg-background px-3 py-2 text-sm";
 const label = "block text-sm font-medium text-foreground";
 
-function ApplyForm({ token }: { token: string }) {
+function ApplyForm({
+  token,
+  role,
+}: {
+  token: string;
+  role: api.PublicVacancy;
+}) {
+  // What this role insists on. The server refuses an application without them
+  // with a named field error; marking them here is what stops somebody writing
+  // a covering note's worth of answers and only then being told.
+  const needsNote = Boolean(role.apply_config?.require_cover_letter);
+  const needsPortfolio = Boolean(role.apply_config?.require_portfolio);
   const [f, setF] = React.useState(EMPTY);
   const set = (k: keyof FormState, v: string) =>
     setF((s) => ({ ...s, [k]: v }));
@@ -268,7 +279,11 @@ function ApplyForm({ token }: { token: string }) {
   }
 
   const canSubmit =
-    f.full_name.trim().length > 1 && /.+@.+\..+/.test(f.email) && !busy;
+    f.full_name.trim().length > 1 &&
+    /.+@.+\..+/.test(f.email) &&
+    (!needsNote || f.cover_note.trim().length > 0) &&
+    (!needsPortfolio || f.portfolio_url.trim().length > 0) &&
+    !busy;
 
   return (
     <form className="space-y-4" onSubmit={submit}>
@@ -373,11 +388,12 @@ function ApplyForm({ token }: { token: string }) {
 
       <div>
         <label className={label} htmlFor="c-port">
-          Portfolio or LinkedIn
+          Portfolio or LinkedIn{needsPortfolio ? " (required)" : ""}
         </label>
         <input
           id="c-port"
           type="url"
+          required={needsPortfolio}
           className={field}
           placeholder="https://…"
           value={f.portfolio_url}
@@ -403,11 +419,14 @@ function ApplyForm({ token }: { token: string }) {
 
       <div>
         <label className={label} htmlFor="c-note">
-          Anything else you would like us to know
+          {needsNote
+            ? "Your covering note (required)"
+            : "Anything else you would like us to know"}
         </label>
         <textarea
           id="c-note"
           rows={5}
+          required={needsNote}
           maxLength={5000}
           className={field}
           value={f.cover_note}
@@ -528,7 +547,7 @@ function VacancyDetail({ token }: { token: string }) {
         </div>
       )}
 
-      <ApplyForm token={token} />
+      <ApplyForm token={token} role={v} />
     </article>
   );
 }

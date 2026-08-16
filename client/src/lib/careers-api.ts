@@ -33,6 +33,13 @@ export type PublicVacancy = {
   salary_currency?: string | null;
   closes_on?: string | null;
   published_at?: string | null;
+  /** What this role insists on. The server enforces it (careers.service.apply)
+   *  and returns named field errors; this is so the form can SAY SO first,
+   *  rather than letting somebody write five paragraphs and then be refused. */
+  apply_config?: {
+    require_cover_letter?: boolean;
+    require_portfolio?: boolean;
+  };
   /**
    * Which environment this role lives in — `sandbox` for a rehearsal posting.
    *

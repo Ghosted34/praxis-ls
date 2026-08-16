@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 113,
-  "route_count": 1088,
+  "modules_mounted": 115,
+  "route_count": 1098,
   "tiers": {
-    "public": 22,
+    "public": 27,
     "self-scoped": 66,
-    "gated": 1000
+    "gated": 1005
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2433,6 +2433,36 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/public/portfolio/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/portfolio/:slug": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/portfolio/media/:id": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/proposals/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/proposals/:token/pdf": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/purchase-orders/": {
       "auth": true,
       "rbac": true,
@@ -2866,6 +2896,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/success-stories/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/success-stories/eligible-dossiers": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5583,6 +5619,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/proposals/:id/generate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/proposals/:id/share": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/proposals/:id/share/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/proposals/:id/transition": {
       "auth": true,
       "rbac": true,
@@ -5920,6 +5974,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/success-stories/:id/unpublish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/success-stories/generate": {
       "auth": true,
       "rbac": true,
       "validated": false,

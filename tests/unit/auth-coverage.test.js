@@ -35,6 +35,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "sales/proposal_public",
     "Expiring proposal links are intentionally readable by prospects without accounts; every route is limited and every refusal is a uniform 404.",
   ],
+  [
+    "sales/portfolio_public",
+    "Published marketing stories are intentionally public; responses are allow-listed, consent-aware and every route is limited.",
+  ],
 ]);
 
 /**

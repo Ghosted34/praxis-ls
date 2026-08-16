@@ -95,9 +95,16 @@ ALTER TABLE contact_enquiry ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT 
 
 -- ─── 2. The status column becomes the correspondence lifecycle ──────────────
 --
--- Order matters: the rows must be moved off TRIAGED BEFORE the new CHECK is
--- added, or the constraint is rejected on any database that has taken traffic.
---
+-- Order matters twice: the OLD 0350 CHECK only permits NEW / TRIAGED /
+-- CLOSED, so it must be removed before TRIAGED can be rewritten as READ. The
+-- replacement CHECK must be added only after every old row has moved. Doing the
+-- UPDATE first works on an empty database and fails exactly on a tenant that has
+-- real TRIAGED rows — the production failure this ordering prevents.
+DO $$ BEGIN
+  ALTER TABLE contact_enquiry DROP CONSTRAINT IF EXISTS contact_enquiry_status_check;
+  ALTER TABLE contact_enquiry DROP CONSTRAINT IF EXISTS ck_contact_enquiry_status;
+END $$;
+
 -- TRIAGED -> READ, not CLOSED. A triaged enquiry has been opened and acted on
 -- internally; nobody has necessarily written back to the person. READ is the
 -- honest state, and it puts the row in front of an operator instead of filing
@@ -105,11 +112,6 @@ ALTER TABLE contact_enquiry ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT 
 UPDATE contact_enquiry SET status = 'READ' WHERE status = 'TRIAGED';
 
 DO $$ BEGIN
-  -- The 0350 constraint was declared inline, so it carries Postgres's generated
-  -- name. Drop both that and our own name, so this file is rerunnable and also
-  -- correct on a database provisioned before the rename.
-  ALTER TABLE contact_enquiry DROP CONSTRAINT IF EXISTS contact_enquiry_status_check;
-  ALTER TABLE contact_enquiry DROP CONSTRAINT IF EXISTS ck_contact_enquiry_status;
   ALTER TABLE contact_enquiry
     ADD CONSTRAINT ck_contact_enquiry_status
     CHECK (status IN ('NEW','READ','RESPONDED','CLOSED'));

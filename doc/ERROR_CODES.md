@@ -122,7 +122,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
-| `DUPLICATE` | 409 | 1× | — |
+| `DUPLICATE` | 409 | 2× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
 | `DUPLICATE_KEY` | 422 | 2× | — |
@@ -289,6 +289,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PREFIX_IN_USE` | 422 | 1× | — |
 | `PREFIX_TAKEN` | 422 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
+| `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |

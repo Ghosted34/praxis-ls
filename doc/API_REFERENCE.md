@@ -290,11 +290,15 @@ All 1129 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/attendance/absence` | — |
 | POST | `/api/tenant/attendance/clock-in` | — |
 | POST | `/api/tenant/attendance/clock-out` | — |
+| GET | `/api/tenant/attendance/days` | — |
+| POST | `/api/tenant/attendance/days/:dayId/justify` | — |
+| GET | `/api/tenant/attendance/days/mine` | — |
 | GET | `/api/tenant/attendance/devices` | — |
 | POST | `/api/tenant/attendance/devices` | — |
 | PATCH | `/api/tenant/attendance/devices/:deviceId` | — |
 | GET | `/api/tenant/attendance/open` | — |
 | GET | `/api/tenant/attendance/place-search` | — |
+| POST | `/api/tenant/attendance/reconcile` | — |
 | GET | `/api/tenant/attendance/work-sites` | — |
 | POST | `/api/tenant/attendance/work-sites` | — |
 | PATCH | `/api/tenant/attendance/work-sites/:siteId` | — |
@@ -1519,6 +1523,11 @@ All 1129 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/sops/:id` | — |
 | GET | `/api/tenant/sops/:id` | — |
 | PATCH | `/api/tenant/sops/:id` | — |
+| GET | `/api/tenant/sops/rules` | — |
+| POST | `/api/tenant/sops/rules` | — |
+| DELETE | `/api/tenant/sops/rules/:id` | — |
+| GET | `/api/tenant/sops/rules/:id` | — |
+| PATCH | `/api/tenant/sops/rules/:id` | — |
 
 ### `tenant/statements`
 

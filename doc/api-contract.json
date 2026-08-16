@@ -429,6 +429,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/sops/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/succession/:id": {
       "auth": true,
       "rbac": true,
@@ -920,6 +926,18 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/attendance/days": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/attendance/days/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/attendance/devices": {
       "auth": true,
@@ -2901,6 +2919,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/sops/rules": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/sops/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/statements/balance-sheet": {
       "auth": true,
       "rbac": true,
@@ -3933,6 +3963,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/sops/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/success-stories/:id": {
       "auth": true,
       "rbac": true,
@@ -4413,7 +4449,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/attendance/days/:dayId/justify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/attendance/devices": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/attendance/reconcile": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6100,6 +6148,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/sops/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/sops/rules": {
       "auth": true,
       "rbac": true,
       "validated": false,

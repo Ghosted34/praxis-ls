@@ -29,10 +29,15 @@ vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 const updateVacancy = vi.fn();
+const vacancyPlaceSearch = vi.fn();
 vi.mock("@/lib/hr-api", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/hr-api")>("@/lib/hr-api");
-  return { ...actual, updateVacancy: (...a: unknown[]) => updateVacancy(...a) };
+  return {
+    ...actual,
+    updateVacancy: (...a: unknown[]) => updateVacancy(...a),
+    vacancyPlaceSearch: (...a: unknown[]) => vacancyPlaceSearch(...a),
+  };
 });
 
 import { VacancyEditor } from "./vacancy-editor";
@@ -70,6 +75,21 @@ function view(vacancy = DRAFT) {
 beforeEach(() => {
   vi.clearAllMocks();
   updateVacancy.mockResolvedValue({ ...DRAFT, title: "Lead Stylist" });
+  vacancyPlaceSearch.mockResolvedValue({
+    status: "OK",
+    query: "douala",
+    results: [
+      {
+        provider_place_id: "p1",
+        name: "Douala",
+        formatted: "Douala, Littoral, Cameroon",
+        region: "Littoral",
+        country: "CM",
+        latitude: 4.05,
+        longitude: 9.7,
+      },
+    ],
+  });
 });
 
 describe("the vacancy editor", () => {
@@ -185,6 +205,32 @@ describe("the vacancy editor", () => {
     // filters on and what the hire inherits.
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(updateVacancy.mock.calls[0][1].scope_id).toBe("scope-7");
+  });
+
+  it("fills city, region and country from the place search", async () => {
+    const user = userEvent.setup();
+    view();
+    await user.type(screen.getByLabelText("Find a city"), "douala");
+    await user.click(await screen.findByText("Douala, Littoral, Cameroon"));
+
+    // The country arrives as an ISO code; an advert wants the word, which the
+    // formatted line ends with.
+    expect(screen.getByLabelText("City")).toHaveValue("Douala");
+    expect(screen.getByLabelText("State / region")).toHaveValue("Littoral");
+    expect(screen.getByLabelText("Country")).toHaveValue("Cameroon");
+  });
+
+  it("says WHY a search found nothing, and leaves the fields typeable", async () => {
+    const user = userEvent.setup();
+    vacancyPlaceSearch.mockResolvedValue({ status: "NO_KEY", results: [], query: "d" });
+    view();
+    await user.type(screen.getByLabelText("Find a city"), "douala");
+
+    // A bare "no results" would turn an unconfigured provider into a recruiter
+    // believing their own city does not exist.
+    expect(await screen.findByText(/isn't configured/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("City"), "Douala");
+    expect(screen.getByLabelText("City")).toHaveValue("Douala");
   });
 
   it("has no accessibility violations", async () => {

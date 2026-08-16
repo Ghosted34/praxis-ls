@@ -3147,6 +3147,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/vacancies/place-search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/vacancies/talent-pool": {
       "auth": true,
       "rbac": true,

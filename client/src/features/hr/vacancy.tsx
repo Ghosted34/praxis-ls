@@ -23,6 +23,7 @@ import {
   type DepartmentValue,
 } from "@/components/department-select";
 import { useResource, errMsg } from "@/lib/use-resource";
+import { tokenStore } from "@/lib/token-store";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { LoadingRow } from "@/components/ui/states";
@@ -452,6 +453,18 @@ function Pipeline({
   const [rescored, setRescored] = React.useState<string | null>(null);
 
   const paused = vacancy.status === "PAUSED";
+  /**
+   * A careers link minted in Test is not on the internet.
+   *
+   * The public page is unauthenticated, so a candidate's browser sends no
+   * `X-Praxis-Env` header — and the server reads that absence as LIVE. A role
+   * published from a Test session therefore lives in the sandbox schema, and its
+   * link answers "This role is no longer accepting applications" to everyone,
+   * including whoever just published it. The action still works — rehearsing a
+   * posting in Test is what Test is for — but nothing said the link was not
+   * public, which is a discovery best not made through a candidate.
+   */
+  const inSandbox = tokenStore.getEnv() === "sandbox";
   const publicUrl = vacancy.public_token
     ? // Same origin: the tenant is resolved from the HOST, so the careers page for
       // this workspace is on this workspace's own domain. Building it from
@@ -642,7 +655,11 @@ function Pipeline({
               loading={busy === "publish"}
               onClick={togglePublish}
             >
-              {vacancy.public_token ? "Unpublish" : "Publish to careers"}
+              {vacancy.public_token
+                ? "Unpublish"
+                : inSandbox
+                  ? "Publish to careers (Test)"
+                  : "Publish to careers"}
             </Button>
           )}
           {/* After the criteria or the advert change, the scores on this board
@@ -669,8 +686,8 @@ function Pipeline({
           {/* A paused role keeps its token but its page 404s, so the banner must
               not keep saying "Live" — that is how somebody carries on sharing a
               link that turns candidates away. */}
-          <Pill tone={paused ? "warn" : "ok"}>
-            {paused ? "Paused" : "Live"}
+          <Pill tone={paused || inSandbox ? "warn" : "ok"}>
+            {inSandbox ? "Test only" : paused ? "Paused" : "Live"}
           </Pill>
           <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {publicUrl}
@@ -685,6 +702,14 @@ function Pipeline({
           Not accepting applications. The link above is kept — reopening the
           role makes it work again, unchanged.
         </p>
+      )}
+      {inSandbox && publicUrl && (
+        <Callout tone="warn" title="This link isn't public">
+          You&rsquo;re in Test. The careers page always serves LIVE data, so
+          this role and its link exist only inside Test — a candidate opening it
+          is told the role isn&rsquo;t accepting applications. Publish from Live
+          to put it on the internet.
+        </Callout>
       )}
 
       {error && <ErrorState message={error} />}

@@ -61,6 +61,138 @@ const maybeNum = (v: string) => (v.trim() === "" ? null : Number(v));
 
 const WORK_MODES = ["On-site", "Hybrid", "Remote"];
 
+/**
+ * Find the city, fill the three fields.
+ *
+ * The same Geoapify search the worksite picker uses, through the recruitment
+ * module's own route. It FILLS the boxes below rather than replacing them, for
+ * two reasons: the provider can be unconfigured or rate-limited (in which case
+ * this says so, and the boxes still work), and a recruiter who wants
+ * "Lekki (Lagos)" rather than the provider's spelling should be able to type it.
+ *
+ * NOT a combobox: `SearchSelect` expects an endpoint that returns a bare array,
+ * and place-search returns `{ status, results }` — the envelope exists so the
+ * screen can say WHY a search came back empty instead of implying the city does
+ * not exist. Keeping that meant a small control rather than bending the shared
+ * one.
+ */
+function CityFinder({
+  onPick,
+}: {
+  onPick: (p: { city: string; state: string; country: string }) => void;
+}) {
+  const [term, setTerm] = React.useState("");
+  const [hits, setHits] = React.useState<api.PlaceHit[]>([]);
+  const [status, setStatus] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  // The provider's own minimum is 3 characters; below it there is nothing to
+  // spend a request on.
+  React.useEffect(() => {
+    const q = term.trim();
+    if (q.length < 3) {
+      setHits([]);
+      setStatus(null);
+      return;
+    }
+    let live = true;
+    setBusy(true);
+    const h = setTimeout(() => {
+      api
+        .vacancyPlaceSearch(q)
+        .then((r) => {
+          if (!live) return;
+          setHits(r.results || []);
+          setStatus(r.status);
+        })
+        .catch(() => live && setStatus("PROVIDER_ERROR"))
+        .finally(() => live && setBusy(false));
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(h);
+    };
+  }, [term]);
+
+  /** Geoapify gives the country as an ISO code; an advert wants the word. The
+   *  formatted line ends with the country name, which is the cheapest honest
+   *  source for it. */
+  const countryOf = (hit: api.PlaceHit) => {
+    const tail = String(hit.formatted || "")
+      .split(",")
+      .pop();
+    return (tail || "").trim() || hit.country || "";
+  };
+
+  // The label is written out rather than delegated to `Field`: this control is a
+  // box with a results list under it, so `Field` would clone its id onto the
+  // wrapping div and the input a person types into would end up unnamed.
+  const inputId = React.useId();
+
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={inputId}
+        className="block text-sm font-medium text-foreground"
+      >
+        Find a city
+      </label>
+      <div className="space-y-2">
+        <Input
+          id={inputId}
+          aria-describedby={`${inputId}-hint`}
+          value={term}
+          placeholder="Douala, Lagos, Abidjan…"
+          onChange={(e) => setTerm(e.target.value)}
+        />
+        {busy && <p className="micro">Searching…</p>}
+        {!busy && status && status !== "OK" && (
+          <p className="micro">
+            {api.PLACE_SEARCH_MESSAGE[status] || "Couldn't search for that."}
+          </p>
+        )}
+        {!busy && status === "OK" && hits.length === 0 && (
+          <p className="micro">Nothing matched. Type the fields by hand.</p>
+        )}
+        {hits.length > 0 && (
+          <ul className="divide-y rounded-[10px] border">
+            {hits.map((hit, i) => (
+              <li
+                key={
+                  hit.provider_place_id ||
+                  `${hit.latitude},${hit.longitude},${i}`
+                }
+              >
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    onPick({
+                      city: hit.name || "",
+                      state: hit.region || "",
+                      country: countryOf(hit),
+                    });
+                    // The list has done its job; leaving it open invites a
+                    // second click that silently overwrites the first.
+                    setHits([]);
+                    setTerm("");
+                    setStatus(null);
+                  }}
+                >
+                  {hit.formatted || hit.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <p id={`${inputId}-hint`} className="text-xs text-muted-foreground">
+        Fills the three fields below. You can also type them by hand.
+      </p>
+    </div>
+  );
+}
+
 export function VacancyEditor({
   vacancy,
   onClose,
@@ -301,6 +433,16 @@ export function VacancyEditor({
           ))}
         </div>
 
+        <CityFinder
+          onPick={(place) =>
+            setF((s) => ({
+              ...s,
+              location_city: place.city,
+              location_state: place.state,
+              location_country: place.country,
+            }))
+          }
+        />
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="City">
             <Input

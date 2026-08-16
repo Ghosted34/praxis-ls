@@ -1697,6 +1697,7 @@ All 1067 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/vacancies/intake/follow-ups` | — |
 | GET | `/api/tenant/vacancies/intake/questions` | — |
 | POST | `/api/tenant/vacancies/intake/transcribe` | — |
+| GET | `/api/tenant/vacancies/place-search` | — |
 | GET | `/api/tenant/vacancies/talent-pool` | — |
 
 ### `tenant/vehicle-compliance`

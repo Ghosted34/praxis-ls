@@ -330,6 +330,23 @@ const Schema = z.object({
   // disables the daily sync (manual "Sync now" still works).
   FX_SYNC_TZ: z.string().default("Africa/Douala"),
 
+  // Monthly leave accrual (MOD-15). 02:00 on the 1st, in the FX timezone — the
+  // month has to be OVER before its entitlement is earned, and the small hours
+  // of the 1st is the first moment that is true for everybody. Daily would also
+  // be correct (the job is idempotent per month and only ever posts a month
+  // that has completed), and a tenant who wants the belt-and-braces version
+  // sets `0 2 * * *`. Empty disables accrual entirely — balances then only move
+  // by hand, which is a legitimate choice for an employer whose leave is
+  // granted rather than accrued.
+  LEAVE_ACCRUAL_CRON: z.string().default("0 2 1 * *"),
+
+  // Nightly attendance reconciliation (MOD-14). 03:00 in the FX timezone — the
+  // day being reconciled is over by then in the workplace zone, and the answer
+  // is waiting before anybody opens the app. Empty disables it: days are then
+  // only reconciled when somebody presses "re-run", and no rule ever charges
+  // anybody automatically.
+  ATTENDANCE_RECONCILE_CRON: z.string().default("0 3 * * *"),
+
   // Milestone SLA scan (MOD-31): 06:00 and 18:00 — the start and the end of a
   // working day, which is when somebody can still act on "this file will
   // breach". Tenants who want it hourly set `0 * * * *`; the scan is idempotent

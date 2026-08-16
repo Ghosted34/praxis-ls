@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { AttendanceDaysView } from "./attendance-days";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -78,16 +79,25 @@ function AttendanceLog({ date }: { date: string }) {
     {
       key: "device",
       label: "Device",
-      // Three-valued, like On-site, and for the same reason: "no device was
-      // presented" is not "the device was rejected". Only the middle case is
-      // worth a manager's attention, so it is the only one that shouts.
+      /*
+       * FOUR states, not three. `device_trusted: null` covers two genuinely
+       * different facts, and the Devices panel below can tell them apart:
+       * recorded-but-unjudged (the `off` policy) versus nothing presented at
+       * all. Only "Unapproved" shouts, because it is the only one a manager has
+       * to act on.
+       */
       render: (r) =>
-        r.device_trusted == null ? (
-          <span className="micro">—</span>
-        ) : r.device_trusted ? (
+        r.device_trusted === true ? (
           <Pill tone="ok">Known</Pill>
-        ) : (
+        ) : r.device_trusted === false ? (
           <Pill tone="warn">Unapproved</Pill>
+        ) : r.hr_device_id ? (
+          // Recorded, but the `off` policy formed no opinion. Distinct from
+          // "nothing presented" below — without this the register lists a
+          // device the log row denies, and the two panels contradict.
+          <Pill tone="mute">Recorded</Pill>
+        ) : (
+          <span className="micro">—</span>
         ),
     },
     {
@@ -125,19 +135,30 @@ function AttendanceLog({ date }: { date: string }) {
 function AbsencePanel({ date }: { date: string }) {
   const a = useResource(() => api.absence(date), [date]);
   const rows = a.data?.absent || [];
+  // The day has not been reconciled — so this list is "has not arrived yet",
+  // not "was absent". Saying so is the difference between a manager reading a
+  // settled fact and reading the 09:00 state of a day still in progress; the
+  // old panel presented the second as the first, with most of the company on it.
+  const provisional = a.data && a.data.reconciled === false;
   return (
     <div>
       <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-        Absent{" "}
+        {provisional ? "Not in yet" : "Absent"}{" "}
         <Pill tone={rows.length ? "bad" : "ok"}>{a.data?.count ?? 0}</Pill>
       </h2>
+      {provisional && (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          This day has not been reconciled. People on approved leave are already
+          excluded; everyone else here may simply not have arrived.
+        </p>
+      )}
       {a.loading ? (
         <div className="py-3 text-center micro">Loading…</div>
       ) : a.error ? (
         <ErrorState message={a.error} />
       ) : rows.length === 0 ? (
         <div className="lux-card p-4 text-sm text-muted-foreground">
-          Everyone active clocked in.
+          {provisional ? "Everyone expected today has clocked in." : "Nobody was absent."}
         </div>
       ) : (
         <ul className="lux-card divide-y divide-border">
@@ -501,6 +522,84 @@ const DEVICE_LABEL = {
   REVOKED: "Blocked",
 } as const;
 
+/**
+ * Click the name, type a real one.
+ *
+ * Inline rather than a modal because the auto-label is a placeholder that EVERY
+ * row carries, so renaming is the common act here, not an exceptional one — and
+ * a dialog per device would make the obvious thing the slow thing.
+ *
+ * Saves on Enter or blur, abandons on Escape. A failed save puts the old name
+ * back rather than leaving the typed text sitting there looking saved.
+ */
+function EditableLabel({
+  device,
+  onSaved,
+}: {
+  device: api.HrDevice;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [value, setValue] = React.useState(device.label);
+  const [busy, setBusy] = React.useState(false);
+
+  async function commit() {
+    const next = value.trim();
+    setEditing(false);
+    if (!next || next === device.label) {
+      setValue(device.label);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.setDeviceStatus(device.hr_device_id, { label: next });
+      onSaved();
+    } catch (e) {
+      setValue(device.label);
+      reportActionError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={busy}
+        title="Rename this device"
+        className="block max-w-full truncate text-left text-foreground hover:underline disabled:opacity-60"
+      >
+        {value}
+      </button>
+    );
+  }
+  return (
+    <Input
+      // Focus follows the click that opened it; without this the person has to
+      // click the name and then click again into the field.
+      // eslint-disable-next-line jsx-a11y/no-autofocus
+      autoFocus
+      aria-label="Device name"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          void commit();
+        }
+        if (e.key === "Escape") {
+          setValue(device.label);
+          setEditing(false);
+        }
+      }}
+      className="h-8"
+    />
+  );
+}
+
 function Devices() {
   const devices = useResource(() => api.listDevices(), []);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -537,9 +636,27 @@ function Devices() {
     {
       key: "device",
       label: "Device",
+      /*
+       * EDITABLE, because the auto-label is a placeholder by construction.
+       *
+       * The server can only ever derive a browser category from the user agent
+       * — "Windows · Chrome" is true of every laptop in the company — so it
+       * appends four characters of the fingerprint to make the rows DISTINCT.
+       * Distinct is not the same as recognisable: "Windows · Chrome · 7f3a"
+       * tells a manager which row is which and nothing about whose machine it
+       * is.
+       *
+       * Only a person can supply that, so renaming is one click on the label
+       * rather than buried behind an edit screen. It is also why the upsert
+       * never overwrites `label`: a name somebody typed must survive that
+       * device being seen again.
+       */
       render: (d) => (
         <span>
-          <span className="block text-foreground">{d.label}</span>
+          <EditableLabel
+            device={d}
+            onSaved={devices.reload}
+          />
           {d.platform && (
             <span className="block micro normal-case text-muted-foreground">
               {d.platform}
@@ -603,7 +720,8 @@ function Devices() {
         </h2>
         <p className="micro normal-case text-muted-foreground">
           Each device an employee clocks in from. A second one appearing is
-          worth a look. Enforcement is set by
+          worth a look. Names are generated — click one to rename it to
+          something you&rsquo;ll recognise. Enforcement is set by
           <span className="font-medium text-foreground">
             {" "}
             hr.device_policy
@@ -628,6 +746,10 @@ function Devices() {
 
 export function AttendancePage() {
   const [date, setDate] = React.useState(today);
+  // The log answers "who badged in today"; the reconciled month answers "what
+  // did this cost, and is any of it wrong". Different questions, different
+  // windows — so they are separate views rather than one crowded page.
+  const [view, setView] = React.useState<"day" | "month">("day");
   return (
     <section className={shell}>
       <PageHeader
@@ -636,25 +758,45 @@ export function AttendancePage() {
         description="Team clock-ins, lateness and absences. Employees clock in/out from the clock in the title bar (or the floating cluster on a phone)."
       />
       <HubTabs />{" "}
-      <div className="mb-4 flex items-center gap-3">
-        <span className="micro">Day</span>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-auto"
-        />
+      <div className="chips mb-4">
+        <button
+          className={`chip ${view === "day" ? "on" : ""}`}
+          onClick={() => setView("day")}
+        >
+          Today
+        </button>
+        <button
+          className={`chip ${view === "month" ? "on" : ""}`}
+          onClick={() => setView("month")}
+        >
+          Reconciled days
+        </button>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <AttendanceLog date={date} />
-        <AbsencePanel date={date} />
-      </div>
-      <div className="mt-8">
-        <Worksites />
-      </div>
-      <div className="mt-8">
-        <Devices />
-      </div>
+      {view === "day" ? (
+        <>
+          <div className="mb-4 flex items-center gap-3">
+            <span className="micro">Day</span>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-auto"
+            />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
+            <AttendanceLog date={date} />
+            <AbsencePanel date={date} />
+          </div>
+          <div className="mt-8">
+            <Worksites />
+          </div>
+          <div className="mt-8">
+            <Devices />
+          </div>
+        </>
+      ) : (
+        <AttendanceDaysView />
+      )}
       <ScreenAi path="hr/attendance" />
     </section>
   );

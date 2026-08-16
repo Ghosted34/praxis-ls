@@ -45,10 +45,24 @@ type Appraisal = {
 type Leave = {
   leave_request_id: string;
   kind?: string | null;
+  leave_type_name?: string | null;
   starts_on?: string | null;
   ends_on?: string | null;
+  days?: number | string | null;
   amount?: number | null;
   status: string;
+};
+/** One row per leave type — what this employee has earned, taken and has left
+ *  (0696). Their own figure, so it takes no MOD-15 grant to read. */
+type Balance = {
+  leave_type_id: string;
+  name: string;
+  is_paid: boolean;
+  period_year: number;
+  accrued: number;
+  carried: number;
+  taken: number;
+  balance: number;
 };
 type Payslip = {
   payroll_run_item_id: string;
@@ -177,6 +191,7 @@ export function MyHrPage() {
     [],
   );
   const leave = useResource<Leave[]>(() => tenant("/leave/mine"), []);
+  const balances = useResource<Balance[]>(() => tenant("/leave/mine/balances"), []);
   const payslips = useResource<Payslip[]>(() => tenant("/payroll/mine"), []);
   const contracts = useResource<Contract[]>(
     () => tenant("/contracts/mine"),
@@ -188,6 +203,12 @@ export function MyHrPage() {
   const ss = sanctions.data || [];
   const as = appraisals.data || [];
   const lv = leave.data || [];
+  // Types nobody has any standing in are noise on an employee's own page — a
+  // row of zeroes for compassionate leave says nothing. Anything with movement
+  // in either direction is shown.
+  const bl = (balances.data || []).filter(
+    (b) => b.balance !== 0 || b.accrued !== 0 || b.taken !== 0,
+  );
   const ps = payslips.data || [];
   const cs = contracts.data || [];
   const openQueries = qs.filter((q) => q.status === "OPEN").length;
@@ -340,6 +361,37 @@ export function MyHrPage() {
             </div>
           )}
         </Section>
+        <Section title="Leave balance" count={bl.length}>
+          {balances.error ? (
+            <ErrorState message={balances.error} />
+          ) : bl.length === 0 && !balances.loading ? (
+            <EmptyState
+              title="No entitlement yet"
+              hint="Leave accrues monthly. Your balance appears here once the first month of service is complete."
+            />
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {bl.map((b) => (
+                <div key={b.leave_type_id} className="lux-card flex items-baseline justify-between gap-3 p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{b.name}</p>
+                    {/* Where the number came from, so "you have 4 days" never
+                        has to be taken on trust. */}
+                    <p className="text-[11px] text-muted-foreground">
+                      {b.accrued + b.carried} earned · {b.taken} taken · {b.period_year}
+                    </p>
+                  </div>
+                  <span
+                    className={`num text-lg font-semibold ${b.balance <= 0 ? "text-[rgb(var(--bad))]" : "text-foreground"}`}
+                  >
+                    {b.balance}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
         <Section title="Leave & allowances" count={lv.length}>
           {leave.error ? (
             <ErrorState message={leave.error} />
@@ -357,7 +409,7 @@ export function MyHrPage() {
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold capitalize text-foreground">
-                      {(l.kind || "leave").replace(/_/g, " ")}
+                      {l.leave_type_name || (l.kind || "leave").replace(/_/g, " ")}
                     </span>
                     <Pill tone={leaveTone(l.status)}>{l.status}</Pill>
                     {l.amount ? (
@@ -367,6 +419,9 @@ export function MyHrPage() {
                   <div className="text-[11px] text-muted-foreground">
                     {dateFmt(l.starts_on)}{" "}
                     {l.ends_on ? `→ ${dateFmt(l.ends_on)}` : ""}
+                    {/* What it cost them, which is the first thing anyone
+                        checks against their own balance above. */}
+                    {Number(l.days) > 0 ? ` · ${Number(l.days)} d` : ""}
                   </div>
                 </div>
               ))}

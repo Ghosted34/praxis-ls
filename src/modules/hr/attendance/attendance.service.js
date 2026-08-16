@@ -18,6 +18,8 @@ const repo = require("./attendance.repo");
 const events = require("./attendance.events");
 const employeeService = require("../../master/employees/employees.service");
 const geoapify = require("../../../services/geoapify.service");
+const rules = require("./attendance.rules");
+const reconcile = require("./attendance.reconcile");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "attendance", events });
 
@@ -57,8 +59,26 @@ async function devicePolicy(client) {
   return ["off", "warn", "block"].includes(mode) ? mode : "off";
 }
 
-/** A recognisable name for a device nobody has named yet. */
-function deviceLabelFrom(userAgent) {
+/**
+ * A DISTINGUISHABLE name for a device nobody has named yet.
+ *
+ * "Windows · Chrome" was the first attempt and it is useless: it names a browser
+ * category, not a machine, so every Windows laptop in the company produces the
+ * identical string. A manager looking at two rows that both say "Windows ·
+ * Chrome" cannot do the one thing this register exists for — tell them apart —
+ * and a second device appearing, which is the whole signal, becomes invisible.
+ *
+ * The fingerprint's first four characters fix that. They are not meaningful and
+ * are not meant to be read as meaningful; they are a discriminator, so two rows
+ * are never the same string and a human can say "approve the 7f3a one". Short
+ * enough not to look like a secret, and it is not one — the value is already
+ * opaque and already stored.
+ *
+ * This is still only a PLACEHOLDER. The real name comes from a person: the
+ * employee or the manager renaming it to "Faith's laptop" or "Yard tablet",
+ * which is why `label` is patchable and why the upsert never overwrites it.
+ */
+function deviceLabelFrom(userAgent, fingerprint) {
   const ua = String(userAgent || "");
   const os =
     /Android/i.test(ua) ? "Android" :
@@ -73,7 +93,10 @@ function deviceLabelFrom(userAgent) {
     /Chrome\//i.test(ua) ? "Chrome" :
     /Firefox\//i.test(ua) ? "Firefox" :
     /Safari\//i.test(ua) ? "Safari" : null;
-  return [os, browser].filter(Boolean).join(" · ") || "Unrecognised device";
+  // The discriminator is the only part that is actually per-device, so it is
+  // never dropped — an unrecognised user agent still yields a unique label.
+  const tag = String(fingerprint || "").replace(/[^a-z0-9]/gi, "").slice(0, 4).toLowerCase();
+  return [os, browser].filter(Boolean).concat(tag || []).join(" · ") || "Unrecognised device";
 }
 
 /**
@@ -87,22 +110,45 @@ function deviceLabelFrom(userAgent) {
 async function resolveDevice(client, { employeeId, device }) {
   const mode = await devicePolicy(client);
   const fingerprint = device && typeof device.fingerprint === "string" ? device.fingerprint.trim() : "";
-  if (mode === "off" || !fingerprint) {
+
+  if (!fingerprint) {
     // Under `block`, a client that sends nothing must not sail through — that
     // is the whole point of the setting, and "my app is old" is not a defence
     // an attendance policy can accept.
-    if (mode === "block" && !fingerprint) {
+    if (mode === "block") {
       return { device: null, trusted: null, blocked: true, reason: "This device isn't registered — register it before clocking in" };
     }
     return { device: null, trusted: null, blocked: false, reason: null };
   }
+
+  /*
+   * RECORDING IS NOT ENFORCEMENT, and the two must not share a switch.
+   *
+   * This used to return early when the policy was `off`, so no device was ever
+   * written. The consequence was a trap of the setting's own making: the
+   * register could only fill while enforcement was on, and enforcement could
+   * only be turned on safely once the register had filled. An administrator who
+   * left the default in place saw an empty Devices panel forever and had no
+   * path to `warn` that did not begin by flagging every punch in the company.
+   *
+   * So the row is written at EVERY policy. `off` means "do not judge", not "do
+   * not look" — the register builds passively, and turning enforcement on later
+   * is then a decision made against real data instead of a leap.
+   */
   const row = await repo.upsertDevice(client, {
     employeeId,
     fingerprint,
-    label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+    label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent, fingerprint),
     userAgent: device.user_agent || null,
     platform: device.platform || null,
   });
+
+  // Three-valued, like `within_geofence`. Under `off` we recorded WHICH device
+  // this was but formed no opinion about it, and writing `false` there would
+  // paint every historic punch "Unapproved" the moment somebody enables the
+  // policy — the retrospective flag the snapshot column exists to prevent.
+  if (mode === "off") return { device: row, trusted: null, blocked: false, reason: null };
+
   const trusted = row.status === "TRUSTED";
   if (mode === "block" && !trusted) {
     return {
@@ -151,14 +197,33 @@ const parseHHMM = (s) => {
 };
 async function attendancePolicy(client) {
   const v = (await getSetting(client, "hr", "attendance_policy", null)) || {};
-  return { workStart: parseHHMM(v.work_start) ?? 8 * 60, grace: Number(v.grace_minutes ?? 10) };
+  return {
+    workStart: parseHHMM(v.work_start) ?? 8 * 60,
+    startText: typeof v.work_start === "string" && v.work_start ? v.work_start : "08:00",
+    grace: Number(v.grace_minutes ?? 10),
+    timeZone: await reconcile.timezoneOf(client),
+  };
 }
+/**
+ * Lateness for the admin log.
+ *
+ * The "(tz caveat)" that used to be on this function was a bug, not a caveat:
+ * it read `new Date(clockInAt).getHours()`, i.e. the SERVER's clock. On a UTC
+ * host — every container we deploy — a Cameroonian employee (UTC+1) arriving at
+ * 08:30 read as 07:30 and was half an hour EARLY against an 08:00 start. Nobody
+ * was ever late. `attendance.rules` reads the wall clock in the tenant's own
+ * timezone; this is now a thin call onto the same code the reconciler uses, so
+ * the log and the charged day can never disagree.
+ */
 function lateness(clockInAt, policy) {
   if (!clockInAt) return { is_late: false, minutes_late: 0 };
-  const d = new Date(clockInAt);
-  const mins = d.getHours() * 60 + d.getMinutes(); // server-local time-of-day (tz caveat)
-  const late = mins > policy.workStart + policy.grace;
-  return { is_late: late, minutes_late: late ? mins - policy.workStart : 0 };
+  const minutes = rules.minutesLate({
+    clock_in_at: clockInAt,
+    expected_start_time: policy.startText,
+    grace_minutes: policy.grace,
+    timeZone: policy.timeZone,
+  });
+  return { is_late: minutes > 0, minutes_late: minutes };
 }
 
 module.exports = {
@@ -172,17 +237,59 @@ module.exports = {
     return rows.map((r) => ({ ...r, ...lateness(r.clock_in_at, policy) }));
   },
 
-  /** Active employees with NO clock-in on a given day (default today). */
+  /**
+   * Who was actually absent on a day.
+   *
+   * ── WHAT THIS USED TO REPORT ─────────────────────────────────────────────
+   *
+   * "Every active employee with no clock-in." That counted as absent: everybody
+   * on approved leave, everybody whose shift does not include that weekday,
+   * everybody on a public holiday, and — because it defaulted to TODAY —
+   * everybody who simply had not arrived yet at the time the page was opened.
+   * A manager checking absences at 08:30 saw most of the company.
+   *
+   * It now reads the reconciled day (0697), where those cases are distinct
+   * states rather than the same missing row. `attendance_log.clock_in_at::date`
+   * is gone with it: that compared a UTC date to a local one, so a punch after
+   * 23:00 Douala counted for the following day.
+   *
+   * ── AND WHEN A DAY HAS NOT BEEN RECONCILED YET ───────────────────────────
+   *
+   * The reconciler runs on completed days, so TODAY has no rows. Rather than
+   * report a quiet, wrong zero, this says so — `reconciled: false` — and falls
+   * back to the raw "no punch yet" list, labelled as provisional. A screen can
+   * then tell the truth instead of implying the day is settled.
+   */
   async absence(client, { date = null } = {}) {
     const day = date || new Date().toISOString().slice(0, 10);
     const { rows } = await client.query(
-      "SELECT e.employee_id, e.full_name, e.department FROM employee e " +
-        "WHERE e.is_active = true AND NOT EXISTS (" +
-        "  SELECT 1 FROM attendance_log al WHERE al.employee_id = e.employee_id AND al.clock_in_at::date = $1" +
-        ") ORDER BY e.full_name",
+      `SELECT d.employee_id, e.full_name, e.department, d.status, d.minutes_late,
+              d.deduction_amount, d.justified
+         FROM attendance_day d
+         JOIN employee e ON e.employee_id = d.employee_id
+        WHERE d.work_date = $1 AND d.status = 'ABSENT'
+        ORDER BY e.full_name`,
       [day],
     );
-    return { date: day, count: rows.length, absent: rows };
+    const { rows: any } = await client.query("SELECT 1 FROM attendance_day WHERE work_date = $1 LIMIT 1", [day]);
+    if (any[0]) return { date: day, reconciled: true, count: rows.length, absent: rows };
+
+    const { rows: provisional } = await client.query(
+      `SELECT e.employee_id, e.full_name, e.department
+         FROM employee e
+        WHERE e.is_active = true
+          AND NOT EXISTS (SELECT 1 FROM attendance_log al
+                           WHERE al.employee_id = e.employee_id
+                             AND al.clock_in_at >= ($1::date)::timestamptz
+                             AND al.clock_in_at <  ($1::date + 1)::timestamptz)
+          AND NOT EXISTS (SELECT 1 FROM leave_request lr
+                           WHERE lr.employee_id = e.employee_id
+                             AND lr.status IN ('APPROVED','TAKEN')
+                             AND lr.starts_on <= $1::date AND lr.ends_on >= $1::date)
+        ORDER BY e.full_name`,
+      [day],
+    );
+    return { date: day, reconciled: false, count: provisional.length, absent: provisional };
   },
 
 
@@ -225,7 +332,20 @@ module.exports = {
      */
     const dev = await resolveDevice(client, { employeeId: empId, device });
     if (dev.blocked) throw new AppError("DEVICE_NOT_REGISTERED", dev.reason, 422);
-    const row = await repo.insert(client, {
+    /*
+     * `repo.create`, not `repo.insert`.
+     *
+     * The factory in shared/crud/resource.js exposes `create` (line 149) and has
+     * never exposed `insert`, so this line threw `repo.insert is not a function`
+     * on EVERY clock-in — the endpoint had never once worked. It surfaced today
+     * only because the punch moved into the title bar: while it was buried in a
+     * dropdown on desktop and a `md:hidden` FAB on touch, nobody pressed it.
+     *
+     * Worth stating plainly, because a "no traffic" endpoint and a "no such
+     * function" endpoint look identical in the error dashboard until somebody
+     * makes the button visible.
+     */
+    const row = await repo.create(client, {
       employee_id: empId,
       clock_in_at: new Date(),
       latitude, longitude, accuracy_m: accuracy,
@@ -243,7 +363,11 @@ module.exports = {
     // A punch from a device nobody has approved is the signal this table exists
     // to raise — under `warn` it is accepted, so the event is the ONLY trace a
     // manager gets in the moment.
-    if (dev.device && !dev.trusted) {
+    // `=== false`, not `!dev.trusted`. Under the `off` policy `trusted` is null
+    // — recorded but not judged — and the loose test would raise this alert on
+    // every punch in a workspace that has deliberately not switched enforcement
+    // on. An alert that fires when nobody asked for it is one nobody reads.
+    if (dev.device && dev.trusted === false) {
       await emitEvent(client, {
         eventTypeKey: events.UNTRUSTED_DEVICE, moduleKey: events.MODULE, entityRef,
         actorUserId: actor.user_id || null,
@@ -318,7 +442,7 @@ module.exports = {
     const row = await repo.upsertDevice(client, {
       employeeId: empId,
       fingerprint,
-      label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+      label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent, fingerprint),
       userAgent: device.user_agent || null,
       platform: device.platform || null,
     });

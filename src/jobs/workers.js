@@ -48,6 +48,17 @@ const PROCESSORS = [
   { name: "milestone-sla-scheduler", concurrency: 1, handler: require("./handlers/milestone-sla-scheduler") },
   { name: "company-profile-refresh", concurrency: 1, handler: require("./handlers/company-profile-refresh") },
   { name: "company-profile-refresh-scheduler", concurrency: 1, handler: require("./handlers/company-profile-refresh-scheduler") },
+  // Monthly leave accrual (MOD-15, 0696). concurrency 1 per queue: two passes
+  // over one tenant would race on the same (employee, type, month) rows —
+  // harmless thanks to the unique index, but they would fight over it rather
+  // than share the work.
+  { name: "leave-accrual", concurrency: 1, handler: require("./handlers/leave-accrual") },
+  { name: "leave-accrual-scheduler", concurrency: 1, handler: require("./handlers/leave-accrual-scheduler") },
+  // Nightly attendance reconciliation (MOD-14, 0697). concurrency 1: two passes
+  // over one tenant's day would upsert the same (employee, date) rows against
+  // each other, and the loser's auto-query would be raised twice.
+  { name: "attendance-reconcile", concurrency: 1, handler: require("./handlers/attendance-reconcile") },
+  { name: "attendance-reconcile-scheduler", concurrency: 1, handler: require("./handlers/attendance-reconcile-scheduler") },
   // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
@@ -273,6 +284,40 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: fxCron, tz: config.FX_SYNC_TZ || "UTC" }, "fx sync scheduler registered");
+  }
+
+  // Monthly leave accrual (MOD-15, 0688). Wall-clock cron for the same reason as
+  // the FX sync: "the 1st at 02:00" is a calendar promise, and an interval-based
+  // repeat drifts off it after every restart. The fan-out enqueues one job per
+  // tenant environment; the job itself is idempotent per (employee, type,
+  // month), so a missed month is recovered by the next tick rather than lost.
+  const leaveCron = config.LEAVE_ACCRUAL_CRON;
+  if (!leaveCron) {
+    logger.info("leave accrual scheduler disabled (LEAVE_ACCRUAL_CRON empty)");
+  } else {
+    await enqueue("leave-accrual-scheduler", "tick", {}, {
+      repeat: { pattern: leaveCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: leaveCron, tz: config.FX_SYNC_TZ || "UTC" }, "leave accrual scheduler registered");
+  }
+
+  // Nightly attendance reconciliation (MOD-14, 0697). 03:00 local, i.e. after
+  // the day it reconciles is definitively over in the workplace timezone — and
+  // before anybody opens the app to look at it. The job defaults to YESTERDAY,
+  // so the hour only decides when the answer appears, never which day is
+  // charged; a missed night is recovered by re-running the date by hand.
+  const attCron = config.ATTENDANCE_RECONCILE_CRON;
+  if (!attCron) {
+    logger.info("attendance reconcile scheduler disabled (ATTENDANCE_RECONCILE_CRON empty)");
+  } else {
+    await enqueue("attendance-reconcile-scheduler", "tick", {}, {
+      repeat: { pattern: attCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: attCron, tz: config.FX_SYNC_TZ || "UTC" }, "attendance reconcile scheduler registered");
   }
 
   // Nightly fleet backup (§3.2, WS-B1). Wall-clock cron for the same reason as

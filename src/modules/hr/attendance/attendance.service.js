@@ -225,7 +225,20 @@ module.exports = {
      */
     const dev = await resolveDevice(client, { employeeId: empId, device });
     if (dev.blocked) throw new AppError("DEVICE_NOT_REGISTERED", dev.reason, 422);
-    const row = await repo.insert(client, {
+    /*
+     * `repo.create`, not `repo.insert`.
+     *
+     * The factory in shared/crud/resource.js exposes `create` (line 149) and has
+     * never exposed `insert`, so this line threw `repo.insert is not a function`
+     * on EVERY clock-in — the endpoint had never once worked. It surfaced today
+     * only because the punch moved into the title bar: while it was buried in a
+     * dropdown on desktop and a `md:hidden` FAB on touch, nobody pressed it.
+     *
+     * Worth stating plainly, because a "no traffic" endpoint and a "no such
+     * function" endpoint look identical in the error dashboard until somebody
+     * makes the button visible.
+     */
+    const row = await repo.create(client, {
       employee_id: empId,
       clock_in_at: new Date(),
       latitude, longitude, accuracy_m: accuracy,

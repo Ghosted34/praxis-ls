@@ -135,11 +135,18 @@ export function OpportunitiesPage() {
     const qs = query().toString();
     try {
       const [listOut, metricsOut] = await Promise.all([
-        tenant<{ data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
-        tenant<{ data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
+        tenant<Row[] | { data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
+        tenant<Metrics | { data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
       ]);
-      setOpps(listOut?.data || []);
-      setMetrics(metricsOut?.data || null);
+      const list = Array.isArray(listOut)
+        ? listOut
+        : (listOut as { data?: Row[] })?.data || [];
+      const m =
+        metricsOut && typeof metricsOut === "object" && "pipeline_value" in metricsOut
+          ? (metricsOut as Metrics)
+          : (metricsOut as { data?: Metrics })?.data || null;
+      setOpps(list);
+      setMetrics(m);
     } catch (e) {
       setOppErr(errMsg(e));
     }

@@ -333,10 +333,11 @@ export function ReviewModal({
         method: "POST",
         body: { create_supplier: alsoSupplier, notes },
       });
-      const s = out?.data?.supplier;
+      const data = out && out.supplier !== undefined ? out : out?.data;
+      const s = data?.supplier;
       setResult(
         s
-          ? `${out.data.supplier_reused ? "Linked to the existing supplier" : "Draft supplier created"} — ${String(s.ref || s.name)}. It buys nothing until somebody verifies it in the supplier registry.`
+          ? `${data?.supplier_reused ? "Linked to the existing supplier" : "Draft supplier created"} — ${String(s.ref || s.name)}. It buys nothing until somebody verifies it in the supplier registry.`
           : "Approved. No supplier record was created.",
       );
     });

@@ -109,8 +109,8 @@ export function ManageEnquiryModal({
   const load = React.useCallback(async () => {
     if (!id) return;
     try {
-      const out = await tenant<{ data: Row }>(`/intake/enquiries/${id}`);
-      const row = out?.data || null;
+      const out: any = await tenant(`/intake/enquiries/${id}`);
+      const row = (out && !out.data && out.contact_enquiry_id ? out : out?.data) || out || null;
       setDetail(row);
       setType(String(row?.enquiry_type || "GENERAL_ENQUIRY"));
       setNotes(String(row?.internal_notes || ""));

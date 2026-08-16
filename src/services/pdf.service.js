@@ -6,6 +6,7 @@
  */
 "use strict";
 
+const fs = require("fs");
 const crypto = require("crypto");
 const { config } = require("../config/env");
 const storage = require("./storage.service");
@@ -13,6 +14,36 @@ const documents = require("./documents/document.service");
 const { getSetting } = require("../shared/config/settings");
 const { assertDocType } = require("../modules/vault/document_vault/document_vault.types");
 const { AppError } = require("../utils/errors");
+
+/** Standard system paths where Chromium/Chrome might exist. */
+const KNOWN_CHROMIUM_PATHS = [
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/snap/bin/chromium",
+  "/usr/local/bin/chromium",
+  "/usr/local/bin/chrome",
+];
+
+function resolveChromiumPath() {
+  if (config.PUPPETEER_EXECUTABLE_PATH && config.PUPPETEER_EXECUTABLE_PATH.trim()) {
+    try {
+      if (fs.existsSync(config.PUPPETEER_EXECUTABLE_PATH.trim())) return config.PUPPETEER_EXECUTABLE_PATH.trim();
+    } catch { /* ignore */ }
+  }
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && process.env.PUPPETEER_EXECUTABLE_PATH.trim()) {
+    try {
+      if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH.trim())) return process.env.PUPPETEER_EXECUTABLE_PATH.trim();
+    } catch { /* ignore */ }
+  }
+  for (const p of KNOWN_CHROMIUM_PATHS) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch { /* ignore */ }
+  }
+  return undefined;
+}
 
 /** SHA-256 hex of the rendered bytes — the doc DNA a QR resolves and re-checks. */
 function contentHash(buffer) {
@@ -28,8 +59,9 @@ function verifyToken(entityRef, hash) {
 async function renderHtml(html) {
   /// eslint-disable-next-line global-require
   const puppeteer = require("puppeteer");
+  const executablePath = resolveChromiumPath();
   const browser = await puppeteer.launch({
-    executablePath: config.PUPPETEER_EXECUTABLE_PATH || undefined,
+    executablePath,
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });

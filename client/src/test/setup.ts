@@ -59,6 +59,28 @@ if (typeof globalThis.DOMRect === "undefined") {
   } as unknown as typeof DOMRect;
 }
 
+/**
+ * Unmount, then make sure the body really is empty.
+ *
+ * `cleanup()` unmounts the trees RTL rendered, which is enough when a test
+ * finishes. It is not enough when a test is ABORTED — a vitest timeout rejects
+ * the test's promise but does not stop the interaction that was in flight, so
+ * `user.type` can go on resolving and React can commit one more render into a
+ * portal after cleanup has run. Radix mounts its dialogs straight onto
+ * `document.body`, along with `data-scroll-locked` and `pointer-events: none`.
+ *
+ * The result is the confusing failure we actually hit: one test times out under
+ * load, and the NEXT test — which is fine — fails with "Unable to find a label
+ * with the text of: Your answer" against a dump of the previous test's dialog,
+ * stuck three questions further on. Two red tests, one cause, and the innocent
+ * one is the one you read first.
+ *
+ * Clearing the body and the attributes Radix leaves on it means a test can only
+ * ever be failed by its own behaviour.
+ */
 afterEach(() => {
   cleanup();
+  document.body.innerHTML = "";
+  document.body.removeAttribute("style");
+  document.body.removeAttribute("data-scroll-locked");
 });

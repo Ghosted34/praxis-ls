@@ -47,6 +47,7 @@ import { Callout } from "@/components/ui/callout";
 import { Panel } from "@/components/ui/panel";
 import { DocButton } from "@/components/doc-button";
 import { InventoryItemSelect } from "@/components/catalogue-select";
+import { PlacePicker } from "@/components/operations/place-picker";
 import { ListPage } from "@/components/list-page";
 import type { Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -57,6 +58,7 @@ import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { XIcon } from "@/components/ui/icons";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
+import { useCanUseModule } from "@/lib/route-access";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
 import { ShipmentDetailsPanel } from "./shipment-details";
@@ -259,6 +261,7 @@ function DeliveryForm({
 }) {
   const { rows: entities } = useList<Entity>("/entities");
   const { rows: dossiers } = useList<api.Dossier>("/operations");
+  const canCreatePlace = useCanUseModule("MOD-29");
   const editing = !!note;
 
   const [f, setF] = React.useState({
@@ -388,8 +391,34 @@ function DeliveryForm({
               placeholder="Defaults to the file's client"
             />
           </Field>
-          <Field label="City / zone">
-            <Input value={f.city_zone} onChange={(e) => set("city_zone", e.target.value)} />
+          {/*
+           * The city/zone is a routing bucket, and the old free-text box let a
+           * typo ("Doula") save cleanly with no coordinate behind it. It is now
+           * the same verified-place search every other location on a file uses,
+           * and picking a place fills the address from it — so the address and
+           * the keyed-in location can never quietly disagree.
+           */}
+          <Field
+            label="City / zone"
+            hint="Search the verified place catalogue — the address below follows from it."
+          >
+            <PlacePicker
+              value={f.city_zone || null}
+              label="City / zone"
+              placeholder="Search a city, zone or delivery point…"
+              kinds={["CITY", "ADDRESS", "WAREHOUSE", "INLAND", "OTHER"]}
+              canCreate={canCreatePlace}
+              onSelect={({ name, place }) => {
+                set("city_zone", name);
+                set(
+                  "address",
+                  place.formatted ||
+                    [place.name, place.region, place.country]
+                      .filter(Boolean)
+                      .join(", "),
+                );
+              }}
+            />
           </Field>
           <Field label="Contact person">
             <Input
@@ -401,7 +430,7 @@ function DeliveryForm({
           <Field
             label="Delivery address"
             className="sm:col-span-2"
-            hint="The street address the goods were handed over at — the city/zone above is only for routing."
+            hint="Filled from the place above — refine the gate or building, but keep it consistent with the keyed-in location."
           >
             <Input
               value={f.address}

@@ -34,6 +34,7 @@ router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/summary", requirePermission(MODULE, "view"), controller.summary);
 // Static before `/:id`, or "document-types" is parsed as an id.
 router.get("/document-types", requirePermission(MODULE, "view"), controller.docTypes);
+router.get("/currencies", requirePermission(MODULE, "view"), controller.currencies);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

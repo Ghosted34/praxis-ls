@@ -35,6 +35,9 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => details.forDossier(c, req.params.id, { lang: req.query.lang })) })),
   containers: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => containers.list(c, req.params.id)) })),
+  /** The file's vault documents — what the transit-order checklist previews. */
+  documents: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.listDocuments(c, req.params.id)) })),
   replaceContainers: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => containers.replace(c, { dossierId: req.params.id, lines: req.body.lines, actor: actor(req) })) })),
   // Undo a manual marks override — see dossier_container.service.revertMarks.

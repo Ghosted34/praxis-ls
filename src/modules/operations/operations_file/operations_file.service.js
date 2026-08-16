@@ -541,8 +541,10 @@ const get = (client, id) => repo.get(client, id);
 const list = (client, q) => repo.list(client, q);
 /** One page plus the true match count, for the paged list endpoint. */
 const listPaged = (client, q) => repo.listPaged(client, q);
+/** The file's vault documents, for screens that must show what is attached. */
+const listDocuments = (client, id) => repo.vaultDocuments(client, id);
 module.exports = {
-  create, update, transition, get, list, listPaged, overview,
+  create, update, transition, get, list, listPaged, overview, listDocuments,
   // The creation wizard's lifecycle: open a draft, fill it in, promote it.
   // `create` stays for every caller that opens a file in one shot — the AI
   // path, the sales→operations handoff, imports.

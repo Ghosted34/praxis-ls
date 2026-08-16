@@ -48,12 +48,78 @@ const rules = require("./transit_order.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const shipmentDetails = require("../shipment_details/shipment_details.service");
+const currency = require("../../master/currency/currency.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
 
 const ref = (id) => "transit_order:" + id;
 const today = () => new Date().toISOString().slice(0, 10);
+
+/* ── declared-value FX ────────────────────────────────────────────────────── */
+
+/**
+ * The rate that expresses a declared value in XAF — the duty base.
+ *
+ * 10692 stored it as a hand-typed number; that is the wrong input for a rate
+ * the tenant already maintains in the currency master (MOD-08, `fx_rate_daily`,
+ * fed by the live exchangerate-api sync). So it is now DERIVED, never accepted
+ * from the caller: the currency master's base→quote rows are the single source
+ * of truth, a manual override still wins via the resolver, and `1` is the
+ * identity for XAF itself.
+ *
+ * The stored rows are base→quote (1 base = rate quote). The order needs the
+ * inverse direction (XAF per declared-currency unit), so when no direct
+ * code→XAF row exists the base XAF→code row is inverted.
+ *
+ * @returns {{ rate: number, source: string, as_of_date: string } | null}
+ *          null when the currency has no rate yet (caller falls back to 1, and
+ *          the form's currencies endpoint surfaces the gap).
+ */
+async function fxToXaf(client, code) {
+  const c = String(code || "XAF").toUpperCase();
+  if (c === "XAF") return { rate: 1, source: "identity", as_of_date: today() };
+  try {
+    const direct = await currency.rateFor(client, { base: c, quote: "XAF", date: today() });
+    return { rate: Number(direct.rate), source: direct.source, as_of_date: direct.as_of_date };
+  } catch {
+    try {
+      const inverse = await currency.rateFor(client, { base: "XAF", quote: c, date: today() });
+      return {
+        rate: Math.round((1 / Number(inverse.rate)) * 1e8) / 1e8,
+        source: inverse.source,
+        as_of_date: inverse.as_of_date,
+      };
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * The currencies the form offers, with their live rate to XAF attached — one
+ * call, so the picker and its derived-rate field can never disagree about the
+ * vocabulary or the number. Reads the same active set as the currency master
+ * (MOD-08), but is served under MOD-30 so the transit-order screen works even
+ * when the finance.fx feature is off for a tenant.
+ */
+async function currenciesForOrder(client) {
+  const rows = await currency.listCurrencies(client);
+  const out = [];
+  for (const c of rows) {
+    const fx = await fxToXaf(client, c.code);
+    out.push({
+      code: c.code,
+      name: c.name,
+      symbol: c.symbol || null,
+      is_base: c.is_base === true,
+      rate_to_xaf: fx ? fx.rate : null,
+      rate_source: fx ? fx.source : null,
+      rate_as_of_date: fx ? fx.as_of_date : null,
+    });
+  }
+  return out;
+}
 
 /* ── reads ─────────────────────────────────────────────────────────────────── */
 
@@ -170,7 +236,7 @@ async function replaceLines(client, transitOrderId, lines) {
  */
 async function create(client, {
   entityId = null, dossierId = null, customsRegime = null, customsRegimeOther = null,
-  serviceDirection = null, declaredValue = null, declaredCurrency = "XAF", declaredFxToXaf = 1,
+  serviceDirection = null, declaredValue = null, declaredCurrency = "XAF",
   insuranceType = "CLIENT", surveyorParty = "CLIENT", departureDate = null, instructions = null,
   submittedDocs = [], lines = [], allowDuplicate = false, actor = {},
 } = {}) {
@@ -200,6 +266,10 @@ async function create(client, {
   }
 
   const docs = rules.normaliseDocs(submittedDocs);
+  const declaredCurrencyCode = (declaredCurrency || "XAF").toUpperCase();
+  // Derived, never trusted from the caller — the rate is the currency master's
+  // business, and a hand-typed figure is how two copies of "the rate" drift.
+  const fx = await fxToXaf(client, declaredCurrencyCode);
 
   await client.query("BEGIN");
   try {
@@ -212,8 +282,8 @@ async function create(client, {
       customs_regime_other: customsRegime ? null : customsRegimeOther,
       service_direction: serviceDirection,
       declared_value: declaredValue,
-      declared_currency: (declaredCurrency || "XAF").toUpperCase(),
-      declared_fx_to_xaf: declaredFxToXaf || 1,
+      declared_currency: declaredCurrencyCode,
+      declared_fx_to_xaf: fx ? fx.rate : 1,
       insurance_type: insuranceType,
       surveyor_party: surveyorParty,
       departure_date: departureDate,
@@ -244,13 +314,18 @@ async function update(client, { id, patch = {}, lines = null, actor = {} }) {
   const fields = {};
   const copy = [
     "entity_id", "dossier_id", "customs_regime", "customs_regime_other", "service_direction",
-    "declared_value", "declared_currency", "declared_fx_to_xaf", "insurance_type",
+    "declared_value", "declared_currency", "insurance_type",
     "surveyor_party", "departure_date", "instructions",
   ];
   for (const k of copy) if (patch[k] !== undefined) fields[k] = patch[k];
   // The regime is stated one way or the other, never both (chk_..._regime_stated).
   if (fields.customs_regime) fields.customs_regime_other = null;
   if (fields.customs_regime_other) fields.customs_regime = null;
+  // The FX rate is derived from the currency master, never taken from the patch.
+  if (patch.declared_currency !== undefined) {
+    const fx = await fxToXaf(client, fields.declared_currency || "XAF");
+    fields.declared_fx_to_xaf = fx ? fx.rate : 1;
+  }
   if (patch.submitted_docs !== undefined) {
     fields.submitted_docs = JSON.stringify(rules.normaliseDocs(patch.submitted_docs));
   }
@@ -437,5 +512,5 @@ async function transition(client, { id, to, actor = {}, ...rest }) {
 
 module.exports = {
   create, update, updateDocs, issue, sign, lodge, cancel, transition,
-  get, list, summary, docTypes,
+  get, list, summary, docTypes, currencies: currenciesForOrder,
 };

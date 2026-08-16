@@ -45,6 +45,12 @@ module.exports = {
   /** The checklist vocabulary, so the form is not a hard-coded copy of it. */
   docTypes: asyncHandler(async (_req, res) => res.json({ data: service.docTypes() })),
 
+  /** The currency picker's vocabulary — the active master-data currencies with
+   *  their live rate to XAF already resolved, so the form's rate field is a
+   *  derived read-out rather than a second number an operator can mistype. */
+  currencies: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.currencies(c)) })),
+
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id, { lang: lang(req) }));
     if (!row) throw new AppError("NOT_FOUND", "Transit order not found", 404);

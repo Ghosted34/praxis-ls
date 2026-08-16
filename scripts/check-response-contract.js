@@ -111,6 +111,29 @@ function extractSchema() {
   }
 
   function readColumns(body) {
+    /*
+     * Block comments come out FIRST, before anything counts a paren or a comma.
+     *
+     * Only `--` was stripped, and it was stripped per-chunk AFTER the body had
+     * already been split — so a `/* … *\/` comment inside a CREATE TABLE was
+     * parsed as if it were SQL. Its parentheses moved the depth counter and its
+     * commas split the body, which meant the column DECLARATION following such
+     * a comment was read starting from the last word of the prose: 0701's
+     * `overall_score` was recorded as a column called `frozen`, and four other
+     * tables gained columns called `and`, `in` and `both`.
+     *
+     * The consequence is the one this file's header warns about — a real column
+     * becomes invisible, the client field that reads it looks like a B4 bug,
+     * and the remedy the error offers is to exempt it in the baseline forever.
+     * A false alarm here is not harmless.
+     *
+     * `--` comments move here for the same reason. They WERE stripped, but per
+     * chunk and AFTER the split — so a comma inside the prose ("…appraisal
+     * rows, frozen when the…") cut the body mid-comment, and the next chunk
+     * began with the tail of a sentence that no longer carried its `--`. Strip
+     * both kinds before a single paren or comma is counted.
+     */
+    body = body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--[^\n]*/g, "");
     let depth = 0;
     let line = "";
     const lines = [];

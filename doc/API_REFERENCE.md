@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1098 |
-| Modules mounted | 115 |
+| Routes | 1103 |
+| Modules mounted | 117 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1098 mounted routes, grouped by path prefix.
+All 1103 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1255,11 +1255,16 @@ All 1098 mounted routes, grouped by path prefix.
 
 | Method | Path | Body validated |
 |---|---|---|
+| POST | `/api/tenant/public/intake/contact-enquiries` | — |
+| POST | `/api/tenant/public/intake/newsletter` | — |
+| POST | `/api/tenant/public/intake/partnerships` | — |
+| POST | `/api/tenant/public/intake/quote-requests` | — |
 | GET | `/api/tenant/public/portfolio/` | — |
 | GET | `/api/tenant/public/portfolio/:slug` | — |
 | GET | `/api/tenant/public/portfolio/media/:id` | — |
 | GET | `/api/tenant/public/proposals/:token` | — |
 | GET | `/api/tenant/public/proposals/:token/pdf` | — |
+| GET | `/api/tenant/public/tracking/:reference` | — |
 
 ### `tenant/purchase-orders`
 

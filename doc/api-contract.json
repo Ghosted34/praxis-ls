@@ -1,10 +1,10 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 115,
-  "route_count": 1098,
+  "modules_mounted": 117,
+  "route_count": 1103,
   "tiers": {
-    "public": 27,
+    "public": 32,
     "self-scoped": 66,
     "gated": 1005
   },
@@ -2458,6 +2458,12 @@
       "tier": "public"
     },
     "GET /api/tenant/public/proposals/:token/pdf": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/tracking/:reference": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -5642,6 +5648,30 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "POST /api/tenant/public/intake/contact-enquiries": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/newsletter": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/partnerships": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/intake/quote-requests": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/purchase-orders/": {
       "auth": true,

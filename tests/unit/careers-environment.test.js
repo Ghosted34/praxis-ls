@@ -91,3 +91,62 @@ describe("careers — the token chooses the environment", () => {
     });
   });
 });
+
+/**
+ * A rejected CV reaches the candidate.
+ *
+ * WHAT BROKE. The apply path caught upload failures and asked
+ * `err.httpStatus < 500` to tell "your file is wrong" from "our storage
+ * failed". `AppError` has never had `httpStatus` — it exposes `status` — so the
+ * test read `undefined < 500`, which is false, and EVERY rejection was swallowed
+ * as though it were our fault. A candidate whose file was 20 MB, or a .docx, or
+ * a renamed .exe, was told "We could not attach your CV. Your application is
+ * safe — please email it to us separately", when the truth was one they could
+ * have fixed in ten seconds. The comment above the line already said they must
+ * be told; only the property name was wrong.
+ */
+describe("careers — a rejected CV is the candidate's to fix", () => {
+  const service = require("../../src/modules/hr/careers/careers.service");
+  const vault = require("../../src/modules/vault/document_vault/document_vault.service");
+  const vacancyService = require("../../src/modules/hr/vacancy/vacancy.service");
+  const { AppError } = require("../../src/utils/errors");
+
+  const ROLE = { vacancy_id: "v1", title: "Accountant", public_token: "tok", apply_config: {} };
+  const req = () => ({
+    tenant: { slug: "t", sandbox_schema: null },
+    tenantDbIn: (_env, fn) => fn({ env: "live" }),
+  });
+
+  beforeEach(() => {
+    jest.spyOn(vacancyRepo, "publishedByToken").mockResolvedValue(ROLE);
+    jest.spyOn(vacancyService, "addApplicant").mockResolvedValue({ applicant_id: "a1" });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const submit = () =>
+    service.applyToToken(req(), {
+      token: "tok",
+      data: { full_name: "Ada", email: "ada@example.com", cv_data_url: "data:application/pdf;base64,AAAA" },
+      slug: "t",
+    });
+
+  it.each([
+    ["too large", new AppError("FILE_TOO_LARGE", "File exceeds 8 MB", 413)],
+    ["the wrong type", new AppError("BAD_FILE_TYPE", "This file is not a PDF or an image", 422)],
+  ])("tells them when the file is %s", async (_label, err) => {
+    jest.spyOn(vault, "createDocument").mockRejectedValue(err);
+    await expect(submit()).rejects.toMatchObject({ code: err.code });
+    // Refused outright: no half-application recorded behind a misleading
+    // "we got you, but not your file".
+    expect(vacancyService.addApplicant).not.toHaveBeenCalled();
+  });
+
+  it("keeps the application when the failure is OURS", async () => {
+    jest.spyOn(vault, "createDocument").mockRejectedValue(new AppError("STORAGE_DOWN", "bucket unreachable", 502));
+    const out = await submit();
+    // Losing the candidate over our own outage is the worse of the two errors.
+    expect(out.received).toBe(true);
+    expect(out.cv_attached).toBe(false);
+    expect(vacancyService.addApplicant).toHaveBeenCalled();
+  });
+});

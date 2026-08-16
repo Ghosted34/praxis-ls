@@ -84,7 +84,35 @@ const placeSearch = z.object({
   limit: z.coerce.number().int().min(1).max(10).optional(),
 });
 
-const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate };
+/* ── Reconciled days (0697) ────────────────────────────────────────────────
+ *
+ * The window is REQUIRED, and bounded. `daysFor` returns one row per employee
+ * per day: an unbounded range on a 300-person roster is six figures of rows for
+ * a screen showing a month, and an open-ended default is how that happens by
+ * accident. 92 days is a quarter — the longest window any of the screens ask
+ * for — and asking for more is a report, not a page.
+ */
+const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in the form YYYY-MM-DD");
+const dayWindow = z
+  .object({ from: d, to: d, employee_id: z.string().uuid().optional() })
+  .refine((v) => v.to >= v.from, { path: ["to"], message: "The end of the window must not precede its start." })
+  .refine(
+    (v) => (Date.parse(v.to) - Date.parse(v.from)) / 86400000 <= 92,
+    { path: ["to"], message: "Ask for at most a quarter at a time." },
+  );
+
+/** Waiving keeps the deduction figure (see 0697) — this only decides whether
+ *  payroll counts it. A waiver takes a reason; upholding does not need one. */
+const justify = z
+  .object({ justified: z.boolean(), justification: z.string().max(1000).optional() })
+  .refine((v) => !v.justified || !!(v.justification && v.justification.trim()), {
+    path: ["justification"],
+    message: "Say why this day is being waived.",
+  });
+
+const reconcileRun = z.object({ date: d.optional() });
+
+const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, dayWindow, justify, reconcileRun };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -111,5 +139,8 @@ module.exports = {
   placeSearch: qmw("placeSearch"),
   deviceRegister: mw("deviceRegister"),
   deviceUpdate: mw("deviceUpdate"),
+  dayWindow: qmw("dayWindow"),
+  justify: mw("justify"),
+  reconcileRun: mw("reconcileRun"),
   schemas,
 };

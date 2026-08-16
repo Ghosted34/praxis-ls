@@ -2,6 +2,7 @@
 const { makeController } = require("../../../shared/crud/resource");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const service = require("./attendance.service");
+const reconcile = require("./attendance.reconcile");
 
 const base = makeController(service, "Attendance");
 const actor = (req) => req.user || { user_id: null };
@@ -71,6 +72,37 @@ module.exports = {
     if (!row) throw new AppError("NOT_FOUND", "Worksite not found", 404);
     res.json({ data: row });
   }),
+
+  /* ── Reconciled days (0697) ──────────────────────────────────────────────
+   *
+   * `daysFor` is the month a manager reviews and the month an employee sees;
+   * `setJustified` is the ONE place a lateness decision changes money, called
+   * by both the query inbox and the payroll review sheet so the two can never
+   * show different answers.
+   */
+  days: asyncHandler(async (req, res) => {
+    const { from, to, employee_id: employeeId } = req.validatedQuery;
+    res.json({ data: await req.tenantDb((c) => reconcile.daysFor(c, { employeeId: employeeId || null, from, to })) });
+  }),
+  myDays: asyncHandler(async (req, res) => {
+    const eid = req.user.employee_id;
+    if (!eid) return res.json({ data: [] });
+    const { from, to } = req.validatedQuery;
+    return res.json({ data: await req.tenantDb((c) => reconcile.daysFor(c, { employeeId: eid, from, to })) });
+  }),
+  justifyDay: asyncHandler(async (req, res) => {
+    const row = await req.tenantDb((c) => reconcile.setJustified(c, {
+      id: req.params.dayId, justified: req.body.justified,
+      justification: req.body.justification ?? null, actor: actor(req),
+    }));
+    if (!row) throw new AppError("NOT_FOUND", "Attendance day not found", 404);
+    res.json({ data: row });
+  }),
+  // Re-run a date by hand — after a punch is corrected, a leave is approved
+  // late, or a rule is switched on. Idempotent by construction (see the
+  // reconciler), so this is safe to press twice.
+  runReconcile: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => reconcile.reconcileDate(c, { date: req.body.date || null, actor: actor(req) })) })),
 
   // Admin clock-out on a specific row (kept for corrections).
   clockOutById: asyncHandler(async (req, res) => {

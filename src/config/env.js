@@ -340,6 +340,13 @@ const Schema = z.object({
   // granted rather than accrued.
   LEAVE_ACCRUAL_CRON: z.string().default("0 2 1 * *"),
 
+  // Nightly attendance reconciliation (MOD-14). 03:00 in the FX timezone — the
+  // day being reconciled is over by then in the workplace zone, and the answer
+  // is waiting before anybody opens the app. Empty disables it: days are then
+  // only reconciled when somebody presses "re-run", and no rule ever charges
+  // anybody automatically.
+  ATTENDANCE_RECONCILE_CRON: z.string().default("0 3 * * *"),
+
   // Milestone SLA scan (MOD-31): 06:00 and 18:00 — the start and the end of a
   // working day, which is when somebody can still act on "this file will
   // breach". Tenants who want it hourly set `0 * * * *`; the scan is idempotent

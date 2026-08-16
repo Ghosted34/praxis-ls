@@ -15,6 +15,7 @@ import { ActivePill, Pill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { HouseRulesView } from "./house-rules";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num } from "@/lib/format";
@@ -556,7 +557,7 @@ function OnboardingView() {
 }
 
 export function SopsPage() {
-  const [view, setView] = React.useState<"procedures" | "onboarding">(
+  const [view, setView] = React.useState<"procedures" | "onboarding" | "rules">(
     "procedures",
   );
   return (
@@ -580,8 +581,23 @@ export function SopsPage() {
         >
           Onboarding
         </button>
+        {/* The clauses the system enforces. Beside the documents rather than in
+            attendance settings, because a lateness deduction IS a clause — see
+            house-rules.tsx. */}
+        <button
+          className={`chip ${view === "rules" ? "on" : ""}`}
+          onClick={() => setView("rules")}
+        >
+          House rules
+        </button>
       </div>
-      {view === "procedures" ? <ProceduresView /> : <OnboardingView />}
+      {view === "procedures" ? (
+        <ProceduresView />
+      ) : view === "onboarding" ? (
+        <OnboardingView />
+      ) : (
+        <HouseRulesView />
+      )}
     </section>
   );
 }

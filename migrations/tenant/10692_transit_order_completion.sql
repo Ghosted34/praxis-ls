@@ -1,5 +1,22 @@
 -- ============================================================================
--- 0692 — the transit order becomes a document, not a stub.
+-- 10692 — the transit order becomes a document, not a stub.
+--
+-- ── WHY THE NUMBER IS FIVE DIGITS (do not "tidy" this to 0692) ──────────────
+--
+-- Numbered out of the 0xxx band on purpose, to leave the contiguous range free
+-- for the other stream working this repo in parallel and avoid the CI collision
+-- that 0692/0693/0694 would have caused the moment either branch merged first.
+--
+-- The leading `1` is not arbitrary. `migrator.js` sorts filenames as STRINGS,
+-- so apply order is alphabetical, not numeric. `06692` — the obvious way to
+-- write "a spare 0692" — sorts between `0661` and `0671`, which would run this
+-- trio EARLY rather than last: 10693 re-points the T1_LODGED milestone stage
+-- that `0680_publish_shipped_milestone_chain.sql` creates, so under `06693` the
+-- re-point would target a stage that does not exist yet and 0680 would then
+-- seed it pointing back at `transit_order.created` — silently undoing the fix
+-- on every fresh provision, while passing on any database where the files were
+-- applied in authoring order. A five-digit number starting with `1` sorts after
+-- every existing `0`-prefixed file, which is the property actually needed here.
 --
 -- ── WHAT THE LEGACY ORDRE DE TRANSIT ACTUALLY IS ────────────────────────────
 --
@@ -130,7 +147,7 @@ COMMENT ON COLUMN transit_order.declaration_ref IS
 
 -- ── 3. Existing rows are ISSUED, not DRAFT ──────────────────────────────────
 --
--- Every pre-0692 row was created by a code path that allocated a number and
+-- Every pre-10692 row was created by a code path that allocated a number and
 -- captured a document immediately — that is precisely the ISSUED state, and
 -- calling them DRAFT would claim they had never been sent to a client when
 -- some certainly were. Guarded on ot_number so a row that somehow has none is

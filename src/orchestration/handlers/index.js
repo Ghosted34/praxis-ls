@@ -23,7 +23,7 @@ register(require("./fuel-log-created-dossier-cost"));            // fuel_log.cre
 
 // ── Operations lifecycle ──
 register({ eventKey: "transit_order.created", handlerKey: "transit_order.created:advance-milestone", feature: null, run: advanceMilestone.run });
-// The declaration being LODGED is what T1_LODGED actually means (0693 re-points
+// The declaration being LODGED is what T1_LODGED actually means (10693 re-points
 // the seeded stage onto it); `created` above only ever meant a draft existed.
 register({ eventKey: "transit_order.lodged", handlerKey: "transit_order.lodged:advance-milestone", feature: null, run: advanceMilestone.run });
 register({ eventKey: "delivery_note.created", handlerKey: "delivery_note.created:advance-milestone", feature: null, run: advanceMilestone.run });

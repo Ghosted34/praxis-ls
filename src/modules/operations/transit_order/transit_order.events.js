@@ -5,7 +5,7 @@
  *
  * `transit_order.created` is kept and still means what the seeded milestone
  * chains already bind it to (9091/0680, stage T1_LODGED) — renaming it would
- * silently unhook every tenant's chain. The lifecycle states added in 0692 get
+ * silently unhook every tenant's chain. The lifecycle states added in 10692 get
  * their own event each, so a chain can be re-pointed at the moment that
  * actually matters for it: SIGNED is the authorisation, LODGED is the filing.
  */

@@ -5,9 +5,9 @@
  * coverage's sake:
  *
  *   G23     free-text cargo lines were silently dropped
- *   0692    a number was burned before anyone committed to anything
- *   0692    nothing recorded the client's signature, and lodging did not need one
- *   0693    a DRAFT order ticked a client-visible "declaration lodged" milestone
+ *   10692    a number was burned before anyone committed to anything
+ *   10692    nothing recorded the client's signature, and lodging did not need one
+ *   10693    a DRAFT order ticked a client-visible "declaration lodged" milestone
  *   legacy  the Certificate of Origin box could be printed but never ticked
  *   legacy  a declared value carried no currency
  *
@@ -131,7 +131,7 @@ describe("G23 — a free-text cargo line survives the round trip", () => {
 
 /* ── numbering ───────────────────────────────────────────────────────────── */
 
-describe("0692 — a number is burned at issue, never at draft", () => {
+describe("10692 — a number is burned at issue, never at draft", () => {
   /**
    * Legacy rendered `$nextOtNumber` into the form on page load and re-derived it
    * with `MAX(ot_number_sequence) + 1` on save. Abandoning the form left a hole
@@ -176,7 +176,7 @@ describe("0692 — a number is burned at issue, never at draft", () => {
 
 /* ── the signature ───────────────────────────────────────────────────────── */
 
-describe("0692 — the client's signature is the authorisation to declare", () => {
+describe("10692 — the client's signature is the authorisation to declare", () => {
   it("refuses to lodge a declaration with no signed copy attached", async () => {
     const c = fakeClient();
     jest.spyOn(repo, "getTO").mockResolvedValue({ ...ORDER, status: "SIGNED", signature_vault_id: null });
@@ -337,17 +337,17 @@ describe("the declared value carries its currency", () => {
 
 /* ── the milestone wiring ────────────────────────────────────────────────── */
 
-describe("0693 — the T1_LODGED milestone fires on lodging, not on drafting", () => {
+describe("10693 — the T1_LODGED milestone fires on lodging, not on drafting", () => {
   /**
    * 9091 seeded the Hinterland chain's "Transit declaration lodged" stage with
    * `auto_event = 'transit_order.created'`. That stage is client-visible, so a
-   * DRAFT order would have told the client a declaration had been filed. 0693
+   * DRAFT order would have told the client a declaration had been filed. 10693
    * re-points both the template and the live instances.
    */
   const fs = require("fs");
   const path = require("path");
   const sql = fs.readFileSync(
-    path.join(__dirname, "..", "..", "migrations", "tenant", "0693_transit_order_events.sql"),
+    path.join(__dirname, "..", "..", "migrations", "tenant", "10693_transit_order_events.sql"),
     "utf8",
   );
 

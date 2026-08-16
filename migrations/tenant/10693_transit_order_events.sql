@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0693 — the transit-order lifecycle events, and the milestone it really closes.
+-- 10693 — the transit-order lifecycle events, and the milestone it really closes.
 --
 -- ── PART 1: THE EVENT TYPES ─────────────────────────────────────────────────
 --
@@ -22,7 +22,7 @@
 --    …, auto_event = 'transit_order.created')
 --
 -- The stage means "the transit declaration has been LODGED with customs". The
--- event it fires on means "somebody opened a transit order". Before 0692 those
+-- event it fires on means "somebody opened a transit order". Before 10692 those
 -- were arguably the same moment, because creating the row was the only thing the
 -- module could do. They are now four states apart: a DRAFT order — not numbered,
 -- not printed, not signed, nothing filed — would tick "Transit declaration

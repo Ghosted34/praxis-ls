@@ -167,11 +167,11 @@ describe("G23 — where the goods went, and when", () => {
   });
 });
 
-describe("migration 0694", () => {
+describe("migration 10694", () => {
   const fs = require("fs");
   const path = require("path");
   const sql = fs.readFileSync(
-    path.join(__dirname, "..", "..", "migrations", "tenant", "0694_delivery_note_completion.sql"),
+    path.join(__dirname, "..", "..", "migrations", "tenant", "10694_delivery_note_completion.sql"),
     "utf8",
   );
 

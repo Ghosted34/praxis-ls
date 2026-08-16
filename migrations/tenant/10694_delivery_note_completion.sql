@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0694 — the delivery note gets the three fields a delivery note is FOR.
+-- 10694 — the delivery note gets the three fields a delivery note is FOR.
 --
 -- GAP_REVIEW G23 names this alongside the transit order, and the two defects
 -- are the same defect wearing different clothes:
@@ -25,7 +25,7 @@
 -- an arrival for every historic row and make the fabrication indistinguishable
 -- from a real one. NULL reads as "not recorded", which is the truth.
 --
--- Mirrors 0692 for `transit_order`. Same reasoning, same shape.
+-- Mirrors 10692 for `transit_order`. Same reasoning, same shape.
 -- ============================================================================
 
 ALTER TABLE delivery_note

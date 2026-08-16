@@ -28,7 +28,7 @@ const { getSetting } = require("../../shared/config/settings");
 const SOURCES = {
   // `created` stays mapped for tenants whose configured `operations.milestone_map`
   // still points at it, but the seeded T1_LODGED stage now triggers on `lodged`
-  // (migration 0693 re-points both the template and the live instances). Raising
+  // (migration 10693 re-points both the template and the live instances). Raising
   // a DRAFT order is not the milestone; lodging the declaration is.
   "transit_order.created": { table: "transit_order", pk: "transit_order_id", refPrefix: "transit_order" },
   "transit_order.lodged": { table: "transit_order", pk: "transit_order_id", refPrefix: "transit_order" },

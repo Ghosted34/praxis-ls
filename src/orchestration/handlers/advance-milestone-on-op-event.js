@@ -26,7 +26,12 @@ const { getSetting } = require("../../shared/config/settings");
 // event_type_key → { table, pk, refPrefix }. Whitelisted (table names are
 // interpolated), never user input.
 const SOURCES = {
+  // `created` stays mapped for tenants whose configured `operations.milestone_map`
+  // still points at it, but the seeded T1_LODGED stage now triggers on `lodged`
+  // (migration 0693 re-points both the template and the live instances). Raising
+  // a DRAFT order is not the milestone; lodging the declaration is.
   "transit_order.created": { table: "transit_order", pk: "transit_order_id", refPrefix: "transit_order" },
+  "transit_order.lodged": { table: "transit_order", pk: "transit_order_id", refPrefix: "transit_order" },
   "delivery_note.created": { table: "delivery_note", pk: "delivery_note_id", refPrefix: "delivery_note" },
   "invoice.issued": { table: "invoice", pk: "invoice_id", refPrefix: "invoice" },
 };

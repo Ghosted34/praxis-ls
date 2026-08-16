@@ -1042,12 +1042,15 @@
       "route": "/operations/transit-orders",
       "area": "operations",
       "module_key": "MOD-30",
-      "purpose": "Transit declarations raised against a dossier.",
+      "purpose": "The client's written authorisation to declare cargo: draft, issue (allocates the OT number), record the client's signature, lodge the customs declaration.",
       "actions": [
         "list_transit_orders",
         "get_transit_order",
+        "transit_order_summary",
         "create_transit_order",
-        "update_transit_order_docs"
+        "update_transit_order_docs",
+        "issue_transit_order",
+        "lodge_transit_order"
       ]
     },
     {

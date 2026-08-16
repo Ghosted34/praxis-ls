@@ -23,6 +23,9 @@ register(require("./fuel-log-created-dossier-cost"));            // fuel_log.cre
 
 // ── Operations lifecycle ──
 register({ eventKey: "transit_order.created", handlerKey: "transit_order.created:advance-milestone", feature: null, run: advanceMilestone.run });
+// The declaration being LODGED is what T1_LODGED actually means (0693 re-points
+// the seeded stage onto it); `created` above only ever meant a draft existed.
+register({ eventKey: "transit_order.lodged", handlerKey: "transit_order.lodged:advance-milestone", feature: null, run: advanceMilestone.run });
 register({ eventKey: "delivery_note.created", handlerKey: "delivery_note.created:advance-milestone", feature: null, run: advanceMilestone.run });
 // The seeded chains close their final-invoice stage on invoice.issued, so the
 // tail of every file completes itself instead of waiting for a manual tick.

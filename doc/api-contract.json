@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 113,
-  "route_count": 1088,
+  "route_count": 1096,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 1000
+    "gated": 1008
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3087,6 +3087,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/transit-orders/document-types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/transit-orders/summary": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/treasury-accounts/": {
       "auth": true,
       "rbac": true,
@@ -3904,6 +3916,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/transit-orders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/transit-orders/:id/documents": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6148,6 +6166,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/transit-orders/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/issue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/lodge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/sign": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,

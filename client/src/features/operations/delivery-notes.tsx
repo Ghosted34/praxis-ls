@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Select } from "@/components/ui/modal";
+import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { ErrorState } from "@/components/ui/states";
 import { DocButton } from "@/components/doc-button";
@@ -20,7 +21,7 @@ import { ScreenAi } from "@/components/screen-ai";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { XIcon } from "@/components/ui/icons";
 import { useList, errMsg } from "@/lib/use-resource";
-import { num } from "@/lib/format";
+import { num, dateFmt } from "@/lib/format";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
 import { nameMap, tone } from "./shared";
@@ -47,6 +48,9 @@ function DeliveryForm({
     consignee: "",
     city_zone: "",
     contact_person: "",
+    address: "",
+    phone: "",
+    delivery_date: "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [lines, setLines] = React.useState<GoodsLine[]>([blankGoods()]);
@@ -60,11 +64,14 @@ function DeliveryForm({
     setBusy(true);
     setError(null);
     try {
+      // G23 — this used to be `.filter((l) => l.inventory_item_id)`, so a line
+      // the user typed by hand never even left the browser. A line counts if it
+      // says anything at all; the server refuses one that says nothing.
       const goods = lines
-        .filter((l) => l.inventory_item_id)
+        .filter((l) => l.inventory_item_id || l.label.trim())
         .map((l) => ({
-          inventory_item_id: l.inventory_item_id,
-          label: l.label,
+          inventory_item_id: l.inventory_item_id || null,
+          label: l.label.trim(),
           qty: Number(l.qty) || 1,
         }));
       await api.createDeliveryNote({
@@ -73,6 +80,9 @@ function DeliveryForm({
         consignee: f.consignee || undefined,
         city_zone: f.city_zone || undefined,
         contact_person: f.contact_person || undefined,
+        address: f.address.trim() || undefined,
+        phone: f.phone.trim() || undefined,
+        delivery_date: f.delivery_date || undefined,
         lines: goods.length ? goods : undefined,
       });
       onSaved();
@@ -136,6 +146,34 @@ function DeliveryForm({
             <Input
               value={f.contact_person}
               onChange={(e) => set("contact_person", e.target.value)}
+            />
+          </Field>
+          {/* G23 — a proof-of-delivery with no address proves nothing. */}
+          <Field
+            label="Delivery address"
+            className="sm:col-span-2"
+            hint="The street address the goods were handed over at — the city/zone above is only for routing."
+          >
+            <Input
+              value={f.address}
+              onChange={(e) => set("address", e.target.value)}
+              placeholder="Zone Industrielle, Rue 4321, Douala"
+            />
+          </Field>
+          <Field label="Phone" hint="Reached at the gate if nobody answers.">
+            <Input
+              value={f.phone}
+              onChange={(e) => set("phone", e.target.value)}
+              placeholder="+237 6 99 00 11 22"
+            />
+          </Field>
+          <Field
+            label="Delivery date"
+            hint="When the goods actually arrived. Leave blank if not yet known."
+          >
+            <DateField
+              value={f.delivery_date}
+              onChange={(v) => set("delivery_date", v)}
             />
           </Field>
         </div>
@@ -225,6 +263,14 @@ export function DeliveryNotesPage() {
     { key: "consignee", label: "Consignee" },
     { key: "city_zone", label: "City / zone" },
     { key: "contact_person", label: "Contact" },
+    {
+      key: "delivery_date",
+      label: "Delivered",
+      // Historic notes predate the column, so "—" here means "not recorded"
+      // rather than "not delivered" — the migration deliberately did not
+      // backfill an arrival date it could not know.
+      render: (r) => (r.delivery_date ? dateFmt(r.delivery_date) : "—"),
+    },
     {
       key: "status",
       label: "Status",

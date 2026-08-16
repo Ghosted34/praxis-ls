@@ -47,10 +47,28 @@ function progressive(base, brackets) {
 
 /**
  * Compute one monthly payslip.
+ *
+ * ── GROSS VERSUS NET, AND WHY IT IS NOT A PRESENTATION CHOICE (0698) ───────
+ *
+ * Two kinds of thing come off a payslip and they must not be confused, because
+ * getting it backwards overtaxes or undertaxes the employee:
+ *
+ *   OFF GROSS — an absence, an unjustified lateness, unpaid leave. The employee
+ *   did not work that time and did not EARN that money, so CNPS and IRPP are
+ *   computed on the smaller figure. The caller subtracts these before calling
+ *   and passes the reduced `gross`.
+ *
+ *   OFF NET — recovering a salary advance. They earned the full salary and were
+ *   taxed on it; in an earlier month they simply received part of it early.
+ *   Taking it off gross would hand them a tax rebate for having been lent money.
+ *   These are `opts.post_tax_deductions`.
+ *
  * @param employee { base_salary, risk_class_rate }
- * @param opts     { gross? overrides base_salary, config? overrides DEFAULTS }
+ * @param opts     { gross? overrides base_salary, config? overrides DEFAULTS,
+ *                   post_tax_deductions?: [{ label, amount }] }
  * @returns { gross, employee:{...}, employer:{...}, total_employee_deductions,
- *            total_employer_charges, net_pay, employer_cost }
+ *            total_employer_charges, net_before_recovery, post_tax_deductions,
+ *            total_post_tax_deductions, net_pay, employer_cost }
  */
 function computePayslip(employee = {}, opts = {}) {
   const c = { ...DEFAULTS, ...(opts.config || {}) };
@@ -68,7 +86,25 @@ function computePayslip(employee = {}, opts = {}) {
   const cac = round(irpp * c.cac_rate);
 
   const total_employee_deductions = round(cnps_pension + cfc_ee + irpp + cac);
-  const net_pay = round(gross - total_employee_deductions);
+  const net_before_recovery = round(gross - total_employee_deductions);
+
+  // Post-tax. Clamped to what is actually left: an advance instalment must not
+  // be able to produce a NEGATIVE payslip. The unrecovered part stays owing —
+  // the recovery plan is the record of it — and the employee still takes home
+  // zero rather than a debt appearing on a payslip.
+  const post = (opts.post_tax_deductions || [])
+    .map((d) => ({ label: d.label, amount: round(Math.max(0, Number(d.amount) || 0)) }))
+    .filter((d) => d.amount > 0);
+  let room = Math.max(0, net_before_recovery);
+  const post_tax_deductions = [];
+  for (const d of post) {
+    const taken = round(Math.min(d.amount, room));
+    if (taken <= 0) break;
+    post_tax_deductions.push({ ...d, amount: taken, requested: d.amount });
+    room = round(room - taken);
+  }
+  const total_post_tax_deductions = round(post_tax_deductions.reduce((n, d) => n + d.amount, 0));
+  const net_pay = round(net_before_recovery - total_post_tax_deductions);
 
   // --- Employer charges ---
   const injuryRate = Number(employee.risk_class_rate) > 0 ? Number(employee.risk_class_rate) : c.cnps_injury_rate_default;
@@ -85,6 +121,9 @@ function computePayslip(employee = {}, opts = {}) {
     employer: { pension: emp_pension, family: emp_family, injury: emp_injury, cfc: emp_cfc, fne: emp_fne },
     total_employee_deductions,
     total_employer_charges,
+    net_before_recovery,
+    post_tax_deductions,
+    total_post_tax_deductions,
     net_pay,
     employer_cost: round(gross + total_employer_charges),
     estimate: true, // KB §9 — labelled estimate until professionally validated

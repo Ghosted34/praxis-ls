@@ -59,8 +59,26 @@ async function devicePolicy(client) {
   return ["off", "warn", "block"].includes(mode) ? mode : "off";
 }
 
-/** A recognisable name for a device nobody has named yet. */
-function deviceLabelFrom(userAgent) {
+/**
+ * A DISTINGUISHABLE name for a device nobody has named yet.
+ *
+ * "Windows · Chrome" was the first attempt and it is useless: it names a browser
+ * category, not a machine, so every Windows laptop in the company produces the
+ * identical string. A manager looking at two rows that both say "Windows ·
+ * Chrome" cannot do the one thing this register exists for — tell them apart —
+ * and a second device appearing, which is the whole signal, becomes invisible.
+ *
+ * The fingerprint's first four characters fix that. They are not meaningful and
+ * are not meant to be read as meaningful; they are a discriminator, so two rows
+ * are never the same string and a human can say "approve the 7f3a one". Short
+ * enough not to look like a secret, and it is not one — the value is already
+ * opaque and already stored.
+ *
+ * This is still only a PLACEHOLDER. The real name comes from a person: the
+ * employee or the manager renaming it to "Faith's laptop" or "Yard tablet",
+ * which is why `label` is patchable and why the upsert never overwrites it.
+ */
+function deviceLabelFrom(userAgent, fingerprint) {
   const ua = String(userAgent || "");
   const os =
     /Android/i.test(ua) ? "Android" :
@@ -75,7 +93,10 @@ function deviceLabelFrom(userAgent) {
     /Chrome\//i.test(ua) ? "Chrome" :
     /Firefox\//i.test(ua) ? "Firefox" :
     /Safari\//i.test(ua) ? "Safari" : null;
-  return [os, browser].filter(Boolean).join(" · ") || "Unrecognised device";
+  // The discriminator is the only part that is actually per-device, so it is
+  // never dropped — an unrecognised user agent still yields a unique label.
+  const tag = String(fingerprint || "").replace(/[^a-z0-9]/gi, "").slice(0, 4).toLowerCase();
+  return [os, browser].filter(Boolean).concat(tag || []).join(" · ") || "Unrecognised device";
 }
 
 /**
@@ -117,7 +138,7 @@ async function resolveDevice(client, { employeeId, device }) {
   const row = await repo.upsertDevice(client, {
     employeeId,
     fingerprint,
-    label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+    label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent, fingerprint),
     userAgent: device.user_agent || null,
     platform: device.platform || null,
   });
@@ -421,7 +442,7 @@ module.exports = {
     const row = await repo.upsertDevice(client, {
       employeeId: empId,
       fingerprint,
-      label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+      label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent, fingerprint),
       userAgent: device.user_agent || null,
       platform: device.platform || null,
     });

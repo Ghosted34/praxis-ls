@@ -89,6 +89,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
   "/hr": [
     "employees",
     "payroll",
+    "advances",
     "vacancies",
     "contracts",
     "appraisals",

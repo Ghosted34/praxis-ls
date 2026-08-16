@@ -2343,6 +2343,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/payroll/advances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/payroll/advances/:advanceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/payroll/advances/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/payroll/mine": {
       "auth": true,
       "rbac": false,
@@ -3868,6 +3886,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/payment-gateways/:provider/role": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/payroll/advances/:advanceId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5698,6 +5722,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/payroll/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/payroll/advances": {
       "auth": true,
       "rbac": true,
       "validated": false,

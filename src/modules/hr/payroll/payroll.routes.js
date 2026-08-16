@@ -17,6 +17,23 @@ router.use(authMiddleware);
 
 // Self-service — the caller's own payslips (My HR). No MOD grant.
 router.get("/mine", controller.mine);
+// …and what they still owe. An employee is always entitled to know what is
+// being recovered from their pay and how much is left.
+router.get("/advances/mine", controller.myAdvances);
+
+/* ── Salary advances (0698) ────────────────────────────────────────────────
+ *
+ * CREATING or RESCHEDULING a plan is `approve`, not `edit`. It decides what
+ * comes out of somebody's pay for the next several months, and writing one off
+ * forgives real money — the same authority as validating the run that recovers
+ * it, and a strictly larger one than computing a payslip.
+ *
+ * Declared before `/:id` so `/advances` is not read as a run id.
+ */
+router.get("/advances", requirePermission(M, "view"), controller.listAdvances);
+router.post("/advances", requirePermission(M, "approve"), validator.advance, controller.createAdvance);
+router.get("/advances/:advanceId", requirePermission(M, "view"), controller.getAdvance);
+router.patch("/advances/:advanceId", requirePermission(M, "approve"), validator.advanceUpdate, controller.updateAdvance);
 
 router.get("/", requirePermission(M, "view"), controller.list);
 router.get("/:id", requirePermission(M, "view"), controller.get);

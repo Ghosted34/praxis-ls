@@ -209,6 +209,7 @@ export const AREAS: Area[] = [
     sections: [
       { key: "employees", label: "Employees" },
       { key: "payroll", label: "Payroll" },
+      { key: "advances", label: "Advances" },
       { key: "vacancies", label: "Vacancies" },
       { key: "contracts", label: "Contracts" },
       { key: "appraisals", label: "Appraisals" },

@@ -177,7 +177,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_STATE` | 422 | 1× | — |
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
-| `INVALID_TRANSITION` | 422 | 15× | — |
+| `INVALID_TRANSITION` | 422 | 16× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |

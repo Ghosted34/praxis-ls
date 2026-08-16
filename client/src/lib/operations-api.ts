@@ -98,66 +98,291 @@ export const transitionDossier = (
   });
 
 /* ── Transit orders(/transit-orders) ── */
+/**
+ * The transit order is a lifecycle document, not a row: DRAFT → ISSUED →
+ * SIGNED → LODGED (or CANCELLED). A number is allocated at ISSUE, so a draft
+ * has `ref: null` — the list must not assume one is there.
+ */
+export const TRANSIT_STATUSES = [
+  "DRAFT",
+  "ISSUED",
+  "SIGNED",
+  "LODGED",
+  "CANCELLED",
+] as const;
+export type TransitStatus = (typeof TRANSIT_STATUSES)[number];
+
+export const CUSTOMS_REGIMES = ["IM4", "IM7", "IM8", "EX1", "EX2"] as const;
+
+export type TransitOrderLine = {
+  transit_order_line_id?: string;
+  inventory_item_id?: string | null;
+  label: string;
+  marks?: string | null;
+  hs_code?: string | null;
+  packages?: number | null;
+  weight?: string | null;
+  value_amount?: number | null;
+  line_no?: number | null;
+};
+
 export type TransitOrder = {
   transit_order_id: string;
   ref?: string | null;
   dossier_id?: string | null;
   entity_id?: string | null;
+  status: TransitStatus;
   customs_regime?: string | null;
+  customs_regime_other?: string | null;
   service_direction?: string | null;
   declared_value?: number | null;
-  status?: string | null;
+  declared_currency?: string | null;
+  declared_fx_to_xaf?: number | null;
+  insurance_type?: string | null;
+  surveyor_party?: string | null;
+  departure_date?: string | null;
+  instructions?: string | null;
+  submitted_docs?: { code: string; note?: string }[] | null;
+  issued_at?: string | null;
+  signed_at?: string | null;
+  signed_by_name?: string | null;
+  signature_vault_id?: string | null;
+  lodged_at?: string | null;
+  declaration_ref?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
   created_at?: string;
+  // Joined for display — never stored, so a renamed client does not leave a
+  // stale name on an order.
+  dossier_ref?: string | null;
+  client_name?: string | null;
+  entity_name?: string | null;
+  // Present on GET /:id only.
+  lines?: TransitOrderLine[];
+  totals?: {
+    lines_total: number;
+    declared_value: number | null;
+    declared_value_xaf: number | null;
+    reconciles: boolean;
+  };
+  shipment_details?: ShipmentDetails | null;
+  /** Whether the facts shown are the frozen copy or the live file. */
+  shipment_details_source?: "SNAPSHOT" | "LIVE" | null;
+  /** What the server would actually accept — the buttons bind to this. */
+  allowed_transitions?: TransitStatus[];
+  /** Why the Issue button is disabled, in words. */
+  issue_blockers?: string[];
 };
+
 export type TransitOrderInput = {
-  entity_id: string;
+  entity_id?: string;
   dossier_id?: string;
-  customs_regime?: string;
-  service_direction?: string;
-  declared_value?: number;
-  submitted_docs?: unknown[];
-  lines?: {
-    inventory_item_id: string;
-    label?: string;
-    packages?: number;
-    weight?: string;
-  }[];
-  date?: string;
+  customs_regime?: string | null;
+  customs_regime_other?: string | null;
+  service_direction?: string | null;
+  declared_value?: number | null;
+  declared_currency?: string;
+  declared_fx_to_xaf?: number;
+  insurance_type?: string;
+  surveyor_party?: string;
+  departure_date?: string | null;
+  instructions?: string | null;
+  submitted_docs?: (string | { code: string; note?: string })[];
+  lines?: TransitOrderLine[];
+  allow_duplicate?: boolean;
 };
-export const listTransitOrders = () =>
-  tenant<TransitOrder[]>("/transit-orders");
+
+export type TransitDocType = {
+  code: string;
+  label_fr: string;
+  label_en: string;
+};
+export type TransitSummary = Record<TransitStatus | "TOTAL", number>;
+
+export const listTransitOrders = (q?: Record<string, string>) =>
+  tenant<TransitOrder[]>(
+    `/transit-orders${q && Object.keys(q).length ? `?${new URLSearchParams(q)}` : ""}`,
+  );
+export const getTransitOrder = (id: string) =>
+  tenant<TransitOrder>(`/transit-orders/${id}`);
+/** Counted in the database — the tiles must not count one loaded page. */
+export const transitOrderSummary = () =>
+  tenant<TransitSummary>("/transit-orders/summary");
+/** The checklist vocabulary, served so the form is not a hard-coded copy. */
+export const transitDocTypes = () =>
+  tenant<TransitDocType[]>("/transit-orders/document-types");
 export const createTransitOrder = (body: TransitOrderInput) =>
   tenant<TransitOrder>("/transit-orders", { method: "POST", body });
 export const updateTransitOrder = (
   id: string,
   body: Partial<TransitOrderInput>,
 ) => tenant<TransitOrder>(`/transit-orders/${id}`, { method: "PATCH", body });
+export const issueTransitOrder = (id: string) =>
+  tenant<TransitOrder>(`/transit-orders/${id}/issue`, {
+    method: "POST",
+    body: {},
+  });
+export const signTransitOrder = (
+  id: string,
+  body: {
+    signature_vault_id?: string;
+    signed_by_name?: string;
+    signed_at?: string;
+  },
+) => tenant<TransitOrder>(`/transit-orders/${id}/sign`, { method: "POST", body });
+export const lodgeTransitOrder = (id: string, declaration_ref: string) =>
+  tenant<TransitOrder>(`/transit-orders/${id}/lodge`, {
+    method: "POST",
+    body: { declaration_ref },
+  });
+export const cancelTransitOrder = (id: string, reason: string) =>
+  tenant<TransitOrder>(`/transit-orders/${id}/cancel`, {
+    method: "POST",
+    body: { reason },
+  });
 
 /* ── Delivery notes(/delivery-notes) ── */
+/**
+ * The delivery note is a lifecycle document: DRAFT → ISSUED → DELIVERED (or
+ * CANCELLED). The number is allocated at ISSUE, so a draft has `ref: null`.
+ *
+ * DELIVERED is the state that matters — it means somebody signed for the goods,
+ * and it is the only thing that makes this document evidence rather than a
+ * printout.
+ */
+export const DELIVERY_STATUSES = [
+  "DRAFT",
+  "ISSUED",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
+export type DeliveryNoteLine = {
+  delivery_note_line_id?: string;
+  inventory_item_id?: string | null;
+  label?: string | null;
+  qty?: number | null;
+};
+
+/**
+ * A container on the note. Normally a pick from the file
+ * (`dossier_container_unit_id`), but a hand-typed `container_no` is allowed —
+ * boxes do turn up that were never captured on the file.
+ */
+export type DeliveryNoteContainer = {
+  delivery_note_container_id?: string;
+  dossier_container_unit_id?: string | null;
+  container_no?: string | null;
+  seal_no?: string | null;
+  gross_weight_kg?: number | null;
+  notes?: string | null;
+};
+
+/** A container on the FILE, as offered by the picker. */
+export type AvailableContainer = {
+  dossier_container_unit_id: string;
+  container_no: string | null;
+  seal_no: string | null;
+  gross_weight_kg?: number | null;
+  container_type_code?: string | null;
+  container_type_en?: string | null;
+  /** Note numbers this box is already on — a split load, not necessarily wrong. */
+  already_on?: string[];
+};
+
 export type DeliveryNote = {
   delivery_note_id: string;
   ref?: string | null;
+  doc_number?: string | null;
   dossier_id?: string | null;
+  dossier_ref?: string | null;
   entity_id?: string | null;
+  client_name?: string | null;
   consignee?: string | null;
   city_zone?: string | null;
   contact_person?: string | null;
-  status?: string | null;
+  /** Where the goods actually went. `city_zone` is a routing bucket, not this. */
+  address?: string | null;
+  phone?: string | null;
+  /** When the goods arrived — NOT `created_at`, which is when the note was raised. */
+  delivery_date?: string | null;
+  status: DeliveryStatus;
+  /** Who signed for the goods. The point of the whole document. */
+  received_by_name?: string | null;
+  received_at?: string | null;
+  /** The client's own words at handover ("carton 3 crushed"). */
+  reservations?: string | null;
+  cancel_reason?: string | null;
   created_at?: string;
+  /** Present on the detail read only. */
+  lines?: DeliveryNoteLine[];
+  containers?: DeliveryNoteContainer[];
+  allowed_transitions?: DeliveryStatus[];
+  issue_blockers?: string[];
 };
+
 export type DeliveryNoteInput = {
-  entity_id: string;
+  entity_id?: string;
   dossier_id?: string;
   consignee?: string;
   city_zone?: string;
   contact_person?: string;
-  lines?: { inventory_item_id: string; label?: string; qty?: number }[];
-  date?: string;
+  address?: string;
+  phone?: string;
+  /** ISO `YYYY-MM-DD`. */
+  delivery_date?: string;
+  reservations?: string;
+  /**
+   * G23 — `inventory_item_id` was REQUIRED here, which is the dropped-line bug
+   * stated in the type system: a hand-typed line could not even be expressed.
+   * A line is its `label`; the stock link is optional. One of the two must be
+   * present, and the server returns a field-keyed 422 naming the row if neither
+   * is.
+   */
+  lines?: { inventory_item_id?: string | null; label?: string; qty?: number }[];
+  containers?: DeliveryNoteContainer[];
 };
-export const listDeliveryNotes = () =>
-  tenant<DeliveryNote[]>("/delivery-notes");
+
+export type DeliverySummary = Record<DeliveryStatus | "TOTAL", number>;
+
+export const listDeliveryNotes = (q?: Record<string, string>) =>
+  tenant<DeliveryNote[]>(
+    `/delivery-notes${q && Object.keys(q).length ? `?${new URLSearchParams(q)}` : ""}`,
+  );
+export const getDeliveryNote = (id: string) =>
+  tenant<DeliveryNote>(`/delivery-notes/${id}`);
+/** Counted in the database — the tiles must not count one loaded page. */
+export const deliveryNoteSummary = () =>
+  tenant<DeliverySummary>("/delivery-notes/summary");
+/** The file's containers, for the picker that replaced the legacy paste box. */
+export const availableContainers = (dossierId: string, excludeNoteId?: string) =>
+  tenant<AvailableContainer[]>(
+    `/delivery-notes/available-containers?${new URLSearchParams({
+      dossier_id: dossierId,
+      ...(excludeNoteId ? { exclude_note_id: excludeNoteId } : {}),
+    })}`,
+  );
 export const createDeliveryNote = (body: DeliveryNoteInput) =>
   tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
+export const updateDeliveryNote = (id: string, body: Partial<DeliveryNoteInput>) =>
+  tenant<DeliveryNote>(`/delivery-notes/${id}`, { method: "PATCH", body });
+export const issueDeliveryNote = (id: string) =>
+  tenant<DeliveryNote>(`/delivery-notes/${id}/issue`, { method: "POST", body: {} });
+export const confirmDelivery = (
+  id: string,
+  body: {
+    received_by_name: string;
+    received_at?: string;
+    reservations?: string;
+    signature_vault_id?: string;
+  },
+) => tenant<DeliveryNote>(`/delivery-notes/${id}/deliver`, { method: "POST", body });
+export const cancelDeliveryNote = (id: string, reason: string) =>
+  tenant<DeliveryNote>(`/delivery-notes/${id}/cancel`, {
+    method: "POST",
+    body: { reason },
+  });
 
 /* ── Service taxonomy (/service-types) ────────────────────────────────────────
  * "Services as DATA, not code" (0310_operations.sql:7). Had no module until

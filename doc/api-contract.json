@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1130,
+  "route_count": 1145,
   "tiers": {
     "public": 32,
     "self-scoped": 69,
-    "gated": 1029
+    "gated": 1044
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1372,6 +1372,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/delivery-notes/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/delivery-notes/available-containers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/delivery-notes/summary": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3225,6 +3237,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/transit-orders/document-types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/transit-orders/summary": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/treasury-accounts/": {
       "auth": true,
       "rbac": true,
@@ -3616,6 +3640,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/cycle-counts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/delivery-notes/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4060,6 +4090,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/transit-orders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/transit-orders/:id/documents": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4906,6 +4942,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/delivery-notes/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/deliver": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/issue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6400,6 +6460,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/transit-orders/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/issue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/lodge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/sign": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/transit-orders/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,

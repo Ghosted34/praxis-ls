@@ -575,3 +575,26 @@ export function cell(v: unknown): string {
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
+
+/**
+ * The URL somebody actually typed, made into one a browser accepts.
+ *
+ * `<input type="url">` and Zod's `.url()` both demand a scheme, and nobody
+ * writes one: a candidate asked for their LinkedIn types
+ * `www.linkedin.com/in/…` and gets a native "Please enter a URL" bubble at
+ * submit — after filling in the whole form, on the one page in this product a
+ * stranger sees. Prepending the scheme they meant is what the browser's own
+ * address bar does, and it is the difference between an application sent and a
+ * candidate lost.
+ *
+ * Left alone: anything that already declares a scheme (including `mailto:` and
+ * a protocol-relative `//host`), and anything blank.
+ */
+export function withScheme(value: string): string {
+  const t = String(value || "").trim();
+  if (!t) return "";
+  // A scheme is letters/digits/+/-/. then a colon (RFC 3986 §3.1). Checked
+  // rather than looking for "http", so `mailto:` and `ftp:` are not mangled.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t) || t.startsWith("//")) return t;
+  return `https://${t}`;
+}

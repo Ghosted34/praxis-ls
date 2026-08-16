@@ -366,6 +366,23 @@ module.exports = {
     return { scored, failed, total: applicants.length, skipped: Math.max(0, applicants.length - queue.length) };
   },
 
+  /**
+   * The candidate's CV, for a recruiter to READ.
+   *
+   * The vault's own download is gated on MOD-64 plus a per-document check —
+   * correct for the document module, and wrong as the only way to open a CV:
+   * a recruiter working a pipeline would need a grant over the whole document
+   * vault to look at the file the candidate sent them. This serves the same
+   * bytes under the recruitment grant, and only ever the CV of an applicant on
+   * the vacancy in the URL, so it widens nothing else.
+   */
+  async applicantCv(client, { vacancyId, applicantId }) {
+    const applicant = await repo.getApplicant(client, applicantId);
+    if (!applicant || applicant.vacancy_id !== vacancyId) return null;
+    if (!applicant.cv_vault_id) return null;
+    return vault.fetchBytes(client, applicant.cv_vault_id);
+  },
+
   /* ── Custom scoring criteria ── */
   listCriteria: (client, vacancyId) => repo.listCriteria(client, vacancyId),
   async addCriterion(client, { vacancyId, data, actor = {} }) {

@@ -191,13 +191,26 @@ function estimate(vacancy, applicant) {
 /** Ask the vision model to read the CV. Best-effort: a CV we cannot open is a
  *  reason to score without it and SAY so, not a reason to fail the request. */
 async function readCv(client, cvVaultId) {
-  if (!cvVaultId) return null;
+  if (!cvVaultId) return { text: null, reason: null };
   try {
     const { doc, buffer } = await vault.fetchBytes(client, cvVaultId);
     const mimeType = doc.mime_type || doc.content_type || "application/pdf";
+    /*
+     * The vendor comes from the tenant's own AI Control config, not from the
+     * process env alone.
+     *
+     * `vision.extract` fell back to `GEMINI_API_KEY` and nothing else, so on a
+     * deployment whose models are configured in AI Control — which is the point
+     * of AI Control — reading a CV threw "provider not configured" and every
+     * assessment came back "scored without the CV". The recruiter was then told
+     * the CANDIDATE's file could not be read, which is a lie about a PDF that
+     * is sitting in the vault, marked Verified, and opens fine.
+     */
+    const vendor = await llm.resolveVendor(client, "gemini");
     const { raw } = await vision.extract({
       image: buffer,
       mimeType,
+      vendor,
       prompt:
         "This is a job applicant's CV. Transcribe its substance as JSON with keys " +
         "summary, total_years_experience, roles (array of {title, employer, years}), " +
@@ -207,10 +220,18 @@ async function readCv(client, cvVaultId) {
     // reads a slightly-malformed JSON blob perfectly well, whereas
     // `JSON.parse` failing would throw away a good transcription over a stray
     // trailing comma.
-    return String(raw || "").slice(0, 20000) || null;
+    const text = String(raw || "").slice(0, 20000) || null;
+    return { text, reason: text ? null : "unreadable" };
   } catch (err) {
-    logger.warn({ err, cvVaultId }, "[recruitment] could not read the CV — scoring without it");
-    return null;
+    // Two different problems wear the same face here, and only one of them is
+    // the candidate's: a provider nobody configured is an ADMINISTRATOR's to
+    // fix, and saying "the file could not be read" about it sends a recruiter
+    // chasing a PDF that was never the problem.
+    const reason = /not configured/i.test(err && err.message) ? "no_provider" : "unreadable";
+    logger.warn({ err, cvVaultId, reason }, "[recruitment] could not read the CV — scoring without it");
+    // Returned, not stashed on the function: two assessments can be in flight
+    // at once and a shared slot would report one candidate's reason on another.
+    return { text: null, reason };
   }
 }
 
@@ -308,7 +329,7 @@ function parseAssessment(text) {
  * was already there rather than overwriting a real assessment with a blank.
  */
 async function assess(client, { vacancy, applicant, criteria = [] }) {
-  const cvText = await readCv(client, applicant.cv_vault_id);
+  const { text: cvText, reason: cvUnreadReason } = await readCv(client, applicant.cv_vault_id);
   const { text, provider } = await llm.chat({
     client,
     messages: buildPrompt({ vacancy, applicant, criteria, cvText }),
@@ -376,6 +397,9 @@ async function assess(client, { vacancy, applicant, criteria = [] }) {
       // own, the schema scan cannot find it either. Collapse this object and the
       // client's `AiBreakdown.cv_read` is reported as drift.
       cv_read: !!cvText,
+      // Only when it was not read AND we know why. The UI says something
+      // different for each, because the two have different owners.
+      ...(cvUnreadReason ? { cv_unread_reason: cvUnreadReason } : {}),
     },
     ai_summary: out.summary ? String(out.summary).slice(0, 2000) : null,
     ai_provisional: false,
@@ -384,6 +408,9 @@ async function assess(client, { vacancy, applicant, criteria = [] }) {
 }
 
 module.exports = {
+  // Exported for its test: the two reasons a CV goes unread have different
+  // owners, and the panel branches on which.
+  readCv,
   estimate,
   assess,
   // Exported for the unit tests — each is a decision with a rationale above it

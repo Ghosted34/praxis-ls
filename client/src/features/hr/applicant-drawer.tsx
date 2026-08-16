@@ -253,10 +253,23 @@ function Assessment({
       )}
       {!provisional && b.cv_read === false && (
         <div className="mt-3">
-          <Callout tone="warn" title="Scored without the CV">
-            The uploaded file could not be read, so this assessment is based on
-            the application form alone.
-          </Callout>
+          {/* Two problems, two owners. "No provider" is an administrator's to
+              fix and has nothing to do with the candidate's file — saying "we
+              could not read it" about a PDF sitting in the vault, marked
+              Verified, sends a recruiter chasing the wrong thing. */}
+          {b.cv_unread_reason === "no_provider" ? (
+            <Callout tone="warn" title="Scored without the CV">
+              No document-reading provider is configured for this workspace, so
+              the CV was never opened — nothing is wrong with the file. An
+              administrator can set one under AI Control. Open the CV below and
+              read it yourself in the meantime.
+            </Callout>
+          ) : (
+            <Callout tone="warn" title="Scored without the CV">
+              The uploaded file could not be read, so this assessment is based
+              on the application form alone. Open it below to check it yourself.
+            </Callout>
+          )}
         </div>
       )}
 
@@ -485,6 +498,23 @@ export function ApplicantDrawer({
   const merge = (patch: Partial<api.Applicant>) =>
     setApplicant((a) => ({ ...a, ...patch }));
 
+  const [cvError, setCvError] = React.useState<string | null>(null);
+  const [openingCv, setOpeningCv] = React.useState(false);
+
+  /** The file itself, which until now the pipeline could not show at all: the
+   *  panel reported what a model made of the CV and offered no way to read it. */
+  async function openCv() {
+    setOpeningCv(true);
+    setCvError(null);
+    try {
+      await api.openApplicantCv(applicant.vacancy_id, applicant.applicant_id);
+    } catch (e) {
+      setCvError(errMsg(e));
+    } finally {
+      setOpeningCv(false);
+    }
+  }
+
   const facts = [
     applicant.email,
     applicant.phone,
@@ -524,7 +554,24 @@ export function ApplicantDrawer({
                   applied {dateFmt(applicant.applied_at)}
                 </span>
               )}
+              {/* The document itself. This panel could report what a model made
+                  of the CV and offered no way to READ it — so when the model
+                  said it could not open the file, a recruiter had nothing left
+                  to check it against. */}
+              {applicant.cv_vault_id && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={openingCv}
+                  onClick={() => void openCv()}
+                >
+                  Open CV
+                </Button>
+              )}
             </div>
+            {cvError && (
+              <p className="micro mt-1 text-destructive">{cvError}</p>
+            )}
           </div>
           {/* Separate from the AI number and never combined with it. */}
           <div className="text-right">

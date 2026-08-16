@@ -39,6 +39,8 @@ const PUBLIC_BY_DESIGN = new Map([
     "sales/portfolio_public",
     "Published marketing stories are intentionally public; responses are allow-listed, consent-aware and every route is limited.",
   ],
+  ["sales/public_intake", "Marketing website forms submit bounded, rate-limited CRM intake without accounts."],
+  ["operations/tracking_public", "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing."],
 ]);
 
 /**

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (337)
+## All codes (338)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -204,7 +204,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 342× | — |
+| `NOT_FOUND` | 404 | 343× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -321,6 +321,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SMTP_SEND_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
+| `SPAM_REJECTED` | 422 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
@@ -356,7 +357,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
-| `VALIDATION_ERROR` | 422 | 132× | — |
+| `VALIDATION_ERROR` | 422 | 133× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

@@ -78,16 +78,25 @@ function AttendanceLog({ date }: { date: string }) {
     {
       key: "device",
       label: "Device",
-      // Three-valued, like On-site, and for the same reason: "no device was
-      // presented" is not "the device was rejected". Only the middle case is
-      // worth a manager's attention, so it is the only one that shouts.
+      /*
+       * FOUR states, not three. `device_trusted: null` covers two genuinely
+       * different facts, and the Devices panel below can tell them apart:
+       * recorded-but-unjudged (the `off` policy) versus nothing presented at
+       * all. Only "Unapproved" shouts, because it is the only one a manager has
+       * to act on.
+       */
       render: (r) =>
-        r.device_trusted == null ? (
-          <span className="micro">—</span>
-        ) : r.device_trusted ? (
+        r.device_trusted === true ? (
           <Pill tone="ok">Known</Pill>
-        ) : (
+        ) : r.device_trusted === false ? (
           <Pill tone="warn">Unapproved</Pill>
+        ) : r.hr_device_id ? (
+          // Recorded, but the `off` policy formed no opinion. Distinct from
+          // "nothing presented" below — without this the register lists a
+          // device the log row denies, and the two panels contradict.
+          <Pill tone="mute">Recorded</Pill>
+        ) : (
+          <span className="micro">—</span>
         ),
     },
     {

@@ -87,15 +87,31 @@ function deviceLabelFrom(userAgent) {
 async function resolveDevice(client, { employeeId, device }) {
   const mode = await devicePolicy(client);
   const fingerprint = device && typeof device.fingerprint === "string" ? device.fingerprint.trim() : "";
-  if (mode === "off" || !fingerprint) {
+
+  if (!fingerprint) {
     // Under `block`, a client that sends nothing must not sail through — that
     // is the whole point of the setting, and "my app is old" is not a defence
     // an attendance policy can accept.
-    if (mode === "block" && !fingerprint) {
+    if (mode === "block") {
       return { device: null, trusted: null, blocked: true, reason: "This device isn't registered — register it before clocking in" };
     }
     return { device: null, trusted: null, blocked: false, reason: null };
   }
+
+  /*
+   * RECORDING IS NOT ENFORCEMENT, and the two must not share a switch.
+   *
+   * This used to return early when the policy was `off`, so no device was ever
+   * written. The consequence was a trap of the setting's own making: the
+   * register could only fill while enforcement was on, and enforcement could
+   * only be turned on safely once the register had filled. An administrator who
+   * left the default in place saw an empty Devices panel forever and had no
+   * path to `warn` that did not begin by flagging every punch in the company.
+   *
+   * So the row is written at EVERY policy. `off` means "do not judge", not "do
+   * not look" — the register builds passively, and turning enforcement on later
+   * is then a decision made against real data instead of a leap.
+   */
   const row = await repo.upsertDevice(client, {
     employeeId,
     fingerprint,
@@ -103,6 +119,13 @@ async function resolveDevice(client, { employeeId, device }) {
     userAgent: device.user_agent || null,
     platform: device.platform || null,
   });
+
+  // Three-valued, like `within_geofence`. Under `off` we recorded WHICH device
+  // this was but formed no opinion about it, and writing `false` there would
+  // paint every historic punch "Unapproved" the moment somebody enables the
+  // policy — the retrospective flag the snapshot column exists to prevent.
+  if (mode === "off") return { device: row, trusted: null, blocked: false, reason: null };
+
   const trusted = row.status === "TRUSTED";
   if (mode === "block" && !trusted) {
     return {
@@ -256,7 +279,11 @@ module.exports = {
     // A punch from a device nobody has approved is the signal this table exists
     // to raise — under `warn` it is accepted, so the event is the ONLY trace a
     // manager gets in the moment.
-    if (dev.device && !dev.trusted) {
+    // `=== false`, not `!dev.trusted`. Under the `off` policy `trusted` is null
+    // — recorded but not judged — and the loose test would raise this alert on
+    // every punch in a workspace that has deliberately not switched enforcement
+    // on. An alert that fires when nobody asked for it is one nobody reads.
+    if (dev.device && dev.trusted === false) {
       await emitEvent(client, {
         eventTypeKey: events.UNTRUSTED_DEVICE, moduleKey: events.MODULE, entityRef,
         actorUserId: actor.user_id || null,

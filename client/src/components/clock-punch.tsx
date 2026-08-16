@@ -272,7 +272,10 @@ export function ClockPunchChip() {
     // `relative` so the naming offer can anchor to the chip. The title bar is a
     // drag region (`.wco`), and a popover that escaped this wrapper would be
     // positioned against the window rather than the control that raised it.
-    <span className="relative">
+    // Hide the WRAPPER below `sm`: hiding only its button leaves this zero-width
+    // flex item in the utility cluster, where it still consumes an 8px gap and
+    // takes that space from the title bar's draggable region.
+    <span className="relative hidden sm:inline-flex">
     <button
       type="button"
       onClick={() => {

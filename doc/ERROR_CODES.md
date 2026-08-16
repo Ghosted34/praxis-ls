@@ -19,13 +19,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | Alias | Prefer | Raised |
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
-| `BAD_STATE` | `BAD_STATUS` | 19× |
+| `BAD_STATE` | `BAD_STATUS` | 25× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (342)
+## All codes (346)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -90,7 +90,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 19× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 25× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
@@ -126,6 +126,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
 | `DUPLICATE_KEY` | 422 | 2× | — |
+| `DUPLICATE_ORDER` | — | 1× | — |
 | `EMAIL_REQUIRED` | 422 | 1× | — |
 | `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
@@ -155,6 +156,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `IDEMPOTENCY_KEY_REUSED` | 422 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
+| `INCOMPLETE` | — | 2× | — |
 | `INCOMPLETE_APPLICATION` | 422 | 1× | — |
 | `INELIGIBLE_DOSSIER` | 422 | 1× | — |
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
@@ -184,7 +186,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
-| `LOCKED` | 422 | 21× | — |
+| `LOCKED` | 422 | 27× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
@@ -207,7 +209,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 355× | — |
+| `NOT_FOUND` | 404 | 365× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -250,10 +252,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_QUOTE` | 422 | 1× | — |
 | `NO_RATE` | 422 | 2× | — |
 | `NO_RATE_MATCH` | 422 | 1× | — |
-| `NO_RECIPIENT` | 422 | 1× | — |
+| `NO_RECIPIENT` | 422 | 2× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
+| `NO_SIGNED_COPY` | 422 | 2× | — |
 | `NO_TARGET` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 1× | — |
@@ -344,6 +347,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOO_MANY_UNITS` | 422 | 1× | — |
 | `TRANSCRIPTION_UNAVAILABLE` | — | 1× | — |
 | `UNKNOWN_CLIENT_TYPE` | 422 | 1× | — |
+| `UNKNOWN_CONTAINER` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |
@@ -361,7 +365,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
-| `VALIDATION_ERROR` | 422 | 144× | — |
+| `VALIDATION_ERROR` | 422 | 156× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

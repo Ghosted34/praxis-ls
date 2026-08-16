@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1128 |
+| Routes | 1129 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1128 mounted routes, grouped by path prefix.
+All 1143 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -595,6 +595,13 @@ All 1128 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/delivery-notes/` | — |
 | POST | `/api/tenant/delivery-notes/` | — |
 | GET | `/api/tenant/delivery-notes/:id` | — |
+| PATCH | `/api/tenant/delivery-notes/:id` | — |
+| POST | `/api/tenant/delivery-notes/:id/cancel` | — |
+| POST | `/api/tenant/delivery-notes/:id/deliver` | — |
+| POST | `/api/tenant/delivery-notes/:id/issue` | — |
+| POST | `/api/tenant/delivery-notes/:id/transition` | — |
+| GET | `/api/tenant/delivery-notes/available-containers` | — |
+| GET | `/api/tenant/delivery-notes/summary` | — |
 
 ### `tenant/dispatch`
 
@@ -1701,6 +1708,14 @@ All 1128 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/transit-orders/` | — |
 | GET | `/api/tenant/transit-orders/:id` | — |
 | PATCH | `/api/tenant/transit-orders/:id` | — |
+| POST | `/api/tenant/transit-orders/:id/cancel` | — |
+| PATCH | `/api/tenant/transit-orders/:id/documents` | — |
+| POST | `/api/tenant/transit-orders/:id/issue` | — |
+| POST | `/api/tenant/transit-orders/:id/lodge` | — |
+| POST | `/api/tenant/transit-orders/:id/sign` | — |
+| POST | `/api/tenant/transit-orders/:id/transition` | — |
+| GET | `/api/tenant/transit-orders/document-types` | — |
+| GET | `/api/tenant/transit-orders/summary` | — |
 
 ### `tenant/treasury-accounts`
 

@@ -230,40 +230,315 @@ const TEMPLATES = {
     sampleData: { number: "DA-2026-0014", date: "2026-07-27", department: "Opérations", party: { name: "Jean Mballa", lines: ["Chef de quai"] }, lines: sampleLines.slice(0, 2), totals: { total_ttc: 1080000 }, currency: "XAF" },
   },
 
+  /**
+   * BORDEREAU DE LIVRAISON — the proof of delivery.
+   *
+   * Three things the rebuild's version was missing, all of which the legacy
+   * layout (`view/operations/delivery-note.php`) had and which are what make
+   * this document worth printing:
+   *
+   *   · the CONTAINER MANIFEST grid. Legacy rendered 18 fixed slots so the
+   *     unused ones printed as ruled lines to be filled in by hand at the gate.
+   *     That is not a quirk to clean up — a driver arriving with a box that was
+   *     added at the last minute needs somewhere to write it, and the printed
+   *     form is the only artefact present at the handover.
+   *   · the RESERVATIONS box, where the client writes "carton 3 crushed". It is
+   *     the single most valuable thing on the page in a dispute, because it is
+   *     the client's own words at the moment of acceptance.
+   *   · a RECEIVED BY box that names the person, rather than an anonymous
+   *     signature line.
+   */
   DELIVERY_NOTE: {
-    docType: "DELIVERY_NOTE", title: { fr: "Bon de livraison", en: "Delivery note" }, module: "operations/delivery_note", fields: ["hide prices toggle"],
+    docType: "DELIVERY_NOTE", title: { fr: "Bon de livraison", en: "Delivery note" }, module: "operations/delivery_note",
+    fields: ["hide prices toggle", "container manifest", "reservations", "received by"],
     build: (data, cfg, entity, verify) => {
-      const cols = [{ key: "label", label: { fr: "Désignation", en: "Description" } }, { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true }];
-      const rows = (data.lines || []).map((l) => ({ label: l.label, qty: String(l.qty) }));
+      const lang = cfg.language;
+      const cols = [
+        { key: "label", label: { fr: "Désignation", en: "Description" } },
+        { key: "marks", label: { fr: "Marques", en: "Marks" } },
+        { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true },
+      ];
+      const rows = (data.lines || []).map((l) => ({
+        label: l.label, marks: l.marks || "", qty: String(l.qty),
+      }));
+
+      /**
+       * The manifest, padded to a minimum of 18 slots.
+       *
+       * Padding is what makes the paper usable: an empty slot prints as a ruled
+       * line, so a box added on the quay can be written in and still be part of
+       * the signed document. A note with 20 containers prints all 20 — the
+       * legacy hard cap of 18 silently truncated the rest, which on a document
+       * that proves what was handed over is a data-loss bug, not a layout one.
+       */
+      const manifest = () => {
+        const tcs = data.containers || [];
+        if (!tcs.length && cfg.hide_empty_manifest) return "";
+        const slots = Math.max(18, tcs.length);
+        let cells = "";
+        for (let i = 0; i < slots; i += 1) {
+          const c = tcs[i];
+          const n = `<span class="muted" style="margin-right:4px;">${i + 1}.</span>`;
+          const body = c
+            ? `<b>${k.esc(c.container_no || "—")}</b>${c.seal_no ? `<span class="muted" style="font-size:9px;"> / ${k.esc(c.seal_no)}</span>` : ""}`
+            : "<span style=\"color:#bbb;\">______________</span>";
+          cells += `<div style="border-right:1px solid #ddd;border-bottom:1px solid #ddd;padding:3px 5px;font-size:10px;">${n}${body}</div>`;
+        }
+        return k.section(
+          { fr: "Liste des conteneurs (TCs)", en: "Container manifest (TCs)" },
+          `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #ddd;border-left:1px solid #ddd;">${cells}</div>`,
+          cfg,
+        );
+      };
+
+      /**
+       * The client's reservations. Prints whatever was recorded, and an empty
+       * ruled box when nothing was — because it has to be fillable at the gate.
+       */
+      const reservations = k.section(
+        { fr: "Observations / Réserves du client", en: "Comments / Reservations (client)" },
+        data.reservations
+          ? `<div class="box">${k.esc(data.reservations)}</div>`
+          : `<div class="box" style="min-height:42px;"></div>`,
+        cfg,
+      );
+
+      // Named, dated receipt — not an anonymous signature line.
+      const received = `<div class="sig"><div class="b"><div class="ln">${k.t({ fr: "Livré par", en: "Issued by" }, lang)}${data.issued_by_name ? ` — ${k.esc(data.issued_by_name)}` : ""}</div></div>`
+        + `<div class="b"><div class="ln">${k.t({ fr: "Reçu par (nom, signature, cachet)", en: "Received by (name, signature, stamp)" }, lang)}</div>`
+        + (data.received_by_name
+          ? `<div style="font-weight:600;margin-top:3px;">${k.esc(data.received_by_name)}</div>`
+            + (data.received_at ? `<div class="muted" style="font-size:9px;">${k.dateFmt(data.received_at)}</div>` : "")
+          : "")
+        + "</div></div>";
+
       const body = [
-        k.head(entity, { fr: "Bon de livraison", en: "Delivery note" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Dossier", en: "File" }, data.dossier_ref]], cfg),
-        k.parties([{ label: { fr: "Destinataire", en: "Consignee" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
+        k.head(entity, { fr: "Bon de livraison", en: "Delivery note" }, data.number, [
+          [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+          [{ fr: "Date de livraison", en: "Delivery date" }, k.dateFmt(data.delivery_date)],
+          [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        ], cfg),
+        k.parties([{
+          label: { fr: "Destinataire", en: "Consignee" },
+          name: data.party && data.party.name,
+          lines: (data.party && data.party.lines) || [],
+        }], cfg),
         k.lineTable(cols, rows, cfg),
-        k.signatureBlock(cfg),
+        manifest(),
+        reservations,
+        received,
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Delivery note " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "BL-2026-0052", date: "2026-07-27", dossier_ref: "SBX-2026-0001", party: sampleParty, lines: [{ label: "Conteneur 40' TCLU1234567", qty: 1 }, { label: "Palettes ciment", qty: 24 }], currency: "XAF" },
+    sampleData: {
+      number: "DN-2026-0052", date: "2026-07-27", delivery_date: "2026-07-28", dossier_ref: "SBX-2026-0001",
+      party: sampleParty,
+      lines: [{ label: "Palettes ciment", marks: "SLS/001", qty: 24 }],
+      containers: [{ container_no: "TCLU1234567", seal_no: "SL889231" }, { container_no: "MSKU7654321", seal_no: "SL889232" }],
+      reservations: "Conteneur 2 : joint de porte endommagé, marchandise intacte.",
+      received_by_name: "Jean Mballa", received_at: "2026-07-28",
+      currency: "XAF",
+    },
   },
 
+  /**
+   * ORDRE DE TRANSIT — the instrument the client signs to authorise us to
+   * declare their cargo. Not an internal note: it names a declared value the
+   * declaration is built on, states who carries the insurance risk and who
+   * calls the surveyor, and it comes back stamped.
+   *
+   * THIS IS A REBUILD OF THE LEGACY PRINT VIEW, NOT A GENERIC DOCUMENT. The
+   * previous version here printed a carrier block and a route — plausible for
+   * "a transit order" in the abstract, and not the form Cameroonian customs and
+   * the client's own filing expect. The legacy `transit-order.php` print area
+   * has a specific anatomy, every part of which carries meaning:
+   *
+   *   · an Import/Export tick-pair in the header
+   *   · client + file reference, vessel + BL, origin + arrival, destination +
+   *     departure, as four two-up boxed rows
+   *   · a five-column cargo table (marks / packages / description / weight /
+   *     value) — the rebuild had three columns and no value
+   *   · the requested customs regime as a tick-row with a write-in line
+   *   · the place of delivery
+   *   · the insurance clause and the damage-surveyor election
+   *   · the attached-documents checklist
+   *   · two signature blocks: client stamp, and ours
+   *
+   * Rendered bilingually through `k.t`, so a tenant configured `fr` gets the
+   * French line and one configured `en` gets English, rather than the legacy's
+   * hard-coded French-with-English-slashes.
+   *
+   * The shipment facts (client, vessel, BL, ports, dates, marks) come from the
+   * shipment-details projection and are FROZEN onto the order when it issues
+   * (0661), so a reprint matches the copy that was signed.
+   */
   TRANSIT_ORDER: {
-    docType: "TRANSIT_ORDER", title: { fr: "Ordre de transit", en: "Transit order" }, module: "operations/transit_order", fields: ["carrier block", "route"],
+    docType: "TRANSIT_ORDER", title: { fr: "Ordre de transit", en: "Transit order" }, module: "operations/transit_order",
+    fields: ["shipment facts", "customs regime", "insurance & surveyor", "attached documents"],
     build: (data, cfg, entity, verify) => {
-      const cols = [{ key: "label", label: { fr: "Marchandise", en: "Cargo" } }, { key: "qty", label: { fr: "Colis", en: "Packages" }, num: true }, { key: "weight", label: { fr: "Poids", en: "Weight" }, num: true }];
+      const lang = cfg.language;
+      const tick = (on) => `<span style="display:inline-block;width:10px;height:10px;border:1px solid currentColor;margin-right:4px;vertical-align:-1px;text-align:center;line-height:9px;font-size:9px;">${on ? "&#10005;" : ""}</span>`;
+      const row2 = (a, b) => `<div style="display:flex;gap:10px;margin-bottom:6px;">${[a, b].filter(Boolean).join("")}</div>`;
+      const cell = (label, value) =>
+        `<div class="box" style="flex:1;min-width:0;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;" class="muted">${k.t(label, lang)}</div><div style="font-weight:600;">${k.esc(value || "—")}</div></div>`;
+
+      const isImport = String(data.direction || "").toUpperCase() === "IMPORT";
+      const isExport = String(data.direction || "").toUpperCase() === "EXPORT";
+
+      // Header tick-pair, appended to the standard meta block.
+      const dirLine = `<div style="margin-top:4px;">${tick(isImport)} ${k.t({ fr: "Import", en: "Import" }, lang)} &nbsp; ${tick(isExport)} ${k.t({ fr: "Export", en: "Export" }, lang)}</div>`;
+
+      const facts = [
+        row2(
+          cell({ fr: "Client", en: "Client" }, data.client),
+          cell({ fr: "Référence dossier", en: "File reference" }, data.dossier_ref),
+        ),
+        row2(
+          cell({ fr: "Navire", en: "Vessel" }, data.conveyance),
+          cell({ fr: "Connaissement", en: "Bill of lading" }, data.transport_ref),
+        ),
+        row2(
+          cell({ fr: "Provenance", en: "Origin" }, data.origin),
+          cell({ fr: "Date d'arrivée", en: "Arrival date" }, k.dateFmt(data.arrival_date)),
+        ),
+        row2(
+          cell({ fr: "Destination", en: "Destination" }, data.destination),
+          cell({ fr: "Date de départ", en: "Departure date" }, k.dateFmt(data.departure_date)),
+        ),
+      ].join("");
+
+      const cols = [
+        { key: "marks", label: { fr: "Marques", en: "Marks" } },
+        { key: "packages", label: { fr: "Colis", en: "Packages" }, num: true },
+        { key: "label", label: { fr: "Désignation de la marchandise", en: "Cargo description" } },
+        { key: "weight", label: { fr: "Poids", en: "Weight" }, num: true },
+        { key: "value", label: { fr: "Valeur", en: "Value" }, num: true },
+      ];
+
+      // The declared value is the base of duty and is almost never in XAF, so
+      // it prints in the currency it was declared in, with the XAF equivalent
+      // beside it when the two differ.
+      const declared = data.declared_value_text
+        ? `<tr class="grand"><td>${k.t({ fr: "Valeur déclarée", en: "Declared value" }, lang)}</td><td class="num">${k.esc(data.declared_value_text)}</td></tr>`
+        : "";
+      const declaredXaf = data.declared_value_xaf_text
+        ? `<tr><td class="muted">${k.t({ fr: "Contre-valeur", en: "Equivalent" }, lang)}</td><td class="num muted">${k.esc(data.declared_value_xaf_text)}</td></tr>`
+        : "";
+      const valueTable = declared ? `<table class="totals">${declared}${declaredXaf}</table>` : "";
+
+      const regimes = (data.regimes || []).map((r) => `<span style="margin-right:14px;white-space:nowrap;">${tick(r.on)} <b>${k.esc(r.code)}</b></span>`).join("");
+      const otherRegime = data.customs_regime_other
+        ? `<div style="margin-top:5px;">${k.t({ fr: "Autre régime", en: "Other regime" }, lang)}: <b>${k.esc(data.customs_regime_other)}</b></div>`
+        : `<div style="margin-top:5px;" class="muted">${k.t({ fr: "Autre régime", en: "Other regime" }, lang)}: ______________________</div>`;
+      const regimeBlock = k.section({ fr: "Régime douanier sollicité", en: "Requested customs regime" },
+        `<div class="box">${regimes}${otherRegime}</div>`, cfg);
+
+      const deliveryBlock = data.place_of_delivery
+        ? k.section({ fr: "Lieu de livraison", en: "Place of delivery" }, `<div class="box">${k.esc(data.place_of_delivery)}</div>`, cfg)
+        : "";
+
+      // The insurance clause and the surveyor election. Legacy printed the
+      // insurance line as fixed text and the surveyor as two boxes it never
+      // stored; both are now driven by the stored election.
+      const insuredByUs = String(data.insurance_type || "CLIENT").toUpperCase() === "COMPANY";
+      const surveyorUs = String(data.surveyor_party || "CLIENT").toUpperCase() === "COMPANY";
+      // RAW, not escaped — every use below goes through `k.t` or `k.esc`, and
+      // pre-escaping here would double-encode an "&" in the legal name.
+      const co = entity.legal_name || "";
+      /**
+       * A full sentence, stacked rather than slash-joined.
+       *
+       * `k.t` renders "fr / en" on one line, which reads fine for a two-word
+       * label and badly for a legal clause — especially this one, where both
+       * halves contain the company name, so the bilingual form repeats it four
+       * times in a row. A clause the client is agreeing to has to be legible,
+       * so in bilingual mode the two languages sit on two lines, with the
+       * second in the muted tone. Single-language mode is unaffected.
+       */
+      const clause = (fr, en) => (lang === "fr" || lang === "en"
+        ? k.t({ fr, en }, lang)
+        : `${k.esc(fr)}<div class="muted" style="font-size:10px;">${k.esc(en)}</div>`);
+
+      const liability = k.section({ fr: "Assurance et avaries", en: "Insurance and damage" }, `<div class="box">
+        <div style="display:flex;gap:4px;">${tick(!insuredByUs)}<div>${clause(`Assurance NON couverte par ${co} — à la charge du client`, `Insurance NOT covered by ${co} — carried by the client`)}</div></div>
+        <div style="display:flex;gap:4px;margin-top:5px;">${tick(insuredByUs)}<div>${clause(`Assurance couverte par ${co}`, `Insurance covered by ${co}`)}</div></div>
+        <div style="margin-top:9px;">${k.t({ fr: "En cas d'avaries, le constat d'expert :", en: "In case of damage, the surveyor:" }, lang)}</div>
+        <div style="display:flex;gap:4px;margin-top:4px;">${tick(!surveyorUs)}<div>${clause("Sera demandé par NOUS (le client)", "Is applied for by US (the client)")}</div></div>
+        <div style="display:flex;gap:4px;margin-top:5px;">${tick(surveyorUs)}<div>${clause(`Sera demandé par ${co}`, `Is applied for by ${co}`)}</div></div>
+      </div>`, cfg);
+
+      const docsBlock = k.section({ fr: "Pièces jointes", en: "Attached documents" },
+        `<div class="box" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">${
+          (data.documents || []).map((d) => `<span>${tick(d.on)} ${k.esc(d.label)}</span>`).join("")
+        }</div>`, cfg);
+
+      const instructions = data.instructions
+        ? k.section({ fr: "Instructions particulières", en: "Special instructions" }, `<div class="box">${k.esc(data.instructions).replace(/\n/g, "<br>")}</div>`, cfg)
+        : "";
+
+      // The declaration reference, once the order has been lodged. Legacy had
+      // nowhere to put this and it was tracked in a spreadsheet.
+      const lodged = data.declaration_ref
+        ? k.section({ fr: "Déclaration en douane", en: "Customs declaration" }, `<div class="box"><b>${k.esc(data.declaration_ref)}</b>${data.lodged_date ? ` · ${k.esc(k.dateFmt(data.lodged_date))}` : ""}</div>`, cfg)
+        : "";
+
+      // Client stamp on the left, ours on the right — the legacy layout, and
+      // the one the filing clerk looks for.
+      const signatures = `<div class="sig">
+        <div class="b"><div style="font-weight:700;text-decoration:underline;">${k.t({ fr: "Visa / Cachet du client", en: "Client signature / stamp" }, lang)}</div>
+          <div class="ln">${k.t({ fr: "Reçu le", en: "Received on" }, lang)}: ${k.esc(data.signed_date ? k.dateFmt(data.signed_date) : "____________")}${data.signed_by_name ? ` · ${k.esc(data.signed_by_name)}` : ""}</div></div>
+        <div class="b"><div style="font-weight:700;text-decoration:underline;">${k.esc(lang === "en" ? `For ${co}` : `Visa ${co}`)}</div>
+          <div class="ln">${k.esc(data.issued_date ? k.dateFmt(data.issued_date) : "")}</div></div>
+      </div>`;
+
       const body = [
-        k.head(entity, { fr: "Ordre de transit", en: "Transit order" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Mode" }, data.mode]], cfg),
-        k.parties([
-          { label: { fr: "Transporteur", en: "Carrier" }, name: data.carrier, lines: [data.carrier_ref] },
-          { label: { fr: "Itinéraire", en: "Route" }, name: `${data.origin || ""} → ${data.destination || ""}`, lines: [] },
-        ], cfg),
+        k.head(entity, { fr: "Ordre de transit", en: "Transit order" }, data.number, [
+          [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+          [{ fr: "Statut", en: "Status" }, data.status_label],
+        ], cfg).replace("</div></div>", `${dirLine}</div></div>`),
+        facts,
         k.lineTable(cols, data.lines || [], cfg),
-        k.signatureBlock(cfg),
+        valueTable,
+        regimeBlock,
+        deliveryBlock,
+        liability,
+        docsBlock,
+        instructions,
+        lodged,
+        signatures,
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Transit order " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "OT-2026-0019", date: "2026-07-27", mode: "Route / Road", carrier: "Translog SARL", carrier_ref: "Camion LT-4471", origin: "Port de Douala", destination: "Yaoundé", lines: [{ label: "Ciment CIMENCAM", qty: "24", weight: "48 t" }], currency: "XAF" },
+    sampleData: {
+      number: "SLAS-TRO-2026-0019", date: "2026-07-27", status_label: "Issued", direction: "IMPORT",
+      client: "SOCIÉTÉ CAMEROUNAISE DE CIMENT", dossier_ref: "SL6721864SM",
+      conveyance: "MSC ARUSHI / 128W", transport_ref: "MEDUDL4471820",
+      origin: "Anvers (BEANR)", arrival_date: "2026-07-24",
+      destination: "Douala (CMDLA)", departure_date: "2026-07-28",
+      place_of_delivery: "Entrepôt client, Bonabéri, Douala",
+      lines: [
+        { marks: "SCC/2026/44", packages: "24", label: "Sacs de ciment CIMENCAM 50kg", weight: "48 t", value: "12 400 000 XAF" },
+        { marks: "N/M", packages: "1", label: "Groupe électrogène 250 kVA", weight: "2,4 t", value: "18 600 000 XAF" },
+      ],
+      declared_value_text: "47 250,00 EUR", declared_value_xaf_text: "31 000 000 XAF",
+      regimes: [{ code: "IM4", on: true }, { code: "IM7", on: false }, { code: "IM8", on: false }, { code: "EX1", on: false }, { code: "EX2", on: false }],
+      customs_regime_other: null,
+      insurance_type: "CLIENT", surveyor_party: "COMPANY",
+      documents: [
+        { code: "INVOICE", label: "Facture / Invoice", on: true },
+        { code: "PACKING_LIST", label: "Liste de colisage / Packing list", on: true },
+        { code: "BL_AWB", label: "Original BL/LTA", on: true },
+        { code: "EXONERATION", label: "Lettre d'exonération", on: false },
+        { code: "CERTIFICATE_OF_ORIGIN", label: "Certificat d'origine", on: true },
+        { code: "OTHER", label: "Autres / Other", on: false },
+      ],
+      instructions: "Livraison directe sous escorte douanière. Prévenir le client 24h avant.",
+      declaration_ref: null, lodged_date: null,
+      issued_date: "2026-07-27", signed_date: null, signed_by_name: null,
+      currency: "XAF",
+    },
   },
 
   CASH_REQUEST: {

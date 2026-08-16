@@ -14,8 +14,9 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { AppraisalReviewModal } from "./appraisal-review";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, num } from "@/lib/format";
+import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
 const shell = pageShell.wide;
@@ -105,9 +106,146 @@ function RewardForm({
   );
 }
 
+/**
+ * The round, as opposed to the rows.
+ *
+ * `period_code` was a string on each KPI row, so nothing knew a review round
+ * was open, scoring or finished, and "who has not been appraised for H1?" was
+ * unanswerable — which is the single question anybody running one asks. A cycle
+ * makes that a fact, and `Score from evidence` fills the grid from what the
+ * system already knows instead of leaving a manager to remember twelve people.
+ */
+function CyclesPanel({ onOpenReview }: { onOpenReview: (id: string) => void }) {
+  const cycles = useResource(() => api.appraisalCycles(), []);
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState<string | null>(null);
+
+  const reviews = useResource(
+    () => (openId ? api.listReviews({ cycle_id: openId }) : Promise.resolve([])),
+    [openId],
+  );
+
+  async function score(id: string) {
+    setBusy(id + "score");
+    setError(null);
+    setNote(null);
+    try {
+      const out = await api.scoreCycle(id);
+      // "Skipped" is not a failure — those are the rows a human has decided,
+      // which the scorer will never overwrite. Saying so is what makes the
+      // button safe to press twice.
+      setNote(
+        `Scored ${out.scored} rating(s) across ${out.employees} employee(s).` +
+          (out.skipped ? ` ${out.skipped} left alone — already set by a person.` : ""),
+      );
+      reviews.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function move(id: string, status: string) {
+    setBusy(id + status);
+    setError(null);
+    try {
+      await api.setCycleStatus(id, status);
+      cycles.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const rows = cycles.data || [];
+  if (!rows.length) return null;
+
+  return (
+    <div className="mb-4 flex flex-col gap-2">
+      {error && <ErrorState message={error} />}
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      {rows.slice(0, 4).map((c) => (
+        <div key={c.appraisal_cycle_id} className="lux-card flex flex-col gap-2 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">{c.name}</span>
+              <Pill tone={c.status === "RELEASED" ? "ok" : c.status === "CLOSED" ? "mute" : "warn"}>
+                {c.status}
+              </Pill>
+              <span className="text-xs text-muted-foreground">
+                {dateFmt(c.starts_on)} – {dateFmt(c.ends_on)}
+                {c.review_count ? ` · ${c.settled_count}/${c.review_count} settled` : ""}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOpenId(openId === c.appraisal_cycle_id ? null : c.appraisal_cycle_id)}
+              >
+                {openId === c.appraisal_cycle_id ? "Hide reviews" : "Reviews"}
+              </Button>
+              {["OPEN", "SCORING", "CALIBRATION"].includes(c.status) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={busy === c.appraisal_cycle_id + "score"}
+                  onClick={() => score(c.appraisal_cycle_id)}
+                >
+                  Score from evidence
+                </Button>
+              )}
+              {c.status === "SCORING" && (
+                <Button
+                  size="sm"
+                  loading={busy === c.appraisal_cycle_id + "RELEASED"}
+                  onClick={() => move(c.appraisal_cycle_id, "RELEASED")}
+                >
+                  Release
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {openId === c.appraisal_cycle_id && (
+            <div className="flex flex-col gap-1 border-t pt-2">
+              {(reviews.data || []).map((r) => (
+                <button
+                  key={r.appraisal_review_id}
+                  type="button"
+                  onClick={() => onOpenReview(r.appraisal_review_id)}
+                  className="flex items-center justify-between rounded-md px-2 py-1 text-sm hover:bg-accent"
+                >
+                  <span className="text-foreground">{r.employee_name || "—"}</span>
+                  <span className="flex items-center gap-2">
+                    {r.overall_score != null && <span className="num text-muted-foreground">{r.overall_score}</span>}
+                    <Pill tone={r.status === "DISPUTED" ? "bad" : r.status === "ACKNOWLEDGED" ? "ok" : "mute"}>
+                      {r.status}
+                    </Pill>
+                  </span>
+                </button>
+              ))}
+              {!(reviews.data || []).length && !reviews.loading && (
+                <p className="px-2 py-1 text-xs text-muted-foreground">
+                  No reviews opened for this cycle yet.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AppraisalsPage() {
   const list = useResource(() => api.listAppraisals(), []);
   const [reward, setReward] = React.useState<api.Appraisal | null>(null);
+  const [reviewId, setReviewId] = React.useState<string | null>(null);
 
   const cols: Column<api.Appraisal>[] = [
     {
@@ -175,6 +313,7 @@ export function AppraisalsPage() {
         description="KPI ratings and performance rewards. A recommended reward is added to the employee's next payroll run."
       />
       <HubTabs />{" "}
+      <CyclesPanel onOpenReview={setReviewId} />
       <DataList
         columns={cols}
         rows={list.data}
@@ -186,6 +325,13 @@ export function AppraisalsPage() {
           hint: "Rate an employee against a KPI target to begin.",
         }}
       />
+      {reviewId && (
+        <AppraisalReviewModal
+          reviewId={reviewId}
+          onClose={() => setReviewId(null)}
+          onSaved={list.reload}
+        />
+      )}
       {reward && (
         <RewardForm
           appraisal={reward}

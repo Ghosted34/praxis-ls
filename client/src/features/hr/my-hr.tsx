@@ -14,6 +14,8 @@ import { Modal, Field } from "@/components/ui/modal";
 import { PageHeader } from "@/components/data-list";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { money, dateFmt } from "@/lib/format";
+import * as hrApi from "@/lib/hr-api";
+import { MyReviewCard } from "./appraisal-review";
 
 type Query = {
   hr_query_id: string;
@@ -192,6 +194,10 @@ export function MyHrPage() {
   );
   const leave = useResource<Leave[]>(() => tenant("/leave/mine"), []);
   const balances = useResource<Balance[]>(() => tenant("/leave/mine/balances"), []);
+  // The half of an appraisal that did not exist (0701). A performance record
+  // that may later justify a dismissal had only ever been seen by the person
+  // who wrote it.
+  const reviews = useResource(() => hrApi.myReviews(), []);
   const payslips = useResource<Payslip[]>(() => tenant("/payroll/mine"), []);
   const contracts = useResource<Contract[]>(
     () => tenant("/contracts/mine"),
@@ -212,6 +218,8 @@ export function MyHrPage() {
   const ps = payslips.data || [];
   const cs = contracts.data || [];
   const openQueries = qs.filter((q) => q.status === "OPEN").length;
+  const rv = reviews.data || [];
+  const awaitingMe = rv.filter((r) => r.status === "SUBMITTED").length;
 
   return (
     <section className={pageShell.standard}>
@@ -314,6 +322,33 @@ export function MyHrPage() {
                     {s.end_date && <div>To {dateFmt(s.end_date)}</div>}
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Performance reviews" count={rv.length}>
+          {reviews.error ? (
+            <ErrorState message={reviews.error} />
+          ) : rv.length === 0 && !reviews.loading ? (
+            <EmptyState
+              title="No reviews yet"
+              hint="A review appears here once your manager has submitted it and the cycle is released."
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {awaitingMe > 0 && (
+                <p className="text-xs text-[rgb(var(--warn))]">
+                  {awaitingMe} review{awaitingMe > 1 ? "s" : ""} waiting for your
+                  response.
+                </p>
+              )}
+              {rv.map((r) => (
+                <MyReviewCard
+                  key={r.appraisal_review_id}
+                  review={r}
+                  onSaved={reviews.reload}
+                />
               ))}
             </div>
           )}

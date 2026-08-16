@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1149 |
+| Routes | 1160 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1149 mounted routes, grouped by path prefix.
+All 1160 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -257,7 +257,18 @@ All 1149 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/appraisals/:id` | — |
 | PATCH | `/api/tenant/appraisals/:id` | — |
 | POST | `/api/tenant/appraisals/:id/reward` | — |
+| GET | `/api/tenant/appraisals/cycles` | — |
+| POST | `/api/tenant/appraisals/cycles` | — |
+| POST | `/api/tenant/appraisals/cycles/:cycleId/reviews` | — |
+| POST | `/api/tenant/appraisals/cycles/:cycleId/score` | — |
+| POST | `/api/tenant/appraisals/cycles/:cycleId/status` | — |
 | GET | `/api/tenant/appraisals/mine` | — |
+| GET | `/api/tenant/appraisals/reviews` | — |
+| GET | `/api/tenant/appraisals/reviews/:reviewId` | — |
+| POST | `/api/tenant/appraisals/reviews/:reviewId/narrate` | — |
+| POST | `/api/tenant/appraisals/reviews/:reviewId/respond` | — |
+| POST | `/api/tenant/appraisals/reviews/:reviewId/submit` | — |
+| GET | `/api/tenant/appraisals/reviews/mine` | — |
 
 ### `tenant/approvals`
 

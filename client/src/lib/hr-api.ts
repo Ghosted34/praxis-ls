@@ -346,6 +346,98 @@ export type Appraisal = {
   reward_amount?: number | null;
   reward_status?: string | null; // PENDING | APPLIED
 };
+/* ── Appraisal cycles + two-sided reviews (0701) ───────────────────────────
+ *
+ * An `Appraisal` is one KPI. A `Review` is the conversation about a person over
+ * a cycle — the overall figure, the manager's narrative, and the employee's
+ * answer to it. The second did not exist: an appraisal had `rated_by` and
+ * nothing else, so a performance record that may later justify a dismissal had
+ * only ever been seen by the person who wrote it.
+ */
+export type AppraisalCycle = {
+  appraisal_cycle_id: string;
+  code: string;
+  name: string;
+  starts_on: string;
+  ends_on: string;
+  status: "DRAFT" | "OPEN" | "SCORING" | "CALIBRATION" | "RELEASED" | "CLOSED";
+  review_count?: number;
+  settled_count?: number;
+};
+
+export type ReviewLine = {
+  appraisal_id: string;
+  metric?: string | null;
+  target_value?: number | string | null;
+  actual_value?: number | string | null;
+  weight?: number | string | null;
+  scale_max?: number | string | null;
+  auto_source?: string | null;
+  /** The human's decision. */
+  rating?: number | string | null;
+  /** The evidence-derived suggestion. NEVER merged into `rating` — the value of
+   *  the number is that a manager can disagree with it. */
+  ai_rating?: number | string | null;
+  ai_evidence?: Record<string, unknown> | null;
+  is_calibrated: boolean;
+  comments?: string | null;
+};
+
+export type AppraisalReview = {
+  appraisal_review_id: string;
+  appraisal_cycle_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  cycle_code?: string | null;
+  cycle_name?: string | null;
+  cycle_status?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  overall_score?: number | string | null;
+  band?: string | null;
+  manager_comment?: string | null;
+  ai_summary?: string | null;
+  ai_model?: string | null;
+  status: "DRAFT" | "SUBMITTED" | "ACKNOWLEDGED" | "DISPUTED" | "FINALISED";
+  submitted_at?: string | null;
+  employee_comment?: string | null;
+  responded_at?: string | null;
+  lines?: ReviewLine[];
+  weights?: { total: number; target: number; balanced: boolean };
+};
+
+export const appraisalCycles = () => tenant<AppraisalCycle[]>("/appraisals/cycles");
+export const createAppraisalCycle = (body: {
+  code: string;
+  name: string;
+  starts_on: string;
+  ends_on: string;
+  status?: "DRAFT" | "OPEN";
+}) => tenant<AppraisalCycle>("/appraisals/cycles", { method: "POST", body });
+export const setCycleStatus = (id: string, status: string) =>
+  tenant<AppraisalCycle>(`/appraisals/cycles/${id}/status`, { method: "POST", body: { status } });
+/** Score from the evidence the system already holds. Calibrated rows — the ones
+ *  a human has decided — are never touched, which is what makes this safe to
+ *  press twice. */
+export const scoreCycle = (id: string, employee_id?: string) =>
+  tenant<{ employees: number; scored: number; skipped: number }>(
+    `/appraisals/cycles/${id}/score`,
+    { method: "POST", body: employee_id ? { employee_id } : {} },
+  );
+export const openReview = (cycleId: string, employee_id: string) =>
+  tenant<AppraisalReview>(`/appraisals/cycles/${cycleId}/reviews`, { method: "POST", body: { employee_id } });
+
+export const listReviews = (params?: { cycle_id?: string; employee_id?: string; status?: string }) =>
+  tenant<AppraisalReview[]>("/appraisals/reviews" + qs(params));
+export const getReview = (id: string) => tenant<AppraisalReview>(`/appraisals/reviews/${id}`);
+export const submitReview = (id: string, manager_comment?: string) =>
+  tenant<AppraisalReview>(`/appraisals/reviews/${id}/submit`, { method: "POST", body: { manager_comment } });
+export const narrateReview = (id: string) =>
+  tenant<AppraisalReview>(`/appraisals/reviews/${id}/narrate`, { method: "POST", body: {} });
+export const myReviews = () => tenant<AppraisalReview[]>("/appraisals/reviews/mine");
+export const respondToReview = (id: string, agree: boolean, comment?: string) =>
+  tenant<AppraisalReview>(`/appraisals/reviews/${id}/respond`, { method: "POST", body: { agree, comment } });
+
 export const listAppraisals = (params?: { employee_id?: string }) =>
   tenant<Appraisal[]>("/appraisals" + qs(params));
 export const recommendReward = (

@@ -75,21 +75,68 @@ function Breakdown({ slip }: { slip?: api.Slip | null }) {
       <span className="num">{money(v as number)}</span>
     </div>
   );
+  const att = b.attendance;
+  const attDeduction = n(b.attendance_deduction);
+  const unpaidLeave = n(b.unpaid_leave_deduction);
+  const recovery = n(b.total_post_tax_deductions);
   return (
-    <div className="grid gap-x-8 gap-y-1 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-2">
-      {b.base != null && <Row k="Base salary" v={b.base} />}
-      {b.earnings ? <Row k="Bonus / earnings" v={b.earnings} /> : null}
-      <Row k="Gross" v={b.gross} />
-      <Row k="CNPS (employee)" v={ee.cnps_pension} />
-      <Row k="IRPP" v={ee.irpp} />
-      <Row k="CAC" v={ee.cac} />
-      <Row k="CFC (employee)" v={ee.cfc} />
-      <Row k="Net pay" v={b.net_pay} />
-      <Row k="Employer charges" v={b.total_employer_charges} />
-      <Row
-        k="— CNPS employer"
-        v={n(er.pension) + n(er.family) + n(er.injury)}
-      />
+    <div className="flex flex-col gap-2">
+      <div className="grid gap-x-8 gap-y-1 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-2">
+        {b.base != null && <Row k="Base salary" v={b.base} />}
+        {b.earnings ? <Row k="Bonus / earnings" v={b.earnings} /> : null}
+        {/* OFF GROSS — the employee did not work the time and did not earn it,
+            so the statutory figures below are computed on the smaller number.
+            Shown as negatives so the arithmetic down to Gross reads. */}
+        {attDeduction > 0 ? (
+          <Row
+            k={`Lateness / absence${att ? ` (${att.late_days} late, ${att.absent_days} absent)` : ""}`}
+            v={-attDeduction}
+          />
+        ) : null}
+        {unpaidLeave > 0 ? (
+          <Row k={`Unpaid leave${att ? ` (${att.unpaid_leave_days} d)` : ""}`} v={-unpaidLeave} />
+        ) : null}
+        <Row k="Gross" v={b.gross} />
+        <Row k="CNPS (employee)" v={ee.cnps_pension} />
+        <Row k="IRPP" v={ee.irpp} />
+        <Row k="CAC" v={ee.cac} />
+        <Row k="CFC (employee)" v={ee.cfc} />
+        {/* OFF NET — they earned the full salary and were taxed on it; this is
+            money they already received in an earlier month. */}
+        {recovery > 0 ? (
+          <>
+            <Row k="Net before recovery" v={b.net_before_recovery} />
+            {(b.post_tax_deductions || []).map((d, i) => (
+              <Row key={i} k={d.label} v={-d.amount} />
+            ))}
+          </>
+        ) : null}
+        <Row k="Net pay" v={b.net_pay} />
+        <Row k="Employer charges" v={b.total_employer_charges} />
+        <Row
+          k="— CNPS employer"
+          v={n(er.pension) + n(er.family) + n(er.injury)}
+        />
+      </div>
+      {b.advance && b.advance.recovered < b.advance.due && (
+        // The instalment was capped at the net available. Saying so stops the
+        // shortfall reading as a settled month.
+        <p className="text-[11px] text-[rgb(var(--warn))]">
+          Only {money(b.advance.recovered)} of the {money(b.advance.due)} instalment
+          fitted this payslip. {money(b.advance.outstanding_after)} still outstanding.
+        </p>
+      )}
+      {att && !att.reconciled && (
+        <p className="text-[11px] text-muted-foreground">
+          No day in this period was reconciled, so no lateness or absence has been
+          applied.
+        </p>
+      )}
+      {att && att.waived_days > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {att.waived_days} day(s) waived and not charged.
+        </p>
+      )}
     </div>
   );
 }

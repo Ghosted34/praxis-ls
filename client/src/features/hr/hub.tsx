@@ -5,6 +5,7 @@ import { hubTabs } from "@/app/layout/areas";
 import { EmployeesPage } from "./employee-360";
 import { QueriesPage, SanctionsPage } from "./discipline";
 import { PayrollPage } from "./payroll";
+import { AdvancesPage } from "./advances";
 import { VacanciesPage } from "./vacancy";
 import { ContractsPage } from "./contracts";
 import { AppraisalsPage } from "./appraisal";
@@ -22,6 +23,7 @@ export function HrHub() {
       tabs={hubTabs("/hr", {
         employees: EmployeesPage,
         payroll: PayrollPage,
+        advances: AdvancesPage,
         vacancies: VacanciesPage,
         contracts: ContractsPage,
         appraisals: AppraisalsPage,

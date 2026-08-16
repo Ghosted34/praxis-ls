@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1123,
+  "route_count": 1128,
   "tiers": {
     "public": 32,
-    "self-scoped": 68,
-    "gated": 1023
+    "self-scoped": 69,
+    "gated": 1027
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2331,6 +2331,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/payroll/advances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/payroll/advances/:advanceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/payroll/advances/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/payroll/mine": {
       "auth": true,
       "rbac": false,
@@ -3838,6 +3856,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/payment-gateways/:provider/role": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/payroll/advances/:advanceId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5638,6 +5662,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/payroll/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/payroll/advances": {
       "auth": true,
       "rbac": true,
       "validated": false,

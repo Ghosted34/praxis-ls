@@ -687,6 +687,15 @@
       ]
     },
     {
+      "id": "hr_advances",
+      "title": "Advances",
+      "route": "/hr/advances",
+      "area": "hr",
+      "module_key": "MOD-17",
+      "purpose": "Salary advances already paid out, and the schedule that recovers them from net pay.",
+      "actions": []
+    },
+    {
       "id": "hr_payroll",
       "title": "Payroll",
       "route": "/hr/payroll",

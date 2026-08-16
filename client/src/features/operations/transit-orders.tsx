@@ -58,6 +58,7 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num } from "@/lib/format";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
+import { cn } from "@/lib/cn";
 import { openVaultDoc } from "@/lib/vault-file";
 import { ShipmentDetailsPanel } from "./shipment-details";
 import { humanizeKey, nameMap } from "./shared";
@@ -93,6 +94,34 @@ type CargoLine = {
   hs_code: string;
   value_amount: string;
 };
+/**
+ * Where a filled-in value came from.
+ *
+ * Two words, and the difference between them is the whole point. "From the
+ * file" is a copy and is exactly as true as the file. "Suggested" was worked out
+ * — the direction, from the regime prefix — and might be wrong for this
+ * particular order. An operator scanning a form somebody else's software filled
+ * in needs to know which boxes to actually read.
+ *
+ * Rendered as a caption on the field rather than a colour, because the one
+ * person who most needs this signal may be the one who cannot see the colour.
+ */
+function Source({ from, suggested }: { from?: boolean; suggested?: boolean }) {
+  if (!from && !suggested) return null;
+  return (
+    <span
+      className={cn(
+        "ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium",
+        suggested
+          ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
+          : "bg-[rgb(var(--ink)/0.06)] text-muted-foreground",
+      )}
+    >
+      {suggested ? "suggested — check it" : "from the file"}
+    </span>
+  );
+}
+
 const blankCargo = (): CargoLine => ({
   label: "",
   marks: "",
@@ -245,6 +274,79 @@ function TransitForm({
   // genuinely good idea, restored through the shared panel.
   const pickedDossier = f.dossier_id || null;
 
+  /**
+   * Which fields the file filled in, and which it merely suggested.
+   *
+   * Kept apart because they are not the same claim. `prefilled` was COPIED off
+   * the file and is as true as the file is; `suggested` was DERIVED — the
+   * direction, read off the regime prefix — and an operator running an IM7
+   * unusually has to see that it was assumed. Marking them identically would
+   * make every filled box look equally authoritative, which is the failure this
+   * whole feature is trying not to introduce.
+   */
+  const [prefilled, setPrefilled] = React.useState<Set<string>>(new Set());
+  const [suggested, setSuggested] = React.useState<Set<string>>(new Set());
+
+  /**
+   * Picking a file fills the form from it.
+   *
+   * The panel above already SHOWS the operator the regime, commodity, weight,
+   * packages and marks; the form underneath then asked them to type the same
+   * things in again. That gap is where a transit order comes to disagree with
+   * the file it was raised from — and the one that disagrees is the document
+   * lodged with customs.
+   *
+   * Only on a NEW order, and only into fields the operator has not already
+   * filled: re-picking the file on a half-typed form must not silently discard
+   * what they typed. A prefill failure is deliberately silent — the file is
+   * still selected and the form still works, so an error banner would report a
+   * convenience that did not happen as though something broke.
+   */
+  async function pickDossier(id: string) {
+    set("dossier_id", id);
+    if (!id || !isNew) return;
+    try {
+      const { body, from, inferred } = await api.transitOrderPrefill(id);
+      setF((prev) => {
+        const next = { ...prev, dossier_id: id };
+        const take = (k: keyof typeof prev, v: unknown) => {
+          if (v === undefined || v === null || v === "") return;
+          // `String(...)` because the form holds every scalar as text; the
+          // submit path converts back on the way out.
+          if (!String(prev[k] ?? "").trim()) next[k] = String(v) as never;
+        };
+        take("entity_id", body.entity_id);
+        take("customs_regime", body.customs_regime);
+        take("customs_regime_other", body.customs_regime_other);
+        take("service_direction", body.service_direction);
+        take("declared_currency", body.declared_currency);
+        return next;
+      });
+      // Cargo replaces only an untouched line grid. One empty row is the
+      // initial state, so this catches "the operator has not started" without
+      // treating a deliberately blank line as fair game.
+      if (body.lines?.length && lines.every((l) => !l.label.trim())) {
+        setLines(
+          body.lines.map((l) => ({
+            ...blankCargo(),
+            label: l.label ?? "",
+            marks: l.marks ?? "",
+            // `blankCargo` defaults packages to "1"; keep that when the file
+            // does not state a count rather than blanking a sensible default.
+            ...(l.packages != null ? { packages: String(l.packages) } : {}),
+            weight: l.weight ?? "",
+          })),
+        );
+      }
+      setPrefilled(new Set(from));
+      setSuggested(new Set(inferred));
+    } catch {
+      /* @silent:parse -- the prefill is a convenience. The file is selected,
+         every field is still editable, and reporting a failed shortcut as an
+         error would tell the operator something is broken when nothing is. */
+    }
+  }
+
   async function submit(e: React.FormEvent, allowDuplicate = false) {
     e.preventDefault();
     setBusy(true);
@@ -335,7 +437,7 @@ function TransitForm({
               <Select
                 value={f.dossier_id}
                 disabled={locked}
-                onChange={(e) => set("dossier_id", e.target.value)}
+                onChange={(e) => void pickDossier(e.target.value)}
               >
                 <option value="">—</option>
                 {(dossiers || []).map((d) => (
@@ -383,7 +485,15 @@ function TransitForm({
         <section className="space-y-3">
           <div className="micro">2 · Customs instruction</div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Direction" required>
+            <Field
+              label={
+                <>
+                  Direction
+                  <Source suggested={suggested.has("service_direction")} />
+                </>
+              }
+              required
+            >
               <Select
                 value={f.service_direction}
                 disabled={locked}
@@ -394,7 +504,12 @@ function TransitForm({
               </Select>
             </Field>
             <Field
-              label="Customs regime"
+              label={
+                <>
+                  Customs regime
+                  <Source from={prefilled.has("customs_regime")} />
+                </>
+              }
               hint="Or write in a regime below if it is not one of these."
             >
               <Select

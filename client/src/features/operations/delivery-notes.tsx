@@ -276,6 +276,51 @@ function DeliveryForm({
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
 
+
+  /**
+   * Picking the file fills the note from it — above all, the CONTAINERS.
+   *
+   * A file with twelve boxes carries twelve container numbers and twelve seal
+   * numbers, and this note is the document they exist to travel on. Typed by
+   * hand that is twenty-four eleven-character alphanumerics, which is not a task
+   * people do accurately; copied, the note cannot drift from the file.
+   *
+   * Only on a NEW note, and never over something already typed. The consignee
+   * block is deliberately left alone — the file does not record one, and a
+   * client is not a consignee.
+   */
+  async function pickDossier(id: string) {
+    set("dossier_id", id);
+    if (!id || note) return;
+    try {
+      const { body } = await api.deliveryNotePrefill(id);
+      setF((prev) =>
+        body.entity_id && !prev.entity_id
+          ? { ...prev, dossier_id: id, entity_id: body.entity_id }
+          : { ...prev, dossier_id: id },
+      );
+      if (body.lines?.length && lines.every((l) => !l.label.trim())) {
+        setLines(
+          body.lines.map((l) => ({
+            inventory_item_id: "",
+            label: l.label ?? "",
+            qty: String(l.qty ?? 1),
+          })),
+        );
+      }
+      // Containers replace only an empty grid: on a new note there is nothing
+      // to lose, and an operator who has already picked boxes has made a
+      // choice the file should not overrule.
+      if (body.containers?.length && !containers.length) {
+        setContainers(body.containers as api.DeliveryNoteContainer[]);
+      }
+    } catch {
+      /* @silent:parse -- a convenience. The file is selected and every field is
+         still editable, so reporting a failed shortcut as an error would say
+         something is broken when nothing is. */
+    }
+  }
+
   const [lines, setLines] = React.useState<GoodsLine[]>(
     note?.lines?.length
       ? note.lines.map((l) => ({
@@ -374,7 +419,7 @@ function DeliveryForm({
           <Field label="Dossier" hint="The consignee and containers come from the file.">
             <Select
               value={f.dossier_id}
-              onChange={(e) => set("dossier_id", e.target.value)}
+              onChange={(e) => void pickDossier(e.target.value)}
             >
               <option value="">Select…</option>
               {(dossiers || []).map((d) => (

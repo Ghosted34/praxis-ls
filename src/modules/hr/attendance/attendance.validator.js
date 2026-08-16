@@ -112,7 +112,11 @@ const justify = z
 
 const reconcileRun = z.object({ date: d.optional() });
 
-const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, dayWindow, justify, reconcileRun };
+/** Self-service rename. LABEL ONLY — there is deliberately no `status` key, so
+ *  the employee-facing grant this rides on can never approve a device. */
+const deviceRename = z.object({ label: z.string().trim().min(1).max(80) });
+
+const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, deviceRename, dayWindow, justify, reconcileRun };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -139,6 +143,7 @@ module.exports = {
   placeSearch: qmw("placeSearch"),
   deviceRegister: mw("deviceRegister"),
   deviceUpdate: mw("deviceUpdate"),
+  deviceRename: mw("deviceRename"),
   dayWindow: qmw("dayWindow"),
   justify: mw("justify"),
   reconcileRun: mw("reconcileRun"),

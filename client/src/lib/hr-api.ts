@@ -30,6 +30,9 @@ export type AttendanceRow = {
   hr_device_id?: string | null;
   /** Was the punching device trusted AT PUNCH TIME. null = none presented. */
   device_trusted?: boolean | null;
+  /** TRANSIENT, on the clock-in response only: this punch registered a device
+   *  nobody has met before, so the clock offers to name it — once. */
+  device_new?: boolean;
   is_late?: boolean;
   minutes_late?: number;
   department?: string | null;
@@ -142,6 +145,15 @@ export const setDeviceStatus = (
     method: "PATCH",
     body: patch,
   });
+
+/**
+ * Rename your OWN device — the grant that lets you punch, not the one that
+ * approves devices. `setDeviceStatus` above is the manager's endpoint and needs
+ * MOD-14 `edit`, which an ordinary employee does not have; without this pair an
+ * employee could never name their own phone.
+ */
+export const renameOwnDevice = (id: string, label: string) =>
+  tenant<HrDevice>(`/attendance/devices/${id}/name`, { method: "PATCH", body: { label } });
 
 export const openPunch = () => tenant<AttendanceRow | null>("/attendance/open");
 export const clockIn = (

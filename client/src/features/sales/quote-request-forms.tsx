@@ -288,7 +288,7 @@ export function AttachmentsPanel({ requestId }: { requestId: string }) {
   const load = React.useCallback(async () => {
     try {
       const res: any = await tenant(`/quote-requests/${requestId}/attachments`);
-      setRows(res?.data || []);
+      setRows(Array.isArray(res) ? res : res?.data || []);
     } catch (e) {
       setError(errMsg(e));
     }

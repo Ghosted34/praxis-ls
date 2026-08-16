@@ -12,6 +12,9 @@
 const repo = require("./delivery_note.repo");
 const rules = require("./delivery_note.rules");
 const events = require("./delivery_note.events");
+// Shared with the transit order — one mapping of "which dossier column feeds
+// which document field", so the two cannot drift when a column is added.
+const prefillShared = require("../_shared/dossier-prefill");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const shipmentDetails = require("../shipment_details/shipment_details.service");
@@ -118,6 +121,25 @@ async function get(client, id) {
 
 const list = (client, q) => repo.listDN(client, q);
 const summary = (client, q) => repo.statusCounts(client, q);
+
+/**
+ * A create body, prefilled from the file the note is for.
+ *
+ * The containers are the point. A file with "12 × 45' HC" carries twelve
+ * container numbers and twelve seal numbers, and the delivery note is the
+ * document they exist to travel on — twenty-four hand-transcribed alphanumerics
+ * per note, which is not a task people do accurately. Prefilled, the note cannot
+ * drift from the file.
+ *
+ * Returns `{ body, inferred, from }` on the same contract as the transit
+ * order's: `body` spreads into the create payload, `from` names what was
+ * copied, `inferred` names what was derived. Nothing is binding.
+ */
+async function prefill(client, { dossier_id }) {
+  const found = await repo.dossierForPrefill(client, dossier_id);
+  if (!found) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  return prefillShared.deliveryNoteFrom(found.dossier, found.containers);
+}
 
 /** The file's boxes, for the picker. */
 async function availableContainers(client, { dossierId, excludeNoteId = null }) {
@@ -352,5 +374,5 @@ async function transition(client, { id, to, reason = null, receivedByName = null
 
 module.exports = {
   create, update, issue, confirmDelivery, cancel, transition,
-  get, list, summary, availableContainers,
+  get, list, summary, availableContainers, prefill,
 };

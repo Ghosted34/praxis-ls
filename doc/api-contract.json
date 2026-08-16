@@ -1413,6 +1413,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/delivery-notes/prefill": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/delivery-notes/summary": {
       "auth": true,
       "rbac": true,
@@ -3285,6 +3291,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/transit-orders/prefill": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/transit-orders/summary": {
       "auth": true,
       "rbac": true,
@@ -3556,6 +3568,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/attendance/devices/:deviceId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/attendance/devices/:deviceId/name": {
       "auth": true,
       "rbac": true,
       "validated": false,

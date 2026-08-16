@@ -140,7 +140,38 @@ async function dossierBrief(client, dossierId) {
   return rows[0] || null;
 }
 
+/**
+ * The dossier, plus its entity's money defaults, for prefilling a new order.
+ *
+ * ONE query with a join rather than two round trips: the form calls this the
+ * moment a file is picked, while the operator is looking at the dialog, so it
+ * sits directly in an interaction and not in a background load.
+ *
+ * Named columns, not `SELECT d.*` — this feeds a document body, and a
+ * `SELECT *` would silently start offering whatever column the dossier gains
+ * next as prefill for a customs declaration.
+ *
+ * `dossier_visible`, not `dossier`, for the reason `dossierBrief` gives in the
+ * delivery-note repo: a file that is still a draft has a placeholder reference,
+ * and a customs document must not be raised from one.
+ */
+function dossierForPrefill(client, dossierId) {
+  return client
+    .query(
+      `SELECT d.dossier_id, d.entity_id, d.customs_regime, d.incoterm,
+              d.commodity, d.commodity_desc, d.gross_weight, d.weight_unit,
+              d.package_count, d.volume_cbm, d.marks_numbers, d.place_delivery,
+              e.default_currency
+         FROM dossier_visible d
+         LEFT JOIN corporate_entity e ON e.entity_id = d.entity_id
+        WHERE d.dossier_id = $1`,
+      [dossierId],
+    )
+    .then((r) => r.rows[0] || null);
+}
+
 module.exports = {
+  dossierForPrefill,
   insertTO, getTO, getFull, update, listTO, statusCounts,
   insertLine, listLines, deleteLines, liveForDossier, dossierBrief,
 };

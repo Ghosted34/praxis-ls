@@ -80,5 +80,25 @@ export default defineConfig({
      * `process.env.TZ` themselves — see `lib/format-dates.test.ts`.
      */
     env: { TZ: "UTC" },
+    /**
+     * 15s, not vitest's 5s.
+     *
+     * Headroom, not permission to be slow. The suite is 92 files across
+     * parallel workers, normally run on a laptop already carrying two
+     * `npm run dev` processes. The heaviest test in it — the vacancy interview,
+     * which answers eight questions and then drafts — measures ~450ms idle. It
+     * crossed 5s only under that load, and only sometimes.
+     *
+     * An interaction-heavy test that passes alone and fails in the suite is the
+     * most expensive kind of red: the message says "timed out", the code is
+     * fine, and the next real failure gets waved through because the suite "is
+     * flaky". Worse, when vitest aborts a test mid-interaction the component
+     * stays mounted long enough to poison the NEXT test — that is what turned
+     * one timeout into three failures in the same file.
+     *
+     * The cost, so this is not raised again by reflex: a genuinely deadlocked
+     * test now burns 15s instead of 5s before it reports. That is the trade.
+     */
+    testTimeout: 15_000,
   },
 });

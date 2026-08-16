@@ -20,7 +20,7 @@
  * `ListPage`'s props change, this fails in the same commit rather than months
  * later in someone else's first hour.
  */
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { execFileSync } from "node:child_process";
 import { rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -53,6 +53,28 @@ function runTool(binRelPath: string, args: string[]) {
   return run("node", [join("node_modules", binRelPath), ...args]);
 }
 
+/**
+ * Clean BEFORE as well as after.
+ *
+ * `afterAll` alone assumes the previous run got to the end. It does not always:
+ * a worker killed by a timeout elsewhere in the suite, a Ctrl-C, a crashed
+ * run — any of those leave `src/features/__scaffold_check__/widget-orders.tsx`
+ * on disk. From then on EVERY run of this file fails on the first line of the
+ * first test with
+ *
+ *   widget-orders.tsx already exists in src/features/__scaffold_check__.
+ *   Pass --force to overwrite.
+ *
+ * which reads like the generator is broken when the only broken thing is a
+ * leftover directory. It also cannot be fixed by re-running — that is the part
+ * that costs an afternoon.
+ *
+ * Deliberately NOT `--force`: the second test asserts that the generator
+ * refuses to overwrite, so this file needs the refusal to be real. Clearing the
+ * ground first keeps both properties — a known-empty start, and a generator
+ * that still says no.
+ */
+beforeAll(() => rmSync(areaDir, { recursive: true, force: true }));
 afterAll(() => rmSync(areaDir, { recursive: true, force: true }));
 
 describe("scripts/new-screen.mjs", () => {

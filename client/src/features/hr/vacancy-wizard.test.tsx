@@ -32,6 +32,23 @@ import {
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
+/**
+ * `delay: null` — type without awaiting a macrotask between keystrokes.
+ *
+ * WHY. These tests fill in an eight-question interview: ~60 keystrokes, each of
+ * which, at the default delay, costs a timer tick plus a React render. On an
+ * idle machine the heaviest test ran 657ms; in the full 92-file parallel run it
+ * crossed vitest's 5s ceiling and failed — always that one test, because it is
+ * the only one that answers the whole fixed set AND picks a company AND drafts.
+ *
+ * A test that passes alone and fails in the suite is worse than a slow one: it
+ * reads as a real defect and nobody trusts the next red run. Raising the
+ * timeout would have hidden it rather than fixed it. Nothing here debounces
+ * (the wizard holds its answers in plain state and has no timers), so the delay
+ * was buying nothing.
+ */
+const setup = () => userEvent.setup({ delay: null });
+
 const intakeQuestions = vi.fn();
 const intakeFollowUps = vi.fn();
 const draftVacancy = vi.fn();
@@ -165,7 +182,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("says which entity is hiring, and quotes the salary in its currency", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     view();
     expect(await screen.findByText(/JBS Praxis SA/)).toBeInTheDocument();
     await user.type(await screen.findByLabelText("Your answer"), "Senior Stylist");
@@ -174,7 +191,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("blocks on the role and nothing else", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     view();
     // Nothing typed: the only way on is disabled — there is no advert without a role.
     expect(await screen.findByRole("button", { name: "Skip" })).toBeDisabled();
@@ -185,7 +202,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("adds a spoken answer to what was already typed", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     view();
     await user.type(await screen.findByLabelText("Your answer"), "Senior Stylist");
     await forward(user);
@@ -200,7 +217,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("generates the follow-ups from the answers so far", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     view();
     await answerFixedSet(user);
 
@@ -218,7 +235,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("shortens the interview when no follow-ups come back, rather than stalling", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     intakeFollowUps.mockRejectedValue(new Error("no model"));
     view();
     await answerFixedSet(user);
@@ -232,7 +249,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("drafts from every answer and hands back the saved draft", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     const { onDrafted } = view();
     // `answerFixedSet` ends inside the first follow-up: the generated questions
     // arrive with the cursor already on them.
@@ -260,7 +277,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("has no accessibility violations", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     const { container } = view();
     await screen.findByText("Question 1 of 10");
     expect(await axe(container)).toHaveNoViolations();
@@ -285,7 +302,7 @@ describe("the vacancy drafting interview", () => {
     });
 
     it("will not move on until one is chosen", async () => {
-      const user = userEvent.setup();
+      const user = setup();
       view();
       expect(await screen.findByRole("button", { name: "Skip" })).toBeDisabled();
       await pickCompany(user, "JBS Praxis Nigeria");
@@ -293,7 +310,7 @@ describe("the vacancy drafting interview", () => {
     });
 
     it("labels the salary in the chosen company's currency, not the fallback", async () => {
-      const user = userEvent.setup();
+      const user = setup();
       view();
       await pickCompany(user, "JBS Praxis Nigeria");
       await forward(user); // → title
@@ -307,7 +324,7 @@ describe("the vacancy drafting interview", () => {
     });
 
     it("sends the chosen company with the follow-ups and the draft", async () => {
-      const user = userEvent.setup();
+      const user = setup();
       view();
       await pickCompany(user, "JBS Praxis Nigeria");
       await forward(user);
@@ -330,7 +347,7 @@ describe("the vacancy drafting interview", () => {
   });
 
   it("offers the blank form from the first card", async () => {
-    const user = userEvent.setup();
+    const user = setup();
     const { onBlankForm } = view();
     await user.click(
       await screen.findByRole("button", {

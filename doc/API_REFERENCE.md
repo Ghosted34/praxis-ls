@@ -307,6 +307,7 @@ All 1160 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/attendance/devices` | — |
 | POST | `/api/tenant/attendance/devices` | — |
 | PATCH | `/api/tenant/attendance/devices/:deviceId` | — |
+| PATCH | `/api/tenant/attendance/devices/:deviceId/name` | — |
 | GET | `/api/tenant/attendance/open` | — |
 | GET | `/api/tenant/attendance/place-search` | — |
 | POST | `/api/tenant/attendance/reconcile` | — |
@@ -614,6 +615,7 @@ All 1160 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/delivery-notes/:id/issue` | — |
 | POST | `/api/tenant/delivery-notes/:id/transition` | — |
 | GET | `/api/tenant/delivery-notes/available-containers` | — |
+| GET | `/api/tenant/delivery-notes/prefill` | — |
 | GET | `/api/tenant/delivery-notes/summary` | — |
 
 ### `tenant/dispatch`
@@ -1732,6 +1734,7 @@ All 1160 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/transit-orders/:id/transition` | — |
 | GET | `/api/tenant/transit-orders/currencies` | — |
 | GET | `/api/tenant/transit-orders/document-types` | — |
+| GET | `/api/tenant/transit-orders/prefill` | — |
 | GET | `/api/tenant/transit-orders/summary` | — |
 
 ### `tenant/treasury-accounts`

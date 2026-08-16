@@ -218,6 +218,32 @@ export function DataList<T extends Record<string, unknown>>({
 
   if (error) return <ErrorState message={error} />;
   if (loading || rows === null) return <SkeletonTable cols={columns.length} />;
+  /**
+   * A truthy non-array `rows` took the whole screen down, and this is where it
+   * got through.
+   *
+   * `rows === null` is false for an object, `({}).length === 0` is false, so an
+   * object fell past both guards to `rows.map(...)`:
+   *
+   *   TypeError: n.map is not a function      /hr/trainings      FATAL
+   *
+   * — an error boundary and a blank page, from a list endpoint that changed
+   * shape. `useList` has coerced against exactly this for a while and says so
+   * in its own comment ("a non-array body means the endpoint changed shape, and
+   * rendering a table off it would throw"). Screens on `useResource`, which
+   * hands its payload back untouched, had no such protection — trainings is one.
+   *
+   * Reported rather than coerced silently to `[]`. An empty table would read as
+   * "no records", which is a lie about a real bug and the kind of thing that
+   * stays broken for months; the type says `T[] | null`, so anything else is a
+   * defect worth someone's attention. It is still a normal error state, not a
+   * crash, so the rest of the page keeps working.
+   */
+  if (!Array.isArray(rows)) {
+    return (
+      <ErrorState message="This list came back in an unexpected shape, so it cannot be displayed. The endpoint returned something other than a list of rows." />
+    );
+  }
   if (rows.length === 0)
     return (
       <EmptyState

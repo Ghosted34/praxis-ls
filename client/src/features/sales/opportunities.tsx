@@ -135,11 +135,18 @@ export function OpportunitiesPage() {
     const qs = query().toString();
     try {
       const [listOut, metricsOut] = await Promise.all([
-        tenant<{ data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
-        tenant<{ data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
+        tenant<Row[] | { data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
+        tenant<Metrics | { data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
       ]);
-      setOpps(listOut?.data || []);
-      setMetrics(metricsOut?.data || null);
+      const list = Array.isArray(listOut)
+        ? listOut
+        : (listOut as { data?: Row[] })?.data || [];
+      const m =
+        metricsOut && typeof metricsOut === "object" && "pipeline_value" in metricsOut
+          ? (metricsOut as Metrics)
+          : (metricsOut as { data?: Metrics })?.data || null;
+      setOpps(list);
+      setMetrics(m);
     } catch (e) {
       setOppErr(errMsg(e));
     }
@@ -224,6 +231,35 @@ export function OpportunitiesPage() {
 
   const loading = stages === null || opps === null;
   const err = stErr || oppErr;
+
+  /**
+   * Deals the board cannot place, and the reason this exists.
+   *
+   * A column renders the deals whose `pipeline_stage_id` equals its own. Any
+   * deal whose stage is NULL, or points at a stage this tenant no longer has,
+   * matched no column and was simply not drawn — the API returned it, the List
+   * view showed it, and the board showed nothing, with no indication that it
+   * was holding anything back. "The endpoints return data but the board is
+   * empty" is exactly what that looks like from the outside.
+   *
+   * The same discipline the KPI tiles are held to (they must partition the
+   * register — see quote_request.rules.assertPartitions) applies to a board:
+   * every deal is in a column, or in the column that says it is in no column.
+   * Silence is the one option that is not allowed.
+   */
+  const stageIds = React.useMemo(
+    () => new Set((stages || []).map((s) => String(s.pipeline_stage_id))),
+    [stages],
+  );
+  const unplaced = React.useMemo(
+    () =>
+      (opps || []).filter(
+        (o) =>
+          String(o.status) !== "LOST" &&
+          !stageIds.has(String(o.pipeline_stage_id ?? "")),
+      ),
+    [opps, stageIds],
+  );
 
   /** Source · scope · originating reference — the legacy board's card subtitle. */
   function provenance(o: Row): string {
@@ -518,6 +554,91 @@ export function OpportunitiesPage() {
               </div>
             );
           })}
+
+          {/*
+            The column for deals that belong to no column.
+
+            Rendered only when there are any, so a healthy board looks exactly
+            as it did. When there are, they are visible and actionable — Move
+            puts a deal back on the ladder — instead of being dropped in
+            silence, which is what made "the API returns deals and the board is
+            empty" so hard to read.
+          */}
+          {unplaced.length > 0 && (
+            <div className="flex w-72 shrink-0 flex-col rounded-xl border border-dashed border-[rgb(var(--warn))]/50 bg-muted/20">
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-warn-fill" />
+                  <span className="text-sm font-semibold text-foreground">
+                    No stage
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {unplaced.length}
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {money(
+                    unplaced.reduce(
+                      (a, o) => a + (Number(o.estimated_value) || 0),
+                      0,
+                    ),
+                  )}
+                </span>
+              </div>
+              <p className="px-3 pt-2 text-[11px] text-muted-foreground">
+                These deals carry no pipeline stage, or one this tenant no
+                longer has. Use Move to put them on the board.
+              </p>
+              <div className="flex-1 space-y-2 p-2">
+                {unplaced.map((o) => {
+                  const id = String(o.opportunity_id);
+                  return (
+                    <div key={id} className="rounded-lg border bg-card p-2.5">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {cell(o.name)}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+                        {provenance(o)}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-foreground">
+                        {money(o.estimated_value, o.currency)}
+                      </p>
+                      <div className="mt-2">
+                        {/* The same control the placed cards carry, named per
+                            deal so a screen-reader user hears which one is
+                            being moved. No `currentId` to exclude — that is
+                            the whole problem with this deal. */}
+                        <DropdownMenu
+                          label={`Move ${cell(o.name)} to stage`}
+                          trigger={
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              disabled={rowBusy === id}
+                            >
+                              Move to a stage
+                            </Button>
+                          }
+                        >
+                          {(stages || []).map((t) => (
+                            <DropdownItem
+                              key={String(t.pipeline_stage_id)}
+                              onSelect={() =>
+                                move(id, String(t.pipeline_stage_id))
+                              }
+                            >
+                              {cell(t.name)}
+                            </DropdownItem>
+                          ))}
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* List view */

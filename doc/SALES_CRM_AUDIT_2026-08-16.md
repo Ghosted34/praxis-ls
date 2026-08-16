@@ -513,3 +513,53 @@ docs in sync.
 5. When a test asserts a *branch* against a mocked repo — F10's reuse, F5's
    minting — pair it with one integration test that runs the same path against a
    schema. All four high/medium defects here lived in exactly that gap.
+
+---
+
+## Appendix · error-console triage (same day)
+
+The tenant error monitor was reviewed alongside this audit. Duplicates of the
+same code+route collapsed into one row each. Every entry is listed with what it
+turned out to be, because "an error in the console" and "a defect in the code"
+were not the same set — three of the seven were the system correctly refusing
+something.
+
+| Console entry | Verdict | Where it went |
+| --- | --- | --- |
+| `TypeError: n.map is not a function` — FATAL, `/hr/trainings` | Real, and it blanked the screen | `DataList` now reports an unexpected payload shape instead of crashing (`data-list-shape.test.tsx`, 8 tests) |
+| `500` on the partnership-request list | Real — the two count partitions were built from different WHERE clauses | Both partitions now share one predicate (`partnership_request.repo.js`) |
+| Opportunities kanban renders nothing though the endpoints return data | Real, and worse than blank — deals whose stage was not one of the board's columns were dropped silently | A dashed "No stage" column, with the existing Move control (`opportunities-board.test.tsx`) |
+| `FIELD_NOT_WRITABLE: data_type, facet_role, group_code, key, label_en, label_fr, seq` — NOTICE | Real, and total: adding a field to a draft field set had never worked on any tenant | `INSERT_WRITABLE` derived from `FIELD_WRITABLE` (`service-type-field-insert.test.js`) |
+| `PLAN_LOCKED: fields` — NOTICE | **Not a defect.** Refusing a plan edit on an ACTIVE campaign is F8 working. The *reporting* was wrong: `{ fields: [names] }` instead of the per-field map every other 422 emits, so `<Form>` marked nothing and the console printed the wrapper key | `assertEditable` now emits `{ field: [reason] }`; the old test asserted the wrong shape and was updated |
+| `VALIDATION_ERROR: email, password` on login — NOTICE | **Not a defect.** `validate.js` rejecting a malformed submit; the shape is already canonical | Nothing to do |
+| `INVALID_VALUE` ×1 on `/sales/company-profile` | **Closed, not reproduced** — see below | Nothing to do |
+
+### On the `/sales/company-profile` `INVALID_VALUE`
+
+Closed after every request that page makes was exercised — `GET
+/company-profile`, `PUT /company-profile`, `POST /company-profile/refresh`,
+`POST /company-profile/extract`, and the vault upload behind `ScanAttachment` —
+without reproducing it.
+
+What the investigation did establish, and the reason this closure is safe to
+act on rather than a shrug: **`INVALID_VALUE` is not thrown by any application
+code.** Nothing in `src/` raises it. It exists in exactly one place —
+`src/middleware/error-handler.js`, which maps two raw Postgres SQLSTATEs onto
+it:
+
+* `22P02` — invalid text representation. A malformed uuid, or an empty string
+  or non-numeric text reaching an integer/numeric/date parameter.
+* `23514` — check-constraint violation.
+
+Both are *data-shaped*, not code-shaped, which is exactly why a clean seeded
+database will not produce them: it takes a particular value, not a particular
+click. That also rules out the write path here — the profile validator is
+`z.string().uuid()` on `source_document_id` and typed on everything else, so a
+malformed value cannot arrive through it. `entity_ref` is a free-text column,
+not a parsed id, so the `company_profile:tenant` fallback in the page is not it
+either.
+
+If it recurs, one console entry is enough to finish this: the `request_id` on
+the row leads to the server log line carrying the failing statement and its
+parameters, and the SQLSTATE says immediately which of the two it was. Chasing
+it further without that is guesswork.

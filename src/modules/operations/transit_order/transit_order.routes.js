@@ -35,6 +35,10 @@ router.get("/summary", requirePermission(MODULE, "view"), controller.summary);
 // Static before `/:id`, or "document-types" is parsed as an id.
 router.get("/document-types", requirePermission(MODULE, "view"), controller.docTypes);
 router.get("/currencies", requirePermission(MODULE, "view"), controller.currencies);
+// A create body prefilled from the file. `create`, not `view`: it is the first
+// step of raising an order, and it reads the entity's money defaults alongside
+// the file — a read-only grant has no use for a draft it could not submit.
+router.get("/prefill", requirePermission(MODULE, "create"), controller.prefill);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

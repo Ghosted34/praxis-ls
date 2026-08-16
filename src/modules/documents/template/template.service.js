@@ -204,7 +204,7 @@ const fmtMoney = (n, ccy) =>
  */
 async function deliveryNoteData(client, recordId) {
   const { rows } = await client.query(
-    `SELECT dn.*, d.ref AS dossier_ref, cm.client_name, au.full_name AS issued_by_name
+    `SELECT dn.*, d.ref AS dossier_ref, cm.name AS client_name, au.full_name AS issued_by_name
        FROM delivery_note dn
        LEFT JOIN dossier d ON d.dossier_id = dn.dossier_id
        LEFT JOIN client_master cm ON cm.client_id = d.client_id
@@ -254,7 +254,7 @@ async function deliveryNoteData(client, recordId) {
 
 async function transitOrderData(client, recordId) {
   const { rows } = await client.query(
-    `SELECT t.*, d.ref AS dossier_ref, cm.client_name
+    `SELECT t.*, d.ref AS dossier_ref, cm.name AS client_name
        FROM transit_order t
        LEFT JOIN dossier d ON d.dossier_id = t.dossier_id
        LEFT JOIN client_master cm ON cm.client_id = d.client_id

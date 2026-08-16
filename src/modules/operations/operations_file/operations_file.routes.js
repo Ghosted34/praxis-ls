@@ -44,6 +44,7 @@ router.get("/:id/shipment-details", requirePermission(MODULE, "view"), controlle
  *  patched row by row. */
 router.get("/:id/containers", requirePermission(MODULE, "view"), controller.containers);
 router.put("/:id/containers", requirePermission(MODULE, "edit"), validateContainerLines, controller.replaceContainers);
+router.get("/:id/documents", requirePermission(MODULE, "view"), controller.documents);
 /** Give marks & numbers back to the generator after somebody typed over it
  *  (0670). No body — the only thing it can do is clear the override. */
 router.post("/:id/marks/revert", requirePermission(MODULE, "edit"), controller.revertMarks);

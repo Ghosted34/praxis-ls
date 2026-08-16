@@ -74,3 +74,8 @@ BEGIN
        AND code <> 'PRICING_IN_PROGRESS';
   END IF;
 END $$;
+
+
+
+-- DOWN
+-- ALTER TABLE live.thing DROP COLUMN new_col;

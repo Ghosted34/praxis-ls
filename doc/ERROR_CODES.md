@@ -25,14 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (335)
+## All codes (336)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
-| `AI_UNAVAILABLE` | 403, 503 | 2× | — |
+| `AI_UNAVAILABLE` | 403, 503 | 3× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
@@ -180,7 +180,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `KPI_NOT_PARTITIONED` | 500 | 4× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
-| `LOCKED` | 422 | 20× | — |
+| `LOCKED` | 422 | 21× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
@@ -203,7 +203,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 338× | — |
+| `NOT_FOUND` | 404 | 342× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -211,6 +211,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
+| `NOT_SENT` | 422 | 1× | — |
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_TREASURY_CLASS` | 422 | 2× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |

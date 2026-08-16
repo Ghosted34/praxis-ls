@@ -1,0 +1,12 @@
+"use strict";
+const generator=require("../../src/modules/sales/proposal/proposal.generator");
+const valid={client_context_en:{body:"Context",fact_ids:["F1"]},client_context_fr:{body:"Contexte",fact_ids:["F1"]},operational_strategy_en:{body:"Strategy",fact_ids:["F2"]},operational_strategy_fr:{body:"Stratégie",fact_ids:["F2"]},slas_en:[],slas_fr:[],case_study_title_en:"Relevant expertise",case_study_body_en:{body:"Case",fact_ids:["F3"]},case_study_title_fr:"Expérience pertinente",case_study_body_fr:{body:"Cas",fact_ids:["F3"]}};
+for(let i=0;i<4;i++){valid.slas_en.push({title:`SLA ${i}`,value:"Measured",fact_ids:["F1"]});valid.slas_fr.push({title:`SLA ${i}`,value:"Mesuré",fact_ids:["F1"]});}
+describe("F4 grounded generation",()=>{
+ test("builds a closed numbered fact set",()=>{const f=generator.facts({slogan:"Beyond",fleet_count:4,projects:[{name_en:"Port",metrics:{teu:20}}]});expect(f.map(x=>x.id)).toEqual(["F1","F2","F3"]);});
+ test("accepts strict bilingual output with exactly four bounded SLAs",()=>expect(generator.parse(JSON.stringify(valid),new Set(["F1","F2","F3"]))).toEqual(valid));
+ test("rejects invented citations, malformed JSON and a fifth SLA",()=>{expect(generator.parse(JSON.stringify({...valid,client_context_en:{body:"x",fact_ids:["F99"]}}),new Set(["F1"]))).toBeNull();expect(generator.parse("not json",new Set())).toBeNull();expect(generator.parse(JSON.stringify({...valid,slas_en:[...valid.slas_en,valid.slas_en[0]]}),new Set(["F1","F2","F3"]))).toBeNull();});
+ test("strips nested cost and margin facts before model egress",()=>expect(generator.safeValue({teu:20,cost_amount:99,nested:{margin_pct:4,days:2}})).toEqual({teu:20,nested:{days:2}}));
+ test("manual fallback retains rough notes in editable bilingual rows",()=>{const rows=generator.manualNarratives({client_operations:"Ops",pain_points:"Pain",proposed_strategy:"Plan",tone:"Direct"});expect(rows).toHaveLength(4);expect(rows.every(r=>r.raw_tone==="Direct"&&r.fact_ids.length===0)).toBe(true);expect(rows.map(r=>r.language)).toEqual(["EN","FR","EN","FR"]);});
+ test("outbound generator source does not name cost or margin fields",()=>{const src=require("fs").readFileSync(require("path").join(__dirname,"../../src/modules/sales/proposal/proposal.generator.js"),"utf8");expect(src).not.toMatch(/\b(cost_|margin_|unit_cost|purchase_price)\b/i);expect(src).toContain('env!=="live"');expect(src).toContain("attempt<3");});
+});

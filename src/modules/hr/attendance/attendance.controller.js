@@ -61,6 +61,8 @@ module.exports = {
     const row = await req.tenantDb((c) => service.registerDevice(c, { employeeId: req.body.employee_id || null, device, actor: actor(req) }));
     res.status(201).json({ data: row });
   }),
+  renameOwnDevice: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.renameOwnDevice(c, { id: req.params.deviceId, label: req.body.label, actor: actor(req) })) })),
   updateDevice: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.setDeviceStatus(c, { id: req.params.deviceId, patch: req.body, actor: actor(req) })) })),
 

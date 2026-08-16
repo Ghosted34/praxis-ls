@@ -23,6 +23,13 @@ module.exports = {
   summary: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.summary(c, req.query)) })),
 
+  /** A create body prefilled from the operations file — see the service. */
+  prefill: asyncHandler(async (req, res) => {
+    const dossierId = String(req.query.dossier_id || "");
+    if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422, { dossier_id: ["required"] });
+    res.json({ data: await req.tenantDb((c) => service.prefill(c, { dossier_id: dossierId })) });
+  }),
+
   /** The file's containers, for the picker that replaced the paste box. */
   availableContainers: asyncHandler(async (req, res) =>
     res.json({

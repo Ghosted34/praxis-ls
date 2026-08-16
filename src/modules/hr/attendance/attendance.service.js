@@ -147,20 +147,21 @@ async function resolveDevice(client, { employeeId, device }) {
   // this was but formed no opinion about it, and writing `false` there would
   // paint every historic punch "Unapproved" the moment somebody enables the
   // policy — the retrospective flag the snapshot column exists to prevent.
-  if (mode === "off") return { device: row, trusted: null, blocked: false, reason: null };
+  if (mode === "off") return { device: row, trusted: null, blocked: false, reason: null, isNew: row.inserted === true };
 
   const trusted = row.status === "TRUSTED";
   if (mode === "block" && !trusted) {
     return {
       device: row,
       trusted,
+      isNew: row.inserted === true,
       blocked: true,
       reason: row.status === "REVOKED"
         ? "This device has been blocked for clocking in — speak to HR"
         : "This device is waiting for approval before it can clock you in",
     };
   }
-  return { device: row, trusted, blocked: false, reason: null };
+  return { device: row, trusted, blocked: false, reason: null, isNew: row.inserted === true };
 }
 
 /**
@@ -375,6 +376,40 @@ module.exports = {
       });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, after: row });
+    /*
+     * `device_new` is TRANSIENT — not a column, and deliberately not one.
+     *
+     * It answers one question, once: "has this person just clocked in from a
+     * device nobody has named?" The clock uses it to offer a naming prompt on
+     * that punch alone. Storing it would mean a row that is permanently "new",
+     * and every later reader would have to know it meant "was new, then".
+     */
+    return { ...row, device_new: dev.isNew === true };
+  },
+
+  /**
+   * Rename YOUR OWN device.
+   *
+   * Separate from `setDeviceStatus` because the permissions are genuinely
+   * different, not as a convenience. Deciding a device is TRUSTED is a manager's
+   * call and sits behind MOD-14 `edit`; calling your own phone "my phone" is not,
+   * and gating it the same way would mean the only person who knows what the
+   * device actually is cannot say so. This is gated on `create` — the grant that
+   * already lets them punch.
+   *
+   * It can therefore ONLY set the label, and ONLY on a row belonging to the
+   * caller's own employee record. A 404 rather than a 403 for somebody else's
+   * device: whether a given device id exists is not a question this endpoint
+   * should answer.
+   */
+  async renameOwnDevice(client, { id, label, actor = {} }) {
+    const empId = await resolveEmployee(client, null, actor);
+    const before = await repo.getDevice(client, id);
+    if (!before || before.employee_id !== empId) {
+      throw new AppError("NOT_FOUND", "Device not found", 404);
+    }
+    const row = await repo.updateDevice(client, id, { label: String(label).trim() });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.DEVICE_CHANGED, moduleKey: events.MODULE, entityRef: `hr_device:${id}`, before, after: row });
     return row;
   },
 

@@ -73,6 +73,12 @@ module.exports = {
    * both insert, and the unique index would fail the second — a punch lost to a
    * constraint violation the user cannot act on.
    *
+   * `(xmax = 0) AS inserted` distinguishes the INSERT from the UPDATE — an
+   * upsert otherwise returns the same row either way, and the caller cannot tell
+   * a device it has just met from one it sees every morning. It is the signal
+   * that lets the clock ask "name this device?" exactly once, on the punch that
+   * created it, instead of nagging on every punch forever.
+   *
    * The status is DELIBERATELY NOT in the update list. A revoked device that
    * reappears must stay revoked; letting the upsert reset it to PENDING would
    * make revocation decay back into "nobody has looked yet" every time the
@@ -90,7 +96,7 @@ module.exports = {
                 updated_at   = now(),
                 user_agent   = COALESCE(EXCLUDED.user_agent, hr_device.user_agent),
                 platform     = COALESCE(EXCLUDED.platform, hr_device.platform)
-          RETURNING *`,
+          RETURNING *, (xmax = 0) AS inserted`,
         [employeeId, fingerprint, label, userAgent, platform],
       )
       .then((r) => r.rows[0]);

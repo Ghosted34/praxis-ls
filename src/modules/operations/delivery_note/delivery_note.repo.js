@@ -118,6 +118,37 @@ async function dossierBrief(client, dossierId) {
   return rows[0] || null;
 }
 
+/**
+ * The file and ALL its container units, for prefilling a new note.
+ *
+ * Distinct from `unitsOnDossier`, which resolves a set the caller already named:
+ * this is the opposite direction — "what is on this file?" — because the form
+ * has not been given any units yet, it is being offered them.
+ *
+ * `dossier_visible` for the same reason as `dossierBrief`. Named columns for the
+ * same reason as the transit-order version: this feeds a document.
+ */
+async function dossierForPrefill(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT d.dossier_id, d.entity_id, d.commodity, d.commodity_desc,
+            d.package_count, d.place_delivery
+       FROM dossier_visible d
+      WHERE d.dossier_id = $1`,
+    [dossierId],
+  );
+  if (!rows[0]) return null;
+  const { rows: containers } = await client.query(
+    // Ordered so the note lists the boxes the way the yard reads them, and so
+    // two prefills of the same file never differ in row order.
+    `SELECT dossier_container_unit_id, container_no, seal_no, gross_weight_kg
+       FROM dossier_container_unit
+      WHERE dossier_id = $1
+      ORDER BY container_no NULLS LAST, dossier_container_unit_id`,
+    [dossierId],
+  );
+  return { dossier: rows[0], containers };
+}
+
 async function listDN(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
@@ -159,5 +190,5 @@ module.exports = {
   insertDN, getDN, getFull, update, listDN, statusCounts,
   insertLine, listLines, deleteLines,
   insertContainer, listContainers, deleteContainers,
-  containersForDossier, unitsOnDossier, dossierBrief,
+  containersForDossier, unitsOnDossier, dossierBrief, dossierForPrefill,
 };

@@ -214,10 +214,6 @@ async function copyFields(client, fromSetId, toSetId) {
   return rowCount;
 }
 
-/** Plus the parent key, which `insertField` supplies itself — it is never taken
- *  from a caller's payload. */
-const INSERT_WRITABLE = new Set(["service_type_field_set_id"]);
-
 const FIELD_WRITABLE = new Set([
   "group_code", "group_label_fr", "group_label_en", "group_seq", "seq", "key",
   "label_fr", "label_en", "help_text_fr", "help_text_en", "placeholder",
@@ -227,6 +223,29 @@ const FIELD_WRITABLE = new Set([
   // of a definition, rather than a magic facet_role check in the renderer.
   "is_required", "is_client_visible", "is_readonly", "is_active", "facet_role", "column_name", "width",
 ]);
+
+/**
+ * What `insertField` may write: every field property, PLUS the parent key it
+ * supplies itself and never takes from a caller's payload.
+ *
+ * IT USED TO BE THE PARENT KEY ALONE — `new Set(["service_type_field_set_id"])`
+ * — while the comment above it said "plus". `insertOne` runs `assertWritable`
+ * over EVERY key of the object it is given, which is the parent key AND the
+ * cleaned field properties, so every real column was rejected and adding a
+ * field to a draft field set answered 422 every single time:
+ *
+ *   FIELD_NOT_WRITABLE: data_type, facet_role, group_code, key, label_en,
+ *                       label_fr, seq
+ *   POST /service-types/:id/field-sets/:setId/fields
+ *
+ * `updateField` below passes `FIELD_WRITABLE` and always worked, which is why
+ * editing a field was fine and only creating one was impossible — an asymmetry
+ * that reads as a puzzling UI bug rather than as one wrong argument.
+ *
+ * Derived from FIELD_WRITABLE rather than re-listed, so the two cannot drift:
+ * a column added to one is a column the other accepts.
+ */
+const INSERT_WRITABLE = new Set([...FIELD_WRITABLE, "service_type_field_set_id"]);
 
 async function insertField(client, fieldSetId, data) {
   // Through the shared helper, not a hand-rolled column list.

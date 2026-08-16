@@ -137,13 +137,39 @@ async function list(client, q = {}) {
   );
   const { rows: totalRows } = await client.query(`SELECT COUNT(*)::int AS c FROM ${TABLE} ${where}`, params);
 
-  const s = buildWhere(q, { includeStatus: false });
+  /**
+   * BOTH partitions are counted over the SAME row set — everything matching the
+   * caller's filters EXCEPT the two the tiles themselves partition on.
+   *
+   * They used to drop only their own filter: statusRows ignored `?status`,
+   * typeRows ignored `?proposal_type`. Each is defensible alone; together they
+   * describe two DIFFERENT populations, and `rules.assertPartitions` compares
+   * both against one TOTAL taken from the status side. So any request carrying
+   * a status filter threw a 500 on a plain GET:
+   *
+   *   GET /partnership-requests?status=REJECTED
+   *   AppError: Type tiles sum to 0 but TOTAL is 1 — a proposal type belongs to no tile
+   *
+   * TOTAL counted every row (status filter dropped) while the type partition
+   * counted only the REJECTED ones (status filter kept). Nothing was wrong with
+   * the data; the two queries were simply not answering the same question, and
+   * the invariant said they must.
+   *
+   * Dropping both filters from both partitions keeps the intent the original
+   * comment states — "a user looking at status=APPROVED still sees the whole
+   * summary rather than one tile equal to the total and the rest at zero" — and
+   * now applies it to the type tiles too, which is the same courtesy. The
+   * assertion keeps its full teeth because the two GROUP BYs finally describe
+   * one population: if they disagree, something really is unaccounted for.
+   *
+   * The LIST and its `total` above are unaffected; those still honour every
+   * filter, which is what the rows on screen must reflect.
+   */
+  const k = buildWhere(q, { includeStatus: false, includeType: false });
   const { rows: statusRows } = await client.query(
-    `SELECT status, COUNT(*)::int AS c FROM ${TABLE} ${s.where} GROUP BY status`, s.params);
-
-  const t = buildWhere(q, { includeType: false });
+    `SELECT status, COUNT(*)::int AS c FROM ${TABLE} ${k.where} GROUP BY status`, k.params);
   const { rows: typeRows } = await client.query(
-    `SELECT proposal_type, COUNT(*)::int AS c FROM ${TABLE} ${t.where} GROUP BY proposal_type`, t.params);
+    `SELECT proposal_type, COUNT(*)::int AS c FROM ${TABLE} ${k.where} GROUP BY proposal_type`, k.params);
 
   return { rows, total: totalRows[0] ? totalRows[0].c : 0, statusRows, typeRows, limit, offset };
 }

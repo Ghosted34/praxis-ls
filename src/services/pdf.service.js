@@ -30,17 +30,26 @@ function resolveChromiumPath() {
   if (config.PUPPETEER_EXECUTABLE_PATH && config.PUPPETEER_EXECUTABLE_PATH.trim()) {
     try {
       if (fs.existsSync(config.PUPPETEER_EXECUTABLE_PATH.trim())) return config.PUPPETEER_EXECUTABLE_PATH.trim();
-    } catch { /* ignore */ }
+    } catch {
+       /* @silent:storage|parse|teardown */
+      /* ignore */
+}
   }
   if (process.env.PUPPETEER_EXECUTABLE_PATH && process.env.PUPPETEER_EXECUTABLE_PATH.trim()) {
     try {
       if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH.trim())) return process.env.PUPPETEER_EXECUTABLE_PATH.trim();
-    } catch { /* ignore */ }
+    } catch {
+       /* @silent:storage|parse|teardown */
+      /* ignore */
+}
   }
   for (const p of KNOWN_CHROMIUM_PATHS) {
     try {
       if (fs.existsSync(p)) return p;
-    } catch { /* ignore */ }
+    } catch {
+         /* @silent:storage|parse|teardown */
+      /* ignore */
+}
   }
   return undefined;
 }

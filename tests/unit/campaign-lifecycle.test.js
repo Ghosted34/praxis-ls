@@ -83,7 +83,26 @@ describe("F8 field locks", () => {
       throw new Error("should have thrown");
     } catch (e) {
       expect(e.code).toBe("PLAN_LOCKED");
-      expect(e.details.fields.sort()).toEqual(["budget_amount", "target_won"]);
+      // The field names are the KEYS, which is what "point at them" requires:
+      // `<Form>` routes a 422 by calling setError(key) for every key the form
+      // has. This assertion used to read `e.details.fields`, i.e. the names as
+      // a VALUE under a literal key "fields" — a shape no consumer understands,
+      // so the drawer marked nothing and the console printed "PLAN_LOCKED:
+      // fields". The test passed throughout, because it asserted the same wrong
+      // shape the code produced.
+      expect(Object.keys(e.details).sort()).toEqual(["budget_amount", "target_won"]);
+      expect(e.details.budget_amount).toEqual([expect.stringMatching(/ACTIVE/)]);
+      expect(e.details.actual_leads).toBeUndefined();
+    }
+  });
+
+  test("ACTUALS_LOCKED carries the same per-field shape", () => {
+    try {
+      rules.assertEditable("DRAFT", { actual_leads: 3, actual_won: 1 });
+      throw new Error("should have thrown");
+    } catch (e) {
+      expect(e.code).toBe("ACTUALS_LOCKED");
+      expect(Object.keys(e.details).sort()).toEqual(["actual_leads", "actual_won"]);
     }
   });
 

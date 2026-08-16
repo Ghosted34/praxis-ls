@@ -125,6 +125,29 @@ const groupOf = (field) =>
   (PLAN_FIELDS.includes(field) ? "plan" : ACTUAL_FIELDS.includes(field) ? "actuals" : null);
 
 /**
+ * Turn a list of refused field names into the per-field error map every other
+ * 422 in this codebase emits: `{ budget_amount: ["…"], target_won: ["…"] }`.
+ *
+ * WHY THIS EXISTS. The two throws below used to pass `{ fields: refused.plan }`
+ * — the field NAMES as a value, under a literal key called "fields". Nothing
+ * downstream understands that shape:
+ *
+ *   * `<Form>` (client/src/components/ui/form.tsx) walks `Object.entries` of
+ *     the map and calls `setError(name, …)` for each key that the form has. Its
+ *     only key was "fields", which is not an input, so nothing routed and every
+ *     locked field was left unmarked — the exact thing the doc comment above
+ *     claimed this error was for.
+ *   * The error console showed `PLAN_LOCKED: fields`, naming the wrapper key
+ *     instead of `budget_amount, target_won`. That is what surfaced it.
+ *
+ * `assertWritable` in shared/db/query-helpers.js is the convention; this now
+ * matches it, so the drawer marks the offending inputs and the console names
+ * them.
+ */
+const perField = (names, reason) =>
+  names.reduce((acc, name) => ({ ...acc, [name]: [reason] }), {});
+
+/**
  * Throw unless every field in `patch` is writable in `status`.
  *
  * Names the offending fields and the reason, because "422 LOCKED" on a drawer
@@ -144,7 +167,7 @@ function assertEditable(status, patch = {}) {
       "PLAN_LOCKED",
       `A ${status} campaign's plan is fixed — ${refused.plan.join(", ")} cannot be changed`,
       422,
-      { fields: refused.plan },
+      perField(refused.plan, `cannot be changed while the campaign is ${status}`),
     );
   }
   if (refused.actuals.length) {
@@ -152,7 +175,7 @@ function assertEditable(status, patch = {}) {
       "ACTUALS_LOCKED",
       `A ${status} campaign has not run yet — ${refused.actuals.join(", ")} cannot be recorded`,
       422,
-      { fields: refused.actuals },
+      perField(refused.actuals, `cannot be recorded while the campaign is ${status}`),
     );
   }
   return true;

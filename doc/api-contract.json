@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 111,
-  "route_count": 1067,
+  "route_count": 1068,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 979
+    "gated": 980
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {

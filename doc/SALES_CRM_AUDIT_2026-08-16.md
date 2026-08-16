@@ -291,7 +291,7 @@ nothing.
 so the reuse branch is proven and the constraint forbidding its result is not in
 the test's world.
 
-**Fix.** `migrations/tenant/0696_partnership_request_supplier_reuse.sql` replaces
+**Fix.** `migrations/tenant/0699_partnership_request_supplier_reuse.sql` replaces
 the unique index with a plain one, and `approve()` takes the per-row guarantee
 where it belongs — a `SELECT … FOR UPDATE` inside its own transaction (the
 existing `before.supplier_id` read happens before `BEGIN`, so on its own it was
@@ -489,7 +489,7 @@ registry is gone. Coverage itself is fine (functions 26.94% against a 13% floor)
 | `src/modules/sales/proposal/proposal.service.js` | `JWT_SECRET` → `JWT_ACCESS_SECRET` (finding 1) |
 | `migrations/seeds/9031_seed_pipeline_stage_probabilities.sql` | new — stage ladder and probabilities after 9030 (finding 2) |
 | `src/modules/sales/public_intake/public_intake.validator.js` | optional `entity_id` on the public quote schema (finding 3) |
-| `migrations/tenant/0696_partnership_request_supplier_reuse.sql` | new — drops the unique index blocking supplier reuse (finding 4) |
+| `migrations/tenant/0699_partnership_request_supplier_reuse.sql` | new — drops the unique index blocking supplier reuse (finding 4) |
 | `src/modules/sales/partnership_request/partnership_request.service.js` | `SELECT … FOR UPDATE` guard inside `approve()` (finding 4) |
 | `portfolio_public.routes.js`, `proposal_public.routes.js`, `public_intake.routes.js`, `tracking_public.routes.js`, `careers.routes.js` | `req.tenantDb` → `req.tenantDbIn("live", …)` (finding 5) |
 | `tests/unit/proposal-share-minting.test.js` | new — 5 tests; 3 fail against the unfixed code |

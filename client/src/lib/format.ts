@@ -53,6 +53,57 @@ export function amount(value: unknown): string {
   });
 }
 
+/**
+ * Money for a KPI TILE — short enough to sit on one line beside its label.
+ *
+ * "72,000,000.00 XAF" is seventeen characters and it does not fit. A stat strip
+ * gives each tile a slice of one row shared with a label and a hint, and the
+ * full formatter overflowed it: the value wrapped onto a second line and the
+ * hint was clipped off the right edge of the card — at every width down to
+ * 1440px, not just on a phone.
+ *
+ * Rounding beats truncating, because nobody reads a pipeline forecast to the
+ * franc, and the legacy agrees: sales-pipelining.php renders its pipeline KPI
+ * in millions (doc/SALES_CRM_FEATURES.md#F7 cites the line). Precision stays
+ * where precision belongs — the tables under the strip still use `money()`.
+ *
+ * One decimal, and only when it carries information: 72,000,000 → "72M XAF",
+ * 43,200,000 → "43.2M XAF", 43,000,000 → "43M XAF". Below 10,000 the plain
+ * figure is already short, so it is left as it is.
+ *
+ * `null`/`undefined` → "—". Unlike `money0`, ZERO is NOT swallowed: a pipeline
+ * genuinely worth nothing is a fact worth showing, and it is the one thing this
+ * app must not confuse with a figure the caller is not allowed to see.
+ */
+export function moneyCompact(
+  amount: unknown,
+  currency: unknown = "XAF",
+): string {
+  if (amount === null || amount === undefined || amount === "") return "—";
+  const n = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(n)) return "—";
+  const cur =
+    currency === null || currency === undefined || currency === ""
+      ? "XAF"
+      : String(currency);
+
+  const abs = Math.abs(n);
+  const unit =
+    abs >= 1_000_000_000
+      ? { d: 1_000_000_000, s: "B" }
+      : abs >= 1_000_000
+        ? { d: 1_000_000, s: "M" }
+        : abs >= 10_000
+          ? { d: 1_000, s: "K" }
+          : null;
+
+  if (!unit)
+    return `${n.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${cur}`;
+  // `maximumFractionDigits: 1` drops a trailing ".0" by itself, so 43M reads
+  // "43M" while 43.2M keeps the digit that distinguishes it.
+  return `${(n / unit.d).toLocaleString("en-US", { maximumFractionDigits: 1 })}${unit.s} ${cur}`;
+}
+
 export function num(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "string" ? Number(value) : value;

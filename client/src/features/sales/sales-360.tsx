@@ -33,10 +33,12 @@ import { Button } from "@/components/ui/button";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState } from "@/components/ui/states";
-import { SkeletonTable } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, dateTimeFmt, enumLabel, cell } from "@/lib/format";
+import { money, moneyCompact, num, dateFmt, dateTimeFmt, enumLabel, cell } from "@/lib/format";
 import { pageShell } from "@/lib/layout";
+import { ConvertModal } from "./lead-forms";
+import { ConvertToOpportunityModal } from "./quote-request-forms";
 
 /* ── Types (mirrors src/modules/sales/sales-360.service.js) ────────────────── */
 
@@ -300,6 +302,113 @@ function DossierHeader({
   );
 }
 
+/**
+ * What a dossier looks like while it is loading.
+ *
+ * SWITCHING RECORDS USED TO FLASH, and the cause was the placeholder, not the
+ * request. This rendered `<SkeletonTable />` — six grey rows in a card — so
+ * picking another lead went: full dossier → a short table-shaped block → full
+ * dossier. Two separate jolts. The shape changed, and the page HEIGHT collapsed
+ * to a fraction of the dossier's and sprang back, which on a scrolled page
+ * moves everything under the cursor.
+ *
+ * `ui/skeleton.tsx` says it in its own header: a skeleton "says this is what is
+ * about to be here" and "stops the layout jumping because the placeholder
+ * already occupies the space the real content will take". A table skeleton
+ * under a 360 does neither.
+ *
+ * So this mirrors the dossier — the same header card, KPI strip, tab bar and
+ * two-column body, at roughly the same height.
+ *
+ * AND IT KNOWS WHOSE DOSSIER IS COMING. The register already has the name and
+ * the state in the row that was just clicked, so they are passed down and drawn
+ * for real: the identity appears instantly and never changes under the reader,
+ * and only what nobody could know yet is grey. That is also why this does not
+ * keep the PREVIOUS record's data on screen while fetching — the cheaper trick —
+ * which would show one lead's figures under another lead's name for as long as
+ * the request takes.
+ */
+function DossierSkeleton({
+  title,
+  status,
+  tabs,
+  titleAs = "h2",
+}: {
+  title?: string | null;
+  status?: string | null;
+  tabs: readonly string[];
+  titleAs?: "h1" | "h2";
+}) {
+  const H = titleAs;
+  return (
+    <div className="space-y-4" role="status" aria-label="Loading dossier">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {title ? (
+                <H className="truncate text-lg font-semibold text-foreground">{title}</H>
+              ) : (
+                <Skeleton className="h-6 w-56" />
+              )}
+              {status ? <StatusPill status={status} /> : <Skeleton className="h-5 w-16" />}
+            </div>
+            <Skeleton className="mt-2 h-3 w-64" />
+          </div>
+          <Skeleton className="h-8 w-40" />
+        </div>
+        {/* The same four-column field grid, so the header keeps its height. */}
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-2.5 w-16" />
+              <Skeleton className="h-3.5 w-24" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-col divide-y overflow-hidden rounded-[10px] border bg-card shadow-[var(--shadow-s)] sm:flex-row sm:flex-wrap sm:divide-x sm:divide-y-0">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex min-w-0 flex-1 basis-[9rem] items-center gap-2.5 px-4 py-2.5"
+          >
+            <Skeleton className="h-5 w-12" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+        ))}
+      </div>
+
+      {/* The real tab labels — they are known before the data is, and greying
+          them out would be pretending otherwise. */}
+      <div className="flex flex-wrap gap-1 border-b">
+        {tabs.map((t) => (
+          <span
+            key={t}
+            className="border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground/50"
+          >
+            {t}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {[0, 1].map((i) => (
+          <div key={i} className="min-h-[12rem] rounded-xl border bg-card p-4">
+            <Skeleton className="mb-3 h-4 w-32" />
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, j) => (
+                <Skeleton key={j} className="h-3 w-full" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The append-only history, shared by both dossiers. */
 function Timeline({ entries }: { entries: TimelineEntry[] }) {
   return (
@@ -343,6 +452,73 @@ function MoneyNotice({ visible }: { visible: boolean }) {
   );
 }
 
+/**
+ * The lifecycle buttons that used to live on every row of the register.
+ *
+ * They belong in the dossier header, which is where Master data → Clients puts
+ * them (Activate / Block / → Supplier sit beside the client's name, not on the
+ * list row). Two reasons beyond consistency: the register is now an index —
+ * a name and a state, nothing else — and an action taken from a row is taken
+ * without the context that decides it. "Qualify" is a judgement about what the
+ * discovery notes and the proposal history say, and both are on this page.
+ *
+ * Defined once here so BOTH surfaces get them: the dossier embedded in the
+ * register, and the one on its own route. That is the whole reason the two
+ * surfaces share a component — a second copy of this bar is a second place for
+ * the transition rules to drift.
+ */
+function ActionBar({
+  busy,
+  error,
+  children,
+}: {
+  busy: boolean;
+  error: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {error ? (
+        <span className="micro text-[rgb(var(--bad))]" role="alert">
+          {error}
+        </span>
+      ) : null}
+      <span className={busy ? "pointer-events-none opacity-60" : undefined}>
+        <span className="flex flex-wrap items-center gap-2">{children}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Run a transition and refresh the dossier.
+ *
+ * The dossier reload is the point: a status change moves KPI tiles and can add
+ * a timeline row, and a header that updates while the body still shows the old
+ * state is how a user learns not to trust the screen.
+ */
+function useTransition(reload: () => void, onChanged?: () => void) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const run = React.useCallback(
+    async (path: string, body: Record<string, unknown>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await tenant(path, { method: "POST", body });
+        reload();
+        onChanged?.();
+      } catch (e) {
+        setError(errMsg(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [reload, onChanged],
+  );
+  return { busy, error, run };
+}
+
 /* ═════════════════════════════ LEAD 360 ═════════════════════════════════════ */
 
 const LEAD_TABS = [
@@ -360,22 +536,51 @@ export function LeadDossier({
   leadId,
   titleAs = "h2",
   onEdit,
+  onChanged,
+  placeholder,
 }: {
   leadId: string;
   titleAs?: "h1" | "h2";
   onEdit?: () => void;
+  /** Told when a transition lands, so a register can refresh its index. */
+  onChanged?: () => void;
+  /**
+   * What the caller already knows about this record — the name and state from
+   * the row that was just clicked. Drawn immediately so switching records shows
+   * the right identity before the request lands. See `DossierSkeleton`.
+   */
+  placeholder?: { title?: string | null; status?: string | null };
 }) {
   const [tab, setTab] = React.useState<LeadTab>("Overview");
+  const [converting, setConverting] = React.useState(false);
   const res = useResource<LeadDossierData>(
     () => tenant<LeadDossierData>(`/leads/${leadId}/360`),
     [leadId],
   );
+  const { busy, error: actionError, run } = useTransition(res.reload, onChanged);
 
   if (res.error) return <ErrorState message={errMsg(res.error)} />;
-  if (!res.data) return <SkeletonTable />;
+  if (!res.data)
+    return (
+      <DossierSkeleton
+        titleAs={titleAs}
+        tabs={LEAD_TABS}
+        title={placeholder?.title}
+        status={placeholder?.status}
+      />
+    );
   const d = res.data;
+  // A payload without its record is a broken response, not an empty lead —
+  // say so rather than throwing on `l.status` and taking the screen down with
+  // an error boundary. Caught by screens.axe.test.tsx, which renders this
+  // against a stubbed API.
+  if (!d.lead) return <ErrorState message="This lead's dossier came back empty." />;
   const l = d.lead;
-  const k = d.kpis;
+  const k = d.kpis || ({} as LeadDossierData["kpis"]);
+
+  const status = String(l.status || "NEW");
+  const terminal = status === "CONVERTED" || status === "LOST";
+  const next = status === "NEW" ? "CONTACTED" : status === "CONTACTED" ? "QUALIFIED" : null;
 
   const counts: Partial<Record<LeadTab, number>> = {
     Meetings: d.meetings?.length ?? 0,
@@ -398,7 +603,7 @@ export function LeadDossier({
             .join(" · ") || "No contact details"
         }
         actions={
-          <>
+          <ActionBar busy={busy} error={actionError}>
             {d.client ? (
               <Link to={`/master/clients?focus=${encodeURIComponent(d.client.client_id)}`}>
                 <Button size="sm" variant="outline">
@@ -406,12 +611,37 @@ export function LeadDossier({
                 </Button>
               </Link>
             ) : null}
+            {!terminal && next ? (
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busy}
+                onClick={() => run(`/leads/${leadId}/transition`, { to: next })}
+              >
+                {next === "CONTACTED" ? "Mark contacted" : "Qualify"}
+              </Button>
+            ) : null}
+            {status === "QUALIFIED" ? (
+              <Button size="sm" onClick={() => setConverting(true)}>
+                Convert
+              </Button>
+            ) : null}
+            {!terminal ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => run(`/leads/${leadId}/transition`, { to: "LOST" })}
+              >
+                Lost
+              </Button>
+            ) : null}
             {onEdit ? (
               <Button size="sm" variant="outline" onClick={onEdit}>
                 Edit
               </Button>
             ) : null}
-          </>
+          </ActionBar>
         }
         fields={[
           { label: "Reference", value: cell(l.public_ref as string) },
@@ -432,18 +662,21 @@ export function LeadDossier({
         ]}
       />
 
-      <KpiRow>
-        <KpiTile label="Meetings" value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery sections`} />
+      {/* `fit="content"` and `moneyCompact` are the responsiveness fix: five
+          tiles sharing one row, one of them carrying a money figure and a
+          weighted hint, overflowed the card at every width — see KpiRow. */}
+      <KpiRow fit="content">
+        <KpiTile label="Meetings" value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery`} />
         <KpiTile label="Quote requests" value={num(k.quote_requests)} />
         <KpiTile label="Proposals" value={num(k.proposals)} hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`} />
         <KpiTile label="Open deals" value={num(k.open_opportunities)} hint={`${k.won_opportunities} won · ${k.lost_opportunities} lost`} />
         <KpiTile
           label="Open pipeline"
-          value={k.open_pipeline_value === null ? "—" : money(k.open_pipeline_value)}
+          value={k.open_pipeline_value === null ? "—" : moneyCompact(k.open_pipeline_value)}
           hint={
             k.weighted_pipeline_value === null
               ? "needs finance visibility"
-              : `${money(k.weighted_pipeline_value)} weighted`
+              : `${moneyCompact(k.weighted_pipeline_value)} weighted`
           }
         />
       </KpiRow>
@@ -709,6 +942,16 @@ export function LeadDossier({
       )}
 
       {tab === "History" && <Timeline entries={d.timeline || []} />}
+
+      <ConvertModal
+        lead={converting ? (l as Record<string, unknown>) : null}
+        onClose={() => setConverting(false)}
+        onDone={() => {
+          setConverting(false);
+          res.reload();
+          onChanged?.();
+        }}
+      />
     </div>
   );
 }
@@ -722,22 +965,48 @@ export function IntakeDossier({
   quoteRequestId,
   titleAs = "h2",
   onEdit,
+  onChanged,
+  placeholder,
 }: {
   quoteRequestId: string;
   titleAs?: "h1" | "h2";
   onEdit?: () => void;
+  /** Told when a transition lands, so a register can refresh its index. */
+  onChanged?: () => void;
+  /** The reference and state from the row just clicked — see `DossierSkeleton`. */
+  placeholder?: { title?: string | null; status?: string | null };
 }) {
   const [tab, setTab] = React.useState<IntakeTab>("Overview");
+  const [converting, setConverting] = React.useState(false);
   const res = useResource<IntakeDossierData>(
     () => tenant<IntakeDossierData>(`/quote-requests/${quoteRequestId}/360`),
     [quoteRequestId],
   );
+  const { busy, error: actionError, run } = useTransition(res.reload, onChanged);
 
   if (res.error) return <ErrorState message={errMsg(res.error)} />;
-  if (!res.data) return <SkeletonTable />;
+  if (!res.data)
+    return (
+      <DossierSkeleton
+        titleAs={titleAs}
+        tabs={INTAKE_TABS}
+        title={placeholder?.title}
+        status={placeholder?.status}
+      />
+    );
   const d = res.data;
+  // See the note in LeadDossier: a response missing its record must not throw.
+  if (!d.request)
+    return <ErrorState message="This request's dossier came back empty." />;
   const q = d.request;
-  const k = d.kpis;
+  const k = d.kpis || ({} as IntakeDossierData["kpis"]);
+
+  const status = String(q.status || "RECEIVED");
+  const locked = status === "CONVERTED_TO_OPPORTUNITY" || status === "CLOSED_NO_ACTION";
+  const next =
+    status === "RECEIVED" ? "UNDER_REVIEW"
+    : status === "UNDER_REVIEW" || status === "CLARIFICATION_REQUIRED" ? "QUOTED"
+    : null;
 
   const counts: Partial<Record<IntakeTab, number>> = {
     Attachments: d.attachments?.length ?? 0,
@@ -757,7 +1026,7 @@ export function IntakeDossier({
             .join(" · ") || "No requester details"
         }
         actions={
-          <>
+          <ActionBar busy={busy} error={actionError}>
             {d.lead ? (
               <Link to={`/sales/leads/${d.lead.lead_id}`}>
                 <Button size="sm" variant="outline">
@@ -765,12 +1034,39 @@ export function IntakeDossier({
                 </Button>
               </Link>
             ) : null}
+            {!locked && next ? (
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busy}
+                onClick={() => run(`/quote-requests/${quoteRequestId}/transition`, { to: next })}
+              >
+                {next === "UNDER_REVIEW" ? "Start review" : "Mark quoted"}
+              </Button>
+            ) : null}
+            {status === "QUOTED" ? (
+              <Button size="sm" onClick={() => setConverting(true)}>
+                Open opportunity
+              </Button>
+            ) : null}
             {onEdit ? (
               <Button size="sm" variant="outline" onClick={onEdit}>
                 Edit
               </Button>
             ) : null}
-          </>
+            {!locked && status !== "QUOTED" ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() =>
+                  run(`/quote-requests/${quoteRequestId}/transition`, { to: "CLOSED_NO_ACTION" })
+                }
+              >
+                Close
+              </Button>
+            ) : null}
+          </ActionBar>
         }
         fields={[
           { label: "Channel", value: enumLabel(String(q.intake_channel ?? "")) || "—" },
@@ -787,7 +1083,7 @@ export function IntakeDossier({
         ]}
       />
 
-      <KpiRow>
+      <KpiRow fit="content">
         <KpiTile
           label={k.is_converted ? "Days to convert" : "Days open"}
           value={num(k.age_days)}
@@ -805,7 +1101,7 @@ export function IntakeDossier({
               ? "—"
               : k.converted_value === null
                 ? "hidden"
-                : money(k.converted_value)
+                : moneyCompact(k.converted_value)
           }
           hint={d.converted_opportunity ? cell(d.converted_opportunity.stage_name) : undefined}
         />
@@ -951,6 +1247,16 @@ export function IntakeDossier({
       )}
 
       {tab === "History" && <Timeline entries={d.timeline || []} />}
+
+      <ConvertToOpportunityModal
+        request={converting ? (q as Record<string, unknown>) : null}
+        onClose={() => setConverting(false)}
+        onDone={() => {
+          setConverting(false);
+          res.reload();
+          onChanged?.();
+        }}
+      />
     </div>
   );
 }

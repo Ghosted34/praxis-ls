@@ -30,12 +30,23 @@
  *    points at. The events and audit rows that service would have emitted are
  *    emitted here under the same keys, so nothing downstream loses a record.
  *
- * 3. TWICE APPROVED IS STILL ONE SUPPLIER. Three separate defences, because
- *    this is the one irreversible side effect in the module: the request is
- *    re-read and refused if it already carries a supplier_id; an existing
- *    supplier with the same normalised name is REUSED rather than duplicated;
- *    and ux_partnership_request_supplier makes the first two true under
- *    concurrency instead of merely likely.
+ * 3. TWICE APPROVED IS STILL ONE SUPPLIER — BUT ONE SUPPLIER MAY BACK TWO
+ *    APPLICATIONS. Two defences, because this is the one irreversible side
+ *    effect in the module: the request is re-read UNDER A ROW LOCK inside
+ *    approve()'s transaction and refused if it already carries a supplier_id,
+ *    and an existing supplier with the same normalised name is REUSED rather
+ *    than duplicated.
+ *
+ *    This used to name a third, `ux_partnership_request_supplier` — a UNIQUE
+ *    index on partnership_request(supplier_id), described as what made the
+ *    first two "true under concurrency instead of merely likely". It did not:
+ *    the guarantee it enforced was that no supplier is referenced by more than
+ *    ONE application, which is the exact opposite of the reuse on the line
+ *    above. A vendor re-applying — routine, and the case reuse exists for —
+ *    hit a unique violation and its second application became permanently
+ *    un-approvable behind a bare `409 CONFLICT`. Migration 0699 drops it; the
+ *    `FOR UPDATE` in approve() is what actually serialises two approvals of the
+ *    same application, and it says nothing about different ones.
  *
  * 4. AN UPLOAD THAT FAILS LEAVES NOTHING BEHIND. The corporate profile goes
  *    into the vault inside the transaction that links it, and the stored object
@@ -281,7 +292,7 @@ async function approve(client, { id, create_supplier = false, supplier = {}, not
     // a UNIQUE index over partnership_request(supplier_id) for this, but that
     // index also forbade two applications sharing ONE supplier, which is the
     // reuse this service documents and performs — so a vendor's second
-    // application became un-approvable. 0696 drops it and the lock takes over:
+    // application became un-approvable. 0699 drops it and the lock takes over:
     // it serialises approvals of the SAME application without saying anything
     // about different ones.
     const locked = await client.query(

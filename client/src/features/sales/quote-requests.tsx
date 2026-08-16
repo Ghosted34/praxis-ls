@@ -30,14 +30,14 @@ import * as React from "react";
 import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorState } from "@/components/ui/states";
-import { SkeletonTable } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
+import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { pageShell } from "@/lib/layout";
-import { cell, dateFmt } from "@/lib/format";
+import { cell } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
@@ -100,11 +100,6 @@ const CHANNEL_FILTERS = [
   { value: "CAMPAIGN", label: "Campaign" },
 ];
 
-const NEXT_STATUS: Record<string, string | null> = {
-  RECEIVED: "UNDER_REVIEW",
-  UNDER_REVIEW: "QUOTED",
-  QUOTED: "CONVERTED_TO_OPPORTUNITY",
-};
 
 function KpiTile({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
@@ -124,17 +119,8 @@ export function QuoteRequestsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<any | null>(null);
   const [converting, setConverting] = React.useState<any | null>(null);
-  const [rowBusy, setRowBusy] = React.useState<string | null>(null);
-  const [rowError, setRowError] = React.useState<string | null>(null);
-  /**
-   * The request whose 360 is open, shown in place of the register.
-   *
-   * Same shape as the leads register: in place rather than a SplitPane, because
-   * this is a card list and not a narrow index. The dossier is also its own
-   * route (`/sales/quote-requests/:quoteRequestId`) and both surfaces render the
-   * SAME component, so there is no second copy to keep in step.
-   */
-  const [openRequest, setOpenRequest] = React.useState<any | null>(null);
+  /** The request whose 360 fills the right-hand pane. */
+  const [selId, setSelId] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
     setError(null);
@@ -162,18 +148,6 @@ export function QuoteRequestsPage() {
     void reload();
   }, [reload]);
 
-  async function transition(id: string, to: string) {
-    setRowBusy(id);
-    setRowError(null);
-    try {
-      await tenant(`/quote-requests/${id}/transition`, { method: "POST", body: { to } });
-      await reload();
-    } catch (e) {
-      setRowError(errMsg(e));
-    } finally {
-      setRowBusy(null);
-    }
-  }
 
   function exportCsv() {
     const params = new URLSearchParams();
@@ -187,41 +161,7 @@ export function QuoteRequestsPage() {
 
   const rows = data?.rows || [];
   const kpi = data?.kpi || EMPTY_KPI;
-
-  // The 360, in place of the register. An early return so the register markup
-  // below stays one thing rather than growing a branch through the middle.
-  if (openRequest) {
-    const id = String(openRequest.quote_request_id);
-    return (
-      <section className={`${pageShell.wide} space-y-4`}>
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setOpenRequest(null)}
-            className="micro text-muted-foreground hover:text-foreground"
-          >
-            ← All quote requests
-          </button>
-          <Link to={`/sales/quote-requests/${id}`} className="micro hover:underline">
-            Open as a page ↗
-          </Link>
-        </div>
-        <IntakeDossier
-          quoteRequestId={id}
-          onEdit={() => {
-            setEditing(openRequest);
-            setFormOpen(true);
-          }}
-        />
-        <QuoteRequestForm
-          open={formOpen}
-          editing={editing}
-          onClose={() => setFormOpen(false)}
-          onSaved={reload}
-        />
-      </section>
-    );
-  }
+  const selected = rows.find((r: any) => String(r.quote_request_id) === selId) || null;
 
   return (
     <section className={pageShell.wide}>
@@ -281,94 +221,101 @@ export function QuoteRequestsPage() {
         />
       </div>
 
-      {rowError && <ErrorState message={rowError} />}
+      {/*
+        An index on the left, the full 360 on the right — Master data → Clients
+        (`masterdata/client-360.tsx`), deliberately.
+
+        It was a card list, one `lux-card` per request with the logistics scope
+        crammed into a subtitle. A register whose job is comparing route,
+        incoterm and age cannot do that when every row is a paragraph; the scope
+        now has a tab of its own on the right, and the row carries what an index
+        row should — the reference and the state.
+
+        The lifecycle buttons moved into the dossier header with it (see
+        `ActionBar` in sales-360.tsx). Deciding a request is QUOTED is a
+        judgement about its attachments and its scope, which are on the right.
+      */}
       {error ? (
         <ErrorState message={error} />
-      ) : data === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No quote requests yet"
-          hint="Capture a request manually, or wait for the website intake to land one here."
-        />
       ) : (
-        <div className="space-y-2">
-          {rows.map((r) => {
-            const id = String(r.quote_request_id);
-            const status = String(r.status || "RECEIVED");
-            const next = NEXT_STATUS[status];
-            const locked = status === "CONVERTED_TO_OPPORTUNITY" || status === "CLOSED_NO_ACTION";
-            return (
-              <div key={id} className="lux-card flex items-center gap-3 p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    {/* The reference opens the 360. A button, not a link: it
-                        swaps the view in place, and the dossier's own header
-                        carries the copyable URL. */}
+        <SplitPane
+          storageKey="sales.quote-requests"
+          label="Quote request list width"
+          defaultSize={260}
+          min={200}
+          max={480}
+        >
+          <div className="space-y-2">
+            <Input
+              placeholder="Search request…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+              {data === null ? (
+                <LoadingRow label="Loading requests…" />
+              ) : rows.length === 0 ? (
+                <div className="px-3 py-4 micro">No quote requests.</div>
+              ) : (
+                rows.map((r: any) => {
+                  const id = String(r.quote_request_id);
+                  return (
                     <button
-                      type="button"
-                      onClick={() => setOpenRequest(r)}
-                      className="truncate text-left font-mono text-sm font-semibold text-foreground underline-offset-2 hover:underline"
+                      key={id}
+                      onClick={() => setSelId(id)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
                     >
-                      {cell(r.public_ref)}
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono font-medium">
+                          {cell(r.public_ref)}
+                        </span>
+                        <span className="block truncate micro">
+                          {cell(r.requester_company)}
+                        </span>
+                      </span>
+                      <StatusPill status={String(r.status || "RECEIVED")} />
                     </button>
-                    <StatusPill status={status} />
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      {cell(r.intake_channel).toLowerCase()}
-                    </span>
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {[cell(r.requester_company), cell(r.requester_name)].filter((x) => x !== "—").join(" · ") || "—"}
-                    {r.service_category ? ` · ${cell(r.service_category)}` : ""}
-                    {r.incoterm ? ` · ${cell(r.incoterm)}` : ""}
-                    {r.origin_location ? ` · ${cell(r.origin_location)} → ${cell(r.destination_location)}` : ""}
-                  </p>
-                </div>
-                <span className="hidden text-xs text-muted-foreground sm:block">{dateFmt(r.created_at)}</span>
-                {!locked && (
-                  <div className="flex gap-2">
-                    {next ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        loading={rowBusy === id}
-                        onClick={() => transition(id, next)}
-                      >
-                        {next === "UNDER_REVIEW" ? "Start review" : next === "QUOTED" ? "Mark quoted" : "Convert"}
-                      </Button>
-                    ) : null}
-                    {status === "QUOTED" && (
-                      <Button size="sm" onClick={() => setConverting(r)}>
-                        Open opportunity
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={rowBusy === id}
-                      onClick={() => {
-                        setEditing(r);
-                        setFormOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    {status !== "QUOTED" && status !== "CONVERTED_TO_OPPORTUNITY" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={rowBusy === id}
-                        onClick={() => transition(id, "CLOSED_NO_ACTION")}
-                      >
-                        Close
-                      </Button>
-                    )}
-                  </div>
-                )}
+                  );
+                })
+              )}
+            </div>
+          </div>
+          {selected ? (
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <Link
+                  to={`/sales/quote-requests/${selId}`}
+                  className="micro hover:underline"
+                >
+                  Open as a page ↗
+                </Link>
               </div>
-            );
-          })}
-        </div>
+              <IntakeDossier
+                quoteRequestId={String(selected.quote_request_id)}
+                // Reference and state come from the row just clicked, so the
+                // header is right immediately — see DossierSkeleton.
+                placeholder={{
+                  title: String(selected.public_ref || ""),
+                  status: String(selected.status || "RECEIVED"),
+                }}
+                onEdit={() => {
+                  setEditing(selected);
+                  setFormOpen(true);
+                }}
+                onChanged={reload}
+              />
+            </div>
+          ) : (
+            <EmptyState
+              title={rows.length ? "No request selected" : "No quote requests yet"}
+              hint={
+                rows.length
+                  ? "Choose a request from the list."
+                  : "Capture a request manually, or wait for the website intake to land one here."
+              }
+            />
+          )}
+        </SplitPane>
       )}
 
       <QuoteRequestForm

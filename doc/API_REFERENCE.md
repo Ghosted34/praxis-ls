@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1085 mounted routes, grouped by path prefix.
+All 1086 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1703,6 +1703,7 @@ All 1085 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/vacancies/:id/applicants/:applicantId` | — |
 | GET | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
+| GET | `/api/tenant/vacancies/:id/applicants/:applicantId/cv` | — |
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/score` | — |
 | GET | `/api/tenant/vacancies/:id/criteria` | — |
 | POST | `/api/tenant/vacancies/:id/criteria` | — |

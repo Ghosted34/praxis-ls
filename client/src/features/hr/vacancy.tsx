@@ -24,7 +24,7 @@ import {
 } from "@/components/department-select";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { tokenStore } from "@/lib/token-store";
-import { enumLabel } from "@/lib/format";
+import { enumLabel, withScheme } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { LoadingRow } from "@/components/ui/states";
 import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
@@ -156,7 +156,7 @@ function AddApplicantForm({
           .filter(Boolean),
         experience_years: num(f.experience_years),
         expected_salary: num(f.expected_salary),
-        portfolio_url: f.portfolio_url || undefined,
+        portfolio_url: withScheme(f.portfolio_url) || undefined,
         cover_note: f.cover_note || undefined,
         source: f.source || undefined,
       });
@@ -256,8 +256,13 @@ function AddApplicantForm({
           <Field label="Portfolio link">
             <Input
               type="url"
+              placeholder="linkedin.com/in/them"
               value={f.portfolio_url}
               onChange={(e) => set("portfolio_url", e.target.value)}
+              // Same repair as the public form: a pasted LinkedIn address has
+              // no scheme, and both `type="url"` and the server's validator
+              // refuse it without one.
+              onBlur={(e) => set("portfolio_url", withScheme(e.target.value))}
             />
           </Field>
         </div>
@@ -451,6 +456,7 @@ function Pipeline({
     React.useState<api.Applicant | null>(null);
   const [copied, setCopied] = React.useState(false);
   const [rescored, setRescored] = React.useState<string | null>(null);
+  const [criteriaOpen, setCriteriaOpen] = React.useState(false);
 
   const paused = vacancy.status === "PAUSED";
   /**
@@ -675,6 +681,13 @@ function Pipeline({
           >
             Re-score all with AI
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCriteriaOpen(true)}
+          >
+            Scoring criteria
+          </Button>
           <Button size="sm" onClick={() => setAdding(true)}>
             Add applicant
           </Button>
@@ -780,7 +793,26 @@ function Pipeline({
         ))}
       </div>
 
-      <CriteriaEditor vacancyId={vacancy.vacancy_id} />
+      {/* Behind a click, not under the board. It is a setup step somebody
+          performs once per role and then reads never — sitting open under the
+          pipeline it was permanent furniture between a recruiter and the
+          candidates they came to look at. */}
+      {criteriaOpen && (
+        <Modal
+          open
+          size="lg"
+          onClose={() => setCriteriaOpen(false)}
+          title="Scoring criteria"
+          description="What the AI weighs beyond the job description, for every candidate on this role."
+          footer={
+            <Button variant="outline" onClick={() => setCriteriaOpen(false)}>
+              Done
+            </Button>
+          }
+        >
+          <CriteriaEditor vacancyId={vacancy.vacancy_id} />
+        </Modal>
+      )}
 
       {adding && (
         <AddApplicantForm

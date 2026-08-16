@@ -709,6 +709,15 @@ export function AppShell() {
   // the user sees the transition instead of a flash of the new env's skeleton.
   // Set to the OUTGOING env so the copy reads "Switching to <new>…".
   const [switchingFrom, setSwitchingFrom] = React.useState<string | null>(null);
+  // The overlay's dismiss timer, held so it can be cancelled. An uncancelled
+  // one fires `setSwitchingFrom` on an unmounted shell — harmless in a browser,
+  // but in jsdom the window is gone by then and React throws
+  // "window is not defined" from a timer nobody is awaiting, which fails the
+  // whole test run as an unhandled error.
+  const switchTimer = React.useRef<number | null>(null);
+  React.useEffect(() => () => {
+    if (switchTimer.current !== null) window.clearTimeout(switchTimer.current);
+  }, []);
   const unread = useUnreadCounts(env);
 
   // ⌘K / Ctrl-K toggles the command palette; Escape closes what is open.
@@ -787,7 +796,11 @@ export function AppShell() {
     // Give the newly-mounted screen a beat to fire its queries so the overlay
     // does not vanish before the skeleton behind it has a chance to paint.
     // Kept short — this is a transition indicator, not a load screen.
-    window.setTimeout(() => setSwitchingFrom(null), 350);
+    if (switchTimer.current !== null) window.clearTimeout(switchTimer.current);
+    switchTimer.current = window.setTimeout(() => {
+      switchTimer.current = null;
+      setSwitchingFrom(null);
+    }, 350);
   }
 
   const visibleNav = useVisibleNav();

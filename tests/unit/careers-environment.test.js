@@ -150,3 +150,67 @@ describe("careers — a rejected CV is the candidate's to fix", () => {
     expect(vacancyService.addApplicant).toHaveBeenCalled();
   });
 });
+
+/**
+ * Reading the CV, and saying honestly why it was not read.
+ *
+ * TWO FAULTS, ONE SYMPTOM. `vision.extract` resolved its key from
+ * `GEMINI_API_KEY` and nowhere else, so on a deployment whose models are
+ * configured in AI Control — which is what AI Control is for — every assessment
+ * came back "scored without the CV". The panel then told the recruiter "the
+ * uploaded file could not be read", about a PDF sitting in the vault, marked
+ * Verified, that opens perfectly well. One of those is an administrator's
+ * problem and the other is the candidate's, and the screen said the wrong one.
+ */
+describe("vacancy.scoring — reading the CV", () => {
+  const scoring = require("../../src/modules/hr/vacancy/vacancy.scoring");
+  const vault = require("../../src/modules/vault/document_vault/document_vault.service");
+  const vision = require("../../src/services/ai/vision.service");
+  const llm = require("../../src/services/ai/llm.service");
+
+  beforeEach(() => {
+    jest.spyOn(vault, "fetchBytes").mockResolvedValue({
+      doc: { doc_id: "d1", mime_type: "application/pdf" },
+      buffer: Buffer.from("%PDF-1.4"),
+    });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("uses the vendor the tenant configured, not just the process env", async () => {
+    const vendor = { api_key: "k", endpoint_url: "https://x", model: "gemini-2.0" };
+    jest.spyOn(llm, "resolveVendor").mockResolvedValue(vendor);
+    const extract = jest.spyOn(vision, "extract").mockResolvedValue({ raw: "Ada, 5 years" });
+
+    const out = await scoring.readCv({}, "cv1");
+    expect(out.text).toContain("Ada");
+    expect(out.reason).toBeNull();
+    // The key from AI Control reaches the provider — without this the call
+    // throws "not configured" on every deployment that set one there.
+    expect(extract.mock.calls[0][0].vendor).toBe(vendor);
+  });
+
+  it("calls an unconfigured provider what it is, not an unreadable file", async () => {
+    jest.spyOn(llm, "resolveVendor").mockResolvedValue(null);
+    jest
+      .spyOn(vision, "extract")
+      .mockRejectedValue(new Error("document-vision provider not configured (Gemini key missing)"));
+
+    const out = await scoring.readCv({}, "cv1");
+    expect(out.text).toBeNull();
+    // The panel branches on this to stop blaming the candidate's PDF.
+    expect(out.reason).toBe("no_provider");
+  });
+
+  it("still calls a genuinely unreadable file unreadable", async () => {
+    jest.spyOn(llm, "resolveVendor").mockResolvedValue({ api_key: "k" });
+    jest.spyOn(vision, "extract").mockRejectedValue(new Error("400 unsupported media"));
+
+    expect((await scoring.readCv({}, "cv1")).reason).toBe("unreadable");
+  });
+
+  it("reports no reason at all when there was no CV to read", async () => {
+    const out = await scoring.readCv({}, null);
+    expect(out).toEqual({ text: null, reason: null });
+    expect(vault.fetchBytes).not.toHaveBeenCalled();
+  });
+});

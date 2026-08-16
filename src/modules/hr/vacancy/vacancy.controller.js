@@ -4,6 +4,9 @@ const { asyncHandler, AppError } = require("../../../utils/errors");
 const { withDepartment } = require("../../../shared/rbac/department-scope");
 const service = require("./vacancy.service");
 const geo = require("../../../services/geoapify.service");
+// Only for `fileMeta` — the content type and filename a stored document should
+// be served with, which has one correct answer and belongs in one place.
+const vaultController = require("../../vault/document_vault/document_vault.controller");
 
 const actor = (req) => req.user || { user_id: null };
 const base = makeController(service, "Vacancy");
@@ -98,6 +101,20 @@ module.exports = {
       service.scoreApplicant(c, { vacancyId: req.params.id, applicantId: req.params.applicantId, actor: actor(req) }));
     if (!row) throw new AppError("NOT_FOUND", "Applicant not found", 404);
     res.json({ data: row });
+  }),
+
+  /** Stream the CV inline, so a click opens it rather than downloading it.
+   *  `nosniff` and an explicit content type, exactly as the vault's own
+   *  download does — this is the same file taking a shorter, narrower road. */
+  applicantCv: asyncHandler(async (req, res) => {
+    const found = await req.tenantDb((c) =>
+      service.applicantCv(c, { vacancyId: req.params.id, applicantId: req.params.applicantId }));
+    if (!found) throw new AppError("NOT_FOUND", "No CV on this application", 404);
+    const meta = vaultController.fileMeta(found.doc);
+    res.setHeader("Content-Type", meta.contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${meta.filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(found.buffer);
   }),
 
   /* ── Custom scoring criteria ── */

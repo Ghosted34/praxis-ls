@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 112,
-  "route_count": 1085,
+  "route_count": 1083,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 997
+    "gated": 995
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1821,12 +1821,6 @@
       "validated": false,
       "tier": "gated"
     },
-    "GET /api/tenant/intake/partnerships": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
     "GET /api/tenant/inventory/": {
       "auth": true,
       "rbac": true,
@@ -3160,6 +3154,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/vacancies/:id/applicants/:applicantId/answers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/vacancies/:id/applicants/:applicantId/cv": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5086,18 +5086,6 @@
       "tier": "gated"
     },
     "POST /api/tenant/intake/enquiries/:id/triage": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/intake/partnerships": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/intake/partnerships/:id/review": {
       "auth": true,
       "rbac": true,
       "validated": false,

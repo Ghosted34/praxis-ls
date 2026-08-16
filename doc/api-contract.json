@@ -2223,6 +2223,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/operations/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/operations/:id/itinerary": {
       "auth": true,
       "rbac": true,
@@ -3232,6 +3238,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/transit-orders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/transit-orders/currencies": {
       "auth": true,
       "rbac": true,
       "validated": false,

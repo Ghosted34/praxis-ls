@@ -75,7 +75,44 @@ BEGIN
   END IF;
 END $$;
 
-
-
 -- DOWN
--- ALTER TABLE live.thing DROP COLUMN new_col;
+-- ────────────────────────────────────────────────────────────────────────────
+-- Reversible, with ONE exception that has to be dealt with by hand first —
+-- stated here rather than buried, because the whole point of this block is that
+-- somebody reads it at 3am.
+--
+-- THE EXCEPTION: deals may be sitting in PRICING_IN_PROGRESS by the time anyone
+-- rolls this back. 0686's own header notes the live system already has records
+-- in that stage. Deleting a stage that opportunities reference either fails on
+-- the foreign key or, worse, orphans live deals — so the first statement below
+-- is a CHECK, not a delete, and the delete is only safe once it returns zero.
+-- Move those deals to another stage first. That is a commercial decision (which
+-- stage does a half-priced deal belong in?), which is exactly the kind of thing
+-- a migration must not decide on its own at rollback time.
+--
+-- The other two parts undo exactly, because both were written to be undoable:
+-- the backfill only touched rows that were NULL, so only rows still carrying
+-- the seeded value are put back; and the shift only ran when a collision
+-- existed, so shifting back reproduces the ladder 9030 seeds.
+--
+-- -- 1. Refuse to go further while the stage is in use.
+-- SELECT count(*) AS deals_in_pricing FROM opportunity o
+--   JOIN pipeline_stage s ON s.pipeline_stage_id = o.pipeline_stage_id
+--  WHERE s.code = 'PRICING_IN_PROGRESS';
+--
+-- -- 2. Close the gap this opened (mirror of section 3 — shift back DOWN by one
+-- --    for everything that sits after PRICING_IN_PROGRESS).
+-- UPDATE pipeline_stage SET sort_order = sort_order - 1
+--  WHERE sort_order > (SELECT sort_order FROM pipeline_stage WHERE code = 'PRICING_IN_PROGRESS');
+--
+-- -- 3. Remove the seventh stage — ONLY when step 1 returned 0.
+-- DELETE FROM pipeline_stage WHERE code = 'PRICING_IN_PROGRESS';
+--
+-- -- 4. Undo the probability backfill, but ONLY where the tenant has not since
+-- --    tuned the number. A stage carrying something other than the seeded value
+-- --    is a human's decision and is left alone.
+-- UPDATE pipeline_stage SET default_probability = NULL
+--  WHERE (code, default_probability) IN (
+--    ('NEW', 10), ('QUALIFIED', 30), ('PROPOSAL', 70),
+--    ('NEGOTIATION', 85), ('WON', 100), ('LOST', 0)
+--  );

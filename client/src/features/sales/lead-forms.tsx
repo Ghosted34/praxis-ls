@@ -2,9 +2,14 @@
  * Leads & intake — the write surfaces.
  *
  * Split out of `features/sales/leads.tsx` in Phase 4 (audit F7: no file over
- * 400 lines). Four modals, all of which mutate the funnel: create/edit a lead,
- * convert one into a client, and the two intake triage paths (enquiry →
- * qualified lead, partnership → reviewed).
+ * 400 lines). Three modals, all of which mutate the funnel: create/edit a lead,
+ * convert one into a client, and review a partnership request.
+ *
+ * TriageModal was removed by F9. The enquiry desk is its own screen now
+ * (features/sales/enquiries.tsx), and its Manage drawer owns triage — including
+ * the route-to-partnership path this modal never had. Leaving it here would
+ * have left a second write surface posting the pre-F9 payload at the same
+ * endpoint, which is the duplication F9 exists to remove.
  */
 
 import * as React from "react";
@@ -14,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { errMsg, type Row } from "@/lib/use-resource";
-import { cell } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 
 const LEAD_SOURCES = ["MANUAL", "WEBSITE", "REFERRAL", "CAMPAIGN"];
@@ -255,181 +259,12 @@ export function ConvertModal({
   );
 }
 
-export function TriageModal({
-  enquiry,
-  onClose,
-  onDone,
-}: {
-  enquiry: Row | null;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const open = !!enquiry;
-  const [toLead, setToLead] = React.useState(true);
-  const [close, setClose] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!enquiry) return;
-    setToLead(true);
-    setClose(false);
-    setError(null);
-  }, [enquiry]);
-
-  async function submit() {
-    if (!enquiry) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await tenant(
-        `/intake/enquiries/${String(enquiry.contact_enquiry_id)}/triage`,
-        { method: "POST", body: { to_lead: toLead, close } },
-      );
-      onDone();
-      onClose();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Triage enquiry"
-      description="Route this website/email enquiry into the funnel."
-    >
-      <div className="space-y-4">
-        {enquiry && (
-          <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-            <p className="font-medium">
-              {cell(enquiry.subject) === "—"
-                ? "(no subject)"
-                : cell(enquiry.subject)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {[cell(enquiry.name), cell(enquiry.email)]
-                .filter((x) => x !== "—")
-                .join(" · ") || "Anonymous"}
-            </p>
-            {enquiry.message ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {cell(enquiry.message)}
-              </p>
-            ) : null}
-          </div>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={toLead}
-            onChange={(e) => setToLead(e.target.checked)}
-          />
-          Create a lead from this enquiry
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={close}
-            onChange={(e) => setClose(e.target.checked)}
-          />
-          Close the enquiry (no further action)
-        </label>
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={submit} loading={busy}>
-            Triage
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-export function ReviewModal({
-  partnership,
-  onClose,
-  onDone,
-}: {
-  partnership: Row | null;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const open = !!partnership;
-  const [status, setStatus] = React.useState("REVIEWING");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!partnership) return;
-    setStatus("REVIEWING");
-    setError(null);
-  }, [partnership]);
-
-  async function submit() {
-    if (!partnership) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await tenant(
-        `/intake/partnerships/${String(partnership.partnership_request_id)}/review`,
-        { method: "POST", body: { status } },
-      );
-      onDone();
-      onClose();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Review partnership request"
-      description="Decide on an inbound partnership proposal."
-    >
-      <div className="space-y-4">
-        {partnership && (
-          <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-            <p className="font-medium">{cell(partnership.company_name)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {[cell(partnership.contact_name), cell(partnership.email)]
-                .filter((x) => x !== "—")
-                .join(" · ") || "—"}
-            </p>
-            {partnership.proposal_text ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {cell(partnership.proposal_text)}
-              </p>
-            ) : null}
-          </div>
-        )}
-        <Field label="Decision">
-          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="REVIEWING">Reviewing</option>
-            <option value="ACCEPTED">Accepted</option>
-            <option value="DECLINED">Declined</option>
-          </Select>
-        </Field>
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={submit} loading={busy}>
-            Save decision
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
+/**
+ * ReviewModal lived here and posted /intake/partnerships/:id/review with
+ * REVIEWING / ACCEPTED / DECLINED. F10 removed it: the route moved to
+ * /partnership-requests and migration 0688 replaced that status vocabulary with
+ * NEW / IN_REVIEW / APPROVED / REJECTED, so every call it made would now be
+ * refused by the CHECK constraint. Reviewing happens in
+ * features/sales/partnership-forms.tsx, where approving can also open a draft
+ * supplier — which is the decision this modal could not express.
+ */

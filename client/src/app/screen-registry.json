@@ -1141,15 +1141,26 @@
       "module_key": "MOD-20",
       "purpose": "Inbound leads and their qualification.",
       "actions": [
-        "list_enquiries",
-        "list_partnership_requests",
-        "triage_enquiry",
-        "review_partnership",
         "list_leads",
         "get_lead",
         "create_lead",
         "transition_lead",
         "convert_lead"
+      ]
+    },
+    {
+      "id": "sales_enquiries",
+      "title": "Contact enquiries",
+      "route": "/sales/enquiries",
+      "area": "sales",
+      "module_key": "MOD-25",
+      "purpose": "Contact-form enquiry desk (MOD-25). 5 KPI tiles (TOTAL / NEW / READ / RESPONDED / CLOSED) partition the result set under every filter — the legacy's four omit READ, so opened-but-unanswered messages are counted in the total and shown in no tile. Replying sends the email through the tenant's SUPPORT identity and only marks the enquiry RESPONDED if it lands; every attempt, including failures, is kept. Triage raises a lead and/or a partnership request without touching the correspondence status.",
+      "actions": [
+        "list_enquiries",
+        "get_enquiry",
+        "transition_enquiry",
+        "respond_to_enquiry",
+        "triage_enquiry"
       ]
     },
     {
@@ -1165,6 +1176,21 @@
         "create_quote_request",
         "transition_quote_request",
         "convert_quote_request"
+      ]
+    },
+    {
+      "id": "sales_partnerships",
+      "title": "Partnerships & vendors",
+      "route": "/sales/partnerships",
+      "area": "sales",
+      "module_key": "MOD-25",
+      "purpose": "Applications from forwarding agents and vendors: vetting by network membership and corporate profile, and the approval that opens a DRAFT supplier in the master registry.",
+      "actions": [
+        "list_partnership_requests",
+        "get_partnership_request",
+        "create_partnership_request",
+        "review_partnership_request",
+        "approve_partnership_request"
       ]
     },
     {

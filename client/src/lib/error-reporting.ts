@@ -92,9 +92,11 @@ function send(body: ClientErrorReport): void {
       body: payload,
       keepalive: true,
     }).catch(() => {
+      /* @silent:storage|parse|teardown */
       /* reporting must never surface an error of its own */
     });
   } catch {
+    /* @silent:storage|parse|teardown */
     /* as above */
   }
 }
@@ -122,6 +124,7 @@ export function reportClientError(r: ClientErrorReport): void {
       componentStack: r.componentStack?.slice(0, 2000),
     });
   } catch {
+    /* @silent:storage|parse|teardown */
     /* never let the reporter break the app */
   }
 }

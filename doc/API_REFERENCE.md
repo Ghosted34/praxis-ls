@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1083 |
-| Modules mounted | 112 |
+| Routes | 1088 |
+| Modules mounted | 113 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1083 mounted routes, grouped by path prefix.
+All 1088 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -475,6 +475,7 @@ All 1083 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/:id/documents/:childId/verify` | — |
 | POST | `/api/tenant/clients/:id/merge` | — |
 | POST | `/api/tenant/clients/:id/merge-preview` | — |
+| PUT | `/api/tenant/clients/:id/public-reference-consent` | — |
 | GET | `/api/tenant/clients/:id/registrations` | — |
 | POST | `/api/tenant/clients/:id/registrations` | — |
 | DELETE | `/api/tenant/clients/:id/registrations/:childId` | — |
@@ -483,6 +484,15 @@ All 1083 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/:id/verify` | — |
 | POST | `/api/tenant/clients/convert-from-supplier/:id` | — |
 | POST | `/api/tenant/clients/dedupe-check` | — |
+
+### `tenant/company-profile`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/company-profile/` | — |
+| PUT | `/api/tenant/company-profile/` | — |
+| POST | `/api/tenant/company-profile/extract` | — |
+| POST | `/api/tenant/company-profile/refresh` | — |
 
 ### `tenant/compliance`
 

@@ -269,12 +269,18 @@ export function ClockPunchChip() {
     useClockPunch();
 
   return (
-    // `relative` so the naming offer can anchor to the chip. The title bar is a
-    // drag region (`.wco`), and a popover that escaped this wrapper would be
-    // positioned against the window rather than the control that raised it.
-    // Hide the WRAPPER below `sm`: hiding only its button leaves this zero-width
-    // flex item in the utility cluster, where it still consumes an 8px gap and
-    // takes that space from the title bar's draggable region.
+    /*
+     * `relative` so the naming offer can anchor to the chip — the title bar is a
+     * drag region (`.wco`), and a popover that escaped this wrapper would be
+     * positioned against the window rather than the control that raised it.
+     *
+     * THE BREAKPOINT LIVES HERE, NOT ONLY ON THE BUTTON. This wrapper is a flex
+     * child of a `gap-2` row, so while the button inside was hidden below `sm`
+     * the wrapper still consumed a gap — eight pixels stolen from the title
+     * bar's drag handle at 320px, which the layout gate caught as a 10px spacer
+     * against a 16px floor. A hidden control must take no space at all,
+     * including the space BETWEEN it and its neighbour.
+     */
     <span className="relative hidden sm:inline-flex">
     <button
       type="button"
@@ -287,7 +293,9 @@ export function ClockPunchChip() {
       // hear whether they are on the clock without activating the control.
       aria-label={`${action}. ${clockedIn ? "On the clock" : "Not clocked in"}`}
       className={cn(
-        "hidden h-9 items-center gap-2 rounded-md border border-input px-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-60 sm:inline-flex",
+        // No `hidden sm:inline-flex` here any more — the wrapper owns the
+        // breakpoint, so the button is simply always laid out inside it.
+        "inline-flex h-9 items-center gap-2 rounded-md border border-input px-2.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-60",
         clockedIn && "border-[rgb(var(--ok)_/_0.4)] text-[rgb(var(--ok))]",
         msg?.bad && "border-[rgb(var(--bad)_/_0.4)] text-[rgb(var(--bad))]",
       )}

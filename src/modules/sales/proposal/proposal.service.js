@@ -13,6 +13,16 @@ const documents = require("../../../services/documents/document.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const ref = (id) => "proposal:" + id;
+const HEADER_FIELDS = [
+  "lead_id", "client_id", "opportunity_id", "title", "language", "currency",
+  "service_category", "incoterm", "origin_location", "destination_location",
+  "cargo_description", "estimated_weight", "project_cargo_flag",
+  "customs_clearance_target", "transit_time_target", "free_days_demurrage",
+  "payment_conditions", "validity_days", "converted_client_id",
+];
+const headerFields = (data) => Object.fromEntries(
+  HEADER_FIELDS.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]),
+);
 
 async function replaceChildren(client, id, lines, narratives) {
   if (Array.isArray(lines)) {
@@ -21,13 +31,13 @@ async function replaceChildren(client, id, lines, narratives) {
   }
   if (Array.isArray(narratives)) {
     await repo.deleteNarratives(client, id);
-    for (let i = 0; i < narratives.length; i += 1) { const n = narratives[i];   await repo.insertNarrative(client, { proposal_id: id, section: n.section, body: n.body || "", sort_order: n.sort_order ?? i }); }
+    for (let i = 0; i < narratives.length; i += 1) { const n = narratives[i];   await repo.insertNarrative(client, { proposal_id: id, section: n.section, language: n.language || "EN", body: n.body || "", sort_order: n.sort_order ?? i, raw_client_operations: n.raw_client_operations || null, raw_pain_points: n.raw_pain_points || null, raw_proposed_strategy: n.raw_proposed_strategy || null, raw_tone: n.raw_tone || null }); }
   }
 }
 async function createDraft(client, { data, actor = {} }) {
   await client.query("BEGIN");
   try {
-    const p = await repo.insert(client, { lead_id: data.lead_id || null, client_id: data.client_id || null, opportunity_id: data.opportunity_id || null, title: data.title, status: "DRAFT", ai_generated: data.ai_generated === true });
+    const p = await repo.insert(client, { ...headerFields(data), status: "DRAFT", ai_generated: false });
     await replaceChildren(client, p.proposal_id, data.lines || [], data.narratives || []);
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(p.proposal_id), after: p });
     await client.query("COMMIT");
@@ -41,7 +51,7 @@ async function updateDraft(client, { id, patch = {}, lines = null, narratives = 
   await client.query("BEGIN");
   try {
     const fields = {};
-    for (const k of ["title", "client_id", "opportunity_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    Object.assign(fields, headerFields(patch));
     if (Object.keys(fields).length) await repo.update(client, id, fields);
     await replaceChildren(client, id, lines, narratives);
     await client.query("COMMIT");
@@ -83,6 +93,7 @@ async function accept(client, { id, createQuotation = false, entityId = null, ac
       const lines = await repo.listLines(client, id);
       const { number } = await numbering.allocate(client, { moduleKey: "MOD-27", entityId, date: new Date().toISOString().slice(0, 10) });
       quotationId = await repo.createQuotation(client, { proposal: before, entityId, totalHt: totalHt(lines), docNumber: number });
+      await repo.update(client, id, { converted_quote_id: quotationId });
     }
     await emitEvent(client, { eventTypeKey: events.ACCEPTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.ACCEPTED, moduleKey: events.MODULE, entityRef: ref(id), after: { quotation_id: quotationId } });

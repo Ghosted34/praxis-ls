@@ -522,6 +522,84 @@ const DEVICE_LABEL = {
   REVOKED: "Blocked",
 } as const;
 
+/**
+ * Click the name, type a real one.
+ *
+ * Inline rather than a modal because the auto-label is a placeholder that EVERY
+ * row carries, so renaming is the common act here, not an exceptional one — and
+ * a dialog per device would make the obvious thing the slow thing.
+ *
+ * Saves on Enter or blur, abandons on Escape. A failed save puts the old name
+ * back rather than leaving the typed text sitting there looking saved.
+ */
+function EditableLabel({
+  device,
+  onSaved,
+}: {
+  device: api.HrDevice;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [value, setValue] = React.useState(device.label);
+  const [busy, setBusy] = React.useState(false);
+
+  async function commit() {
+    const next = value.trim();
+    setEditing(false);
+    if (!next || next === device.label) {
+      setValue(device.label);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.setDeviceStatus(device.hr_device_id, { label: next });
+      onSaved();
+    } catch (e) {
+      setValue(device.label);
+      reportActionError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        disabled={busy}
+        title="Rename this device"
+        className="block max-w-full truncate text-left text-foreground hover:underline disabled:opacity-60"
+      >
+        {value}
+      </button>
+    );
+  }
+  return (
+    <Input
+      // Focus follows the click that opened it; without this the person has to
+      // click the name and then click again into the field.
+      // eslint-disable-next-line jsx-a11y/no-autofocus
+      autoFocus
+      aria-label="Device name"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          void commit();
+        }
+        if (e.key === "Escape") {
+          setValue(device.label);
+          setEditing(false);
+        }
+      }}
+      className="h-8"
+    />
+  );
+}
+
 function Devices() {
   const devices = useResource(() => api.listDevices(), []);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -558,9 +636,27 @@ function Devices() {
     {
       key: "device",
       label: "Device",
+      /*
+       * EDITABLE, because the auto-label is a placeholder by construction.
+       *
+       * The server can only ever derive a browser category from the user agent
+       * — "Windows · Chrome" is true of every laptop in the company — so it
+       * appends four characters of the fingerprint to make the rows DISTINCT.
+       * Distinct is not the same as recognisable: "Windows · Chrome · 7f3a"
+       * tells a manager which row is which and nothing about whose machine it
+       * is.
+       *
+       * Only a person can supply that, so renaming is one click on the label
+       * rather than buried behind an edit screen. It is also why the upsert
+       * never overwrites `label`: a name somebody typed must survive that
+       * device being seen again.
+       */
       render: (d) => (
         <span>
-          <span className="block text-foreground">{d.label}</span>
+          <EditableLabel
+            device={d}
+            onSaved={devices.reload}
+          />
           {d.platform && (
             <span className="block micro normal-case text-muted-foreground">
               {d.platform}
@@ -624,7 +720,8 @@ function Devices() {
         </h2>
         <p className="micro normal-case text-muted-foreground">
           Each device an employee clocks in from. A second one appearing is
-          worth a look. Enforcement is set by
+          worth a look. Names are generated — click one to rename it to
+          something you&rsquo;ll recognise. Enforcement is set by
           <span className="font-medium text-foreground">
             {" "}
             hr.device_policy

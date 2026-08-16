@@ -1149,6 +1149,15 @@
       ]
     },
     {
+      "id": "sales_lead_dossier",
+      "title": "Lead 360",
+      "route": "/sales/leads/:leadId",
+      "area": "sales",
+      "module_key": "MOD-20",
+      "purpose": "Full dossier for a single lead — Overview, Meetings (with the F1 discovery sections and their capture state), Quote requests, Proposals, Opportunities, Enquiries triaged in, and the audit history. The join F6 made necessary: the funnel, the intake lifecycle and the pipeline stage live on three different rows, so this is the one place that shows a company's whole story. Money is gated on finance visibility. Its reads are declared on the registers above; this screen adds no manifest action of its own.",
+      "actions": []
+    },
+    {
       "id": "sales_enquiries",
       "title": "Contact enquiries",
       "route": "/sales/enquiries",
@@ -1179,6 +1188,15 @@
       ]
     },
     {
+      "id": "sales_quote_request_dossier",
+      "title": "Intake 360",
+      "route": "/sales/quote-requests/:quoteRequestId",
+      "area": "sales",
+      "module_key": "MOD-20",
+      "purpose": "Full dossier for a single quote request — Overview, the full logistics Scope, Attachments from the vault, Proposals reached through the lead, and the audit history, plus the opportunity it converted into. 'Is it converted' is read from converted_opportunity_id, never from the status value. Its reads are declared on the register above; this screen adds no manifest action of its own.",
+      "actions": []
+    },
+    {
       "id": "sales_partnerships",
       "title": "Partnerships & vendors",
       "route": "/sales/partnerships",
@@ -1200,7 +1218,9 @@
       "area": "sales",
       "module_key": "MOD-23",
       "purpose": "Tenant-owned declared and SQL-derived fact sheet used to ground proposals and case studies.",
-      "actions": ["get_company_profile"]
+      "actions": [
+        "get_company_profile"
+      ]
     },
     {
       "id": "sales_opportunities",

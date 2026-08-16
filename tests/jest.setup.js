@@ -113,3 +113,43 @@ for (const k of [
 ]) {
   delete process.env[k];
 }
+
+/**
+ * Stop the error-store's flush timer before Jest tears the environment down.
+ *
+ * `npx jest` exited 1 with every test passing. Nothing failed — this did:
+ *
+ *   ReferenceError: You are trying to `import` a file after the Jest
+ *   environment has been torn down.
+ *     at db (src/shared/observability/error-store.js)
+ *     at flush (src/shared/observability/error-store.js)
+ *     at Timeout._onTimeout (src/shared/observability/error-store.js)
+ *
+ * `error-store` buffers error rows and flushes them on a timer. The timer is
+ * unref'd, so it never holds a process open, and `flush()` clears any PENDING
+ * timer — but neither helps in the one case that bites: the timer FIRES, and
+ * the flush it is running lazily `require()`s the platform pool at a moment
+ * when the module registry no longer exists. Node counts that rejection and
+ * sets a non-zero exit code, so CI's build-test job was red for a reason no
+ * test report could show. It reproduced on `9852d4c5`, so it is old.
+ *
+ * WHY HERE AND NOT IN THE MODULE. Swallowing the require failure inside `db()`
+ * does not silence it — Jest reports the ReferenceError itself, from inside its
+ * own module loader, before any catch of ours runs. And the alternative,
+ * asking every test that happens to report an error to know this timer exists,
+ * is exactly the coupling that let this survive so long. The timer is correct
+ * production behaviour; it is the harness that has to put it down. `afterAll`
+ * from a `setupFilesAfterEach` module runs at the end of EVERY test file, in
+ * that file's own registry, which is precisely the scope of the problem.
+ *
+ * `__reset()` is the module's existing test seam — it clears the timer, the
+ * buffer and the listener.
+ */
+afterAll(() => {
+  try {
+    require("../src/shared/observability/error-store").__reset();
+  } catch {
+    /* @silent:teardown — a test file that never loaded error-store has nothing
+       to reset, and a failure to tidy up must not fail a passing suite. */
+  }
+});

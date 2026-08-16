@@ -30,7 +30,9 @@ import { StatusPill } from "@/components/ui/pill";
 import { Segmented } from "@/components/ui/segmented";
 import { Chips } from "@/components/ui/chips";
 import { Avatar } from "@/components/ui/avatar";
+import { Link } from "react-router-dom";
 import { LeadForm, ConvertModal } from "./lead-forms";
+import { LeadDossier } from "./sales-360";
 
 /* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
@@ -78,6 +80,16 @@ function LeadsTab() {
   const [converting, setConverting] = React.useState<Row | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+  /**
+   * The lead whose 360 is open, shown in place of the list.
+   *
+   * In place, rather than the SplitPane suppliers.tsx uses: this register is a
+   * card list, not a narrow index, and a 280px pane would crush it. The dossier
+   * is also its own route (`/sales/leads/:leadId`), so it can be linked to from
+   * outside the app — the two surfaces render the SAME component, so neither
+   * can drift from the other.
+   */
+  const [openLead, setOpenLead] = React.useState<Row | null>(null);
 
   async function transition(id: string, to: string) {
     setRowBusy(id);
@@ -104,6 +116,41 @@ function LeadsTab() {
       );
     });
   }, [rows, filter, search]);
+
+  // The 360, in place of the register. Kept as an early return rather than a
+  // branch inside the layout below so the list markup stays one thing.
+  if (openLead) {
+    const id = String(openLead.lead_id);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setOpenLead(null)}
+            className="micro text-muted-foreground hover:text-foreground"
+          >
+            ← All leads
+          </button>
+          <Link to={`/sales/leads/${id}`} className="micro hover:underline">
+            Open as a page ↗
+          </Link>
+        </div>
+        <LeadDossier
+          leadId={id}
+          onEdit={() => {
+            setEditing(openLead);
+            setFormOpen(true);
+          }}
+        />
+        <LeadForm
+          open={formOpen}
+          editing={editing}
+          onClose={() => setFormOpen(false)}
+          onSaved={reload}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -158,9 +205,16 @@ function LeadsTab() {
                 <Avatar name={String(r.company_name || "?")} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">
+                    {/* The company name opens the 360. A button, not a link,
+                        because it swaps the view in place; the dossier's own
+                        header offers the copyable URL. */}
+                    <button
+                      type="button"
+                      onClick={() => setOpenLead(r)}
+                      className="truncate text-left text-sm font-semibold text-foreground underline-offset-2 hover:underline"
+                    >
                       {cell(r.company_name)}
-                    </p>
+                    </button>
                     <StatusPill status={status} />
                   </div>
                   <p className="truncate text-xs text-muted-foreground">

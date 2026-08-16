@@ -41,7 +41,9 @@ import { cell, dateFmt } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
+import { Link } from "react-router-dom";
 import { QuoteRequestForm, ConvertToOpportunityModal } from "./quote-request-forms";
+import { IntakeDossier } from "./sales-360";
 
 /** TOTAL plus one count per intake status; `OTHER` only ever appears if a row
  *  carries a status the API does not know, which the screen shows rather than
@@ -124,6 +126,15 @@ export function QuoteRequestsPage() {
   const [converting, setConverting] = React.useState<any | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+  /**
+   * The request whose 360 is open, shown in place of the register.
+   *
+   * Same shape as the leads register: in place rather than a SplitPane, because
+   * this is a card list and not a narrow index. The dossier is also its own
+   * route (`/sales/quote-requests/:quoteRequestId`) and both surfaces render the
+   * SAME component, so there is no second copy to keep in step.
+   */
+  const [openRequest, setOpenRequest] = React.useState<any | null>(null);
 
   const reload = React.useCallback(async () => {
     setError(null);
@@ -176,6 +187,41 @@ export function QuoteRequestsPage() {
 
   const rows = data?.rows || [];
   const kpi = data?.kpi || EMPTY_KPI;
+
+  // The 360, in place of the register. An early return so the register markup
+  // below stays one thing rather than growing a branch through the middle.
+  if (openRequest) {
+    const id = String(openRequest.quote_request_id);
+    return (
+      <section className={`${pageShell.wide} space-y-4`}>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setOpenRequest(null)}
+            className="micro text-muted-foreground hover:text-foreground"
+          >
+            ← All quote requests
+          </button>
+          <Link to={`/sales/quote-requests/${id}`} className="micro hover:underline">
+            Open as a page ↗
+          </Link>
+        </div>
+        <IntakeDossier
+          quoteRequestId={id}
+          onEdit={() => {
+            setEditing(openRequest);
+            setFormOpen(true);
+          }}
+        />
+        <QuoteRequestForm
+          open={formOpen}
+          editing={editing}
+          onClose={() => setFormOpen(false)}
+          onSaved={reload}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className={pageShell.wide}>
@@ -256,9 +302,16 @@ export function QuoteRequestsPage() {
               <div key={id} className="lux-card flex items-center gap-3 p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate font-mono text-sm font-semibold text-foreground">
+                    {/* The reference opens the 360. A button, not a link: it
+                        swaps the view in place, and the dossier's own header
+                        carries the copyable URL. */}
+                    <button
+                      type="button"
+                      onClick={() => setOpenRequest(r)}
+                      className="truncate text-left font-mono text-sm font-semibold text-foreground underline-offset-2 hover:underline"
+                    >
                       {cell(r.public_ref)}
-                    </p>
+                    </button>
                     <StatusPill status={status} />
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                       {cell(r.intake_channel).toLowerCase()}

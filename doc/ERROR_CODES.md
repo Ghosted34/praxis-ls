@@ -34,7 +34,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
 | `AI_UNAVAILABLE` | 403, 503 | 4× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
-| `ALREADY_APPROVED` | 422 | 1× | — |
+| `ALREADY_APPROVED` | 422 | 2× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 2× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |

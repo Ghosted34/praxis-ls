@@ -113,7 +113,22 @@ async function accept(client, { id, createQuotation = false, entityId = null, ac
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-function signedToken(){const raw=crypto.randomBytes(32).toString("base64url");const sig=crypto.createHmac("sha256",config.JWT_SECRET).update(raw).digest("base64url");return `${raw}.${sig}`;}
+/**
+ * Mint a share token: 32 random bytes plus an HMAC over them.
+ *
+ * The secret is `JWT_ACCESS_SECRET`. It was `config.JWT_SECRET`, which is not a
+ * key this repo's env schema defines (src/config/env.js declares only
+ * JWT_ACCESS_SECRET and JWT_REFRESH_SECRET), so it resolved to `undefined` and
+ * `createHmac` threw `TypeError: The "key" argument must be of type string…` on
+ * EVERY call — `POST /proposals/:id/share` answered 500 in every environment
+ * and no proposal could be shared at all. src/middleware/auth.js carries a note
+ * about the same mistake being fixed there; this is the second occurrence.
+ *
+ * The unit suite did not catch it because tests/unit/proposal-f5-sharing.test.js
+ * only exercises `resolve()` (the read side) — see the minting test added
+ * alongside this fix.
+ */
+function signedToken(){const raw=crypto.randomBytes(32).toString("base64url");const sig=crypto.createHmac("sha256",config.JWT_ACCESS_SECRET).update(raw).digest("base64url");return `${raw}.${sig}`;}
 async function share(client,{id,expiresInDays=30,actor={}}){const before=await repo.get(client,id);if(!before)throw new AppError("NOT_FOUND","Proposal not found",404);if(before.status!=="SENT")throw new AppError("NOT_SENT","Only a sent proposal can be shared",422);const token=signedToken();const expires=new Date(Date.now()+expiresInDays*86400000);await repo.update(client,id,{share_token_hash:crypto.createHash("sha256").update(token).digest("hex"),share_expires_at:expires,share_revoked_at:null});await audit(client,{actorUserId:actor.user_id||null,action:"proposal.shared",moduleKey:events.MODULE,entityRef:ref(id),after:{expires_at:expires}});return{token,expires_at:expires,path:`/public/proposals/${encodeURIComponent(token)}`};}
 async function revokeShare(client,{id,actor={}}){const before=await repo.get(client,id);if(!before)throw new AppError("NOT_FOUND","Proposal not found",404);const row=await repo.update(client,id,{share_revoked_at:new Date()});await audit(client,{actorUserId:actor.user_id||null,action:"proposal.share_revoked",moduleKey:events.MODULE,entityRef:ref(id),after:{share_revoked_at:row.share_revoked_at}});return row;}
 async function get(client, id) {

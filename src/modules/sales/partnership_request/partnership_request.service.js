@@ -274,6 +274,23 @@ async function approve(client, { id, create_supplier = false, supplier = {}, not
 
   await client.query("BEGIN");
   try {
+    // The "already has a supplier" guarantee, taken under a row lock.
+    //
+    // The read above happens before BEGIN, so on its own it is only a fast
+    // rejection: two approvals racing both see supplier_id NULL. 0688 leaned on
+    // a UNIQUE index over partnership_request(supplier_id) for this, but that
+    // index also forbade two applications sharing ONE supplier, which is the
+    // reuse this service documents and performs — so a vendor's second
+    // application became un-approvable. 0696 drops it and the lock takes over:
+    // it serialises approvals of the SAME application without saying anything
+    // about different ones.
+    const locked = await client.query(
+      "SELECT supplier_id FROM partnership_request WHERE partnership_request_id = $1 FOR UPDATE",
+      [id],
+    );
+    if (locked && locked.rows && locked.rows[0] && locked.rows[0].supplier_id) {
+      throw new AppError("ALREADY_APPROVED", "This application already has a supplier", 422);
+    }
     let supplierRow = null;
     let reused = false;
     if (wantsSupplier) {

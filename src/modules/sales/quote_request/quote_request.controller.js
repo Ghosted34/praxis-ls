@@ -1,6 +1,8 @@
 "use strict";
 const service = require("./quote_request.service");
 const rules = require("./quote_request.rules");
+const sales360 = require("../sales-360.service");
+const { canSeeFinancials } = require("../../master/_shared/confidential");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 
@@ -33,6 +35,23 @@ module.exports = {
   /** { rows, total, kpi, limit, offset } — the list and its summary in one trip. */
   list: asyncHandler(async (req, res) => {
     res.json(await req.tenantDb((c) => service.list(c, req.query)));
+  }),
+
+  /**
+   * The 360° dossier (GET /quote-requests/:id/360).
+   *
+   * `get` above already folds in attachments; this goes further — the lead the
+   * request came from, the opportunity it became, the proposals reached through
+   * that lead, and the audit history. Money follows the party masters' rule:
+   * `canSeeFinancials` decides, and it is null rather than zero when refused.
+   */
+  dossier: asyncHandler(async (req, res) => {
+    const canSee = await canSeeFinancials(req);
+    res.json({
+      data: await req.tenantDb((c) =>
+        sales360.intakeDossier(c, { quoteRequestId: req.params.id, canSeeFinancials: canSee }),
+      ),
+    });
   }),
 
   get: asyncHandler(async (req, res) => {

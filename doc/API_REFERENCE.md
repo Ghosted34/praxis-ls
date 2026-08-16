@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1103 |
+| Routes | 1105 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1103 mounted routes, grouped by path prefix.
+All 1105 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -924,6 +924,7 @@ All 1103 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/leads/` | — |
 | GET | `/api/tenant/leads/:id` | — |
 | PATCH | `/api/tenant/leads/:id` | — |
+| GET | `/api/tenant/leads/:id/360` | — |
 | POST | `/api/tenant/leads/:id/convert` | — |
 | POST | `/api/tenant/leads/:id/transition` | — |
 
@@ -1314,6 +1315,7 @@ All 1103 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/quote-requests/` | — |
 | GET | `/api/tenant/quote-requests/:id` | — |
 | PATCH | `/api/tenant/quote-requests/:id` | — |
+| GET | `/api/tenant/quote-requests/:id/360` | — |
 | GET | `/api/tenant/quote-requests/:id/attachments` | — |
 | POST | `/api/tenant/quote-requests/:id/attachments` | — |
 | DELETE | `/api/tenant/quote-requests/:id/attachments/:attachmentId` | — |

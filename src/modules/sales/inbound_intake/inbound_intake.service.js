@@ -233,7 +233,7 @@ async function respond(client, { id, body, subject = null, actor = {} }) {
 function htmlBody(text) {
   const esc = String(text)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return "<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap\">" + esc + "</div>";
+  return "<div style=\"font-family:Roboto,'Noto Sans',sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap\">" + esc + "</div>";
 }
 
 /* ─── triage ──────────────────────────────────────────────────────────────── */

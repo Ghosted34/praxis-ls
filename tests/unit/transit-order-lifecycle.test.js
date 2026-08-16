@@ -408,3 +408,36 @@ describe("get() says which shipment facts it used", () => {
     expect(out.shipment_details).toBeNull();
   });
 });
+
+describe("CodeQL — transition() cannot be steered onto Object.prototype", () => {
+  /**
+   * `TRANSITIONS` is an object literal, so it inherits from Object.prototype.
+   * A bare `TRANSITIONS[to]` lookup therefore returns a *callable* for keys
+   * like "constructor" or "toString", which then sailed past the `if (!fn)`
+   * guard and got invoked with a db client. The HTTP validator pins `to` to an
+   * enum so this was never reachable over the wire, but the service is
+   * exported and must refuse the input on its own.
+   */
+  const INHERITED = ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__", "isPrototypeOf"];
+
+  it.each(INHERITED)("rejects %s with BAD_STATE instead of calling it", async (to) => {
+    const c = fakeClient();
+    await expect(service.transition(c, { id: "to-1", to })).rejects.toMatchObject({
+      code: "BAD_STATE",
+      status: 422,
+    });
+    // and nothing was executed against the database on the way out
+    expect(c.query).not.toHaveBeenCalled();
+  });
+
+  it.each(["ISSUED", "SIGNED", "LODGED", "CANCELLED"])(
+    "still dispatches the real state %s rather than rejecting it",
+    async (to) => {
+      // The four real states must get past the guard and reach their handler.
+      // We only care that the rejection is NOT the guard's BAD_STATE — the
+      // handlers themselves are covered by the lifecycle blocks above.
+      const err = await service.transition(fakeClient(), { id: "missing", to }).catch((e) => e);
+      expect(err.code).not.toBe("BAD_STATE");
+    },
+  );
+});

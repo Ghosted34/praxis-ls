@@ -423,8 +423,15 @@ const TRANSITIONS = {
   CANCELLED: (client, p) => cancel(client, p),
 };
 async function transition(client, { id, to, actor = {}, ...rest }) {
-  const fn = TRANSITIONS[to];
-  if (!fn) throw new AppError("BAD_STATE", `"${to}" is not a transit-order state that can be moved to.`, 422);
+  // `to` is caller-supplied, so look it up as own-property only. A plain object
+  // literal still inherits from Object.prototype, and `TRANSITIONS.constructor`
+  // (or toString/valueOf/hasOwnProperty) would sail past a truthiness check and
+  // then be invoked. The HTTP validator pins `to` to an enum, but this service
+  // is exported and must not depend on every caller doing that for it.
+  const fn = Object.hasOwn(TRANSITIONS, to) ? TRANSITIONS[to] : null;
+  if (typeof fn !== "function") {
+    throw new AppError("BAD_STATE", `"${to}" is not a transit-order state that can be moved to.`, 422);
+  }
   return fn(client, { id, actor, ...rest });
 }
 

@@ -15,6 +15,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { TransitionButtons } from "@/components/ui/workflow";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { ContractEditor } from "./contract-editor";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -232,9 +233,79 @@ export function UploadSigned({
   );
 }
 
+/**
+ * What lapses soon.
+ *
+ * A fixed term that expires unnoticed is an employee working without a
+ * contract; a probation that passes unnoticed is a confirmation nobody made —
+ * and in most jurisdictions silence confirms them, so the deadline the employer
+ * needed to act before goes by and the decision is made by default. Neither was
+ * visible anywhere until 0700, because nothing had ever read `end_on`.
+ *
+ * Rendered as a strip rather than a table: it is a prompt to act, and it should
+ * cost no vertical space at all on the common day when nothing is lapsing.
+ */
+function LapsingPanel({
+  data,
+  rows,
+  onOpen,
+}: {
+  data: { expiring: api.LapsingContract[]; probation: api.LapsingContract[] } | null;
+  rows: api.Contract[] | null;
+  onOpen: (c: api.Contract) => void;
+}) {
+  if (!data) return null;
+  const items = [
+    ...data.probation.map((l) => ({ ...l, what: "probation ends" as const })),
+    ...data.expiring.map((l) => ({ ...l, what: "expires" as const })),
+  ].sort((a, b) => a.days_left - b.days_left);
+  if (!items.length) return null;
+
+  return (
+    <div className="mb-4 flex flex-col gap-2">
+      {items.slice(0, 6).map((l) => {
+        const full = (rows || []).find((r) => r.hr_contract_id === l.hr_contract_id);
+        return (
+          <div
+            key={`${l.hr_contract_id}-${l.what}`}
+            className="lux-card flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm"
+          >
+            <span>
+              <span className="font-medium text-foreground">{l.employee_name || "—"}</span>{" "}
+              <span className="text-muted-foreground">
+                — {l.what} {dateFmt(l.what === "expires" ? l.end_on : l.probation_ends_on)}
+              </span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Pill tone={l.days_left <= 7 ? "bad" : "warn"}>
+                {l.days_left === 0 ? "today" : `${l.days_left} day(s)`}
+              </Pill>
+              {full && (
+                <Button size="sm" variant="outline" onClick={() => onOpen(full)}>
+                  Open
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {items.length > 6 && (
+        <p className="text-xs text-muted-foreground">
+          …and {items.length - 6} more in the next 60 days.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ContractsPage() {
   const rows = useResource(() => api.listContracts(), []);
+  // The two dates nothing has ever read (0700). Asked for once, above the
+  // table, because "six contracts lapse this month" is the thing somebody
+  // opening this screen most needs to know and it was previously unanswerable.
+  const lapsing = useResource(() => api.lapsingContracts(60), []);
   const [creating, setCreating] = React.useState(false);
+  const [editing, setEditing] = React.useState<api.Contract | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -322,6 +393,21 @@ export function ContractsPage() {
         </div>
       ),
     },
+    {
+      key: "_edit",
+      label: "",
+      // The contract's TEXT — the thing that decides whether the printed PDF
+      // has clauses in it. Only on a DRAFT: past that the server refuses a
+      // redraft, and offering the button anyway teaches people to expect a 422.
+      render: (c) =>
+        c.status === "DRAFT" ? (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setEditing(c)}>
+              {c.body_md ? "Edit text" : "Draft text"}
+            </Button>
+          </div>
+        ) : null,
+    },
   ];
 
   return (
@@ -333,6 +419,7 @@ export function ContractsPage() {
         action={<Button onClick={() => setCreating(true)}>New contract</Button>}
       />
       <HubTabs />{" "}
+      <LapsingPanel data={lapsing.data} onOpen={setEditing} rows={rows.data} />
       {error && (
         <div className="mb-3">
           <ErrorState message={error} />
@@ -353,6 +440,16 @@ export function ContractsPage() {
         <NewContractForm
           onClose={() => setCreating(false)}
           onSaved={rows.reload}
+        />
+      )}
+      {editing && (
+        <ContractEditor
+          contract={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            rows.reload();
+            lapsing.reload();
+          }}
         />
       )}
       <ScreenAi path="hr/contracts" />

@@ -226,8 +226,23 @@ async function overview(client, dossierId) {
   };
 }
 
+/**
+ * The file's own vault documents, for the pickers that must show them (the
+ * transit-order checklist previews what is actually attached before an operator
+ * ticks a box). Named columns rather than `*`, so the response contract stays
+ * explicit. Non-archived only: an archived scan is no longer evidence.
+ */
+async function vaultDocuments(client, dossierId) {
+  const { rows } = await client.query(
+    "SELECT doc_id, doc_type, status, entity_ref, version_no, created_at " +
+      "FROM document_vault WHERE dossier_id = $1 AND status <> 'ARCHIVED' ORDER BY created_at DESC LIMIT 50",
+    [dossierId],
+  );
+  return rows;
+}
+
 // WRITABLE is exported for tests/unit/dossier-columns.test.js, which reconciles
 // it against the columns the migrations actually declare. That test is the link
 // between this file and the schema — the link whose absence let `title` be
 // written for months against a column that did not exist.
-module.exports = { insert, get, update, list, listPaged, overview, WRITABLE };
+module.exports = { insert, get, update, list, listPaged, overview, vaultDocuments, WRITABLE };

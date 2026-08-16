@@ -58,8 +58,9 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num } from "@/lib/format";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
+import { openVaultDoc } from "@/lib/vault-file";
 import { ShipmentDetailsPanel } from "./shipment-details";
-import { nameMap } from "./shared";
+import { humanizeKey, nameMap } from "./shared";
 
 /**
  * The lifecycle tones. Deliberately NOT `shared.tone`, which maps the generic
@@ -109,6 +110,61 @@ const toCargo = (l: api.TransitOrderLine): CargoLine => ({
   value_amount: l.value_amount != null ? String(l.value_amount) : "",
 });
 
+/**
+ * The file's own vault documents, shown under the checklist so an operator can
+ * preview what is actually attached before ticking the corresponding box —
+ * the checklist alone is just a list of nouns, and an order raised on a file
+ * whose B/L was never uploaded should be visible at the moment of decision.
+ */
+function DossierDocuments({ dossierId }: { dossierId: string }) {
+  const { data, error, loading } = useResource(
+    () => api.listDossierDocuments(dossierId),
+    [dossierId],
+  );
+
+  if (error) return <ErrorState message={errMsg(error)} />;
+
+  const rows = data || [];
+  if (!loading && rows.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No documents in this file's vault yet — attach them from the file's
+        documents tab, then they will preview here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-line">
+      <div className="micro border-b border-line px-2 py-1.5 text-muted-foreground">
+        On this file
+      </div>
+      {rows.map((d) => (
+        <div
+          key={d.doc_id}
+          className="flex items-center justify-between gap-2 border-b border-line px-2 py-1.5 last:border-b-0"
+        >
+          <div className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-foreground">
+              {d.doc_type ? humanizeKey(d.doc_type) : "Document"}
+              {d.version_no && d.version_no > 1 ? ` · v${d.version_no}` : ""}
+            </span>
+            <span className="micro text-muted-foreground">{d.status || "—"}</span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void openVaultDoc(d.doc_id)}
+          >
+            Preview
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── The form ──────────────────────────────────────────────────────────────── */
 
 function TransitForm({
@@ -126,6 +182,9 @@ function TransitForm({
   // The checklist comes from the server, so the form can never be a stale copy
   // of a vocabulary the API has moved on from.
   const { data: docTypes } = useResource(() => api.transitDocTypes(), []);
+  // The declared-value currency is a select over the tenant's master data, and
+  // the rate to XAF beside it is a derived read-out, not a second input.
+  const { data: currencies } = useResource(() => api.transitOrderCurrencies(), []);
 
   // A draft is editable; an issued order is not, except for the three fields
   // the API still accepts. Mirrored here so the inputs are visibly disabled
@@ -141,7 +200,6 @@ function TransitForm({
     service_direction: row?.service_direction ?? "IMPORT",
     declared_value: row?.declared_value != null ? String(row.declared_value) : "",
     declared_currency: row?.declared_currency ?? "XAF",
-    declared_fx_to_xaf: row?.declared_fx_to_xaf != null ? String(row.declared_fx_to_xaf) : "1",
     insurance_type: row?.insurance_type ?? "CLIENT",
     surveyor_party: row?.surveyor_party ?? "CLIENT",
     departure_date: row?.departure_date ?? "",
@@ -209,7 +267,6 @@ function TransitForm({
       service_direction: f.service_direction || null,
       declared_value: f.declared_value === "" ? null : Number(f.declared_value),
       declared_currency: f.declared_currency || "XAF",
-      declared_fx_to_xaf: Number(f.declared_fx_to_xaf) || 1,
       insurance_type: f.insurance_type,
       surveyor_party: f.surveyor_party,
       departure_date: f.departure_date || null,
@@ -385,7 +442,11 @@ function TransitForm({
            * and is not — duty is assessed in XAF at a rate on a date.
            */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Declared value" required>
+            <Field
+              label="Declared value"
+              required
+              hint="The customs value of the cargo — the base duty is assessed on. Usually the supplier-invoice value, and not necessarily in XAF."
+            >
               <Input
                 type="number"
                 min="0"
@@ -396,34 +457,56 @@ function TransitForm({
                 onChange={(e) => set("declared_value", e.target.value)}
               />
             </Field>
-            <Field label="Currency">
-              <Input
+            <Field
+              label="Currency"
+              hint="From Master data → Currencies."
+            >
+              <Select
                 value={f.declared_currency}
                 disabled={locked}
-                maxLength={3}
-                onChange={(e) =>
-                  set("declared_currency", e.target.value.toUpperCase())
-                }
-              />
+                onChange={(e) => set("declared_currency", e.target.value)}
+              >
+                {(currencies || []).map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code}
+                    {c.name ? ` — ${c.name}` : ""}
+                  </option>
+                ))}
+              </Select>
             </Field>
-            <Field
-              label="Rate to XAF"
-              hint={
-                f.declared_currency === "XAF"
-                  ? "1 — the value is already in XAF."
-                  : "Used for the duty base."
-              }
-            >
-              <Input
-                type="number"
-                min="0"
-                step="any"
-                className="num text-right"
-                value={f.declared_fx_to_xaf}
-                disabled={locked || f.declared_currency === "XAF"}
-                onChange={(e) => set("declared_fx_to_xaf", e.target.value)}
-              />
-            </Field>
+            {(() => {
+              const picked = (currencies || []).find(
+                (c) => c.code === (f.declared_currency || "XAF"),
+              );
+              // An issued order keeps the rate it was frozen with; a draft shows
+              // the live derived rate, since that is what save will record.
+              const rate = locked
+                ? row?.declared_fx_to_xaf ?? null
+                : picked?.rate_to_xaf ?? null;
+              return (
+                <Field
+                  label="Rate to XAF"
+                  hint={
+                    f.declared_currency === "XAF"
+                      ? "1 — the value is already in XAF."
+                      : locked
+                        ? "Frozen when this order was issued."
+                        : rate == null
+                          ? "No live rate yet — sync it in Master data → Currencies."
+                          : `Derived from the live FX rate${picked?.rate_as_of_date ? ` (${picked.rate_as_of_date})` : ""}.`
+                  }
+                >
+                  <Input
+                    readOnly
+                    tabIndex={-1}
+                    className="num cursor-default bg-muted/50 text-right"
+                    value={rate == null ? "" : String(rate)}
+                    placeholder="—"
+                    aria-label="Rate to XAF"
+                  />
+                </Field>
+              );
+            })()}
           </div>
         </section>
 
@@ -467,7 +550,7 @@ function TransitForm({
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-12 items-center gap-2">
                 <Input
-                  className="col-span-4"
+                  className="col-span-3"
                   value={l.label}
                   onChange={(e) => setLine(i, { label: e.target.value })}
                   aria-label={`Description, cargo line ${i + 1}`}
@@ -484,7 +567,7 @@ function TransitForm({
                   type="number"
                   min="0"
                   step="any"
-                  className="num col-span-1 text-right"
+                  className="num col-span-2 text-right"
                   value={l.packages}
                   onChange={(e) => setLine(i, { packages: e.target.value })}
                   aria-label={`Packages, cargo line ${i + 1}`}
@@ -550,7 +633,9 @@ function TransitForm({
           </section>
         )}
 
-        {/* ── 5. The checklist, served by the API. ──────────────────────────── */}
+        {/* ── 5. The checklist, served by the API, with the file's own documents
+               beside it so an operator can look at the invoice/BL they are
+               about to tick, rather than ticking blind. ──────────────────── */}
         <section className="space-y-2">
           <div className="micro">5 · Attached documents</div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -564,6 +649,7 @@ function TransitForm({
               />
             ))}
           </div>
+          {f.dossier_id && <DossierDocuments dossierId={f.dossier_id} />}
         </section>
 
         <Field label="Special instructions">

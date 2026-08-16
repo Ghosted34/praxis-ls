@@ -197,6 +197,17 @@ export type TransitDocType = {
   label_fr: string;
   label_en: string;
 };
+/** A master-data currency with its live rate to XAF already resolved. */
+export type TransitOrderCurrency = {
+  code: string;
+  name?: string | null;
+  symbol?: string | null;
+  is_base?: boolean;
+  /** XAF per unit of this currency, derived from fx_rate_daily. 1 for XAF. */
+  rate_to_xaf: number | null;
+  rate_source?: string | null;
+  rate_as_of_date?: string | null;
+};
 export type TransitSummary = Record<TransitStatus | "TOTAL", number>;
 
 export const listTransitOrders = (q?: Record<string, string>) =>
@@ -211,6 +222,9 @@ export const transitOrderSummary = () =>
 /** The checklist vocabulary, served so the form is not a hard-coded copy. */
 export const transitDocTypes = () =>
   tenant<TransitDocType[]>("/transit-orders/document-types");
+/** Active currencies + their live rate to XAF, for the declared-value picker. */
+export const transitOrderCurrencies = () =>
+  tenant<TransitOrderCurrency[]>("/transit-orders/currencies");
 export const createTransitOrder = (body: TransitOrderInput) =>
   tenant<TransitOrder>("/transit-orders", { method: "POST", body });
 export const updateTransitOrder = (
@@ -1168,6 +1182,19 @@ export type DossierOverview = {
 /** 360° rollup for one operation file; money fields are role-masked server-side. */
 export const getOverview = (id: string) =>
   tenant<DossierOverview>(`/operations/${id}/360`);
+
+/** A vault document attached to an operations file (the transit-order checklist
+ *  previews these so an operator can look at the invoice/BL before ticking). */
+export type DossierVaultDocument = {
+  doc_id: string;
+  doc_type?: string | null;
+  status?: string | null;
+  entity_ref?: string | null;
+  version_no?: number | null;
+  created_at?: string | null;
+};
+export const listDossierDocuments = (id: string) =>
+  tenant<DossierVaultDocument[]>(`/operations/${id}/documents`);
 
 /* ── The Shared Shipment/Service Detail Component (SSDC) ────────────────────
  *

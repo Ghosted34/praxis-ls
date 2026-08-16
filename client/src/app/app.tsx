@@ -126,6 +126,15 @@ const FinanceHub = lazyNamed(
   "FinanceHub",
 );
 const SalesHub = lazyNamed(() => import("@/features/sales/hub"), "SalesHub");
+// Lead 360 and Intake 360 — one module, so the two dossiers share a chunk.
+const LeadDossierPage = lazyNamed(
+  () => import("@/features/sales/sales-360"),
+  "LeadDossierPage",
+);
+const IntakeDossierPage = lazyNamed(
+  () => import("@/features/sales/sales-360"),
+  "IntakeDossierPage",
+);
 const CommercialHub = lazyNamed(
   () => import("@/features/commercial/hub"),
   "CommercialHub",
@@ -457,6 +466,18 @@ export function App() {
               <Route
                 path="sales/inbound-intake"
                 element={<Navigate to="/sales/leads?tab=intake" replace />}
+              />
+              {/* The two front-of-funnel 360s get their own routes for the same
+            reason the entity and treasury dossiers have theirs: a dossier gets
+            pasted into an email, and "open Sales, then Leads, then find Tema
+            Shipping" is not a link. Declared before `sales/:section` — react-
+            router ranks by specificity, so the two-segment paths win either
+            way. The same components are embedded in the registers, so the two
+            surfaces cannot drift. */}
+              <Route path="sales/leads/:leadId" element={<LeadDossierPage />} />
+              <Route
+                path="sales/quote-requests/:quoteRequestId"
+                element={<IntakeDossierPage />}
               />
               <Route path="sales/:section" element={<SalesHub />} />
               {/* Operations — hub */}

@@ -53,10 +53,16 @@ export function KpiTile({
           {icon}
         </span>
       )}
-      <span className="num text-[18px] font-semibold leading-none">
+      {/* `min-w-0 truncate` + the title attribute are the overflow fix — see
+          the note on KpiRow. A long value had nothing constraining it, so it
+          WRAPPED onto a second line and shoved the hint out of the card. */}
+      <span
+        className="num min-w-0 truncate text-[18px] font-semibold leading-none"
+        title={typeof value === "string" || typeof value === "number" ? String(value) : undefined}
+      >
         {value}
       </span>
-      <span className="truncate text-[12px] text-muted-foreground">
+      <span className="truncate text-[12px] text-muted-foreground" title={label}>
         {label}
       </span>
       {delta && (
@@ -72,7 +78,15 @@ export function KpiTile({
         </span>
       )}
       {hint && !delta && (
-        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+        // NOT `shrink-0`. That is what put the hint outside the card: it refused
+        // to give up any width, so when the row ran out it was laid out past the
+        // right edge and clipped by the container's `overflow-hidden` — the
+        // reader saw "43,200,000.00 XAF we". It may shrink and truncate now, and
+        // it still wins its space before the label does.
+        <span
+          className="ml-auto min-w-0 max-w-[55%] truncate text-[11px] text-muted-foreground"
+          title={hint}
+        >
           {hint}
         </span>
       )}
@@ -88,7 +102,7 @@ export function KpiTile({
         // The tile keeps the same footprint as the static variant; the button
         // just adds hover feedback, keyboard focus and a pointer cursor so the
         // drill-in affordance reads without a chrome change.
-        className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex min-w-0 flex-1 basis-[9rem] items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         {body}
       </button>
@@ -96,15 +110,57 @@ export function KpiTile({
   }
 
   return (
-    <div className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5">
+    <div className="flex min-w-0 flex-1 basis-[9rem] items-center gap-2.5 px-4 py-2.5">
       {body}
     </div>
   );
 }
 
-export function KpiRow({ children }: { children: React.ReactNode }) {
+/**
+ * The strip. Tiles share one divided row on desktop and stack on mobile.
+ *
+ * ── THE OVERFLOW FIX (and what was actually wrong) ──────────────────────────
+ * Three things combined to push content out of this card, and all three had to
+ * go. Measured in a real browser against the built stylesheet, on the Lead 360's
+ * five-tile strip, at 1440 / 1024 / 820 / 640px — it failed at ALL of them, so
+ * this was never only a small-screen problem:
+ *
+ *   1. `min-w-[9rem]` with no `min-w-0` meant a tile could not shrink below its
+ *      content. Five tiles then demanded more than the row had, and the excess
+ *      was simply laid out past the right edge.
+ *   2. The value had no `truncate`, so a long figure wrapped to a second line
+ *      and made the strip two rows tall.
+ *   3. The hint was `shrink-0`, so it refused to yield width and was the piece
+ *      that ended up outside the card, half-clipped.
+ *
+ * Now: the basis is 9rem (the old intent — every tile gets a fair share) but the
+ * minimum is 0 (so it can yield), text truncates rather than wrapping, and the
+ * strip WRAPS to a second line instead of overflowing when the tiles genuinely
+ * cannot fit. Titles keep the full text one hover away.
+ *
+ * ── `fit` ───────────────────────────────────────────────────────────────────
+ * By default every tile takes an equal share, which is right when the values are
+ * short and similar — most of the 40-odd screens using this. `fit="content"`
+ * switches to `flex: 1 1 auto`, so a tile carrying "72M XAF · Open pipeline ·
+ * 43.2M XAF weighted" is given the room it needs and the neighbours give it up.
+ * Opt-in rather than the default precisely so no existing strip changes shape.
+ */
+export function KpiRow({
+  children,
+  fit = "equal",
+}: {
+  children: React.ReactNode;
+  /** `equal` (default) — every tile the same width. `content` — sized to what
+   *  each tile holds, for strips mixing a long money figure with short counts. */
+  fit?: "equal" | "content";
+}) {
   return (
-    <div className="mb-4 flex flex-col divide-y overflow-hidden rounded-[10px] border bg-card shadow-[var(--shadow-s)] sm:flex-row sm:divide-x sm:divide-y-0">
+    <div
+      className={cn(
+        "mb-4 flex flex-col divide-y overflow-hidden rounded-[10px] border bg-card shadow-[var(--shadow-s)] sm:flex-row sm:flex-wrap sm:divide-x sm:divide-y-0",
+        fit === "content" && "[&>*]:flex-auto [&>*]:basis-auto",
+      )}
+    >
       {children}
     </div>
   );

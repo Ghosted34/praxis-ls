@@ -32,6 +32,10 @@ router.get("/export.csv", requirePermission(MODULE, "view"), controller.exportCs
 // The tile vocabulary the register renders, so the screen does not keep its
 // own copy of the status list and drift from the one the API partitions on.
 router.get("/tiles", requirePermission(MODULE, "view"), controller.tiles);
+// The 360° dossier — the request's full logistics scope, its attachments, the
+// lead it came from and the opportunity it became, in one call. Same gate as
+// the plain read; money is gated separately on finance visibility.
+router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update,

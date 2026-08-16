@@ -23,6 +23,11 @@ const TRANSITION_ACTION = {
 const router = express.Router();
 router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
+// The 360° dossier, kept next to the read it extends. `view` is the right gate:
+// it aggregates records the caller can already open one screen at a time, and
+// the only privileged thing on it — money — is gated separately in the
+// controller on finance visibility.
+router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 // API F-17: `update: create.partial()` makes the lifecycle field patchable, so

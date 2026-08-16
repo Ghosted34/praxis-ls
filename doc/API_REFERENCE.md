@@ -935,6 +935,7 @@ All 1145 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/leads/` | — |
 | GET | `/api/tenant/leads/:id` | — |
 | PATCH | `/api/tenant/leads/:id` | — |
+| GET | `/api/tenant/leads/:id/360` | — |
 | POST | `/api/tenant/leads/:id/convert` | — |
 | POST | `/api/tenant/leads/:id/transition` | — |
 
@@ -1342,6 +1343,7 @@ All 1145 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/quote-requests/` | — |
 | GET | `/api/tenant/quote-requests/:id` | — |
 | PATCH | `/api/tenant/quote-requests/:id` | — |
+| GET | `/api/tenant/quote-requests/:id/360` | — |
 | GET | `/api/tenant/quote-requests/:id/attachments` | — |
 | POST | `/api/tenant/quote-requests/:id/attachments` | — |
 | DELETE | `/api/tenant/quote-requests/:id/attachments/:attachmentId` | — |

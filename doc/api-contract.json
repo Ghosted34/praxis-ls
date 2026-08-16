@@ -1905,6 +1905,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/leads/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/leave/": {
       "auth": true,
       "rbac": true,
@@ -2614,6 +2620,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/quote-requests/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/quote-requests/:id/360": {
       "auth": true,
       "rbac": true,
       "validated": false,

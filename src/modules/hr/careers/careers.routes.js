@@ -46,8 +46,13 @@ const applyLimiter = makeLimiter({ name: "careers-apply", max: 5, windowMs: 60 *
 
 const router = express.Router();
 
+// PINNED, because the comment below says "live-only" and `req.tenantDb` does
+// not deliver that: it resolves the environment from the `X-Praxis-Env` header,
+// and on a route with no session the sender of that header is the visitor. A
+// stranger could ask the shop window for the sandbox schema's vacancies.
+// `req.tenantDbIn` is the mechanism this module's own token routes use.
 router.get("/", readLimiter, asyncHandler(async (req, res) =>
-  res.json({ data: await req.tenantDb((c) => service.list(c)) })));
+  res.json({ data: await req.tenantDbIn("live", (c) => service.list(c)) })));
 
 // These two take `req`, not a client, because they choose their own
 // environment: the token says which schema the role lives in (see

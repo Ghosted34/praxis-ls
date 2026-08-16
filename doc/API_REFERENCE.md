@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1114 |
+| Routes | 1123 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1114 mounted routes, grouped by path prefix.
+All 1123 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -290,11 +290,15 @@ All 1114 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/attendance/absence` | — |
 | POST | `/api/tenant/attendance/clock-in` | — |
 | POST | `/api/tenant/attendance/clock-out` | — |
+| GET | `/api/tenant/attendance/days` | — |
+| POST | `/api/tenant/attendance/days/:dayId/justify` | — |
+| GET | `/api/tenant/attendance/days/mine` | — |
 | GET | `/api/tenant/attendance/devices` | — |
 | POST | `/api/tenant/attendance/devices` | — |
 | PATCH | `/api/tenant/attendance/devices/:deviceId` | — |
 | GET | `/api/tenant/attendance/open` | — |
 | GET | `/api/tenant/attendance/place-search` | — |
+| POST | `/api/tenant/attendance/reconcile` | — |
 | GET | `/api/tenant/attendance/work-sites` | — |
 | POST | `/api/tenant/attendance/work-sites` | — |
 | PATCH | `/api/tenant/attendance/work-sites/:siteId` | — |
@@ -1512,6 +1516,11 @@ All 1114 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/sops/:id` | — |
 | GET | `/api/tenant/sops/:id` | — |
 | PATCH | `/api/tenant/sops/:id` | — |
+| GET | `/api/tenant/sops/rules` | — |
+| POST | `/api/tenant/sops/rules` | — |
+| DELETE | `/api/tenant/sops/rules/:id` | — |
+| GET | `/api/tenant/sops/rules/:id` | — |
+| PATCH | `/api/tenant/sops/rules/:id` | — |
 
 ### `tenant/statements`
 

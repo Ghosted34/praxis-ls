@@ -37,11 +37,17 @@ export type AttendanceRow = {
 
 export type AbsenceResult = {
   date: string;
+  /** false = the day has not been reconciled yet (it is still running), so the
+   *  list is the provisional "has not arrived" one, not a settled answer. */
+  reconciled?: boolean;
   count: number;
   absent: {
     employee_id: string;
     full_name: string;
     department?: string | null;
+    status?: string;
+    deduction_amount?: number | string | null;
+    justified?: boolean;
   }[];
 };
 
@@ -150,6 +156,83 @@ export const listAttendance = (params?: {
 }) => tenant<AttendanceRow[]>("/attendance" + qs(params));
 export const absence = (date?: string) =>
   tenant<AbsenceResult>("/attendance/absence" + qs({ date }));
+
+/* ── Reconciled days + house rules (0697) ──────────────────────────────────
+ *
+ * A reconciled day is what `attendance_log` never was: one row per employee per
+ * date, with approved leave, holidays and non-working days as first-class
+ * states rather than as a missing punch — and with the money at stake frozen
+ * onto it. It is what payroll reads and what an employee disputes.
+ */
+export type AttendanceDay = {
+  attendance_day_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  work_date: string;
+  status: "PRESENT" | "LATE" | "ABSENT" | "ON_LEAVE" | "OFF" | "WEEKEND" | "HOLIDAY";
+  expected_start_time?: string | null;
+  first_clock_in_at?: string | null;
+  last_clock_out_at?: string | null;
+  minutes_late: number;
+  daily_rate: number | string;
+  deduction_pct: number | string;
+  deduction_amount: number | string;
+  justified: boolean;
+  justification?: string | null;
+  hr_query_id?: string | null;
+  leave_request_id?: string | null;
+  /** The rule that charged this day, and the SOP clause behind it. */
+  rule_name?: string | null;
+  rule_code?: string | null;
+  sop_document_id?: string | null;
+  sop_title?: string | null;
+};
+
+export type HrRule = {
+  hr_rule_id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  kind: "LATENESS" | "ABSENCE" | "REWARD" | "CONDUCT";
+  metric?: string | null;
+  comparator?: "gte" | "lte" | null;
+  threshold?: number | string | null;
+  tiers: { after_minutes: number; deduction_pct: number }[];
+  effect:
+    | "DEDUCT_PCT_DAY"
+    | "DEDUCT_FIXED"
+    | "BONUS_FIXED"
+    | "BONUS_PCT_SALARY"
+    | "SALARY_INCREASE_PCT"
+    | "QUERY_ONLY";
+  effect_value?: number | string | null;
+  auto_query: boolean;
+  query_severity: "INFO" | "WARNING" | "SERIOUS";
+  query_due_days: number;
+  sop_document_id?: string | null;
+  sop_title?: string | null;
+  is_active: boolean;
+  is_system: boolean;
+};
+
+export const attendanceDays = (p: { from: string; to: string; employee_id?: string }) =>
+  tenant<AttendanceDay[]>("/attendance/days" + qs(p));
+export const myAttendanceDays = (p: { from: string; to: string }) =>
+  tenant<AttendanceDay[]>("/attendance/days/mine" + qs(p));
+export const justifyDay = (dayId: string, body: { justified: boolean; justification?: string }) =>
+  tenant<AttendanceDay>(`/attendance/days/${dayId}/justify`, { method: "POST", body });
+export const runReconcile = (date?: string) =>
+  tenant<{ work_date: string; employees: number; written: number; chargeable: number }>(
+    "/attendance/reconcile",
+    { method: "POST", body: date ? { date } : {} },
+  );
+
+export const listHrRules = (p?: { kind?: string; active?: string }) =>
+  tenant<HrRule[]>("/sops/rules" + qs(p));
+export const createHrRule = (body: Partial<HrRule> & { code: string; name: string; kind: string }) =>
+  tenant<HrRule>("/sops/rules", { method: "POST", body });
+export const updateHrRule = (id: string, body: Partial<HrRule>) =>
+  tenant<HrRule>(`/sops/rules/${id}`, { method: "PATCH", body });
 
 /* ── Payroll runs ── */
 export type PayrollRun = {

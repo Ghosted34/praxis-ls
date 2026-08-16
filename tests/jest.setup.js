@@ -113,3 +113,21 @@ for (const k of [
 ]) {
   delete process.env[k];
 }
+
+/**
+ * Clear the error store's pending flush timer after every test.
+ *
+ * `error-store` arms an unref'd flush timer whenever a test reports an error —
+ * the orchestration dispatcher's DEAD path does exactly that
+ * (orchestration-outbox.test.js), and it neither imports the store nor calls
+ * its `__reset()` seam. A timer that outlives the suite then fires after Jest
+ * has torn the environment down, and `db()`'s lazy `require()` of the platform
+ * pool throws "You are trying to `import` a file after the Jest environment has
+ * been torn down" — reported as a worker that failed to exit gracefully.
+ *
+ * `__reset()` clears the buffer and the timer but deliberately leaves `queryFn`
+ * alone, so tests that inject their own query (`__setQuery`) in a beforeEach
+ * keep it across the reset, exactly as the store's own suites expect.
+ */
+const errorStore = require("../src/shared/observability/error-store");
+afterEach(() => errorStore.__reset());

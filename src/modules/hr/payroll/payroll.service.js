@@ -16,6 +16,7 @@
 "use strict";
 const repo = require("./payroll.repo");
 const earningRepo = require("./earning.repo");
+const advances = require("./salary_advance.service");
 const events = require("./payroll.events");
 const { computePayslip, DEFAULTS } = require("./payroll.rules");
 const employeeService = require("../../master/employees/employees.service");
@@ -58,6 +59,10 @@ async function compute(client, { id, config = null, actor = {} }) {
   const cfg = { ...DEFAULTS, ...(config || {}) };
   const roster = await employeeService.roster(client, { entity_id: run.entity_id });
   await repo.deleteItems(client, id);
+  // A recompute starts from clean: instalments this run had merely PROPOSED are
+  // dropped, so a second pass cannot stack a second bite onto the same month.
+  // APPLIED ones are untouched — that period was validated and is not reopened.
+  await advances.clearPending(client, { payrollRunId: id });
 
   // Variable pay (appraisal rewards etc.) → added to GROSS so statutory
   // withholdings apply. Read-only here; the run marks them APPLIED on validate.
@@ -65,32 +70,116 @@ async function compute(client, { id, config = null, actor = {} }) {
   const bonusByEmployee = {};
   for (const e of earnings) bonusByEmployee[e.employee_id] = { total: Number(e.total || 0), lines: e.lines || [] };
 
+  /* ── What the month actually did (0697/0698) ────────────────────────────
+   *
+   * The run used to be `base_salary + earnings`, full stop. Attendance
+   * reconciled its deductions into rows nothing read, unpaid leave prorated
+   * nothing, and an approved salary advance was never recovered.
+   *
+   * The two sides go to different places, and this is the distinction the
+   * whole change turns on: TIME NOT WORKED comes off GROSS (the employee did
+   * not earn it, so CNPS and IRPP are computed on the smaller figure), while
+   * an ADVANCE comes off NET (they earned the full salary and were taxed on it
+   * — they merely received part of it early). Getting it backwards overtaxes
+   * or undertaxes every affected employee.
+   */
+  const attendance = await repo.attendanceInputs(client, run.period_code);
+  const reconciled = await repo.periodReconciled(client, run.period_code);
+  const dueList = await advances.dueForPeriod(client, { periodCode: run.period_code, entityId: run.entity_id });
+  const advanceByEmployee = {};
+  for (const a of dueList) advanceByEmployee[a.employee_id] = a;
+
   let totalGross = 0, totalNet = 0, totalEmployer = 0, count = 0;
+  let totalAttendance = 0, totalUnpaidLeave = 0, totalRecovered = 0;
   for (const emp of roster) {
     const bonus = bonusByEmployee[emp.employee_id] || { total: 0, lines: [] };
+    const att = attendance[emp.employee_id] || {};
     const base = round(Number(emp.base_salary || 0));
-    const gross = round(base + bonus.total);
-    const slip = computePayslip(emp, { gross, config: cfg });
+    const attendanceDeduction = round(Number(att.attendance_deduction || 0));
+    const unpaidLeave = round(Number(att.unpaid_leave_deduction || 0));
+
+    // Never below zero: a month of nothing but unpaid leave is a gross of zero,
+    // not a negative salary the statutory engine would then compute tax on.
+    const gross = round(Math.max(0, base + bonus.total - attendanceDeduction - unpaidLeave));
+
+    const advance = advanceByEmployee[emp.employee_id] || null;
+    const slip = computePayslip(emp, {
+      gross,
+      config: cfg,
+      post_tax_deductions: advance ? [{ label: "Salary advance", amount: advance.due }] : [],
+    });
     slip.base = base;
     slip.earnings = round(bonus.total);
     slip.earning_lines = bonus.lines;
+    slip.attendance_deduction = attendanceDeduction;
+    slip.unpaid_leave_deduction = unpaidLeave;
+    // The counts behind the figures, so a payslip explains itself without a
+    // second query — and so "why is this less than last month?" is answerable
+    // on the slip rather than by opening attendance.
+    slip.attendance = {
+      reconciled,
+      late_days: Number(att.late_days || 0),
+      absent_days: Number(att.absent_days || 0),
+      unpaid_leave_days: Number(att.unpaid_leave_days || 0),
+      waived_days: Number(att.waived_days || 0),
+    };
+
+    // What was actually taken may be less than what was due — the engine caps
+    // recovery at the net available rather than producing a negative payslip.
+    const recovered = round(slip.total_post_tax_deductions || 0);
+    if (advance && recovered > 0) {
+      await advances.schedule(client, {
+        advanceId: advance.salary_advance_id,
+        periodCode: run.period_code,
+        payrollRunId: id,
+        amount: recovered,
+      });
+      slip.advance = {
+        salary_advance_id: advance.salary_advance_id,
+        due: advance.due,
+        recovered,
+        outstanding_after: round(Number(advance.outstanding) - recovered),
+      };
+    }
+
     await repo.insertItem(client, {
       payroll_run_id: id,
       employee_id: emp.employee_id,
       gross: slip.gross,
       net_pay: slip.net_pay,
+      attendance_deduction: attendanceDeduction,
+      unpaid_leave_deduction: unpaidLeave,
+      advance_recovery: recovered,
       breakdown: slip,
     });
     totalGross += slip.gross;
     totalNet += slip.net_pay;
     totalEmployer += slip.total_employer_charges;
+    totalAttendance += attendanceDeduction;
+    totalUnpaidLeave += unpaidLeave;
+    totalRecovered += recovered;
     count += 1;
   }
 
   const updated = await repo.updateRun(client, id, { status: "COMPUTED", config_snapshot: cfg });
   await emitEvent(client, { eventTypeKey: events.COMPUTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null, payload: { employees: count, totalGross, totalNet } });
   await audit(client, { actorUserId: actor.user_id || null, action: events.COMPUTED, moduleKey: events.MODULE, entityRef: ref(id), after: updated });
-  return { run: updated, item_count: count, totals: { gross: round(totalGross), net: round(totalNet), employer_charges: round(totalEmployer) } };
+  return {
+    run: updated,
+    item_count: count,
+    // `attendance_reconciled: false` is not a detail. A month with no
+    // reconciled days produces zero deductions, and that is "nobody looked",
+    // not "nobody was late" — the screen must be able to say which.
+    attendance_reconciled: reconciled,
+    totals: {
+      gross: round(totalGross),
+      net: round(totalNet),
+      employer_charges: round(totalEmployer),
+      attendance_deduction: round(totalAttendance),
+      unpaid_leave_deduction: round(totalUnpaidLeave),
+      advance_recovery: round(totalRecovered),
+    },
+  };
 }
 
 async function setStatus(client, { id, status, actor = {}, viaChain = false }) {
@@ -116,6 +205,11 @@ async function setStatus(client, { id, status, actor = {}, viaChain = false }) {
   // Consume the variable-pay earnings this run paid, so they're paid once.
   if (status === "VALIDATED") {
     await earningRepo.markAppliedForRun(client, { runId: id, entityId: before.entity_id, periodCode: before.period_code });
+    // The same rule for advances: PENDING instalments become APPLIED only when
+    // the money is real, and any plan they finish settles in the same pass — so
+    // a fully-recovered advance stops being taken from the next payslip without
+    // anybody having to notice.
+    await advances.applyForRun(client, { payrollRunId: id, actor });
   }
   // On submit-for-approval, open the tenant's configurable approval chain (bound
   // to payroll.status_changed). No workflow bound → autoApproved; the manual

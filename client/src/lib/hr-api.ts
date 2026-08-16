@@ -248,11 +248,87 @@ export type Slip = {
   base?: number;
   earnings?: number;
   earning_lines?: { label?: string; kind?: string; amount?: number }[];
+  /* ── What the month did to this payslip (0697/0698) ─────────────────────
+   *
+   * The two sides go to different places and the payslip has to show both, or
+   * "why is this less than last month?" is unanswerable. Time not worked came
+   * off GROSS (so the tax is lower too); the advance came off NET.
+   */
+  attendance_deduction?: number;
+  unpaid_leave_deduction?: number;
+  attendance?: {
+    /** false = the month was never reconciled, so a zero here means "nobody
+     *  looked", not "nobody was late". */
+    reconciled: boolean;
+    late_days: number;
+    absent_days: number;
+    unpaid_leave_days: number;
+    waived_days: number;
+  };
+  net_before_recovery?: number;
+  post_tax_deductions?: { label: string; amount: number; requested?: number }[];
+  total_post_tax_deductions?: number;
+  advance?: {
+    salary_advance_id: string;
+    due: number;
+    recovered: number;
+    outstanding_after: number;
+  };
   net_pay?: number;
   total_employer_charges?: number;
   employee?: Record<string, number>;
   employer?: Record<string, number>;
 };
+
+/* ── Salary advances (0698) ── */
+export type SalaryAdvance = {
+  salary_advance_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  leave_request_id?: string | null;
+  amount: number | string;
+  instalments: number;
+  instalment_amount: number | string;
+  first_period_code: string;
+  status: "ACTIVE" | "SETTLED" | "SUSPENDED" | "WRITTEN_OFF";
+  note?: string | null;
+  /** Derived, never stored — amount less the APPLIED instalments. */
+  recovered: number | string;
+  outstanding: number | string;
+  repayments?: {
+    repayment_id: string;
+    period_code: string;
+    amount: number | string;
+    status: "PENDING" | "APPLIED" | "REVERSED";
+    run_status?: string | null;
+  }[];
+};
+
+export const listAdvances = (p?: { employee_id?: string; status?: string }) =>
+  tenant<SalaryAdvance[]>("/payroll/advances" + qs(p));
+export const myAdvances = () => tenant<SalaryAdvance[]>("/payroll/advances/mine");
+export const getAdvance = (id: string) => tenant<SalaryAdvance>(`/payroll/advances/${id}`);
+export const createAdvance = (body: {
+  employee_id: string;
+  amount: number;
+  instalments?: number;
+  instalment_amount?: number;
+  first_period_code: string;
+  entity_id?: string;
+  leave_request_id?: string;
+  status?: "ACTIVE" | "SUSPENDED";
+  note?: string;
+}) => tenant<SalaryAdvance>("/payroll/advances", { method: "POST", body });
+export const updateAdvance = (
+  id: string,
+  body: {
+    instalments?: number;
+    instalment_amount?: number;
+    first_period_code?: string;
+    status?: "ACTIVE" | "SUSPENDED" | "WRITTEN_OFF";
+    note?: string;
+  },
+) => tenant<SalaryAdvance>(`/payroll/advances/${id}`, { method: "PATCH", body });
 
 /* ── Appraisals + performance rewards ── */
 export type Appraisal = {
@@ -283,6 +359,9 @@ export type PayrollItem = {
   cnps_number?: string | null;
   gross: number | string;
   net_pay: number | string;
+  attendance_deduction?: number | string;
+  unpaid_leave_deduction?: number | string;
+  advance_recovery?: number | string;
   breakdown?: Slip | null;
 };
 export type PayrollRunDetail = PayrollRun & { items: PayrollItem[] };
@@ -298,7 +377,17 @@ export const computePayroll = (id: string) =>
   tenant<{
     run: PayrollRun;
     item_count: number;
-    totals: { gross: number; net: number; employer_charges: number };
+    /** false = no day in this period was reconciled, so the deductions are zero
+     *  because nobody looked — not because nobody was late. */
+    attendance_reconciled?: boolean;
+    totals: {
+      gross: number;
+      net: number;
+      employer_charges: number;
+      attendance_deduction?: number;
+      unpaid_leave_deduction?: number;
+      advance_recovery?: number;
+    };
   }>(`/payroll/${id}/compute`, { method: "POST", body: {} });
 export const setPayrollStatus = (id: string, status: string) =>
   tenant<PayrollRun>(`/payroll/${id}/status`, {

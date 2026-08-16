@@ -35,7 +35,7 @@ const SELECT_FULL = `
   SELECT t.*,
          t.ot_number AS ref,
          d.ref       AS dossier_ref,
-         c.client_name,
+         COALESCE(c.name, c.legal_name) AS client_name,
          e.legal_name AS entity_name
     FROM transit_order t
     LEFT JOIN dossier_visible d ON d.dossier_id = t.dossier_id
@@ -131,7 +131,7 @@ async function liveForDossier(client, dossierId) {
 async function dossierBrief(client, dossierId) {
   const { rows } = await client.query(
     `SELECT d.dossier_id, d.ref, d.entity_id, d.client_id, d.customs_regime, d.details_json,
-            c.client_name
+            COALESCE(c.name, c.legal_name) AS client_name
        FROM dossier_visible d
        LEFT JOIN client_master c ON c.client_id = d.client_id
       WHERE d.dossier_id = $1`,

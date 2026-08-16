@@ -13,7 +13,7 @@ const { insertOne, getById, updateOne, page } = require("../../../shared/db/quer
 const SELECT_FULL = `
   SELECT dn.*, dn.doc_number AS ref,
          d.ref AS dossier_ref,
-         c.client_name
+         COALESCE(c.name, c.legal_name) AS client_name
     FROM delivery_note dn
     LEFT JOIN dossier_visible d ON d.dossier_id = dn.dossier_id
     LEFT JOIN client_master c ON c.client_id = d.client_id`;
@@ -109,7 +109,7 @@ async function unitsOnDossier(client, dossierId, unitIds) {
 async function dossierBrief(client, dossierId) {
   const { rows } = await client.query(
     `SELECT d.dossier_id, d.ref, d.entity_id, d.client_id, d.details_json,
-            c.client_name
+            COALESCE(c.name, c.legal_name) AS client_name
        FROM dossier_visible d
        LEFT JOIN client_master c ON c.client_id = d.client_id
       WHERE d.dossier_id = $1`,

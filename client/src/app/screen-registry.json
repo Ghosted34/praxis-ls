@@ -1042,12 +1042,15 @@
       "route": "/operations/transit-orders",
       "area": "operations",
       "module_key": "MOD-30",
-      "purpose": "Transit declarations raised against a dossier.",
+      "purpose": "The client's written authorisation to declare cargo: draft, issue (allocates the OT number), record the client's signature, lodge the customs declaration.",
       "actions": [
         "list_transit_orders",
         "get_transit_order",
+        "transit_order_summary",
         "create_transit_order",
-        "update_transit_order_docs"
+        "update_transit_order_docs",
+        "issue_transit_order",
+        "lodge_transit_order"
       ]
     },
     {
@@ -1056,11 +1059,14 @@
       "route": "/operations/delivery-notes",
       "area": "operations",
       "module_key": "MOD-32",
-      "purpose": "Delivery notes issued on arrival.",
+      "purpose": "Proof of delivery: draft against a file, pick the containers going out, issue (allocates the number), then record who signed for the goods and any reservations they noted.",
       "actions": [
         "list_delivery_notes",
         "get_delivery_note",
-        "create_delivery_note"
+        "delivery_note_summary",
+        "create_delivery_note",
+        "issue_delivery_note",
+        "confirm_delivery"
       ]
     },
     {

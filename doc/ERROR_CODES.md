@@ -25,14 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (334)
+## All codes (335)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
-| `AI_UNAVAILABLE` | 503 | 1× | — |
+| `AI_UNAVAILABLE` | 403, 503 | 2× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
@@ -62,7 +62,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
 | `BAD_FILE` | 400, 422 | 5× | — |
-| `BAD_FILE_TYPE` | 422 | 4× | — |
+| `BAD_FILE_TYPE` | 422 | 5× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
 | `BAD_IMAGE` | 400 | 5× | — |
@@ -161,6 +161,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
+| `INVALID_EXTRACTION` | 422 | 1× | — |
 | `INVALID_FIELD` | — | 1× | — |
 | `INVALID_INVITE` | 400 | 1× | — |
 | `INVALID_MARGIN` | 100 | 1× | — |
@@ -353,7 +354,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
-| `VALIDATION_ERROR` | 422 | 132× | — |
+| `VALIDATION_ERROR` | 422 | 133× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

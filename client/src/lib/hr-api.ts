@@ -229,19 +229,76 @@ export type LeaveRequest = {
   employee_id?: string | null;
   employee_name?: string | null;
   kind?: string | null; // leave | salary_advance | mission
+  leave_type_id?: string | null;
+  leave_type_code?: string | null;
+  leave_type_name?: string | null;
+  leave_type_is_paid?: boolean | null;
   starts_on?: string | null;
   ends_on?: string | null;
+  // Working (or calendar) days the request consumes, half days included.
+  // Frozen when the request is raised — see migration 0696.
+  days?: number | string | null;
+  half_day_start?: boolean | null;
+  half_day_end?: boolean | null;
+  reason?: string | null;
   amount?: number | string | null;
-  status: string; // REQUESTED | APPROVED | REJECTED
+  status: string; // REQUESTED | APPROVED | REJECTED | CANCELLED | TAKEN
   created_at?: string | null;
 };
+
+/** What one employee has left, per leave type, for a year. The number that did
+ *  not exist anywhere in the product before 0696. */
+export type LeaveBalance = {
+  leave_type_id: string;
+  code: string;
+  name: string;
+  is_paid: boolean;
+  allow_negative: boolean;
+  requires_document: boolean;
+  max_days_per_year?: number | string | null;
+  period_year: number;
+  accrued: number;
+  carried: number;
+  taken: number;
+  returned: number;
+  adjustments: number;
+  forfeited: number;
+  balance: number;
+};
+
+export type LeaveType = {
+  leave_type_id: string;
+  code: string;
+  name: string;
+  is_paid: boolean;
+  accrual_days_per_month?: number | string | null;
+  max_days_per_year?: number | string | null;
+  max_carryover_days?: number | string | null;
+  requires_document: boolean;
+  counts_working_days: boolean;
+  allow_negative: boolean;
+  is_active: boolean;
+  is_system: boolean;
+};
+
+export type PublicHoliday = {
+  public_holiday_id: string;
+  holiday_on: string;
+  name: string;
+  is_recurring: boolean;
+};
+
 export const listLeave = (params?: { status?: string; employee_id?: string }) =>
   tenant<LeaveRequest[]>("/leave" + qs(params));
 export const createLeave = (body: {
   employee_id: string;
   kind: string;
+  leave_type_id?: string;
   starts_on?: string;
   ends_on?: string;
+  half_day_start?: boolean;
+  half_day_end?: boolean;
+  reason?: string;
   amount?: number;
 }) => tenant<LeaveRequest>("/leave", { method: "POST", body });
 export const decideLeave = (id: string, status: "APPROVED" | "REJECTED") =>
@@ -249,6 +306,17 @@ export const decideLeave = (id: string, status: "APPROVED" | "REJECTED") =>
     method: "POST",
     body: { status },
   });
+/** Give approved days back. Posts the opposite ledger entry rather than
+ *  deleting the consumption. */
+export const cancelLeave = (id: string) =>
+  tenant<LeaveRequest>(`/leave/${id}/cancel`, { method: "POST" });
+
+export const leaveTypes = () => tenant<LeaveType[]>("/leave/types");
+export const publicHolidays = () => tenant<PublicHoliday[]>("/leave/holidays");
+export const leaveBalances = (employeeId: string, year?: number) =>
+  tenant<LeaveBalance[]>(`/leave/balances/${employeeId}` + qs({ year: year ? String(year) : undefined }));
+export const myLeaveBalances = (year?: number) =>
+  tenant<LeaveBalance[]>("/leave/mine/balances" + qs({ year: year ? String(year) : undefined }));
 
 /* ── Employees (profile 360) ── */
 export type Employee = {

@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1103,
+  "route_count": 1114,
   "tiers": {
     "public": 32,
-    "self-scoped": 66,
-    "gated": 1005
+    "self-scoped": 67,
+    "gated": 1015
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -280,6 +280,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/leave/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/leave/holidays/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1881,11 +1887,41 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/leave/balances/:employeeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/leave/holidays": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/leave/ledger/:employeeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/leave/mine": {
       "auth": true,
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "GET /api/tenant/leave/mine/balances": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/leave/types": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/locations/": {
       "auth": true,
@@ -3687,6 +3723,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/leave/types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/locations/:id": {
       "auth": true,
       "rbac": true,
@@ -5205,7 +5247,31 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/leave/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/leave/:id/decision": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/adjustments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/holidays": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/leave/types": {
       "auth": true,
       "rbac": true,
       "validated": false,

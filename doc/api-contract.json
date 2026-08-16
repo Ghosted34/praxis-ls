@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 112,
-  "route_count": 1083,
+  "modules_mounted": 113,
+  "route_count": 1088,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 995
+    "gated": 1000
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1192,6 +1192,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/clients/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/company-profile/": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4635,6 +4641,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/company-profile/extract": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/company-profile/refresh": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/compliance/:id/resolve": {
       "auth": true,
       "rbac": true,
@@ -6376,6 +6394,18 @@
       "tier": "gated"
     },
     "PUT /api/tenant/capabilities/users/:userId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/clients/:id/public-reference-consent": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/company-profile/": {
       "auth": true,
       "rbac": true,
       "validated": false,

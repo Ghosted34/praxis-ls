@@ -15,8 +15,8 @@ import { errMsg, type Row } from "@/lib/use-resource";
 import { cell, money } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 
-export type LineRow = { label: string; qty: string; unit_price: string };
-export type NarrRow = { section: string; body: string };
+export type LineRow = { dictionary_item_id?: string; label: string; qty: string; unit_price: string };
+export type NarrRow = { section: string; language: "EN" | "FR"; body: string };
 
 export function lineTotal(l: { qty?: unknown; unit_price?: unknown }): number {
   return (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
@@ -45,7 +45,20 @@ export function ProposalForm({
   );
   const [withId, setWithId] = React.useState("");
   const [opportunityId, setOpportunityId] = React.useState("");
-  const [aiGenerated, setAiGenerated] = React.useState(false);
+  const [currency, setCurrency] = React.useState("XAF");
+  const [language, setLanguage] = React.useState<"EN" | "FR" | "BILINGUAL">("BILINGUAL");
+  const [serviceCategory, setServiceCategory] = React.useState("");
+  const [incoterm, setIncoterm] = React.useState("");
+  const [origin, setOrigin] = React.useState("");
+  const [destination, setDestination] = React.useState("");
+  const [cargo, setCargo] = React.useState("");
+  const [estimatedWeight, setEstimatedWeight] = React.useState("");
+  const [projectCargo, setProjectCargo] = React.useState(false);
+  const [customsTarget, setCustomsTarget] = React.useState("");
+  const [transitTarget, setTransitTarget] = React.useState("");
+  const [freeDays, setFreeDays] = React.useState("");
+  const [payment, setPayment] = React.useState("");
+  const [validity, setValidity] = React.useState("30");
   const [lines, setLines] = React.useState<LineRow[]>([]);
   const [narratives, setNarratives] = React.useState<NarrRow[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -67,11 +80,25 @@ export function ProposalForm({
     setOpportunityId(
       editing?.opportunity_id ? String(editing.opportunity_id) : "",
     );
-    setAiGenerated(editing?.ai_generated === true);
+    setCurrency(String(editing?.currency ?? "XAF"));
+    setLanguage((editing?.language as "EN" | "FR" | "BILINGUAL") ?? "BILINGUAL");
+    setServiceCategory(String(editing?.service_category ?? ""));
+    setIncoterm(String(editing?.incoterm ?? ""));
+    setOrigin(String(editing?.origin_location ?? ""));
+    setDestination(String(editing?.destination_location ?? ""));
+    setCargo(String(editing?.cargo_description ?? ""));
+    setEstimatedWeight(String(editing?.estimated_weight ?? ""));
+    setProjectCargo(Boolean(editing?.project_cargo_flag));
+    setCustomsTarget(String(editing?.customs_clearance_target ?? ""));
+    setTransitTarget(String(editing?.transit_time_target ?? ""));
+    setFreeDays(String(editing?.free_days_demurrage ?? ""));
+    setPayment(String(editing?.payment_conditions ?? ""));
+    setValidity(String(editing?.validity_days ?? 30));
     const el = (editing?.lines as Row[] | undefined) || [];
     setLines(
       el.length
         ? el.map((l) => ({
+            dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : undefined,
             label: cell(l.label) === "—" ? "" : String(l.label),
             qty: l.qty != null ? String(l.qty) : "1",
             unit_price: l.unit_price != null ? String(l.unit_price) : "0",
@@ -83,9 +110,10 @@ export function ProposalForm({
       en.length
         ? en.map((n) => ({
             section: String(n.section ?? ""),
+            language: n.language === "FR" ? "FR" : "EN",
             body: String(n.body ?? ""),
           }))
-        : [{ section: "Overview", body: "" }],
+        : [{ section: "Overview", language: "EN", body: "" }, { section: "Overview", language: "FR", body: "" }],
     );
     setError(null);
   }, [open, editing]);
@@ -107,6 +135,7 @@ export function ProposalForm({
     const cleanLines = lines
       .filter((l) => l.label.trim())
       .map((l) => ({
+        dictionary_item_id: l.dictionary_item_id || undefined,
         label: l.label.trim(),
         qty: Number(l.qty) || 1,
         unit_price: Number(l.unit_price) || 0,
@@ -115,6 +144,7 @@ export function ProposalForm({
       .filter((n) => n.section.trim())
       .map((n, i) => ({
         section: n.section.trim(),
+        language: n.language,
         body: n.body,
         sort_order: i,
       }));
@@ -125,6 +155,13 @@ export function ProposalForm({
           body: {
             title: title.trim(),
             opportunity_id: opportunityId || null,
+            language, currency, service_category: serviceCategory || null,
+            incoterm: incoterm || null, origin_location: origin || null,
+            destination_location: destination || null, cargo_description: cargo || null,
+            estimated_weight: estimatedWeight ? Number(estimatedWeight) : null,
+            project_cargo_flag: projectCargo, customs_clearance_target: customsTarget || null,
+            transit_time_target: transitTarget || null, free_days_demurrage: freeDays ? Number(freeDays) : null,
+            payment_conditions: payment || null, validity_days: Number(validity) || 30,
             lines: cleanLines,
             narratives: cleanNarr,
           },
@@ -137,7 +174,14 @@ export function ProposalForm({
             lead_id: withKind === "lead" && withId ? withId : undefined,
             client_id: withKind === "client" && withId ? withId : undefined,
             opportunity_id: opportunityId || undefined,
-            ai_generated: aiGenerated,
+            language, currency, service_category: serviceCategory || null,
+            incoterm: incoterm || null, origin_location: origin || null,
+            destination_location: destination || null, cargo_description: cargo || null,
+            estimated_weight: estimatedWeight ? Number(estimatedWeight) : null,
+            project_cargo_flag: projectCargo, customs_clearance_target: customsTarget || null,
+            transit_time_target: transitTarget || null, free_days_demurrage: freeDays ? Number(freeDays) : null,
+            payment_conditions: payment || null, validity_days: Number(validity) || 30,
+
             lines: cleanLines,
             narratives: cleanNarr,
           },
@@ -247,15 +291,32 @@ export function ProposalForm({
           </Field>
         </div>
 
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)}><option value="BILINGUAL">English + French</option><option value="EN">English</option><option value="FR">French</option></Select></Field>
+          <Field label="Currency"><Input value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></Field>
+          <Field label="Service category"><Input value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)} /></Field>
+          <Field label="Incoterm"><Input value={incoterm} onChange={(e) => setIncoterm(e.target.value)} /></Field>
+          <Field label="Origin"><Input value={origin} onChange={(e) => setOrigin(e.target.value)} /></Field>
+          <Field label="Destination"><Input value={destination} onChange={(e) => setDestination(e.target.value)} /></Field>
+          <Field label="Validity (days)"><Input type="number" min="1" value={validity} onChange={(e) => setValidity(e.target.value)} /></Field>
+          <Field label="Payment conditions"><Input value={payment} onChange={(e) => setPayment(e.target.value)} /></Field>
+          <Field label="Cargo description"><Input value={cargo} onChange={(e) => setCargo(e.target.value)} /></Field>
+          <Field label="Estimated weight"><Input type="number" min="0" value={estimatedWeight} onChange={(e) => setEstimatedWeight(e.target.value)} /></Field>
+          <Field label="Customs target"><Input value={customsTarget} onChange={(e) => setCustomsTarget(e.target.value)} /></Field>
+          <Field label="Transit target"><Input value={transitTarget} onChange={(e) => setTransitTarget(e.target.value)} /></Field>
+          <Field label="Free demurrage days"><Input type="number" min="0" value={freeDays} onChange={(e) => setFreeDays(e.target.value)} /></Field>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={projectCargo} onChange={(e) => setProjectCargo(e.target.checked)} /> Project cargo</label>
+        </div>
+
         {/* Narrative sections */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Narrative sections</p>
+            <p className="text-sm font-medium">Narrative sections · English and French</p>
             <Button
               size="sm"
               variant="ghost"
               onClick={() =>
-                setNarratives((n) => [...n, { section: "", body: "" }])
+                setNarratives((n) => [...n, { section: "", language: "EN", body: "" }])
               }
             >
               + Section
@@ -264,6 +325,7 @@ export function ProposalForm({
           {narratives.map((n, i) => (
             <div key={i} className="rounded-lg border p-2">
               <div className="flex items-center gap-2">
+                <Select value={n.language} onChange={(e) => setNarr(i, { language: e.target.value as "EN" | "FR" })}><option value="EN">EN</option><option value="FR">FR</option></Select>
                 <Input
                   value={n.section}
                   onChange={(e) => setNarr(i, { section: e.target.value })}
@@ -309,12 +371,14 @@ export function ProposalForm({
           </div>
           {lines.map((l, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Input
-                value={l.label}
-                onChange={(e) => setLine(i, { label: e.target.value })}
-                placeholder="Service / description"
-                className="flex-1"
-              />
+              <div className="flex-1"><SearchSelect
+                path="/financial-dictionary"
+                value={l.label || null}
+                placeholder="Search financial dictionary…"
+                getLabel={(r) => String(r.name_en ?? r.name ?? r.code ?? "")}
+                getKey={(r) => String(r.dictionary_item_id)}
+                onSelect={(r) => setLine(i, { dictionary_item_id: String(r.dictionary_item_id), label: String(r.name_en ?? r.name ?? r.code ?? "") })}
+              /></div>
               <Input
                 type="number"
                 min="0"
@@ -352,16 +416,6 @@ export function ProposalForm({
           </div>
         </div>
 
-        {!editing && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={aiGenerated}
-              onChange={(e) => setAiGenerated(e.target.checked)}
-            />
-            Mark as AI-drafted (for the record)
-          </label>
-        )}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>

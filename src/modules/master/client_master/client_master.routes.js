@@ -31,6 +31,7 @@ router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, contro
 // digital-scan gate (Hard Rule 9).
 router.post("/:id/block", requirePermission(MODULE, "approve"), validate(partyCommon.blockReason), controller.block);
 router.post("/:id/unblock", requirePermission(MODULE, "approve"), controller.unblock);
+router.put("/:id/public-reference-consent", requirePermission(MODULE, "approve"), validator.consent, controller.setPublicReferenceConsent);
 router.post("/:id/verify", requirePermission(MODULE, "approve"), controller.verify);
 
 // Governed merge (§5.2) — CEO/Admin (`approve`). In LIVE it opens a maker-checker

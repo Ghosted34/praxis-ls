@@ -27,4 +27,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), consent: mw("consent"), schemas };

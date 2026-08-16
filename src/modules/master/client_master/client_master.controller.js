@@ -12,6 +12,7 @@ module.exports = {
   }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req), env: req.env })) })),
+  setPublicReferenceConsent: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setPublicReferenceConsent(c, { id: req.params.id, consent: req.body.consent, actor: actor(req) })) })),
   creditCheck: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.creditCheck(c, { clientId: req.params.id, additionalAmount: Number(req.query.amount) || 0 })) })),
   // 360° dossier + lifecycle actions (shared with the supplier master).
   dossier: actions.dossier,

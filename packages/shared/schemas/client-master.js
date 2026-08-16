@@ -127,8 +127,14 @@ const update = z.object({
 });
 // AI-facing: client_id in the payload → list_clients picker.
 const aiUpdate = update.extend({ client_id: uuid });
+// Approve-gated public-reference consent. Shared because client controls that
+// surface and API acceptance must never drift from the three UI choices.
+const consent = z.object({
+  consent: z.enum(["NOT_ASKED", "ANONYMISED_ONLY", "NAMED"]),
+});
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }` — see index.js.
 exports.create = create;
 exports.update = update;
 exports.aiUpdate = aiUpdate;
+exports.consent = consent;

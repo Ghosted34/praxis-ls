@@ -1,0 +1,1 @@
+"use strict";const s=require("./company_profile.service");module.exports={entity:"company_profile",module_key:"MOD-23",screens:[],reads:[{key:"get_company_profile",service:c=>s.getFresh(c),describe:"Read the tenant fact sheet; declared and SQL-derived facts only."}],writes:[]};

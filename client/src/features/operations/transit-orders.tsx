@@ -111,7 +111,7 @@ function Source({ from, suggested }: { from?: boolean; suggested?: boolean }) {
   return (
     <span
       className={cn(
-        "ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium",
+        "ml-2 rounded px-1.5 py-0.5 text-[16px] font-medium",
         suggested
           ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
           : "bg-[rgb(var(--ink)/0.06)] text-muted-foreground",

@@ -51,6 +51,13 @@ router.post("/reconcile", edit, validator.reconcileRun, controller.runReconcile)
 // approving a device is what makes its punches count.
 router.get("/devices", view, controller.listDevices);
 router.post("/devices", create, validator.deviceRegister, controller.registerDevice);
+// Renaming YOUR OWN device is `create`, the grant that already lets you punch —
+// declared BEFORE the `edit` route below so the more specific path wins. The
+// two are separate endpoints because the decisions are: "this is my phone" is
+// the employee's to make, "this device is trusted" is the manager's. Sharing
+// one route would mean gating the first behind the second, and the only person
+// who knows what the device actually is could not say so.
+router.patch("/devices/:deviceId/name", create, validator.deviceRename, controller.renameOwnDevice);
 router.patch("/devices/:deviceId", edit, validator.deviceUpdate, controller.updateDevice);
 
 // Worksites (geofence centres). `place-search` is `edit`, not `view`: it spends

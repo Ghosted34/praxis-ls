@@ -30,6 +30,9 @@ export type AttendanceRow = {
   hr_device_id?: string | null;
   /** Was the punching device trusted AT PUNCH TIME. null = none presented. */
   device_trusted?: boolean | null;
+  /** TRANSIENT, on the clock-in response only: this punch registered a device
+   *  nobody has met before, so the clock offers to name it — once. */
+  device_new?: boolean;
   is_late?: boolean;
   minutes_late?: number;
   department?: string | null;
@@ -142,6 +145,15 @@ export const setDeviceStatus = (
     method: "PATCH",
     body: patch,
   });
+
+/**
+ * Rename your OWN device — the grant that lets you punch, not the one that
+ * approves devices. `setDeviceStatus` above is the manager's endpoint and needs
+ * MOD-14 `edit`, which an ordinary employee does not have; without this pair an
+ * employee could never name their own phone.
+ */
+export const renameOwnDevice = (id: string, label: string) =>
+  tenant<HrDevice>(`/attendance/devices/${id}/name`, { method: "PATCH", body: { label } });
 
 export const openPunch = () => tenant<AttendanceRow | null>("/attendance/open");
 export const clockIn = (
@@ -553,6 +565,41 @@ export type Contract = {
   end_on?: string | null;
   pdf_vault_id?: string | null; // set once a signed copy is uploaded
   created_at?: string | null;
+  /* ── The document, and the terms (0700) ────────────────────────────────
+   *
+   * `body_md` is the agreed text and the source of truth; the PDF is a
+   * rendering of it. Until this existed the renderer had no clauses to draw,
+   * so every generated contract was a letterhead with two names on it.
+   */
+  title?: string | null;
+  body_md?: string | null;
+  ai_generated?: boolean;
+  ai_model?: string | null;
+  entity_id?: string | null;
+  job_title?: string | null;
+  gross_salary?: number | string | null;
+  salary_currency?: string | null;
+  probation_months?: number | null;
+  probation_ends_on?: string | null;
+  notice_days?: number | null;
+  working_hours?: string | null;
+  place_of_work?: string | null;
+  signed_on?: string | null;
+  signed_by_name?: string | null;
+  vacancy_id?: string | null;
+};
+
+/** A contract whose term or probation runs out soon — the question nothing
+ *  could answer before 0700, because nothing had ever read `end_on`. */
+export type LapsingContract = {
+  hr_contract_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  kind?: string | null;
+  status: string;
+  end_on?: string | null;
+  probation_ends_on?: string | null;
+  days_left: number;
 };
 export const listContracts = (params?: {
   employee_id?: string;
@@ -569,6 +616,32 @@ export const setContractStatus = (id: string, status: string) =>
     method: "POST",
     body: { status },
   });
+/** Draft (or re-draft) the contract text. The terms passed here are FACTS the
+ *  model must reproduce, not suggestions — see hr_contract.draft. */
+export const draftContract = (
+  id: string,
+  body: {
+    title?: string;
+    job_title?: string;
+    effective_on?: string;
+    end_on?: string;
+    gross_salary?: number;
+    salary_currency?: string;
+    probation_months?: number;
+    notice_days?: number;
+    working_hours?: string;
+    place_of_work?: string;
+  },
+) => tenant<Contract>(`/contracts/${id}/draft`, { method: "POST", body });
+
+export const updateContract = (id: string, body: Partial<Contract>) =>
+  tenant<Contract>(`/contracts/${id}`, { method: "PATCH", body });
+
+export const lapsingContracts = (days?: number) =>
+  tenant<{ expiring: LapsingContract[]; probation: LapsingContract[] }>(
+    "/contracts/lapsing" + qs({ days: days ? String(days) : undefined }),
+  );
+
 /** Email the drafted contract (rendered from the template) to a recipient. */
 export const sendContract = (id: string, to: string) =>
   tenant(`/document-templates/EMPLOYMENT_CONTRACT/${id}/send`, {

@@ -32,6 +32,7 @@ vi.mock("@/lib/hr-api", () => ({
   clockOut: vi.fn(),
   getFix: vi.fn(),
   deviceInfo: vi.fn(),
+  renameOwnDevice: vi.fn(),
 }));
 
 const mocked = vi.mocked(api);
@@ -149,6 +150,52 @@ describe("ClockPunchChip", () => {
       await screen.findByTitle(/isn't linked to an employee/i),
     ).toBeInTheDocument();
     expect(mocked.clockIn).not.toHaveBeenCalled();
+  });
+
+  it("offers to name a device it has never seen, and the punch stands either way", async () => {
+    mocked.clockIn.mockResolvedValue({
+      attendance_id: "a1", within_geofence: true,
+      hr_device_id: "d1", device_new: true,
+    } as never);
+    render(<ClockPunchChip />);
+    await waitFor(() => expect(mocked.openPunch).toHaveBeenCalled());
+    await userEvent.click(chip());
+
+    const input = await screen.findByLabelText("Device name");
+    await userEvent.type(input, "Yard tablet");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mocked.renameOwnDevice).toHaveBeenCalledWith("d1", "Yard tablet"));
+    // The offer closes on its own; it must not need a second dismissal.
+    await waitFor(() => expect(screen.queryByLabelText("Device name")).toBeNull());
+  });
+
+  it("does NOT offer for a device it has seen before", async () => {
+    // `device_new` is transient and true exactly once. If this regressed, the
+    // clock would ask for a name on every punch, forever.
+    mocked.clockIn.mockResolvedValue({
+      attendance_id: "a1", within_geofence: true, hr_device_id: "d1",
+    } as never);
+    render(<ClockPunchChip />);
+    await waitFor(() => expect(mocked.openPunch).toHaveBeenCalled());
+    await userEvent.click(chip());
+    await waitFor(() => expect(mocked.clockIn).toHaveBeenCalled());
+    expect(screen.queryByLabelText("Device name")).toBeNull();
+  });
+
+  it("keeps the punch when the name is skipped", async () => {
+    // The offer sits BESIDE a completed punch, never in front of one — a
+    // naming dialog gating a time clock would be dismissed by everyone in a
+    // hurry, which is everyone.
+    mocked.clockIn.mockResolvedValue({
+      attendance_id: "a1", within_geofence: true,
+      hr_device_id: "d1", device_new: true,
+    } as never);
+    render(<ClockPunchChip />);
+    await waitFor(() => expect(mocked.openPunch).toHaveBeenCalled());
+    await userEvent.click(chip());
+    await userEvent.click(await screen.findByRole("button", { name: "Not now" }));
+    expect(mocked.renameOwnDevice).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: /Clock out\./ })).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {

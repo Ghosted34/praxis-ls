@@ -30,6 +30,11 @@ router.use(authMiddleware);
 // Self-service — the caller's own contracts (My HR). No MOD grant.
 router.get("/mine", controller.mine);
 
+/* What lapses soon. `view`: knowing that six contracts expire this month is
+ * ordinary management information, and gating it harder would mean the person
+ * who has to act on it cannot see it. Declared before `/:id`. */
+router.get("/lapsing", requirePermission(M, "view"), controller.lapsing);
+
 router.get("/", requirePermission(M, "view"), controller.list);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(M, "view"), controller.get);
@@ -41,6 +46,17 @@ router.patch("/:id", requirePermission(M, "edit"), validator.update,
 // Validator FIRST, so the target state is checked against the enum before it
 // selects its own gate.
 router.post("/:id/status", validator.status, requireTransitionPermission(M, TRANSITION_ACTION, { field: "status" }), controller.setStatus);
+/* DRAFTING is `edit`, not `create`: it rewrites an existing DRAFT contract and
+ * the service refuses anything past that state. It does spend a model call
+ * against the tenant's AI budget, which is why it is not `view`.
+ *
+ * There is deliberately no `/render` here. The document-template system already
+ * renders and sends EMPLOYMENT_CONTRACT through the tenant's own letterhead
+ * (`POST /document-templates/EMPLOYMENT_CONTRACT/:id/{generate,send}`), with the
+ * signature block and the verify footer every other issued document gets. A
+ * second renderer in this module would be a second letterhead to keep in step. */
+router.post("/:id/draft", requirePermission(M, "edit"), validator.draft, controller.draftFor);
+
 router.delete("/:id", requirePermission(M, "delete"), controller.archive);
 
 module.exports = { basePath: "/contracts", feature: null, router };

@@ -45,6 +45,10 @@
 const repo = require("./transit_order.repo");
 const events = require("./transit_order.events");
 const rules = require("./transit_order.rules");
+// Shared with the delivery note: both are documents derived from the same file,
+// and two copies of "which dossier column feeds which document field" would
+// drift the first time a column was added.
+const prefillShared = require("../_shared/dossier-prefill");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const shipmentDetails = require("../shipment_details/shipment_details.service");
@@ -166,6 +170,28 @@ async function get(client, id, { lang = "en" } = {}) {
     issue_blockers: to.status === "DRAFT" ? rules.issueBlockers(to) : [],
   };
 }
+
+/**
+ * A create body, prefilled from the file the order is for.
+ *
+ * The dialog already SHOWS the operator the file's regime, commodity, weight,
+ * packages and marks in a read-only panel, then asks them to type the same
+ * things in again underneath. That gap is where a transit order comes to
+ * disagree with the file it was raised from — and the document that disagrees is
+ * the one lodged with customs.
+ *
+ * Returns `{ body, inferred, from }`: `body` is shaped exactly like the create
+ * payload so the form can spread it, `from` names what was copied, and
+ * `inferred` names the one value that was DERIVED rather than read (the
+ * direction, from the regime prefix) so the UI can mark it as a suggestion.
+ * Nothing here is binding — every field stays editable.
+ */
+const prefill = async (client, { dossier_id }) => {
+  const d = await repo.dossierForPrefill(client, dossier_id);
+  if (!d) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  // The entity's money defaults ride on the same row from the join.
+  return prefillShared.transitOrderFrom(d, { default_currency: d.default_currency }, rules.CUSTOMS_REGIMES);
+};
 
 const list = (client, q) => repo.listTO(client, q);
 const summary = (client, q) => repo.statusCounts(client, q);
@@ -512,5 +538,5 @@ async function transition(client, { id, to, actor = {}, ...rest }) {
 
 module.exports = {
   create, update, updateDocs, issue, sign, lodge, cancel, transition,
-  get, list, summary, docTypes, currencies: currenciesForOrder,
+  get, list, summary, docTypes, currencies: currenciesForOrder, prefill,
 };

@@ -51,6 +51,13 @@ module.exports = {
   currencies: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.currencies(c)) })),
 
+  /** A create body prefilled from the operations file — see the service. */
+  prefill: asyncHandler(async (req, res) => {
+    const dossierId = String(req.query.dossier_id || "");
+    if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422, { dossier_id: ["required"] });
+    res.json({ data: await req.tenantDb((c) => service.prefill(c, { dossier_id: dossierId })) });
+  }),
+
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id, { lang: lang(req) }));
     if (!row) throw new AppError("NOT_FOUND", "Transit order not found", 404);

@@ -87,6 +87,18 @@ const DOC_TYPES = {
    * read every ID document in the tenant. Reading follows the register the
    * document belongs to: entities MOD-01, clients MOD-03, suppliers MOD-04.
    */
+  /*
+   * The employment contract. The doc type has existed in the TEMPLATE registry
+   * since documents/templates shipped, and the contracts screen has always
+   * uploaded signed copies under it — but it was never registered HERE, and
+   * `moduleKeyForDocType` falls back to MOD-70 for anything unregistered. So a
+   * signed employment contract has been gated on the SETTINGS grant: the HR
+   * officer who filed it could not open it unless they also administered the
+   * application, while anyone holding Settings could read every employment
+   * agreement in the company. It is the most sensitive document here after a
+   * payslip (0700).
+   */
+  EMPLOYMENT_CONTRACT:   { label: "Employment contract",      module: "hr/hr_contract",                moduleKey: "MOD-12" },
   ENTITY_DOCUMENT:       { label: "Entity document scan",     module: "master/corporate_entity",       moduleKey: "MOD-01" },
   CLIENT_DOCUMENT:       { label: "Client KYC scan",          module: "master/client_master",          moduleKey: "MOD-03" },
   SUPPLIER_DOCUMENT:     { label: "Supplier KYC scan",        module: "master/supplier_master",        moduleKey: "MOD-04" },

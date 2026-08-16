@@ -347,6 +347,13 @@ const Schema = z.object({
   // anybody automatically.
   ATTENDANCE_RECONCILE_CRON: z.string().default("0 3 * * *"),
 
+  // Contract term + probation warnings (MOD-12). 07:00 in the FX timezone —
+  // these need a human to act on them, so they should be waiting at the start
+  // of the working day rather than arriving overnight. Empty disables the
+  // warnings; the "lapsing soon" screen still answers the same question on
+  // demand.
+  CONTRACT_LAPSE_CRON: z.string().default("0 7 * * *"),
+
   // Milestone SLA scan (MOD-31): 06:00 and 18:00 — the start and the end of a
   // working day, which is when somebody can still act on "this file will
   // breach". Tenants who want it hourly set `0 * * * *`; the scan is idempotent

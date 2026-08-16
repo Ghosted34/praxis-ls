@@ -99,7 +99,19 @@ export function Field({
   children,
   className,
 }: {
-  label: string;
+  /**
+   * A node, not just a string, so a field can carry a small badge beside its
+   * name — "from the file", "suggested — check it" on a prefilled form.
+   *
+   * Widened rather than adding a separate `labelSuffix` prop: the badge belongs
+   * INSIDE the <label>, so it is part of the control's accessible name and a
+   * screen-reader user hears "Direction, suggested — check it" rather than
+   * meeting a caption they have no way to associate with the field. A sibling
+   * prop rendered outside the label could not do that.
+   *
+   * Still keep it short and still a NOUN — see the note above.
+   */
+  label: React.ReactNode;
   /** Guidance shown under the control. Announced after the label. */
   hint?: string;
   /** Validation message. Sets aria-invalid and is announced via aria-describedby. */

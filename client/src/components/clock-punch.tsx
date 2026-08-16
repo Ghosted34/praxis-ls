@@ -41,6 +41,16 @@ export function useClockPunch() {
   const [punch, setPunch] = React.useState<api.AttendanceRow | null>(null);
   const [canPunch, setCanPunch] = React.useState(true); // false = no employee linked
   const [busy, setBusy] = React.useState(false);
+  /**
+   * The device this punch just registered, when it had never been seen before.
+   *
+   * Held so the clock can offer "name this device?" ONCE, on the punch that
+   * created it. The employee is the only person who knows the answer — a
+   * manager renaming it later is guessing which of two "Windows · Chrome"
+   * rows is the yard tablet — but they are also mid-clock-in, so this is an
+   * offer beside a completed punch, never a gate in front of one.
+   */
+  const [newDevice, setNewDevice] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<{ text: string; bad?: boolean } | null>(
     null,
   );
@@ -113,6 +123,9 @@ export function useClockPunch() {
           device: api.deviceInfo(),
         });
         setPunch(row);
+        // Offered only on the punch that created the row — `device_new` is
+        // transient and true exactly once, so this cannot become a nag.
+        if (row.device_new && row.hr_device_id) setNewDevice(row.hr_device_id);
         const noLoc = fixFailed || row.within_geofence === null;
         const offSite = row.within_geofence === false;
         setMsg({
@@ -139,7 +152,102 @@ export function useClockPunch() {
   const label = msg ? msg.text : clockedIn ? "On the clock" : timeStr;
   const action = canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time";
 
-  return { label, action, clockedIn, canPunch, busy, toggle, msg, timeStr };
+  return {
+    label, action, clockedIn, canPunch, busy, toggle, msg, timeStr,
+    newDevice,
+    dismissNewDevice: () => setNewDevice(null),
+  };
+}
+
+/**
+ * "Name this device?" — offered once, beside a punch that already succeeded.
+ *
+ * WHY THE EMPLOYEE AND NOT THE MANAGER. The server can only derive a browser
+ * category from the user agent, so every laptop in the company auto-labels
+ * identically and it appends four characters of the fingerprint to keep the rows
+ * distinct. Distinct is not recognisable. The person holding the device is the
+ * only one who can say "my phone" or "yard tablet"; a manager renaming it later
+ * is guessing which of two near-identical rows is which.
+ *
+ * WHY IT IS AN OFFER, NOT A STEP. They are clocking in. The punch is recorded
+ * before this appears and stays recorded if they ignore it — a naming dialog in
+ * front of a time clock would be dismissed by everyone in a hurry, which is
+ * everyone. Skipping leaves the generated label, which the manager can still fix.
+ */
+function NameDeviceOffer({ deviceId, onDone }: { deviceId: string; onDone: () => void }) {
+  const [value, setValue] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const label = value.trim();
+    if (!label) return onDone();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.renameOwnDevice(deviceId, label);
+      onDone();
+    } catch (err) {
+      // Named rather than swallowed: the punch is safe either way, but somebody
+      // who typed a name and saw it vanish would reasonably think it saved.
+      setError(err instanceof Error ? err.message : "Couldn't save that name.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={save}
+      /*
+       * POSITION-AGNOSTIC. The caller places it, because the two surfaces need
+       * opposite anchors: the title-bar chip drops it downward, the touch
+       * cluster — already pinned to the bottom of the screen — opens it upward.
+       * Baking `top-full` in here would put it off-screen on a phone.
+       *
+       * Anchored to the control either way rather than centred as a modal: it
+       * belongs to the thing that raised it, and a dialog would take the whole
+       * screen for a question the person did not ask.
+       */
+      className="w-72 rounded-lg border bg-popover p-3 shadow-[var(--shadow-l)]"
+    >
+      <p className="text-sm font-medium text-foreground">Name this device</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        First time clocking in from here. A name helps your manager tell your devices apart.
+      </p>
+      <input
+        // Focus follows a prompt the person did not ask for, so it must not
+        // steal the caret from anything they were typing — it only appears
+        // after their own click on the clock.
+        // eslint-disable-next-line jsx-a11y/no-autofocus
+        autoFocus
+        value={value}
+        onChange={(ev) => setValue(ev.target.value)}
+        maxLength={80}
+        aria-label="Device name"
+        placeholder="My phone, Yard tablet…"
+        className="mt-2 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+      />
+      {error && <p className="mt-1 text-xs text-[rgb(var(--bad))]">{error}</p>}
+      <div className="mt-2 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={busy}
+          className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          Not now
+        </button>
+        <button
+          type="submit"
+          disabled={busy || !value.trim()}
+          className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 /**
@@ -157,10 +265,14 @@ export function useClockPunch() {
  * the dot and the icon still carry on-shift/off-shift at every width.
  */
 export function ClockPunchChip() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg } =
+  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice } =
     useClockPunch();
 
   return (
+    // `relative` so the naming offer can anchor to the chip. The title bar is a
+    // drag region (`.wco`), and a popover that escaped this wrapper would be
+    // positioned against the window rather than the control that raised it.
+    <span className="relative">
     <button
       type="button"
       onClick={() => {
@@ -193,15 +305,29 @@ export function ClockPunchChip() {
         {label}
       </span>
     </button>
+    {newDevice && (
+      <div className="absolute right-0 top-full z-50 mt-2">
+        <NameDeviceOffer deviceId={newDevice} onDone={dismissNewDevice} />
+      </div>
+    )}
+    </span>
   );
 }
 
 export function ClockPunch() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg } =
+  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice } =
     useClockPunch();
 
   return (
-    <div className="flex items-center gap-2 animate-fade-in">
+    // `relative` for the same reason as the chip: the naming offer anchors to
+    // this cluster. On touch it sits above the FAB rather than below, which is
+    // where there is room — the cluster is already at the bottom of the screen.
+    <div className="relative flex items-center gap-2 animate-fade-in">
+      {newDevice && (
+        <div className="absolute bottom-full right-0 z-50 mb-2">
+          <NameDeviceOffer deviceId={newDevice} onDone={dismissNewDevice} />
+        </div>
+      )}
       <span
         className={cn(
           "rounded-md border bg-popover px-2 py-1 text-xs font-medium tabular-nums shadow-md",

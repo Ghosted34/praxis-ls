@@ -225,6 +225,33 @@ export const transitDocTypes = () =>
 /** Active currencies + their live rate to XAF, for the declared-value picker. */
 export const transitOrderCurrencies = () =>
   tenant<TransitOrderCurrency[]>("/transit-orders/currencies");
+/**
+ * A create body prefilled from the operations file.
+ *
+ * ── HOW TO USE THE THREE FIELDS ────────────────────────────────────────────
+ *
+ * `body` spreads straight into the form's state — it is shaped as the create
+ * payload, so `setForm(f => ({ ...f, ...body }))` is the whole integration.
+ *
+ * `from` names what was COPIED off the file. Worth showing quietly ("from the
+ * file") so an operator knows a value they did not type is not a guess.
+ *
+ * `inferred` names what was DERIVED. Show these differently — the direction is
+ * read off the regime prefix, and an operator running an IM7 unusually has to
+ * see that it was assumed rather than stated. Treating the two lists the same
+ * would make every prefilled field look equally authoritative, which is the one
+ * thing this contract exists to avoid.
+ *
+ * Nothing is binding. Every field stays editable, and the file is never written
+ * back to.
+ */
+export type Prefill<T> = { body: Partial<T>; inferred: string[]; from: string[] };
+
+export const transitOrderPrefill = (dossierId: string) =>
+  tenant<Prefill<TransitOrderInput>>(
+    `/transit-orders/prefill?${new URLSearchParams({ dossier_id: dossierId })}`,
+  );
+
 export const createTransitOrder = (body: TransitOrderInput) =>
   tenant<TransitOrder>("/transit-orders", { method: "POST", body });
 export const updateTransitOrder = (
@@ -377,6 +404,27 @@ export const availableContainers = (dossierId: string, excludeNoteId?: string) =
       ...(excludeNoteId ? { exclude_note_id: excludeNoteId } : {}),
     })}`,
   );
+/**
+ * A create body prefilled from the file — same contract as
+ * `transitOrderPrefill`, and the containers are why it earns its keep.
+ *
+ * A file with twelve boxes returns twelve `containers` entries carrying the
+ * container and seal numbers, picked BY ID so the note stays pointed at the box
+ * on the file rather than at a copy of its number.
+ *
+ * `inferred` is normally EMPTY here — everything this one offers is copied.
+ *
+ * Two blocks are deliberately not prefilled. The consignee block, because the
+ * file does not record one and a client is not a consignee. And `city_zone`,
+ * because it is a `PlacePicker`: the file's `place_delivery` is free text, and
+ * putting free text into a control that only accepts verified places produces a
+ * box that looks filled and is flagged wrong.
+ */
+export const deliveryNotePrefill = (dossierId: string) =>
+  tenant<Prefill<DeliveryNoteInput>>(
+    `/delivery-notes/prefill?${new URLSearchParams({ dossier_id: dossierId })}`,
+  );
+
 export const createDeliveryNote = (body: DeliveryNoteInput) =>
   tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
 export const updateDeliveryNote = (id: string, body: Partial<DeliveryNoteInput>) =>

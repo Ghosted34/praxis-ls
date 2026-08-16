@@ -59,6 +59,12 @@ const PROCESSORS = [
   // each other, and the loser's auto-query would be raised twice.
   { name: "attendance-reconcile", concurrency: 1, handler: require("./handlers/attendance-reconcile") },
   { name: "attendance-reconcile-scheduler", concurrency: 1, handler: require("./handlers/attendance-reconcile-scheduler") },
+  // Contract term + probation warnings (MOD-12, 0700). concurrency 1: two
+  // passes over one tenant would each emit the warning before the other's
+  // event landed to suppress it, and the point of the dedupe is that a manager
+  // is told once.
+  { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
+  { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
   // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
@@ -318,6 +324,21 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: attCron, tz: config.FX_SYNC_TZ || "UTC" }, "attendance reconcile scheduler registered");
+  }
+
+  // Contract term + probation warnings (MOD-12, 0700). 07:00 local — these are
+  // for a person to act on, so they should be waiting when the working day
+  // starts rather than arriving overnight among the machine noise.
+  const lapseCron = config.CONTRACT_LAPSE_CRON;
+  if (!lapseCron) {
+    logger.info("contract lapse scheduler disabled (CONTRACT_LAPSE_CRON empty)");
+  } else {
+    await enqueue("contract-lapse-scheduler", "tick", {}, {
+      repeat: { pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
   }
 
   // Nightly fleet backup (§3.2, WS-B1). Wall-clock cron for the same reason as

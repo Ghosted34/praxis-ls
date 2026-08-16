@@ -548,12 +548,51 @@ async function loadRecord(client, docType, recordId) {
 
   if (docType === "EMPLOYMENT_CONTRACT") {
     const { rows } = await client.query(
-      "SELECT c.*, e.full_name, e.job_title, e.entity_id FROM hr_contract c LEFT JOIN employee e ON e.employee_id = c.employee_id WHERE c.hr_contract_id = $1",
+      `SELECT c.*, e.full_name, e.job_title AS employee_job_title, coalesce(c.entity_id, e.entity_id) AS entity_id
+         FROM hr_contract c LEFT JOIN employee e ON e.employee_id = c.employee_id
+        WHERE c.hr_contract_id = $1`,
       [recordId],
     );
     const c = rows[0];
     if (!c) return null;
-    return { entity_id: c.entity_id, data: { number: String(c.hr_contract_id).slice(0, 8), status: c.status, kind: c.kind, effective_on: c.effective_on, end_on: c.end_on, employee_name: c.full_name || "—", job_title: c.job_title, party: { name: c.full_name || "—", lines: [c.job_title].filter(Boolean) }, articles: [], signed_vault_id: c.pdf_vault_id || null, currency: "XAF" } };
+    /*
+     * `articles` used to be a hard-coded `[]`.
+     *
+     * The template renders one "Article N — <title>" section per entry, so an
+     * empty list produced a contract with a letterhead, the two parties, a
+     * signature block — AND NO CLAUSES. Every employment contract this system
+     * has ever generated was a blank form. Nobody caught it because the PDF
+     * looks entirely correct until you read it.
+     *
+     * `body_md` (0700) is the agreed text, drafted by the model or the
+     * template and then edited by a human. `contractArticles` cuts it at its
+     * `##` headings, which is exactly the shape the renderer wants.
+     */
+    return {
+      entity_id: c.entity_id,
+      data: {
+        number: String(c.hr_contract_id).slice(0, 8),
+        status: c.status,
+        kind: c.kind,
+        effective_on: c.effective_on,
+        end_on: c.end_on,
+        employee_name: c.full_name || "—",
+        job_title: c.job_title || c.employee_job_title,
+        party: { name: c.full_name || "—", lines: [c.job_title || c.employee_job_title].filter(Boolean) },
+        articles: contractArticles(c.body_md),
+        // The terms, so a template that wants them beside the clauses has them
+        // rather than having to parse the prose back out.
+        gross_salary: c.gross_salary === null || c.gross_salary === undefined ? null : Number(c.gross_salary),
+        probation_months: c.probation_months,
+        probation_ends_on: c.probation_ends_on,
+        notice_days: c.notice_days,
+        working_hours: c.working_hours,
+        place_of_work: c.place_of_work,
+        signed_on: c.signed_on,
+        signed_vault_id: c.pdf_vault_id || null,
+        currency: c.salary_currency || "XAF",
+      },
+    };
   }
 
   if (docType === "DELIVERY_NOTE") return deliveryNoteData(client, recordId);
@@ -747,4 +786,39 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
   return { sent: true, to: recipient, docType, attached: !!attachments };
 }
 
-module.exports = { list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send };
+
+/**
+ * Split a contract body into the articles the template renders.
+ *
+ * Cuts on `##` headings — the shape both the AI drafter and the template
+ * fallback produce (see hr_contract.draft). Text before the first heading is
+ * kept as an untitled preamble rather than dropped: a human editing the body is
+ * entitled to write a sentence at the top without it silently vanishing from
+ * the PDF.
+ */
+function contractArticles(bodyMd) {
+  if (!bodyMd || !String(bodyMd).trim()) return [];
+  const out = [];
+  let title = null;
+  let buf = [];
+  const flush = () => {
+    const body = buf.join("\n").trim();
+    if (title || body) out.push({ title: title || "", body });
+    buf = [];
+  };
+  for (const line of String(bodyMd).split(/\r?\n/)) {
+    const h = /^\s*#{2,3}\s+(.*\S)\s*$/.exec(line);
+    if (h) {
+      flush();
+      title = h[1];
+      continue;
+    }
+    buf.push(line);
+  }
+  flush();
+  return out.filter((a) => a.title || a.body);
+}
+
+module.exports = {
+  // Exported for the test that pins it — see tests/unit/contract-draft.
+  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send };

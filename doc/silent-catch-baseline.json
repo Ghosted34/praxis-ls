@@ -35,15 +35,15 @@
     },
     {
       "file": "src/modules/documents/template/template.service.js",
-      "line": 665
+      "line": 704
     },
     {
       "file": "src/modules/documents/template/template.service.js",
-      "line": 738
+      "line": 777
     },
     {
       "file": "src/modules/documents/template/template.service.js",
-      "line": 745
+      "line": 784
     },
     {
       "file": "src/modules/mail/autodiscover.js",
@@ -100,10 +100,6 @@
     {
       "file": "src/services/ai/action-registrar.js",
       "line": 36
-    },
-    {
-      "file": "src/services/ai/llm.service.js",
-      "line": 179
     },
     {
       "file": "src/services/email.service.js",

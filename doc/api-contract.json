@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 111,
-  "route_count": 1068,
+  "modules_mounted": 112,
+  "route_count": 1085,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 980
+    "gated": 997
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1803,6 +1803,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/intake/enquiries/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/intake/enquiries/export.csv": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/intake/enquiries/tiles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/intake/partnerships": {
       "auth": true,
       "rbac": true,
@@ -2194,6 +2212,30 @@
       "tier": "gated"
     },
     "GET /api/tenant/outbound/:id/lines": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/partnership-requests/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/partnership-requests/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/partnership-requests/export.csv": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/partnership-requests/tiles": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3573,6 +3615,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/intake/enquiries/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/inventory/:id": {
       "auth": true,
       "rbac": true,
@@ -3646,6 +3694,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/outbound/:id/lines/:lineId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/partnership-requests/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5013,6 +5067,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/intake/enquiries/:id/read": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/intake/enquiries/:id/respond": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/intake/enquiries/:id/transition": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/intake/enquiries/:id/triage": {
       "auth": true,
       "rbac": true,
@@ -5344,6 +5416,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/outbound/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/partnership-requests/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/partnership-requests/:id/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/partnership-requests/:id/profile": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/partnership-requests/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/partnership-requests/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,

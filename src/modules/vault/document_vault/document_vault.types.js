@@ -65,6 +65,15 @@ const DOC_TYPES = {
    */
   QUOTE_REQUEST_ATTACHMENT: { label: "Quote request attachment", module: "sales/quote_request",          moduleKey: "MOD-20" },
   /*
+   * The applicant's own company profile, uploaded with a partnership or vendor
+   * application (MOD-25, F10). Registered for the same reason as the two above:
+   * `moduleKeyForDocType` falls back to MOD-70 for an unregistered type, so
+   * without this row the person vetting the application could not open the
+   * prospectus it turns on unless they also administered the application, while
+   * anyone holding Settings could read every applicant's file in the tenant.
+   */
+  PARTNERSHIP_PROFILE:   { label: "Partnership corporate profile", module: "sales/partnership_request", moduleKey: "MOD-25" },
+  /*
    * Master-data scans — the file behind a register entry, not a document this
    * system issues. There is no template for these three and there never will
    * be: nobody prints a client's tax clearance from here, they photograph the

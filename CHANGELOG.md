@@ -24,6 +24,34 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Partnership and vendor applications are vetted, and an approved vendor
+  stops being re-typed (F10).** `partnership_request` was five columns against a
+  form that vets forwarding agents: no country, no contact title, and no
+  network memberships — which is the field an agent is actually vetted on. It
+  now carries all three (memberships as a jsonb array, GIN-indexed, so "who
+  claims WCA" is one query), the applicant's corporate profile as a vault
+  document rather than a filename concatenated onto a public directory in the
+  browser, capped internal notes, and a decision that records who made it and
+  why (a rejection without a reason is refused by the database). The status
+  vocabulary moves to the legacy API's own NEW / IN_REVIEW / APPROVED /
+  REJECTED and existing rows are translated, so one state does not end up with
+  two names. Approving a VENDOR_REGISTRATION now opens a DRAFT supplier in the
+  same transaction — the legacy printed "approved vendors must be manually
+  onboarded", which is a limitation dressed as a control; the real control is
+  that a DRAFT supplier has no auxiliary accounting account and, as of this
+  change, cannot be put on a purchase order until somebody holding the approve
+  permission verifies it. An existing supplier of the same name is reused, and
+  a unique index makes that true under concurrency. An agency partnership opens
+  a supplier only when the approver asks. New register at /sales/partnerships
+  with the four KPI tiles computed from two partitions the API proves add up.
+  Migration `0688_sales_crm_f10_partnership.sql`.
+- **BREAKING:** `/api/tenant/intake/partnerships*` → `/api/tenant/partnership-requests*`.
+  Partnership requests are their own module (`sales/partnership_request`);
+  contact enquiries keep `/intake/enquiries`. Nothing in `client/` called the
+  old paths. The AI manifest key `review_partnership` is now
+  `review_partnership_request`, plus `get_partnership_request`,
+  `create_partnership_request` and `approve_partnership_request` — re-run
+  `node scripts/ai/sync-actions.js` to rebuild `ai_action_catalogue`.
 - **Operation-file references stop being guessable.** A dossier reference is the
   one number in this system a CLIENT holds, and it was sequential:
   `SLAS-OPS-2026-0142` tells whoever holds it how many files we opened this year,

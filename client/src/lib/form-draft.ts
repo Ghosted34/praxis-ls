@@ -252,6 +252,7 @@ export function pruneDrafts(): void {
     try {
       s.removeItem(k);
     } catch {
+      /* @silent:storage|parse|teardown */
       /* nothing to do */
     }
   });

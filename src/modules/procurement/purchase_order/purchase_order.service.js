@@ -20,6 +20,37 @@ const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "purchase_order:" + id;
 
+/**
+ * A supplier that is still a DRAFT cannot be put on a purchase order (F10).
+ *
+ * This is the other half of "approving a vendor registration creates a DRAFT
+ * supplier". The legacy refused to create the supplier at all and called the
+ * re-typing a control; this system creates it and puts the control where it
+ * belongs — the record exists, is visible, carries the applicant's documents,
+ * and buys nothing until somebody holding MOD-04 `approve` verifies it
+ * (party-lifecycle.verify, which itself requires the mandatory scans).
+ *
+ * NULL passes. Suppliers that predate the party-lifecycle columns carry no
+ * registration_status, and refusing every one of them would break purchasing
+ * for existing tenants to enforce a rule about new records. PENDING_REVIEW is
+ * refused with DRAFT: both mean "not yet checked".
+ */
+const NOT_YET_USABLE = ["DRAFT", "PENDING_REVIEW"];
+
+async function assertSupplierUsable(client, supplierId) {
+  if (!supplierId) return;
+  const row = await repo.supplierRegistrationStatus(client, supplierId);
+  if (!row) throw new AppError("NOT_FOUND", "Supplier not found", 404);
+  if (NOT_YET_USABLE.includes(row.registration_status)) {
+    throw new AppError(
+      "SUPPLIER_NOT_VERIFIED",
+      `${row.name || "This supplier"} is still a ${row.registration_status} record — verify it in the supplier registry before raising a purchase order against it.`,
+      422,
+      { supplier_id: ["supplier is not verified"] },
+    );
+  }
+}
+
 async function replaceItems(client, poId, items) {
   await repo.deleteItems(client, poId);
   for (const it of items) {
@@ -32,6 +63,7 @@ async function createDraft(client, { prId = null, supplierId = null, dossierId =
   // Transactional compliance gate (§5): a hard-blocked supplier cannot receive a
   // PO. Softer states pass (freight moves) — flags show on the supplier 360.
   if (supplierId) {
+    await assertSupplierUsable(client, supplierId);
     const gate = await compliance.assertAllowed(client, { kind: "supplier", partyId: supplierId, action: "po_create" });
     if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This supplier is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
   }
@@ -49,6 +81,8 @@ async function updateDraft(client, { poId, items = null, patch = {}, actor = {} 
   const po = await repo.getPO(client, poId);
   if (!po) throw new AppError("NOT_FOUND", "Purchase order not found", 404);
   if (po.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT purchase order can be edited", 422);
+  // Swapping the supplier on a draft is the second way one gets onto a PO.
+  if (patch.supplier_id !== undefined) await assertSupplierUsable(client, patch.supplier_id);
   await client.query("BEGIN");
   try {
     const fields = {};
@@ -124,4 +158,4 @@ const list = (client, q) => repo.listPO(client, q);
 // A cleared approval chain approves+locks the issued PO (BUILD_CONVENTIONS §2/§5).
 onApproved.register("purchase_order", (client, { id, actor }) => transition(client, { poId: id, to: "APPROVED_LOCKED", actor: actor || {}, viaChain: true }));
 
-module.exports = { createDraft, updateDraft, transition, get, list };
+module.exports = { createDraft, updateDraft, transition, get, list, assertSupplierUsable, NOT_YET_USABLE };

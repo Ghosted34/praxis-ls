@@ -216,7 +216,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Sales & CRM",
     title: "Leads & intake",
     purpose:
-      "BUILT. Sales lead capture and qualification, with inbound enquiry + partnership intake folded in as a tab — the top of the funnel.",
+      "BUILT. Sales lead capture and qualification, with inbound enquiry intake folded in as a tab — the top of the funnel.",
     module: "sales/lead",
     status: "ready",
     tabs: [
@@ -256,7 +256,7 @@ export const SPECS: ScreenSpec[] = [
     area: "Sales & CRM",
     title: "Inbound intake",
     purpose:
-      "Contact enquiries and partnership requests captured from the website/email, triaged into leads.",
+      "Contact enquiries captured from the website/email, triaged into leads. Partnership and vendor applications left this screen in F10 — they are vetted rather than triaged, and approving one can open a supplier, so they have their own register at /sales/partnerships.",
     module: "sales/inbound_intake",
     status: "ready",
     tabs: [
@@ -264,11 +264,6 @@ export const SPECS: ScreenSpec[] = [
         label: "Enquiries",
         columns: ["Contact", "Subject", "Channel", "Status", "Received"],
         actions: ["Triage → lead"],
-      },
-      {
-        label: "Partnership requests",
-        columns: ["Organisation", "Type", "Status", "Received"],
-        actions: ["Review"],
       },
     ],
     ai: [

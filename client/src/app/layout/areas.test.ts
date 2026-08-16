@@ -33,6 +33,7 @@ import { moduleForRoute, SCREENS } from "@/app/screen-registry";
 const HUB_COMPONENT_KEYS: Record<string, string[]> = {
   "/sales": [
     "leads",
+    "enquiries",
     "quote-requests",
     "opportunities",
     "proposals",

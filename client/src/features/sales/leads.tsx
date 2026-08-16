@@ -25,12 +25,12 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { cell, dateFmt } from "@/lib/format";
+import { cell } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Segmented } from "@/components/ui/segmented";
 import { Chips } from "@/components/ui/chips";
 import { Avatar } from "@/components/ui/avatar";
-import { LeadForm, ConvertModal, TriageModal, ReviewModal } from "./lead-forms";
+import { LeadForm, ConvertModal } from "./lead-forms";
 
 /* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
@@ -236,135 +236,33 @@ function LeadsTab() {
 
 /* ═══════════════════════════════ INBOUND INTAKE ═══════════════════════════════ */
 
+/**
+ * Both halves of the old intake feed now have a register of their own — F9 gave
+ * the enquiry desk one, F10 the partnership register — so this tab is two
+ * signposts rather than two second copies.
+ *
+ * F9 replaced the enquiries list here with a signpost and wrote the reason on
+ * it: "Two live lists over one register is the defect this build exists to
+ * remove." The partnership list was the other one. It was also, as of migration
+ * 0688, broken: it read /intake/partnerships (moved) and its Review modal wrote
+ * REVIEWING / ACCEPTED / DECLINED, which the status CHECK no longer accepts.
+ */
 function IntakeTab() {
-  const [sub, setSub] = React.useState<"enquiries" | "partnerships">(
-    "enquiries",
-  );
-  const reload = useRefresh();
-  const { rows: enquiries, error: enqErr } = useList(
-    sub === "enquiries" ? "/intake/enquiries" : null,
-  );
-  const { rows: partnerships, error: partErr } = useList(
-    sub === "partnerships" ? "/intake/partnerships" : null,
-  );
-  const [triaging, setTriaging] = React.useState<Row | null>(null);
-  const [reviewing, setReviewing] = React.useState<Row | null>(null);
-
   return (
     <div className="space-y-4">
-      <Segmented
-        label="Inbound intake type"
-        value={sub}
-        onChange={setSub}
-        options={[
-          { value: "enquiries", label: "Enquiries" },
-          { value: "partnerships", label: "Partnership requests" },
-        ]}
-      />
-
-      {sub === "enquiries" ? (
-        enqErr ? (
-          <ErrorState message={enqErr} />
-        ) : enquiries === null ? (
-          <SkeletonTable />
-        ) : enquiries.length === 0 ? (
-          <EmptyState
-            title="No enquiries"
-            hint="Contact-form and email enquiries land here for triage into leads."
-          />
-        ) : (
-          <div className="space-y-2">
-            {enquiries.map((r) => {
-              const done =
-                String(r.status) === "TRIAGED" || String(r.status) === "CLOSED";
-              return (
-                <div
-                  key={String(r.contact_enquiry_id)}
-                  className="lux-card flex items-center gap-3 p-3"
-                >
-                  <Avatar name={String(r.name || r.email || "?")} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {cell(r.subject) === "—"
-                          ? "(no subject)"
-                          : cell(r.subject)}
-                      </p>
-                      <StatusPill status={String(r.status || "NEW")} />
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {[cell(r.name), cell(r.email)]
-                        .filter((x) => x !== "—")
-                        .join(" · ") || "Anonymous"}{" "}
-                      · {cell(r.source).toLowerCase()} · {dateFmt(r.created_at)}
-                    </p>
-                  </div>
-                  {!done && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setTriaging(r)}
-                    >
-                      Triage
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
+      <EmptyState
+        title="Inbound intake has moved into two desks"
+        hint="Contact enquiries are classified, answered and closed on their own screen. Partnership and vendor applications are vetted on theirs — where approving a vendor opens a draft supplier."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => { window.location.href = "/sales/enquiries"; }}>
+              Open contact enquiries
+            </Button>
+            <Button variant="outline" onClick={() => { window.location.href = "/sales/partnerships"; }}>
+              Open partnerships & vendors
+            </Button>
           </div>
-        )
-      ) : partErr ? (
-        <ErrorState message={partErr} />
-      ) : partnerships === null ? (
-        <SkeletonTable />
-      ) : partnerships.length === 0 ? (
-        <EmptyState
-          title="No partnership requests"
-          hint="Inbound partnership proposals land here for review."
-        />
-      ) : (
-        <div className="space-y-2">
-          {partnerships.map((r) => (
-            <div
-              key={String(r.partnership_request_id)}
-              className="lux-card flex items-center gap-3 p-3"
-            >
-              <Avatar name={String(r.company_name || "?")} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {cell(r.company_name)}
-                  </p>
-                  <StatusPill status={String(r.status || "NEW")} />
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {[cell(r.contact_name), cell(r.email)]
-                    .filter((x) => x !== "—")
-                    .join(" · ") || "—"}{" "}
-                  · {dateFmt(r.created_at)}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setReviewing(r)}
-              >
-                Review
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <TriageModal
-        enquiry={triaging}
-        onClose={() => setTriaging(null)}
-        onDone={reload}
-      />
-      <ReviewModal
-        partnership={reviewing}
-        onClose={() => setReviewing(null)}
-        onDone={reload}
+        }
       />
     </div>
   );

@@ -19,13 +19,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | Alias | Prefer | Raised |
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
-| `BAD_STATE` | `BAD_STATUS` | 17× |
+| `BAD_STATE` | `BAD_STATUS` | 19× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (329)
+## All codes (334)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -34,6 +34,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
 | `AI_UNAVAILABLE` | 503 | 1× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
+| `ALREADY_APPROVED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 2× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |
@@ -89,7 +90,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 17× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 19× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
@@ -125,6 +126,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
 | `DUPLICATE_KEY` | 422 | 2× | — |
 | `EMAIL_REQUIRED` | 422 | 1× | — |
+| `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
@@ -136,7 +138,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
-| `ENTITY_REQUIRED` | 422 | 8× | — |
+| `ENTITY_REQUIRED` | 422 | 9× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
@@ -174,10 +176,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
 | `KEY_IMMUTABLE` | 422 | 1× | — |
-| `KPI_NOT_PARTITIONED` | 500 | 1× | — |
+| `KPI_NOT_PARTITIONED` | 500 | 4× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
-| `LOCKED` | 422 | 16× | — |
+| `LOCKED` | 422 | 20× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
@@ -200,7 +202,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 326× | — |
+| `NOT_FOUND` | 404 | 337× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -243,6 +245,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RATE` | 422 | 2× | — |
 | `NO_RATE_MATCH` | 422 | 1× | — |
 | `NO_RECIPIENT` | 422 | 1× | — |
+| `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
 | `NO_TARGET` | 422 | 1× | — |
@@ -315,6 +318,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SMTP_SEND_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
+| `SUPPLIER_NOT_VERIFIED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
 | `SYSTEM_RECORD` | 422 | 1× | — |
@@ -348,7 +352,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 126× | — |
+| `USE_APPROVE` | 422 | 1× | — |
+| `VALIDATION_ERROR` | 422 | 130× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1068 |
-| Modules mounted | 111 |
+| Routes | 1085 |
+| Modules mounted | 112 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1068 mounted routes, grouped by path prefix.
+All 1085 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -875,7 +875,14 @@ All 1068 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/tenant/intake/enquiries` | — |
 | POST | `/api/tenant/intake/enquiries` | — |
+| GET | `/api/tenant/intake/enquiries/:id` | — |
+| PATCH | `/api/tenant/intake/enquiries/:id` | — |
+| POST | `/api/tenant/intake/enquiries/:id/read` | — |
+| POST | `/api/tenant/intake/enquiries/:id/respond` | — |
+| POST | `/api/tenant/intake/enquiries/:id/transition` | — |
 | POST | `/api/tenant/intake/enquiries/:id/triage` | — |
+| GET | `/api/tenant/intake/enquiries/export.csv` | — |
+| GET | `/api/tenant/intake/enquiries/tiles` | — |
 | GET | `/api/tenant/intake/partnerships` | — |
 | POST | `/api/tenant/intake/partnerships` | — |
 | POST | `/api/tenant/intake/partnerships/:id/review` | — |
@@ -1110,6 +1117,21 @@ All 1068 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/outbound/:id/lines` | — |
 | PATCH | `/api/tenant/outbound/:id/lines/:lineId` | — |
 | POST | `/api/tenant/outbound/:id/status` | — |
+
+### `tenant/partnership-requests`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/partnership-requests/` | — |
+| POST | `/api/tenant/partnership-requests/` | — |
+| GET | `/api/tenant/partnership-requests/:id` | — |
+| PATCH | `/api/tenant/partnership-requests/:id` | — |
+| POST | `/api/tenant/partnership-requests/:id/approve` | — |
+| POST | `/api/tenant/partnership-requests/:id/profile` | — |
+| POST | `/api/tenant/partnership-requests/:id/reject` | — |
+| POST | `/api/tenant/partnership-requests/:id/transition` | — |
+| GET | `/api/tenant/partnership-requests/export.csv` | — |
+| GET | `/api/tenant/partnership-requests/tiles` | — |
 
 ### `tenant/party-document-types`
 

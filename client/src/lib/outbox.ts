@@ -116,6 +116,7 @@ function persist(): void {
   try {
     storage()?.setItem(KEY, JSON.stringify(entries));
   } catch {
+    /* @silent:storage|parse|teardown */
     // Quota, or private mode. The in-memory queue still works for this session,
     // which covers the case this exists for; it just will not survive a reload.
   }
@@ -327,6 +328,7 @@ async function runFlush(): Promise<FlushSummary> {
       }
     }
   } catch {
+    /* @silent:storage|parse|teardown */
     // A throw from outside the per-entry try (reading the env, say). The queue
     // is untouched and the summary reports what did get through — losing the
     // whole flush to one unexpected error would strand every entry behind it.

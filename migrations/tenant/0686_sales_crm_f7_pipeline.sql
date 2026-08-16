@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0684 Sales & CRM F7: the sales pipeline board.
+-- TENANT DB — 0686 Sales & CRM F7: the sales pipeline board.
 --
 -- Vertical slice for doc/SALES_CRM_FEATURES.md#F7. It owns:
 --   1. pipeline_stage.default_probability — the win probability the legacy

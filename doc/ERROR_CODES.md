@@ -25,14 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (339)
+## All codes (341)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
-| `AI_UNAVAILABLE` | 403, 503 | 2× | — |
+| `AI_UNAVAILABLE` | 403, 503 | 4× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
@@ -122,6 +122,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DEVICE_NOT_REGISTERED` | 422 | 1× | — |
 | `DEVICE_REVOKED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
+| `DUPLICATE` | 409 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
 | `DUPLICATE_KEY` | 422 | 2× | — |
@@ -157,6 +158,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
 | `INCOMPLETE` | — | 2× | — |
 | `INCOMPLETE_APPLICATION` | 422 | 1× | — |
+| `INELIGIBLE_DOSSIER` | 422 | 1× | — |
+| `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
@@ -174,7 +177,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_STATE` | 422 | 1× | — |
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
-| `INVALID_TRANSITION` | 422 | 13× | — |
+| `INVALID_TRANSITION` | 422 | 15× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
@@ -182,7 +185,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `KPI_NOT_PARTITIONED` | 500 | 4× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
-| `LOCKED` | 422 | 26× | — |
+| `LEAVE_OVERLAP` | 409 | 2× | — |
+| `LOCKED` | 422 | 21× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
@@ -205,7 +209,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 348× | — |
+| `NOT_FOUND` | 404 | 349× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -213,6 +217,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
+| `NOT_SENT` | 422 | 1× | — |
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_TREASURY_CLASS` | 422 | 2× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
@@ -322,6 +327,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SMTP_SEND_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
+| `SPAM_REJECTED` | 422 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
@@ -358,7 +364,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
-| `VALIDATION_ERROR` | 422 | 144× | — |
+| `VALIDATION_ERROR` | 422 | 140× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

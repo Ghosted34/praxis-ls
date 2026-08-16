@@ -1236,6 +1236,8 @@
         "list_proposals",
         "get_proposal",
         "draft_proposal",
+        "generate_proposal",
+        "share_proposal",
         "transition_proposal",
         "accept_proposal"
       ]
@@ -1284,6 +1286,7 @@
         "list_success_stories",
         "get_success_story",
         "create_success_story",
+        "generate_success_story",
         "publish_success_story"
       ]
     },

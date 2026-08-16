@@ -39,6 +39,7 @@ export function ProposalDetail({
   const [action, setAction] = React.useState<null | "send" | "accept">(null);
   const [entityId, setEntityId] = React.useState("");
   const [createQuotation, setCreateQuotation] = React.useState(false);
+  const [shareUrl, setShareUrl] = React.useState("");
 
   React.useEffect(() => {
     if (!proposal) return;
@@ -89,6 +90,14 @@ export function ProposalDetail({
         body: { to, entity_id: entity },
       }),
     );
+  async function generateNarrative() {
+    const client_operations=window.prompt("Client operations (leave blank to use meeting discovery)","")||"";
+    const pain_points=window.prompt("Pain points (leave blank to use meeting discovery)","")||"";
+    const proposed_strategy=window.prompt("Proposed strategy (leave blank to use meeting discovery)","")||"";
+    const tone=window.prompt("Tone","Consultative and expert")||"Consultative and expert";
+    await run(()=>tenant(`/proposals/${id}/generate`,{method:"POST",body:{client_operations,pain_points,proposed_strategy,tone}}));
+  }
+  async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/proposal/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
   const doAccept = () =>
     run(() =>
       tenant(`/proposals/${id}/accept`, {
@@ -272,11 +281,13 @@ export function ProposalDetail({
             {/* Lifecycle actions */}
             {!action && (
               <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+                {status === "SENT" && <><Button variant="outline" loading={busy} onClick={()=>void shareProposal()}>Share link</Button>{shareUrl&&<><Button variant="ghost" onClick={()=>void navigator.clipboard?.writeText(shareUrl)}>Copy link</Button><Button variant="ghost" onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(`Please review our proposal: ${shareUrl}`)}`,"_blank")}>WhatsApp</Button></>}</>}
                 <Button variant="outline" onClick={onClose}>
                   Close
                 </Button>
                 {status === "DRAFT" && proposal && (
                   <>
+                    <Button variant="outline" loading={busy} onClick={()=>void generateNarrative()}>Generate bilingual narrative</Button>
                     <Button
                       variant="outline"
                       onClick={() => onEdit(data ?? proposal)}

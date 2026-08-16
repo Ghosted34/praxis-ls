@@ -1,49 +1,8 @@
-/** Project portfolio / success stories (MOD-26). Draft → sign-off → publish.
- *  AI-generated flag supported. Publishing requires a prior sign-off. SQL in repo. */
-"use strict";
-const repo = require("./success_story.repo");
-const events = require("./success_story.events");
-const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
-const { AppError } = require("../../../utils/errors");
-const ref = (id) => "success_story:" + id;
-async function create(client, { data, actor = {} }) {
-  const row = await repo.insert(client, { title: data.title, dossier_id: data.dossier_id || null, summary: data.summary || null, body: data.body || null, ai_generated: data.ai_generated === true, is_published: false });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.success_story_id), after: row });
-  return row;
-}
-async function update(client, { id, patch = {}, actor = {} }) {
-  const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Success story not found", 404);
-  if (before.is_published) throw new AppError("LOCKED", "Unpublish before editing a published story", 422);
-  const fields = {};
-  for (const k of ["title", "summary", "body", "dossier_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
-  const row = await repo.update(client, id, fields);
-  await audit(client, { actorUserId: actor.user_id || null, action: "success_story.updated", moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
-  return row;
-}
-async function signOff(client, { id, actor = {} }) {
-  const s = await repo.get(client, id);
-  if (!s) throw new AppError("NOT_FOUND", "Success story not found", 404);
-  const row = await repo.update(client, id, { signed_off_by: await resolveActorId(client, actor.user_id) });
-  await emitEvent(client, { eventTypeKey: events.SIGNED_OFF, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.SIGNED_OFF, moduleKey: events.MODULE, entityRef: ref(id), after: row });
-  return row;
-}
-async function publish(client, { id, actor = {} }) {
-  const s = await repo.get(client, id);
-  if (!s) throw new AppError("NOT_FOUND", "Success story not found", 404);
-  if (!s.signed_off_by) throw new AppError("NOT_SIGNED_OFF", "A success story must be signed off before publishing", 422);
-  const row = await repo.update(client, id, { is_published: true, published_at: new Date().toISOString() });
-  await emitEvent(client, { eventTypeKey: events.PUBLISHED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.PUBLISHED, moduleKey: events.MODULE, entityRef: ref(id), after: row });
-  return row;
-}
-async function unpublish(client, { id, actor = {} }) {
-  const row = await repo.update(client, id, { is_published: false });
-  if (!row) throw new AppError("NOT_FOUND", "Success story not found", 404);
-  await emitEvent(client, { eventTypeKey: events.UNPUBLISHED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-  return row;
-}
-const get = (client, id) => repo.get(client, id);
-const list = (client, q) => repo.list(client, q);
-module.exports = { create, update, signOff, publish, unpublish, get, list };
+"use strict";const repo=require("./success_story.repo");const events=require("./success_story.events");const {emitEvent,audit,resolveActorId}=require("../../../shared/events/emit");const {AppError}=require("../../../utils/errors");const llm=require("../../../services/ai/llm.service");const governance=require("../../ai/governance/governance.service");const ref=id=>"success_story:"+id;const writable=["title","slug","client_id","service_category","headline","executive_summary","operations_execution","kpis","cover_vault_id","client_logo_vault_id","gallery_vault_ids"];
+const pick=d=>Object.fromEntries(writable.filter(k=>d[k]!==undefined).map(k=>[k,d[k]]));
+async function create(c,{data,actor={}}){await c.query("BEGIN");try{const row=await repo.insert(c,{...pick(data),slug:data.slug||slug(data.title),summary:data.executive_summary||null,body:data.operations_execution||null,ai_generated:false,is_published:false});await repo.replaceDossiers(c,row.success_story_id,data.dossier_ids||[]);await audit(c,{actorUserId:actor.user_id||null,action:events.CREATED,moduleKey:events.MODULE,entityRef:ref(row.success_story_id),after:row});await c.query("COMMIT");return get(c,row.success_story_id);}catch(e){await c.query("ROLLBACK");throw e;}}
+async function update(c,{id,patch={},actor={}}){const before=await repo.get(c,id);if(!before)throw new AppError("NOT_FOUND","Success story not found",404);if(before.is_published)throw new AppError("LOCKED","Unpublish before editing",422);await c.query("BEGIN");try{const row=await repo.update(c,id,pick(patch));if(patch.dossier_ids)await repo.replaceDossiers(c,id,patch.dossier_ids);await audit(c,{actorUserId:actor.user_id||null,action:"success_story.updated",moduleKey:events.MODULE,entityRef:ref(id),before,after:row});await c.query("COMMIT");return get(c,id);}catch(e){await c.query("ROLLBACK");throw e;}}
+async function generate(c,{dossierIds,roughNotes="",actor={},env="live"}){const eligible=await repo.eligible(c),chosen=eligible.filter(x=>dossierIds.includes(x.dossier_id));if(chosen.length!==dossierIds.length)throw new AppError("INELIGIBLE_DOSSIER","Only completed files can become a story",422);if(env!=="live")return{manual_required:true,prefill:{rough_notes:roughNotes,dossiers:chosen},sandbox:true};const gate=await governance.canUseFeature(c,{userId:actor.user_id,featureKey:"success_story_generation"});if(!gate.allowed)throw new AppError("AI_UNAVAILABLE",gate.reason,403);const prompt=`Draft a public logistics case study from ONLY these operational fields (no financial fields were selected): ${JSON.stringify(chosen)}. Notes:${roughNotes}. Return JSON {headline,executive_summary,operations_execution,kpis:[{label,value}]} with 3 or 4 hard KPIs. Never invent a metric.`;const out=await llm.chat({client:c,messages:[{role:"user",content:prompt}],responseFormat:{type:"json_object"}});let parsed;try{parsed=JSON.parse(String(out.text).replace(/^```json\s*|\s*```$/g,""));}catch{return{manual_required:true,prefill:{rough_notes:roughNotes,dossiers:chosen},sandbox:false};}if(!parsed.headline||!parsed.executive_summary||!parsed.operations_execution||![3,4].includes(parsed.kpis?.length))return{manual_required:true,prefill:{rough_notes:roughNotes,dossiers:chosen},sandbox:false};await governance.recordUsage(c,{userId:actor.user_id||null,featureKey:"success_story_generation",provider:out.provider,callType:"success_story_generation",inputTokens:out.usage?.prompt_tokens||0,outputTokens:out.usage?.completion_tokens||0});return{manual_required:false,draft:parsed,dossier_ids:dossierIds};}
+async function signOff(c,{id,actor={}}){const s=await repo.get(c,id);if(!s)throw new AppError("NOT_FOUND","Success story not found",404);return repo.update(c,id,{signed_off_by:await resolveActorId(c,actor.user_id)});}
+async function publish(c,{id,actor={}}){const s=await repo.get(c,id);if(!s)throw new AppError("NOT_FOUND","Success story not found",404);if(!s.signed_off_by)throw new AppError("NOT_SIGNED_OFF","A success story must be signed off before publishing",422);const row=await repo.update(c,id,{is_published:true,published_at:new Date()});await emitEvent(c,{eventTypeKey:events.PUBLISHED,moduleKey:events.MODULE,entityRef:ref(id),actorUserId:actor.user_id||null});return row;}
+const unpublish=async(c,{id})=>repo.update(c,id,{is_published:false});async function get(c,id){const row=await repo.get(c,id);if(row)row.dossiers=await repo.dossiers(c,id);return row;}const list=(c,q)=>repo.list(c,q);const eligible=c=>repo.eligible(c);const slug=v=>String(v).toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");module.exports={create,update,generate,signOff,publish,unpublish,get,list,eligible,slug};

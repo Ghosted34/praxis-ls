@@ -9,9 +9,13 @@ const repo = require("./proposal.repo");
 const events = require("./proposal.events");
 const { assertTransition, totalHt } = require("./proposal.rules");
 const numbering = require("../../../services/documents/numbering.service");
-const documents = require("../../../services/documents/document.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const crypto = require("crypto");
+const { config } = require("../../../config/env");
+const pdf = require("../../../services/pdf.service");
+const vault = require("../../vault/document_vault/document_vault.service");
+const proposalDocument = require("./proposal.document");
 const ref = (id) => "proposal:" + id;
 const HEADER_FIELDS = [
   "lead_id", "client_id", "opportunity_id", "title", "language", "currency",
@@ -54,8 +58,10 @@ async function updateDraft(client, { id, patch = {}, lines = null, narratives = 
     Object.assign(fields, headerFields(patch));
     if (Object.keys(fields).length) await repo.update(client, id, fields);
     await replaceChildren(client, id, lines, narratives);
+    const after = await get(client, id);
+    await audit(client, { actorUserId: actor.user_id || null, action: "proposal.updated", moduleKey: events.MODULE, entityRef: ref(id), before, after });
     await client.query("COMMIT");
-    return get(client, id);
+    return after;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 async function transition(client, { id, to, entityId = null, actor = {} }) {
@@ -72,7 +78,12 @@ async function transition(client, { id, to, entityId = null, actor = {} }) {
     }
     if (to === "IN_REVIEW") fields.reviewed_by = actor.user_id || null;
     const row = await repo.update(client, id, fields);
-    if (to === "SENT") await documents.capture(client, { entityRef: ref(id), docType: "PROPOSAL", status: "VERIFIED" });
+    if (to === "SENT") {
+      const full = await get(client, id); const clientRow = full.client_id ? (await client.query("SELECT name, legal_name FROM client_master WHERE client_id=$1", [full.client_id])).rows[0] : null;
+      await pdf.renderAndStore(client, { html: proposalDocument.html({ proposal: { ...full, ...fields }, lines: full.lines, narratives: full.narratives, client: clientRow }), key: `proposals/${id}.pdf`, entityRef: ref(id), docType: "PROPOSAL" });
+      const captured = await vault.getByRef(client, ref(id));
+      if (captured) await repo.update(client, id, { pdf_vault_id: captured.doc_id });
+    }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: row });
     await client.query("COMMIT");
@@ -101,6 +112,10 @@ async function accept(client, { id, createQuotation = false, entityId = null, ac
     return { proposal: row, quotation_id: quotationId };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
+
+function signedToken(){const raw=crypto.randomBytes(32).toString("base64url");const sig=crypto.createHmac("sha256",config.JWT_SECRET).update(raw).digest("base64url");return `${raw}.${sig}`;}
+async function share(client,{id,expiresInDays=30,actor={}}){const before=await repo.get(client,id);if(!before)throw new AppError("NOT_FOUND","Proposal not found",404);if(before.status!=="SENT")throw new AppError("NOT_SENT","Only a sent proposal can be shared",422);const token=signedToken();const expires=new Date(Date.now()+expiresInDays*86400000);await repo.update(client,id,{share_token_hash:crypto.createHash("sha256").update(token).digest("hex"),share_expires_at:expires,share_revoked_at:null});await audit(client,{actorUserId:actor.user_id||null,action:"proposal.shared",moduleKey:events.MODULE,entityRef:ref(id),after:{expires_at:expires}});return{token,expires_at:expires,path:`/public/proposals/${encodeURIComponent(token)}`};}
+async function revokeShare(client,{id,actor={}}){const before=await repo.get(client,id);if(!before)throw new AppError("NOT_FOUND","Proposal not found",404);const row=await repo.update(client,id,{share_revoked_at:new Date()});await audit(client,{actorUserId:actor.user_id||null,action:"proposal.share_revoked",moduleKey:events.MODULE,entityRef:ref(id),after:{share_revoked_at:row.share_revoked_at}});return row;}
 async function get(client, id) {
   const p = await repo.get(client, id);
   if (!p) return null;
@@ -109,4 +124,4 @@ async function get(client, id) {
   return p;
 }
 const list = (client, q) => repo.list(client, q);
-module.exports = { createDraft, updateDraft, transition, accept, get, list };
+module.exports = { createDraft, updateDraft, transition, accept, share, revokeShare, get, list, signedToken };

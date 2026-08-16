@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 113,
-  "route_count": 1096,
+  "route_count": 1103,
   "tiers": {
     "public": 22,
     "self-scoped": 66,
-    "gated": 1008
+    "gated": 1015
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1348,6 +1348,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/delivery-notes/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/delivery-notes/available-containers": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/delivery-notes/summary": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3495,6 +3507,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/delivery-notes/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/dispatch/:id": {
       "auth": true,
       "rbac": true,
@@ -4756,6 +4774,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/delivery-notes/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/cancel": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/deliver": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/issue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/delivery-notes/:id/transition": {
       "auth": true,
       "rbac": true,
       "validated": false,

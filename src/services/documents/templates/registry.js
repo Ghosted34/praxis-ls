@@ -230,21 +230,116 @@ const TEMPLATES = {
     sampleData: { number: "DA-2026-0014", date: "2026-07-27", department: "Opérations", party: { name: "Jean Mballa", lines: ["Chef de quai"] }, lines: sampleLines.slice(0, 2), totals: { total_ttc: 1080000 }, currency: "XAF" },
   },
 
+  /**
+   * BORDEREAU DE LIVRAISON — the proof of delivery.
+   *
+   * Three things the rebuild's version was missing, all of which the legacy
+   * layout (`view/operations/delivery-note.php`) had and which are what make
+   * this document worth printing:
+   *
+   *   · the CONTAINER MANIFEST grid. Legacy rendered 18 fixed slots so the
+   *     unused ones printed as ruled lines to be filled in by hand at the gate.
+   *     That is not a quirk to clean up — a driver arriving with a box that was
+   *     added at the last minute needs somewhere to write it, and the printed
+   *     form is the only artefact present at the handover.
+   *   · the RESERVATIONS box, where the client writes "carton 3 crushed". It is
+   *     the single most valuable thing on the page in a dispute, because it is
+   *     the client's own words at the moment of acceptance.
+   *   · a RECEIVED BY box that names the person, rather than an anonymous
+   *     signature line.
+   */
   DELIVERY_NOTE: {
-    docType: "DELIVERY_NOTE", title: { fr: "Bon de livraison", en: "Delivery note" }, module: "operations/delivery_note", fields: ["hide prices toggle"],
+    docType: "DELIVERY_NOTE", title: { fr: "Bon de livraison", en: "Delivery note" }, module: "operations/delivery_note",
+    fields: ["hide prices toggle", "container manifest", "reservations", "received by"],
     build: (data, cfg, entity, verify) => {
-      const cols = [{ key: "label", label: { fr: "Désignation", en: "Description" } }, { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true }];
-      const rows = (data.lines || []).map((l) => ({ label: l.label, qty: String(l.qty) }));
+      const lang = cfg.language;
+      const cols = [
+        { key: "label", label: { fr: "Désignation", en: "Description" } },
+        { key: "marks", label: { fr: "Marques", en: "Marks" } },
+        { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true },
+      ];
+      const rows = (data.lines || []).map((l) => ({
+        label: l.label, marks: l.marks || "", qty: String(l.qty),
+      }));
+
+      /**
+       * The manifest, padded to a minimum of 18 slots.
+       *
+       * Padding is what makes the paper usable: an empty slot prints as a ruled
+       * line, so a box added on the quay can be written in and still be part of
+       * the signed document. A note with 20 containers prints all 20 — the
+       * legacy hard cap of 18 silently truncated the rest, which on a document
+       * that proves what was handed over is a data-loss bug, not a layout one.
+       */
+      const manifest = () => {
+        const tcs = data.containers || [];
+        if (!tcs.length && cfg.hide_empty_manifest) return "";
+        const slots = Math.max(18, tcs.length);
+        let cells = "";
+        for (let i = 0; i < slots; i += 1) {
+          const c = tcs[i];
+          const n = `<span class="muted" style="margin-right:4px;">${i + 1}.</span>`;
+          const body = c
+            ? `<b>${k.esc(c.container_no || "—")}</b>${c.seal_no ? `<span class="muted" style="font-size:9px;"> / ${k.esc(c.seal_no)}</span>` : ""}`
+            : "<span style=\"color:#bbb;\">______________</span>";
+          cells += `<div style="border-right:1px solid #ddd;border-bottom:1px solid #ddd;padding:3px 5px;font-size:10px;">${n}${body}</div>`;
+        }
+        return k.section(
+          { fr: "Liste des conteneurs (TCs)", en: "Container manifest (TCs)" },
+          `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #ddd;border-left:1px solid #ddd;">${cells}</div>`,
+          cfg,
+        );
+      };
+
+      /**
+       * The client's reservations. Prints whatever was recorded, and an empty
+       * ruled box when nothing was — because it has to be fillable at the gate.
+       */
+      const reservations = k.section(
+        { fr: "Observations / Réserves du client", en: "Comments / Reservations (client)" },
+        data.reservations
+          ? `<div class="box">${k.esc(data.reservations)}</div>`
+          : `<div class="box" style="min-height:42px;"></div>`,
+        cfg,
+      );
+
+      // Named, dated receipt — not an anonymous signature line.
+      const received = `<div class="sig"><div class="b"><div class="ln">${k.t({ fr: "Livré par", en: "Issued by" }, lang)}${data.issued_by_name ? ` — ${k.esc(data.issued_by_name)}` : ""}</div></div>`
+        + `<div class="b"><div class="ln">${k.t({ fr: "Reçu par (nom, signature, cachet)", en: "Received by (name, signature, stamp)" }, lang)}</div>`
+        + (data.received_by_name
+          ? `<div style="font-weight:600;margin-top:3px;">${k.esc(data.received_by_name)}</div>`
+            + (data.received_at ? `<div class="muted" style="font-size:9px;">${k.dateFmt(data.received_at)}</div>` : "")
+          : "")
+        + "</div></div>";
+
       const body = [
-        k.head(entity, { fr: "Bon de livraison", en: "Delivery note" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Dossier", en: "File" }, data.dossier_ref]], cfg),
-        k.parties([{ label: { fr: "Destinataire", en: "Consignee" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
+        k.head(entity, { fr: "Bon de livraison", en: "Delivery note" }, data.number, [
+          [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+          [{ fr: "Date de livraison", en: "Delivery date" }, k.dateFmt(data.delivery_date)],
+          [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        ], cfg),
+        k.parties([{
+          label: { fr: "Destinataire", en: "Consignee" },
+          name: data.party && data.party.name,
+          lines: (data.party && data.party.lines) || [],
+        }], cfg),
         k.lineTable(cols, rows, cfg),
-        k.signatureBlock(cfg),
+        manifest(),
+        reservations,
+        received,
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Delivery note " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "BL-2026-0052", date: "2026-07-27", dossier_ref: "SBX-2026-0001", party: sampleParty, lines: [{ label: "Conteneur 40' TCLU1234567", qty: 1 }, { label: "Palettes ciment", qty: 24 }], currency: "XAF" },
+    sampleData: {
+      number: "DN-2026-0052", date: "2026-07-27", delivery_date: "2026-07-28", dossier_ref: "SBX-2026-0001",
+      party: sampleParty,
+      lines: [{ label: "Palettes ciment", marks: "SLS/001", qty: 24 }],
+      containers: [{ container_no: "TCLU1234567", seal_no: "SL889231" }, { container_no: "MSKU7654321", seal_no: "SL889232" }],
+      reservations: "Conteneur 2 : joint de porte endommagé, marchandise intacte.",
+      received_by_name: "Jean Mballa", received_at: "2026-07-28",
+      currency: "XAF",
+    },
   },
 
   /**

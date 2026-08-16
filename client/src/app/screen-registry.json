@@ -1059,11 +1059,14 @@
       "route": "/operations/delivery-notes",
       "area": "operations",
       "module_key": "MOD-32",
-      "purpose": "Delivery notes issued on arrival.",
+      "purpose": "Proof of delivery: draft against a file, pick the containers going out, issue (allocates the number), then record who signed for the goods and any reservations they noted.",
       "actions": [
         "list_delivery_notes",
         "get_delivery_note",
-        "create_delivery_note"
+        "delivery_note_summary",
+        "create_delivery_note",
+        "issue_delivery_note",
+        "confirm_delivery"
       ]
     },
     {

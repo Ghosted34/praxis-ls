@@ -193,6 +193,65 @@ const TO_STATUS_LABEL = {
 const fmtMoney = (n, ccy) =>
   `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${ccy || "XAF"}`;
 
+/**
+ * Delivery-note projection.
+ *
+ * The containers come from `delivery_note_container` — the note's own snapshot
+ * — and NOT from the file's live `dossier_container_unit` rows. That is the
+ * whole point of snapshotting them at pick time: a note signed in March must
+ * reprint in September showing the boxes that were actually handed over, even
+ * if the file has since been corrected.
+ */
+async function deliveryNoteData(client, recordId) {
+  const { rows } = await client.query(
+    `SELECT dn.*, d.ref AS dossier_ref, cm.client_name, au.full_name AS issued_by_name
+       FROM delivery_note dn
+       LEFT JOIN dossier d ON d.dossier_id = dn.dossier_id
+       LEFT JOIN client_master cm ON cm.client_id = d.client_id
+       LEFT JOIN app_user au ON au.user_id = dn.issued_by
+      WHERE dn.delivery_note_id = $1`,
+    [recordId],
+  );
+  const dn = rows[0];
+  if (!dn) return null;
+
+  const [lr, cr] = await Promise.all([
+    client.query(
+      "SELECT label, qty FROM delivery_note_line WHERE delivery_note_id = $1 ORDER BY delivery_note_line_id",
+      [recordId],
+    ),
+    client.query(
+      "SELECT container_no, seal_no, gross_weight_kg FROM delivery_note_container WHERE delivery_note_id = $1 ORDER BY seq, created_at",
+      [recordId],
+    ),
+  ]);
+
+  return {
+    entity_id: dn.entity_id || null,
+    data: {
+      number: dn.doc_number || String(dn.delivery_note_id).slice(0, 8),
+      date: dn.created_at,
+      delivery_date: dn.delivery_date,
+      dossier_ref: dn.dossier_ref || null,
+      status: dn.status,
+      party: {
+        name: dn.consignee || dn.client_name || "—",
+        // The address is the point of the document; city/zone alone is routing.
+        lines: [dn.address, dn.city_zone, dn.contact_person, dn.phone].filter(Boolean),
+      },
+      lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty) })),
+      containers: cr.rows.map((c) => ({
+        container_no: c.container_no, seal_no: c.seal_no,
+      })),
+      reservations: dn.reservations || null,
+      received_by_name: dn.received_by_name || null,
+      received_at: dn.received_at || null,
+      issued_by_name: dn.issued_by_name || null,
+      currency: "XAF",
+    },
+  };
+}
+
 async function transitOrderData(client, recordId) {
   const { rows } = await client.query(
     `SELECT t.*, d.ref AS dossier_ref, cm.client_name
@@ -497,13 +556,7 @@ async function loadRecord(client, docType, recordId) {
     return { entity_id: c.entity_id, data: { number: String(c.hr_contract_id).slice(0, 8), status: c.status, kind: c.kind, effective_on: c.effective_on, end_on: c.end_on, employee_name: c.full_name || "—", job_title: c.job_title, party: { name: c.full_name || "—", lines: [c.job_title].filter(Boolean) }, articles: [], signed_vault_id: c.pdf_vault_id || null, currency: "XAF" } };
   }
 
-  if (docType === "DELIVERY_NOTE") {
-    const { rows } = await client.query("SELECT * FROM delivery_note WHERE delivery_note_id = $1", [recordId]);
-    const dn = rows[0];
-    if (!dn) return null;
-    const lr = await client.query("SELECT label, qty FROM delivery_note_line WHERE delivery_note_id = $1 ORDER BY delivery_note_line_id", [recordId]);
-    return { entity_id: null, data: { number: dn.doc_number || String(dn.delivery_note_id).slice(0, 8), date: dn.created_at, dossier_ref: dn.dossier_id ? String(dn.dossier_id).slice(0, 8) : null, party: { name: dn.consignee || "—", lines: [dn.city_zone, dn.contact_person].filter(Boolean) }, lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty) })), currency: "XAF" } };
-  }
+  if (docType === "DELIVERY_NOTE") return deliveryNoteData(client, recordId);
 
   if (docType === "TRANSIT_ORDER") return transitOrderData(client, recordId);
 

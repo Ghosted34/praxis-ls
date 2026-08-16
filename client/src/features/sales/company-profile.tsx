@@ -48,6 +48,7 @@ export function CompanyProfilePage() {
     try {
       field(key, JSON.parse(value));
     } catch (_error) {
+      /* @silent:storage|parse|teardown */ 
       /* retain the last valid structured value */
     }
   }
@@ -281,4 +282,4 @@ export function CompanyProfilePage() {
     </section>
   );
 }
-}
+

@@ -19,6 +19,8 @@
  */
 const { AppError } = require("../../../utils/errors");
 const { clientMaster: schemas } = require("@praxis/shared");
+const { z } = require("zod");
+const consentSchema = z.object({ consent: z.enum(["NOT_ASKED", "ANONYMISED_ONLY", "NAMED"]) });
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -27,4 +29,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), consent: (req, _res, next) => { const p = consentSchema.safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid consent", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); }, schemas };

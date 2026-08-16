@@ -1194,6 +1194,15 @@
       ]
     },
     {
+      "id": "sales_company_profile",
+      "title": "Company profile",
+      "route": "/sales/company-profile",
+      "area": "sales",
+      "module_key": "MOD-23",
+      "purpose": "Tenant-owned declared and SQL-derived fact sheet used to ground proposals and case studies.",
+      "actions": ["get_company_profile"]
+    },
+    {
       "id": "sales_opportunities",
       "title": "Opportunities",
       "route": "/sales/opportunities",

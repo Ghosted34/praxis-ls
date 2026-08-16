@@ -37,6 +37,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
     "quote-requests",
     "opportunities",
     "proposals",
+    "company-profile",
     "meetings",
     "campaigns",
     "partnerships",

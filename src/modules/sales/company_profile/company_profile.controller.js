@@ -1,0 +1,2 @@
+"use strict"; const s=require("./company_profile.service"); const {asyncHandler}=require("../../../utils/errors"); const actor=req=>req.user||{};
+module.exports={get:asyncHandler(async(req,res)=>res.json({data:await req.tenantDb(c=>s.getFresh(c))})),update:asyncHandler(async(req,res)=>res.json({data:await req.tenantDb(c=>s.save(c,{data:req.body,actor:actor(req)}))})),refresh:asyncHandler(async(req,res)=>res.json({data:await req.tenantDb(c=>s.refresh(c,{actor:actor(req)}))}))};

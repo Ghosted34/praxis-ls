@@ -116,4 +116,11 @@ async function creditCheck(client, { clientId, additionalAmount = 0 }) {
   };
 }
 
-module.exports = { create, update, get, list, creditCheck };
+async function setPublicReferenceConsent(client, { id, consent, actor = {} }) {
+  const before = await repo.get(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Client not found", 404);
+  const row = await repo.update(client, id, { public_reference_consent: consent });
+  await audit(client, { actorUserId: actor.user_id || null, action: "client.public_reference_consent.changed", moduleKey: events.MODULE, entityRef: "client:" + id, before: { public_reference_consent: before.public_reference_consent }, after: { public_reference_consent: consent } });
+  return row;
+}
+module.exports = { create, update, get, list, creditCheck, setPublicReferenceConsent };

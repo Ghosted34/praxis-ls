@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1145 mounted routes, grouped by path prefix.
+All 1147 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 

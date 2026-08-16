@@ -65,7 +65,10 @@ function StoryForm({
   const [title, setTitle] = React.useState("");
   const [summary, setSummary] = React.useState("");
   const [body, setBody] = React.useState("");
-  const [aiGenerated, setAiGenerated] = React.useState(false);
+  const [headline,setHeadline]=React.useState(""); const [serviceCategory,setServiceCategory]=React.useState("");
+  const [dossierIds,setDossierIds]=React.useState(""); const [kpis,setKpis]=React.useState("[]");
+  const [coverId,setCoverId]=React.useState(""); const [logoId,setLogoId]=React.useState(""); const [galleryIds,setGalleryIds]=React.useState("");
+
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -74,7 +77,7 @@ function StoryForm({
     setTitle(editing?.title ? String(editing.title) : "");
     setSummary(editing?.summary ? String(editing.summary) : "");
     setBody(editing?.body ? String(editing.body) : "");
-    setAiGenerated(editing?.ai_generated === true);
+setHeadline(String(editing?.headline??"")); setServiceCategory(String(editing?.service_category??"")); setDossierIds(Array.isArray(editing?.dossiers)?(editing.dossiers as Row[]).map(d=>d.dossier_id).join(", "):""); setKpis(JSON.stringify(editing?.kpis??[],null,2)); setCoverId(String(editing?.cover_vault_id??"")); setLogoId(String(editing?.client_logo_vault_id??"")); setGalleryIds(Array.isArray(editing?.gallery_vault_ids)?editing.gallery_vault_ids.join(", "):"");
     setError(null);
   }, [open, editing]);
 
@@ -84,7 +87,7 @@ function StoryForm({
     const body_ = {
       title: title.trim(),
       summary: summary.trim() || undefined,
-      body: body.trim() || undefined,
+      body: body.trim() || undefined, headline:headline.trim()||undefined, executive_summary:summary.trim()||undefined, operations_execution:body.trim()||undefined, service_category:serviceCategory.trim()||undefined, dossier_ids:dossierIds.split(",").map(x=>x.trim()).filter(Boolean), kpis:JSON.parse(kpis||"[]"), cover_vault_id:coverId||null, client_logo_vault_id:logoId||null, gallery_vault_ids:galleryIds.split(",").map(x=>x.trim()).filter(Boolean),
     };
     try {
       if (editing)
@@ -95,7 +98,7 @@ function StoryForm({
       else
         await tenant("/success-stories", {
           method: "POST",
-          body: { ...body_, ai_generated: aiGenerated },
+          body: body_,
         });
       onSaved();
       onClose();
@@ -129,7 +132,8 @@ function StoryForm({
             placeholder="How we streamlined a multi-modal import lane."
           />
         </Field>
-        <Field label="Body">
+        <Field label="Headline"><Input value={headline} onChange={e=>setHeadline(e.target.value)} /></Field><Field label="Service category"><Input value={serviceCategory} onChange={e=>setServiceCategory(e.target.value)} /></Field><Field label="Completed operation file IDs" hint="Comma separated; use the eligible-file picker API"><Input value={dossierIds} onChange={e=>setDossierIds(e.target.value)} /></Field><Field label="KPIs" hint='JSON: [{"label":"Containers","value":"40"}]'><Textarea value={kpis} onChange={e=>setKpis(e.target.value)} rows={4}/></Field><Field label="Cover vault ID"><Input value={coverId} onChange={e=>setCoverId(e.target.value)}/></Field><Field label="Client logo vault ID"><Input value={logoId} onChange={e=>setLogoId(e.target.value)}/></Field><Field label="Gallery vault IDs" hint="Comma separated"><Input value={galleryIds} onChange={e=>setGalleryIds(e.target.value)}/></Field>
+        <Field label="Operations execution">
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -138,16 +142,6 @@ function StoryForm({
             placeholder="The full case study…"
           />
         </Field>
-        {!editing && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={aiGenerated}
-              onChange={(e) => setAiGenerated(e.target.checked)}
-            />
-            Mark as AI-drafted (for the record)
-          </label>
-        )}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>

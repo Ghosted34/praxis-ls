@@ -25,14 +25,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (336)
+## All codes (337)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
-| `AI_UNAVAILABLE` | 403, 503 | 3× | — |
+| `AI_UNAVAILABLE` | 403, 503 | 4× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
@@ -155,6 +155,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
 | `INCOMPLETE_APPLICATION` | 422 | 1× | — |
+| `INELIGIBLE_DOSSIER` | 422 | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |

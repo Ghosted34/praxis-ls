@@ -1,16 +1,6 @@
-"use strict";
-const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
-const insert = (client, data) => insertOne(client, "success_story", data);
-const get = (client, id) => getById(client, "success_story", "success_story_id", id);
-async function update(client, id, fields) {
-  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
-  // identifier validation and writable allow-list in query-helpers.
-  return updateOne(client, "success_story", "success_story_id", id, fields, "*", null);
-}
-async function list(client, q = {}) {
-  const { limit, offset } = page(q); const params = [limit, offset]; const wh = [];
-  if (q.published_only === "true" || q.published_only === true) wh.push("is_published = true");
-  const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
-  return (await client.query("SELECT * FROM success_story " + where + " ORDER BY COALESCE(published_at, created_at) DESC LIMIT $1 OFFSET $2", params)).rows;
-}
-module.exports = { insert, get, update, list };
+"use strict";const {insertOne,updateOne,getById,page}=require("../../../shared/db/query-helpers");const insert=(c,d)=>insertOne(c,"success_story",d);const get=(c,id)=>getById(c,"success_story","success_story_id",id);const update=(c,id,f)=>updateOne(c,"success_story","success_story_id",id,f,"*",null);
+async function replaceDossiers(c,id,ids){await c.query("DELETE FROM success_story_dossier WHERE success_story_id=$1",[id]);for(const d of ids)await c.query("INSERT INTO success_story_dossier(success_story_id,dossier_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[id,d]);}
+const dossiers=async(c,id)=>(await c.query("SELECT d.dossier_id,d.ref,d.status,d.pol,d.pod,d.created_at,d.updated_at,st.key service_category FROM success_story_dossier x JOIN dossier_visible d USING(dossier_id) LEFT JOIN service_type st USING(service_type_id) WHERE x.success_story_id=$1",[id])).rows;
+const eligible=async c=>(await c.query("SELECT d.dossier_id,d.ref,d.client_id,d.status,d.pol,d.pod,d.created_at,d.updated_at,st.key service_category FROM dossier_visible d LEFT JOIN service_type st USING(service_type_id) WHERE d.status IN ('COMPLETED','FINANCIALLY_PENDING','CLOSED') ORDER BY d.updated_at DESC LIMIT 200")).rows;
+async function list(c,q={}){const {limit,offset}=page(q),wh=[];if(q.published_only==="true"||q.published_only===true)wh.push("is_published=true");return(await c.query(`SELECT * FROM success_story ${wh.length?"WHERE "+wh.join(" AND "):""} ORDER BY COALESCE(published_at,created_at) DESC LIMIT $1 OFFSET $2`,[limit,offset])).rows;}
+module.exports={insert,get,update,list,replaceDossiers,dossiers,eligible};

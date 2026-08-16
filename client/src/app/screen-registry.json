@@ -1280,6 +1280,7 @@
         "list_success_stories",
         "get_success_story",
         "create_success_story",
+        "generate_success_story",
         "publish_success_story"
       ]
     },

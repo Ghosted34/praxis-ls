@@ -63,6 +63,7 @@ function write(key: string, hidden: ReadonlySet<string>) {
   try {
     localStorage.setItem(PREFIX + key, JSON.stringify([...hidden]));
   } catch {
+     /* @silent:storage|parse|teardown */ 
     /* preference is still applied for this session */
   }
 }

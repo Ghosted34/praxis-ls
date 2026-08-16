@@ -162,6 +162,7 @@ function currentUserRef(): string | undefined {
     const sub = json?.sub ?? json?.user_id;
     return typeof sub === "string" ? sub : undefined;
   } catch {
+     /* @silent:storage|parse|teardown */ 
     // A token shape we do not recognise. Returning undefined means "unknown",
     // and an entry with an unknown author replays rather than being stranded.
     return undefined;
@@ -391,6 +392,7 @@ export function __resetOutboxForTests(): void {
   try {
     storage()?.removeItem(KEY);
   } catch {
+     /* @silent:storage|parse|teardown */ 
     /* nothing to do */
   }
 }

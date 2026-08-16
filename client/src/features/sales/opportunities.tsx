@@ -1,16 +1,33 @@
 /**
  * Sales & CRM — the opportunity pipeline: Kanban board, list view, win/lose.
  *
- * Split out of `features/sales/pages.tsx` in Phase 4 (audit F7).
+ * Split out of `features/sales/pages.tsx` in Phase 4 (audit F7), then extended
+ * by SALES_CRM_FEATURES.md#F7 (the sales pipeline feature).
  *
  * The board's drag-and-drop is a POINTER gesture. Every card also carries a
  * "Move" menu calling the same `/move` endpoint, because until Phase 4 added it
  * the CRM's primary screen could not be worked without a mouse at all.
+ *
+ * ── THE KPI ROW IS SERVER-COMPUTED (F7) ─────────────────────────────────────
+ * It used to be summed in this component from `useList("/opportunities")` —
+ * which returns ONE PAGE. Past 50 deals the "open pipeline" figure quietly
+ * became "open pipeline, first page", and nothing on screen said so. It now
+ * comes from `/opportunities/metrics`, which aggregates in SQL under the same
+ * filters as the list.
+ *
+ * ── TWO WIN RATES, BOTH NAMED ───────────────────────────────────────────────
+ * `win_rate_settled` is won / (won + lost) — decided deals only, the headline.
+ * `win_rate_all_deals` is won / every deal, which is what the legacy's
+ * kpis.php computes. They differ by a lot on a busy pipeline, and a dashboard
+ * that shows one of them unlabelled is how two people quote different win rates
+ * off the same screen. Null renders as "—", never 0%: "nothing has settled yet"
+ * and "settled, none won" are different facts.
  */
 
 import * as React from "react";
-import { tenant } from "@/lib/api-client";
+import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Select } from "@/components/ui/modal";
@@ -21,12 +38,26 @@ import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, money } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
+import { Chips } from "@/components/ui/chips";
 import { Segmented } from "@/components/ui/segmented";
-import { Stat } from "@/components/ui/stat";
+import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 import { OpportunityForm, WinModal } from "./opportunity-forms";
 
 /* ═══════════════════════════════ OPPORTUNITIES ═══════════════════════════════ */
+
+type Metrics = {
+  pipeline_value: number;
+  weighted_value: number;
+  won_value: number;
+  open_count: number;
+  won_count: number;
+  lost_count: number;
+  settled_count: number;
+  total_count: number;
+  win_rate_settled: number | null;
+  win_rate_all_deals: number | null;
+};
 
 const OPP_AI: AiAction[] = [
   {
@@ -49,15 +80,38 @@ const OPP_AI: AiAction[] = [
   },
 ];
 
+/** The 0683 intake vocabulary plus the two in-system origins a deal can have. */
+const SOURCE_FILTERS = [
+  { value: "", label: "All sources" },
+  { value: "QUOTE_REQUEST", label: "Quote request" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "MANUAL", label: "Manual" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "CAMPAIGN", label: "Campaign" },
+  { value: "LEAD_CONVERSION", label: "Lead" },
+  { value: "PARTNER", label: "Partner" },
+];
+
+const SOURCE_LABEL: Record<string, string> = Object.fromEntries(
+  SOURCE_FILTERS.filter((s) => s.value).map((s) => [s.value, s.label]),
+);
+
+const pct = (v: number | null | undefined) =>
+  v === null || v === undefined ? "—" : `${v}%`;
+
 export function OpportunitiesPage() {
   const reload = useRefresh();
   const { rows: stages, error: stErr } = useList("/opportunities/stages");
-  const { rows: opps, error: oppErr } = useList("/opportunities");
   const { rows: leads } = useList("/leads");
   const { rows: clients } = useList("/clients");
   const { rows: entities } = useList("/entities");
 
   const [view, setView] = React.useState<"board" | "list">("board");
+  const [sourceFilter, setSourceFilter] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [opps, setOpps] = React.useState<Row[] | null>(null);
+  const [metrics, setMetrics] = React.useState<Metrics | null>(null);
+  const [oppErr, setOppErr] = React.useState<string | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [winning, setWinning] = React.useState<Row | null>(null);
@@ -65,6 +119,41 @@ export function OpportunitiesPage() {
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [dragId, setDragId] = React.useState<string | null>(null);
   const [dragOver, setDragOver] = React.useState<string | null>(null);
+
+  /** The filters the list, the KPI row and the CSV export all share. */
+  const query = React.useCallback(() => {
+    const p = new URLSearchParams();
+    if (sourceFilter) p.set("source", sourceFilter);
+    if (search.trim()) p.set("q", search.trim());
+    // The board needs every open deal, not one page of them.
+    p.set("limit", "200");
+    return p;
+  }, [sourceFilter, search]);
+
+  const load = React.useCallback(async () => {
+    setOppErr(null);
+    const qs = query().toString();
+    try {
+      const [listOut, metricsOut] = await Promise.all([
+        tenant<{ data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
+        tenant<{ data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
+      ]);
+      setOpps(listOut?.data || []);
+      setMetrics(metricsOut?.data || null);
+    } catch (e) {
+      setOppErr(errMsg(e));
+    }
+  }, [query]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Refetch this screen's own state AND every cached tenant query. */
+  const refreshAll = React.useCallback(() => {
+    void load();
+    reload();
+  }, [load, reload]);
 
   const clientName = React.useMemo(
     () =>
@@ -89,38 +178,12 @@ export function OpportunitiesPage() {
     return "—";
   }
 
-  const openOpps = React.useMemo(
-    () => (opps || []).filter((o) => String(o.status) === "OPEN"),
-    [opps],
-  );
-  const forecast = React.useMemo(() => {
-    const value = openOpps.reduce(
-      (a, o) => a + (Number(o.estimated_value) || 0),
-      0,
-    );
-    const weighted = openOpps.reduce(
-      (a, o) =>
-        a +
-        ((Number(o.estimated_value) || 0) * (Number(o.probability) || 0)) / 100,
-      0,
-    );
-    const won = (opps || []).filter((o) => String(o.status) === "WON").length;
-    const lost = (opps || []).filter((o) => String(o.status) === "LOST").length;
-    const winRate = won + lost ? Math.round((won / (won + lost)) * 100) : null;
-    return {
-      value,
-      weighted: Math.round(weighted),
-      open: openOpps.length,
-      winRate,
-    };
-  }, [openOpps, opps]);
-
   async function act(id: string, fn: () => Promise<unknown>) {
     setRowBusy(id);
     setRowError(null);
     try {
       await fn();
-      reload();
+      refreshAll();
     } catch (e) {
       setRowError(errMsg(e));
     } finally {
@@ -139,18 +202,36 @@ export function OpportunitiesPage() {
       tenant(`/opportunities/${id}/lose`, { method: "POST", body: {} }),
     );
 
+  function exportCsv() {
+    const qs = query().toString();
+    const today = new Date().toISOString().slice(0, 10);
+    void download(
+      `/opportunities/export.csv${qs ? `?${qs}` : ""}`,
+      `sales_pipeline_${today}.csv`,
+    );
+  }
+
   function onDrop(stageId: string) {
     setDragOver(null);
     const id = dragId;
     setDragId(null);
     if (!id) return;
-    const opp = openOpps.find((o) => String(o.opportunity_id) === id);
-    if (!opp || String(opp.pipeline_stage_id) === stageId) return;
+    const opp = (opps || []).find((o) => String(o.opportunity_id) === id);
+    if (!opp || String(opp.status) !== "OPEN") return;
+    if (String(opp.pipeline_stage_id) === stageId) return;
     move(id, stageId);
   }
 
   const loading = stages === null || opps === null;
   const err = stErr || oppErr;
+
+  /** Source · scope · originating reference — the legacy board's card subtitle. */
+  function provenance(o: Row): string {
+    const src = String(o.source || "MANUAL");
+    const parts = [SOURCE_LABEL[src] ?? src.toLowerCase()];
+    if (o.source_ref) parts.push(String(o.source_ref));
+    return parts.join(" · ");
+  }
 
   return (
     <section className="mx-auto max-w-[1400px] animate-fade-in">
@@ -170,6 +251,13 @@ export function OpportunitiesPage() {
               ]}
             />
             <Button
+              variant="outline"
+              onClick={exportCsv}
+              disabled={!(opps || []).length}
+            >
+              Export CSV
+            </Button>
+            <Button
               onClick={() => {
                 setEditing(null);
                 setFormOpen(true);
@@ -182,18 +270,56 @@ export function OpportunitiesPage() {
       />
       <HubTabs />
 
-      {/* Forecast strip (Pixie "Today" metric row) */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Open pipeline" value={money(forecast.value)} />
-        <Stat
-          label="Weighted forecast"
-          value={money(forecast.weighted)}
-          tone="accent"
+      {/* Forecast strip — computed in SQL over the whole filtered set, not over
+          the page this component happens to be holding. Both win rates carry
+          their denominator in the hint, so neither figure has to be trusted on
+          faith. */}
+      <KpiRow>
+        <KpiTile
+          label="Open pipeline"
+          value={money(metrics?.pipeline_value ?? 0)}
+          hint={`${metrics?.open_count ?? 0} open deals`}
         />
-        <Stat label="Open deals" value={String(forecast.open)} />
-        <Stat
-          label="Win rate"
-          value={forecast.winRate === null ? "—" : `${forecast.winRate}%`}
+        <KpiTile
+          label="Weighted forecast"
+          value={money(metrics?.weighted_value ?? 0)}
+          hint="value × probability"
+          tone="info"
+        />
+        <KpiTile
+          label="Won value"
+          value={money(metrics?.won_value ?? 0)}
+          hint={`${metrics?.won_count ?? 0} won`}
+          tone="ok"
+        />
+        <KpiTile
+          label="Win rate (settled)"
+          value={pct(metrics?.win_rate_settled)}
+          hint={`${metrics?.won_count ?? 0} won of ${metrics?.settled_count ?? 0} decided`}
+          tone="ok"
+        />
+        <KpiTile
+          label="Win rate (all deals)"
+          value={pct(metrics?.win_rate_all_deals)}
+          hint={`${metrics?.won_count ?? 0} won of ${metrics?.total_count ?? 0} total`}
+        />
+      </KpiRow>
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full sm:max-w-md">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a deal — name, source reference, scope…"
+          />
+        </div>
+      </div>
+      <div className="mb-4">
+        <Chips
+          label="Filter by source"
+          value={sourceFilter}
+          options={SOURCE_FILTERS}
+          onChange={setSourceFilter}
         />
       </div>
 
@@ -256,6 +382,13 @@ export function OpportunitiesPage() {
                     <span className="text-xs text-muted-foreground">
                       {cards.length}
                     </span>
+                    {/* The stage's own win probability — the number a deal
+                        inherits when it lands here (legacy STAGE_CONFIG). */}
+                    {s.default_probability != null && (
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {cell(s.default_probability)}%
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {money(colValue)}
@@ -269,6 +402,7 @@ export function OpportunitiesPage() {
                   ) : (
                     cards.map((o) => {
                       const id = String(o.opportunity_id);
+                      const settled = String(o.status) !== "OPEN";
                       return (
                         // `draggable` is a pointer-only gesture. The "Move" menu
                         // below is its keyboard equivalent — same `move()` call,
@@ -279,10 +413,10 @@ export function OpportunitiesPage() {
                         // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                         <div
                           key={id}
-                          draggable
+                          draggable={!settled}
                           onDragStart={() => setDragId(id)}
                           onDragEnd={() => setDragId(null)}
-                          className={`lux-card cursor-grab p-3 active:cursor-grabbing ${rowBusy === id ? "opacity-50" : ""}`}
+                          className={`lux-card p-3 ${settled ? "" : "cursor-grab active:cursor-grabbing"} ${rowBusy === id ? "opacity-50" : ""}`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-sm font-medium text-foreground">
@@ -297,71 +431,85 @@ export function OpportunitiesPage() {
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">
                             {withLabel(o)}
                           </p>
+                          <p className="mt-0.5 truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+                            {provenance(o)}
+                          </p>
+                          {o.scope_summary ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {cell(o.scope_summary)}
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-xs font-semibold text-foreground">
                             {money(o.estimated_value, o.currency)}
                           </p>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs"
-                              disabled={rowBusy === id}
-                              onClick={() => setWinning(o)}
-                            >
-                              Win
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs"
-                              disabled={rowBusy === id}
-                              onClick={() => lose(id)}
-                            >
-                              Lose
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => {
-                                setEditing(o);
-                                setFormOpen(true);
-                              }}
-                            >
-                              Edit
-                            </Button>
-                            {/* The keyboard path across the pipeline. Named per
-                                card so a screen-reader user hears which deal is
-                                being moved, not six identical "Move" buttons. */}
-                            <DropdownMenu
-                              label={`Move ${cell(o.name)} to stage`}
-                              trigger={
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  disabled={rowBusy === id}
-                                >
-                                  Move
-                                </Button>
-                              }
-                            >
-                              {(stages || [])
-                                .filter(
-                                  (t) => String(t.pipeline_stage_id) !== sid,
-                                )
-                                .map((t) => (
-                                  <DropdownItem
-                                    key={String(t.pipeline_stage_id)}
-                                    onSelect={() =>
-                                      move(id, String(t.pipeline_stage_id))
-                                    }
+                          {settled ? (
+                            <p className="mt-2 text-[11px] text-muted-foreground">
+                              Settled — {cell(o.status)}
+                            </p>
+                          ) : (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                disabled={rowBusy === id}
+                                onClick={() => setWinning(o)}
+                              >
+                                Win
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                disabled={rowBusy === id}
+                                onClick={() => lose(id)}
+                              >
+                                Lose
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setEditing(o);
+                                  setFormOpen(true);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              {/* The keyboard path across the pipeline. Named per
+                                  card so a screen-reader user hears which deal is
+                                  being moved, not six identical "Move" buttons. */}
+                              <DropdownMenu
+                                label={`Move ${cell(o.name)} to stage`}
+                                trigger={
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs"
+                                    disabled={rowBusy === id}
                                   >
-                                    {cell(t.name)}
-                                  </DropdownItem>
-                                ))}
-                            </DropdownMenu>
-                          </div>
+                                    Move
+                                  </Button>
+                                }
+                              >
+                                {(stages || [])
+                                  .filter(
+                                    (t) => String(t.pipeline_stage_id) !== sid,
+                                  )
+                                  .map((t) => (
+                                    <DropdownItem
+                                      key={String(t.pipeline_stage_id)}
+                                      onSelect={() =>
+                                        move(id, String(t.pipeline_stage_id))
+                                      }
+                                    >
+                                      {cell(t.name)}
+                                    </DropdownItem>
+                                  ))}
+                              </DropdownMenu>
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -397,8 +545,14 @@ export function OpportunitiesPage() {
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {withLabel(o)} · {cell(o.stage_name)} ·{" "}
-                      {o.probability != null ? `${cell(o.probability)}%` : "—"}
+                      {o.probability != null ? `${cell(o.probability)}%` : "—"} ·{" "}
+                      {provenance(o)}
                     </p>
+                    {o.scope_summary ? (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {cell(o.scope_summary)}
+                      </p>
+                    ) : null}
                   </div>
                   <span className="text-sm font-semibold text-foreground">
                     {money(o.estimated_value, o.currency)}
@@ -464,13 +618,13 @@ export function OpportunitiesPage() {
         leads={leads}
         clients={clients}
         onClose={() => setFormOpen(false)}
-        onSaved={reload}
+        onSaved={refreshAll}
       />
       <WinModal
         opp={winning}
         entities={entities}
         onClose={() => setWinning(null)}
-        onDone={reload}
+        onDone={refreshAll}
       />
     </section>
   );

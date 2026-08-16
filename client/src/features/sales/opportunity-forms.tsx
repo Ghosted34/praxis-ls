@@ -12,10 +12,23 @@ import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 import { ErrorState } from "@/components/ui/states";
 import { errMsg, type Row } from "@/lib/use-resource";
 import { cell, money } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
+
+/** Mirrors opportunity.rules.SOURCES (and the ck_opportunity_source CHECK). */
+const SOURCES = [
+  { value: "MANUAL", label: "Manual entry" },
+  { value: "QUOTE_REQUEST", label: "Quote request" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "CAMPAIGN", label: "Campaign" },
+  { value: "LEAD_CONVERSION", label: "Lead conversion" },
+  { value: "PARTNER", label: "Partner" },
+  { value: "OTHER", label: "Other" },
+];
 
 export function OpportunityForm({
   open,
@@ -43,6 +56,12 @@ export function OpportunityForm({
   const [value, setValue] = React.useState("");
   const [currency, setCurrency] = React.useState("XAF");
   const [probability, setProbability] = React.useState("");
+  // F7: where the deal came from, and what it is for. The board renders both
+  // on the card; the legacy reads them off the originating quote request and
+  // this system had nowhere to keep them.
+  const [source, setSource] = React.useState("MANUAL");
+  const [sourceRef, setSourceRef] = React.useState("");
+  const [scope, setScope] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -50,6 +69,15 @@ export function OpportunityForm({
     () => (stages || []).filter((s) => !s.is_won && !s.is_lost),
     [stages],
   );
+  /** The probability the chosen stage would give this deal, for the placeholder. */
+  const stageProbability = React.useMemo(() => {
+    const st = (stages || []).find(
+      (s) => String(s.pipeline_stage_id) === stageId,
+    );
+    return st && st.default_probability != null
+      ? Number(st.default_probability)
+      : null;
+  }, [stages, stageId]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -76,6 +104,9 @@ export function OpportunityForm({
     setProbability(
       editing?.probability != null ? String(editing.probability) : "",
     );
+    setSource(editing?.source ? String(editing.source) : "MANUAL");
+    setSourceRef(editing?.source_ref ? String(editing.source_ref) : "");
+    setScope(editing?.scope_summary ? String(editing.scope_summary) : "");
     setError(null);
   }, [open, editing, openStages]);
 
@@ -86,7 +117,17 @@ export function OpportunityForm({
       name: name.trim(),
       estimated_value: value === "" ? undefined : Number(value),
       currency: currency.trim().toUpperCase() || "XAF",
-      probability: probability === "" ? undefined : Number(probability),
+      // "" clears the override and hands the probability back to the stage —
+      // null is meaningful to the API, undefined means "don't touch".
+      probability:
+        probability === ""
+          ? editing
+            ? null
+            : undefined
+          : Number(probability),
+      source: source || "MANUAL",
+      source_ref: sourceRef.trim() || null,
+      scope_summary: scope.trim() || null,
     };
     try {
       if (editing) {
@@ -232,7 +273,10 @@ export function OpportunityForm({
               maxLength={3}
             />
           </Field>
-          <Field label="Probability %">
+          <Field
+            label="Probability %"
+            hint="Leave blank to follow the stage"
+          >
             <Input
               type="number"
               min="0"
@@ -241,10 +285,44 @@ export function OpportunityForm({
               className="num text-right"
               value={probability}
               onChange={(e) => setProbability(e.target.value)}
-              placeholder="40"
+              placeholder={
+                stageProbability === null ? "40" : String(stageProbability)
+              }
             />
           </Field>
         </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Source" hint="Where the deal came from">
+            <Select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+            >
+              {SOURCES.map((sc) => (
+                <option key={sc.value} value={sc.value}>
+                  {sc.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Source reference"
+            hint="The intake or campaign reference this came in on"
+          >
+            <Input
+              value={sourceRef}
+              onChange={(e) => setSourceRef(e.target.value)}
+              placeholder="SQ-2026-0042"
+            />
+          </Field>
+        </div>
+        <Field label="Scope" hint="What the deal is for — shown on the board card">
+          <Textarea
+            rows={3}
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            placeholder="2 × 40ft reefer, Douala → N'Djamena, monthly"
+          />
+        </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>

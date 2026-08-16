@@ -396,13 +396,18 @@ const BUILDERS = [
   },
   {
     key: "marketing_campaign",
-    sql: `SELECT mc.campaign_id, mc.name, mc.status, mc.budget, mc.start_date, mc.end_date
+    // F8: this SELECT named mc.budget / mc.start_date / mc.end_date, and none of
+    // the three has ever existed on this table — the card threw on every
+    // reindex. The real columns are budget_amount (added by 0685) and
+    // starts_on / ends_on.
+    sql: `SELECT mc.campaign_id, mc.name, mc.status, mc.budget_amount, mc.budget_currency,
+                 mc.starts_on, mc.ends_on, mc.actual_leads, mc.actual_won
             FROM marketing_campaign mc ORDER BY mc.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `campaign:${r.name}`,
       title: `Campaign: ${r.name}`,
       confidentiality: "normal",
-      text: `Marketing campaign "${r.name}" — status ${r.status}, budget ${r.budget || 0} XAF${r.start_date ? `, ${new Date(r.start_date).toLocaleDateString()}` : ""}${r.end_date ? ` to ${new Date(r.end_date).toLocaleDateString()}` : ""}.`,
+      text: `Marketing campaign "${r.name}" — status ${r.status}, budget ${r.budget_amount || 0} ${r.budget_currency || "XAF"}${r.starts_on ? `, ${new Date(r.starts_on).toLocaleDateString()}` : ""}${r.ends_on ? ` to ${new Date(r.ends_on).toLocaleDateString()}` : ""}. Recorded (hand-entered) performance: ${r.actual_leads || 0} leads, ${r.actual_won || 0} won.`,
     }),
   },
   // ── Master data ──

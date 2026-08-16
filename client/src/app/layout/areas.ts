@@ -97,6 +97,7 @@ export const AREAS: Area[] = [
     basePath: "/sales",
     sections: [
       { key: "leads", label: "Leads & intake" },
+      { key: "quote-requests", label: "Quote requests" },
       { key: "opportunities", label: "Opportunities" },
       { key: "proposals", label: "Proposals" },
       { key: "meetings", label: "Meetings" },

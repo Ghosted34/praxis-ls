@@ -3,6 +3,7 @@
 import { TabbedHub } from "@/components/tabbed-hub";
 import { hubTabs } from "@/app/layout/areas";
 import { LeadsPage } from "./leads";
+import { QuoteRequestsPage } from "./quote-requests";
 import { OpportunitiesPage } from "./opportunities";
 import { ProposalsPage } from "./proposals";
 import { MeetingsPage } from "./meetings";
@@ -16,6 +17,7 @@ export function SalesHub() {
       basePath="/sales"
       tabs={hubTabs("/sales", {
         leads: LeadsPage,
+        "quote-requests": QuoteRequestsPage,
         opportunities: OpportunitiesPage,
         proposals: ProposalsPage,
         meetings: MeetingsPage,

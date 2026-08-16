@@ -194,7 +194,14 @@ async function apply(client, { vacancy, data, slug }) {
       // — silently dropping a 20 MB CV and confirming the application leaves
       // them believing a recruiter has a file nobody received. A storage
       // failure is OURS, and the application is kept.
-      if (err instanceof AppError && err.httpStatus < 500) throw err;
+      // `status`, not `httpStatus` — AppError has never had the latter, so this
+      // read `undefined < 500`, which is false, and EVERY rejected file was
+      // swallowed as though it were our storage failing. The candidate was told
+      // "we couldn't attach your CV, email it to us" when the truth was "that
+      // file is 20 MB" or "that isn't a PDF" — the one thing they could have
+      // fixed in ten seconds, and exactly what the comment above says must
+      // reach them.
+      if (err instanceof AppError && err.status < 500) throw err;
       logger.error({ err, vacancyId: vacancy.vacancy_id }, "[careers] CV upload failed — recording the application without it");
     }
   }

@@ -33,6 +33,9 @@
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useBranding } from "@/app/branding/branding-context";
+// A standalone renderer, not shell furniture — see the note above about what
+// this page may import.
+import { Markdown } from "@/components/markdown";
 import * as api from "@/lib/careers-api";
 
 const shell = "mx-auto w-full max-w-3xl px-4 py-10 sm:px-6";
@@ -172,7 +175,18 @@ const EMPTY: FormState = {
 const field = "w-full rounded-lg border bg-background px-3 py-2 text-sm";
 const label = "block text-sm font-medium text-foreground";
 
-function ApplyForm({ token }: { token: string }) {
+function ApplyForm({
+  token,
+  role,
+}: {
+  token: string;
+  role: api.PublicVacancy;
+}) {
+  // What this role insists on. The server refuses an application without them
+  // with a named field error; marking them here is what stops somebody writing
+  // a covering note's worth of answers and only then being told.
+  const needsNote = Boolean(role.apply_config?.require_cover_letter);
+  const needsPortfolio = Boolean(role.apply_config?.require_portfolio);
   const [f, setF] = React.useState(EMPTY);
   const set = (k: keyof FormState, v: string) =>
     setF((s) => ({ ...s, [k]: v }));
@@ -265,7 +279,11 @@ function ApplyForm({ token }: { token: string }) {
   }
 
   const canSubmit =
-    f.full_name.trim().length > 1 && /.+@.+\..+/.test(f.email) && !busy;
+    f.full_name.trim().length > 1 &&
+    /.+@.+\..+/.test(f.email) &&
+    (!needsNote || f.cover_note.trim().length > 0) &&
+    (!needsPortfolio || f.portfolio_url.trim().length > 0) &&
+    !busy;
 
   return (
     <form className="space-y-4" onSubmit={submit}>
@@ -370,11 +388,12 @@ function ApplyForm({ token }: { token: string }) {
 
       <div>
         <label className={label} htmlFor="c-port">
-          Portfolio or LinkedIn
+          Portfolio or LinkedIn{needsPortfolio ? " (required)" : ""}
         </label>
         <input
           id="c-port"
           type="url"
+          required={needsPortfolio}
           className={field}
           placeholder="https://…"
           value={f.portfolio_url}
@@ -400,11 +419,14 @@ function ApplyForm({ token }: { token: string }) {
 
       <div>
         <label className={label} htmlFor="c-note">
-          Anything else you would like us to know
+          {needsNote
+            ? "Your covering note (required)"
+            : "Anything else you would like us to know"}
         </label>
         <textarea
           id="c-note"
           rows={5}
+          required={needsNote}
           maxLength={5000}
           className={field}
           value={f.cover_note}
@@ -499,9 +521,16 @@ function VacancyDetail({ token }: { token: string }) {
         )}
       </div>
 
+      {/*
+        The advert is markdown — the drafting model writes headings and bullets,
+        and the editor's own preview renders it — so a candidate was reading
+        `## Accountant` and `- Prepare financial statements` as literal text.
+        `Markdown` builds React elements (no dangerouslySetInnerHTML), which is
+        also why it is safe on the one page a stranger can reach.
+      */}
       {v.description && (
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-          {v.description}
+        <div className="text-sm leading-relaxed text-muted-foreground">
+          <Markdown text={v.description} />
         </div>
       )}
 
@@ -518,7 +547,7 @@ function VacancyDetail({ token }: { token: string }) {
         </div>
       )}
 
-      <ApplyForm token={token} />
+      <ApplyForm token={token} role={v} />
     </article>
   );
 }
@@ -529,7 +558,17 @@ export function CareersPage() {
   const name = branding.name || "Careers";
 
   return (
-    <div className="min-h-screen bg-background">
+    /*
+     * This page OWNS ITS SCROLLING, which the staff screens do not have to.
+     *
+     * `html, body, #root` are `height: 100%; overflow: hidden` globally, because
+     * inside the app the shell's <main> is the single custom scroll container.
+     * This page renders outside the shell — so with only `min-h-screen` there
+     * was no scroller anywhere, and every advert was silently clipped at the
+     * fold: a candidate could read the first screenful of a job description and
+     * nothing else, with no scrollbar to suggest there was more.
+     */
+    <div className="h-full overflow-y-auto bg-background">
       <Masthead name={name} logoUrl={branding.logoUrl} />
       <main className={shell}>
         {token ? (

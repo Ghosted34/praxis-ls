@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { AttendanceDaysView } from "./attendance-days";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -134,19 +135,30 @@ function AttendanceLog({ date }: { date: string }) {
 function AbsencePanel({ date }: { date: string }) {
   const a = useResource(() => api.absence(date), [date]);
   const rows = a.data?.absent || [];
+  // The day has not been reconciled — so this list is "has not arrived yet",
+  // not "was absent". Saying so is the difference between a manager reading a
+  // settled fact and reading the 09:00 state of a day still in progress; the
+  // old panel presented the second as the first, with most of the company on it.
+  const provisional = a.data && a.data.reconciled === false;
   return (
     <div>
       <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-        Absent{" "}
+        {provisional ? "Not in yet" : "Absent"}{" "}
         <Pill tone={rows.length ? "bad" : "ok"}>{a.data?.count ?? 0}</Pill>
       </h2>
+      {provisional && (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          This day has not been reconciled. People on approved leave are already
+          excluded; everyone else here may simply not have arrived.
+        </p>
+      )}
       {a.loading ? (
         <div className="py-3 text-center micro">Loading…</div>
       ) : a.error ? (
         <ErrorState message={a.error} />
       ) : rows.length === 0 ? (
         <div className="lux-card p-4 text-sm text-muted-foreground">
-          Everyone active clocked in.
+          {provisional ? "Everyone expected today has clocked in." : "Nobody was absent."}
         </div>
       ) : (
         <ul className="lux-card divide-y divide-border">
@@ -637,6 +649,10 @@ function Devices() {
 
 export function AttendancePage() {
   const [date, setDate] = React.useState(today);
+  // The log answers "who badged in today"; the reconciled month answers "what
+  // did this cost, and is any of it wrong". Different questions, different
+  // windows — so they are separate views rather than one crowded page.
+  const [view, setView] = React.useState<"day" | "month">("day");
   return (
     <section className={shell}>
       <PageHeader
@@ -645,25 +661,45 @@ export function AttendancePage() {
         description="Team clock-ins, lateness and absences. Employees clock in/out from the clock in the title bar (or the floating cluster on a phone)."
       />
       <HubTabs />{" "}
-      <div className="mb-4 flex items-center gap-3">
-        <span className="micro">Day</span>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-auto"
-        />
+      <div className="chips mb-4">
+        <button
+          className={`chip ${view === "day" ? "on" : ""}`}
+          onClick={() => setView("day")}
+        >
+          Today
+        </button>
+        <button
+          className={`chip ${view === "month" ? "on" : ""}`}
+          onClick={() => setView("month")}
+        >
+          Reconciled days
+        </button>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <AttendanceLog date={date} />
-        <AbsencePanel date={date} />
-      </div>
-      <div className="mt-8">
-        <Worksites />
-      </div>
-      <div className="mt-8">
-        <Devices />
-      </div>
+      {view === "day" ? (
+        <>
+          <div className="mb-4 flex items-center gap-3">
+            <span className="micro">Day</span>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-auto"
+            />
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
+            <AttendanceLog date={date} />
+            <AbsencePanel date={date} />
+          </div>
+          <div className="mt-8">
+            <Worksites />
+          </div>
+          <div className="mt-8">
+            <Devices />
+          </div>
+        </>
+      ) : (
+        <AttendanceDaysView />
+      )}
       <ScreenAi path="hr/attendance" />
     </section>
   );

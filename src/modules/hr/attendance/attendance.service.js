@@ -18,6 +18,8 @@ const repo = require("./attendance.repo");
 const events = require("./attendance.events");
 const employeeService = require("../../master/employees/employees.service");
 const geoapify = require("../../../services/geoapify.service");
+const rules = require("./attendance.rules");
+const reconcile = require("./attendance.reconcile");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "attendance", events });
 
@@ -174,14 +176,33 @@ const parseHHMM = (s) => {
 };
 async function attendancePolicy(client) {
   const v = (await getSetting(client, "hr", "attendance_policy", null)) || {};
-  return { workStart: parseHHMM(v.work_start) ?? 8 * 60, grace: Number(v.grace_minutes ?? 10) };
+  return {
+    workStart: parseHHMM(v.work_start) ?? 8 * 60,
+    startText: typeof v.work_start === "string" && v.work_start ? v.work_start : "08:00",
+    grace: Number(v.grace_minutes ?? 10),
+    timeZone: await reconcile.timezoneOf(client),
+  };
 }
+/**
+ * Lateness for the admin log.
+ *
+ * The "(tz caveat)" that used to be on this function was a bug, not a caveat:
+ * it read `new Date(clockInAt).getHours()`, i.e. the SERVER's clock. On a UTC
+ * host — every container we deploy — a Cameroonian employee (UTC+1) arriving at
+ * 08:30 read as 07:30 and was half an hour EARLY against an 08:00 start. Nobody
+ * was ever late. `attendance.rules` reads the wall clock in the tenant's own
+ * timezone; this is now a thin call onto the same code the reconciler uses, so
+ * the log and the charged day can never disagree.
+ */
 function lateness(clockInAt, policy) {
   if (!clockInAt) return { is_late: false, minutes_late: 0 };
-  const d = new Date(clockInAt);
-  const mins = d.getHours() * 60 + d.getMinutes(); // server-local time-of-day (tz caveat)
-  const late = mins > policy.workStart + policy.grace;
-  return { is_late: late, minutes_late: late ? mins - policy.workStart : 0 };
+  const minutes = rules.minutesLate({
+    clock_in_at: clockInAt,
+    expected_start_time: policy.startText,
+    grace_minutes: policy.grace,
+    timeZone: policy.timeZone,
+  });
+  return { is_late: minutes > 0, minutes_late: minutes };
 }
 
 module.exports = {
@@ -195,17 +216,59 @@ module.exports = {
     return rows.map((r) => ({ ...r, ...lateness(r.clock_in_at, policy) }));
   },
 
-  /** Active employees with NO clock-in on a given day (default today). */
+  /**
+   * Who was actually absent on a day.
+   *
+   * ── WHAT THIS USED TO REPORT ─────────────────────────────────────────────
+   *
+   * "Every active employee with no clock-in." That counted as absent: everybody
+   * on approved leave, everybody whose shift does not include that weekday,
+   * everybody on a public holiday, and — because it defaulted to TODAY —
+   * everybody who simply had not arrived yet at the time the page was opened.
+   * A manager checking absences at 08:30 saw most of the company.
+   *
+   * It now reads the reconciled day (0697), where those cases are distinct
+   * states rather than the same missing row. `attendance_log.clock_in_at::date`
+   * is gone with it: that compared a UTC date to a local one, so a punch after
+   * 23:00 Douala counted for the following day.
+   *
+   * ── AND WHEN A DAY HAS NOT BEEN RECONCILED YET ───────────────────────────
+   *
+   * The reconciler runs on completed days, so TODAY has no rows. Rather than
+   * report a quiet, wrong zero, this says so — `reconciled: false` — and falls
+   * back to the raw "no punch yet" list, labelled as provisional. A screen can
+   * then tell the truth instead of implying the day is settled.
+   */
   async absence(client, { date = null } = {}) {
     const day = date || new Date().toISOString().slice(0, 10);
     const { rows } = await client.query(
-      "SELECT e.employee_id, e.full_name, e.department FROM employee e " +
-        "WHERE e.is_active = true AND NOT EXISTS (" +
-        "  SELECT 1 FROM attendance_log al WHERE al.employee_id = e.employee_id AND al.clock_in_at::date = $1" +
-        ") ORDER BY e.full_name",
+      `SELECT d.employee_id, e.full_name, e.department, d.status, d.minutes_late,
+              d.deduction_amount, d.justified
+         FROM attendance_day d
+         JOIN employee e ON e.employee_id = d.employee_id
+        WHERE d.work_date = $1 AND d.status = 'ABSENT'
+        ORDER BY e.full_name`,
       [day],
     );
-    return { date: day, count: rows.length, absent: rows };
+    const { rows: any } = await client.query("SELECT 1 FROM attendance_day WHERE work_date = $1 LIMIT 1", [day]);
+    if (any[0]) return { date: day, reconciled: true, count: rows.length, absent: rows };
+
+    const { rows: provisional } = await client.query(
+      `SELECT e.employee_id, e.full_name, e.department
+         FROM employee e
+        WHERE e.is_active = true
+          AND NOT EXISTS (SELECT 1 FROM attendance_log al
+                           WHERE al.employee_id = e.employee_id
+                             AND al.clock_in_at >= ($1::date)::timestamptz
+                             AND al.clock_in_at <  ($1::date + 1)::timestamptz)
+          AND NOT EXISTS (SELECT 1 FROM leave_request lr
+                           WHERE lr.employee_id = e.employee_id
+                             AND lr.status IN ('APPROVED','TAKEN')
+                             AND lr.starts_on <= $1::date AND lr.ends_on >= $1::date)
+        ORDER BY e.full_name`,
+      [day],
+    );
+    return { date: day, reconciled: false, count: provisional.length, absent: provisional };
   },
 
 

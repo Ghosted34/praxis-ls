@@ -74,6 +74,7 @@ async function resolveS3() {
     const r = await platformSettings.resolve("storage", "s3");
     if (r) { value = r.value || {}; secret = r.secret; }
   } catch {
+     /* @silent:storage|parse|teardown */
     // platform store unavailable (e.g. tests / no DB) → fall back to env
   }
   _s3cfg = {

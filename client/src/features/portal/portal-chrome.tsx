@@ -8,8 +8,10 @@
  */
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useBranding } from "@/app/branding/branding-context";
+import { LangToggle } from "@/components/lang-toggle";
 import { portalToken, PortalError } from "@/lib/portal-api";
 
 export const msg = (e: unknown) =>
@@ -27,6 +29,7 @@ export function PortalFrame({
   wide?: boolean;
 }) {
   const { branding } = useBranding();
+  const { t } = useTranslation();
   const name = branding?.name || "Client portal";
   return (
     <div className="min-h-screen bg-background">
@@ -43,21 +46,24 @@ export function PortalFrame({
               </span>
             )}
             <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Client portal
+              {t("portal.portalName")}
             </span>
           </div>
-          {wide ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                portalToken.clear();
-                window.location.assign("/portal/login");
-              }}
-            >
-              Sign out
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <LangToggle />
+            {wide ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  portalToken.clear();
+                  window.location.assign("/portal/login");
+                }}
+              >
+                {t("shell.signOut")}
+              </Button>
+            ) : null}
+          </div>
         </div>
       </header>
       <main

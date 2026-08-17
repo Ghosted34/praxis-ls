@@ -9,6 +9,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -50,6 +51,7 @@ const docLabel = (d: RoomDoc) =>
   d.original_name || (d.doc_type_code || d.doc_type || "document") + ".pdf";
 
 export function AuditRoomPage() {
+  const { t } = useTranslation();
   const { rows: vaultRows, error: vaultErr } = useList<VaultRow>("/documents");
   const [rooms, setRooms] = React.useState<Room[] | null>(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -130,11 +132,11 @@ export function AuditRoomPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Settings" to="/settings" />}
-        title="Auditor data room"
-        description="Document requests from external auditors — share vault documents in answer."
+        title={t("settings.auditorDataRoom")}
+        description={t("dataRoom.staffDesc")}
         action={
           <Button variant="outline" size="sm" onClick={reload}>
-            Refresh
+            {t("common.refresh")}
           </Button>
         }
       />
@@ -154,8 +156,8 @@ export function AuditRoomPage() {
         <SkeletonTable />
       ) : rooms.length === 0 ? (
         <EmptyState
-          title="No requests"
-          hint="Auditors' document requests will appear here as they raise them."
+          title={t("dataRoom.noRequests")}
+          hint={t("dataRoom.noRequestsHint")}
         />
       ) : (
         <ul className="space-y-4">
@@ -174,7 +176,7 @@ export function AuditRoomPage() {
                             : "bg-[rgb(var(--warn)/0.12)] text-[rgb(var(--warn))]"
                         }`}
                       >
-                        {r.status === "ANSWERED" ? "Answered" : "Open"}
+                        {r.status === "ANSWERED" ? t("portal.answered") : t("portal.open")}
                       </span>
                     </span>
                   }
@@ -202,7 +204,7 @@ export function AuditRoomPage() {
                           loading={busy === `answer:${r.room_id}`}
                           onClick={() => void answer(r.room_id)}
                         >
-                          Mark answered
+                          {t("dataRoom.markAnswered")}
                         </Button>
                       )}
                     </div>
@@ -218,7 +220,7 @@ export function AuditRoomPage() {
                         <>
                           {docs.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
-                              No documents shared yet.
+                              {t("dataRoom.noDocsShared")}
                             </p>
                           ) : (
                             <ul className="divide-y divide-border">
@@ -251,8 +253,8 @@ export function AuditRoomPage() {
                             >
                               <option value="">
                                 {attachable.length === 0
-                                  ? "No VERIFIED documents to attach"
-                                  : "Attach a vault document…"}
+                                  ? t("dataRoom.noVerified")
+                                  : t("dataRoom.attachPlaceholder")}
                               </option>
                               {attachable.map((v) => (
                                 <option key={v.doc_id} value={v.doc_id}>
@@ -270,7 +272,7 @@ export function AuditRoomPage() {
                               loading={busy === `attach:${r.room_id}`}
                               onClick={() => void attach(r.room_id)}
                             >
-                              Share document
+                              {t("dataRoom.shareDocument")}
                             </Button>
                           </div>
                         </>

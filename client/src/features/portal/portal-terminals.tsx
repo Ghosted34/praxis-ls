@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { num, dateFmt } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -203,6 +204,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
 /* ── auditor room ───────────────────────────────────────────────────────── */
 
 export function AuditorTerminal({ me }: { me: PortalMe }) {
+  const { t } = useTranslation();
   const [view, setView] = React.useState<AuditorView | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -295,7 +297,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Audit room
+        {t("portal.auditRoom")}
         {me.portal_user.full_name
           ? `, ${me.portal_user.full_name.split(" ")[0]}`
           : ""}
@@ -419,7 +421,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Data room">
+        <Panel title={t("portal.dataRoom")}>
           <p className="mb-4 text-sm text-muted-foreground">
             Ask the tenant for a document — a signed transit order, a customs
             file — and the documents they share with you appear here.
@@ -481,7 +483,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
                       </p>
                     </div>
                     <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {r.status === "ANSWERED" ? "Answered" : "Open"}
+                      {r.status === "ANSWERED" ? t("portal.answered") : t("portal.open")}
                     </span>
                   </button>
 
@@ -494,8 +496,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
                       ) : detail && detail.room.room_id === r.room_id ? (
                         detail.docs.length === 0 ? (
                           <p className="text-sm text-muted-foreground">
-                            No documents shared yet — the tenant has not answered
-                            this request.
+                            {t("portal.noDocsShared")}
                           </p>
                         ) : (
                           <ul className="divide-y divide-border">
@@ -524,8 +525,8 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
                                     className="shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
                                   >
                                     {dlDocId === doc.doc_id
-                                      ? "Downloading…"
-                                      : "Download"}
+                                      ? t("portal.downloading")
+                                      : t("common.download")}
                                   </button>
                                 </li>
                               );
@@ -553,6 +554,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
 /* ── client view ────────────────────────────────────────────────────────── */
 
 export function ClientTerminal({ me }: { me: PortalMe }) {
+  const { t } = useTranslation();
   // Which shipment the client has opened, if any. Kept here rather than in the
   // router because the portal shell is deliberately a single authenticated view.
   const [openDossier, setOpenDossier] = React.useState<string | null>(null);
@@ -706,7 +708,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Welcome
+        {t("portal.welcome")}
         {me.portal_user.full_name
           ? `, ${me.portal_user.full_name.split(" ")[0]}`
           : ""}
@@ -718,13 +720,13 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel title="Shipments">
+        <Panel title={t("portal.shipments")}>
           {!view ? (
             <SkeletonTable />
           ) : dossiers.length === 0 ? (
             <EmptyState
-              title="No shipments yet"
-              hint="New files will appear here as they're opened."
+              title={t("portal.noShipments")}
+              hint={t("portal.noShipmentsHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -754,13 +756,13 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           )}
         </Panel>
 
-        <Panel title="Invoices">
+        <Panel title={t("portal.invoices")}>
           {!view ? (
             <SkeletonTable />
           ) : invoices.length === 0 ? (
             <EmptyState
-              title="Nothing outstanding"
-              hint="Issued invoices will appear here."
+              title={t("portal.nothingOutstanding")}
+              hint={t("portal.nothingOutstandingHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -791,16 +793,16 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="Onboarding">
+        <Panel title={t("portal.onboarding")}>
           {!onb ? (
             <SkeletonTable />
           ) : (
             <>
               <div className="mb-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Your account</span>
+                  <span className="text-muted-foreground">{t("portal.accountComplete")}</span>
                   <span className="font-medium text-foreground">
-                    {onb.progress}% complete
+                    {onb.progress}% {t("portal.complete")}
                   </span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -841,7 +843,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           )}
         </Panel>
 
-        <Panel title="Messages">
+        <Panel title={t("portal.messages")}>
           {msgError && (
             <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               {msgError}
@@ -850,8 +852,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           <div className="mb-3 max-h-56 space-y-2 overflow-auto">
             {msgs.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No messages yet — ask your account team anything about your
-                shipments.
+                {t("portal.noMessages")}
               </p>
             ) : (
               msgs.map((m) => (
@@ -880,7 +881,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
               onChange={(e) => setMsgDraft(e.target.value)}
               rows={2}
               maxLength={4000}
-              placeholder="Write a message to your account team…"
+              placeholder={t("portal.writeMessage")}
               className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
           </div>
@@ -891,7 +892,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
               onClick={() => void sendMessage()}
               className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {msgBusy === "send" ? "Sending…" : "Send"}
+              {msgBusy === "send" ? t("portal.sending") : t("common.send")}
             </button>
             <button
               type="button"
@@ -899,14 +900,14 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
               onClick={() => void exportChat()}
               className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-opacity hover:opacity-80 disabled:opacity-50"
             >
-              {msgBusy === "export" ? "Exporting…" : "Export chat (PDF)"}
+              {msgBusy === "export" ? t("portal.exporting") : t("portal.exportChat")}
             </button>
           </div>
         </Panel>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="Request a quote">
+        <Panel title={t("portal.requestQuote")}>
           {quoteError && (
             <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               {quoteError}
@@ -923,7 +924,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     service_category: e.target.value,
                   }))
                 }
-                placeholder="Service (Sea freight import…)"
+                placeholder={t("portal.service")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               <input
@@ -934,7 +935,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     service_type: e.target.value,
                   }))
                 }
-                placeholder="Service type (optional)"
+                placeholder={t("portal.serviceType")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
@@ -948,7 +949,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     origin_location: e.target.value,
                   }))
                 }
-                placeholder="Origin (POL)"
+                placeholder={t("portal.origin")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               <input
@@ -960,7 +961,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     destination_location: e.target.value,
                   }))
                 }
-                placeholder="Destination (POD)"
+                placeholder={t("portal.destination")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
@@ -976,7 +977,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                 type="number"
                 min="0"
                 step="0.0001"
-                placeholder="Est. weight (kg)"
+                placeholder={t("portal.weight")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               <input
@@ -984,7 +985,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                 onChange={(e) =>
                   setQuoteForm((f) => ({ ...f, incoterm: e.target.value }))
                 }
-                placeholder="Incoterm (FOB, CIF…)"
+                placeholder={t("portal.incoterm")}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
@@ -998,7 +999,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
               }
               rows={2}
               maxLength={2000}
-              placeholder="Cargo description (optional)"
+              placeholder={t("portal.cargo")}
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <button
@@ -1006,18 +1007,18 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
               disabled={quoteBusy}
               className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {quoteBusy ? "Submitting…" : "Request quote"}
+              {quoteBusy ? t("portal.submitting") : t("portal.requestQuote")}
             </button>
           </form>
         </Panel>
 
-        <Panel title="My quote requests">
+        <Panel title={t("portal.myQuotes")}>
           {quotes === null ? (
             <SkeletonTable />
           ) : quotes.length === 0 ? (
             <EmptyState
-              title="No quote requests"
-              hint="Quotes you request appear here with their status."
+              title={t("portal.noQuotes")}
+              hint={t("portal.noQuotesHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -1044,7 +1045,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Documents">
+        <Panel title={t("portal.documents")}>
           {dlError && (
             <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               {dlError}
@@ -1054,8 +1055,8 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
             <SkeletonTable />
           ) : docs.length === 0 ? (
             <EmptyState
-              title="No documents yet"
-              hint="Files your team shares with you will appear here — bills of lading, waybills and other shipment documents."
+              title={t("portal.noDocuments")}
+              hint={t("portal.noDocumentsHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -1086,7 +1087,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                       onClick={() => void downloadDoc(doc)}
                       className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
                     >
-                      {dlBusy === doc.doc_id ? "Downloading…" : "Download"}
+                      {dlBusy === doc.doc_id ? t("portal.downloading") : t("common.download")}
                     </button>
                   </li>
                 );

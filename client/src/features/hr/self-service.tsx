@@ -6,6 +6,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -79,6 +80,7 @@ async function saveSelfFile(path: string, filename: string) {
 }
 
 export function SelfServicePage() {
+  const { t } = useTranslation();
   const [payslips, setPayslips] = React.useState<Payslip[] | null>(null);
   const [balances, setBalances] = React.useState<Balance[] | null>(null);
   const [leave, setLeave] = React.useState<LeaveReq[] | null>(null);
@@ -153,8 +155,8 @@ export function SelfServicePage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="My HR" to="/settings" />}
-        title="My HR"
-        description="Your payslips, leave and advances — your data only."
+        title={t("hr.myHrTitle")}
+        description={t("hr.myHrSub")}
       />
 
       {error && (
@@ -164,13 +166,13 @@ export function SelfServicePage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="My payslips">
+        <Panel title={t("hr.myPayslips")}>
           {payslips === null ? (
             <SkeletonTable />
           ) : payslips.length === 0 ? (
             <EmptyState
-              title="No payslips yet"
-              hint="Approved payroll runs will appear here."
+              title={t("hr.noPayslips")}
+              hint={t("hr.noPayslipsHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -193,7 +195,7 @@ export function SelfServicePage() {
                     loading={busy === `ps:${p.payroll_run_item_id}`}
                     onClick={() => void downloadPayslip(p)}
                   >
-                    Download PDF
+                    {t("hr.downloadPdf")}
                   </Button>
                 </li>
               ))}
@@ -201,11 +203,11 @@ export function SelfServicePage() {
           )}
         </Panel>
 
-        <Panel title="My leave balances">
+        <Panel title={t("hr.leaveBalances")}>
           {balances === null ? (
             <SkeletonTable />
           ) : balances.length === 0 ? (
-            <EmptyState title="No balances" hint="Leave entitlements appear here." />
+            <EmptyState title={t("hr.noBalances")} hint={t("hr.noBalancesHint")} />
           ) : (
             <ul className="divide-y divide-border">
               {balances.map((b, i) => (
@@ -225,7 +227,7 @@ export function SelfServicePage() {
           )}
         </Panel>
 
-        <Panel title="Request leave">
+        <Panel title={t("hr.requestLeave")}>
           <form onSubmit={(e) => void requestLeave(e)} className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-2">
               <input
@@ -254,23 +256,23 @@ export function SelfServicePage() {
               }
               rows={2}
               maxLength={2000}
-              placeholder="Reason (optional)"
+              placeholder={t("hr.reason")}
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <Button size="sm" type="submit" loading={busy === "leave"}>
-              Submit request
+              {t("hr.submitRequest")}
             </Button>
           </form>
 
           <div className="mt-4 border-t border-border pt-3">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              My requests
+              {t("hr.myRequests")}
             </p>
             {leave === null ? (
               <SkeletonTable />
             ) : leave.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No requests yet.
+                {t("hr.noRequests")}
               </p>
             ) : (
               <ul className="divide-y divide-border">
@@ -290,13 +292,13 @@ export function SelfServicePage() {
           </div>
         </Panel>
 
-        <Panel title="My salary advances">
+        <Panel title={t("hr.salaryAdvances")}>
           {advances === null ? (
             <SkeletonTable />
           ) : advances.length === 0 ? (
             <EmptyState
-              title="No advances"
-              hint="Salary advances appear here with what is left to repay."
+              title={t("hr.noAdvances")}
+              hint={t("hr.noAdvancesHint")}
             />
           ) : (
             <ul className="divide-y divide-border">

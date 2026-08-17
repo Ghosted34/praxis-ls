@@ -7,6 +7,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -39,6 +40,7 @@ type Onboarding = {
 };
 
 export function ClientSupportPage() {
+  const { t } = useTranslation();
   const { rows: clients } = useList<ClientRow>("/clients");
   const [clientId, setClientId] = React.useState("");
   const [msgs, setMsgs] = React.useState<Message[] | null>(null);
@@ -107,13 +109,13 @@ export function ClientSupportPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Settings" to="/settings" />}
-        title="Client support"
-        description="Message a client's portal account and track their onboarding."
+        title={t("settings.clientSupport")}
+        description={t("support.staffDesc")}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <label className="text-sm text-muted-foreground" htmlFor="client-pick">
-          Client
+          {t("support.client")}
         </label>
         <select
           id="client-pick"
@@ -124,7 +126,7 @@ export function ClientSupportPage() {
           }}
           className="max-w-sm rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         >
-          <option value="">— choose a client —</option>
+          <option value="">— {t("support.chooseClient")} —</option>
           {(clients || []).map((c) => (
             <option key={c.client_id} value={c.client_id}>
               {c.name || c.legal_name || c.client_id.slice(0, 8)}
@@ -141,18 +143,18 @@ export function ClientSupportPage() {
 
       {!clientId ? (
         <EmptyState
-          title="Choose a client"
-          hint="Their portal messages and onboarding checklist will appear here."
+          title={t("support.chooseClient")}
+          hint={t("support.chooseClientHint")}
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
-          <Panel title={`Messages · ${clientName(clientId)}`}>
+          <Panel title={`${t("portal.messages")} · ${clientName(clientId)}`}>
             {msgs === null ? (
               <SkeletonTable />
             ) : msgs.length === 0 ? (
               <EmptyState
-                title="No messages"
-                hint="Messages the client sends from the portal appear here."
+                title={t("support.noMessages")}
+                hint={t("support.noMessagesHint")}
               />
             ) : (
               <div className="mb-3 max-h-72 space-y-2 overflow-auto">
@@ -181,7 +183,7 @@ export function ClientSupportPage() {
               onChange={(e) => setDraft(e.target.value)}
               rows={2}
               maxLength={4000}
-              placeholder="Reply to the client…"
+              placeholder={t("support.replyPlaceholder")}
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <Button
@@ -191,17 +193,17 @@ export function ClientSupportPage() {
               loading={busy === "reply"}
               onClick={() => void reply()}
             >
-              Send reply
+              {t("support.sendReply")}
             </Button>
           </Panel>
 
-          <Panel title={`Onboarding · ${clientName(clientId)}`}>
+          <Panel title={`${t("portal.onboarding")} · ${clientName(clientId)}`}>
             {onb === null ? (
               <SkeletonTable />
             ) : (
               <>
                 <div className="mb-4 flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Progress</span>
+                  <span className="text-muted-foreground">{t("support.progress")}</span>
                   <span className="font-medium text-foreground">
                     {onb.progress}%
                   </span>

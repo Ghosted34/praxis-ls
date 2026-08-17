@@ -1,3 +1,4 @@
+import { currentLocale } from "./i18n";
 /** Display formatters. Money is grouped, 2dp, currency-suffixed (pair with the
  *  `.num` tabular class); dates are short + unambiguous. */
 
@@ -20,7 +21,7 @@ export function money(amount: unknown, currency: unknown = "XAF"): string {
     currency === null || currency === undefined || currency === ""
       ? "XAF"
       : String(currency);
-  return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
+  return `${n.toLocaleString(currentLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
 }
 
 /** Money for table columns whose HEADER carries the currency ("Costing · XAF"):
@@ -31,7 +32,7 @@ export function money0(amount: number | string | null | undefined): string {
   if (amount === null || amount === undefined || amount === "") return "—";
   const n = typeof amount === "string" ? Number(amount) : amount;
   if (!Number.isFinite(n) || n === 0) return "—";
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return n.toLocaleString(currentLocale(), { maximumFractionDigits: 0 });
 }
 
 /** Grouped to exactly 2dp with NO currency suffix — for ledger columns whose
@@ -47,7 +48,7 @@ export function amount(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", {
+  return n.toLocaleString(currentLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -98,7 +99,7 @@ export function moneyCompact(
           : null;
 
   if (!unit)
-    return `${n.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${cur}`;
+    return `${n.toLocaleString(currentLocale(), { maximumFractionDigits: 0 })} ${cur}`;
   // `maximumFractionDigits: 1` drops a trailing ".0" by itself, so 43M reads
   // "43M" while 43.2M keeps the digit that distinguishes it.
   return `${(n / unit.d).toLocaleString("en-US", { maximumFractionDigits: 1 })}${unit.s} ${cur}`;
@@ -107,7 +108,7 @@ export function moneyCompact(
 export function num(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(n) ? n.toLocaleString("en-US") : "—";
+  return Number.isFinite(n) ? n.toLocaleString(currentLocale()) : "—";
 }
 
 /**
@@ -124,7 +125,7 @@ export function dateFmt(d: unknown): string {
   if (!d) return "—";
   const dt = d instanceof Date ? d : parseLoose(String(d));
   if (!dt || Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleDateString("en-GB", {
+  return dt.toLocaleDateString(frDateLocale(), {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -596,7 +597,7 @@ export function smartCell(v: unknown): string {
   if (/^-?\d+\.\d+$/.test(s)) {
     const n = Number(s);
     if (Number.isFinite(n))
-      return n.toLocaleString("en-US", {
+      return n.toLocaleString(currentLocale(), {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
@@ -648,4 +649,10 @@ export function withScheme(value: string): string {
   // rather than looking for "http", so `mailto:` and `ftp:` are not mangled.
   if (/^[a-z][a-z0-9+.-]*:/i.test(t) || t.startsWith("//")) return t;
   return `https://${t}`;
+}
+
+/** en keeps the historical en-GB shape ("21 Jul 2026"); French uses fr-FR
+ *  ("21 juil. 2026"). */
+function frDateLocale(): string {
+  return currentLocale() === "fr-FR" ? "fr-FR" : "en-GB";
 }

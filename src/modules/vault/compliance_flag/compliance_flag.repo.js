@@ -79,7 +79,13 @@ const SCANS = {
   },
 };
 
-const scan = (client, ruleKey) => (SCANS[ruleKey] ? SCANS[ruleKey](client) : Promise.resolve([]));
+const scan = (client, ruleKey) => {
+  // A fixed map lookup, never a computed dispatch: ruleKey is caller-supplied
+  // (service.run filters it, but the repo must not trust that). Unknown keys
+  // resolve to the no-op scan — same behaviour as before, no dynamic call.
+  const fn = Object.prototype.hasOwnProperty.call(SCANS, ruleKey) ? SCANS[ruleKey] : null;
+  return fn ? fn(client) : Promise.resolve([]);
+};
 
 const insertFlag = (client, data) => insertOne(client, "compliance_flag", data);
 async function clearOpenByRule(client, ruleKey) {

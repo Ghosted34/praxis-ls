@@ -28,11 +28,22 @@ function suggestRiskClass({ is_driver, department, employment_type } = {}) {
  * Normalise a bank block. Accepts a plain object of banking coordinates; drops
  * anything non-string and guarantees a JSON-serialisable object (schema stores
  * jsonb NOT NULL DEFAULT '{}'). Returns {} for empty/invalid input.
+ *
+ * ONLY the known banking fields are copied. A caller-supplied key must never
+ * become a property write here (remote property injection): the schema's
+ * jsonb column is free-form, but this module decides what a bank block may
+ * contain, and an unknown key is dropped rather than written.
  */
+const BANK_FIELDS = [
+  "bank_name", "branch", "account_name", "account_number", "beneficiary_name",
+  "iban", "swift", "swift_bic", "sort_code", "currency",
+];
+
 function normaliseBankBlock(block) {
   if (!block || typeof block !== "object" || Array.isArray(block)) return {};
   const out = {};
-  for (const [k, v] of Object.entries(block)) {
+  for (const k of BANK_FIELDS) {
+    const v = block[k];
     if (v === null || v === undefined) continue;
     out[k] = typeof v === "string" ? v.trim() : v;
   }

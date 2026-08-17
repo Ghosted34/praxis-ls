@@ -1,9 +1,14 @@
 /**
  * DocumentPage — a record shown as its OWN page (route `/documents/:docType/:id`),
- * rendered **natively in the app theme** (cards, dark UI) so it blends — NOT the
- * white print sheet. The white template is what Download/Send produce as the PDF.
- * Data comes from the template preview endpoint (`data`); reports (which have no
- * record shape) fall back to the paper preview.
+ * rendered as the PAPER TEMPLATE itself: the `html` the preview endpoint
+ * returns is the same HTML `generate` renders to PDF, so the on-screen view
+ * can never drift from the printed document (this was the defect — a generic
+ * FROM/DATE/ROUTE/ITEMS body that had nothing to do with the PDF). The
+ * topbar (status, Send, Download PDF) stays native to the app; the document
+ * body is the white sheet.
+ *
+ * Reports (which have no record shape) go through the same path: the preview
+ * endpoint returns their branded statement as `html`.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -14,8 +19,7 @@ import { ErrorState } from "@/components/ui/states";
 import { tenant } from "@/lib/api-client";
 import { openVaultDoc } from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
-import { num, money, dateFmt, enumLabel } from "@/lib/format";
-import { cn } from "@/lib/cn";
+import { enumLabel } from "@/lib/format";
 import { LoadingRow } from "@/components/ui/states";
 
 // The auth-gated fetch that serves a signed copy (uploaded, rather than
@@ -87,15 +91,6 @@ type DocData = {
   [k: string]: unknown;
 };
 
-const PARTY_LABEL: Record<string, string> = {
-  PURCHASE_ORDER: "Supplier",
-  SUPPLIER_INVOICE: "Supplier",
-  EMPLOYMENT_CONTRACT: "Employee",
-  PAYSLIP: "Employee",
-  DELIVERY_NOTE: "Consignee",
-  TRIP_SHEET: "Vehicle",
-  PURCHASE_REQUEST: "Requested by",
-};
 type Entity = {
   legal_name?: string;
   niu?: string;
@@ -111,19 +106,6 @@ type Preview = {
   report?: boolean;
 };
 
-/** The issuing entity renders as the "From" party. The preview returns it as
- *  { legal_name, niu, rccm } — map those onto the Party shape PartyCol expects
- *  (name/lines), otherwise "From" shows "—" while the PDF template shows it. */
-const fromParty = (e?: Entity): Party | undefined =>
-  e
-    ? {
-        name: e.legal_name,
-        lines: [e.niu && `NIU ${e.niu}`, e.rccm && `RCCM ${e.rccm}`].filter(
-          Boolean,
-        ) as string[],
-      }
-    : undefined;
-
 const STATUS_TONE = (s?: string): Tone => {
   const u = String(s || "").toUpperCase();
   if (/PAID|APPLIED|VALIDATED|SIGNED|DONE|DELIVERED|ACCEPTED|LOCKED/.test(u))
@@ -133,89 +115,6 @@ const STATUS_TONE = (s?: string): Tone => {
   if (/DRAFT|HOLD|PENDING/.test(u)) return "mute";
   return "mute";
 };
-
-const Card: React.FC<{
-  title?: string;
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}> = ({ title, children, action }) => (
-  <div className="lux-card p-5">
-    {(title || action) && (
-      <div className="mb-3 flex items-center justify-between gap-2">
-        {title && <div className="micro">{title}</div>}
-        {action}
-      </div>
-    )}
-    {children}
-  </div>
-);
-const KV: React.FC<{ label: string; children: React.ReactNode }> = ({
-  label,
-  children,
-}) => (
-  <div>
-    <div className="micro mb-0.5">{label}</div>
-    <div className="text-sm text-foreground">{children || "—"}</div>
-  </div>
-);
-const PartyCol: React.FC<{ label: string; p?: Party }> = ({ label, p }) => (
-  <div>
-    <div className="micro mb-1">{label}</div>
-    <div className="font-medium text-foreground">{(p && p.name) || "—"}</div>
-    <div className="text-sm text-muted-foreground">
-      {(p && p.lines ? p.lines.filter(Boolean) : []).join(" · ")}
-    </div>
-  </div>
-);
-
-function LineTable({
-  cols,
-  rows,
-}: {
-  cols: { key: string; label: string; num?: boolean }[];
-  rows: Line[];
-}) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="bg-secondary text-muted-foreground">
-          <tr>
-            {cols.map((c) => (
-              <th
-                key={c.key}
-                className={`px-3 py-2 font-medium ${c.num ? "text-right" : "text-left"}`}
-              >
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={cols.length} className="px-3 py-4 text-center micro">
-                No lines
-              </td>
-            </tr>
-          ) : (
-            rows.map((r, i) => (
-              <tr key={i}>
-                {cols.map((c) => (
-                  <td
-                    key={c.key}
-                    className={`px-3 py-2 ${c.num ? "num text-right" : ""}`}
-                  >
-                    {String(r[c.key] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export function DocumentPage() {
   const { docType = "", id = "" } = useParams();
@@ -299,7 +198,6 @@ export function DocumentPage() {
   const title =
     paramTitle || (pv?.title && (pv.title.en || pv.title.fr)) || docType;
   const heading = d?.number ? d.number : title;
-  const ccy = (d && d.currency) || "XAF";
 
   return (
     <section className="animate-fade-in">
@@ -341,8 +239,9 @@ export function DocumentPage() {
         <div className={pageShell.reading}>
           <LoadingRow label="Loading document…" />
         </div>
-      ) : pv.report || !d ? (
-        /* Reports have no record shape → show the branded paper preview. */
+      ) : (
+        /* The paper template — the exact HTML the PDF renders, so the view
+           cannot drift from the printed document. */
         <div className="-mx-4 rounded-2xl bg-[rgb(var(--ink)_/_0.06)] px-4 py-6 md:-mx-6 md:px-6">
           {/* onLoad is a lifecycle event, not a user interaction — the rule
               matches the handler name and cannot make that distinction. */}
@@ -364,308 +263,9 @@ export function DocumentPage() {
             className="mx-auto block w-full max-w-[860px] rounded-md border border-black/5 bg-white shadow-2xl"
           />
         </div>
-      ) : (
-        /* Native, app-themed detail — blends with the dark UI. */
-        <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
-          <Card>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <PartyCol label="From" p={fromParty(pv.entity)} />
-              {(d.party || (d.parties && d.parties[1])) && (
-                <PartyCol
-                  label={PARTY_LABEL[docType] || "Client"}
-                  p={d.party || (d.parties && d.parties[1])}
-                />
-              )}
-            </div>
-          </Card>
-
-          {(d.date ||
-            d.due ||
-            d.valid_until ||
-            d.period ||
-            d.method ||
-            d.po_ref ||
-            d.original_ref ||
-            d.reason ||
-            d.supplier ||
-            d.vehicle ||
-            d.driver ||
-            d.location ||
-            d.staff_no ||
-            d.kind ||
-            d.effective_on ||
-            d.end_on ||
-            d.qa_status ||
-            d.department ||
-            d.odometer_out != null ||
-            d.odometer_in != null ||
-            d.distance != null ||
-            d.origin ||
-            d.destination) && (
-            <Card>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {d.date && <KV label="Date">{dateFmt(d.date)}</KV>}
-                {d.due && <KV label="Due">{dateFmt(d.due)}</KV>}
-                {d.valid_until && (
-                  <KV label="Valid until">{dateFmt(d.valid_until)}</KV>
-                )}
-                {d.kind && <KV label="Type">{enumLabel(d.kind)}</KV>}
-                {d.effective_on && (
-                  <KV label="Effective">{dateFmt(d.effective_on)}</KV>
-                )}
-                {d.end_on && <KV label="Ends">{dateFmt(d.end_on)}</KV>}
-                {d.period && <KV label="Period">{d.period}</KV>}
-                {d.department && <KV label="Department">{d.department}</KV>}
-                {d.method && <KV label="Method">{d.method}</KV>}
-                {d.po_ref && <KV label="PO ref">{d.po_ref}</KV>}
-                {d.qa_status && <KV label="QA">{enumLabel(d.qa_status)}</KV>}
-                {d.original_ref && <KV label="Original">{d.original_ref}</KV>}
-                {d.reason && <KV label="Reason">{d.reason}</KV>}
-                {d.supplier && <KV label="Supplier">{d.supplier}</KV>}
-                {d.vehicle && <KV label="Vehicle">{d.vehicle}</KV>}
-                {d.driver && <KV label="Driver">{d.driver}</KV>}
-                {d.location && <KV label="Location">{d.location}</KV>}
-                {d.staff_no && <KV label="Staff no.">{d.staff_no}</KV>}
-                {(d.origin || d.destination) && (
-                  <KV label="Route">{`${d.origin || ""} → ${d.destination || ""}`}</KV>
-                )}
-                {d.odometer_out != null && (
-                  <KV label="Odometer out">{`${num(d.odometer_out)} km`}</KV>
-                )}
-                {d.odometer_in != null && (
-                  <KV label="Odometer in">{`${num(d.odometer_in)} km`}</KV>
-                )}
-                {d.distance != null && (
-                  <KV label="Distance">{`${num(d.distance)} km`}</KV>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {d.description && (
-            <Card title="Description">
-              <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {d.description}
-              </p>
-            </Card>
-          )}
-          {d.headline && (
-            <Card>
-              <div className="font-display text-xl">{d.headline}</div>
-            </Card>
-          )}
-          {d.sections &&
-            d.sections.map((s) => (
-              <Card key={s.title} title={s.title}>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {s.body}
-                </p>
-              </Card>
-            ))}
-          {d.articles &&
-            d.articles.map((s) => (
-              <Card key={s.title} title={s.title}>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                  {s.body}
-                </p>
-              </Card>
-            ))}
-          {d.body && (
-            <Card>
-              <p className="whitespace-pre-wrap text-sm">{d.body}</p>
-            </Card>
-          )}
-
-          {d.lines && (
-            <Card title="Items">
-              <LineTable
-                cols={inferCols(d.lines[0], ccy)}
-                rows={d.lines.map((l) => fmtRow(l, ccy))}
-              />
-            </Card>
-          )}
-
-          {d.parts && (
-            <Card title="Parts & labour">
-              <LineTable
-                cols={[
-                  { key: "label", label: "Part / labour" },
-                  { key: "qty", label: "Qty", num: true },
-                  { key: "unit_cost", label: "Unit cost", num: true },
-                  { key: "total", label: "Total", num: true },
-                ]}
-                rows={d.parts.map((p) => ({
-                  label: p.label,
-                  qty: num(p.qty as number),
-                  unit_cost: money(p.unit_cost, ccy),
-                  total: money(
-                    Number(p.qty || 0) * Number(p.unit_cost || 0),
-                    ccy,
-                  ),
-                }))}
-              />
-            </Card>
-          )}
-
-          {d.earnings && (
-            <Card title="Earnings">
-              <LineTable
-                cols={[
-                  { key: "label", label: "Item" },
-                  { key: "amount", label: "Amount", num: true },
-                ]}
-                rows={d.earnings.map((e) => ({
-                  label: e.label,
-                  amount: money(e.amount, ccy),
-                }))}
-              />
-            </Card>
-          )}
-          {d.deductions && (
-            <Card title="Deductions">
-              <LineTable
-                cols={[
-                  { key: "label", label: "Item" },
-                  { key: "amount", label: "Amount", num: true },
-                ]}
-                rows={d.deductions.map((e) => ({
-                  label: e.label,
-                  amount: money(e.amount, ccy),
-                }))}
-              />
-            </Card>
-          )}
-
-          {(d.totals ||
-            d.amount != null ||
-            d.gross != null ||
-            d.cost != null) && (
-            <Card>
-              <div className="ml-auto w-full max-w-xs space-y-1.5 text-sm">
-                {d.totals?.service_ht != null && (
-                  <Row
-                    label="Total HT"
-                    value={money(d.totals.service_ht, ccy)}
-                  />
-                )}
-                {d.totals?.disbursement_total != null && (
-                  <Row
-                    label="Disbursement"
-                    value={money(d.totals.disbursement_total, ccy)}
-                  />
-                )}
-                {d.totals?.vat_total != null && (
-                  <Row label="TVA" value={money(d.totals.vat_total, ccy)} />
-                )}
-                {d.totals?.total_ttc != null && (
-                  <Row
-                    label="Total TTC"
-                    value={money(d.totals.total_ttc, ccy)}
-                    grand
-                  />
-                )}
-                {d.cost != null && (
-                  <Row label="Total cost" value={money(d.cost, ccy)} grand />
-                )}
-                {d.gross != null && (
-                  <Row label="Gross" value={money(d.gross, ccy)} />
-                )}
-                {d.total_deductions != null && (
-                  <Row
-                    label="Deductions"
-                    value={money(d.total_deductions, ccy)}
-                  />
-                )}
-                {d.net != null && (
-                  <Row label="Net pay" value={money(d.net, ccy)} grand />
-                )}
-                {d.amount != null && d.totals == null && d.gross == null && (
-                  <Row label="Amount" value={money(d.amount, ccy)} grand />
-                )}
-              </div>
-            </Card>
-          )}
-        </div>
       )}
     </section>
   );
-}
-
-function Row({
-  label,
-  value,
-  grand,
-}: {
-  label: string;
-  value: string;
-  grand?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 ${grand ? "border-t border-primary pt-2 text-base font-semibold text-foreground" : "text-muted-foreground"}`}
-    >
-      <span>{label}</span>
-      <span className="num">{value}</span>
-    </div>
-  );
-}
-function inferCols(sample: Line | undefined, _ccy: string) {
-  if (!sample) return [{ key: "label", label: "Item" }];
-  const order = [
-    "label",
-    "item",
-    "qty",
-    "ordered",
-    "received",
-    "expected",
-    "counted",
-    "variance",
-    "unit",
-    "tax",
-    "amount",
-    "condition",
-    "weight",
-  ];
-  const labels: Record<string, string> = {
-    label: "Description",
-    item: "Item",
-    qty: "Qty",
-    ordered: "Ordered",
-    received: "Received",
-    expected: "Expected",
-    counted: "Counted",
-    variance: "Variance",
-    unit: "Unit",
-    tax: "VAT",
-    amount: "Amount",
-    condition: "Condition",
-    weight: "Weight",
-  };
-  const numeric = new Set([
-    "qty",
-    "ordered",
-    "received",
-    "expected",
-    "counted",
-    "variance",
-    "unit",
-    "amount",
-    "weight",
-  ]);
-  return Object.keys(sample)
-    .filter((kk) => order.includes(kk))
-    .sort((a, b) => order.indexOf(a) - order.indexOf(b))
-    .map((kk) => ({ key: kk, label: labels[kk] || kk, num: numeric.has(kk) }));
-}
-function fmtRow(l: Line, ccy: string): Line {
-  const o: Line = {};
-  for (const [kk, v] of Object.entries(l)) {
-    if (kk === "unit" || kk === "amount") o[kk] = money(v, ccy);
-    else if (kk === "tax") o[kk] = v == null ? "" : `${v}%`;
-    else if (kk === "qty") o[kk] = num(v as number);
-    else o[kk] = v;
-  }
-  return o;
 }
 
 export default DocumentPage;

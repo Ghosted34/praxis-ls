@@ -121,6 +121,7 @@ const SIMPLE = {
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
   EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: null },
+  SOP_DOCUMENT: { table: "sop_document", pk: "sop_document_id", label: "title" },
   DELIVERY_NOTE: { table: "delivery_note", pk: "delivery_note_id", label: "doc_number" },
   TRANSIT_ORDER: { table: "transit_order", pk: "transit_order_id", label: "ot_number" },
   GRN: { table: "grn_inbound", pk: "grn_inbound_id", label: null },
@@ -546,6 +547,35 @@ async function loadRecord(client, docType, recordId) {
     return { entity_id: null, data: { number: String(wo.work_order_id).slice(0, 8), date: wo.opened_on || wo.created_at, status: wo.status, vehicle: wo.registration || "—", description: wo.description, parts, cost, currency: "XAF" } };
   }
 
+  if (docType === "SOP_DOCUMENT") {
+    const { rows } = await client.query("SELECT * FROM sop_document WHERE sop_document_id = $1", [recordId]);
+    const d = rows[0];
+    if (!d) return null;
+    /*
+     * `sections` is cut from `body_md` at its `##` headings by the SAME helper
+     * the contract renderer uses, and for the same reason: what a person edited
+     * on screen must be what the printed document is divided into. An SOP with
+     * no body renders as a letterhead and a sign-off block with nothing between
+     * them — which is exactly the defect 0700 found in contracts, so the screen
+     * refuses to render a PDF for an SOP that has no text rather than producing
+     * a convincing empty procedure.
+     */
+    return {
+      entity_id: null,
+      data: {
+        number: String(d.sop_document_id).slice(0, 8),
+        title: d.title,
+        scope: d.scope,
+        department: d.department,
+        version: d.version_no,
+        effective_on: d.effective_on,
+        review_on: d.review_on,
+        sections: contractArticles(d.body_md),
+        currency: "XAF",
+      },
+    };
+  }
+
   if (docType === "EMPLOYMENT_CONTRACT") {
     const { rows } = await client.query(
       `SELECT c.*, e.full_name, e.job_title AS employee_job_title, coalesce(c.entity_id, e.entity_id) AS entity_id
@@ -701,7 +731,10 @@ async function resolveRecipient(client, docType, recordId) {
   try {
     const { rows } = await client.query(RECIPIENT_SQL[docType], [recordId]);
     return (rows[0] && rows[0].email) || null;
-  } catch { /* resolution is best-effort */ }
+  } catch { /* @silent:parse — resolving a recipient is a convenience lookup over a
+    per-doc-type SQL map; a missing table or a renamed column must degrade to
+    "caller supplies `to`", never fail the send. The caller already handles null
+    by requiring an explicit recipient. */ }
   return null;
 }
 
@@ -774,14 +807,20 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
   try {
     const buffer = await pdf.renderHtml(html);
     if (buffer && buffer.length) attachments = [{ filename: `${docType.toLowerCase()}.pdf`, content: buffer, contentType: "application/pdf" }];
-  } catch { /* fall back to inline HTML only */ }
+  } catch { /* @silent:storage — the PDF render needs headless Chrome, which is the
+    one dependency that is routinely absent on a fresh deploy (see
+    doc/PDF_RENDERING_SETUP.md). The email still goes, with the document inline;
+    losing the attachment is strictly better than not sending it. */ }
 
   await emailSvc.send(client, {
     to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70",
     // Record the source document on the send-log row (e.g. `invoice:<id>`).
     entityRef: entityId || recordId ? `${String(docType).toLowerCase()}:${entityId || recordId}` : null,
   });
-  try { await generate(client, { docType, entityId, recordId, actor }); } catch { /* vault copy is best-effort */ }
+  try { await generate(client, { docType, entityId, recordId, actor }); } catch { /* @silent:storage —
+    the email has already been sent by this point. Filing a vault copy is
+    bookkeeping; failing here would report the send as failed and invite somebody
+    to send it twice. */ }
   await audit(client, { actorUserId: actor.user_id || null, action: "document.sent", moduleKey: "MOD-70", entityRef: `${docType.toLowerCase()}:${recordId || "adhoc"}`, after: { to: recipient, docType, attached: !!attachments } });
   return { sent: true, to: recipient, docType, attached: !!attachments };
 }

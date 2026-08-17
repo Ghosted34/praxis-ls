@@ -69,6 +69,227 @@ function effectLine(r: api.HrRule): string {
 
 type SopDoc = { sop_document_id: string; title: string };
 
+/* ══ New rule ══════════════════════════════════════════════════════════════
+ *
+ * There was no way to add a house rule. `RuleEditor` only ever opened an
+ * existing one, so a tenant was limited to whatever 0697 seeded — a lateness
+ * deduction and an unexcused absence. The endpoint (`POST /sops/rules`) and the
+ * API client function have existed the whole time; the screen simply never
+ * offered the action.
+ *
+ * The practical effect was worse than "cannot add a rule": REWARD and CONDUCT
+ * are valid kinds with tones and labels in this very file, and nothing seeded
+ * one, so the two halves of the engine that PAY people and ASK people were
+ * unreachable while the two that CHARGE them shipped ready to switch on.
+ */
+function NewRuleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { rows: sops } = useList<SopDoc>("/sops");
+  const [f, setF] = React.useState({
+    code: "",
+    name: "",
+    kind: "REWARD",
+    description: "",
+    effect: "BONUS_FIXED",
+    effect_value: "",
+    metric: "",
+    comparator: "gte",
+    threshold: "",
+    auto_query: false,
+    query_severity: "WARNING",
+    query_due_days: "2",
+    sop_document_id: "",
+  });
+  const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const isReward = f.kind === "REWARD";
+  const charges = f.effect !== "QUERY_ONLY";
+  // The server refuses a charging rule with no figure — a rule that deducts
+  // "nothing" silently charges 0% for ever, which is worse than no rule. Said
+  // here so the refusal is not a surprise at save time.
+  const needsValue = charges && f.effect_value === "";
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createHrRule({
+        code: f.code.trim().toUpperCase(),
+        name: f.name.trim(),
+        kind: f.kind as api.HrRule["kind"],
+        description: f.description || undefined,
+        effect: f.effect as api.HrRule["effect"],
+        effect_value: f.effect_value === "" ? null : Number(f.effect_value),
+        ...(isReward
+          ? {
+              metric: f.metric || null,
+              comparator: f.comparator as "gte" | "lte",
+              threshold: f.threshold === "" ? null : Number(f.threshold),
+            }
+          : {}),
+        auto_query: f.auto_query,
+        query_severity: f.query_severity as api.HrRule["query_severity"],
+        query_due_days: Number(f.query_due_days) || 0,
+        sop_document_id: f.sop_document_id || null,
+        // Created OFF, always. Turning a rule on is the moment the company
+        // starts moving money, and that is a decision somebody takes after
+        // reading it — never a side effect of filling in a form.
+        is_active: false,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="New house rule"
+      description="A clause the system applies evenly. Created switched off."
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Code" required hint="Letters, numbers and underscores. Cannot be changed later.">
+            <Input
+              value={f.code}
+              onChange={(e) => set("code", e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
+              placeholder="REWARD_LONG_SERVICE"
+            />
+          </Field>
+          <Field label="Name" required>
+            <Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Long-service bonus" />
+          </Field>
+        </div>
+        <Field label="Kind" required hint="What the rule is for. Rewards pay; conduct asks; the other two charge.">
+          <Select
+            value={f.kind}
+            onChange={(e) => {
+              const kind = e.target.value;
+              set("kind", kind);
+              // A sensible effect for the kind, so the form is never in a
+              // combination the server will refuse.
+              set("effect", kind === "REWARD" ? "BONUS_FIXED" : kind === "CONDUCT" ? "QUERY_ONLY" : "DEDUCT_PCT_DAY");
+            }}
+          >
+            <option value="REWARD">Reward — pays</option>
+            <option value="CONDUCT">Conduct — asks</option>
+            <option value="LATENESS">Lateness — charges</option>
+            <option value="ABSENCE">Absence — charges</option>
+          </Select>
+        </Field>
+        <Field label="Description">
+          <Input value={f.description} onChange={(e) => set("description", e.target.value)} />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Effect">
+            <Select value={f.effect} onChange={(e) => set("effect", e.target.value)}>
+              <option value="QUERY_ONLY">Raise a query only</option>
+              <option value="BONUS_FIXED">Award a fixed amount</option>
+              <option value="BONUS_PCT_SALARY">Award a % of monthly salary</option>
+              <option value="SALARY_INCREASE_PCT">Propose a % salary increase</option>
+              <option value="DEDUCT_PCT_DAY">Deduct a % of the day</option>
+              <option value="DEDUCT_FIXED">Deduct a fixed amount</option>
+            </Select>
+          </Field>
+          {charges && (
+            <Field label="Amount / percentage" required>
+              <Input
+                type="number"
+                min="0"
+                className="num text-right"
+                value={f.effect_value}
+                onChange={(e) => set("effect_value", e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+
+        {isReward && (
+          /* A reward is MEASURED over a month. Without a metric it is a payment
+             somebody authorises by hand, which is not what this table is for —
+             and it would sit in the list looking configured while computing
+             nothing. */
+          <div className="grid gap-4 rounded-lg border bg-muted/30 p-3 sm:grid-cols-3">
+            <Field label="Measured on" hint="e.g. punctuality_pct, late_days">
+              <Input value={f.metric} onChange={(e) => set("metric", e.target.value)} placeholder="punctuality_pct" />
+            </Field>
+            <Field label="Comparison">
+              <Select value={f.comparator} onChange={(e) => set("comparator", e.target.value)}>
+                <option value="gte">At or above</option>
+                <option value="lte">At or below</option>
+              </Select>
+            </Field>
+            <Field label="Threshold">
+              <Input
+                type="number"
+                className="num text-right"
+                value={f.threshold}
+                onChange={(e) => set("threshold", e.target.value)}
+              />
+            </Field>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Ask the employee">
+            <Checkbox
+              checked={f.auto_query}
+              onCheckedChange={(v: boolean) => set("auto_query", v === true)}
+              label="Raise a query"
+            />
+          </Field>
+          <Field label="Severity">
+            <Select value={f.query_severity} onChange={(e) => set("query_severity", e.target.value)} disabled={!f.auto_query}>
+              <option value="INFO">Info</option>
+              <option value="WARNING">Warning</option>
+              <option value="SERIOUS">Serious</option>
+            </Select>
+          </Field>
+          <Field label="Days to answer">
+            <Input
+              type="number"
+              min="0"
+              className="num text-right"
+              value={f.query_due_days}
+              onChange={(e) => set("query_due_days", e.target.value)}
+              disabled={!f.auto_query}
+            />
+          </Field>
+        </div>
+
+        <Field label="SOP clause it enforces" hint="A deduction an employee can trace to the handbook is a rule; one they cannot is a surprise.">
+          <Select value={f.sop_document_id} onChange={(e) => set("sop_document_id", e.target.value)}>
+            <option value="">— none yet —</option>
+            {(sops || []).map((d) => (
+              <option key={d.sop_document_id} value={d.sop_document_id}>
+                {d.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 border-t pt-3">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy} disabled={!f.code || !f.name || needsValue || busy}>
+            Create, switched off
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function RuleEditor({
   rule,
   onClose,
@@ -291,6 +512,7 @@ function RuleEditor({
 export function HouseRulesView() {
   const q = useResource(() => api.listHrRules(), []);
   const [editing, setEditing] = React.useState<api.HrRule | null>(null);
+  const [creating, setCreating] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const rules = q.data || [];
@@ -311,6 +533,13 @@ export function HouseRulesView() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="micro">
+          Rules apply the handbook evenly. Rewards pay, conduct asks, lateness
+          and absence charge.
+        </p>
+        <Button onClick={() => setCreating(true)}>New rule</Button>
+      </div>
       {/* Stated, not implied. Nothing charges anybody until somebody here
           decides it should, and that is worth saying once at the top. */}
       {!anyActive && rules.length > 0 && (
@@ -327,6 +556,7 @@ export function HouseRulesView() {
         <EmptyState
           title="No house rules"
           hint="Rules turn a clause in the handbook into something the system applies evenly."
+          action={<Button onClick={() => setCreating(true)}>New rule</Button>}
         />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -375,6 +605,9 @@ export function HouseRulesView() {
 
       {editing && (
         <RuleEditor rule={editing} onClose={() => setEditing(null)} onSaved={q.reload} />
+      )}
+      {creating && (
+        <NewRuleForm onClose={() => setCreating(false)} onSaved={q.reload} />
       )}
     </div>
   );

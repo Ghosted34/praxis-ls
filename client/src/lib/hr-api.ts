@@ -564,8 +564,17 @@ export type PublicHoliday = {
   is_recurring: boolean;
 };
 
-export const listLeave = (params?: { status?: string; employee_id?: string }) =>
-  tenant<LeaveRequest[]>("/leave" + qs(params));
+/** `exclude_kind` keeps salary advances off the Leave screen — they have had
+ *  their own tab since 0698, and an advance shown in both places is decided
+ *  differently in each. Filtered SERVER-side: the list is capped at 50 rows, so
+ *  dropping them in the browser would show fewer than fifty leave requests and
+ *  present that as the whole set. */
+export const listLeave = (params?: {
+  status?: string;
+  employee_id?: string;
+  kind?: string;
+  exclude_kind?: string;
+}) => tenant<LeaveRequest[]>("/leave" + qs(params));
 export const createLeave = (body: {
   employee_id: string;
   kind: string;

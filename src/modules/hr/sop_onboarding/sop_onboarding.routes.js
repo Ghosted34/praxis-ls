@@ -34,6 +34,11 @@ router.get("/", requirePermission(M, "view"), controller.list);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.patch("/:id", requirePermission(M, "edit"), validator.update, controller.update);
+// Drafting is `edit` — it writes the procedure's text. Rendering the PDF is
+// `approve`: the rendered file is what gets circulated and pinned to a notice
+// board, and issuing a procedure is a larger act than typing one.
+router.post("/:id/draft", requirePermission(M, "edit"), validator.draft, controller.draft);
+router.post("/:id/render", requirePermission(M, "approve"), controller.renderPdf);
 router.delete("/:id", requirePermission(M, "delete"), controller.archive);
 
 module.exports = { basePath: "/sops", feature: null, router };

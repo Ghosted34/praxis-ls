@@ -219,13 +219,19 @@ function NewRequestForm({
               ))}
             </Select>
           </Field>
-          <Field label="Request" required>
+          {/* "Salary advance" was an option here AND a screen of its own, and
+              the two wrote DIFFERENT TABLES — this form writes a leave_request
+              of kind salary_advance, while the Advances tab writes the
+              salary_advance row (0698) that payroll actually recovers against.
+              An advance raised here was therefore invisible to the recovery
+              schedule. Advances belong to their own tab; the kind is kept in
+              the label map above so historical rows still render. */}
+          <Field label="Request" required hint="Salary advances are raised from the Advances tab.">
             <Select
               value={f.kind}
               onChange={(e) => set("kind", e.target.value)}
             >
               <option value="leave">Leave</option>
-              <option value="salary_advance">Salary advance</option>
               <option value="mission">Mission</option>
             </Select>
           </Field>
@@ -337,7 +343,16 @@ function NewRequestForm({
 export function LeavePage() {
   const [pendingOnly, setPendingOnly] = React.useState(true);
   const q = useResource(
-    () => api.listLeave(pendingOnly ? { status: "REQUESTED" } : undefined),
+    // Advances have had their own tab since 0698, and were appearing here as
+    // well — decided differently in each place (a date range and a day count
+    // here, an amount and a recovery schedule there). Excluded SERVER-side
+    // because this list is capped at 50 rows: filtering in the browser would
+    // show fewer than fifty leave requests and present that as all of them.
+    () =>
+      api.listLeave({
+        ...(pendingOnly ? { status: "REQUESTED" } : {}),
+        exclude_kind: "salary_advance",
+      }),
     [pendingOnly],
   );
   const balanceFor = useBalances(q.data);

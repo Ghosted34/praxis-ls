@@ -2,12 +2,36 @@
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
 
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+
 const create = z.object({
   title: z.string().min(1),
   category: z.string().optional(),
   vault_id: z.string().uuid().optional(),
   version_no: z.number().int().positive().optional(),
   is_active: z.boolean().optional(),
+  // 0704 — an SOP with a document in it. `body_md` is the source of truth; the
+  // PDF is rendered from it.
+  body_md: z.string().max(200000).optional().nullable(),
+  summary: z.string().max(4000).optional().nullable(),
+  scope: z.enum(["COMPANY", "DEPARTMENT", "OPERATIONS"]).optional(),
+  department: z.string().max(120).optional().nullable(),
+  owner_role: z.string().max(120).optional().nullable(),
+  effective_on: ymd.optional().nullable(),
+  review_on: ymd.optional().nullable(),
+});
+
+/** What the drafter is given. `purpose` and `steps` are the company's own words
+ *  — the substance the model orders and expands rather than inventing. */
+const draft = z.object({
+  title: z.string().min(1).max(300).optional(),
+  scope: z.enum(["COMPANY", "DEPARTMENT", "OPERATIONS"]).optional(),
+  department: z.string().max(120).optional().nullable(),
+  owner_role: z.string().max(120).optional().nullable(),
+  category: z.string().max(120).optional().nullable(),
+  effective_on: ymd.optional().nullable(),
+  purpose: z.string().max(8000).optional(),
+  steps: z.union([z.array(z.string().max(2000)), z.string().max(20000)]).optional(),
 });
 
 /* ── House rules (0697) ─────────────────────────────────────────────────────
@@ -58,7 +82,7 @@ const rule = withValueCheck(z.object({ ...ruleShape, code: z.string().min(1).max
 // them by kind, and a renamed code orphans the days already charged under it.
 const ruleUpdate = withValueCheck(z.object(ruleShape).partial());
 
-const schemas = { create, update: create.partial(), rule, ruleUpdate };
+const schemas = { create, update: create.partial(), draft, rule, ruleUpdate };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -70,6 +94,7 @@ const mw = (k) => (req, _res, next) => {
 module.exports = {
   create: mw("create"),
   update: mw("update"),
+  draft: mw("draft"),
   rule: mw("rule"),
   ruleUpdate: mw("ruleUpdate"),
   schemas,

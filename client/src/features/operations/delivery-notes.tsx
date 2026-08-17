@@ -888,15 +888,14 @@ export function DeliveryNotesPage() {
     {
       key: "ref",
       label: "Ref",
+      // With `onRowClick` set, data-list wraps column 0 in a real button
+      // (RowActivator) — same affordance as the transit-orders list. The cell
+      // itself stays plain text so we never nest a button inside it.
       render: (r) => (
-        <button
-          type="button"
-          className="num font-medium text-foreground hover:underline"
-          onClick={() => setDetail(r.delivery_note_id)}
-        >
+        <span className="num font-medium text-foreground">
           {/* A draft has no number yet, and saying so beats showing a uuid stub. */}
           {r.ref || <span className="text-muted italic">draft</span>}
-        </button>
+        </span>
       ),
     },
     {
@@ -973,6 +972,9 @@ export function DeliveryNotesPage() {
       error={error}
       loading={loading}
       rowKey={(r) => r.delivery_note_id}
+      // Click anywhere on a row opens the snapshot modal — same gesture as the
+      // transit-orders list.
+      onRowClick={(r) => setDetail(r.delivery_note_id)}
       empty={{
         title: "No delivery notes",
         hint: "Raise one when goods go out — it is the record of what the client accepted.",

@@ -1,9 +1,16 @@
 /**
  * DocumentPage — a record shown as its OWN page (route `/documents/:docType/:id`),
  * rendered **natively in the app theme** (cards, dark UI) so it blends — NOT the
- * white print sheet. The white template is what Download/Send produce as the PDF.
- * Data comes from the template preview endpoint (`data`); reports (which have no
- * record shape) fall back to the paper preview.
+ * white print sheet, which is what Download/Send produce as the PDF. Data comes
+ * from the template preview endpoint (`data`); reports (which have no record
+ * shape) fall back to the paper preview.
+ *
+ * The generic card view below serves most families (finance / procurement / HR /
+ * fleet / WMS). The operations documents — DELIVERY_NOTE and TRANSIT_ORDER —
+ * render through bespoke native bodies (DeliveryNoteBody / TransitOrderBody)
+ * that lay out the SAME preview data block-for-block with the registry
+ * template, so the on-screen snapshot and the printed/PDF document tell the
+ * same story without importing the white sheet into the dark UI.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -39,6 +46,13 @@ const SENDABLE = new Set([
 
 type Party = { name?: string; lines?: string[] };
 type Line = Record<string, unknown>;
+type Container = {
+  container_no?: string | null;
+  seal_no?: string | null;
+  gross_weight_kg?: number | null;
+};
+type Regime = { code: string; on?: boolean };
+type DocChecklistItem = { code: string; label: string; on?: boolean };
 type DocData = {
   number?: string;
   date?: string;
@@ -84,6 +98,35 @@ type DocData = {
   headline?: string;
   signed_vault_id?: string | null;
   currency?: string;
+  /* delivery note (operations/delivery_note) */
+  delivery_date?: string;
+  dossier_ref?: string;
+  reservations?: string;
+  received_by_name?: string;
+  received_at?: string;
+  issued_by_name?: string;
+  containers?: Container[];
+  /* transit order (operations/transit_order) */
+  status_label?: string;
+  direction?: string;
+  client?: string;
+  conveyance?: string;
+  transport_ref?: string;
+  arrival_date?: string;
+  departure_date?: string;
+  place_of_delivery?: string;
+  declared_value_text?: string;
+  declared_value_xaf_text?: string;
+  regimes?: Regime[];
+  customs_regime_other?: string;
+  insurance_type?: string;
+  surveyor_party?: string;
+  documents?: DocChecklistItem[];
+  instructions?: string;
+  issued_date?: string;
+  signed_date?: string;
+  lodged_date?: string;
+  signed_by_name?: string;
   [k: string]: unknown;
 };
 
@@ -213,6 +256,275 @@ function LineTable({
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ── Bespoke native bodies ─────────────────────────────────────────────────
+ * The generic card view below serves the finance/procurement/HR/fleet family
+ * fine, but operations documents carry fields it has no vocabulary for:
+ * a delivery note is containers + reservations + who signed; a transit order
+ * is vessel/BL/ports + regime + insurance + a document checklist. The white
+ * print sheet cannot be shown in-app (it does not blend with the dark UI), so
+ * these render the SAME preview data natively, block for block with the PDF.
+ */
+
+/**
+ * DELIVERY_NOTE — proof of delivery. Block-for-block with the registry
+ * template (head meta, consignee, cargo lines, container manifest, the
+ * client's reservations, and the named received-by) so the on-screen snapshot
+ * and the printed note tell the same story.
+ */
+function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
+  const party = d.party;
+  const lines = (d.lines || []) as Line[];
+  const containers = d.containers || [];
+  return (
+    <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
+      <Card>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <PartyCol label="From" p={fromParty(entity)} />
+          <PartyCol label="Consignee" p={party} />
+        </div>
+      </Card>
+
+      <Card title="Delivery details">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {d.date && <KV label="Date">{dateFmt(d.date)}</KV>}
+          {d.delivery_date && (
+            <KV label="Delivery date">{dateFmt(d.delivery_date)}</KV>
+          )}
+          {d.dossier_ref && <KV label="File">{d.dossier_ref}</KV>}
+          {d.issued_by_name && (
+            <KV label="Issued by">{d.issued_by_name}</KV>
+          )}
+        </div>
+        {party && party.lines && party.lines.filter(Boolean).length > 0 && (
+          <div className="mt-4 border-t border-line pt-3 text-sm text-muted-foreground">
+            {(party.lines as string[]).filter(Boolean).join(" · ")}
+          </div>
+        )}
+      </Card>
+
+      <Card title={`Containers (${containers.length})`}>
+        {containers.length ? (
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {containers.map((c, i) => (
+              <li key={c.container_no || i} className="text-sm">
+                <span className="num font-medium">{c.container_no || "—"}</span>
+                {c.seal_no && (
+                  <span className="text-muted"> · seal {c.seal_no}</span>
+                )}
+                {c.gross_weight_kg != null && (
+                  <span className="text-muted">
+                    {" "}
+                    · {num(c.gross_weight_kg)} kg
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted">No containers on this note.</p>
+        )}
+      </Card>
+
+      {lines.length > 0 && (
+        <Card title="Cargo">
+          <LineTable
+            cols={[
+              { key: "label", label: "Description" },
+              { key: "qty", label: "Qty", num: true },
+            ]}
+            rows={lines.map((l) => ({
+              label: l.label ?? "",
+              qty: num(Number(l.qty ?? 0)),
+            }))}
+          />
+        </Card>
+      )}
+
+      {d.reservations && (
+        <Card title="Reservations">
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {d.reservations}
+          </p>
+        </Card>
+      )}
+
+      {d.received_by_name && (
+        <Card title="Received by">
+          <div className="font-medium text-foreground">{d.received_by_name}</div>
+          {d.received_at && (
+            <div className="text-sm text-muted-foreground">
+              {dateFmt(d.received_at)}
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/**
+ * TRANSIT_ORDER — the client's authorisation to declare. Block-for-block with
+ * the registry template: shipment facts, the five-column cargo table with the
+ * declared value, the regime tick-row, the insurance/surveyor elections and
+ * the attached-documents checklist.
+ */
+function TransitOrderBody({ d, entity }: { d: DocData; entity?: Entity }) {
+  const lines = (d.lines || []) as Line[];
+  const isImport = String(d.direction || "").toUpperCase() === "IMPORT";
+  const insuredByUs = String(d.insurance_type || "CLIENT").toUpperCase() === "COMPANY";
+  const surveyorUs = String(d.surveyor_party || "CLIENT").toUpperCase() === "COMPANY";
+  return (
+    <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
+      <Card>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <PartyCol label="From" p={fromParty(entity)} />
+          <div>
+            <div className="micro mb-1">Client</div>
+            <div className="font-medium text-foreground">{d.client || "—"}</div>
+            {d.dossier_ref && (
+              <div className="text-sm text-muted-foreground">
+                {d.dossier_ref}
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Shipment">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {d.direction && (
+            <KV label="Direction">
+              <Pill tone={isImport ? "blue" : "warn"}>
+                {String(d.direction).toUpperCase()}
+              </Pill>
+            </KV>
+          )}
+          {d.conveyance && <KV label="Vessel">{d.conveyance}</KV>}
+          {d.transport_ref && <KV label="Bill of lading">{d.transport_ref}</KV>}
+          {d.origin && <KV label="Origin">{d.origin}</KV>}
+          {d.arrival_date && (
+            <KV label="Arrival date">{dateFmt(d.arrival_date)}</KV>
+          )}
+          {d.destination && <KV label="Destination">{d.destination}</KV>}
+          {d.departure_date && (
+            <KV label="Departure date">{dateFmt(d.departure_date)}</KV>
+          )}
+          {d.place_of_delivery && (
+            <KV label="Place of delivery">{d.place_of_delivery}</KV>
+          )}
+        </div>
+      </Card>
+
+      {lines.length > 0 && (
+        <Card title="Cargo">
+          <LineTable
+            cols={[
+              { key: "marks", label: "Marks" },
+              { key: "packages", label: "Packages", num: true },
+              { key: "label", label: "Description" },
+              { key: "weight", label: "Weight", num: true },
+              { key: "value", label: "Value", num: true },
+            ]}
+            rows={lines.map((l) => ({
+              marks: l.marks ?? "",
+              packages: num(Number(l.packages ?? 0)),
+              label: l.label ?? "",
+              weight: l.weight ?? "",
+              value: l.value ?? "",
+            }))}
+          />
+          {(d.declared_value_text || d.declared_value_xaf_text) && (
+            <div className="ml-auto mt-3 w-full max-w-xs space-y-1.5 text-sm">
+              {d.declared_value_text && (
+                <Row label="Declared value" value={d.declared_value_text} />
+              )}
+              {d.declared_value_xaf_text && (
+                <Row label="Equivalent" value={d.declared_value_xaf_text} />
+              )}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {(d.regimes || []).length > 0 || d.customs_regime_other ? (
+        <Card title="Customs regime">
+          <div className="flex flex-wrap gap-2">
+            {(d.regimes || []).map((r) => (
+              <Pill key={r.code} tone={r.on ? "ok" : "mute"}>
+                {r.on ? "✓ " : ""}
+                {r.code}
+              </Pill>
+            ))}
+            {d.customs_regime_other && (
+              <Pill tone="ok">✓ {d.customs_regime_other}</Pill>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
+      <Card title="Insurance & damage">
+        <div className="space-y-1.5 text-sm">
+          <div className="flex items-center gap-2">
+            <span
+              className={insuredByUs ? "text-[rgb(var(--ok))]" : "text-muted"}
+            >
+              {insuredByUs ? "✓" : "○"}
+            </span>
+            <span>
+              {insuredByUs
+                ? "Insurance covered by us"
+                : "Insurance carried by the client"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={surveyorUs ? "text-[rgb(var(--ok))]" : "text-muted"}
+            >
+              {surveyorUs ? "✓" : "○"}
+            </span>
+            <span>
+              {surveyorUs
+                ? "Damage surveyor appointed by us"
+                : "Damage surveyor appointed by the client"}
+            </span>
+          </div>
+        </div>
+      </Card>
+
+      {(d.documents || []).length > 0 && (
+        <Card title="Attached documents">
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {(d.documents || []).map((doc) => (
+              <li key={doc.code} className="flex items-center gap-2 text-sm">
+                <span
+                  className={
+                    doc.on
+                      ? "text-[rgb(var(--ok))]"
+                      : "text-muted"
+                  }
+                >
+                  {doc.on ? "✓" : "○"}
+                </span>
+                <span className={doc.on ? "" : "text-muted"}>
+                  {doc.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {d.instructions && (
+        <Card title="Instructions">
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+            {d.instructions}
+          </p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -364,6 +676,12 @@ export function DocumentPage() {
             className="mx-auto block w-full max-w-[860px] rounded-md border border-black/5 bg-white shadow-2xl"
           />
         </div>
+      ) : docType === "DELIVERY_NOTE" ? (
+        /* Native, app-themed — block-for-block with the printed note. */
+        <DeliveryNoteBody d={d} entity={pv.entity} />
+      ) : docType === "TRANSIT_ORDER" ? (
+        /* Native, app-themed — block-for-block with the printed order. */
+        <TransitOrderBody d={d} entity={pv.entity} />
       ) : (
         /* Native, app-themed detail — blends with the dark UI. */
         <div className={cn(pageShell.reading, "space-y-4 pb-10")}>

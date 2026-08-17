@@ -329,6 +329,13 @@ export function useResource<T>(
   return {
     data: (q.data ?? null) as T | null,
     error,
+    /** @see errCode — the machine-readable half of `error`, matching `useList`.
+     *  Without it a `useResource` screen can only regex the sentence, which is
+     *  the exact defect documented above `errCode`: every 403 renders as
+     *  "You don't have permission to do this.", so a tenant whose FEATURE is
+     *  off and a user missing a GRANT were told the same thing and sent to
+     *  different wrong places. */
+    errorCode: errCode(q.error),
     loading: q.data === undefined && !error,
     reload,
   };

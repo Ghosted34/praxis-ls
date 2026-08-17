@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (348)
+## All codes (356)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -97,6 +97,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_THEME` | 422 | 1× | — |
 | `BAD_TOKEN` | 500 | 1× | — |
 | `BAD_TOTALS` | 422 | 1× | — |
+| `BAD_TRAINING_MODE` | — | 1× | — |
 | `BAD_TRANSITION` | 422 | 3× | — |
 | `BAD_VALUE` | 422 | 1× | — |
 | `BAD_WINDOW` | 422 | 2× | — |
@@ -116,6 +117,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COMPLIANCE_BLOCKED` | 409 | 4× | — |
 | `CONFIG_MISSING` | 424 | 1× | — |
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
+| `CONTRACT_TEXT_FROZEN` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
@@ -132,6 +134,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
+| `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 2× | — |
 | `EMPTY_FILE` | 422 | 1× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
@@ -177,15 +180,17 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_STATE` | 422 | 1× | — |
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
-| `INVALID_TRANSITION` | 422 | 20× | — |
+| `INVALID_TRANSITION` | 422 | 21× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
+| `JOIN_LINK_REQUIRED` | — | 1× | — |
 | `KEY_IMMUTABLE` | 422 | 1× | — |
 | `KPI_NOT_PARTITIONED` | 500 | 4× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
+| `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 27× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
@@ -197,6 +202,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `MISSING_FIELDS` | 422 | 1× | — |
 | `MISSING_REQUIRED_FIELDS` | — | 1× | — |
 | `NEGATIVE_STOCK` | 422 | 1× | — |
+| `NOTHING_TO_SUMMARISE` | 422 | 1× | — |
 | `NOT_ACTIVE` | 422 | 2× | — |
 | `NOT_APPROVABLE` | 400 | 1× | — |
 | `NOT_A_DRAFT` | 422 | 1× | — |
@@ -209,7 +215,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 380× | — |
+| `NOT_FOUND` | 404 | 388× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -347,6 +353,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOO_FEW_STAGES` | 422 | 1× | — |
 | `TOO_MANY_STAGES` | 422 | 2× | — |
 | `TOO_MANY_UNITS` | 422 | 1× | — |
+| `TRAINING_FULL` | 422 | 2× | — |
+| `TRAINING_NOT_JOINABLE` | 422 | 1× | — |
 | `TRANSCRIPTION_UNAVAILABLE` | — | 1× | — |
 | `UNKNOWN_CLIENT_TYPE` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER` | 422 | 1× | — |

@@ -220,6 +220,94 @@ describe("the clauses that reach the PDF", () => {
   });
 });
 
+describe("recording the terms of a contract signed on paper", () => {
+  const repo = require("../../src/modules/hr/hr_contract/hr_contract.repo");
+  const emit = require("../../src/shared/events/emit");
+  const service = require("../../src/modules/hr/hr_contract/hr_contract.service");
+
+  /** `base.update` opens a transaction, so the fake client has to answer BEGIN
+   *  and COMMIT. Nothing here exercises SQL — every repo call is faked. */
+  const db = { query: async () => ({ rows: [] }) };
+
+  const SIGNED = {
+    hr_contract_id: "c1", status: "SIGNED", kind: "EMPLOYMENT",
+    effective_on: "2024-03-01", body_md: "## Parties\n\nAs signed on paper.",
+    title: "Employment contract", probation_months: null, notice_days: null,
+  };
+
+  beforeEach(() => {
+    jest.spyOn(emit, "emitEvent").mockResolvedValue(undefined);
+    jest.spyOn(emit, "audit").mockResolvedValue(undefined);
+    jest.spyOn(emit, "resolveActorId").mockResolvedValue(null);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("lets the terms be recorded on a contract that is already signed", async () => {
+    // The whole back catalogue was signed on paper. Refusing to record what it
+    // says would mean the expiry watcher can never see an existing fixed term
+    // and payroll can never know a notice period — for ever.
+    jest.spyOn(repo, "findById").mockResolvedValue(SIGNED);
+    const patched = [];
+    jest.spyOn(repo, "update").mockImplementation(async (_c, id, p) => {
+      patched.push(p);
+      return { ...SIGNED, ...p };
+    });
+
+    await service.update(db, { id: "c1", patch: { notice_days: 30, probation_months: 3 }, actor: {} });
+
+    expect(patched[0]).toMatchObject({ notice_days: 30, probation_months: 3 });
+    // …and the watched date is derived, so an old contract becomes visible to
+    // the probation warning the moment somebody types the months in.
+    expect(patched[0].probation_ends_on).toBe("2024-06-01");
+  });
+
+  it("refuses to rewrite the wording of a signed contract", async () => {
+    // `applyDraft` has always refused this; PATCH went straight to the CRUD
+    // base with no guard at all, so the same edit was available by another
+    // route. Changing signed wording is rewriting history — a renewal
+    // supersedes it.
+    jest.spyOn(repo, "findById").mockResolvedValue(SIGNED);
+    jest.spyOn(repo, "update").mockResolvedValue(SIGNED);
+
+    await expect(
+      service.update(db, { id: "c1", patch: { body_md: "## Parties\n\nSomething else entirely." }, actor: {} }),
+    ).rejects.toMatchObject({ code: "CONTRACT_TEXT_FROZEN", status: 422 });
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it("does not refuse a patch that merely resends the same wording", async () => {
+    // A form that posts every field it holds must not be rejected for sending
+    // back what is already stored.
+    jest.spyOn(repo, "findById").mockResolvedValue(SIGNED);
+    jest.spyOn(repo, "update").mockResolvedValue(SIGNED);
+
+    await service.update(db, { id: "c1", patch: { body_md: SIGNED.body_md, notice_days: 30 }, actor: {} });
+    expect(repo.update).toHaveBeenCalled();
+  });
+
+  it("still lets a draft be edited freely", async () => {
+    jest.spyOn(repo, "findById").mockResolvedValue({ ...SIGNED, status: "DRAFT" });
+    jest.spyOn(repo, "update").mockResolvedValue({ ...SIGNED, status: "DRAFT" });
+
+    await service.update(db, { id: "c1", patch: { body_md: "## New wording" }, actor: {} });
+    expect(repo.update).toHaveBeenCalled();
+  });
+
+  it("clears the probation date when the months are removed", async () => {
+    jest.spyOn(repo, "findById").mockResolvedValue({ ...SIGNED, probation_months: 3, probation_ends_on: "2024-06-01" });
+    const patched = [];
+    jest.spyOn(repo, "update").mockImplementation(async (_c, id, p) => {
+      patched.push(p);
+      return SIGNED;
+    });
+
+    await service.update(db, { id: "c1", patch: { probation_months: null }, actor: {} });
+    // Left standing, the watcher would go on warning about a probation nobody
+    // is serving.
+    expect(patched[0].probation_ends_on).toBeNull();
+  });
+});
+
 describe("when probation ends", () => {
   it("counts whole months from the start date", () => {
     expect(addMonths("2026-09-01", 3)).toBe("2026-12-01");

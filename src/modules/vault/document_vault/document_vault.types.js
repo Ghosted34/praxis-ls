@@ -99,6 +99,13 @@ const DOC_TYPES = {
    * payslip (0700).
    */
   EMPLOYMENT_CONTRACT:   { label: "Employment contract",      module: "hr/hr_contract",                moduleKey: "MOD-12" },
+  /*
+   * Session minutes filed at the close of a training (0702). Same reasoning as
+   * MEETING_TRANSCRIPT: unregistered types fall back to MOD-70, so without this
+   * row the facilitator who ran the session could not read back the minutes it
+   * produced unless they also administered the application.
+   */
+  TRAINING_MINUTES:      { label: "Training session minutes",  module: "hr/training",                   moduleKey: "MOD-18" },
   ENTITY_DOCUMENT:       { label: "Entity document scan",     module: "master/corporate_entity",       moduleKey: "MOD-01" },
   CLIENT_DOCUMENT:       { label: "Client KYC scan",          module: "master/client_master",          moduleKey: "MOD-03" },
   SUPPLIER_DOCUMENT:     { label: "Supplier KYC scan",        module: "master/supplier_master",        moduleKey: "MOD-04" },

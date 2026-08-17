@@ -105,7 +105,19 @@ export function ContractEditor({
     setBusy("save");
     setError(null);
     try {
-      await api.updateContract(contract.hr_contract_id, { ...terms(), body_md: body });
+      // The wording only travels while the contract is a DRAFT. Past that the
+      // server refuses it, and sending it back unchanged would make every
+      // "record the terms" save depend on the text round-tripping byte for
+      // byte.
+      const { title, ...rest } = terms();
+      await api.updateContract(contract.hr_contract_id, {
+        ...rest,
+        // The wording — title included — only travels while the contract is a
+        // DRAFT. Past that the server refuses it, and sending it back unchanged
+        // would make every "record the terms" save depend on the text
+        // round-tripping byte for byte.
+        ...(locked ? {} : { title, body_md: body }),
+      });
       onSaved();
       onClose();
     } catch (e) {
@@ -126,12 +138,18 @@ export function ContractEditor({
     >
       <div className="flex flex-col gap-4">
         {locked && (
-          // Redrafting text somebody has been given — or signed — is not an
-          // edit. The server refuses it; saying so here is cheaper than a 422.
-          <Callout tone="warn" title={`This contract is ${contract.status.toLowerCase()}`}>
-            The text can no longer be redrafted. Supersede it with a renewal
-            instead, so the terms this person has been working under stay on
-            record.
+          /* The TEXT is frozen; the TERMS are not.
+           *
+           * Rewriting the wording of a signed contract is rewriting history —
+           * a renewal supersedes it. But every contract signed before this
+           * feature existed has no notice period and no probation date on the
+           * row, and typing in what the signed paper already says is not
+           * amending anything. Without it the expiry watcher can never see an
+           * existing fixed term, for the whole back catalogue, for ever. */
+          <Callout tone="info" title={`This contract is ${contract.status.toLowerCase()}`}>
+            Its wording is fixed — supersede it with a renewal to change that.
+            You can still record the terms it states, so probation and expiry
+            are watched and payroll knows the notice period.
           </Callout>
         )}
 
@@ -139,8 +157,13 @@ export function ContractEditor({
           {/* THE TERMS — facts, echoed verbatim into the text. */}
           <div className="flex flex-col gap-3">
             <p className="micro">Agreed terms</p>
-            <Field label="Title">
-              <Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Employment contract" />
+            <Field label="Title" hint={locked ? "Fixed once the contract is issued." : undefined}>
+              <Input
+                value={f.title}
+                disabled={locked}
+                onChange={(e) => set("title", e.target.value)}
+                placeholder="Employment contract"
+              />
             </Field>
             <Field label="Job title">
               <Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} />
@@ -258,10 +281,21 @@ export function ContractEditor({
                 />
               </>
             )}
-            {!body && (
+            {!body && !locked && (
               <p className="text-xs text-[rgb(var(--warn))]">
                 Until this has text, the generated PDF prints a letterhead and two
                 names with no clauses between them.
+              </p>
+            )}
+            {!body && locked && (
+              /* An old contract signed on paper. Generating a PDF would print
+                 an empty form, and reconstructing signed wording with a model
+                 is the one place a plausible-looking output is genuinely
+                 dangerous — so the honest route is the scan. */
+              <p className="text-xs text-muted-foreground">
+                No text was ever recorded for this contract, so generating a PDF
+                would print an empty form. Upload the signed copy instead — that
+                is the document both parties actually agreed.
               </p>
             )}
           </div>
@@ -272,8 +306,12 @@ export function ContractEditor({
           <Button type="button" variant="outline" onClick={onClose} disabled={!!busy}>
             Close
           </Button>
-          <Button loading={busy === "save"} disabled={locked || !!busy} onClick={save}>
-            Save
+          {/* Enabled on a signed contract too — it saves the TERMS, which is a
+              different act from rewriting the wording. `save` omits body_md
+              once the contract is locked, so there is nothing for the server to
+              refuse. */}
+          <Button loading={busy === "save"} disabled={!!busy} onClick={save}>
+            {locked ? "Record terms" : "Save"}
           </Button>
         </div>
       </div>

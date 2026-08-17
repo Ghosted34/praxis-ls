@@ -7,7 +7,7 @@
  * The key is resolved in priority order (BUILD_CONVENTIONS §7 — NOT .env-only):
  *   1. encrypted integration_secret 'fx_exchangerate' (Settings, AES-256-GCM)
  *   2. legacy plaintext setting fx.exchangerate_api_key (back-compat)
- *   3. config.EXCHANGERATE_API_KEY (deploy default)
+ *   3. config.EXCHANGERATE_API_KEY or config.FX_API_KEY (deploy default)
  *
  * Rates are written with source 'exchangerate-api' and is_override=false, so a
  * manual override (source 'manual', is_override=true) always wins in the
@@ -25,6 +25,7 @@ async function resolveKey(client) {
     (await settingService.readSecret(client, "fx_exchangerate")) ||
     (await getSetting(client, "fx", "exchangerate_api_key", null)) ||
     config.EXCHANGERATE_API_KEY ||
+    config.FX_API_KEY ||
     null
   );
 }
@@ -59,7 +60,7 @@ async function syncRates(client, { base, quotes } = {}) {
     return {
       skipped: true,
       reason:
-        "No exchangerate-api key configured (integration_secret 'fx_exchangerate', fx.exchangerate_api_key, or EXCHANGERATE_API_KEY).",
+        "No exchangerate-api key configured (integration_secret 'fx_exchangerate', fx.exchangerate_api_key, EXCHANGERATE_API_KEY, or FX_API_KEY).",
     };
   }
   if (!quoteCodes.length) {
@@ -69,19 +70,6 @@ async function syncRates(client, { base, quotes } = {}) {
   const url = "https://v6.exchangerate-api.com/v6/" + key + "/latest/" + baseCode;
 
   // `validateStatus: () => true` — axios must NOT throw on a non-2xx here.
-  //
-  // It did, and that made the friendly branch below unreachable for exactly the
-  // failures worth naming. The nightly job surfaced as a bare
-  // `AxiosError: Request failed with status code 404` with the provider's own
-  // explanation discarded, which says nothing about whether the key is wrong,
-  // the plan lapsed, or the base currency is unsupported.
-  //
-  // The status codes matter and are distinct:
-  //   404 — the KEY SEGMENT is not a known key. exchangerate-api puts the key in
-  //         the PATH, so a stale, blank or truncated key makes the whole URL a
-  //         404 rather than an auth error. This is the one that fired.
-  //   200 + {result:"error"} — key recognised, request rejected (invalid-key on a
-  //         revoked key, inactive-account, quota-reached, unsupported-code).
   const res = await axios.get(url, { timeout: 15000, validateStatus: () => true });
   const data = res.data;
 
@@ -115,8 +103,6 @@ async function syncRates(client, { base, quotes } = {}) {
     await repo.upsertRate(client, { base: baseCode, quote, rate, asOfDate: asOf, source: "exchangerate-api", isOverride: false });
     updated.push({ quote, rate });
   }
-  // Explicit `skipped: false` — the object always carries the sentinel so a
-  // consumer can trust `result.skipped` without a `typeof` check.
   return { skipped: false, base: baseCode, as_of_date: asOf, fetched_at: fetchedAt, source: "exchangerate-api", updated, unsupported };
 }
 

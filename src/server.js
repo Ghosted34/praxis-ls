@@ -492,6 +492,14 @@ function start() {
   // should have been rising and was flat.
   require("./shared/observability/business-metrics").start();
 
+  // If workers are enabled in-process (e.g. ENABLE_WORKERS=true in dev or single-container mode), start the worker runtime.
+  if (config.ENABLE_WORKERS) {
+    const workers = require("./jobs/workers");
+    workers.main().catch((err) => {
+      logger.error({ err }, "in-process worker failed to start");
+    });
+  }
+
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );

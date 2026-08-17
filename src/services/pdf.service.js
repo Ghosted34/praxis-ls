@@ -85,15 +85,20 @@ async function renderHtml(html) {
 
 /**
  * Render → store → capture. `key` is the storage key (tenant-namespaced by the
- * caller). Returns { key, public_url, content_hash, verify }. `render` is
+ * caller). Returns { key, public_url, doc_id, content_hash, verify }. `render` is
  * injectable for tests.
+ *
+ * `doc_id` is the document_vault row created for the bytes — the only handle a
+ * client can download through (GET /documents/:id/download is auth-gated, while
+ * `/media` only serves the public allow-list prefixes; a generated document's
+ * `public_url` is therefore never a working download target).
  */
 async function renderAndStore(client, { html, key, entityRef, docType, render = renderHtml }) {
   const buffer = await render(html);
   const hash = contentHash(buffer);
   const stored = await storage.put(buffer, { key, contentType: "application/pdf" });
-  await documents.capture(client, { entityRef, docType, storagePath: stored.key, contentHash: hash, status: "VERIFIED" });
-  return { key: stored.key, public_url: stored.public_url, content_hash: hash, verify: verifyToken(entityRef, hash) };
+  const doc = await documents.capture(client, { entityRef, docType, storagePath: stored.key, contentHash: hash, status: "VERIFIED" });
+  return { key: stored.key, public_url: stored.public_url, doc_id: doc.doc_id, content_hash: hash, verify: verifyToken(entityRef, hash) };
 }
 
 // ── Template-driven rendering (GAP_FIXES_PLAN §5.1) ───────────────────────────

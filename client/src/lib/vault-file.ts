@@ -78,6 +78,37 @@ export function readFileAsDataUrl(file: File): Promise<string> {
  * finish loading from it first.
  */
 export async function openVaultDoc(id: string): Promise<void> {
+  const blob = await fetchVaultDoc(id);
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Fetch a vaulted document with the session's credentials and trigger a real
+ * browser download (Save As) under `filename`.
+ *
+ * Why an anchor click rather than `window.open`: the fetch is awaited first, so
+ * the open() call is no longer inside the user's click — pop-up blockers
+ * silently swallow it and the download "does nothing". A synthetic `<a
+ * download>` click is a plain navigation, not a pop-up, and also lets the file
+ * be saved under a useful name instead of whatever the server inline header
+ * says. Used wherever the button says "Download", e.g. the document viewer.
+ */
+export async function downloadVaultDoc(id: string, filename: string): Promise<void> {
+  const blob = await fetchVaultDoc(id);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Shared auth-gated fetch of a vaulted document's bytes. */
+async function fetchVaultDoc(id: string): Promise<Blob> {
   const token = tokenStore.getAccess();
   const res = await fetch(`/api/tenant/documents/${id}/download`, {
     headers: {
@@ -97,7 +128,5 @@ export async function openVaultDoc(id: string): Promise<void> {
           : "Download failed.";
     throw new ApiError("DOWNLOAD_FAILED", message, res.status);
   }
-  const url = URL.createObjectURL(await res.blob());
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return res.blob();
 }

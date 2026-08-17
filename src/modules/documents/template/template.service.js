@@ -451,6 +451,10 @@ async function loadRecord(client, docType, recordId) {
         number: p.doc_number || String(p.proposal_id).slice(0, 8), date: p.created_at, status: p.status, headline: p.title,
         party: { name: p.client_name || "—", lines: [] }, sections, lines,
         totals: ht ? { service_ht: ht, total_ttc: ht } : undefined, currency: "XAF",
+        // The vaulted default-language PDF produced when the proposal was sent
+        // (proposal.service transition → SENT). Reuse it for download instead of
+        // re-rendering a fresh PDF on every click.
+        pdf_vault_id: p.pdf_vault_id || null,
       },
     };
   }

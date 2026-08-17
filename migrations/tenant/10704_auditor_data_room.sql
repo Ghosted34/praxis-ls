@@ -16,7 +16,7 @@
 -- hash + QR verification and audit trail apply to shared evidence as-is.
 -- ============================================================================
 
-CREATE TABLE auditor_data_room (
+CREATE TABLE IF NOT EXISTS auditor_data_room (
   room_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   subject_email citext NOT NULL,                 -- auditor's portal identity
   request_note  text NOT NULL CHECK (length(btrim(request_note)) BETWEEN 1 AND 2000),
@@ -26,9 +26,9 @@ CREATE TABLE auditor_data_room (
   answered_by   uuid REFERENCES app_user(user_id)
 );
 
-CREATE INDEX ix_auditor_room_email ON auditor_data_room(subject_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_auditor_room_email ON auditor_data_room(subject_email, created_at DESC);
 
-CREATE TABLE auditor_data_room_doc (
+CREATE TABLE IF NOT EXISTS auditor_data_room_doc (
   room_id   uuid NOT NULL REFERENCES auditor_data_room(room_id) ON DELETE CASCADE,
   doc_id    uuid NOT NULL REFERENCES document_vault(doc_id),
   added_by  uuid REFERENCES app_user(user_id),

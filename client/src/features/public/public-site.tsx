@@ -89,7 +89,7 @@ const T = {
 } as const;
 
 const inputCls =
-  "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/60";
+  "w-full rounded-lg border border-black/10 bg-white px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60";
 
 export function PublicSitePage() {
   const [lang, setLang] = React.useState<Lang>("en");
@@ -145,12 +145,12 @@ export function PublicSitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-secondary text-foreground">
       {/* Top bar */}
-      <header className="border-b border-black/5 bg-white">
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 font-display text-sm font-bold text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-display text-sm font-bold text-white">
               P
             </span>
             <span className="font-display text-lg font-semibold tracking-tight">
@@ -170,7 +170,7 @@ export function PublicSitePage() {
             <button
               type="button"
               onClick={() => setLang(lang === "en" ? "fr" : "en")}
-              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium hover:bg-slate-50"
+              className="rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-accent"
             >
               {lang === "en" ? "FR" : "EN"}
             </button>
@@ -179,21 +179,21 @@ export function PublicSitePage() {
       </header>
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+      <section className="bg-gradient-to-br from-[rgb(var(--brand-blue-deep))] via-[rgb(var(--brand-blue))] to-[rgb(var(--brand-blue-deep))] text-white">
         <div className="mx-auto max-w-6xl px-4 py-20 text-center">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-orange-400">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--primary-ink-dark))]">
             {t.hero.eyebrow}
           </p>
           <h1 className="mx-auto max-w-3xl font-display text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
             {t.hero.title}
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-slate-300">
+          <p className="mx-auto mt-5 max-w-2xl text-white/70">
             {t.hero.sub}
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a
               href="#quote"
-              className="rounded-lg bg-orange-500 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-orange-600"
+              className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-ink"
             >
               {t.hero.cta}
             </a>
@@ -216,10 +216,10 @@ export function PublicSitePage() {
           {t.services.items.map((s) => (
             <div
               key={s.t}
-              className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm"
+              className="rounded-2xl border border-border bg-card p-5 shadow-sm"
             >
               <h3 className="font-semibold">{s.t}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 {s.d}
               </p>
             </div>
@@ -228,17 +228,17 @@ export function PublicSitePage() {
       </section>
 
       {/* Quote form */}
-      <section id="quote" className="border-t border-black/5 bg-white">
+      <section id="quote" className="border-t border-border bg-card">
         <div className="mx-auto max-w-2xl px-4 py-16">
           <h2 className="text-center font-display text-2xl font-bold tracking-tight">
             {t.quote.title}
           </h2>
-          <p className="mt-2 text-center text-sm text-slate-500">
+          <p className="mt-2 text-center text-sm text-muted-foreground">
             {t.quote.sub}
           </p>
 
           {sent ? (
-            <div className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center text-sm text-emerald-800">
+            <div className="mt-8 rounded-2xl border border-[rgb(var(--ok)_/_0.3)] bg-[rgb(var(--ok)_/_0.08)] p-6 text-center text-sm text-[rgb(var(--ok))]">
               {t.quote.sent}
             </div>
           ) : (
@@ -247,7 +247,7 @@ export function PublicSitePage() {
               className="mt-8 space-y-3"
             >
               {err && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-lg border border-[rgb(var(--bad)_/_0.3)] bg-[rgb(var(--bad)_/_0.08)] p-3 text-sm text-[rgb(var(--bad))]">
                   {err}
                 </div>
               )}
@@ -333,11 +333,11 @@ export function PublicSitePage() {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-lg bg-orange-500 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-orange-600 disabled:opacity-50"
+                className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-ink disabled:opacity-50"
               >
                 {busy ? t.quote.sending : t.quote.submit}
               </button>
-              <p className="text-center text-xs text-slate-400">
+              <p className="text-center text-xs text-muted-foreground">
                 {t.quote.privacy}
               </p>
             </form>
@@ -345,7 +345,7 @@ export function PublicSitePage() {
         </div>
       </section>
 
-      <footer className="border-t border-black/5 bg-white py-6 text-center text-xs text-slate-400">
+      <footer className="border-t border-border bg-card py-6 text-center text-xs text-muted-foreground">
         {t.footer}
       </footer>
     </div>

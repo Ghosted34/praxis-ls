@@ -9,7 +9,7 @@
 -- any other document.
 -- ============================================================================
 
-CREATE TABLE client_message (
+CREATE TABLE IF NOT EXISTS client_message (
   message_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id       uuid NOT NULL REFERENCES client_master(client_id) ON DELETE CASCADE,
   dossier_id      uuid REFERENCES dossier(dossier_id),
@@ -20,7 +20,7 @@ CREATE TABLE client_message (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ix_client_message_client ON client_message(client_id, created_at);
+CREATE INDEX IF NOT EXISTS ix_client_message_client ON client_message(client_id, created_at);
 
 -- DOWN
 --   DROP TABLE IF EXISTS client_message;

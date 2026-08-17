@@ -8,7 +8,7 @@
 -- and a tenant can extend later without a migration.
 -- ============================================================================
 
-CREATE TABLE client_onboarding_step (
+CREATE TABLE IF NOT EXISTS client_onboarding_step (
   client_onboarding_step_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id                 uuid NOT NULL REFERENCES client_master(client_id) ON DELETE CASCADE,
   step_key                  text NOT NULL,

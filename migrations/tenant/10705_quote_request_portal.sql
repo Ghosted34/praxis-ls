@@ -13,7 +13,8 @@ CREATE INDEX IF NOT EXISTS ix_quote_request_client
 
 -- Extend the intake-channel allow-list with PORTAL. The original constraint
 -- (0683) was inline, so it has the default name; find and replace it rather
--- than guessing.
+-- than guessing. Idempotent: drop the old one only if present, add the new one
+-- only if absent — a re-run (ledger lost, CI apply-twice) is a no-op.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'quote_request_intake_channel_check') THEN
@@ -21,9 +22,14 @@ BEGIN
   END IF;
 END $$;
 
-ALTER TABLE quote_request
-  ADD CONSTRAINT quote_request_intake_channel_check
-  CHECK (intake_channel IN ('WEBSITE','MANUAL','REFERRAL','CAMPAIGN','PORTAL'));
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'quote_request_intake_channel_check') THEN
+    ALTER TABLE quote_request
+      ADD CONSTRAINT quote_request_intake_channel_check
+      CHECK (intake_channel IN ('WEBSITE','MANUAL','REFERRAL','CAMPAIGN','PORTAL'));
+  END IF;
+END $$;
 
 -- DOWN
 --   ALTER TABLE quote_request DROP CONSTRAINT quote_request_intake_channel_check;

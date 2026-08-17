@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1163 |
+| Routes | 1172 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1163 mounted routes, grouped by path prefix.
+All 1172 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1716,7 +1716,16 @@ All 1163 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/trainings/:id/attendees` | — |
 | POST | `/api/tenant/trainings/:id/attendees` | — |
 | PATCH | `/api/tenant/trainings/:id/attendees/:attendeeId` | — |
+| POST | `/api/tenant/trainings/:id/join` | — |
+| POST | `/api/tenant/trainings/:id/leave` | — |
+| POST | `/api/tenant/trainings/:id/notes` | — |
 | POST | `/api/tenant/trainings/:id/status` | — |
+| POST | `/api/tenant/trainings/:id/summarise` | — |
+| GET | `/api/tenant/trainings/certificates/expiring` | — |
+| GET | `/api/tenant/trainings/requirements` | — |
+| POST | `/api/tenant/trainings/requirements` | — |
+| PATCH | `/api/tenant/trainings/requirements/:requirementId` | — |
+| GET | `/api/tenant/trainings/requirements/:requirementId/compliance` | — |
 
 ### `tenant/transit-orders`
 

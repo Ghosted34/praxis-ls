@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1163,
+  "route_count": 1172,
   "tiers": {
     "public": 32,
     "self-scoped": 71,
-    "gated": 1060
+    "gated": 1069
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3267,6 +3267,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/trainings/certificates/expiring": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/trainings/requirements": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/trainings/requirements/:requirementId/compliance": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/transit-orders/": {
       "auth": true,
       "rbac": true,
@@ -4144,6 +4162,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/trainings/:id/attendees/:attendeeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/trainings/requirements/:requirementId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6561,7 +6585,37 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/trainings/:id/join": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/trainings/:id/leave": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/trainings/:id/notes": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/trainings/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/trainings/:id/summarise": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/trainings/requirements": {
       "auth": true,
       "rbac": true,
       "validated": false,

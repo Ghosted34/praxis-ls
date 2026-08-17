@@ -20,6 +20,21 @@ const schemas = {
   // whatever the body says.
   raiseTicket: qTicket.raise,
   replyTicket: qTicket.reply,
+  // Self-service quoting from the portal (PRD §11.1). client_id is never
+  // accepted from the body — the grant decides the client.
+  portalQuote: z.object({
+    service_category: z.string().min(1).max(80),
+    service_type: z.string().optional(),
+    origin_location: z.string().min(1).max(120),
+    destination_location: z.string().min(1).max(120),
+    estimated_weight: z.number().nonnegative().optional(),
+    cargo_description: z.string().max(2000).optional(),
+    incoterm: z.string().max(40).optional(),
+  }),
+  // A portal message — the body is the only thing the caller supplies.
+  message: z.object({ body: z.string().trim().min(1).max(4000), dossier_id: z.string().uuid().optional() }),
+  // Staff reply — client_id comes from the caller (staff route).
+  staffMessage: z.object({ client_id: z.string().uuid(), body: z.string().trim().min(1).max(4000), dossier_id: z.string().uuid().optional() }),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -33,4 +48,5 @@ module.exports = {
   login: mw("login"), create: mw("create"), password: mw("password"), status: mw("status"),
   invite: mw("invite"), forgot: mw("forgot"), accept: mw("accept"),
   raiseTicket: mw("raiseTicket"), replyTicket: mw("replyTicket"),
+  portalQuote: mw("portalQuote"), message: mw("message"), staffMessage: mw("staffMessage"),
 };

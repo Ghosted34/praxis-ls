@@ -8,6 +8,15 @@ const actor = (req) => req.user || { user_id: null };
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
   mine: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.myPayslips(c, req.user.employee_id)) })),
+  // Self-service payslip PDF — ownership checked in the service (run item must
+  // belong to the caller's employee record).
+  ownPayslipPdf: asyncHandler(async (req, res) => {
+    const out = await req.tenantDb((c) => service.ownPayslipPdf(c, { runItemId: req.params.runItemId, actor: req.user || {} }));
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="payslip-${out.doc.period_code}.pdf"`);
+    if (out.verify) res.setHeader("X-Praxis-Verify", out.verify);
+    res.send(out.buffer);
+  }),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Payroll run not found", 404);

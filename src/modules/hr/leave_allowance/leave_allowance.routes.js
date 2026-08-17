@@ -34,6 +34,8 @@ router.use(authMiddleware);
 // Self-service — the caller's own leave/allowance requests (My HR). No MOD grant.
 router.get("/mine", controller.mine);
 router.get("/mine/balances", controller.myBalances);
+// Self-service request — the employee is the caller, no MOD grant needed.
+router.post("/mine", validator.mineCreate, controller.createMine);
 
 /* ── Catalogues, before /:id ── */
 router.get("/types", requirePermission(M, "view"), controller.listTypes);

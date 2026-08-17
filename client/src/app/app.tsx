@@ -80,6 +80,18 @@ const AuditRoomPage = lazyNamed(
   () => import("@/features/portal/data-room"),
   "AuditRoomPage",
 );
+const ClientSupportPage = lazyNamed(
+  () => import("@/features/portal/client-support"),
+  "ClientSupportPage",
+);
+const SelfServicePage = lazyNamed(
+  () => import("@/features/hr/self-service"),
+  "SelfServicePage",
+);
+const PublicSitePage = lazyNamed(
+  () => import("@/features/public/public-site"),
+  "PublicSitePage",
+);
 
 const DashboardPage = lazyNamed(
   () => import("@/features/dashboard"),
@@ -440,6 +452,7 @@ export function App() {
             credential. Two routes rather than a splat, so `/public/careers/
             anything/else` falls to the catch-all rather than rendering a detail
             view for a token that has a slash in it. */}
+            <Route path="/public" element={<PublicSitePage />} />
             <Route path="/public/track" element={<PublicTrackingPage />} />
             <Route path="/public/portfolio" element={<PublicPortfolioPage />} />
             <Route
@@ -575,6 +588,7 @@ export function App() {
               <Route path="comms/:section" element={<CommsHub />} />
               {/* Settings & Admin (new) */}
               <Route path="settings/numbering" element={<NumberingPage />} />
+              <Route path="self-service" element={<SelfServicePage />} />
               <Route
                 path="settings/catalogue"
                 element={<ModuleCataloguePage />}
@@ -586,6 +600,7 @@ export function App() {
                 element={<PortalAccessPage />}
               />
               <Route path="settings/audit-room" element={<AuditRoomPage />} />
+              <Route path="settings/client-support" element={<ClientSupportPage />} />
               {/* Settings hub cards without a dedicated editor yet */}
               {/* Business setup was a duplicate of the Corporate entities editor (MOD-01) —
             same profile / financial identity / fiscal-year fields. Retired 2026-07-18;

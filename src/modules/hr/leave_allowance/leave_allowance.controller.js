@@ -15,6 +15,10 @@ module.exports = {
     return res.json({ data: await req.tenantDb((c) => service.list(c, { employee_id: eid })) });
   }),
 
+  /** Self-service request — the employee is the caller (service forces it). */
+  createMine: asyncHandler(async (req, res) =>
+    res.status(201).json({ data: await req.tenantDb((c) => service.createMine(c, { data: req.body, actor: actor(req) })) })),
+
   /** The caller's own balances — what My HR shows before anyone asks for leave.
    *  No MOD grant: an employee is always entitled to see their own figure. */
   myBalances: asyncHandler(async (req, res) => {

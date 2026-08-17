@@ -277,6 +277,25 @@ async function get(client, id) {
 const list = (client, q) => repo.listRuns(client, q);
 const myPayslips = (client, employeeId) => (employeeId ? repo.payslipsForEmployee(client, employeeId) : Promise.resolve([]));
 
+/**
+ * Generate + download the caller's own payslip (self-service). The run item
+ * must belong to the caller's employee record — nobody else's payslip is
+ * reachable, whatever id is passed. Renders through the shared document
+ * template (PAYSLIP) so the PDF is the same one payroll issues, then streams
+ * the vaulted bytes.
+ */
+async function ownPayslipPdf(client, { runItemId, actor }) {
+  const employeeId = actor.employee_id;
+  if (!employeeId) throw new AppError("NO_EMPLOYEE", "No employee record on this account", 422);
+  const owns = await repo.itemBelongsToEmployee(client, runItemId, employeeId);
+  if (!owns) throw new AppError("NOT_FOUND", "No such payslip for you", 404);
+  const { generate } = require("../../documents/template/template.service");
+  const vault = require("../../vault/document_vault/document_vault.service");
+  const out = await generate(client, { docType: "PAYSLIP", recordId: runItemId, actor });
+  const { buffer } = await vault.fetchBytes(client, out.doc_id);
+  return { buffer, doc: owns, verify: out.verify };
+}
+
 function periodEnd(periodCode) {
   const [y, m] = String(periodCode).split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // last day of month
@@ -285,4 +304,4 @@ function periodEnd(periodCode) {
 // A cleared approval chain advances the run SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
 onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {}, viaChain: true }));
 
-module.exports = { createRun, compute, setStatus, get, list, myPayslips };
+module.exports = { createRun, compute, setStatus, get, list, myPayslips, ownPayslipPdf };

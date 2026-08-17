@@ -68,8 +68,13 @@ const adjust = z.object({
   period_year: z.number().int().min(2000).max(2200).optional(),
 });
 
+/** Self-service create — same rules as `create`, but the employee is the
+ *  caller (forced in the service), so the body must not name one. */
+const mineCreate = create.omit({ employee_id: true });
+
 const schemas = {
   create,
+  mineCreate,
   update: create.partial(),
   decision,
   leaveType,
@@ -87,6 +92,7 @@ const mw = (k) => (req, _res, next) => {
 
 module.exports = {
   create: mw("create"),
+  mineCreate: mw("mineCreate"),
   update: mw("update"),
   decision: mw("decision"),
   leaveType: mw("leaveType"),

@@ -15,6 +15,12 @@ import {
   portalClientView,
   portalClientDocuments,
   portalClientDocumentDownload,
+  portalClientOnboarding,
+  portalClientMessages,
+  portalClientMessageSend,
+  portalClientMessagesExport,
+  portalClientQuoteRequests,
+  portalClientQuoteCreate,
   portalInvestorView,
   portalAuditorView,
   portalDataRoomList,
@@ -24,6 +30,9 @@ import {
   type PortalMe,
   type ClientView,
   type PortalDocument,
+  type PortalOnboarding,
+  type PortalMessage,
+  type PortalQuoteRequest,
   type InvestorView,
   type AuditorView,
   type PortalDataRoom,
@@ -553,6 +562,35 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   const [dlError, setDlError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Onboarding command centre (PRD §11.1).
+  const [onb, setOnb] = React.useState<PortalOnboarding | null>(null);
+
+  // Secure messaging (PRD §11.1).
+  const [msgs, setMsgs] = React.useState<PortalMessage[]>([]);
+  const [msgDraft, setMsgDraft] = React.useState("");
+  const [msgBusy, setMsgBusy] = React.useState<"send" | "export" | null>(null);
+  const [msgError, setMsgError] = React.useState<string | null>(null);
+
+  // Self-service quoting (PRD §11.1).
+  const [quotes, setQuotes] = React.useState<PortalQuoteRequest[] | null>(null);
+  const [quoteForm, setQuoteForm] = React.useState({
+    service_category: "",
+    service_type: "",
+    origin_location: "",
+    destination_location: "",
+    estimated_weight: "",
+    cargo_description: "",
+    incoterm: "",
+  });
+  const [quoteBusy, setQuoteBusy] = React.useState(false);
+  const [quoteError, setQuoteError] = React.useState<string | null>(null);
+
+  const reloadMessages = React.useCallback(() => {
+    portalClientMessages()
+      .then((m) => setMsgs(m))
+      .catch((e) => setMsgError(msg(e)));
+  }, []);
+
   React.useEffect(() => {
     let alive = true;
     portalClientView()
@@ -562,10 +600,81 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
     portalClientDocuments()
       .then((d) => alive && setDocs(d))
       .catch(() => alive && setDocs([]));
+    portalClientOnboarding()
+      .then((o) => alive && setOnb(o))
+      .catch(() => alive && setOnb(null));
+    portalClientMessages()
+      .then((m) => alive && setMsgs(m))
+      .catch(() => alive && setMsgs([]));
+    portalClientQuoteRequests()
+      .then((q) => alive && setQuotes(q))
+      .catch(() => alive && setQuotes([]));
     return () => {
       alive = false;
     };
   }, []);
+
+  async function sendMessage() {
+    const body = msgDraft.trim();
+    if (!body) return;
+    setMsgBusy("send");
+    setMsgError(null);
+    try {
+      await portalClientMessageSend(body);
+      setMsgDraft("");
+      reloadMessages();
+    } catch (e) {
+      setMsgError(msg(e));
+    } finally {
+      setMsgBusy(null);
+    }
+  }
+
+  async function exportChat() {
+    setMsgBusy("export");
+    setMsgError(null);
+    try {
+      await portalClientMessagesExport();
+    } catch (e) {
+      setMsgError(msg(e));
+    } finally {
+      setMsgBusy(null);
+    }
+  }
+
+  async function submitQuote(e: React.FormEvent) {
+    e.preventDefault();
+    setQuoteBusy(true);
+    setQuoteError(null);
+    try {
+      await portalClientQuoteCreate({
+        service_category: quoteForm.service_category,
+        service_type: quoteForm.service_type || undefined,
+        origin_location: quoteForm.origin_location,
+        destination_location: quoteForm.destination_location,
+        estimated_weight: quoteForm.estimated_weight
+          ? Number(quoteForm.estimated_weight)
+          : undefined,
+        cargo_description: quoteForm.cargo_description || undefined,
+        incoterm: quoteForm.incoterm || undefined,
+      });
+      setQuoteForm({
+        service_category: "",
+        service_type: "",
+        origin_location: "",
+        destination_location: "",
+        estimated_weight: "",
+        cargo_description: "",
+        incoterm: "",
+      });
+      const q = await portalClientQuoteRequests();
+      setQuotes(q);
+    } catch (e) {
+      setQuoteError(msg(e));
+    } finally {
+      setQuoteBusy(false);
+    }
+  }
 
   async function downloadDoc(doc: PortalDocument) {
     setDlBusy(doc.doc_id);
@@ -674,6 +783,259 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                     </p>
                     <span className="status">{label(i.status)}</span>
                   </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Panel title="Onboarding">
+          {!onb ? (
+            <SkeletonTable />
+          ) : (
+            <>
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Your account</span>
+                  <span className="font-medium text-foreground">
+                    {onb.progress}% complete
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${onb.progress}%` }}
+                  />
+                </div>
+              </div>
+              <ul className="space-y-2">
+                {onb.steps.map((s) => (
+                  <li
+                    key={s.step_key}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-2"
+                  >
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] ${
+                        s.done
+                          ? "bg-[rgb(var(--ok))] text-white"
+                          : "border border-border text-muted-foreground"
+                      }`}
+                    >
+                      {s.done ? "✓" : ""}
+                    </span>
+                    <span
+                      className={
+                        s.done
+                          ? "text-sm text-muted-foreground line-through"
+                          : "text-sm text-foreground"
+                      }
+                    >
+                      {s.label_en}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Panel>
+
+        <Panel title="Messages">
+          {msgError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {msgError}
+            </div>
+          )}
+          <div className="mb-3 max-h-56 space-y-2 overflow-auto">
+            {msgs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No messages yet — ask your account team anything about your
+                shipments.
+              </p>
+            ) : (
+              msgs.map((m) => (
+                <div
+                  key={m.message_id}
+                  className={`rounded-xl px-3 py-2 text-sm ${
+                    m.direction === "CLIENT"
+                      ? "ml-6 bg-primary/10 text-foreground"
+                      : "mr-6 bg-card text-foreground"
+                  }`}
+                >
+                  <div className="mb-0.5 text-[11px] text-muted-foreground">
+                    {m.direction === "STAFF"
+                      ? m.author_name || "Account team"
+                      : "You"}{" "}
+                    · {dateFmt(m.created_at)}
+                  </div>
+                  <p className="whitespace-pre-wrap">{m.body}</p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              value={msgDraft}
+              onChange={(e) => setMsgDraft(e.target.value)}
+              rows={2}
+              maxLength={4000}
+              placeholder="Write a message to your account team…"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={!msgDraft.trim() || msgBusy === "send"}
+              onClick={() => void sendMessage()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {msgBusy === "send" ? "Sending…" : "Send"}
+            </button>
+            <button
+              type="button"
+              disabled={msgs.length === 0 || msgBusy === "export"}
+              onClick={() => void exportChat()}
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-opacity hover:opacity-80 disabled:opacity-50"
+            >
+              {msgBusy === "export" ? "Exporting…" : "Export chat (PDF)"}
+            </button>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Panel title="Request a quote">
+          {quoteError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {quoteError}
+            </div>
+          )}
+          <form onSubmit={(e) => void submitQuote(e)} className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                required
+                value={quoteForm.service_category}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    service_category: e.target.value,
+                  }))
+                }
+                placeholder="Service (Sea freight import…)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={quoteForm.service_type}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    service_type: e.target.value,
+                  }))
+                }
+                placeholder="Service type (optional)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                required
+                value={quoteForm.origin_location}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    origin_location: e.target.value,
+                  }))
+                }
+                placeholder="Origin (POL)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                required
+                value={quoteForm.destination_location}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    destination_location: e.target.value,
+                  }))
+                }
+                placeholder="Destination (POD)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                value={quoteForm.estimated_weight}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    estimated_weight: e.target.value,
+                  }))
+                }
+                type="number"
+                min="0"
+                step="0.0001"
+                placeholder="Est. weight (kg)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={quoteForm.incoterm}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({ ...f, incoterm: e.target.value }))
+                }
+                placeholder="Incoterm (FOB, CIF…)"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <textarea
+              value={quoteForm.cargo_description}
+              onChange={(e) =>
+                setQuoteForm((f) => ({
+                  ...f,
+                  cargo_description: e.target.value,
+                }))
+              }
+              rows={2}
+              maxLength={2000}
+              placeholder="Cargo description (optional)"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button
+              type="submit"
+              disabled={quoteBusy}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {quoteBusy ? "Submitting…" : "Request quote"}
+            </button>
+          </form>
+        </Panel>
+
+        <Panel title="My quote requests">
+          {quotes === null ? (
+            <SkeletonTable />
+          ) : quotes.length === 0 ? (
+            <EmptyState
+              title="No quote requests"
+              hint="Quotes you request appear here with their status."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {quotes.map((q) => (
+                <li key={q.quote_request_id} className="py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {q.public_ref || "Quote request"}
+                    </p>
+                    <span className="status">{label(q.status)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {q.origin_location || "—"} → {q.destination_location || "—"}
+                    {q.estimated_weight
+                      ? ` · ${q.estimated_weight} kg`
+                      : ""}{" "}
+                    · {dateFmt(q.created_at)}
+                  </p>
                 </li>
               ))}
             </ul>

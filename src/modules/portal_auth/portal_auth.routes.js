@@ -75,6 +75,16 @@ router.get("/auditor/data-room", portalAuth("AUDITOR"), ar.list);
 router.post("/auditor/data-room", portalAuth("AUDITOR"), arv.create, ar.create);
 router.get("/auditor/data-room/:id", portalAuth("AUDITOR"), arv.id, ar.detail);
 router.get("/auditor/data-room/:id/documents/:docId/download", portalAuth("AUDITOR"), arv.idDoc, ar.download);
+// Client portal — onboarding command centre, secure messaging + certified
+// PDF export, and self-service quoting (PRD §11.1). All scoped to the grant's
+// client_id (controller `clientId(req)`); `export` is a static path so it is
+// declared before any :id-shaped route would shadow it.
+router.get("/client/onboarding", portalAuth("CLIENT"), pc.clientOnboarding);
+router.get("/client/messages", portalAuth("CLIENT"), pc.clientMessages);
+router.post("/client/messages", portalAuth("CLIENT"), v.message, pc.sendClientMessage);
+router.get("/client/messages/export", portalAuth("CLIENT"), pc.exportClientChat);
+router.get("/client/quote-requests", portalAuth("CLIENT"), pc.clientQuoteRequests);
+router.post("/client/quote-requests", portalAuth("CLIENT"), v.portalQuote, pc.createClientQuote);
 // Staff management — invite/manage external users. IAM & user access (MOD-67).
 const M = "MOD-67";
 router.get("/users", authMiddleware, requirePermission(M, "view"), c.listUsers);
@@ -91,5 +101,12 @@ router.get("/data-room", authMiddleware, requirePermission(M, "view"), ar.listSt
 router.get("/data-room/:id", authMiddleware, requirePermission(M, "view"), arv.id, ar.detailStaff);
 router.post("/data-room/:id/documents", authMiddleware, requirePermission(M, "edit"), arv.attach, ar.attach);
 router.post("/data-room/:id/answer", authMiddleware, requirePermission(M, "edit"), arv.id, ar.answer);
+
+// Staff: client portal support — the account team's side of the thread and the
+// onboarding checklist. Same gate (MOD-67).
+router.get("/messages", authMiddleware, requirePermission(M, "view"), pc.staffMessages);
+router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, pc.staffSendMessage);
+router.get("/onboarding", authMiddleware, requirePermission(M, "view"), pc.staffOnboarding);
+router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), pc.staffToggleOnboarding);
 
 module.exports = { basePath: "/portal", feature: null, router };

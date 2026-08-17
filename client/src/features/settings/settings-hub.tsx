@@ -208,6 +208,18 @@ const SECTIONS: Section[] = [
         desc: "Auditor document requests & shared files",
         icon: "doc",
       },
+      {
+        to: "/settings/client-support",
+        label: "Client support",
+        desc: "Client portal messages & onboarding",
+        icon: "comms",
+      },
+      {
+        to: "/self-service",
+        label: "My HR",
+        desc: "Your payslips, leave & advances",
+        icon: "id",
+      },
     ],
   },
 ];

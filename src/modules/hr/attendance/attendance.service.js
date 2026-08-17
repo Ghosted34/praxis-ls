@@ -11,11 +11,14 @@
 "use strict";
 
 const { makeService } = require("../../../shared/crud/resource");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { logger } = require("../../../config/logger");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./attendance.repo");
 const events = require("./attendance.events");
+// 0704: the lateness query, raised at the punch and adopted by the reconciler.
+const hrQuery = require("./attendance.query");
 const employeeService = require("../../master/employees/employees.service");
 const geoapify = require("../../../services/geoapify.service");
 const rules = require("./attendance.rules");
@@ -196,6 +199,16 @@ const parseHHMM = (s) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || ""));
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
+/** The active LATENESS rule, or null. Same selection the reconciler makes
+ *  (first by code, so the choice is stable) — the punch and the settlement must
+ *  cite the same clause or the employee is told two different things. */
+async function latenessRule(client) {
+  const { rows } = await client.query(
+    "SELECT * FROM hr_rule WHERE kind = 'LATENESS' AND is_active ORDER BY code LIMIT 1",
+  );
+  return rows[0] || null;
+}
+
 async function attendancePolicy(client) {
   const v = (await getSetting(client, "hr", "attendance_policy", null)) || {};
   return {
@@ -376,6 +389,56 @@ module.exports = {
       });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, after: row });
+
+    /*
+     * ASK THEM NOW (0704).
+     *
+     * The auto-query used to be raised by the nightly reconciler, so somebody
+     * ninety minutes late on Tuesday was asked about it on Wednesday — when the
+     * true answer has to be recalled rather than given, and the manager who
+     * watched them arrive has moved on.
+     *
+     * Three things about the shape of this:
+     *
+     *   It NEVER fails the punch. Clocking in is how somebody gets paid, and a
+     *   missing rule, a missing policy or a database hiccup in the query path
+     *   must not be the reason they cannot start work. Caught, logged, ignored.
+     *
+     *   The deduction is stated as a PROSPECT, not a fact — the day is not over
+     *   and leave, a correction or a waiver can still change it. `composeQuery`
+     *   handles that with `settled: false`.
+     *
+     *   The row it writes is the SAME row the reconciler will adopt tonight,
+     *   keyed on (employee, work_date, rule). Without that the employee gets
+     *   asked twice about one late morning.
+     */
+    const policy = await attendancePolicy(client);
+    const late = lateness(row.clock_in_at, policy);
+    if (late.is_late) {
+      try {
+        const rule = await latenessRule(client);
+        if (rule && rule.auto_query) {
+          await hrQuery.upsertAutoQuery(client, {
+            employeeId: empId,
+            workDate: rules.localDate(row.clock_in_at, policy.timeZone),
+            rule,
+            source: "CLOCK_IN",
+            minutesLate: late.minutes_late,
+            expectedStart: policy.startText,
+            // Not computed here: the daily rate depends on the month's working
+            // days and the reconciler owns that arithmetic. Quoting a figure
+            // the settlement might not match is worse than quoting none.
+            deduction: 0,
+            settled: false,
+            attendanceId: row.attendance_id,
+            actorId: await resolveActorId(client, actor.user_id),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, employee: empId }, "[attendance] could not raise the clock-in query — the punch stands");
+      }
+    }
+
     /*
      * `device_new` is TRANSIENT — not a column, and deliberately not one.
      *

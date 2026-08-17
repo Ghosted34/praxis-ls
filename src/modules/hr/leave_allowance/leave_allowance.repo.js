@@ -25,6 +25,16 @@ module.exports = {
     if (q.employee_id) { params.push(q.employee_id); wh.push("lr.employee_id = $" + params.length); }
     if (q.status) { params.push(q.status); wh.push("lr.status = $" + params.length); }
     if (q.kind) { params.push(q.kind); wh.push("lr.kind = $" + params.length); }
+    /*
+     * `exclude_kind` exists because the Leave screen was showing salary
+     * advances, which have had their own tab since 0698 — so an advance
+     * appeared twice, in two places that decide it differently (leave shows a
+     * date range and a day count; the advances tab shows the amount and the
+     * recovery schedule). Filtering in the browser was not an option: `page()`
+     * clamps this list to 50 rows, so hiding advances client-side would show
+     * fewer than 50 leave requests and call it the whole set.
+     */
+    if (q.exclude_kind) { params.push(q.exclude_kind); wh.push("lr.kind <> $" + params.length); }
     if (q.leave_type_id) { params.push(q.leave_type_id); wh.push("lr.leave_type_id = $" + params.length); }
     const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
     const { rows } = await client.query(

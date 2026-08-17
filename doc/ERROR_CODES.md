@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (356)
+## All codes (359)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -196,6 +196,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
+| `MANDATORY_ITEMS_OUTSTANDING` | 422 | 1× | — |
 | `MERGE_SAME_RECORD` | 422 | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
 | `MILESTONE_MISMATCH` | 422 | 1× | — |
@@ -215,7 +216,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 388× | — |
+| `NOT_FOUND` | 404 | 400× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -266,7 +267,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_SIGNED_COPY` | 422 | 2× | — |
 | `NO_TARGET` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
-| `NO_TEMPLATE` | 422 | 1× | — |
+| `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 5× | — |
 | `NO_VAT_ACCOUNT` | 422 | 2× | — |
 | `NO_WORKING_DAYS` | 422 | 1× | — |
@@ -335,6 +336,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SMTP_SENDER_REJECTED` | 502 | 1× | — |
 | `SMTP_SEND_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
+| `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SPAM_REJECTED` | 422 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | 422 | 1× | — |
@@ -375,7 +377,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
-| `VALIDATION_ERROR` | 422 | 159× | — |
+| `VACANCY_CLOSED` | — | 1× | — |
+| `VALIDATION_ERROR` | 422 | 160× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

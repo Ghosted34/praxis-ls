@@ -49,10 +49,27 @@ module.exports = {
   }),
   setApplicantStatus: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) =>
-      service.setApplicantStatus(c, { vacancyId: req.params.id, applicantId: req.params.applicantId, status: req.body.status, actor: actor(req) }),
+      service.setApplicantStatus(c, {
+        vacancyId: req.params.id, applicantId: req.params.applicantId,
+        status: req.body.status, startsOn: req.body.starts_on || null, actor: actor(req),
+      }),
     );
     if (!row) throw new AppError("NOT_FOUND", "Applicant not found", 404);
     res.json({ data: row });
+  }),
+
+  /** Put a past candidate or a bench contact in front of this vacancy (0703) —
+   *  the action 0525's searchable pool was missing. */
+  considerForVacancy: asyncHandler(async (req, res) => {
+    const row = await req.tenantDb((c) =>
+      service.considerForVacancy(c, {
+        vacancyId: req.params.id,
+        applicantId: req.body.applicant_id || null,
+        talentPoolId: req.body.talent_pool_id || null,
+        actor: actor(req),
+      }),
+    );
+    res.status(201).json({ data: row });
   }),
 
   /** Re-score everyone on the vacancy. Sequential model calls — see the

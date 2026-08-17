@@ -106,6 +106,14 @@ const DOC_TYPES = {
    * produced unless they also administered the application.
    */
   TRAINING_MINUTES:      { label: "Training session minutes",  module: "hr/training",                   moduleKey: "MOD-18" },
+  /*
+   * The PDF rendered from an SOP's body (0704). Registered for the same reason
+   * as the two above: an unregistered type falls back to MOD-70, so the HR
+   * manager who wrote the procedure could not read back the document it
+   * produced unless they also administered the application — and an SOP is the
+   * one document in this module that is meant to be READ by everybody it binds.
+   */
+  SOP_DOCUMENT:          { label: "Standard operating procedure", module: "hr/sop_onboarding",           moduleKey: "MOD-16" },
   ENTITY_DOCUMENT:       { label: "Entity document scan",     module: "master/corporate_entity",       moduleKey: "MOD-01" },
   CLIENT_DOCUMENT:       { label: "Client KYC scan",          module: "master/client_master",          moduleKey: "MOD-03" },
   SUPPLIER_DOCUMENT:     { label: "Supplier KYC scan",        module: "master/supplier_master",        moduleKey: "MOD-04" },

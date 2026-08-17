@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (365)
+## All codes (367)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -93,6 +93,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STAGE` | 422 | 2× | — |
 | `BAD_STATE` | 400, 409, 422 | 25× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
+| `BAD_STORAGE_BUFFER` | 400 | 1× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
 | `BAD_THEME` | 422 | 1× | — |
@@ -344,6 +345,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SPAM_REJECTED` | 422 | 1× | — |
+| `STORAGE_LIMIT` | 413 | 1× | — |
 | `SUPPLIER_NOT_VERIFIED` | — | 1× | — |
 | `SUPPLIER_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |

@@ -110,7 +110,21 @@ const applicant = z.object({
   cv_data_url: z.string().min(32).max(11_000_000).optional(),
   cv_filename: z.string().max(200).optional(),
 });
-const applicantStatus = z.object({ status: z.enum(APPLICANT_STATUS) });
+// `starts_on` is meaningful only on the transition into HIRED, where it becomes
+// the employee's hire date and the base every onboarding due date is offset
+// from (0703). Optional everywhere else rather than a separate schema, so a
+// recruiter setting a start date does not need a second call.
+const applicantStatus = z.object({
+  status: z.enum(APPLICANT_STATUS),
+  starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD").optional().nullable(),
+});
+
+/** Put a bench candidate in front of this vacancy. Exactly one source — a past
+ *  applicant or a hand-entered bench row; the service refuses neither and both. */
+const consider = z.object({
+  applicant_id: z.string().uuid().optional(),
+  talent_pool_id: z.string().uuid().optional(),
+});
 
 const criterion = z.object({
   label: z.string().trim().min(1).max(200),
@@ -172,7 +186,7 @@ const placeSearch = z.object({
   limit: z.coerce.number().int().min(1).max(10).optional(),
 });
 
-const schemas = { create, update, status, applicant, applicantStatus, criterion, question, answer, publish, intake, transcribe, placeSearch };
+const schemas = { create, update, status, applicant, applicantStatus, consider, criterion, question, answer, publish, intake, transcribe, placeSearch };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -196,6 +210,7 @@ module.exports = {
   status: mw("status"),
   applicant: mw("applicant"),
   applicantStatus: mw("applicantStatus"),
+  consider: mw("consider"),
   criterion: mw("criterion"),
   question: mw("question"),
   answer: mw("answer"),

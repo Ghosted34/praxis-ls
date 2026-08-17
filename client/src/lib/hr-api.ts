@@ -1398,6 +1398,192 @@ export const getTrainingCompliance = (requirementId: string) =>
     `/trainings/requirements/${requirementId}/compliance`,
   );
 
+/* ── Onboarding: templates, dated items, and the checklist a hire raises (0703) ──
+ *
+ * A checklist used to be a list of strings and a tick. Nothing could be late,
+ * nothing had an owner, and nothing raised one — hiring provisioned an employee
+ * row and stopped. */
+export type OnboardingItemState = "DONE" | "OVERDUE" | "DUE_SOON" | "PENDING" | "UNDATED";
+
+export type OnboardingItem = {
+  onboarding_item_id: string;
+  onboarding_checklist_id: string;
+  label: string;
+  description?: string | null;
+  is_done: boolean;
+  done_at?: string | null;
+  done_by?: string | null;
+  done_by_name?: string | null;
+  due_on?: string | null;
+  owner_role?: string | null;
+  assigned_to?: string | null;
+  assignee_name?: string | null;
+  sop_document_id?: string | null;
+  sop_title?: string | null;
+  /** Blocks completion of the whole checklist while outstanding. */
+  is_mandatory?: boolean | null;
+  sort_order?: number | null;
+  notes?: string | null;
+  /** Derived server-side so the screen and the completion guard agree. */
+  state?: OnboardingItemState;
+  days_remaining?: number | null;
+};
+
+export type OnboardingChecklist = {
+  onboarding_checklist_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  department?: string | null;
+  job_title?: string | null;
+  status: string;
+  starts_on?: string | null;
+  completed_at?: string | null;
+  onboarding_template_id?: string | null;
+  template_name?: string | null;
+  applicant_id?: string | null;
+  created_at?: string | null;
+  total_items: number;
+  done_items: number;
+  overdue_items?: number;
+  mandatory_outstanding?: number;
+};
+
+export type OnboardingChecklistDetail = OnboardingChecklist & {
+  items: OnboardingItem[];
+  progress: {
+    total: number; done: number; outstanding: number;
+    overdue: number; due_soon: number; undated: number; percent: number;
+  };
+  /** What Complete will refuse on — shown BEFORE it is pressed, because a gate
+   *  you discover by being rejected is a gate you work around. */
+  blockers: { onboarding_item_id: string; label: string; due_on?: string | null }[];
+};
+
+export type OnboardingTemplateItem = {
+  onboarding_template_item_id: string;
+  onboarding_template_id: string;
+  label: string;
+  description?: string | null;
+  /** Offset in DAYS from the hire's start date. Negative = before they start. */
+  due_days: number;
+  owner_role?: string | null;
+  sop_document_id?: string | null;
+  sop_title?: string | null;
+  is_mandatory?: boolean | null;
+  sort_order?: number | null;
+};
+
+export type OnboardingTemplate = {
+  onboarding_template_id: string;
+  name: string;
+  description?: string | null;
+  department?: string | null;
+  job_title?: string | null;
+  priority?: number | null;
+  is_active?: boolean | null;
+  item_count?: number;
+};
+
+export type OnboardingTemplateDetail = OnboardingTemplate & {
+  items: OnboardingTemplateItem[];
+};
+
+export const listChecklists = (status?: string) =>
+  tenant<OnboardingChecklist[]>(
+    `/onboarding${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+  );
+export const getChecklist = (id: string) =>
+  tenant<OnboardingChecklistDetail>(`/onboarding/${id}`);
+export const createChecklist = (body: {
+  employee_id?: string;
+  template_id?: string;
+  starts_on?: string | null;
+  items?: string[];
+}) => tenant<OnboardingChecklistDetail>("/onboarding", { method: "POST", body });
+export const addChecklistItem = (
+  id: string,
+  body: Partial<Omit<OnboardingItem, "onboarding_item_id" | "onboarding_checklist_id">> & {
+    label: string;
+    due_days?: number;
+  },
+) => tenant<OnboardingItem>(`/onboarding/${id}/items`, { method: "POST", body });
+/** Tick, untick, reassign or re-date. Supersedes the old `{ is_done }`-only
+ *  call on the same route, which still works. */
+export const updateChecklistItem = (
+  itemId: string,
+  body: Partial<Pick<OnboardingItem,
+    "label" | "due_on" | "owner_role" | "assigned_to" | "sop_document_id" |
+    "is_mandatory" | "sort_order" | "notes">> & { is_done?: boolean },
+) => tenant<OnboardingItem>(`/onboarding/items/${itemId}`, { method: "PATCH", body });
+/** Moves every dated item that is still open. A deliberate act, never a side
+ *  effect of editing a start date elsewhere. */
+export const rescheduleChecklist = (id: string, starts_on: string) =>
+  tenant<OnboardingChecklistDetail>(`/onboarding/${id}/reschedule`, {
+    method: "POST",
+    body: { starts_on },
+  });
+/** Refuses with MANDATORY_ITEMS_OUTSTANDING, naming the items. */
+export const completeChecklist = (id: string) =>
+  tenant<OnboardingChecklistDetail>(`/onboarding/${id}/complete`, { method: "POST" });
+export const listOutstandingOnboarding = (days = 14) =>
+  tenant<{
+    onboarding_item_id: string;
+    onboarding_checklist_id: string;
+    label: string;
+    due_on: string;
+    owner_role?: string | null;
+    is_mandatory?: boolean | null;
+    employee_name?: string | null;
+  }[]>(`/onboarding/outstanding?days=${days}`);
+
+export const listOnboardingTemplates = (includeInactive = false) =>
+  tenant<OnboardingTemplate[]>(
+    `/onboarding/templates${includeInactive ? "?include_inactive=true" : ""}`,
+  );
+export const getOnboardingTemplate = (id: string) =>
+  tenant<OnboardingTemplateDetail>(`/onboarding/templates/${id}`);
+export const createOnboardingTemplate = (
+  body: Omit<OnboardingTemplate, "onboarding_template_id" | "item_count">,
+) => tenant<OnboardingTemplateDetail>("/onboarding/templates", { method: "POST", body });
+export const updateOnboardingTemplate = (
+  id: string,
+  body: Partial<OnboardingTemplate>,
+) => tenant<OnboardingTemplateDetail>(`/onboarding/templates/${id}`, { method: "PATCH", body });
+export const addOnboardingTemplateItem = (
+  templateId: string,
+  body: Omit<OnboardingTemplateItem, "onboarding_template_item_id" | "onboarding_template_id" | "due_days"> & {
+    due_days?: number;
+  },
+) => tenant<OnboardingTemplateItem>(`/onboarding/templates/${templateId}/items`, {
+  method: "POST",
+  body,
+});
+export const updateOnboardingTemplateItem = (
+  itemId: string,
+  body: Partial<OnboardingTemplateItem>,
+) => tenant<OnboardingTemplateItem>(`/onboarding/templates/items/${itemId}`, {
+  method: "PATCH",
+  body,
+});
+export const removeOnboardingTemplateItem = (itemId: string) =>
+  tenant<OnboardingTemplateItem>(`/onboarding/templates/items/${itemId}`, {
+    method: "DELETE",
+  });
+
+/* ── Putting a bench candidate in front of a vacancy (0703) ──────────────────
+ *
+ * The action 0525's searchable pool was missing. The previous SCORE is
+ * deliberately not carried across: a score is against a job description, so
+ * last year's number on a different role means nothing — and it would sort. */
+export const considerForVacancy = (
+  vacancyId: string,
+  source: { applicant_id?: string; talent_pool_id?: string },
+) =>
+  tenant<Applicant & { already_on_vacancy?: boolean }>(
+    `/vacancies/${vacancyId}/consider`,
+    { method: "POST", body: source },
+  );
+
 /* ── Worksite place search (Geoapify, via the HR endpoint) ──────────────────
  * Not /geo-places/search: that one is gated on MOD-29 + the `operations`
  * feature because it WRITES the ports catalogue. Placing a geofence pin is a

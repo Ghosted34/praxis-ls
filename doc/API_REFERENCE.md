@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1172 |
+| Routes | 1182 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1172 mounted routes, grouped by path prefix.
+All 1182 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1112,7 +1112,16 @@ All 1172 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/onboarding/:id` | — |
 | POST | `/api/tenant/onboarding/:id/complete` | — |
 | POST | `/api/tenant/onboarding/:id/items` | — |
+| POST | `/api/tenant/onboarding/:id/reschedule` | — |
 | PATCH | `/api/tenant/onboarding/items/:itemId` | — |
+| GET | `/api/tenant/onboarding/outstanding` | — |
+| GET | `/api/tenant/onboarding/templates` | — |
+| POST | `/api/tenant/onboarding/templates` | — |
+| GET | `/api/tenant/onboarding/templates/:templateId` | — |
+| PATCH | `/api/tenant/onboarding/templates/:templateId` | — |
+| POST | `/api/tenant/onboarding/templates/:templateId/items` | — |
+| DELETE | `/api/tenant/onboarding/templates/items/:itemId` | — |
+| PATCH | `/api/tenant/onboarding/templates/items/:itemId` | — |
 
 ### `tenant/operations`
 
@@ -1801,6 +1810,7 @@ All 1172 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
 | GET | `/api/tenant/vacancies/:id/applicants/:applicantId/cv` | — |
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/score` | — |
+| POST | `/api/tenant/vacancies/:id/consider` | — |
 | GET | `/api/tenant/vacancies/:id/criteria` | — |
 | POST | `/api/tenant/vacancies/:id/criteria` | — |
 | DELETE | `/api/tenant/vacancies/:id/criteria/:criterionId` | — |

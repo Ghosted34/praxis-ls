@@ -27,7 +27,7 @@ module.exports = async function milestoneSlaScheduler() {
       "milestone-sla",
       "scan",
       { tenantMeta: meta, env: "live" },
-      { jobId: `mssla:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+      { jobId: `mssla:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: true },
     );
     enqueued += 1;
   }

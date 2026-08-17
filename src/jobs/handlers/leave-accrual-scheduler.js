@@ -30,7 +30,7 @@ module.exports = async function leaveAccrualScheduler() {
         "leave-accrual",
         "accrue",
         { tenantMeta: meta, env },
-        { jobId: `leaveaccrual:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+        { jobId: `leaveaccrual:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: true },
       );
       enqueued += 1;
     }

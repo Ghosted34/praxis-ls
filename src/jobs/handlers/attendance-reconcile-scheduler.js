@@ -24,7 +24,7 @@ module.exports = async function attendanceReconcileScheduler() {
         "attendance-reconcile",
         "reconcile",
         { tenantMeta: meta, env },
-        { jobId: `attreconcile:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+        { jobId: `attreconcile:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: true },
       );
       enqueued += 1;
     }

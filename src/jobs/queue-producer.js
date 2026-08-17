@@ -27,23 +27,39 @@ function getQueue(name) {
  * trimmed history). Callers can override via `opts`.
  */
 async function enqueue(name, jobName, data, opts = {}) {
-  // OBS-T3: the API → BullMQ → worker → handler chain carried no trace
-  // identity, so a failed job could not be traced back to the user action that
-  // enqueued it. Stamp the ambient context onto the payload; workers.js
-  // restores it into AsyncLocalStorage, so the job's log lines carry the same
-  // tenant, user and request_id as the request that created it.
+  // OBS-T3: stamp ambient context
   const ctx = requestContext.get();
   const withCtx = ctx
     ? { ...data, __ctx: { tenant: ctx.tenant || null, user_id: ctx.userId || null, request_id: ctx.requestId || null } }
     : data;
 
-  return getQueue(name).add(jobName, withCtx, {
+  const queue = getQueue(name);
+
+  // If a static jobId is provided for in-flight deduplication:
+  // Remove any existing job that is already finished (completed or failed)
+  // so it doesn't block future scheduler ticks from being enqueued. Active
+  // or waiting jobs are preserved so in-flight work is properly deduped.
+  if (opts && opts.jobId) {
+    try {
+      const existing = await queue.getJob(opts.jobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (state === "completed" || state === "failed") {
+          await existing.remove();
+        }
+      }
+    } catch {
+      /* @silent:teardown safe fallback when existing job lookup fails, proceed to add */
+    }
+  }
+
+  return queue.add(jobName, withCtx, {
     attempts: 5,
     backoff: { type: "exponential", delay: 5000 },
-    removeOnComplete: 1000,
-    removeOnFail: 5000,
+    removeOnComplete: true,
+    removeOnFail: true,
     ...opts,
   });
 }
 
-module.exports = { enqueue };
+module.exports = { enqueue, getQueue };

@@ -18,12 +18,11 @@ module.exports = async function mailSyncScheduler() {
   const tenants = await registry.listActiveTenants();
   let enqueued = 0;
   for (const meta of tenants) {
-     
     await enqueue(
       "mail-sync",
       "sync",
       { tenantMeta: meta, env: "live" },
-      { jobId: `mailsync:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+      { jobId: `mailsync:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: true },
     );
     enqueued += 1;
   }

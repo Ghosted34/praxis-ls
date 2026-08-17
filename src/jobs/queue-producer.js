@@ -49,7 +49,7 @@ async function enqueue(name, jobName, data, opts = {}) {
         }
       }
     } catch {
-      /* ignore lookup/removal errors, proceed to add */
+      /* @silent:teardown safe fallback when existing job lookup fails, proceed to add */
     }
   }
 

@@ -1174,31 +1174,153 @@ export const setVacancyPublished = (id: string, published: boolean) =>
     body: { published },
   });
 
-/* ── Trainings + attendance roster ── */
+/* ── Trainings: sessions, live capture, requirements (0702) ──────────────────
+ * `scheduled_on` is the legacy date column and is still sent by the API. Read
+ * `starts_at`; the server derives the other from it. */
 export type Training = {
   training_id: string;
   title?: string | null;
+  description?: string | null;
+  /** LEGACY (0360) — the date half of starts_at. Kept for older readers. */
   scheduled_on?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  /** When the session actually opened/closed, as opposed to when it was booked. */
+  opened_at?: string | null;
+  closed_at?: string | null;
+  mode?: "IN_PERSON" | "ONLINE" | "HYBRID" | null;
+  location?: string | null;
+  join_url?: string | null;
+  capacity?: number | null;
   facilitator?: string | null;
-  status: string; // SCHEDULED | DONE | CANCELLED
+  facilitator_employee_id?: string | null;
+  facilitator_name?: string | null;
+  training_requirement_id?: string | null;
+  requirement_title?: string | null;
+  requirement_valid_months?: number | null;
+  ai_summary?: string | null;
+  ai_model?: string | null;
+  minutes_vault_id?: string | null;
+  booked_count?: number | string | null;
+  attended_count?: number | string | null;
+  status: string; // SCHEDULED | LIVE | DONE | CANCELLED
 };
+
+/** What `GET /trainings/:id` adds on top of a list row — state the server
+ *  derives so the screen and the scheduler cannot compute it differently. */
+export type TrainingDetail = Training & {
+  attendees: TrainingAttendee[];
+  notes: TrainingNote[];
+  planned_minutes?: number | null;
+  actual_minutes?: number | null;
+  join_state?: {
+    can_join: boolean;
+    reason: string;
+    message: string;
+    minutes_until?: number;
+  };
+  capacity_state?: {
+    capacity: number | null;
+    booked: number;
+    remaining: number | null;
+    is_full: boolean;
+    is_over: boolean;
+  };
+};
+
 export type TrainingAttendee = {
   training_attendance_id: string;
   training_id: string;
   employee_id?: string | null;
+  /** Joined server-side (0702). The screen no longer holds a roster of the
+   *  whole company to render five rows — see listTrainingAttendees. */
+  employee_name?: string | null;
+  department?: string | null;
+  job_title?: string | null;
   attended?: boolean | null;
+  /** True when `attended` came from an actual join rather than a tick. */
+  attendance_observed?: boolean | null;
+  joined_at?: string | null;
+  left_at?: string | null;
+  certificate_vault_id?: string | null;
+  certificate_issued_on?: string | null;
+  certificate_expires_on?: string | null;
+  notes?: string | null;
 };
-export const listTrainings = () => tenant<Training[]>("/trainings");
-export const createTraining = (body: {
+
+export type TrainingNote = {
+  training_note_id: string;
+  training_id: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  body: string;
+  is_minutes?: boolean | null;
+  created_at?: string | null;
+};
+
+export type TrainingRequirement = {
+  training_requirement_id: string;
   title: string;
-  scheduled_on?: string;
-  facilitator?: string;
-}) => tenant<Training>("/trainings", { method: "POST", body });
+  description?: string | null;
+  department?: string | null;
+  job_title?: string | null;
+  valid_months?: number | null;
+  warn_days?: number | null;
+  is_mandatory?: boolean | null;
+  is_active?: boolean | null;
+};
+
+export type ComplianceStatus = "CURRENT" | "EXPIRING" | "EXPIRED" | "NEVER";
+
+export type TrainingCompliance = {
+  requirement: TrainingRequirement;
+  covered: number;
+  counts: Record<ComplianceStatus, number>;
+  people: {
+    employee_id: string;
+    full_name?: string | null;
+    department?: string | null;
+    job_title?: string | null;
+    attended_on?: string | null;
+    training_id?: string | null;
+    training_title?: string | null;
+    certificate_vault_id?: string | null;
+    status: ComplianceStatus;
+    days_remaining: number | null;
+    expires_on: string | null;
+    is_compliant: boolean;
+  }[];
+};
+
+export type TrainingInput = {
+  title: string;
+  description?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  mode?: "IN_PERSON" | "ONLINE" | "HYBRID";
+  location?: string | null;
+  join_url?: string | null;
+  capacity?: number | null;
+  facilitator?: string | null;
+  training_requirement_id?: string | null;
+};
+
+export const listTrainings = (params?: { status?: string }) =>
+  tenant<Training[]>(
+    `/trainings${params?.status ? `?status=${encodeURIComponent(params.status)}` : ""}`,
+  );
+export const getTraining = (id: string) =>
+  tenant<TrainingDetail>(`/trainings/${id}`);
+export const createTraining = (body: TrainingInput) =>
+  tenant<Training>("/trainings", { method: "POST", body });
+export const updateTraining = (id: string, body: Partial<TrainingInput>) =>
+  tenant<Training>(`/trainings/${id}`, { method: "PATCH", body });
 export const setTrainingStatus = (id: string, status: string) =>
   tenant<Training>(`/trainings/${id}/status`, {
     method: "POST",
     body: { status },
   });
+
 export const listTrainingAttendees = (trainingId: string) =>
   tenant<TrainingAttendee[]>(`/trainings/${trainingId}/attendees`);
 export const addTrainingAttendee = (trainingId: string, employee_id: string) =>
@@ -1209,12 +1331,72 @@ export const addTrainingAttendee = (trainingId: string, employee_id: string) =>
 export const setTrainingAttendee = (
   trainingId: string,
   attendeeId: string,
-  attended: boolean,
+  patch: Partial<
+    Pick<
+      TrainingAttendee,
+      | "attended"
+      | "certificate_vault_id"
+      | "certificate_issued_on"
+      | "certificate_expires_on"
+      | "notes"
+    >
+  >,
 ) =>
   tenant<TrainingAttendee>(`/trainings/${trainingId}/attendees/${attendeeId}`, {
     method: "PATCH",
-    body: { attended },
+    body: patch,
   });
+
+/* Live session. Join is idempotent server-side — the FIRST join is the one
+ * that counts, so a flaky connection does not shorten somebody's presence. */
+export const joinTraining = (trainingId: string, employee_id: string) =>
+  tenant<TrainingAttendee>(`/trainings/${trainingId}/join`, {
+    method: "POST",
+    body: { employee_id },
+  });
+export const leaveTraining = (trainingId: string, employee_id: string) =>
+  tenant<TrainingAttendee>(`/trainings/${trainingId}/leave`, {
+    method: "POST",
+    body: { employee_id },
+  });
+export const addTrainingNote = (
+  trainingId: string,
+  body: string,
+  is_minutes = false,
+) =>
+  tenant<TrainingNote>(`/trainings/${trainingId}/notes`, {
+    method: "POST",
+    body: { body, is_minutes },
+  });
+/** Draft and file the minutes. Files the raw notes when no model answered —
+ *  `ai_model` says which, so nobody reads notes as a reviewed summary. */
+export const summariseTraining = (trainingId: string) =>
+  tenant<TrainingDetail>(`/trainings/${trainingId}/summarise`, {
+    method: "POST",
+  });
+
+/* Requirements — the rule about a ROLE, as opposed to a session. */
+export const listTrainingRequirements = () =>
+  tenant<TrainingRequirement[]>("/trainings/requirements");
+export const createTrainingRequirement = (
+  body: Omit<TrainingRequirement, "training_requirement_id">,
+) =>
+  tenant<TrainingRequirement>("/trainings/requirements", {
+    method: "POST",
+    body,
+  });
+export const updateTrainingRequirement = (
+  id: string,
+  body: Partial<TrainingRequirement>,
+) =>
+  tenant<TrainingRequirement>(`/trainings/requirements/${id}`, {
+    method: "PATCH",
+    body,
+  });
+export const getTrainingCompliance = (requirementId: string) =>
+  tenant<TrainingCompliance>(
+    `/trainings/requirements/${requirementId}/compliance`,
+  );
 
 /* ── Worksite place search (Geoapify, via the HR endpoint) ──────────────────
  * Not /geo-places/search: that one is gated on MOD-29 + the `operations`

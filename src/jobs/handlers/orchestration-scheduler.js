@@ -22,12 +22,11 @@ module.exports = async function orchestrationScheduler() {
   let enqueued = 0;
   for (const meta of tenants) {
     for (const env of ENVS) {
-       
       await enqueue(
         "orchestration-dispatch",
         "dispatch",
         { tenantMeta: meta, env },
-        { jobId: `odispatch:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+        { jobId: `odispatch:${meta.db_name}:${env}`, attempts: 2, removeOnComplete: true, removeOnFail: true },
       );
       enqueued += 1;
     }

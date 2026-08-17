@@ -20,7 +20,7 @@ module.exports = async function contractLapseScheduler() {
       "contract-lapse",
       "warn",
       { tenantMeta: meta, env: "live" },
-      { jobId: `contractlapse:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+      { jobId: `contractlapse:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: true },
     );
     enqueued += 1;
   }

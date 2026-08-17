@@ -18,12 +18,11 @@ module.exports = async function fxSyncScheduler() {
   const tenants = await registry.listActiveTenants();
   let enqueued = 0;
   for (const meta of tenants) {
-
     await enqueue(
       "fx-sync",
       "sync",
       { tenantMeta: meta, env: "live" },
-      { jobId: `fxsync:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+      { jobId: `fxsync:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: true },
     );
     enqueued += 1;
   }

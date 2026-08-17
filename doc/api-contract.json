@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1172,
+  "route_count": 1175,
   "tiers": {
     "public": 32,
     "self-scoped": 71,
-    "gated": 1069
+    "gated": 1072
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -430,6 +430,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/sops/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/success-stories/:id/media/:documentId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3927,6 +3933,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/milestones/:id/public-details": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/onboarding/items/:itemId": {
       "auth": true,
       "rbac": true,
@@ -6340,6 +6352,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/success-stories/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/success-stories/:id/media": {
       "auth": true,
       "rbac": true,
       "validated": false,

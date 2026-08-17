@@ -294,7 +294,15 @@ export function DocumentsPage() {
                         size="sm"
                         variant="outline"
                         loading={rowBusy === id}
-                        onClick={() => download(r)}
+                        onClick={() =>
+                          download({
+                            doc_id: String(r.doc_id),
+                            doc_type:
+                              r.doc_type == null ? undefined : String(r.doc_type),
+                            entity_ref:
+                              r.entity_ref == null ? undefined : String(r.entity_ref),
+                          })
+                        }
                       >
                         Download
                       </Button>

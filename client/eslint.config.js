@@ -144,6 +144,7 @@ export default tseslint.config(
       "jsx-a11y/label-has-associated-control": [
         "error",
         {
+          depth: 4,
           controlComponents: [
             "Input",
             "Textarea",

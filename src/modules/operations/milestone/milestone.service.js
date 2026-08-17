@@ -490,7 +490,7 @@ async function saveAssumptions(client, { serviceTypeId, assumptions = [], actor 
  */
 async function updatePublicDetails(client, { instanceId, details, actor = {} }) {
   const clean = (value) => {
-    if (value == null) return null;
+    if (value === null) return null;
     const trimmed = String(value).trim();
     return trimmed || null;
   };

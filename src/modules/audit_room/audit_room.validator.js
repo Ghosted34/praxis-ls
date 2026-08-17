@@ -12,6 +12,7 @@ const schemas = {
   id: z.object({ id: UUID }),
   attach: z.object({ id: UUID, doc_id: UUID }),
   idDoc: z.object({ id: UUID, docId: UUID }),
+  toggle: z.object({ clientId: UUID, stepKey: z.string().min(1).max(80) }),
 };
 
 const mw = (k, fromParams = false) => (req, _res, next) => {
@@ -30,4 +31,5 @@ module.exports = {
   id: mw("id", true),
   attach: mw("attach"),
   idDoc: mw("idDoc", true),
+  toggle: mw("toggle", true),
 };

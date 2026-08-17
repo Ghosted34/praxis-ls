@@ -1,7 +1,7 @@
 {
   "_note": "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason in _reasons; remove it when the underlying source of truth is fixed.",
   "_reasons": {
-    "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime — no literal key exists to find. Sibling of the already-listed estimated_count.",
+    "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime \u2014 no literal key exists to find. Sibling of the already-listed estimated_count.",
     "committed_count": "Same computed key as actual_count. Emitted, but only ever as a template literal.",
     "client_scoped": "DOCUMENT_TYPE config stored inside a dictionary_item jsonb blob, so it is not a column and never will be. Sibling of the already-listed client_visible.",
     "exclude_id": "Input, not output: read as req.body.exclude_id by master/_shared/actions.js. DedupeInput is a request shape.",
@@ -17,7 +17,8 @@
     "hits",
     "patch",
     "span",
-    "unlinked_credit"
+    "unlinked_credit",
+    "jsonb_to_recordset"
   ],
   "allow": [
     "actor_email_snapshot",

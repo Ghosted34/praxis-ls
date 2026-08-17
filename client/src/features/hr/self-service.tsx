@@ -30,9 +30,9 @@ type Balance = {
   leave_type_id?: string;
   code?: string;
   name?: string;
-  balance_days?: number;
-  entitled_days?: number;
-  taken_days?: number;
+  balance?: number;
+  taken?: number;
+  accrued?: number;
   [k: string]: unknown;
 };
 
@@ -219,7 +219,7 @@ export function SelfServicePage() {
                     {String(b.name || b.code || "Leave")}
                   </span>
                   <span className="num text-foreground">
-                    {num(Number(b.balance_days ?? 0))} days
+                    {num(Number(b.balance ?? 0))} days
                   </span>
                 </li>
               ))}

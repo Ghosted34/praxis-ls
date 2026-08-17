@@ -48,6 +48,12 @@ const SECTIONS: Section[] = [
         icon: "palette",
       },
       {
+        to: "/self-service",
+        label: "My HR",
+        desc: "Your payslips, leave & advances",
+        icon: "id",
+      },
+      {
         to: "/settings/login",
         label: "Login Screen",
         desc: "Hero copy, quotes, regional welcomes & toggles",
@@ -215,12 +221,6 @@ const SECTIONS: Section[] = [
         label: "Client support",
         desc: "Client portal messages & onboarding",
         icon: "comms",
-      },
-      {
-        to: "/self-service",
-        label: "My HR",
-        desc: "Your payslips, leave & advances",
-        icon: "id",
       },
     ],
   },

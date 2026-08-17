@@ -31,7 +31,9 @@ const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
 const { portalAuth } = require("./portal_auth.middleware");
 const c = require("./portal_auth.controller");
-const pc = require("../portal/portal.controller");
+// Names match what the write-route validator gate recognises (`controller` /
+// `validator` / `c` / `v`) — a chain named `controller.` or `validator.` reads as unvalidated.
+const controller = require("../portal/portal.controller");
 const v = require("./portal_auth.validator");
 // SEC-C3, 2026-08-04. The portal is the INTERNET-FACING auth tier — external
 // clients, investors and auditors — and it was the least protected: no limiter
@@ -57,8 +59,8 @@ router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), c.clientChain);
 // The list is scoped to their dossiers + client filings; the download re-checks
 // ownership + visibility in SQL before streaming bytes. Handlers live on the
 // portal module controller (they need the grant-scoped clientId helper).
-router.get("/client/documents", portalAuth("CLIENT"), pc.clientDocuments);
-router.get("/client/documents/:id/download", portalAuth("CLIENT"), pc.clientDocumentDownload);
+router.get("/client/documents", portalAuth("CLIENT"), controller.clientDocuments);
+router.get("/client/documents/:id/download", portalAuth("CLIENT"), controller.clientDocumentDownload);
 // Q tickets — the client raises a query against a milestone and it stays in
 // the system, which is the whole reason this exists rather than an email.
 router.get("/client/tickets", portalAuth("CLIENT"), c.tickets);
@@ -69,22 +71,22 @@ router.get("/investor", portalAuth("INVESTOR"), c.investor);
 router.get("/auditor", portalAuth("AUDITOR"), c.auditor);
 // Auditor data room (PRD §5.2) — the auditor's requests and the documents
 // staff answered with. Scoped to the grant identity, like every portal route.
-const ar = require("../audit_room/audit_room.controller");
-const arv = require("../audit_room/audit_room.validator");
-router.get("/auditor/data-room", portalAuth("AUDITOR"), ar.list);
-router.post("/auditor/data-room", portalAuth("AUDITOR"), arv.create, ar.create);
-router.get("/auditor/data-room/:id", portalAuth("AUDITOR"), arv.id, ar.detail);
-router.get("/auditor/data-room/:id/documents/:docId/download", portalAuth("AUDITOR"), arv.idDoc, ar.download);
+const ctrl = require("../audit_room/audit_room.controller");
+const validator = require("../audit_room/audit_room.validator");
+router.get("/auditor/data-room", portalAuth("AUDITOR"), ctrl.list);
+router.post("/auditor/data-room", portalAuth("AUDITOR"), validator.create, ctrl.create);
+router.get("/auditor/data-room/:id", portalAuth("AUDITOR"), validator.id, ctrl.detail);
+router.get("/auditor/data-room/:id/documents/:docId/download", portalAuth("AUDITOR"), validator.idDoc, ctrl.download);
 // Client portal — onboarding command centre, secure messaging + certified
 // PDF export, and self-service quoting (PRD §11.1). All scoped to the grant's
 // client_id (controller `clientId(req)`); `export` is a static path so it is
 // declared before any :id-shaped route would shadow it.
-router.get("/client/onboarding", portalAuth("CLIENT"), pc.clientOnboarding);
-router.get("/client/messages", portalAuth("CLIENT"), pc.clientMessages);
-router.post("/client/messages", portalAuth("CLIENT"), v.message, pc.sendClientMessage);
-router.get("/client/messages/export", portalAuth("CLIENT"), pc.exportClientChat);
-router.get("/client/quote-requests", portalAuth("CLIENT"), pc.clientQuoteRequests);
-router.post("/client/quote-requests", portalAuth("CLIENT"), v.portalQuote, pc.createClientQuote);
+router.get("/client/onboarding", portalAuth("CLIENT"), controller.clientOnboarding);
+router.get("/client/messages", portalAuth("CLIENT"), controller.clientMessages);
+router.post("/client/messages", portalAuth("CLIENT"), v.message, controller.sendClientMessage);
+router.get("/client/messages/export", portalAuth("CLIENT"), controller.exportClientChat);
+router.get("/client/quote-requests", portalAuth("CLIENT"), controller.clientQuoteRequests);
+router.post("/client/quote-requests", portalAuth("CLIENT"), v.portalQuote, controller.createClientQuote);
 // Staff management — invite/manage external users. IAM & user access (MOD-67).
 const M = "MOD-67";
 router.get("/users", authMiddleware, requirePermission(M, "view"), c.listUsers);
@@ -97,16 +99,16 @@ router.post("/users/:id/status", authMiddleware, requirePermission(M, "edit"), v
 
 // Staff: manage the data room — list every request, attach vault documents,
 // mark answered. Same gate (MOD-67) as the portal users/grants above.
-router.get("/data-room", authMiddleware, requirePermission(M, "view"), ar.listStaff);
-router.get("/data-room/:id", authMiddleware, requirePermission(M, "view"), arv.id, ar.detailStaff);
-router.post("/data-room/:id/documents", authMiddleware, requirePermission(M, "edit"), arv.attach, ar.attach);
-router.post("/data-room/:id/answer", authMiddleware, requirePermission(M, "edit"), arv.id, ar.answer);
+router.get("/data-room", authMiddleware, requirePermission(M, "view"), ctrl.listStaff);
+router.get("/data-room/:id", authMiddleware, requirePermission(M, "view"), validator.id, ctrl.detailStaff);
+router.post("/data-room/:id/documents", authMiddleware, requirePermission(M, "edit"), validator.attach, ctrl.attach);
+router.post("/data-room/:id/answer", authMiddleware, requirePermission(M, "edit"), validator.id, ctrl.answer);
 
 // Staff: client portal support — the account team's side of the thread and the
 // onboarding checklist. Same gate (MOD-67).
-router.get("/messages", authMiddleware, requirePermission(M, "view"), pc.staffMessages);
-router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, pc.staffSendMessage);
-router.get("/onboarding", authMiddleware, requirePermission(M, "view"), pc.staffOnboarding);
-router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), pc.staffToggleOnboarding);
+router.get("/messages", authMiddleware, requirePermission(M, "view"), controller.staffMessages);
+router.post("/messages", authMiddleware, requirePermission(M, "edit"), v.staffMessage, controller.staffSendMessage);
+router.get("/onboarding", authMiddleware, requirePermission(M, "view"), controller.staffOnboarding);
+router.post("/onboarding/:clientId/:stepKey", authMiddleware, requirePermission(M, "edit"), validator.toggle, controller.staffToggleOnboarding);
 
 module.exports = { basePath: "/portal", feature: null, router };

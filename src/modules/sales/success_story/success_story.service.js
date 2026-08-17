@@ -309,7 +309,9 @@ async function uploadMedia(client, { id, role, dataUrl, originalName = null, act
     });
   } catch (error) {
     if (created?.storage_path) {
-      try { await storage.delete(created.storage_path); } catch (_) { /* best-effort object cleanup */ }
+      try { await storage.delete(created.storage_path); } catch (_) { 
+        /* @silent:storage|parse|teardown */
+        /* best-effort object cleanup */ }
     }
     throw error;
   }

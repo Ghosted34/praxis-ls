@@ -4,6 +4,7 @@
  * it. Once decided the GRN is terminal.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -160,12 +161,12 @@ function NewGrnForm({
     <Modal
       open
       onClose={onClose}
-      title="New receipt"
+      title={tr("New receipt")}
       description="Open a goods-received note. It starts on hold pending QA."
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label="Dossier"
+          label={tr("Dossier")}
           hint="Optional — the operation this delivery belongs to"
         >
           <Select
@@ -343,7 +344,7 @@ export function InboundPage() {
               docType="GRN"
               id={g.grn_inbound_id}
               title={`GRN ${g.grn_inbound_id.slice(0, 8)}`}
-              label="View"
+              label={tr("View")}
             />
             <TransitionButtons
               items={items}
@@ -363,7 +364,7 @@ export function InboundPage() {
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
         title="Inbound / GRN"
         description="Receive goods and clear them through QA before putaway."
-        action={<Button onClick={() => setCreating(true)}>New receipt</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New receipt")}</Button>}
       />
       <HubTabs />
       <DataList

@@ -8,6 +8,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
@@ -139,7 +140,7 @@ function NumberingEditor({
             placeholder="INV"
           />
         </Field>
-        <Field label="Code" hint="Segment after prefix">
+        <Field label={tr("Code")} hint="Segment after prefix">
           <Input
             value={scheme.code ?? ""}
             onChange={(e) => patch({ code: e.target.value })}
@@ -156,7 +157,7 @@ function NumberingEditor({
             onChange={(e) => patch({ padding: Number(e.target.value) })}
           />
         </Field>
-        <Field label="Reset">
+        <Field label={tr("Reset")}>
           <Select
             value={scheme.reset ?? "yearly"}
             onChange={(e) => patch({ reset: e.target.value })}
@@ -255,7 +256,7 @@ export function NumberingPage() {
       />
 
       <div className="space-y-4">
-        <Field label="Document type">
+        <Field label={tr("Document type")}>
           <Select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}

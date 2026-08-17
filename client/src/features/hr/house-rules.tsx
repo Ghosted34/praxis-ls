@@ -20,6 +20,7 @@
  * a tier is the main thing anybody comes here to do.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -126,7 +127,7 @@ function RuleEditor({
     <Modal open onClose={onClose} title={rule.name} description={KIND_LABEL[rule.kind]}>
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input value={f.name} onChange={(e) => set("name", e.target.value)} />
           </Field>
           <Field
@@ -253,10 +254,10 @@ function RuleEditor({
           />
           {f.auto_query && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Severity">
+              <Field label={tr("Severity")}>
                 <Select value={f.query_severity} onChange={(e) => set("query_severity", e.target.value)}>
-                  <option value="INFO">Info</option>
-                  <option value="WARNING">Warning</option>
+                  <option value="INFO">{tr("Info")}</option>
+                  <option value="WARNING">{tr("Warning")}</option>
                   <option value="SERIOUS">Serious</option>
                 </Select>
               </Field>

@@ -4,6 +4,7 @@
  * — a discrepancy raises the reconciliation event. Past counts show their result.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -77,11 +78,11 @@ function CountSheet({
       open
       onClose={onClose}
       size="xl"
-      title="Cycle count"
+      title={tr("Cycle count")}
       description="Count physical stock against the system and submit any variance."
     >
       <div className="space-y-4">
-        <Field label="Location" required>
+        <Field label={tr("Location")} required>
           <Select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
@@ -249,7 +250,7 @@ export function CycleCountsPage() {
             docType="CYCLE_COUNT_SHEET"
             id={c.cycle_count_id}
             title={`Cycle count ${c.cycle_count_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
         </div>
       ),

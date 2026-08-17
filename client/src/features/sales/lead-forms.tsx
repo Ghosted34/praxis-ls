@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,7 @@ export function LeadForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Company"
+            label={tr("Company")}
             required
             className="sm:col-span-2"
             hint="Search existing clients, or type a new company"
@@ -116,7 +117,7 @@ export function LeadForm({
             <Input
               value={contact}
               onChange={(e) => setContact(e.target.value)}
-              placeholder="Jane Doe"
+              placeholder={tr("Jane Doe")}
             />
           </Field>
           <Field label="Service interest" hint="What they're after">
@@ -126,7 +127,7 @@ export function LeadForm({
               placeholder="Freight forwarding"
             />
           </Field>
-          <Field label="Email">
+          <Field label={tr("Email")}>
             <Input
               type="email"
               value={email}
@@ -134,14 +135,14 @@ export function LeadForm({
               placeholder="jane@acme.cm"
             />
           </Field>
-          <Field label="Phone">
+          <Field label={tr("Phone")}>
             <Input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+237 6XX XXX XXX"
             />
           </Field>
-          <Field label="Source">
+          <Field label={tr("Source")}>
             <Select value={source} onChange={(e) => setSource(e.target.value)}>
               {LEAD_SOURCES.map((s) => (
                 <option key={s} value={s}>
@@ -221,7 +222,7 @@ export function ConvertModal({
     >
       <div className="space-y-4">
         <div className="grid gap-4">
-          <Field label="Legal name" required>
+          <Field label={tr("Legal name")} required>
             <Input
               value={legalName}
               onChange={(e) => setLegalName(e.target.value)}
@@ -229,14 +230,14 @@ export function ConvertModal({
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Email">
+            <Field label={tr("Email")}>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Field>
-            <Field label="Phone">
+            <Field label={tr("Phone")}>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
           </div>

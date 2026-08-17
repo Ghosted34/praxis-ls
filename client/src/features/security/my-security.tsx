@@ -6,6 +6,7 @@
  * disable flows are shown with guidance.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useAuth } from "@/app/auth/auth-context";
 import { ApiError, tenant } from "@/lib/api-client";
@@ -290,7 +291,7 @@ export function MySecurityPage() {
 
         {/* Password */}
         <SettingsCard
-          title="Password"
+          title={tr("Password")}
           desc="Change it here whenever you like — you'll need your current one. Your other sessions are signed out; this one stays."
         >
           <form onSubmit={onChangePassword} className="flex flex-col gap-3">
@@ -488,7 +489,7 @@ export function MySecurityPage() {
             <div className="mt-5 border-t pt-4">
               <p className="micro mb-2">Registered devices</p>
               {devices === null ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
+                <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>
               ) : devices.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No Quick PIN devices yet.

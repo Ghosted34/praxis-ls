@@ -6,6 +6,7 @@
  * context (primary/foreground re-tint immediately through theme.ts).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { useBranding } from "@/app/branding/branding-context";
@@ -149,11 +150,11 @@ export function AppearancePage() {
 
       <div className="mt-2 flex flex-col gap-5">
         <SettingsCard
-          title="Identity"
+          title={tr("Identity")}
           desc="Shown across the app and on the login screen."
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Display name">
+            <Field label={tr("Display name")}>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -229,28 +230,28 @@ export function AppearancePage() {
           desc="Fifteen self-hosted families — every user sees exactly what you pick here, on any device. Each user can override these for themselves under My appearance."
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Display font">
+            <Field label={tr("Display font")}>
               <FontPicker
                 slot="display"
                 value={fontDisplay}
                 onChange={setFontDisplay}
-                aria-label="Display font"
+                aria-label={tr("Display font")}
               />
             </Field>
-            <Field label="Body font">
+            <Field label={tr("Body font")}>
               <FontPicker
                 slot="body"
                 value={fontBody}
                 onChange={setFontBody}
-                aria-label="Body font"
+                aria-label={tr("Body font")}
               />
             </Field>
-            <Field label="Mono font">
+            <Field label={tr("Mono font")}>
               <FontPicker
                 slot="mono"
                 value={fontMono}
                 onChange={setFontMono}
-                aria-label="Mono font"
+                aria-label={tr("Mono font")}
               />
             </Field>
             <Field label="Corner radius">
@@ -264,7 +265,7 @@ export function AppearancePage() {
         </SettingsCard>
 
         <SettingsCard
-          title="Preview"
+          title={tr("Preview")}
           desc="Live — reflects name, colours, logos, typography, corner radius and theme mode."
         >
           {(() => {

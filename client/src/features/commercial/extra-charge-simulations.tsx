@@ -7,6 +7,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -130,7 +131,7 @@ function ExtraSimForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Shipping line">
+          <Field label={tr("Shipping line")}>
             <Input
               value={shippingLine}
               onChange={(e) => setShippingLine(e.target.value)}
@@ -239,7 +240,7 @@ function ExtraSimForm({
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
               maxLength={3}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
             />
           </div>
         </div>
@@ -256,7 +257,7 @@ function ExtraSimForm({
                 value={String(computed.free_days ?? "—")}
               />
               <Stat
-                label="Total"
+                label={tr("Total")}
                 value={money(computed.total_amount, currency)}
                 tone="accent"
               />

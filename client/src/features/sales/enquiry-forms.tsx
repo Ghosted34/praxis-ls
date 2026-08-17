@@ -26,6 +26,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -285,10 +286,10 @@ export function ManageEnquiryModal({
             </p>
           ) : (
             <div className="space-y-3">
-              <Field label="To">
+              <Field label={tr("To")}>
                 <Input value={String(detail.email)} readOnly disabled />
               </Field>
-              <Field label="Subject">
+              <Field label={tr("Subject")}>
                 <Input value={subject} disabled={closed} onChange={(e) => setSubject(e.target.value)} />
               </Field>
               <Field label="Message" hint={`${reply.length}/${BODY_MAX}. Sent from the tenant's support address.`}>

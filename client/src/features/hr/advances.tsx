@@ -18,6 +18,7 @@
  * the screen, which is the opposite of what this page is for.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,7 +155,7 @@ function ScheduleModal({
               placeholder={nextPeriod()}
             />
           </Field>
-          <Field label="Note" className="sm:col-span-2">
+          <Field label={tr("Note")} className="sm:col-span-2">
             <Input value={f.note} onChange={(e) => set("note", e.target.value)} />
           </Field>
         </div>
@@ -227,7 +228,7 @@ function NewAdvanceForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Employee" required className="sm:col-span-2">
+          <Field label={tr("Employee")} required className="sm:col-span-2">
             <Select value={f.employee_id} onChange={(e) => set("employee_id", e.target.value)}>
               <option value="">—</option>
               {(employees || []).map((em) => (
@@ -237,7 +238,7 @@ function NewAdvanceForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
               ))}
             </Select>
           </Field>
-          <Field label="Amount (XAF)" required>
+          <Field label={tr("Amount (XAF)")} required>
             <Input
               type="number"
               min="0"
@@ -262,7 +263,7 @@ function NewAdvanceForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
               onChange={(e) => set("first_period_code", e.target.value)}
             />
           </Field>
-          <Field label="Note" className="sm:col-span-2">
+          <Field label={tr("Note")} className="sm:col-span-2">
             <Input value={f.note} onChange={(e) => set("note", e.target.value)} />
           </Field>
         </div>

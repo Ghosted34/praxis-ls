@@ -26,6 +26,7 @@
  * rendering trusts `money.masked` from the server — never re-computed here.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
@@ -239,7 +240,7 @@ function Header({
             <Pill tone={st.is_active ? "ok" : "mute"}>
               {st.is_active ? "Active" : "Archived"}
             </Pill>
-            {st.is_system && <Pill tone="blue">System</Pill>}
+            {st.is_system && <Pill tone="blue">{tr("System")}</Pill>}
             {st.territory && (
               <Pill tone="mute">{humanTerritory(st.territory)}</Pill>
             )}
@@ -330,7 +331,7 @@ function MilestonesTab({
                   Version {t.version}
                 </span>
                 {t.is_active ? (
-                  <Pill tone="ok">Active</Pill>
+                  <Pill tone="ok">{tr("Active")}</Pill>
                 ) : (
                   <Pill tone="mute">Superseded</Pill>
                 )}
@@ -348,8 +349,8 @@ function MilestonesTab({
                 head={
                   <>
                     <Th>Seq</Th>
-                    <Th>Code</Th>
-                    <Th>Label (FR)</Th>
+                    <Th>{tr("Code")}</Th>
+                    <Th>{tr("Label (FR)")}</Th>
                     <Th>Label (EN)</Th>
                     <Th r>Offset (days)</Th>
                   </>
@@ -406,7 +407,7 @@ function TierSegmented({
   return (
     <div
       role="group"
-      aria-label="Tier"
+      aria-label={tr("Tier")}
       className="inline-flex overflow-hidden rounded-md border"
     >
       {TIER_ORDER.map((t) => {
@@ -531,9 +532,9 @@ function DictionaryTab({
         <Td>{d.currency || "—"}</Td>
         <Td>
           {d.is_active === false ? (
-            <Pill tone="mute">Off</Pill>
+            <Pill tone="mute">{tr("Off")}</Pill>
           ) : d.is_disbursement ? (
-            <Pill tone="blue">Disbursement</Pill>
+            <Pill tone="blue">{tr("Disbursement")}</Pill>
           ) : (
             <Pill tone="ok">On</Pill>
           )}
@@ -586,7 +587,7 @@ function DictionaryTab({
           />
         </div>
         <p className="micro max-w-sm">
-          Added at <strong>Advanced</strong> — promote to Basic once it belongs
+          Added at <strong>{tr("Advanced")}</strong> — promote to Basic once it belongs
           on every file of this type. Tiers nest, so Basic lines load on
           Advanced and Full quotes too.
         </p>
@@ -599,14 +600,14 @@ function DictionaryTab({
         emptyLabel={`No dictionary line is scoped to ${serviceKey} yet. Use the search above to add one.`}
         head={
           <>
-            <Th>Code</Th>
-            <Th>Label</Th>
-            <Th>Tier</Th>
-            <Th>Category</Th>
-            <Th>Shipping line</Th>
-            <Th r>Default price</Th>
-            <Th>Currency</Th>
-            <Th>State</Th>
+            <Th>{tr("Code")}</Th>
+            <Th>{tr("Label")}</Th>
+            <Th>{tr("Tier")}</Th>
+            <Th>{tr("Category")}</Th>
+            <Th>{tr("Shipping line")}</Th>
+            <Th r>{tr("Default price")}</Th>
+            <Th>{tr("Currency")}</Th>
+            <Th>{tr("State")}</Th>
             <Th></Th>
           </>
         }
@@ -642,13 +643,13 @@ function DictionaryTab({
               empty={generic.length === 0}
               head={
                 <>
-                  <Th>Code</Th>
-                  <Th>Label</Th>
-                  <Th>Category</Th>
-                  <Th>Shipping line</Th>
-                  <Th r>Default price</Th>
-                  <Th>Currency</Th>
-                  <Th>State</Th>
+                  <Th>{tr("Code")}</Th>
+                  <Th>{tr("Label")}</Th>
+                  <Th>{tr("Category")}</Th>
+                  <Th>{tr("Shipping line")}</Th>
+                  <Th r>{tr("Default price")}</Th>
+                  <Th>{tr("Currency")}</Th>
+                  <Th>{tr("State")}</Th>
                 </>
               }
             >
@@ -675,11 +676,11 @@ function DossiersTab({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Open" value={num(stats.dossiers_open)} />
-        <Stat label="In progress" value={num(stats.dossiers_in_progress)} />
-        <Stat label="Completed" value={num(stats.dossiers_completed)} />
+        <Stat label={tr("Open")} value={num(stats.dossiers_open)} />
+        <Stat label={tr("In progress")} value={num(stats.dossiers_in_progress)} />
+        <Stat label={tr("Completed")} value={num(stats.dossiers_completed)} />
         <Stat
-          label="Cancelled"
+          label={tr("Cancelled")}
           value={num(stats.dossiers_cancelled)}
           tone="warn"
         />
@@ -689,13 +690,13 @@ function DossiersTab({
         emptyLabel="No dossiers have ever been opened for this service type."
         head={
           <>
-            <Th>Reference</Th>
-            <Th>Client</Th>
-            <Th>Status</Th>
-            <Th>Milestones</Th>
+            <Th>{tr("Reference")}</Th>
+            <Th>{tr("Client")}</Th>
+            <Th>{tr("Status")}</Th>
+            <Th>{tr("Milestones")}</Th>
             <Th>Current stage</Th>
             <Th r>Billed TTC</Th>
-            <Th>Opened</Th>
+            <Th>{tr("Opened")}</Th>
           </>
         }
       >
@@ -777,10 +778,10 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
                   empty={false}
                   head={
                     <>
-                      <Th>Currency</Th>
-                      <Th r>Invoices</Th>
+                      <Th>{tr("Currency")}</Th>
+                      <Th r>{tr("Invoices")}</Th>
                       <Th r>Revenue HT</Th>
-                      <Th r>Total TTC</Th>
+                      <Th r>{tr("Total TTC")}</Th>
                     </>
                   }
                 >
@@ -804,7 +805,7 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
                   empty={false}
                   head={
                     <>
-                      <Th>Currency</Th>
+                      <Th>{tr("Currency")}</Th>
                       <Th r>Planned total</Th>
                       <Th r>Of which débours</Th>
                     </>
@@ -843,7 +844,7 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
             </div>
             <p className="micro">
               Planned figures come from{" "}
-              <DeepLink href="/costing/costing">Costing</DeepLink>; actuals come
+              <DeepLink href="/costing/costing">{tr("Costing")}</DeepLink>; actuals come
               from journal entries tagged with a dossier of this service. Open{" "}
               <DeepLink href="/costing/cost-tracking">Cost tracking</DeepLink>{" "}
               for the per-dossier breakdown.
@@ -867,12 +868,12 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
           emptyLabel="No margin simulation has ever been filed under this service type."
           head={
             <>
-              <Th>Dossier</Th>
-              <Th>Currency</Th>
-              <Th r>Total cost</Th>
+              <Th>{tr("Dossier")}</Th>
+              <Th>{tr("Currency")}</Th>
+              <Th r>{tr("Total cost")}</Th>
               <Th r>Total price</Th>
-              <Th r>Margin %</Th>
-              <Th>Created</Th>
+              <Th r>{tr("Margin %")}</Th>
+              <Th>{tr("Created")}</Th>
             </>
           }
         >
@@ -927,12 +928,12 @@ function CommercialTab({ d }: { d: api.ServiceTypeDossier }) {
             emptyLabel="No FINAL invoice has been raised on a dossier of this service type."
             head={
               <>
-                <Th>Number</Th>
-                <Th>Dossier</Th>
-                <Th>Client</Th>
-                <Th>Status</Th>
-                <Th>Due</Th>
-                <Th r>Total TTC</Th>
+                <Th>{tr("Number")}</Th>
+                <Th>{tr("Dossier")}</Th>
+                <Th>{tr("Client")}</Th>
+                <Th>{tr("Status")}</Th>
+                <Th>{tr("Due")}</Th>
+                <Th r>{tr("Total TTC")}</Th>
               </>
             }
           >
@@ -984,10 +985,10 @@ function OverviewTab({
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-xl border bg-card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-foreground">Identity</h3>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">{tr("Identity")}</h3>
         <dl className="space-y-2 text-sm">
           <div>
-            <dt className="micro">Display name</dt>
+            <dt className="micro">{tr("Display name")}</dt>
             <dd className="mt-0.5">
               {/* Same inline-edit affordance the list used to carry — descriptive
                   master data, no reversal-not-edit rule to break (nothing posts
@@ -1002,11 +1003,11 @@ function OverviewTab({
             </dd>
           </div>
           <div>
-            <dt className="micro">Key</dt>
+            <dt className="micro">{tr("Key")}</dt>
             <dd className="mt-0.5 font-mono text-xs">{st.key}</dd>
           </div>
           <div>
-            <dt className="micro">Territory</dt>
+            <dt className="micro">{tr("Territory")}</dt>
             <dd className="mt-0.5">{humanTerritory(st.territory)}</dd>
           </div>
           <div>
@@ -1147,7 +1148,7 @@ export function ServiceTypeDossier({
   if (!dossier.data)
     return (
       <EmptyState
-        title="Not found"
+        title={tr("Not found")}
         hint="This service type could not be loaded."
       />
     );

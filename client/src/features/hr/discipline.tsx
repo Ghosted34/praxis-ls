@@ -4,6 +4,7 @@
  * My HR (/my-hr). Two hub tabs: Queries and Sanctions.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -97,7 +98,7 @@ function NewQuery({
       }
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Employee" required>
+        <Field label={tr("Employee")} required>
           <Select
             value={f.employee_id}
             onChange={(e) => set("employee_id", e.target.value)}
@@ -110,27 +111,27 @@ function NewQuery({
             ))}
           </Select>
         </Field>
-        <Field label="Subject" required>
+        <Field label={tr("Subject")} required>
           <Input
             value={f.subject}
             onChange={(e) => set("subject", e.target.value)}
             placeholder="Late arrivals"
           />
         </Field>
-        <Field label="Details" required>
+        <Field label={tr("Details")} required>
           <Textarea
             value={f.body}
             onChange={(e) => set("body", e.target.value)}
             rows={4}
           />
         </Field>
-        <Field label="Severity" required>
+        <Field label={tr("Severity")} required>
           <Select
             value={f.severity}
             onChange={(e) => set("severity", e.target.value)}
           >
-            <option value="INFO">Info</option>
-            <option value="WARNING">Warning</option>
+            <option value="INFO">{tr("Info")}</option>
+            <option value="WARNING">{tr("Warning")}</option>
             <option value="SERIOUS">Serious</option>
           </Select>
         </Field>
@@ -174,14 +175,14 @@ export function QueriesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Queries"
+        title={tr("Queries")}
         description="Disciplinary queries raised to employees, and their responses."
         action={<Button onClick={() => setCreating(true)}>New query</Button>}
       />
       <HubTabs />{" "}
       <KpiRow>
-        <KpiTile label="Total" value={num(all.length)} />
-        <KpiTile label="Open" value={num(open)} tone="warn" />
+        <KpiTile label={tr("Total")} value={num(all.length)} />
+        <KpiTile label={tr("Open")} value={num(open)} tone="warn" />
         <KpiTile
           label="Responded"
           value={num(all.filter((q) => q.status === "RESPONDED").length)}
@@ -277,7 +278,7 @@ function NewSanction({
       }
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Employee" required>
+        <Field label={tr("Employee")} required>
           <Select
             value={f.employee_id}
             onChange={(e) => set("employee_id", e.target.value)}
@@ -290,16 +291,16 @@ function NewSanction({
             ))}
           </Select>
         </Field>
-        <Field label="Type" required>
+        <Field label={tr("Type")} required>
           <Select value={f.type} onChange={(e) => set("type", e.target.value)}>
-            <option value="WARNING">Warning</option>
-            <option value="SUSPENSION">Suspension</option>
+            <option value="WARNING">{tr("Warning")}</option>
+            <option value="SUSPENSION">{tr("Suspension")}</option>
             <option value="DEMOTION">Demotion</option>
             <option value="FINE">Fine</option>
-            <option value="DISMISSAL">Dismissal</option>
+            <option value="DISMISSAL">{tr("Dismissal")}</option>
           </Select>
         </Field>
-        <Field label="Reason" required>
+        <Field label={tr("Reason")} required>
           <Textarea
             value={f.reason}
             onChange={(e) => set("reason", e.target.value)}
@@ -307,7 +308,7 @@ function NewSanction({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Amount (XAF)" hint="For fines">
+          <Field label={tr("Amount (XAF)")} hint="For fines">
             <Input
               type="number"
               min="0"
@@ -404,15 +405,15 @@ export function SanctionsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Sanctions"
+        title={tr("Sanctions")}
         description="Disciplinary sanctions on record — warnings, suspensions, fines and more."
         action={<Button onClick={() => setCreating(true)}>New sanction</Button>}
       />
       <HubTabs />{" "}
       <KpiRow>
-        <KpiTile label="Total" value={num(all.length)} />
+        <KpiTile label={tr("Total")} value={num(all.length)} />
         <KpiTile
-          label="Active"
+          label={tr("Active")}
           value={num(all.filter((s) => s.status === "ACTIVE").length)}
           tone="bad"
         />

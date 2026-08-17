@@ -9,6 +9,7 @@
  * on first visit; it is read server-side for documents today. `import "./i18n"`
  * happens in main.tsx BEFORE the app renders so the first paint is correct.
  */
+import * as React from "react";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { en, fr } from "./i18n-dict";
@@ -53,6 +54,36 @@ export function setLang(lang: "en" | "fr") {
  */
 export function navT(t: (k: string, o?: { defaultValue?: string }) => string, label: string): string {
   return t(`nav.${label}`, { defaultValue: label });
+}
+
+/**
+ * Translate a UI string by its exact English text (fallback: English).
+ *
+ * Bulk-conversion path for the remaining screens: the `strings` dictionary in
+ * i18n-dict.ts is keyed by the English source text, so a screen converts
+ * without id bookkeeping and anything not yet translated renders English
+ * harmlessly. The app roots call useLang() so every tr() consumer re-renders
+ * when the toggle flips.
+ */
+export function tr(label: string): string {
+  const out = i18n.t(`strings.${label}`, { defaultValue: label });
+  return typeof out === "string" ? out : label;
+}
+
+/**
+ * Subscribe the calling component (usually an app root) to language changes.
+ * tr() reads the global i18next instance, so without this a component would
+ * keep its first language until remount.
+ */
+export function useLang(): void {
+  const [, force] = React.useReducer((x: number) => x + 1, 0);
+  React.useEffect(() => {
+    const bump = () => force();
+    i18n.on("languageChanged", bump);
+    return () => {
+      i18n.off("languageChanged", bump);
+    };
+  }, []);
 }
 
 /** Locale for Intl formatting — French numbers/dates use fr-FR, everything

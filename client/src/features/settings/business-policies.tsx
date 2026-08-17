@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
@@ -78,7 +79,7 @@ function PolicyForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required>
+          <Field label={tr("Name")} required>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -86,7 +87,7 @@ function PolicyForm({
             />
           </Field>
           <Field
-            label="Key"
+            label={tr("Key")}
             hint={
               editing ? "Locked after creation" : "e.g. privacy, refund, terms"
             }
@@ -171,9 +172,9 @@ export function BusinessPoliciesPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>Key</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Name")}</TH>
+              <TH>{tr("Key")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

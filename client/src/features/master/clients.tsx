@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
@@ -129,7 +130,7 @@ function ClientForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -137,7 +138,7 @@ function ClientForm({
             />
           </Field>
           <Field
-            label="Corporate entity"
+            label={tr("Corporate entity")}
             hint="Which of your legal entities owns this relationship"
             className="sm:col-span-2"
           >
@@ -147,14 +148,14 @@ function ClientForm({
               onChange={setEntityId}
             />
           </Field>
-          <Field label="NIU" hint="Taxpayer number">
+          <Field label={tr("NIU")} hint="Taxpayer number">
             <Input
               value={niu}
               onChange={(e) => setNiu(e.target.value)}
               placeholder="P0123456789A"
             />
           </Field>
-          <Field label="RCCM" hint="Trade register">
+          <Field label={tr("RCCM")} hint="Trade register">
             <Input
               value={rccm}
               onChange={(e) => setRccm(e.target.value)}
@@ -269,7 +270,7 @@ function CreditModal({
             />
             <Stat label="Credit limit" value={limit(data.limit)} />
             <Stat label="Receivables used" value={money(data.used)} />
-            <Stat label="Available" value={limit(data.available)} />
+            <Stat label={tr("Available")} value={limit(data.available)} />
           </div>
         )}
         <div className="flex justify-end pt-2">
@@ -303,9 +304,9 @@ export function ClientsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
-        title="Clients"
+        title={tr("Clients")}
         description="Customer registry referenced across sales, operations and receivables."
-        action={<Button onClick={openNew}>New client</Button>}
+        action={<Button onClick={openNew}>{tr("New client")}</Button>}
       />
 
       {error ? (
@@ -321,13 +322,13 @@ export function ClientsPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>NIU</TH>
-              <TH>RCCM</TH>
-              <TH>Terms</TH>
+              <TH>{tr("Name")}</TH>
+              <TH>{tr("NIU")}</TH>
+              <TH>{tr("RCCM")}</TH>
+              <TH>{tr("Terms")}</TH>
               <TH>Credit limit</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

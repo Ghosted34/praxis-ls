@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -81,9 +82,9 @@ function FieldVisForm({
       description="Masks a confidential field for one role. Enforced server-side on read, so it holds even under the TEST toggle."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Role" required>
+        <Field label={tr("Role")} required>
           <Select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-            <option value="">— select a role —</option>
+            <option value="">{tr("— select a role —")}</option>
             {roles.map((r) => (
               <option key={r.role_id} value={r.role_id}>
                 {r.code} · {r.name}

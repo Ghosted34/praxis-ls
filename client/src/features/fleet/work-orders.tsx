@@ -4,6 +4,7 @@
  * the work-order cost rolls up to the sum of its parts.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -182,7 +183,7 @@ function WorkOrderDetail({
                 placeholder="Brake pads / 2h labour"
               />
             </Field>
-            <Field label="Qty">
+            <Field label={tr("Qty")}>
               <Input
                 type="number"
                 min="0"
@@ -192,7 +193,7 @@ function WorkOrderDetail({
                 onChange={(e) => setP((s) => ({ ...s, qty: e.target.value }))}
               />
             </Field>
-            <Field label="Unit cost">
+            <Field label={tr("Unit cost")}>
               <Input
                 type="number"
                 min="0"
@@ -256,7 +257,7 @@ function NewWorkOrderForm({
       description="Open a maintenance job against a vehicle."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Vehicle">
+        <Field label={tr("Vehicle")}>
           <Select
             value={f.vehicle_id}
             onChange={(e) => set("vehicle_id", e.target.value)}
@@ -269,13 +270,13 @@ function NewWorkOrderForm({
             ))}
           </Select>
         </Field>
-        <Field label="Kind" required>
+        <Field label={tr("Kind")} required>
           <Select value={f.kind} onChange={(e) => set("kind", e.target.value)}>
             <option value="CORRECTIVE">Corrective</option>
             <option value="PREVENTIVE">Preventive</option>
           </Select>
         </Field>
-        <Field label="Description">
+        <Field label={tr("Description")}>
           <Input
             value={f.description}
             onChange={(e) => set("description", e.target.value)}

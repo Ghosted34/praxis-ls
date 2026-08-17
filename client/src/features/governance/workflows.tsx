@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,7 +145,7 @@ function StepForm({
               onChange={(e) => set("step_seq", e.target.value)}
             />
           </Field>
-          <Field label="Kind" required>
+          <Field label={tr("Kind")} required>
             <Select
               value={f.step_kind}
               onChange={(e) => {
@@ -155,12 +156,12 @@ function StepForm({
                 );
               }}
             >
-              <option value="VALIDATE">Validate</option>
-              <option value="APPROVE">Approve</option>
+              <option value="VALIDATE">{tr("Validate")}</option>
+              <option value="APPROVE">{tr("Approve")}</option>
             </Select>
           </Field>
           <Field
-            label="Role"
+            label={tr("Role")}
             hint="Who decides this step. Leave as Anyone and the step is open to any approver."
           >
             <Select
@@ -193,7 +194,7 @@ function StepForm({
             </Select>
           </Field>
           <Field
-            label="Capability"
+            label={tr("Capability")}
             required
             hint="Segregation-of-duties overlay — the actor must hold this authority."
           >
@@ -202,7 +203,7 @@ function StepForm({
               onChange={(e) => set("capability_code", e.target.value)}
             >
               <option value="VALIDATOR">Validator</option>
-              <option value="APPROVER">Approver</option>
+              <option value="APPROVER">{tr("Approver")}</option>
             </Select>
           </Field>
           <div />
@@ -213,7 +214,7 @@ function StepForm({
               className="num text-right"
               value={f.min_amount_xaf}
               onChange={(e) => set("min_amount_xaf", e.target.value)}
-              placeholder="Any"
+              placeholder={tr("Any")}
             />
           </Field>
           <Field label="Max amount (XAF)">
@@ -223,7 +224,7 @@ function StepForm({
               className="num text-right"
               value={f.max_amount_xaf}
               onChange={(e) => set("max_amount_xaf", e.target.value)}
-              placeholder="Any"
+              placeholder={tr("Any")}
             />
           </Field>
         </div>
@@ -312,13 +313,13 @@ function WorkflowDrawer({
     >
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <span className="micro uppercase tracking-wide">Approval chain</span>
+          <span className="micro uppercase tracking-wide">{tr("Approval chain")}</span>
           <Button size="sm" onClick={() => setAdding(true)}>
             Add step
           </Button>
         </div>
         {steps.loading ? (
-          <div className="py-6 text-center micro">Loading…</div>
+          <div className="py-6 text-center micro">{tr("Loading…")}</div>
         ) : steps.error ? (
           <ErrorState message={steps.error} />
         ) : chain.length ? (
@@ -419,14 +420,14 @@ function WorkflowForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input
               value={f.name}
               onChange={(e) => set("name", e.target.value)}
               placeholder="Expense approval over 500k"
             />
           </Field>
-          <Field label="Event" required className="sm:col-span-2">
+          <Field label={tr("Event")} required className="sm:col-span-2">
             <Select
               value={f.event_type_key}
               onChange={(e) => set("event_type_key", e.target.value)}
@@ -530,14 +531,14 @@ export function WorkflowsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Governance" to="/governance" />}
-        title="Workflows"
+        title={tr("Workflows")}
         description="Validate/approve chains bound to approvable events — the org's approval routing."
         action={<Button onClick={() => setCreating(true)}>New workflow</Button>}
       />
       <KpiRow>
-        <KpiTile label="Workflows" value={num(list.length)} />
+        <KpiTile label={tr("Workflows")} value={num(list.length)} />
         <KpiTile
-          label="Active"
+          label={tr("Active")}
           value={num(list.filter((w) => w.is_active).length)}
         />
       </KpiRow>

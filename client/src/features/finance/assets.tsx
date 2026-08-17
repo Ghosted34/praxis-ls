@@ -5,6 +5,7 @@
  * forms live in `./asset-forms`.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
@@ -154,13 +155,13 @@ export function AssetsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Assets"
+        title={tr("Assets")}
         description="Fixed-asset register — acquisition builds the monthly depreciation schedule; post a period's dotation to the ledger or dispose an asset and recognise the gain/loss."
         action={<Button onClick={() => setCreateOpen(true)}>New asset</Button>}
       />
       <KpiRow>
-        <KpiTile label="Assets" value={String(list.length)} />
-        <KpiTile label="Active" value={String(active.length)} />
+        <KpiTile label={tr("Assets")} value={String(list.length)} />
+        <KpiTile label={tr("Active")} value={String(active.length)} />
         <KpiTile label="Acquisition cost" value={moneyFmt(totalCost)} />
       </KpiRow>
       <DataList

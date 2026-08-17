@@ -20,6 +20,7 @@
  * page you scroll away from.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -175,7 +176,7 @@ export function AttendanceDaysView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
-            <span className="micro">From</span>
+            <span className="micro">{tr("From")}</span>
             <Input
               type="date"
               value={win.from}
@@ -184,7 +185,7 @@ export function AttendanceDaysView() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="micro">To</span>
+            <span className="micro">{tr("To")}</span>
             <Input
               type="date"
               value={win.to}
@@ -246,14 +247,14 @@ export function AttendanceDaysView() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-[rgb(var(--surface))]">
                 <tr className="border-b text-left">
-                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">Date</th>
-                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">Employee</th>
-                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">Status</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">{tr("Date")}</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">{tr("Employee")}</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">{tr("Status")}</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right font-semibold uppercase text-muted-foreground">Late</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right font-semibold uppercase text-muted-foreground">Deduction</th>
-                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">Rule</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Deduction")}</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold uppercase text-muted-foreground">{tr("Rule")}</th>
                   <th className="px-3 py-2">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{tr("Actions")}</span>
                   </th>
                 </tr>
               </thead>

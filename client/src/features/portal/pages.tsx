@@ -7,6 +7,7 @@
  * Shared primitives from components/ui/*; AI panel gated globally.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -161,7 +162,7 @@ function GrantModal({
               <SearchSelect
                 path="/clients"
                 value={clientLabel}
-                placeholder="Search clients…"
+                placeholder={tr("Search clients…")}
                 getLabel={(c) => cell(c.name ?? c.legal_name)}
                 getKey={(c) => String(c.client_id)}
                 onSelect={(c) => setClientId(String(c.client_id))}

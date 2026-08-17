@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { num, dateFmt } from "@/lib/format";
@@ -130,7 +131,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          label="Revenue"
+          label={tr("Revenue")}
           value={kpis.revenue}
           hint="Produits for the period"
         />
@@ -140,7 +141,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
           hint="Produits less charges"
         />
         <Kpi
-          label="Cash on hand"
+          label={tr("Cash on hand")}
           value={kpis.cash_on_hand}
           hint="Today, not period-end"
         />
@@ -150,7 +151,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Compte de résultat">
           <Line label="Produits" value={is.produits} />
-          <Line label="Charges" value={is.charges} />
+          <Line label={tr("Charges")} value={is.charges} />
           {is.hao_net ? (
             <Line label="Hors activités ordinaires (net)" value={is.hao_net} />
           ) : null}
@@ -172,7 +173,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
           ) : null}
         </Panel>
 
-        <Panel title="Cash position">
+        <Panel title={tr("Cash position")}>
           {cash.accounts.length === 0 ? (
             <EmptyState
               title="No treasury accounts"
@@ -187,7 +188,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
                   value={a.balance}
                 />
               ))}
-              <Line label="Total" value={cash.total_cash} strong />
+              <Line label={tr("Total")} value={cash.total_cash} strong />
             </>
           )}
         </Panel>
@@ -316,7 +317,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Compte de résultat">
           <Line label="Produits" value={is.produits} />
-          <Line label="Charges" value={is.charges} />
+          <Line label={tr("Charges")} value={is.charges} />
           <Line label="Résultat net" value={is.result} strong />
         </Panel>
         <Panel title="Bilan">
@@ -333,7 +334,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Trial balance">
+        <Panel title={tr("Trial balance")}>
           {tb.rows.length === 0 ? (
             <EmptyState
               title="No movements"
@@ -344,9 +345,9 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-card text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="py-2 text-left font-medium">Account</th>
-                    <th className="py-2 text-right font-medium">Debit</th>
-                    <th className="py-2 text-right font-medium">Credit</th>
+                    <th className="py-2 text-left font-medium">{tr("Account")}</th>
+                    <th className="py-2 text-right font-medium">{tr("Debit")}</th>
+                    <th className="py-2 text-right font-medium">{tr("Credit")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -382,7 +383,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Audit trail">
+        <Panel title={tr("Audit trail")}>
           {trail.length === 0 ? (
             <EmptyState
               title="No postings"

@@ -8,6 +8,7 @@
  * no write surface, by design. Built on the shared DataList/PageHeader scaffold.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -103,7 +104,7 @@ export function ModuleCataloguePage() {
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat
-          label="Modules"
+          label={tr("Modules")}
           value={rows === null ? "…" : String(rows.length)}
           tone="accent"
         />
@@ -112,7 +113,7 @@ export function ModuleCataloguePage() {
           value={rows === null ? "…" : String(Math.max(groups.length - 1, 0))}
         />
         <Stat
-          label="Showing"
+          label={tr("Showing")}
           value={rows === null ? "…" : String(shown.length)}
         />
       </div>

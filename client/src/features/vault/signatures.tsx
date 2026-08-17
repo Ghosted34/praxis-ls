@@ -7,6 +7,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -88,10 +89,10 @@ function SignForm({
             <Input
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
-              placeholder="Jane Doe"
+              placeholder={tr("Jane Doe")}
             />
           </Field>
-          <Field label="Method">
+          <Field label={tr("Method")}>
             <Select value={method} onChange={(e) => setMethod(e.target.value)}>
               {SIGN_METHODS.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -142,7 +143,7 @@ export function SignaturesPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
-        title="Signatures"
+        title={tr("Signatures")}
         description="Signatures are bound to a document's fingerprint. Look one up by its reference, then sign."
       />
       <HubTabs />
@@ -200,9 +201,9 @@ export function SignaturesPage() {
               <THead>
                 <TR>
                   <TH>Signer</TH>
-                  <TH>Method</TH>
-                  <TH>Signed</TH>
-                  <TH>Reference</TH>
+                  <TH>{tr("Method")}</TH>
+                  <TH>{tr("Signed")}</TH>
+                  <TH>{tr("Reference")}</TH>
                 </TR>
               </THead>
               <TBody>

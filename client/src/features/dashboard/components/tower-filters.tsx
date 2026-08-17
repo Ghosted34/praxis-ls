@@ -7,6 +7,7 @@
  * dossier creation, keeping the filter vocabulary in sync with operations data.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateField } from "@/components/ui/date-field";
@@ -165,7 +166,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
           </Select>
         </Field>
 
-        <Field label="Territory">
+        <Field label={tr("Territory")}>
           <Input
             value={draft.territory ?? ""}
             placeholder="e.g. CM"
@@ -173,7 +174,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
           />
         </Field>
 
-        <Field label="Service type">
+        <Field label={tr("Service type")}>
           <Select
             value={draft.service_type_id ?? ""}
             onChange={(event) =>
@@ -213,21 +214,21 @@ export function TowerFilters({ value, page, onChange }: Props) {
 
         {/* Day-first, like every other date on an operations screen — the window
             being filtered is read out loud in the meeting these filters drive. */}
-        <Field label="From">
+        <Field label={tr("From")}>
           <DateField
             value={draft.from ?? ""}
             onChange={(iso) => set("from", iso || undefined)}
           />
         </Field>
 
-        <Field label="To">
+        <Field label={tr("To")}>
           <DateField
             value={draft.to ?? ""}
             onChange={(iso) => set("to", iso || undefined)}
           />
         </Field>
 
-        <Field label="Layer">
+        <Field label={tr("Layer")}>
           <Select
             value={draft.layer ?? ""}
             onChange={(event) =>
@@ -246,7 +247,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
           </Select>
         </Field>
 
-        <Field label="Location">
+        <Field label={tr("Location")}>
           <Select
             value={draft.verified ?? ""}
             onChange={(event) =>
@@ -265,7 +266,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
           </Select>
         </Field>
 
-        <Field label="Completion">
+        <Field label={tr("Completion")}>
           <Select
             value={completion}
             onChange={(event) =>

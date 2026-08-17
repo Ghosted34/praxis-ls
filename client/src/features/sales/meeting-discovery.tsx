@@ -11,6 +11,7 @@
  * legacy modal hard-codes them.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,11 +169,11 @@ export function DiscoveryCapture({ meetingId }: { meetingId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Field label="Location" className="min-w-[16rem] flex-1">
+        <Field label={tr("Location")} className="min-w-[16rem] flex-1">
           <Input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. Client HQ, Douala"
+            placeholder={tr("e.g. Client HQ, Douala")}
           />
         </Field>
         <Button

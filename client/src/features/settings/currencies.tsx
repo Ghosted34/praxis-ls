@@ -12,6 +12,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useResource } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
@@ -257,7 +258,7 @@ function AddCurrencyModal({
     >
       <div className="space-y-4">
         <Field
-          label="Currency"
+          label={tr("Currency")}
           hint="Type a currency code/name, or a country to look it up."
           required
         >
@@ -269,10 +270,10 @@ function AddCurrencyModal({
         </Field>
         {code && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" required>
+            <Field label={tr("Name")} required>
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
-            <Field label="Symbol">
+            <Field label={tr("Symbol")}>
               <Input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
@@ -280,7 +281,7 @@ function AddCurrencyModal({
               />
             </Field>
             <Field
-              label="Decimals"
+              label={tr("Decimals")}
               hint="Minor units (0 for XAF/JPY, 2 for most, 3 for Gulf dinars)."
             >
               <Input
@@ -292,7 +293,7 @@ function AddCurrencyModal({
                 onChange={(e) => setDecimals(Number(e.target.value))}
               />
             </Field>
-            <Field label="Preview">
+            <Field label={tr("Preview")}>
               <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 num text-sm">
                 {symbol ? `${symbol} ` : ""}
                 {fmtSample(Number(decimals) || 0)}
@@ -376,13 +377,13 @@ function EditCurrencyModal({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="Symbol">
+        <Field label={tr("Symbol")}>
           <Input value={symbol} onChange={(e) => setSymbol(e.target.value)} />
         </Field>
-        <Field label="Decimals">
+        <Field label={tr("Decimals")}>
           <Input
             type="number"
             min="0"
@@ -392,7 +393,7 @@ function EditCurrencyModal({
             onChange={(e) => setDecimals(Number(e.target.value))}
           />
         </Field>
-        <Field label="Preview">
+        <Field label={tr("Preview")}>
           <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 num text-sm">
             {symbol ? `${symbol} ` : ""}
             {fmtSample(Number(decimals) || 0)}
@@ -479,9 +480,9 @@ function SetRateForm({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Base" required>
+        <Field label={tr("Base")} required>
           <Select value={base} onChange={(e) => setBase(e.target.value)}>
-            <option value="">Select…</option>
+            <option value="">{tr("Select…")}</option>
             {codes.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -499,7 +500,7 @@ function SetRateForm({
           }
         >
           <Select value={quote} onChange={(e) => setQuote(e.target.value)}>
-            <option value="">Select…</option>
+            <option value="">{tr("Select…")}</option>
             {codes.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -507,7 +508,7 @@ function SetRateForm({
             ))}
           </Select>
         </Field>
-        <Field label="Rate" hint="1 base = ? quote" required>
+        <Field label={tr("Rate")} hint="1 base = ? quote" required>
           <Input
             type="number"
             min="0"
@@ -518,7 +519,7 @@ function SetRateForm({
             placeholder="655.957"
           />
         </Field>
-        <Field label="As of" required>
+        <Field label={tr("As of")} required>
           <Input
             type="date"
             value={asOf}
@@ -633,7 +634,7 @@ function FxSettingsModal({
     >
       <div className="space-y-3">
         <Field
-          label="API key"
+          label={tr("API key")}
           hint={
             isSet
               ? "Leave blank to keep the current key."
@@ -747,7 +748,7 @@ function CurrencyDossier({
             <div>
               <div className="flex items-center gap-2">
                 <span className="num text-lg font-semibold">{c.code}</span>
-                {c.is_base && <Pill tone="blue">Base</Pill>}
+                {c.is_base && <Pill tone="blue">{tr("Base")}</Pill>}
                 <Pill tone={c.is_active ? "ok" : "mute"}>
                   {c.is_active ? "Active" : "Off"}
                 </Pill>
@@ -808,8 +809,8 @@ function CurrencyDossier({
       {/* Overview & format */}
       <SectionCard title="Overview & format">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Symbol" value={symbol || "—"} />
-          <Stat label="Decimals" value={String(decimals)} />
+          <Stat label={tr("Symbol")} value={symbol || "—"} />
+          <Stat label={tr("Decimals")} value={String(decimals)} />
           <Stat label="ISO numeric" value={cat?.numeric ?? "—"} />
           <Stat
             label="Amount preview"
@@ -819,7 +820,7 @@ function CurrencyDossier({
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Stat
-            label="Added"
+            label={tr("Added")}
             value={c.created_at ? dateFmt(c.created_at) : "—"}
           />
           <Stat
@@ -906,9 +907,9 @@ function CurrencyDossier({
                 <Table>
                   <THead>
                     <TR>
-                      <TH>As of</TH>
-                      <TH className="text-right">Rate</TH>
-                      <TH>Source</TH>
+                      <TH>{tr("As of")}</TH>
+                      <TH className="text-right">{tr("Rate")}</TH>
+                      <TH>{tr("Source")}</TH>
                       <TH>Override</TH>
                       <TH>Fetched</TH>
                     </TR>
@@ -1285,11 +1286,11 @@ export function CurrenciesPage() {
                     <span className="min-w-0 flex-1 truncate text-muted-foreground">
                       {c.name}
                     </span>
-                    {c.is_base && <Pill tone="blue">Base</Pill>}
+                    {c.is_base && <Pill tone="blue">{tr("Base")}</Pill>}
                     {c.most_used && !c.is_base && (
                       <Pill tone="orange">Top</Pill>
                     )}
-                    {!c.is_active && <Pill tone="mute">Off</Pill>}
+                    {!c.is_active && <Pill tone="mute">{tr("Off")}</Pill>}
                   </button>
                 ))
               )}

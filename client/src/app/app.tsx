@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { ComponentType } from "react";
+import { useLang } from "@/lib/i18n";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
@@ -391,6 +392,7 @@ function OldPathRedirect() {
 }
 
 export function App() {
+  useLang();
   return (
     <BootGate>
       <PwaLayer />

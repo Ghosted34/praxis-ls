@@ -19,6 +19,7 @@
  * than leaving someone to infer it from a row halfway down.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -150,13 +151,13 @@ function PublicDetailsDialog({
       description="Only this client-safe copy is shown on anonymous shipment tracking. Internal health, delay attribution and cause notes remain private."
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{tr("Cancel")}</Button>
           <Button onClick={submit} loading={busy} disabled={busy}>Save public details</Button>
         </>
       }
     >
       <div className="space-y-3">
-        <Field label="Location" hint="Current client-facing place for this stage (maximum 200 characters).">
+        <Field label={tr("Location")} hint="Current client-facing place for this stage (maximum 200 characters).">
           <Input maxLength={200} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Port of Douala" />
         </Field>
         <Field label="Stage reference" hint="Operational reference safe to share with the client (maximum 120 characters).">
@@ -236,21 +237,21 @@ function InsertDialog({
       }
     >
       <div className="space-y-3">
-        <Field label="Code" required>
+        <Field label={tr("Code")} required>
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="CUSTOMS_QUERY"
           />
         </Field>
-        <Field label="Label" required>
+        <Field label={tr("Label")} required>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Réserve douanière à lever"
           />
         </Field>
-        <Field label="Owner" hint="Who a delay on this stage is attributed to.">
+        <Field label={tr("Owner")} hint="Who a delay on this stage is attributed to.">
           <Select
             value={owner}
             onChange={(e) => setOwner(e.target.value as api.OwnerTier)}
@@ -398,7 +399,7 @@ export function MilestoneChain({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm text-foreground">{label}</span>
-                    {m.is_target_lock && <Pill tone="orange">SLA</Pill>}
+                    {m.is_target_lock && <Pill tone="orange">{tr("SLA")}</Pill>}
                     {m.is_anchor && <Pill tone="blue">anchor</Pill>}
                     {m.is_ad_hoc && <Pill tone="mute">added</Pill>}
                     {!m.is_client_visible && <Pill tone="mute">internal</Pill>}

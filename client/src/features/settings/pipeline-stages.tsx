@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { useList } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -38,8 +39,8 @@ export function PipelineStagesPage() {
           <THead>
             <TR>
               <TH>Order</TH>
-              <TH>Code</TH>
-              <TH>Name</TH>
+              <TH>{tr("Code")}</TH>
+              <TH>{tr("Name")}</TH>
               <TH>Probability %</TH>
             </TR>
           </THead>

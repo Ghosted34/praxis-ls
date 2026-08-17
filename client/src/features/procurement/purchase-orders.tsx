@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -92,7 +93,7 @@ function PoForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Supplier">
+          <Field label={tr("Supplier")}>
             <Select
               value={f.supplier_id}
               onChange={(e) => set("supplier_id", e.target.value)}
@@ -105,7 +106,7 @@ function PoForm({
               ))}
             </Select>
           </Field>
-          <Field label="Dossier">
+          <Field label={tr("Dossier")}>
             <Select
               value={f.dossier_id}
               onChange={(e) => set("dossier_id", e.target.value)}
@@ -118,13 +119,13 @@ function PoForm({
               ))}
             </Select>
           </Field>
-          <Field label="Category">
+          <Field label={tr("Category")}>
             <Select
               value={f.expense_category}
               onChange={(e) => set("expense_category", e.target.value)}
             >
-              <option value="OPERATIONS">Operations</option>
-              <option value="OVERHEAD">Overhead</option>
+              <option value="OPERATIONS">{tr("Operations")}</option>
+              <option value="OVERHEAD">{tr("Overhead")}</option>
             </Select>
           </Field>
         </div>
@@ -148,7 +149,7 @@ function PoForm({
                 key={i}
                 className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2"
               >
-                <Field label="Item">
+                <Field label={tr("Item")}>
                   <DictionaryItemSelect
                     value={it.dictionary_item_id}
                     valueLabel={it.label}
@@ -157,7 +158,7 @@ function PoForm({
                     }
                   />
                 </Field>
-                <Field label="Qty">
+                <Field label={tr("Qty")}>
                   <Input
                     type="number"
                     className="num text-right"
@@ -167,7 +168,7 @@ function PoForm({
                     }
                   />
                 </Field>
-                <Field label="Unit price">
+                <Field label={tr("Unit price")}>
                   <Input
                     type="number"
                     className="num text-right"
@@ -294,7 +295,7 @@ export function PurchaseOrdersPage() {
             docType="PURCHASE_ORDER"
             id={r.po_id}
             title={r.ref || `PO ${r.po_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
           {(r.status === "DRAFT" || !r.status) && (
             <Button
@@ -324,7 +325,7 @@ export function PurchaseOrdersPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Procurement" to="/procurement" />}
-        title="Purchase orders"
+        title={tr("Purchase orders")}
         description="Orders raised to suppliers."
         action={<Button onClick={() => setOpen(true)}>New PO</Button>}
       />
@@ -332,7 +333,7 @@ export function PurchaseOrdersPage() {
       <KpiRow>
         <KpiTile label="POs" value={num(list.length)} />
         <KpiTile
-          label="Approved"
+          label={tr("Approved")}
           value={num(
             list.filter((p) => String(p.status).includes("APPROVED")).length,
           )}

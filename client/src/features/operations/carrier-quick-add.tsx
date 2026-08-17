@@ -18,6 +18,7 @@
  * instead of becoming two rows.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -124,7 +125,7 @@ export function CarrierQuickAdd({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Name"
+            label={tr("Name")}
             required
             className="sm:col-span-2"
             hint={code ? `Stored as ${code}` : undefined}
@@ -137,7 +138,7 @@ export function CarrierQuickAdd({
           </Field>
           {/* One allowed kind means no question to ask. */}
           {allowed.length > 1 && (
-            <Field label="Kind" required>
+            <Field label={tr("Kind")} required>
               <Select
                 value={kind}
                 onChange={(e) => setKind(e.target.value as RateProviderKind)}
@@ -150,7 +151,7 @@ export function CarrierQuickAdd({
               </Select>
             </Field>
           )}
-          <Field label="Country">
+          <Field label={tr("Country")}>
             <Select
               value={country}
               onChange={(e) => setCountry(e.target.value)}

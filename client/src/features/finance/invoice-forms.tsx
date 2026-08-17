@@ -4,6 +4,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { amount } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
@@ -92,12 +93,12 @@ export function InvoiceDraftForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={entityId}
               onChange={(e) => setEntityId(e.target.value)}
             >
-              <option value="">Select entity…</option>
+              <option value="">{tr("Select entity…")}</option>
               {entities.map((o) => (
                 <option key={o.id} value={o.id}>
                   {optionLabel(o)}
@@ -105,7 +106,7 @@ export function InvoiceDraftForm({
               ))}
             </Select>
           </Field>
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <Select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -119,7 +120,7 @@ export function InvoiceDraftForm({
             </Select>
           </Field>
           <Field
-            label="Dossier"
+            label={tr("Dossier")}
             hint="Links this to an operation file — sets service type and matches advances."
           >
             <Select
@@ -174,7 +175,7 @@ export function InvoiceDraftForm({
                 min="0"
                 step="0.01"
                 className="num text-right"
-                placeholder="Amount"
+                placeholder={tr("Amount")}
                 aria-label={`Amount, line ${i + 1}`}
                 value={l.amount}
                 onChange={(e) => setLine(i, { amount: e.target.value })}
@@ -197,7 +198,7 @@ export function InvoiceDraftForm({
                 onClick={() =>
                   setLines((ls) => ls.filter((_, idx) => idx !== i))
                 }
-                aria-label="Remove line"
+                aria-label={tr("Remove line")}
               >
                 ✕
               </Button>
@@ -300,7 +301,7 @@ export function InvoiceSubmitForm({
               onChange={(e) => setEntryDate(e.target.value)}
             />
           </Field>
-          <Field label="Source document ref" required>
+          <Field label={tr("Source document ref")} required>
             <Input
               value={sourceRef}
               onChange={(e) => setSourceRef(e.target.value)}
@@ -328,7 +329,7 @@ export function InvoiceSubmitForm({
               <span className="num text-right">
                 {amount(totals.totals.tax_total)}
               </span>
-              <span className="font-medium text-foreground">Total TTC</span>
+              <span className="font-medium text-foreground">{tr("Total TTC")}</span>
               <span className="num text-right font-medium text-primary-ink">
                 {amount(totals.totals.total)}
               </span>
@@ -464,7 +465,7 @@ export function InvoiceEditForm({
         <LoadingRow label="Loading invoice…" />
       ) : (
         <div className="space-y-4">
-          <Field label="Client" className="sm:max-w-sm">
+          <Field label={tr("Client")} className="sm:max-w-sm">
             <Select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -480,7 +481,7 @@ export function InvoiceEditForm({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Lines</span>
+              <span className="text-sm font-medium">{tr("Lines")}</span>
               <Button
                 type="button"
                 size="sm"
@@ -516,7 +517,7 @@ export function InvoiceEditForm({
                   min="0"
                   step="0.01"
                   className="num text-right"
-                  placeholder="Amount"
+                  placeholder={tr("Amount")}
                   aria-label={`Amount, line ${i + 1}`}
                   value={l.amount}
                   onChange={(e) => setLine(i, { amount: e.target.value })}
@@ -539,7 +540,7 @@ export function InvoiceEditForm({
                   onClick={() =>
                     setLines((ls) => ls.filter((_, idx) => idx !== i))
                   }
-                  aria-label="Remove line"
+                  aria-label={tr("Remove line")}
                 >
                   ✕
                 </Button>

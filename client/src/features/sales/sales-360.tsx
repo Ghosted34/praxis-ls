@@ -27,6 +27,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -417,7 +418,7 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
       emptyHint="No recorded changes yet."
       head={
         <>
-          <Th>When</Th>
+          <Th>{tr("When")}</Th>
           <Th>Action</Th>
           <Th>By</Th>
         </>
@@ -666,9 +667,9 @@ export function LeadDossier({
           tiles sharing one row, one of them carrying a money figure and a
           weighted hint, overflowed the card at every width — see KpiRow. */}
       <KpiRow fit="content">
-        <KpiTile label="Meetings" value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery`} />
+        <KpiTile label={tr("Meetings")} value={num(k.meetings)} hint={`${k.discovery_sections_captured} discovery`} />
         <KpiTile label="Quote requests" value={num(k.quote_requests)} />
-        <KpiTile label="Proposals" value={num(k.proposals)} hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`} />
+        <KpiTile label={tr("Proposals")} value={num(k.proposals)} hint={`${k.proposals_sent} sent · ${k.proposals_accepted} accepted`} />
         <KpiTile label="Open deals" value={num(k.open_opportunities)} hint={`${k.won_opportunities} won · ${k.lost_opportunities} lost`} />
         <KpiTile
           label="Open pipeline"
@@ -737,9 +738,9 @@ export function LeadDossier({
           emptyHint="No meetings captured against this lead."
           head={
             <>
-              <Th>When</Th>
-              <Th>Subject</Th>
-              <Th>Location</Th>
+              <Th>{tr("When")}</Th>
+              <Th>{tr("Subject")}</Th>
+              <Th>{tr("Location")}</Th>
               <Th>Organiser</Th>
               <Th>Discovery</Th>
             </>
@@ -773,12 +774,12 @@ export function LeadDossier({
           emptyHint="No quote requests from this lead."
           head={
             <>
-              <Th>Reference</Th>
-              <Th>Status</Th>
-              <Th>Route</Th>
-              <Th>Incoterm</Th>
-              <Th r>Weight</Th>
-              <Th>Received</Th>
+              <Th>{tr("Reference")}</Th>
+              <Th>{tr("Status")}</Th>
+              <Th>{tr("Route")}</Th>
+              <Th>{tr("Incoterm")}</Th>
+              <Th r>{tr("Weight")}</Th>
+              <Th>{tr("Received")}</Th>
             </>
           }
         >
@@ -816,10 +817,10 @@ export function LeadDossier({
             emptyHint="No proposals drafted for this lead."
             head={
               <>
-                <Th>Number</Th>
-                <Th>Title</Th>
-                <Th>Status</Th>
-                <Th r>Total</Th>
+                <Th>{tr("Number")}</Th>
+                <Th>{tr("Title")}</Th>
+                <Th>{tr("Status")}</Th>
+                <Th r>{tr("Total")}</Th>
                 <Th>Link</Th>
                 <Th>Engagement</Th>
               </>
@@ -844,7 +845,7 @@ export function LeadDossier({
                 </Td>
                 <Td>
                   {p.share_live ? (
-                    <Pill tone="ok">Live</Pill>
+                    <Pill tone="ok">{tr("Live")}</Pill>
                   ) : (
                     <span className="micro">Not shared</span>
                   )}
@@ -868,10 +869,10 @@ export function LeadDossier({
             emptyHint="This lead has no deals on the pipeline board."
             head={
               <>
-                <Th>Deal</Th>
-                <Th>Stage</Th>
-                <Th>Status</Th>
-                <Th r>Value</Th>
+                <Th>{tr("Deal")}</Th>
+                <Th>{tr("Stage")}</Th>
+                <Th>{tr("Status")}</Th>
+                <Th r>{tr("Value")}</Th>
                 <Th r>Win %</Th>
                 <Th r>Weighted</Th>
               </>
@@ -919,10 +920,10 @@ export function LeadDossier({
           emptyHint="No website enquiries were triaged into this lead."
           head={
             <>
-              <Th>Received</Th>
-              <Th>Subject</Th>
-              <Th>Type</Th>
-              <Th>Status</Th>
+              <Th>{tr("Received")}</Th>
+              <Th>{tr("Subject")}</Th>
+              <Th>{tr("Type")}</Th>
+              <Th>{tr("Status")}</Th>
               <Th>Replied</Th>
             </>
           }
@@ -1089,11 +1090,11 @@ export function IntakeDossier({
           value={num(k.age_days)}
         />
         <KpiTile
-          label="Attachments"
+          label={tr("Attachments")}
           value={num(k.attachments)}
           hint={k.has_primary_attachment ? "primary on file" : "no primary document"}
         />
-        <KpiTile label="Proposals" value={num(k.proposals)} hint="via the lead" />
+        <KpiTile label={tr("Proposals")} value={num(k.proposals)} hint="via the lead" />
         <KpiTile
           label="Converted deal"
           value={
@@ -1179,7 +1180,7 @@ export function IntakeDossier({
             ))}
           </dl>
           <div className="mt-4">
-            <p className="micro">Cargo description</p>
+            <p className="micro">{tr("Cargo description")}</p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
               {cell(q.cargo_description as string)}
             </p>
@@ -1193,11 +1194,11 @@ export function IntakeDossier({
           emptyHint="Nothing was attached to this request."
           head={
             <>
-              <Th>File</Th>
-              <Th>Kind</Th>
-              <Th>Type</Th>
+              <Th>{tr("File")}</Th>
+              <Th>{tr("Kind")}</Th>
+              <Th>{tr("Type")}</Th>
               <Th>Uploaded by</Th>
-              <Th>When</Th>
+              <Th>{tr("When")}</Th>
             </>
           }
         >
@@ -1223,10 +1224,10 @@ export function IntakeDossier({
             emptyHint="No proposals — a quote request reaches proposals through its lead."
             head={
               <>
-                <Th>Number</Th>
-                <Th>Title</Th>
-                <Th>Status</Th>
-                <Th r>Total</Th>
+                <Th>{tr("Number")}</Th>
+                <Th>{tr("Title")}</Th>
+                <Th>{tr("Status")}</Th>
+                <Th r>{tr("Total")}</Th>
               </>
             }
           >

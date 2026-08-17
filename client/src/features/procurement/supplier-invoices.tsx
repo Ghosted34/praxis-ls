@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -98,7 +99,7 @@ function SupplierInvoiceForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
@@ -111,7 +112,7 @@ function SupplierInvoiceForm({
               ))}
             </Select>
           </Field>
-          <Field label="Supplier">
+          <Field label={tr("Supplier")}>
             <Select
               value={f.supplier_id}
               onChange={(e) => set("supplier_id", e.target.value)}
@@ -130,7 +131,7 @@ function SupplierInvoiceForm({
               onChange={(e) => set("supplier_ref", e.target.value)}
             />
           </Field>
-          <Field label="Due on">
+          <Field label={tr("Due on")}>
             <Input
               type="date"
               value={f.due_on}
@@ -140,7 +141,7 @@ function SupplierInvoiceForm({
         </div>
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="micro">Lines</span>
+            <span className="micro">{tr("Lines")}</span>
             <Button
               type="button"
               size="sm"
@@ -161,13 +162,13 @@ function SupplierInvoiceForm({
                 key={i}
                 className="grid grid-cols-[1fr_110px_120px_auto] items-end gap-2"
               >
-                <Field label="Label">
+                <Field label={tr("Label")}>
                   <Input
                     value={l.label ?? ""}
                     onChange={(e) => setLine(i, { label: e.target.value })}
                   />
                 </Field>
-                <Field label="Unit price">
+                <Field label={tr("Unit price")}>
                   <Input
                     type="number"
                     className="num text-right"
@@ -273,7 +274,7 @@ export function SupplierInvoicesPage() {
             docType="SUPPLIER_INVOICE"
             id={r.supplier_invoice_id}
             title={r.ref || `Invoice ${r.supplier_invoice_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
           {!String(r.status).includes("POSTED") && (
             <Button
@@ -299,9 +300,9 @@ export function SupplierInvoicesPage() {
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Invoices" value={num(list.length)} />
+        <KpiTile label={tr("Invoices")} value={num(list.length)} />
         <KpiTile
-          label="Posted"
+          label={tr("Posted")}
           value={num(
             list.filter((i) => String(i.status).includes("POSTED")).length,
           )}

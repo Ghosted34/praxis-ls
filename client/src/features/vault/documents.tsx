@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -96,7 +97,7 @@ function UploadDocumentForm({
       size="lg"
     >
       <div className="space-y-4">
-        <Field label="File" required>
+        <Field label={tr("File")} required>
           <input
             type="file"
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx"
@@ -105,7 +106,7 @@ function UploadDocumentForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Document type" hint="e.g. invoice, bill_of_lading">
+          <Field label={tr("Document type")} hint="e.g. invoice, bill_of_lading">
             <Input
               value={docType}
               onChange={(e) => setDocType(e.target.value)}
@@ -125,7 +126,7 @@ function UploadDocumentForm({
             </Select>
           </Field>
           <Field
-            label="Reference"
+            label={tr("Reference")}
             hint="Optional business key (entity_ref)"
             className="sm:col-span-2"
           >
@@ -220,7 +221,7 @@ export function DocumentsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
-        title="Documents"
+        title={tr("Documents")}
         description="The confidential document vault — uploaded evidence with tamper-evident fingerprints."
         action={
           <Button onClick={() => setUploadOpen(true)}>Upload document</Button>
@@ -266,12 +267,12 @@ export function DocumentsPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Type</TH>
-              <TH>Reference</TH>
+              <TH>{tr("Type")}</TH>
+              <TH>{tr("Reference")}</TH>
               <TH>Ver.</TH>
-              <TH>Status</TH>
+              <TH>{tr("Status")}</TH>
               <TH>Uploaded</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

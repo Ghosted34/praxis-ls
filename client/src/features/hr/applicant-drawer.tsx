@@ -27,6 +27,7 @@
  * separate blocks with separate headings.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -716,7 +717,7 @@ export function CriteriaEditor({ vacancyId }: { vacancyId: string }) {
               placeholder="Customs clearance at a sea port"
             />
           </Field>
-          <Field label="Weight">
+          <Field label={tr("Weight")}>
             <Input
               className="num"
               type="number"

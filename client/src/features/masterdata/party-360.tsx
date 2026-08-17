@@ -11,6 +11,7 @@
  * caller without finance visibility (gate 14); this view never unmasks them.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,7 +124,7 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
@@ -371,7 +372,7 @@ function AddDocumentModal({
     <Modal open onClose={onClose} title="Add document">
       <form onSubmit={save} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Type">
+          <Field label={tr("Type")}>
             <Select
               value={values.document_type_id || ""}
               onChange={(e) => set("document_type_id", e.target.value)}
@@ -385,7 +386,7 @@ function AddDocumentModal({
             </Select>
           </Field>
           <Field
-            label="Number"
+            label={tr("Number")}
             hint="Generated automatically when the document is added."
           >
             <Input
@@ -394,13 +395,13 @@ function AddDocumentModal({
               className="bg-muted text-muted-foreground"
             />
           </Field>
-          <Field label="Issued">
+          <Field label={tr("Issued")}>
             <DateField
               value={values.issued_on || ""}
               onChange={(iso) => set("issued_on", iso)}
             />
           </Field>
-          <Field label="Expires">
+          <Field label={tr("Expires")}>
             <DateField
               value={values.expires_on || ""}
               onChange={(iso) => set("expires_on", iso)}
@@ -923,7 +924,7 @@ function AgingDetailModal({
       size="lg"
     >
       {detail.loading ? (
-        <LoadingRow label="Loading…" />
+        <LoadingRow label={tr("Loading…")} />
       ) : detail.error ? (
         <ErrorState message={detail.error} />
       ) : !detail.data || detail.data.invoices.length === 0 ? (
@@ -938,10 +939,10 @@ function AgingDetailModal({
             empty={false}
             head={
               <>
-                <Th>Invoice</Th>
-                <Th>Due date</Th>
+                <Th>{tr("Invoice")}</Th>
+                <Th>{tr("Due date")}</Th>
                 <Th>{isCurrent ? "Due in" : "Overdue by"}</Th>
-                <Th r>Amount</Th>
+                <Th r>{tr("Amount")}</Th>
               </>
             }
           >
@@ -1543,7 +1544,7 @@ export function PartyDossier({
   if (dossier.error) return <ErrorState message={dossier.error} />;
   if (!dossier.data)
     return (
-      <EmptyState title="Not found" hint="This record could not be loaded." />
+      <EmptyState title={tr("Not found")} hint="This record could not be loaded." />
     );
 
   // One local shape covers both party kinds; the per-branch narrowing below is
@@ -1620,7 +1621,7 @@ export function PartyDossier({
                 </Pill>
               )}
               {p.verification_status === "VERIFIED" && (
-                <Pill tone="ok">Verified</Pill>
+                <Pill tone="ok">{tr("Verified")}</Pill>
               )}
               {!isClient && p.avl_status && (
                 <Pill tone={AVL_TONE[p.avl_status] || "mute"}>
@@ -1773,12 +1774,12 @@ export function PartyDossier({
       {isClient ? (
         <KpiRow>
           <KpiTile
-            label="Outstanding"
+            label={tr("Outstanding")}
             value={money(d.kpis.outstanding)}
             onClick={() => setKpiOpen("outstanding")}
           />
           <KpiTile
-            label="Overdue"
+            label={tr("Overdue")}
             value={money(d.kpis.overdue)}
             hint={
               d.kpis.oldest_due_date
@@ -1810,12 +1811,12 @@ export function PartyDossier({
       ) : (
         <KpiRow>
           <KpiTile
-            label="Payables"
+            label={tr("Payables")}
             value={money(d.kpis.payables)}
             onClick={() => setKpiOpen("payables")}
           />
           <KpiTile
-            label="Overdue"
+            label={tr("Overdue")}
             value={money(d.kpis.overdue_payables)}
             hint={
               d.kpis.oldest_due_date
@@ -1993,12 +1994,12 @@ export function PartyDossier({
             empty={d.documents.length === 0}
             head={
               <>
-                <Th>Type</Th>
-                <Th>Number</Th>
-                <Th>Expires</Th>
+                <Th>{tr("Type")}</Th>
+                <Th>{tr("Number")}</Th>
+                <Th>{tr("Expires")}</Th>
                 <Th>Scan</Th>
-                <Th>Verification</Th>
-                <Th r>File</Th>
+                <Th>{tr("Verification")}</Th>
+                <Th r>{tr("File")}</Th>
               </>
             }
           >
@@ -2088,7 +2089,7 @@ export function PartyDossier({
                     <span className="font-medium text-foreground">
                       {c.name}
                     </span>
-                    {c.is_primary && <Pill tone="blue">Primary</Pill>}
+                    {c.is_primary && <Pill tone="blue">{tr("Primary")}</Pill>}
                     {(c.role_tags || []).map((t) => (
                       <Pill key={t} tone="mute">
                         {enumLabel(t)}
@@ -2164,7 +2165,7 @@ export function PartyDossier({
                 >
                   <div className="flex items-center gap-2">
                     {a.type && <Pill tone="mute">{enumLabel(a.type)}</Pill>}
-                    {a.is_primary && <Pill tone="blue">Primary</Pill>}
+                    {a.is_primary && <Pill tone="blue">{tr("Primary")}</Pill>}
                   </div>
                   <p className="mt-1 text-sm text-foreground">
                     {[
@@ -2196,9 +2197,9 @@ export function PartyDossier({
             head={
               <>
                 <Th>Beneficiary</Th>
-                <Th>Bank</Th>
-                <Th>Account</Th>
-                <Th>Verified</Th>
+                <Th>{tr("Bank")}</Th>
+                <Th>{tr("Account")}</Th>
+                <Th>{tr("Verified")}</Th>
               </>
             }
           >
@@ -2224,9 +2225,9 @@ export function PartyDossier({
                 </Td>
                 <Td>
                   {b.is_verified ? (
-                    <Pill tone="ok">Verified</Pill>
+                    <Pill tone="ok">{tr("Verified")}</Pill>
                   ) : (
-                    <Pill tone="warn">Unverified</Pill>
+                    <Pill tone="warn">{tr("Unverified")}</Pill>
                   )}
                 </Td>
               </tr>
@@ -2244,10 +2245,10 @@ export function PartyDossier({
             empty={d.registrations.length === 0}
             head={
               <>
-                <Th>Kind</Th>
-                <Th>Number</Th>
-                <Th>Country</Th>
-                <Th>Expires</Th>
+                <Th>{tr("Kind")}</Th>
+                <Th>{tr("Number")}</Th>
+                <Th>{tr("Country")}</Th>
+                <Th>{tr("Expires")}</Th>
               </>
             }
           >
@@ -2264,15 +2265,15 @@ export function PartyDossier({
       )}
 
       {tab === "Owners" && (
-        <Section title="Beneficial owners" onAdd={() => setAdding("owner")}>
+        <Section title={tr("Beneficial owners")} onAdd={() => setAdding("owner")}>
           <MiniTable
             empty={d.beneficial_owners.length === 0}
             head={
               <>
-                <Th>Name</Th>
-                <Th>Nationality</Th>
+                <Th>{tr("Name")}</Th>
+                <Th>{tr("Nationality")}</Th>
                 <Th r>Ownership</Th>
-                <Th>PEP</Th>
+                <Th>{tr("PEP")}</Th>
               </>
             }
           >
@@ -2285,7 +2286,7 @@ export function PartyDossier({
                     ? `${o.ownership_percent}%`
                     : "—"}
                 </Td>
-                <Td>{o.is_pep ? <Pill tone="orange">PEP</Pill> : "—"}</Td>
+                <Td>{o.is_pep ? <Pill tone="orange">{tr("PEP")}</Pill> : "—"}</Td>
               </tr>
             ))}
           </MiniTable>
@@ -2307,12 +2308,12 @@ export function PartyDossier({
             empty={d.dossiers.length === 0}
             head={
               <>
-                <Th>Reference</Th>
+                <Th>{tr("Reference")}</Th>
                 <Th>Service / title</Th>
-                <Th>Status</Th>
-                <Th>Milestone</Th>
-                <Th r>Value</Th>
-                <Th>Created</Th>
+                <Th>{tr("Status")}</Th>
+                <Th>{tr("Milestone")}</Th>
+                <Th r>{tr("Value")}</Th>
+                <Th>{tr("Created")}</Th>
               </>
             }
           >
@@ -2386,11 +2387,11 @@ export function PartyDossier({
               empty={d.invoices.length === 0}
               head={
                 <>
-                  <Th>Invoice</Th>
-                  <Th>Type</Th>
-                  <Th>Status</Th>
-                  <Th>Due</Th>
-                  <Th r>Total</Th>
+                  <Th>{tr("Invoice")}</Th>
+                  <Th>{tr("Type")}</Th>
+                  <Th>{tr("Status")}</Th>
+                  <Th>{tr("Due")}</Th>
+                  <Th r>{tr("Total")}</Th>
                 </>
               }
             >
@@ -2415,10 +2416,10 @@ export function PartyDossier({
             head={
               <>
                 <Th>Bill</Th>
-                <Th>Status</Th>
-                <Th>Due</Th>
-                <Th r>WHT</Th>
-                <Th r>Total</Th>
+                <Th>{tr("Status")}</Th>
+                <Th>{tr("Due")}</Th>
+                <Th r>{tr("WHT")}</Th>
+                <Th r>{tr("Total")}</Th>
               </>
             }
           >
@@ -2637,7 +2638,7 @@ type Client360Invoice = api.Client360["invoices"][number];
 type SupplierBill = api.Supplier360["supplier_invoices"][number];
 
 function Empty() {
-  return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+  return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
 }
 
 function Section({
@@ -2689,7 +2690,7 @@ function BlockModal({
       description="A manual HARD_BLOCK stops this party at transactional gates. A reason is required and recorded on the immutable ledger."
     >
       <label className="space-y-1 text-sm">
-        <span className="font-medium text-foreground">Reason</span>
+        <span className="font-medium text-foreground">{tr("Reason")}</span>
         <Input
           value={reason}
           onChange={(e) => setReason(e.target.value)}

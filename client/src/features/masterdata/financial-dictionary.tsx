@@ -13,6 +13,7 @@
  * (the effective-dated rate history and its trend), and a bulk Excel import.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -215,7 +216,7 @@ function DictDossier({
   if (dossier.error) return <ErrorState message={dossier.error} />;
   if (!dossier.data)
     return (
-      <EmptyState title="Not found" hint="This item may have been removed." />
+      <EmptyState title={tr("Not found")} hint="This item may have been removed." />
     );
 
   const d = dossier.data;
@@ -257,7 +258,7 @@ function DictDossier({
               <Pill tone={it.is_active ? "ok" : "mute"}>
                 {it.is_active ? "Active" : "Inactive"}
               </Pill>
-              {it.is_disbursement && <Pill tone="blue">Disbursement</Pill>}
+              {it.is_disbursement && <Pill tone="blue">{tr("Disbursement")}</Pill>}
             </div>
             <p className="mt-1 micro">
               {[
@@ -303,9 +304,9 @@ function DictDossier({
       <KpiRow>
         <KpiTile label="Costings" value={num(u.costing_lines)} />
         <KpiTile label="Cash requests" value={num(u.cash_request_lines)} />
-        <KpiTile label="Invoices" value={num(u.invoice_lines)} />
-        <KpiTile label="Purchase orders" value={num(u.purchase_order_items)} />
-        <KpiTile label="Rates" value={num(u.expense_rates)} />
+        <KpiTile label={tr("Invoices")} value={num(u.invoice_lines)} />
+        <KpiTile label={tr("Purchase orders")} value={num(u.purchase_order_items)} />
+        <KpiTile label={tr("Rates")} value={num(u.expense_rates)} />
       </KpiRow>
 
       {/* Tabs */}
@@ -326,7 +327,7 @@ function DictDossier({
 
       {tab === "Overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Identity">
+          <Panel title={tr("Identity")}>
             <KV k="Code" v={<span className="num">{it.code}</span>} />
             <KV k="Name (FR)" v={it.label_fr || "—"} />
             <KV k="Name (EN)" v={it.label_en || "—"} />
@@ -370,10 +371,10 @@ function DictDossier({
             <thead>
               <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <th className="px-3 py-2">Context</th>
-                <th className="px-3 py-2">Debit</th>
-                <th className="px-3 py-2">Credit</th>
-                <th className="px-3 py-2">Tax</th>
-                <th className="px-3 py-2">Disbursement</th>
+                <th className="px-3 py-2">{tr("Debit")}</th>
+                <th className="px-3 py-2">{tr("Credit")}</th>
+                <th className="px-3 py-2">{tr("Tax")}</th>
+                <th className="px-3 py-2">{tr("Disbursement")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -414,7 +415,7 @@ function DictDossier({
                     </td>
                     <td className="px-3 py-2">
                       {r.is_disbursement ? (
-                        <Pill tone="blue">Disbursement</Pill>
+                        <Pill tone="blue">{tr("Disbursement")}</Pill>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

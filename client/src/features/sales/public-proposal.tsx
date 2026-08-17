@@ -1,4 +1,5 @@
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useParams, useSearchParams } from "react-router-dom";
 import { tenant } from "@/lib/api-client";
 import { useBranding } from "@/app/branding/branding-context";
@@ -50,8 +51,8 @@ export function PublicProposalPage() {
         <h1 className="mt-3 text-3xl font-bold">{p.title}</h1>
         <p>{p.client_name}</p>
         <div className="mt-4 flex gap-2 print:hidden">
-          <button className="rounded border px-3 py-1" onClick={() => setQuery({ lang: "EN" })}>English</button>
-          <button className="rounded border px-3 py-1" onClick={() => setQuery({ lang: "FR" })}>Français</button>
+          <button className="rounded border px-3 py-1" onClick={() => setQuery({ lang: "EN" })}>{tr("English")}</button>
+          <button className="rounded border px-3 py-1" onClick={() => setQuery({ lang: "FR" })}>{tr("Français")}</button>
           <a className="rounded bg-primary px-3 py-1 text-primary-foreground" href={pdf}>Download PDF</a>
         </div>
       </header>

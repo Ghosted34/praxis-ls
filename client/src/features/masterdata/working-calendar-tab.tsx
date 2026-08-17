@@ -19,6 +19,7 @@
  * wrong in the expensive direction.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/modal";
@@ -289,7 +290,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
                     )}
                   </>
                 ) : (
-                  <span className="micro sm:col-span-3">Closed</span>
+                  <span className="micro sm:col-span-3">{tr("Closed")}</span>
                 )}
               </div>
             );
@@ -328,7 +329,7 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
           <Table>
             <THead>
               <TR>
-                <TH>Date</TH>
+                <TH>{tr("Date")}</TH>
                 <TH>Name (French)</TH>
                 <TH>Name (English)</TH>
                 <TH>Repeats yearly</TH>

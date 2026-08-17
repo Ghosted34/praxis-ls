@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -66,7 +67,7 @@ function GrnForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Purchase order" required>
+          <Field label={tr("Purchase order")} required>
             <Select
               value={f.po_id}
               onChange={(e) => set("po_id", e.target.value)}
@@ -79,7 +80,7 @@ function GrnForm({
               ))}
             </Select>
           </Field>
-          <Field label="Entity">
+          <Field label={tr("Entity")}>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
@@ -98,7 +99,7 @@ function GrnForm({
               onChange={(e) => set("supplier_invoice_ref", e.target.value)}
             />
           </Field>
-          <Field label="Date">
+          <Field label={tr("Date")}>
             <Input
               type="date"
               value={f.date}

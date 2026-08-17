@@ -6,6 +6,7 @@
  */
 
 import * as React from "react";
+import { useLang } from "@/lib/i18n";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -114,6 +115,7 @@ function PortalGuard({ children }: { children: React.ReactNode }) {
 }
 
 export function PortalApp() {
+  useLang();
   return (
     <Routes>
       <Route path="login" element={<PortalLogin />} />

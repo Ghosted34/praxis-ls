@@ -6,6 +6,7 @@
  * Kit-styled; accents resolve to --primary. Bodies are server-sanitized on ingest.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -98,11 +99,11 @@ function ThreadMessage({
       {m && (
         <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-y-1">
-            <span className="text-muted-foreground">From</span>
+            <span className="text-muted-foreground">{tr("From")}</span>
             <span className="num">{m.from_address}</span>
-            <span className="text-muted-foreground">To</span>
+            <span className="text-muted-foreground">{tr("To")}</span>
             <span className="num">{m.to_address || "—"}</span>
-            <span className="text-muted-foreground">Received</span>
+            <span className="text-muted-foreground">{tr("Received")}</span>
             <span className="num">{dateFmt(m.received_at)}</span>
             <span className="text-muted-foreground">Linked to</span>
             <span className="num">{m.entity_ref || "—"}</span>
@@ -121,7 +122,7 @@ function ThreadMessage({
 
           {(atts.data || []).length > 0 && (
             <div>
-              <div className="micro mb-1">Attachments</div>
+              <div className="micro mb-1">{tr("Attachments")}</div>
               <div className="flex flex-wrap gap-2">
                 {(atts.data || []).map((a) => (
                   <Pill key={a.email_attachment_id} tone="mute">
@@ -321,7 +322,7 @@ export function ComposeModal({
           </Select>
         </Field>
         <Field
-          label="To"
+          label={tr("To")}
           required
           hint={
             locked
@@ -359,16 +360,16 @@ export function ComposeModal({
           </div>
         </Field>
         <Field label="Cc">
-          <Input value={f.cc} onChange={set("cc")} placeholder="optional" />
+          <Input value={f.cc} onChange={set("cc")} placeholder={tr("optional")} />
         </Field>
-        <Field label="Subject">
+        <Field label={tr("Subject")}>
           <Input
             value={f.subject}
             onChange={set("subject")}
-            placeholder="Subject"
+            placeholder={tr("Subject")}
           />
         </Field>
-        <Field label="Body">
+        <Field label={tr("Body")}>
           <Textarea
             value={f.body}
             onChange={set("body")}
@@ -683,7 +684,7 @@ function ImapConnectForm({
             placeholder="info@company.cm"
           />
         </Field>
-        <Field label="Display name">
+        <Field label={tr("Display name")}>
           <Input
             value={f.display_name}
             onChange={(e) => set("display_name", e.target.value)}
@@ -705,14 +706,14 @@ function ImapConnectForm({
             onChange={(e) => set("imap_port", e.target.value)}
           />
         </Field>
-        <Field label="SMTP host" required>
+        <Field label={tr("SMTP host")} required>
           <Input
             value={f.smtp_host}
             onChange={(e) => set("smtp_host", e.target.value)}
             placeholder="mail.company.cm"
           />
         </Field>
-        <Field label="SMTP port">
+        <Field label={tr("SMTP port")}>
           <Input
             type="number"
             className="num"
@@ -724,11 +725,11 @@ function ImapConnectForm({
           <Input
             value={f.auth_user}
             onChange={(e) => set("auth_user", e.target.value)}
-            placeholder="optional"
+            placeholder={tr("optional")}
           />
         </Field>
         <Field
-          label="Password"
+          label={tr("Password")}
           required={!editing}
           hint={
             editing ? "Leave blank to keep the current password." : undefined
@@ -827,7 +828,7 @@ function RightDrawer({
             <RadixDialog.Close asChild>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label={tr("Close")}
                 className="tap-24 grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <XIcon width={16} height={16} />
@@ -957,7 +958,7 @@ function MailboxesSection() {
                 </span>
                 <Pill tone="mute">{providerLabel[c.provider]}</Pill>
                 <Pill tone={connTone(c.status)}>{c.status}</Pill>
-                {c.is_default && <Pill tone="ok">Default</Pill>}
+                {c.is_default && <Pill tone="ok">{tr("Default")}</Pill>}
               </div>
               <p className="micro mt-0.5">
                 Last sync {dateFmt(c.last_sync_at)}

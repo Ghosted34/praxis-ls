@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -97,8 +98,8 @@ function PrForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label="Department"
-          hint="From your organigramme — Security › Scopes."
+          label={tr("Department")}
+          hint={tr("From your organigramme — Security › Scopes.")}
         >
           <DepartmentSelect value={dept} onChange={setDept} />
         </Field>
@@ -130,7 +131,7 @@ function PrForm({
                 className="num text-right"
                 value={l.qty}
                 onChange={(e) => setLine(i, { qty: e.target.value })}
-                placeholder="Qty"
+                placeholder={tr("Qty")}
               />
               <Input
                 type="number"
@@ -224,7 +225,7 @@ export function PurchaseRequestsPage() {
             docType="PURCHASE_REQUEST"
             id={r.pr_id}
             title={r.ref || `Request ${r.pr_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
           {(r.status === "DRAFT" || !r.status) && (
             <Button
@@ -246,13 +247,13 @@ export function PurchaseRequestsPage() {
         eyebrow={<HubCrumb area="Procurement" to="/procurement" />}
         title="Purchase requests"
         description="Requests to buy, before a PO is raised."
-        action={<Button onClick={() => setOpen(true)}>New request</Button>}
+        action={<Button onClick={() => setOpen(true)}>{tr("New request")}</Button>}
       />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Requests" value={num(list.length)} />
         <KpiTile
-          label="Approved"
+          label={tr("Approved")}
           value={num(list.filter((p) => p.status === "APPROVED").length)}
         />
         <KpiTile

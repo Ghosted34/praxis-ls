@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
@@ -126,7 +127,7 @@ function SupplierForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -134,7 +135,7 @@ function SupplierForm({
             />
           </Field>
           <Field
-            label="Corporate entity"
+            label={tr("Corporate entity")}
             hint="Which of your legal entities pays this vendor"
             className="sm:col-span-2"
           >
@@ -144,11 +145,11 @@ function SupplierForm({
               onChange={setEntityId}
             />
           </Field>
-          <Field label="Category" hint="e.g. Freight, Customs, Fuel">
+          <Field label={tr("Category")} hint="e.g. Freight, Customs, Fuel">
             <Input
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="Freight"
+              placeholder={tr("Freight")}
             />
           </Field>
           <Field label="Rating (1–5)">
@@ -163,14 +164,14 @@ function SupplierForm({
               placeholder="4"
             />
           </Field>
-          <Field label="NIU">
+          <Field label={tr("NIU")}>
             <Input
               value={niu}
               onChange={(e) => setNiu(e.target.value)}
               placeholder="M0987654321B"
             />
           </Field>
-          <Field label="RCCM">
+          <Field label={tr("RCCM")}>
             <Input
               value={rccm}
               onChange={(e) => setRccm(e.target.value)}
@@ -257,7 +258,7 @@ export function SuppliersPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
-        title="Suppliers"
+        title={tr("Suppliers")}
         description="Vendor registry referenced across procurement and payables."
         action={<Button onClick={openNew}>New supplier</Button>}
       />
@@ -275,13 +276,13 @@ export function SuppliersPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>Category</TH>
-              <TH>NIU</TH>
+              <TH>{tr("Name")}</TH>
+              <TH>{tr("Category")}</TH>
+              <TH>{tr("NIU")}</TH>
               <TH>Payment</TH>
-              <TH>Rating</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Rating")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

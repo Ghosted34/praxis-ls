@@ -4,6 +4,7 @@
  * appraisals. Reads the self-scoped /mine endpoints (no admin grant needed).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
@@ -230,7 +231,7 @@ export function MyHrPage() {
       />
 
       <div className="flex flex-col gap-8">
-        <Section title="Queries" count={qs.length}>
+        <Section title={tr("Queries")} count={qs.length}>
           {queries.error ? (
             <ErrorState message={queries.error} />
           ) : qs.length === 0 && !queries.loading ? (
@@ -286,7 +287,7 @@ export function MyHrPage() {
           )}
         </Section>
 
-        <Section title="Sanctions" count={ss.length}>
+        <Section title={tr("Sanctions")} count={ss.length}>
           {sanctions.error ? (
             <ErrorState message={sanctions.error} />
           ) : ss.length === 0 && !sanctions.loading ? (
@@ -354,7 +355,7 @@ export function MyHrPage() {
           )}
         </Section>
 
-        <Section title="Appraisals" count={as.length}>
+        <Section title={tr("Appraisals")} count={as.length}>
           {appraisals.error ? (
             <ErrorState message={appraisals.error} />
           ) : as.length === 0 && !appraisals.loading ? (
@@ -396,7 +397,7 @@ export function MyHrPage() {
             </div>
           )}
         </Section>
-        <Section title="Leave balance" count={bl.length}>
+        <Section title={tr("Leave balance")} count={bl.length}>
           {balances.error ? (
             <ErrorState message={balances.error} />
           ) : bl.length === 0 && !balances.loading ? (
@@ -491,11 +492,11 @@ export function MyHrPage() {
                   </div>
                   <div className="flex items-center gap-5 text-right">
                     <div>
-                      <div className="micro">Gross</div>
+                      <div className="micro">{tr("Gross")}</div>
                       <div className="num text-sm">{money(p.gross)}</div>
                     </div>
                     <div>
-                      <div className="micro">Net</div>
+                      <div className="micro">{tr("Net")}</div>
                       <div className="num text-sm font-semibold">
                         {money(p.net_pay)}
                       </div>
@@ -507,7 +508,7 @@ export function MyHrPage() {
           )}
         </Section>
 
-        <Section title="Contracts" count={cs.length}>
+        <Section title={tr("Contracts")} count={cs.length}>
           {contracts.error ? (
             <ErrorState message={contracts.error} />
           ) : cs.length === 0 && !contracts.loading ? (

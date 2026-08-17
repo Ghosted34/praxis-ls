@@ -4,6 +4,7 @@
  * there, cycle-count history, and capacity utilisation.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,7 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
@@ -111,40 +112,40 @@ function NewLocationForm({
     <Modal
       open
       onClose={onClose}
-      title="New location"
+      title={tr("New location")}
       description="Add a slotting location — a zone/aisle/rack/bin, or a yard slot."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Zone">
+          <Field label={tr("Zone")}>
             <Input
               value={f.zone}
               onChange={(e) => set("zone", e.target.value)}
               placeholder="A"
             />
           </Field>
-          <Field label="Aisle">
+          <Field label={tr("Aisle")}>
             <Input
               value={f.aisle}
               onChange={(e) => set("aisle", e.target.value)}
               placeholder="01"
             />
           </Field>
-          <Field label="Rack">
+          <Field label={tr("Rack")}>
             <Input
               value={f.rack}
               onChange={(e) => set("rack", e.target.value)}
               placeholder="R1"
             />
           </Field>
-          <Field label="Bin">
+          <Field label={tr("Bin")}>
             <Input
               value={f.bin}
               onChange={(e) => set("bin", e.target.value)}
               placeholder="B1"
             />
           </Field>
-          <Field label="Yard" hint="For open-yard slots">
+          <Field label={tr("Yard")} hint="For open-yard slots">
             <Input
               value={f.yard}
               onChange={(e) => set("yard", e.target.value)}
@@ -223,10 +224,10 @@ function LocationDetail({
 
       <KpiRow>
         <KpiTile label="Items stored" value={num(items.length)} />
-        <KpiTile label="On hand" value={num(Math.round(onHand))} />
-        <KpiTile label="Equipment" value={num(equip.length)} />
+        <KpiTile label={tr("On hand")} value={num(Math.round(onHand))} />
+        <KpiTile label={tr("Equipment")} value={num(equip.length)} />
         <KpiTile
-          label="Capacity used"
+          label={tr("Capacity used")}
           value={usedPct != null ? `${usedPct}%` : "—"}
         />
       </KpiRow>
@@ -249,10 +250,10 @@ function LocationDetail({
           empty={items.length === 0}
           head={
             <>
-              <Th>SKU</Th>
-              <Th>Item</Th>
-              <Th r>On hand</Th>
-              <Th>State</Th>
+              <Th>{tr("SKU")}</Th>
+              <Th>{tr("Item")}</Th>
+              <Th r>{tr("On hand")}</Th>
+              <Th>{tr("State")}</Th>
             </>
           }
         >
@@ -275,8 +276,8 @@ function LocationDetail({
           empty={equip.length === 0}
           head={
             <>
-              <Th>Equipment</Th>
-              <Th>Status</Th>
+              <Th>{tr("Equipment")}</Th>
+              <Th>{tr("Status")}</Th>
             </>
           }
         >
@@ -298,7 +299,7 @@ function LocationDetail({
           head={
             <>
               <Th>Counted</Th>
-              <Th r>Lines</Th>
+              <Th r>{tr("Lines")}</Th>
               <Th>Result</Th>
             </>
           }
@@ -359,7 +360,7 @@ export function LocationsPage() {
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
         title="Locations"
         description="Warehouse slotting with a per-location 360 — stock, equipment, counts and capacity."
-        action={<Button onClick={() => setCreating(true)}>New location</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New location")}</Button>}
       />
       <HubTabs />
       {locs.error ? (
@@ -374,7 +375,7 @@ export function LocationsPage() {
             />
             <div className="max-h-[70vh] space-y-2 overflow-auto rounded-lg border p-1">
               {locs.loading ? (
-                <div className="px-3 py-4 micro">Loading…</div>
+                <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : groups.length === 0 ? (
                 <div className="px-3 py-4 micro">No locations.</div>
               ) : (

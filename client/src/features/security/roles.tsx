@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -70,7 +71,7 @@ function RoleForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label="Code"
+          label={tr("Code")}
           required
           hint="Short uppercase key, unique per tenant — e.g. FINANCE, CUSTOMS_DESK."
         >
@@ -81,14 +82,14 @@ function RoleForm({
             placeholder="FINANCE"
           />
         </Field>
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Finance & treasury"
           />
         </Field>
-        <Field label="Description">
+        <Field label={tr("Description")}>
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -166,7 +167,7 @@ export function RolesPage() {
       label: "Origin",
       render: (r) =>
         r.is_system ? (
-          <Pill tone="mute">System</Pill>
+          <Pill tone="mute">{tr("System")}</Pill>
         ) : (
           <Pill tone="ok">Tenant</Pill>
         ),
@@ -200,7 +201,7 @@ export function RolesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
-        title="Roles"
+        title={tr("Roles")}
         description="Job areas, stored as rows rather than code. Seeded system roles can't be deleted."
         action={
           <Button onClick={() => setForm({ role: null })}>New role</Button>
@@ -208,7 +209,7 @@ export function RolesPage() {
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Roles" value={num(all.length)} />
+        <KpiTile label={tr("Roles")} value={num(all.length)} />
         <KpiTile
           label="Tenant-defined"
           value={num(all.filter((r) => !r.is_system).length)}

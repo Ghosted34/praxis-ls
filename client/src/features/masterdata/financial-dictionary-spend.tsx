@@ -24,6 +24,7 @@
  * <h3> under the dossier's <h2> (heading-order, WCAG 1.3.1).
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pill } from "@/components/ui/pill";
@@ -90,7 +91,7 @@ function PeriodPicker({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Segmented
-        label="Period"
+        label={tr("Period")}
         value={preset}
         onChange={(v) => onPreset(v as PeriodPreset)}
         options={PRESETS}
@@ -369,17 +370,17 @@ export function SpendTab({ id }: { id: string }) {
           hint={`${num(d.totals.actual_count)} ledger entries`}
         />
         <KpiTile
-          label="Committed"
+          label={tr("Committed")}
           value={money(d.totals.committed, cur)}
           hint={`${money(d.totals.variance_committed_actual, cur)} not yet posted`}
         />
         <KpiTile
-          label="Estimated"
+          label={tr("Estimated")}
           value={money(d.totals.estimated, cur)}
           hint={`${num(d.totals.estimated_count)} costing lines`}
         />
         <KpiTile
-          label="Documents"
+          label={tr("Documents")}
           value={num(d.documents.length)}
           hint={`${dateFmt(d.period.from)} — ${dateFmt(d.period.to)}`}
         />
@@ -747,7 +748,7 @@ export function CostEvolutionTab({ id }: { id: string }) {
                       ) : p.superseded ? (
                         <Pill tone="mute">Superseded</Pill>
                       ) : (
-                        <Pill tone="blue">Scheduled</Pill>
+                        <Pill tone="blue">{tr("Scheduled")}</Pill>
                       )}
                     </td>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground">

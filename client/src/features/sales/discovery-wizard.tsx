@@ -30,6 +30,7 @@
  * memory.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -243,7 +244,7 @@ export function DiscoveryWizard({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="With">
+          <Field label={tr("With")}>
             <Select
               value={withKind}
               onChange={(e) => {
@@ -252,8 +253,8 @@ export function DiscoveryWizard({
                 setWithLabel("");
               }}
             >
-              <option value="lead">Lead</option>
-              <option value="client">Client</option>
+              <option value="lead">{tr("Lead")}</option>
+              <option value="client">{tr("Client")}</option>
             </Select>
           </Field>
           <Field label={withKind === "lead" ? "Lead" : "Client"} required>
@@ -284,15 +285,15 @@ export function DiscoveryWizard({
               onChange={(e) => setMetOn(e.target.value)}
             />
           </Field>
-          <Field label="Location">
+          <Field label={tr("Location")}>
             <Input
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Client HQ, Douala"
+              placeholder={tr("e.g. Client HQ, Douala")}
             />
           </Field>
           <Field
-            label="Subject"
+            label={tr("Subject")}
             hint="Defaults to the client's name if you leave it blank."
             className="sm:col-span-2"
           >

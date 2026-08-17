@@ -11,6 +11,7 @@
  * queue-of-work surface now — nothing else.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/data-list";
@@ -63,7 +64,7 @@ export function WorkspacePage() {
         description="What's on your desk right now — approvals awaiting you and alerts you haven't opened."
       />
       {r.loading ? (
-        <div className="py-10 text-center micro">Loading…</div>
+        <div className="py-10 text-center micro">{tr("Loading…")}</div>
       ) : r.error ? (
         <ErrorState message={r.error} />
       ) : (

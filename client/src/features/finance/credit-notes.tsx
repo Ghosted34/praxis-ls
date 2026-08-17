@@ -5,6 +5,7 @@
  * forms live in `./credit-note-forms`.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
@@ -83,7 +84,7 @@ export function CreditNotesPage() {
             {enumLabel(s)}
           </Pill>
         ) : (
-          <Pill tone="mute">Draft</Pill>
+          <Pill tone="mute">{tr("Draft")}</Pill>
         );
       },
     },
@@ -107,7 +108,7 @@ export function CreditNotesPage() {
             docType="CREDIT_NOTE"
             id={String(r.invoice_id ?? r.credit_note_id ?? "")}
             title={r.doc_number ? String(r.doc_number) : "Credit note"}
-            label="View"
+            label={tr("View")}
           />
           {isDraft(r) && (
             <>
@@ -136,15 +137,15 @@ export function CreditNotesPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Credit notes"
+        title={tr("Credit notes")}
         description="Reverse a finalised invoice — draft, then post the contra entry."
         action={
           <Button onClick={() => setCreateOpen(true)}>New credit note</Button>
         }
       />
       <KpiRow>
-        <KpiTile label="Credit notes" value={String(list.length)} />
-        <KpiTile label="Drafts" value={String(list.filter(isDraft).length)} />
+        <KpiTile label={tr("Credit notes")} value={String(list.length)} />
+        <KpiTile label={tr("Drafts")} value={String(list.filter(isDraft).length)} />
       </KpiRow>
       <DataList
         columns={columns}

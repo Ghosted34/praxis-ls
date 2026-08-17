@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -171,14 +172,14 @@ function UserForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Full name" required>
+          <Field label={tr("Full name")} required>
             <Input
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Amina Ndoumbe"
             />
           </Field>
-          <Field label="Email" required>
+          <Field label={tr("Email")} required>
             <Input
               type="email"
               value={email}
@@ -196,15 +197,15 @@ function UserForm({
               placeholder="andoumbe"
             />
           </Field>
-          <Field label="Status">
+          <Field label={tr("Status")}>
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="ACTIVE">Active</option>
-              <option value="SUSPENDED">Suspended</option>
-              <option value="LOCKED">Locked</option>
+              <option value="ACTIVE">{tr("Active")}</option>
+              <option value="SUSPENDED">{tr("Suspended")}</option>
+              <option value="LOCKED">{tr("Locked")}</option>
             </Select>
           </Field>
           <Field
-            label="Employee"
+            label={tr("Employee")}
             hint="Link this login to a staff record — picks up their name."
             className="sm:col-span-2"
           >
@@ -219,7 +220,7 @@ function UserForm({
                 if (emp && !fullName.trim()) setFullName(emp.full_name || "");
               }}
             >
-              <option value="">— No linked employee —</option>
+              <option value="">{tr("— No linked employee —")}</option>
               {(employees.rows || []).map((emp) => (
                 <option key={emp.employee_id} value={emp.employee_id}>
                   {emp.full_name || emp.employee_id.slice(0, 8)}
@@ -229,7 +230,7 @@ function UserForm({
           </Field>
           {!editing && (
             <Field
-              label="Password"
+              label={tr("Password")}
               required
               hint="Minimum 8 characters. The user should change it after first sign-in."
               className="sm:col-span-2"
@@ -245,7 +246,7 @@ function UserForm({
         </div>
 
         <Field
-          label="Roles"
+          label={tr("Roles")}
           hint={
             hydrating
               ? "Loading current roles…"
@@ -275,7 +276,7 @@ function UserForm({
         </Field>
 
         <Field
-          label="Capabilities"
+          label={tr("Capabilities")}
           hint="Authority overlay (segregation of duties) — required on high-authority actions like disbursing cash, on top of the role grant. CEO always has all."
         >
           <div className="flex flex-wrap gap-1.5 rounded-lg border p-2">
@@ -360,7 +361,7 @@ function PasswordForm({ user, onClose }: { user: User; onClose: () => void }) {
             Password updated.
           </div>
           <div className="flex justify-end">
-            <Button onClick={onClose}>Close</Button>
+            <Button onClick={onClose}>{tr("Close")}</Button>
           </div>
         </div>
       ) : (
@@ -440,7 +441,7 @@ export function UsersPage() {
         r.is_2fa_enabled ? (
           <Pill tone="ok">On</Pill>
         ) : (
-          <Pill tone="mute">Off</Pill>
+          <Pill tone="mute">{tr("Off")}</Pill>
         ),
     },
     {
@@ -477,7 +478,7 @@ export function UsersPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
-        title="Users"
+        title={tr("Users")}
         description="Tenant user accounts. Roles decide reach; status decides whether they can sign in at all."
         action={
           <Button onClick={() => setForm({ user: null })}>New user</Button>
@@ -485,8 +486,8 @@ export function UsersPage() {
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Users" value={num(all.length)} />
-        <KpiTile label="Active" value={num(active)} />
+        <KpiTile label={tr("Users")} value={num(all.length)} />
+        <KpiTile label={tr("Active")} value={num(active)} />
         <KpiTile label="Suspended / locked" value={num(all.length - active)} />
         <KpiTile
           label="2FA enrolled"

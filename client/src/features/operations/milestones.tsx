@@ -10,6 +10,7 @@
  * different ways. One component, two hosts.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { Select } from "@/components/ui/modal";
@@ -49,7 +50,7 @@ export function MilestonesPage() {
     <PageContainer width="wide">
       <PageHeader
         eyebrow={<HubCrumb area="Operations" to="/operations" />}
-        title="Milestones"
+        title={tr("Milestones")}
         description="Track a dossier's milestone chain; manage the templates that seed them."
       />
       <HubTabs />
@@ -58,7 +59,7 @@ export function MilestonesPage() {
         <Select
           value={dossierId}
           onChange={(e) => setDossierId(e.target.value)}
-          aria-label="Dossier"
+          aria-label={tr("Dossier")}
           className="max-w-xs"
         >
           <option value="">Select a dossier…</option>

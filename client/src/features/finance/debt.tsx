@@ -4,6 +4,7 @@
  * resolve to --primary (settings-driven).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { RowActions } from "@/components/ui/row-actions";
@@ -96,7 +97,7 @@ function DebtForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
@@ -158,7 +159,7 @@ function DebtForm({
               onChange={(e) => set("started_on", e.target.value)}
             />
           </Field>
-          <Field label="Due on">
+          <Field label={tr("Due on")}>
             <Input
               type="date"
               value={f.due_on}
@@ -229,14 +230,14 @@ function RepayForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entry date" required>
+          <Field label={tr("Entry date")} required>
             <Input
               type="date"
               value={f.entry_date}
               onChange={(e) => set("entry_date", e.target.value)}
             />
           </Field>
-          <Field label="Source doc ref">
+          <Field label={tr("Source doc ref")}>
             <Input
               value={f.source_doc_ref}
               onChange={(e) => set("source_doc_ref", e.target.value)}
@@ -302,7 +303,7 @@ function DebtDrawer({
       description={debt.due_on ? `Due ${dateFmt(debt.due_on)}` : undefined}
     >
       {d.loading ? (
-        <div className="py-8 text-center micro">Loading…</div>
+        <div className="py-8 text-center micro">{tr("Loading…")}</div>
       ) : d.error ? (
         <ErrorState message={d.error} />
       ) : x ? (
@@ -321,7 +322,7 @@ function DebtDrawer({
               </div>
             </div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5">
-              <div className="micro mb-1">Outstanding</div>
+              <div className="micro mb-1">{tr("Outstanding")}</div>
               <div className="num text-lg font-medium text-primary-ink">
                 {money(x.outstanding_principal)}
               </div>
@@ -445,7 +446,7 @@ export function DebtPage() {
       />
       <KpiRow>
         <KpiTile label="Facilities" value={num(list.length)} />
-        <KpiTile label="Active" value={num(activeCount)} />
+        <KpiTile label={tr("Active")} value={num(activeCount)} />
         <KpiTile label="Total principal" value={money(totalPrincipal)} />
       </KpiRow>
       <DataList

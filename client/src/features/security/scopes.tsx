@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -89,14 +90,14 @@ function ScopeForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label="Corporate entity"
+          label={tr("Corporate entity")}
           hint="Leave blank for a tenant-wide scope."
         >
           <Select
             value={entityId}
             onChange={(e) => setEntityId(e.target.value)}
           >
-            <option value="">— none —</option>
+            <option value="">{tr("— none —")}</option>
             {entities.map((en) => (
               <option key={en.entity_id} value={en.entity_id}>
                 {en.code
@@ -123,7 +124,7 @@ function ScopeForm({
           ) : null}
         </Field>
         <Field
-          label="Code"
+          label={tr("Code")}
           required
           hint="Unique within the entity — e.g. HQ, DLA_BRANCH, CUSTOMS_DESK."
         >
@@ -133,7 +134,7 @@ function ScopeForm({
             placeholder="HQ"
           />
         </Field>
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -148,7 +149,7 @@ function ScopeForm({
             value={parentId}
             onChange={(e) => setParentId(e.target.value)}
           >
-            <option value="">— top level —</option>
+            <option value="">{tr("— top level —")}</option>
             {parentOptions.map((s) => (
               <option key={s.scope_id} value={s.scope_id}>
                 {s.code} · {s.name}
@@ -377,7 +378,7 @@ export function ScopesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
-        title="Scopes"
+        title={tr("Scopes")}
         description="The entity, branch or department a user belongs to. They nest — that tree is the organigramme, and approval steps route through it. Deleting a scope cascades to its assignments."
         action={
           <Button onClick={() => setForm({ scope: null })}>New scope</Button>

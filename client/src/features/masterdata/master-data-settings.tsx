@@ -10,6 +10,7 @@
  * already on; the same component serves the "Settings → Master Data" entry.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,7 @@ function FieldConfigEditor({ side }: { side: Side }) {
                         onCheckedChange={(v) =>
                           set(r.field_key, { is_required: !!v })
                         }
-                        label={<span className="text-xs">Required</span>}
+                        label={<span className="text-xs">{tr("Required")}</span>}
                       />
                     </td>
                     <td className="w-24 px-3 py-1.5">
@@ -186,14 +187,14 @@ function RegistryManager({
         <div className="rounded-lg border bg-card p-3">
           <div className="grid gap-2 sm:grid-cols-2">
             <Input
-              placeholder="CODE"
+              placeholder={tr("CODE")}
               value={form.code || ""}
               onChange={(e) =>
                 setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))
               }
             />
             <Input
-              placeholder="Display name"
+              placeholder={tr("Display name")}
               value={form.name || ""}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
@@ -243,11 +244,11 @@ function RegistryManager({
         </div>
       )}
       {list.loading ? (
-        <LoadingRow label="Loading…" />
+        <LoadingRow label={tr("Loading…")} />
       ) : list.error ? (
         <ErrorState message={list.error} />
       ) : (list.data || []).length === 0 ? (
-        <EmptyState title="Nothing yet" hint="Add your first item." />
+        <EmptyState title={tr("Nothing yet")} hint="Add your first item." />
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
@@ -262,7 +263,7 @@ function RegistryManager({
                   </td>
                   <td className="px-3 py-1.5">
                     {it.extra}
-                    {it.is_system && <Pill tone="mute">System</Pill>}
+                    {it.is_system && <Pill tone="mute">{tr("System")}</Pill>}
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <button

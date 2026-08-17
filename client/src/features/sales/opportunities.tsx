@@ -25,6 +25,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -284,7 +285,7 @@ export function OpportunitiesPage() {
     <section className="mx-auto max-w-[1400px] animate-fade-in">
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
-        title="Opportunities"
+        title={tr("Opportunities")}
         description="The sales pipeline — drag deals across stages; value × probability is the weighted forecast."
         action={
           <div className="flex items-center gap-3">

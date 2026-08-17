@@ -13,6 +13,7 @@
  * across browser restarts (see token-store) — passed into login().
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
@@ -165,7 +166,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           className="login-close"
-          aria-label="Close"
+          aria-label={tr("Close")}
           onClick={onClose}
         >
           <XIcon />

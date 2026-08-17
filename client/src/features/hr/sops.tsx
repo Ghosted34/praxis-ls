@@ -6,6 +6,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,20 +97,20 @@ function SopForm({
       description="Add a standard operating procedure document."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input
             value={f.title}
             onChange={(e) => set("title", e.target.value)}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Category">
+          <Field label={tr("Category")}>
             <Input
               value={f.category}
               onChange={(e) => set("category", e.target.value)}
             />
           </Field>
-          <Field label="Version">
+          <Field label={tr("Version")}>
             <Input
               type="number"
               className="num text-right"
@@ -183,7 +184,7 @@ function ProceduresView() {
       <KpiRow>
         <KpiTile label="Procedures" value={num(list.length)} />
         <KpiTile
-          label="Active"
+          label={tr("Active")}
           value={num(activeCount)}
           hint={`${list.length - activeCount} archived`}
         />
@@ -288,7 +289,7 @@ function NewChecklistForm({
       description="Start a checklist for a new hire."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Employee">
+        <Field label={tr("Employee")}>
           <Select
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
@@ -489,8 +490,8 @@ function OnboardingView() {
     <>
       <KpiRow>
         <KpiTile label="Checklists" value={num(list.length)} />
-        <KpiTile label="In progress" value={num(openCount)} />
-        <KpiTile label="Completed" value={num(list.length - openCount)} />
+        <KpiTile label={tr("In progress")} value={num(openCount)} />
+        <KpiTile label={tr("Completed")} value={num(list.length - openCount)} />
       </KpiRow>
       <div className="mb-3 flex justify-end">
         <Button onClick={() => setCreating(true)}>New checklist</Button>

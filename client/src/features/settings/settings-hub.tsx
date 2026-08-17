@@ -17,6 +17,7 @@
  * failure, and this is a refusal.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useCanOpenRoute } from "@/lib/route-access";
@@ -364,7 +365,7 @@ export function SettingsHub() {
 
   return (
     <section className={pageShell.wide}>
-      <h1 className="font-display text-2xl tracking-tight">Settings</h1>
+      <h1 className="font-display text-2xl tracking-tight">{tr("Settings")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Configure the hub. Business identity, money, operations, communication
         &amp; integrations.

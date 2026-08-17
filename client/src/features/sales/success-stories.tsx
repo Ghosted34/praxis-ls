@@ -1,5 +1,6 @@
 /** Sales & CRM — governed staff workflow for public success stories. */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { pageShell } from "@/lib/layout";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -328,9 +329,9 @@ function StoryForm({
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{selected.length} selected · {eligible?.total ?? 0} eligible</span>
             <span className="flex items-center gap-2">
-              <Button size="sm" variant="outline" disabled={!eligible || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Previous</Button>
+              <Button size="sm" variant="outline" disabled={!eligible || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>{tr("Previous")}</Button>
               <span>{pageStart}–{pageEnd}</span>
-              <Button size="sm" variant="outline" disabled={!eligible || pageEnd >= eligible.total} onClick={() => setOffset(offset + 25)}>Next</Button>
+              <Button size="sm" variant="outline" disabled={!eligible || pageEnd >= eligible.total} onClick={() => setOffset(offset + 25)}>{tr("Next")}</Button>
             </span>
           </div>
         </section>
@@ -348,15 +349,15 @@ function StoryForm({
 
         <section className="grid gap-4 rounded-lg border p-4 md:grid-cols-2">
           <h3 className="md:col-span-2 font-semibold">3. Review and structure</h3>
-          <Field label="Title" required><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
+          <Field label={tr("Title")} required><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
           <Field label="Public slug"><Input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase())} placeholder="generated-from-title-if-empty" /></Field>
-          <Field label="Client" hint="Name and logo appear publicly only with NAMED consent.">
+          <Field label={tr("Client")} hint="Name and logo appear publicly only with NAMED consent.">
             <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={clientId} onChange={(event) => setClientId(event.target.value)}>
               <option value="">No named client</option>
               {(clients || []).map((client) => <option key={client.client_id} value={client.client_id}>{client.name || client.client_id}</option>)}
             </select>
           </Field>
-          <Field label="Service category"><Input value={serviceCategory} onChange={(event) => setServiceCategory(event.target.value)} /></Field>
+          <Field label={tr("Service category")}><Input value={serviceCategory} onChange={(event) => setServiceCategory(event.target.value)} /></Field>
           <Field label="Headline"><Input value={headline} onChange={(event) => setHeadline(event.target.value)} /></Field>
           <div />
           <div className="md:col-span-2"><Field label="Executive summary"><Textarea value={summary} onChange={(event) => setSummary(event.target.value)} rows={4} /></Field></div>
@@ -369,9 +370,9 @@ function StoryForm({
             {kpis.length === 0 && <p className="text-xs text-muted-foreground">Add up to four verified KPI label/value pairs.</p>}
             {kpis.map((kpi, index) => (
               <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                <Input aria-label={`KPI ${index + 1} label`} value={kpi.label} placeholder="Label" onChange={(event) => setKpis(kpis.map((item, i) => i === index ? { ...item, label: event.target.value } : item))} />
-                <Input aria-label={`KPI ${index + 1} value`} value={kpi.value} placeholder="Value" onChange={(event) => setKpis(kpis.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} />
-                <Button size="sm" variant="ghost" onClick={() => setKpis(kpis.filter((_, i) => i !== index))}>Remove</Button>
+                <Input aria-label={`KPI ${index + 1} label`} value={kpi.label} placeholder={tr("Label")} onChange={(event) => setKpis(kpis.map((item, i) => i === index ? { ...item, label: event.target.value } : item))} />
+                <Input aria-label={`KPI ${index + 1} value`} value={kpi.value} placeholder={tr("Value")} onChange={(event) => setKpis(kpis.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} />
+                <Button size="sm" variant="ghost" onClick={() => setKpis(kpis.filter((_, i) => i !== index))}>{tr("Remove")}</Button>
               </div>
             ))}
           </div>
@@ -404,7 +405,7 @@ function StoryForm({
               {galleryFiles.map((file, index) => (
                 <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded border px-3 py-2">
                   <span>{file.name}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setGalleryFiles(galleryFiles.filter((_, i) => i !== index))}>Remove</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setGalleryFiles(galleryFiles.filter((_, i) => i !== index))}>{tr("Remove")}</Button>
                 </li>
               ))}
             </ul>
@@ -415,7 +416,7 @@ function StoryForm({
               {priorMedia.map((media) => (
                 <div key={media.id} className="flex items-center justify-between text-xs">
                   <span>{media.role} · {media.id}</span>
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeMedia(media.id)}>Remove</Button>
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeMedia(media.id)}>{tr("Remove")}</Button>
                 </div>
               ))}
             </div>
@@ -425,7 +426,7 @@ function StoryForm({
 
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
           <Button onClick={submit} loading={busy} disabled={!title.trim() || !selected.length || busy}>
             {editing ? "Save changes" : "Create draft"}
           </Button>
@@ -509,9 +510,9 @@ export function SuccessStoriesPage() {
                   {row.is_published ? `Published ${dateFmt(row.published_at)}` : `Created ${dateFmt(row.created_at)}`}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {!row.is_published && <Button size="sm" variant="ghost" loading={rowBusy === id} onClick={() => openEdit(id)}>Edit</Button>}
+                  {!row.is_published && <Button size="sm" variant="ghost" loading={rowBusy === id} onClick={() => openEdit(id)}>{tr("Edit")}</Button>}
                   {status === "DRAFT" && (
-                    <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => act(id, () => tenant(`/success-stories/${id}/sign-off`, { method: "POST", body: {} }))}>Sign off</Button>
+                    <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => act(id, () => tenant(`/success-stories/${id}/sign-off`, { method: "POST", body: {} }))}>{tr("Sign off")}</Button>
                   )}
                   {status === "SIGNED_OFF" && (
                     <Button size="sm" loading={rowBusy === id} onClick={() => act(id, () => tenant(`/success-stories/${id}/publish`, { method: "POST", body: {} }))}>Publish</Button>

@@ -19,6 +19,7 @@
  * invoice cites a field that no longer exists. Cloning costs one click.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, Field } from "@/components/ui/modal";
@@ -420,7 +421,7 @@ export function ServiceTypeFieldsTab({
 
       {!(sets.data || []).length ? (
         <EmptyState
-          title="No detail form yet"
+          title={tr("No detail form yet")}
           hint="Files of this service type will only record client, entity and carrier until a form is defined."
         />
       ) : null}
@@ -498,14 +499,14 @@ export function ServiceTypeFieldsTab({
           <Table>
             <THead>
               <TR>
-                <TH>Key</TH>
-                <TH>Label</TH>
-                <TH>Type</TH>
+                <TH>{tr("Key")}</TH>
+                <TH>{tr("Label")}</TH>
+                <TH>{tr("Type")}</TH>
                 <TH>Means (shared panel)</TH>
-                <TH>Required</TH>
+                <TH>{tr("Required")}</TH>
                 <TH>Client sees</TH>
-                <TH>Origin</TH>
-                <TH>Actions</TH>
+                <TH>{tr("Origin")}</TH>
+                <TH>{tr("Actions")}</TH>
               </TR>
             </THead>
             <TBody>
@@ -637,7 +638,7 @@ function NewFieldForm({
       <h4 className="text-sm font-medium text-foreground">Add a field</h4>
       <div className="grid gap-3 sm:grid-cols-12">
         <Field
-          label="Key"
+          label={tr("Key")}
           required
           className="sm:col-span-3"
           hint="Permanent — values are stored under it."
@@ -648,14 +649,14 @@ function NewFieldForm({
             placeholder="booking_ref"
           />
         </Field>
-        <Field label="Label" required className="sm:col-span-3">
+        <Field label={tr("Label")} required className="sm:col-span-3">
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Booking reference"
           />
         </Field>
-        <Field label="Type" className="sm:col-span-2">
+        <Field label={tr("Type")} className="sm:col-span-2">
           <Select
             value={type}
             onChange={(e) => setType(e.target.value as api.FieldDataType)}
@@ -667,7 +668,7 @@ function NewFieldForm({
             ))}
           </Select>
         </Field>
-        <Field label="Section" className="sm:col-span-2">
+        <Field label={tr("Section")} className="sm:col-span-2">
           <Input
             value={group}
             onChange={(e) => setGroup(e.target.value.toUpperCase())}

@@ -13,6 +13,7 @@
  * seconds" flow.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,7 +107,7 @@ export function TreasuryMasterPage() {
         title="Treasury"
         description="Bank, cash, petty-cash and mobile-money accounts. Every account owns an auto-minted class-5 CoA leaf, so balances, statements and reconciliation come from one source of truth."
         action={
-          <Button onClick={() => setCreateOpen(true)}>New account</Button>
+          <Button onClick={() => setCreateOpen(true)}>{tr("New account")}</Button>
         }
       />
       <HubTabs />

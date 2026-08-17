@@ -31,6 +31,7 @@
  * variables, so it is the company's careers page and not the vendor's.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useParams, Link } from "react-router-dom";
 import { useBranding } from "@/app/branding/branding-context";
 // A standalone renderer, not shell furniture — see the note above about what
@@ -288,7 +289,7 @@ function ApplyForm({
 
   return (
     <form className="space-y-4" onSubmit={submit}>
-      <h2 className="text-base font-semibold text-foreground">Apply</h2>
+      <h2 className="text-base font-semibold text-foreground">{tr("Apply")}</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -494,7 +495,7 @@ function VacancyDetail({ token }: { token: string }) {
       </div>
     );
   }
-  if (!v) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!v) return <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>;
 
   return (
     <article className="space-y-8">

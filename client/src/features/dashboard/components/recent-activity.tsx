@@ -15,6 +15,7 @@
  * happened.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -220,7 +221,7 @@ export function RecentActivity() {
   const isInitialLoading = q.isLoading && !q.data;
 
   return (
-    <section aria-label="Recent activity" className="mb-5">
+    <section aria-label={tr("Recent activity")} className="mb-5">
       <div className="mb-3 mt-6 flex items-baseline justify-between gap-3">
         <h2 className="text-title font-semibold tracking-tight">
           Recent activity
@@ -264,7 +265,7 @@ export function RecentActivity() {
           <EmptyState
             icon={<ClockIcon width={22} height={22} />}
             title="No activity yet"
-            hint="Actions you take will appear here."
+            hint={tr("Actions you take will appear here.")}
             className="border-0"
           />
         ) : (
@@ -293,7 +294,7 @@ export function RecentActivity() {
               variant="outline"
               disabled={!canPrev}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Previous page"
+              aria-label={tr("Previous page")}
             >
               <ArrowRightIcon width={14} height={14} className="rotate-180" />
               <span className="ml-1">Prev</span>
@@ -306,9 +307,9 @@ export function RecentActivity() {
               variant="outline"
               disabled={!canNext}
               onClick={() => setPage((p) => p + 1)}
-              aria-label="Next page"
+              aria-label={tr("Next page")}
             >
-              <span className="mr-1">Next</span>
+              <span className="mr-1">{tr("Next")}</span>
               <ArrowRightIcon width={14} height={14} />
             </Button>
           </div>

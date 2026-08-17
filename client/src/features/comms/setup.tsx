@@ -8,6 +8,7 @@
  * Kit-styled; accents → --primary.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -144,7 +145,7 @@ function SenderModal({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
-          label="Section"
+          label={tr("Section")}
           required
           hint={
             mode === "edit"
@@ -159,7 +160,7 @@ function SenderModal({
             placeholder="Billing"
           />
         </Field>
-        <Field label="Status">
+        <Field label={tr("Status")}>
           <label className="flex h-9 items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -191,11 +192,11 @@ function SenderModal({
             value={f.reply_to}
             disabled={ro}
             onChange={(e) => set("reply_to", e.target.value)}
-            placeholder="optional"
+            placeholder={tr("optional")}
           />
         </Field>
         <div />
-        <Field label="SMTP host">
+        <Field label={tr("SMTP host")}>
           <Input
             value={f.smtp_host}
             disabled={ro}
@@ -203,7 +204,7 @@ function SenderModal({
             placeholder="smtp.provider.com"
           />
         </Field>
-        <Field label="SMTP port">
+        <Field label={tr("SMTP port")}>
           <Input
             type="number"
             className="num"
@@ -237,7 +238,7 @@ function SenderModal({
       {ro && (
         <p className="mt-3 rounded-lg border border-border bg-muted/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
           SMTP password: <span className="num">••••••••</span> — a shared login,
-          set (masked) under <strong>Credentials</strong> below, not per sender.
+          set (masked) under <strong>{tr("Credentials")}</strong> below, not per sender.
         </p>
       )}
       {error != null && (
@@ -352,7 +353,7 @@ function ChannelConfig() {
           <span className="num">Comms → Mailbox</span>.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="SMTP host">
+          <Field label={tr("SMTP host")}>
             <Input
               value={emF.smtp_host}
               onChange={(e) =>
@@ -361,7 +362,7 @@ function ChannelConfig() {
               placeholder="smtp.provider.com"
             />
           </Field>
-          <Field label="SMTP port">
+          <Field label={tr("SMTP port")}>
             <Input
               type="number"
               className="num"
@@ -569,7 +570,7 @@ export function SetupPage() {
         }}
       />
 
-      <h2 className="mb-2 mt-8 font-display text-lg">Credentials</h2>
+      <h2 className="mb-2 mt-8 font-display text-lg">{tr("Credentials")}</h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChannelConfig />
         <MailTroubleshootingCard />

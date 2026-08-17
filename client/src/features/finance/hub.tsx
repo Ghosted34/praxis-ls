@@ -7,6 +7,7 @@
  * Accents resolve to --primary (settings-driven).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Panel } from "@/components/ui/panel";
 import { useParams, useNavigate } from "react-router-dom";
@@ -190,7 +191,7 @@ function CashPanel({
 
   return (
     <Panel
-      title="Cash position"
+      title={tr("Cash position")}
       subtitle="Treasury · bank · cash · mobile money"
     >
       {groups.length ? (

@@ -29,6 +29,7 @@
  * dictionary's contract, applied to milestones.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -309,7 +310,7 @@ export function TemplateForm({
                   </Select>
                   <div className="flex items-center justify-end gap-0.5">
                     {r.is_anchor && <Pill tone="blue">anchor</Pill>}
-                    {r.is_target_lock && <Pill tone="orange">SLA</Pill>}
+                    {r.is_target_lock && <Pill tone="orange">{tr("SLA")}</Pill>}
                     {!r.is_client_visible && <Pill tone="mute">internal</Pill>}
                     <button
                       type="button"
@@ -392,7 +393,7 @@ export function TemplateForm({
                       />
                     </Field>
                     <Field
-                      label="Cadence"
+                      label={tr("Cadence")}
                       hint="Set only for steady-state stages, which run on a rhythm and are never overdue."
                     >
                       <Select
@@ -419,7 +420,7 @@ export function TemplateForm({
                               e.target.value.toUpperCase(),
                           })
                         }
-                        placeholder="POD"
+                        placeholder={tr("POD")}
                       />
                     </Field>
                     <Field

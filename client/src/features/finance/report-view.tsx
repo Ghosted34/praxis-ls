@@ -6,6 +6,7 @@
  * used these and they were private to a 2,581-line module.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { smartCell } from "@/lib/format";
@@ -31,7 +32,7 @@ const keyLabel = (k: string): string => {
 function ReportTable({ rows }: { rows: Record<string, unknown>[] }) {
   if (rows.length === 0)
     return (
-      <EmptyState title="Nothing to show" hint="The report returned no rows." />
+      <EmptyState title={tr("Nothing to show")} hint="The report returned no rows." />
     );
   const cols = Object.keys(rows[0]).slice(0, 8);
   return (
@@ -100,7 +101,7 @@ function Report({ data }: { data: unknown }) {
   if (entries.length === 0)
     return (
       <EmptyState
-        title="No data"
+        title={tr("No data")}
         hint="The report returned nothing for this period."
       />
     );
@@ -272,7 +273,7 @@ export function ReportTabs({
       ) : (
         <>
           <div className="lux-card mb-4 flex flex-wrap items-end gap-3 p-4">
-            <Field label="Entity" className="min-w-[12rem]">
+            <Field label={tr("Entity")} className="min-w-[12rem]">
               <Select
                 value={draft.entity_id}
                 onChange={(e) =>
@@ -288,7 +289,7 @@ export function ReportTabs({
               </Select>
             </Field>
             {periodMode === "period_id" ? (
-              <Field label="Period" className="min-w-[11rem]">
+              <Field label={tr("Period")} className="min-w-[11rem]">
                 <Select
                   value={draft.period_id}
                   onChange={(e) =>
@@ -319,14 +320,14 @@ export function ReportTabs({
                 />
               </Field>
             )}
-            <Field label="From" className="w-40">
+            <Field label={tr("From")} className="w-40">
               <Input
                 type="date"
                 value={draft.from}
                 onChange={(e) => setDraft({ ...draft, from: e.target.value })}
               />
             </Field>
-            <Field label="To" className="w-40">
+            <Field label={tr("To")} className="w-40">
               <Input
                 type="date"
                 value={draft.to}

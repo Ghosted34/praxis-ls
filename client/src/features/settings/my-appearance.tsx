@@ -14,6 +14,7 @@
  * user opened this page.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useBranding } from "@/app/branding/branding-context";
 import {
@@ -147,10 +148,10 @@ export function MyAppearancePage() {
             desc="Fifteen self-hosted families. Leave a field on the workspace default to keep following your organisation's brand."
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Display font">
+              <Field label={tr("Display font")}>
                 <FontPicker
                   slot="display"
-                  aria-label="Display font"
+                  aria-label={tr("Display font")}
                   value={draft.fontDisplay || ""}
                   onChange={(v) => set("fontDisplay", v)}
                 />
@@ -158,10 +159,10 @@ export function MyAppearancePage() {
                   Workspace default: {inheritedLabel(branding.fontDisplay)}
                 </p>
               </Field>
-              <Field label="Body font">
+              <Field label={tr("Body font")}>
                 <FontPicker
                   slot="body"
-                  aria-label="Body font"
+                  aria-label={tr("Body font")}
                   value={draft.fontBody || ""}
                   onChange={(v) => set("fontBody", v)}
                 />
@@ -169,10 +170,10 @@ export function MyAppearancePage() {
                   Workspace default: {inheritedLabel(branding.fontBody)}
                 </p>
               </Field>
-              <Field label="Mono font">
+              <Field label={tr("Mono font")}>
                 <FontPicker
                   slot="mono"
-                  aria-label="Mono font"
+                  aria-label={tr("Mono font")}
                   value={draft.fontMono || ""}
                   onChange={(v) => set("fontMono", v)}
                 />
@@ -215,7 +216,7 @@ export function MyAppearancePage() {
             copy re-set in it. */}
         <div className="lg:sticky lg:top-4 lg:self-start">
           <SettingsCard
-            title="Preview"
+            title={tr("Preview")}
             desc="How the app will read for you once saved."
           >
             <div className="space-y-2 rounded-lg border p-4">

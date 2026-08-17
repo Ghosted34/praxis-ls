@@ -5,6 +5,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { money as moneyFmt, enumLabel } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -93,11 +94,11 @@ export function AssetCreateForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <SearchSelect
               path="/entities"
               value={entityLabel}
-              placeholder="Search entities…"
+              placeholder={tr("Search entities…")}
               getLabel={(r) =>
                 r.code
                   ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}`
@@ -117,7 +118,7 @@ export function AssetCreateForm({
               placeholder="VEH-001"
             />
           </Field>
-          <Field label="Asset" required className="sm:col-span-2">
+          <Field label={tr("Asset")} required className="sm:col-span-2">
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -147,7 +148,7 @@ export function AssetCreateForm({
               placeholder="0"
             />
           </Field>
-          <Field label="Method" required>
+          <Field label={tr("Method")} required>
             <Select
               value={method}
               onChange={(e) =>
@@ -270,7 +271,7 @@ export function AssetDepreciateForm({
     >
       <div className="space-y-4">
         <Field
-          label="Period"
+          label={tr("Period")}
           required
           hint={
             nextDue
@@ -497,7 +498,7 @@ export function AssetDetailModal({
               label="Net book value"
               value={moneyFmt(detail.net_book_value ?? 0)}
             />
-            <KpiTile label="Status" value={enumLabel(String(detail.status))} />
+            <KpiTile label={tr("Status")} value={enumLabel(String(detail.status))} />
           </KpiRow>
           {schedule.length === 0 ? (
             <EmptyState
@@ -509,9 +510,9 @@ export function AssetDetailModal({
               <Table>
                 <THead>
                   <TR>
-                    <TH>Period</TH>
-                    <TH>Amount</TH>
-                    <TH>Posted</TH>
+                    <TH>{tr("Period")}</TH>
+                    <TH>{tr("Amount")}</TH>
+                    <TH>{tr("Posted")}</TH>
                     <TH></TH>
                   </TR>
                 </THead>
@@ -524,9 +525,9 @@ export function AssetDetailModal({
                       </TD>
                       <TD>
                         {row.posted ? (
-                          <Pill tone="ok">Posted</Pill>
+                          <Pill tone="ok">{tr("Posted")}</Pill>
                         ) : (
-                          <Pill tone="mute">Pending</Pill>
+                          <Pill tone="mute">{tr("Pending")}</Pill>
                         )}
                       </TD>
                       <TD className="text-right">

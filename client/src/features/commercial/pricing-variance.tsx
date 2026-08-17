@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -119,7 +120,7 @@ function ComputeVarianceModal({
       description="Quote vs actual cost → a R/Y/G flag. Actual cost stays finance-only."
     >
       <div className="space-y-4">
-        <Field label="Dossier" required>
+        <Field label={tr("Dossier")} required>
           <SearchSelect
             path="/operations"
             value={dossierLabel}
@@ -130,7 +131,7 @@ function ComputeVarianceModal({
           />
         </Field>
         <Field
-          label="Quotation"
+          label={tr("Quotation")}
           hint="Supplies the quoted price (or enter one below)"
         >
           <SearchSelect

@@ -19,6 +19,7 @@
  * the tenant actually configured.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -277,7 +278,7 @@ export function OperationsFilesPage() {
             <Select
               value={serviceTypeId}
               onChange={(e) => setServiceTypeId(e.target.value)}
-              aria-label="Service type"
+              aria-label={tr("Service type")}
               className="w-full max-w-[14rem]"
             >
               <option value="">All service types</option>

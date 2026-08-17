@@ -5,6 +5,7 @@
  * shape as master-data-settings.tsx.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,7 +152,7 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="micro">
-          Values a manager can extend. Seeded rows are marked <em>System</em>{" "}
+          Values a manager can extend. Seeded rows are marked <em>{tr("System")}</em>{" "}
           but stay editable.
         </p>
         <Button
@@ -169,8 +170,8 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
         <div className="rounded-lg border bg-card p-3">
           <div className="grid gap-2 sm:grid-cols-3">
             <Input
-              placeholder="CODE"
-              aria-label="Code"
+              placeholder={tr("CODE")}
+              aria-label={tr("Code")}
               value={form.code}
               onChange={(e) =>
                 setForm((s) => ({ ...s, code: e.target.value.toUpperCase() }))
@@ -185,8 +186,8 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
               }
             />
             <Input
-              placeholder="Name (EN)"
-              aria-label="Name (EN)"
+              placeholder={tr("Name (EN)")}
+              aria-label={tr("Name (EN)")}
               value={form.name_en}
               onChange={(e) =>
                 setForm((s) => ({ ...s, name_en: e.target.value }))
@@ -196,7 +197,7 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
           {isContainer && (
             <div className="mt-2 grid gap-2 sm:grid-cols-4">
               <Field
-                label="TEU"
+                label={tr("TEU")}
                 required
                 error={touched ? teuError || undefined : undefined}
                 hint="Capacity. A 20' is 1, a 40' is 2."
@@ -293,11 +294,11 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
         </div>
       )}
       {list.loading ? (
-        <LoadingRow label="Loading…" />
+        <LoadingRow label={tr("Loading…")} />
       ) : list.error ? (
         <ErrorState message={list.error} />
       ) : (list.data || []).length === 0 ? (
-        <EmptyState title="Nothing yet" hint="Add your first value." />
+        <EmptyState title={tr("Nothing yet")} hint="Add your first value." />
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
@@ -330,7 +331,7 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
                     </td>
                   )}
                   <td className="px-3 py-1.5">
-                    {r.is_system && <Pill tone="mute">System</Pill>}
+                    {r.is_system && <Pill tone="mute">{tr("System")}</Pill>}
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <button

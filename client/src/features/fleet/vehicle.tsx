@@ -4,6 +4,7 @@
  * review its maintenance, dispatch, compliance, fuel and incident history.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,7 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
@@ -209,11 +210,11 @@ function VehicleDetail({
           empty={woRows.length === 0}
           head={
             <>
-              <Th>Kind</Th>
-              <Th>Description</Th>
-              <Th>Status</Th>
-              <Th r>Cost</Th>
-              <Th>Opened</Th>
+              <Th>{tr("Kind")}</Th>
+              <Th>{tr("Description")}</Th>
+              <Th>{tr("Status")}</Th>
+              <Th r>{tr("Cost")}</Th>
+              <Th>{tr("Opened")}</Th>
             </>
           }
         >
@@ -237,11 +238,11 @@ function VehicleDetail({
           empty={dispRows.length === 0}
           head={
             <>
-              <Th>Driver</Th>
-              <Th>Status</Th>
+              <Th>{tr("Driver")}</Th>
+              <Th>{tr("Status")}</Th>
               <Th>Out</Th>
               <Th>In</Th>
-              <Th r>Distance</Th>
+              <Th r>{tr("Distance")}</Th>
             </>
           }
         >
@@ -267,9 +268,9 @@ function VehicleDetail({
           empty={compRows.length === 0}
           head={
             <>
-              <Th>Kind</Th>
-              <Th>Expires</Th>
-              <Th r>Status</Th>
+              <Th>{tr("Kind")}</Th>
+              <Th>{tr("Expires")}</Th>
+              <Th r>{tr("Status")}</Th>
             </>
           }
         >
@@ -295,10 +296,10 @@ function VehicleDetail({
           empty={fuelRows.length === 0}
           head={
             <>
-              <Th>When</Th>
-              <Th r>Odometer</Th>
-              <Th r>Litres</Th>
-              <Th r>Cost</Th>
+              <Th>{tr("When")}</Th>
+              <Th r>{tr("Odometer")}</Th>
+              <Th r>{tr("Litres")}</Th>
+              <Th r>{tr("Cost")}</Th>
             </>
           }
         >
@@ -317,10 +318,10 @@ function VehicleDetail({
           empty={incRows.length === 0}
           head={
             <>
-              <Th>When</Th>
-              <Th>Severity</Th>
-              <Th>Status</Th>
-              <Th>Description</Th>
+              <Th>{tr("When")}</Th>
+              <Th>{tr("Severity")}</Th>
+              <Th>{tr("Status")}</Th>
+              <Th>{tr("Description")}</Th>
             </>
           }
         >
@@ -378,19 +379,19 @@ function NewVehicleForm({
       description="Add a vehicle to the fleet registry."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Registration" required>
+        <Field label={tr("Registration")} required>
           <Input
             value={f.registration}
             onChange={(e) => set("registration", e.target.value)}
             placeholder="LT-4471"
           />
         </Field>
-        <Field label="Category" required>
+        <Field label={tr("Category")} required>
           <Select
             value={f.category}
             onChange={(e) => set("category", e.target.value)}
           >
-            <option value="truck">Truck</option>
+            <option value="truck">{tr("Truck")}</option>
             <option value="low-bed">Low-bed</option>
             <option value="company_car">Company car</option>
           </Select>
@@ -439,7 +440,7 @@ export function VehiclesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Fleet" to="/fleet" />}
-        title="Vehicles"
+        title={tr("Vehicles")}
         description="The fleet registry — pick a vehicle for its full maintenance, dispatch and compliance history."
         action={<Button onClick={() => setCreating(true)}>New vehicle</Button>}
       />
@@ -465,7 +466,7 @@ export function VehiclesPage() {
             />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
               {vehicles.loading ? (
-                <div className="px-3 py-4 micro">Loading…</div>
+                <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : filtered.length === 0 ? (
                 <div className="px-3 py-4 micro">No vehicles.</div>
               ) : (

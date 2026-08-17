@@ -16,6 +16,7 @@
  * fix list the rest of the mail surfaces show.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal, Field } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -380,7 +381,7 @@ export function MailSetupWizard({
                       {s.from_name ? ` · ${s.from_name}` : ""}
                     </div>
                   </div>
-                  <Pill tone="ok">Active</Pill>
+                  <Pill tone="ok">{tr("Active")}</Pill>
                 </div>
               ))}
               <p className="micro">
@@ -610,7 +611,7 @@ function AddSenderInline({ onAdded }: { onAdded: () => void }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3.5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Section" required>
+        <Field label={tr("Section")} required>
           <Input
             value={f.purpose}
             onChange={(e) => setF((s) => ({ ...s, purpose: e.target.value }))}

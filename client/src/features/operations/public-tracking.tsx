@@ -1,4 +1,5 @@
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 
 interface PublicMilestone {
@@ -43,16 +44,16 @@ function MilestoneDetails({ milestone }: { milestone: PublicMilestone }) {
   return (
     <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
       {milestone.due_date && (
-        <div><dt className="text-muted-foreground">Due</dt><dd>{dateOnly(milestone.due_date)}</dd></div>
+        <div><dt className="text-muted-foreground">{tr("Due")}</dt><dd>{dateOnly(milestone.due_date)}</dd></div>
       )}
       {milestone.completed_at && (
-        <div><dt className="text-muted-foreground">Completed</dt><dd>{dateTime(milestone.completed_at)}</dd></div>
+        <div><dt className="text-muted-foreground">{tr("Completed")}</dt><dd>{dateTime(milestone.completed_at)}</dd></div>
       )}
       {milestone.location && (
-        <div><dt className="text-muted-foreground">Location</dt><dd>{milestone.location}</dd></div>
+        <div><dt className="text-muted-foreground">{tr("Location")}</dt><dd>{milestone.location}</dd></div>
       )}
       {milestone.stage_reference && (
-        <div><dt className="text-muted-foreground">Reference</dt><dd className="break-words">{milestone.stage_reference}</dd></div>
+        <div><dt className="text-muted-foreground">{tr("Reference")}</dt><dd className="break-words">{milestone.stage_reference}</dd></div>
       )}
       {milestone.progress_note && (
         <div className="sm:col-span-2"><dt className="text-muted-foreground">Progress note</dt><dd className="whitespace-pre-wrap">{milestone.progress_note}</dd></div>
@@ -92,13 +93,13 @@ export function PublicTrackingPage() {
       </header>
 
       <form className="mt-6 flex flex-col gap-2 sm:flex-row" onSubmit={search}>
-        <label className="sr-only" htmlFor="tracking-reference">Shipment reference</label>
+        <label className="sr-only" htmlFor="tracking-reference">{tr("Shipment reference")}</label>
         <input
           id="tracking-reference"
           className="min-h-11 flex-1 rounded border border-input bg-background px-3"
           value={reference}
           onChange={(event) => setReference(event.target.value)}
-          placeholder="Shipment reference"
+          placeholder={tr("Shipment reference")}
           autoComplete="off"
         />
         <button
@@ -117,7 +118,7 @@ export function PublicTrackingPage() {
           <div className="lux-card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="micro">Shipment reference</p>
+                <p className="micro">{tr("Shipment reference")}</p>
                 <h2 className="mt-1 text-xl font-semibold">{data.reference}</h2>
                 <p className="mt-1 text-muted-foreground">{data.origin || "Origin pending"} → {data.destination || "Destination pending"}</p>
               </div>

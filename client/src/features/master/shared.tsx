@@ -5,6 +5,7 @@
  */
 
 import { type Row } from "@/lib/use-resource";
+import { tr } from "@/lib/i18n";
 import { cell } from "@/lib/format";
 import { Select } from "@/components/ui/modal";
 
@@ -20,11 +21,11 @@ export function EntitySelect({
 }) {
   return (
     <Select
-      aria-label="Corporate entity"
+      aria-label={tr("Corporate entity")}
       value={value}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="">— none —</option>
+      <option value="">{tr("— none —")}</option>
       {(entities || []).map((en) => {
         const name = cell(en.legal_name ?? en.entity_id);
         const label = en.code ? `${cell(en.code)} · ${name}` : name;

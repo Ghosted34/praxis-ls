@@ -5,6 +5,7 @@
  * is the appraisal → pay link.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +81,7 @@ function RewardForm({
             onChange={(e) => setAmount(e.target.value)}
           />
         </Field>
-        <Field label="Label" hint="Optional — shows on the payslip">
+        <Field label={tr("Label")} hint="Optional — shows on the payslip">
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -309,7 +310,7 @@ export function AppraisalsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Appraisals"
+        title={tr("Appraisals")}
         description="KPI ratings and performance rewards. A recommended reward is added to the employee's next payroll run."
       />
       <HubTabs />{" "}

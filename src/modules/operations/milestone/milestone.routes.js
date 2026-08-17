@@ -27,6 +27,7 @@ router.get("/assumptions/:serviceTypeId", requirePermission(MODULE, "view"), con
 // needs the same permission as changing the chain itself.
 router.put("/assumptions/:serviceTypeId", requirePermission(MODULE, "edit"), validator.saveAssumptions, controller.saveAssumptions);
 router.post("/:id/advance", requirePermission(MODULE, "edit"), validator.advance, controller.advance);
+router.patch("/:id/public-details", requirePermission(MODULE, "edit"), validator.publicDetails, controller.updatePublicDetails);
 // Un-completing is not an ordinary transition (frozen DONE is what makes
 // variance measurable), so it has its own route, permission and reason.
 router.post("/:id/reopen", requirePermission(MODULE, "edit"), validator.reopen, controller.reopen);

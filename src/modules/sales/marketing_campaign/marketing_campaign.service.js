@@ -36,6 +36,7 @@ const { assertTransition } = rules;
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { enqueue } = require("../../../jobs/queue-producer");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 const ref = (id) => "campaign:" + id;
 
 /** Rows a CSV export will stream before it tells the caller it truncated. */
@@ -176,9 +177,11 @@ async function reject(client, { id, reason, actor = {} }) {
 }
 
 async function subscribe(client, { email, name, source, actor = {} }) {
-  const row = await repo.subscribe(client, { email, name, source });
-  await emitEvent(client, { eventTypeKey: events.SUBSCRIBED, moduleKey: events.MODULE, entityRef: "newsletter:" + email, actorUserId: actor.user_id || null });
-  return row;
+  return atomically(client, async () => {
+    const row = await repo.subscribe(client, { email, name, source });
+    await emitEvent(client, { eventTypeKey: events.SUBSCRIBED, moduleKey: events.MODULE, entityRef: "newsletter:" + email, actorUserId: actor.user_id || null });
+    return row;
+  });
 }
 async function unsubscribe(client, { email, actor = {} }) {
   const row = await repo.unsubscribe(client, email);

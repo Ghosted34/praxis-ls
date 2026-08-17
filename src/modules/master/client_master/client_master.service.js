@@ -18,13 +18,13 @@ const partyWrite = require("../_shared/party-write.service");
 const changeRequest = require("../_shared/change-request.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 
 async function create(client, { data, actor = {} }) {
   // Country-first form blocks (§2) are written as their own rows, not master
   // columns — pull them out of the flat payload before the master insert.
   const { registrations, primary_contact, primary_address, ...masterData } = data;
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     // Registrations are the source of truth; mirror OHADA NIU/RCCM onto the
     // master (invoices read those columns) and stamp the normalized name.
     partyWrite.validateRegistrations({ registrations, country: masterData.country_code, kind: "client", category: null });
@@ -43,12 +43,8 @@ async function create(client, { data, actor = {} }) {
     await partyWrite.writeChildren(client, { kind: "client", partyId: row.client_id, registrations, primary_contact, primary_address });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "client:" + row.client_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "client:" + row.client_id, after: row });
-    await client.query("COMMIT");
     return row;
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  }
+  });
 }
 
 async function update(client, { id, patch, actor = {}, env }) {
@@ -72,8 +68,7 @@ async function update(client, { id, patch, actor = {}, env }) {
   if (masterPatch.name !== undefined || masterPatch.legal_name !== undefined) {
     masterPatch.name_norm = partyWrite.normalizeName({ name: masterPatch.name ?? before.name, legal_name: masterPatch.legal_name ?? before.legal_name });
   }
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     let pending = null;
     if (gate.changeType) {
       pending = await changeRequest.open(client, { kind: "client", partyId: id, changeType: gate.changeType, payload: gate.sensitive, actor });
@@ -87,14 +82,10 @@ async function update(client, { id, patch, actor = {}, env }) {
     }
     await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "client:" + id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "client:" + id, before, after: row });
-    await client.query("COMMIT");
     const result = await repo.get(client, id);
     if (pending) result.pending_change = { change_request_id: pending.change_request_id, change_type: pending.change_type };
     return result;
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  }
+  });
 }
 
 const get = (client, id) => repo.get(client, id);

@@ -115,7 +115,10 @@ describe("lead convert -> client_master payload", () => {
   };
 
   beforeEach(() => {
-    client.query.mockResolvedValue({ rows: [] });
+    client.query.mockImplementation(async (sql) => {
+      if (/^\s*SAVEPOINT\b/i.test(String(sql))) throw Object.assign(new Error("no transaction"), { code: "25P01" });
+      return { rows: [] };
+    });
     emit.emitEvent.mockResolvedValue(undefined);
     emit.audit.mockResolvedValue(undefined);
     clientMaster.create.mockResolvedValue({ client_id: "client-1" });

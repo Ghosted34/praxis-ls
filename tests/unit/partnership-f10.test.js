@@ -70,7 +70,6 @@ const supplierRepo = require("../../src/modules/master/supplier_master/supplier_
 const partyWrite = require("../../src/modules/master/_shared/party-write.service");
 const service = require("../../src/modules/sales/partnership_request/partnership_request.service");
 const po = require("../../src/modules/procurement/purchase_order/purchase_order.service");
-const poRepo = require("../../src/modules/procurement/purchase_order/purchase_order.repo");
 
 /** A client that records the transaction verbs and answers nothing else. */
 function fakeClient() {
@@ -232,6 +231,25 @@ describe("approval", () => {
     expect(asked.supplier.supplier_id).toBe("sup-1");
   });
 
+  it("propagates the uploaded corporate profile into the governed supplier document register", async () => {
+    const c = {
+      query: jest.fn(async (sql) => ({
+        rows: String(sql).includes("INSERT INTO supplier_document")
+          ? [{ supplier_id: "sup-1", vault_id: "vault-profile" }]
+          : [],
+      })),
+    };
+    const out = await service.attachProfileToSupplier(c, {
+      request: { corporate_profile_vault_id: "vault-profile" },
+      supplierId: "sup-1",
+      actor: { user_id: "u1" },
+    });
+    expect(out).toMatchObject({ supplier_id: "sup-1", vault_id: "vault-profile" });
+    const sql = c.query.mock.calls[0][0];
+    expect(sql).toContain("PARTNERSHIP_PROFILE");
+    expect(sql).toContain("NOT EXISTS");
+  });
+
   it("rolls back rather than leaving a supplier no application points at", async () => {
     const c = fakeClient();
     repo.get.mockResolvedValue(request());
@@ -244,22 +262,26 @@ describe("approval", () => {
 
 /* ─── 4. the gate that replaces the re-typing ─────────────────────────────── */
 
-describe("a draft supplier buys nothing", () => {
-  it("refuses a DRAFT supplier on a purchase order, and names it", async () => {
-    const c = fakeClient();
-    jest.spyOn(poRepo, "supplierRegistrationStatus")
-      .mockResolvedValue({ registration_status: "DRAFT", name: "Atlas Freight Ltd" });
+describe("an unverified supplier buys nothing", () => {
+  const eligibilityClient = (row) => ({ query: jest.fn().mockResolvedValue({ rows: row ? [row] : [] }) });
+
+  it.each([
+    { registration_status: "DRAFT", verification_status: "PENDING", avl_status: "PENDING" },
+    { registration_status: "ACTIVE", verification_status: "PENDING", avl_status: "APPROVED" },
+    { registration_status: "ACTIVE", verification_status: "VERIFIED", avl_status: "PENDING" },
+    { registration_status: null, verification_status: null, avl_status: null },
+  ])("refuses every supplier outside the exact ACTIVE/VERIFIED/APPROVED invariant", async (state) => {
+    const c = eligibilityClient({ supplier_id: "sup-1", name: "Atlas Freight Ltd", ...state });
     await expect(po.assertSupplierUsable(c, "sup-1"))
       .rejects.toMatchObject({ code: "SUPPLIER_NOT_VERIFIED" });
   });
 
-  it("passes a verified one, and a legacy row with no status at all", async () => {
-    const c = fakeClient();
-    const spy = jest.spyOn(poRepo, "supplierRegistrationStatus");
-    spy.mockResolvedValue({ registration_status: "ACTIVE", name: "Atlas" });
-    await expect(po.assertSupplierUsable(c, "sup-1")).resolves.toBeUndefined();
-    spy.mockResolvedValue({ registration_status: null, name: "Old supplier" });
-    await expect(po.assertSupplierUsable(c, "sup-2")).resolves.toBeUndefined();
+  it("passes only an active, verified and AVL-approved supplier", async () => {
+    const c = eligibilityClient({
+      supplier_id: "sup-1", name: "Atlas Freight Ltd",
+      registration_status: "ACTIVE", verification_status: "VERIFIED", avl_status: "APPROVED",
+    });
+    await expect(po.assertSupplierUsable(c, "sup-1")).resolves.toMatchObject({ supplier_id: "sup-1" });
   });
 });
 

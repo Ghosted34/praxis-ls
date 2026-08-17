@@ -16,7 +16,9 @@ const { config } = require("../../../config/env");
 const pdf = require("../../../services/pdf.service");
 const vault = require("../../vault/document_vault/document_vault.service");
 const proposalDocument = require("./proposal.document");
+const proposalPresentation = require("./proposal.presentation");
 const ref = (id) => "proposal:" + id;
+const languageRef = (id, language) => `${ref(id)}:lang:${language}`;
 const HEADER_FIELDS = [
   "lead_id", "client_id", "opportunity_id", "title", "language", "currency",
   "service_category", "incoterm", "origin_location", "destination_location",
@@ -79,9 +81,25 @@ async function transition(client, { id, to, entityId = null, actor = {} }) {
     if (to === "IN_REVIEW") fields.reviewed_by = actor.user_id || null;
     const row = await repo.update(client, id, fields);
     if (to === "SENT") {
-      const full = await get(client, id); const clientRow = full.client_id ? (await client.query("SELECT name, legal_name FROM client_master WHERE client_id=$1", [full.client_id])).rows[0] : null;
-      await pdf.renderAndStore(client, { html: proposalDocument.html({ proposal: { ...full, ...fields }, lines: full.lines, narratives: full.narratives, client: clientRow }), key: `proposals/${id}.pdf`, entityRef: ref(id), docType: "PROPOSAL" });
-      const captured = await vault.getByRef(client, ref(id));
+      const full = await get(client, id);
+      const clientRow = full.client_id
+        ? (await client.query("SELECT name, legal_name FROM client_master WHERE client_id=$1", [full.client_id])).rows[0]
+        : null;
+      const languages = full.language === "BILINGUAL" ? ["EN", "FR"] : [full.language || "EN"];
+      for (const language of languages) {
+        const presentation = proposalPresentation.build({
+          proposal: { ...full, ...fields }, lines: full.lines,
+          narratives: full.narratives, client: clientRow, language,
+        });
+        await pdf.renderAndStore(client, {
+          html: proposalDocument.html({ presentation }),
+          key: `proposals/${id}-${language.toLowerCase()}.pdf`,
+          entityRef: languageRef(id, language),
+          docType: "PROPOSAL",
+        });
+      }
+      const defaultLanguage = full.language === "FR" ? "FR" : "EN";
+      const captured = await vault.getByRef(client, languageRef(id, defaultLanguage));
       if (captured) await repo.update(client, id, { pdf_vault_id: captured.doc_id });
     }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });

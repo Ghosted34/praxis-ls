@@ -22,11 +22,11 @@ const rules = require("./opportunity.rules");
 const dossierSvc = require("../../operations/operations_file/operations_file.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 const ref = (id) => "opportunity:" + id;
 
 async function create(client, { data, actor = {} }) {
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     // A deal with no stage renders in no column. Default to the first open
     // stage rather than leaving it NULL — F6's convert-to-opportunity created
     // exactly that row and it was invisible on the board.
@@ -61,9 +61,8 @@ async function create(client, { data, actor = {} }) {
     });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.opportunity_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.opportunity_id), after: row });
-    await client.query("COMMIT");
     return row;
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 async function update(client, { id, patch = {}, actor = {} }) {
@@ -121,26 +120,33 @@ async function moveStage(client, { id, pipelineStageId, actor = {} }) {
 async function win(client, { id, createDossier = false, entityId = null, serviceTypeId = null, actor = {} }) {
   const opp = await repo.get(client, id);
   rules.assertOpen(opp, "be won");
-  await client.query("BEGIN");
-  try {
+
+  let createdDossier = null;
+  const result = await atomically(client, async () => {
     let dossierId = opp.dossier_id;
     if (createDossier && !dossierId) {
       if (!entityId) throw new AppError("ENTITY_REQUIRED", "entity_id required to open a dossier", 422);
-      const d = await dossierSvc.create(client, { data: { entity_id: entityId, client_id: opp.client_id, service_type_id: serviceTypeId, title: opp.name }, actor });
-      dossierId = d.dossier_id;
+      createdDossier = await dossierSvc.insertForCreate(client, {
+        data: { entity_id: entityId, client_id: opp.client_id, service_type_id: serviceTypeId, title: opp.name },
+        actor,
+      });
+      dossierId = createdDossier.dossier_id;
     }
-    // Land the deal in the won stage as well as the won status, so the board
-    // column and the list agree. Without this a won deal kept its old stage and
-    // the Won column stayed empty while the list said otherwise.
+
     const wonStage = (await repo.listStages(client)).find((s) => s.is_won === true) || null;
     const fields = { status: "WON", dossier_id: dossierId, probability: 100, probability_is_manual: false };
     if (wonStage) fields.pipeline_stage_id = wonStage.pipeline_stage_id;
     const row = await repo.update(client, id, fields);
     await emitEvent(client, { eventTypeKey: events.WON, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.WON, moduleKey: events.MODULE, entityRef: ref(id), after: { dossier_id: dossierId } });
-    await client.query("COMMIT");
     return { opportunity: row, dossier_id: dossierId };
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
+
+  // Only initialize after the dossier and opportunity link have both committed.
+  if (createdDossier) {
+    await dossierSvc.initializeCreated(client, { dossier: createdDossier, actor });
+  }
+  return result;
 }
 
 async function lose(client, { id, actor = {} }) {

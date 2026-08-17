@@ -43,6 +43,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
+const { atomically } = require("../../../shared/db/tx");
 
 const ref = (id) => "quote_request:" + id;
 
@@ -81,8 +82,7 @@ async function resolveEntityId(client, { data = {} }) {
 
 async function create(client, { data, actor = {} }) {
   const entityId = await resolveEntityId(client, { data });
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     // Allocated INSIDE the transaction (BUILD_CONVENTIONS §3) so the number and
     // the row commit together — a rolled-back create must not burn a reference.
     const { number } = await numbering.allocate(client, {
@@ -98,9 +98,8 @@ async function create(client, { data, actor = {} }) {
     });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.quote_request_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.quote_request_id), after: row });
-    await client.query("COMMIT");
     return row;
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 async function update(client, { id, patch = {}, actor = {} }) {
@@ -153,8 +152,7 @@ async function convertToOpportunity(client, { id, opportunity = {}, actor = {} }
   }
   rules.assertTransition(before.status, "CONVERTED_TO_OPPORTUNITY");
 
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     const opp = await opportunityRepo.insert(client, {
       name: opportunity.name,
       lead_id: before.lead_id || null,
@@ -175,9 +173,8 @@ async function convertToOpportunity(client, { id, opportunity = {}, actor = {} }
     });
     await emitEvent(client, { eventTypeKey: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), before, after: { opportunity_id: opp.opportunity_id } });
-    await client.query("COMMIT");
     return { quote_request: row, opportunity: opp };
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 /* ─── attachments ─────────────────────────────────────────────────────────── */
@@ -204,8 +201,8 @@ async function uploadAttachment(client, { id, dataUrl, filename = null, kind = "
   }
 
   let storedPath = null;
-  await client.query("BEGIN");
   try {
+    return await atomically(client, async () => {
     const doc = await vault.createDocument(client, {
       dataUrl,
       docType: "QUOTE_REQUEST_ATTACHMENT",
@@ -223,10 +220,9 @@ async function uploadAttachment(client, { id, dataUrl, filename = null, kind = "
       quote_request_id: id, vault_id: doc.doc_id, kind, uploaded_by_user_id: actor.user_id || null,
     });
     await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_ADDED, moduleKey: events.MODULE, entityRef: ref(id), after: link });
-    await client.query("COMMIT");
     return { ...link, original_name: doc.original_name, content_hash: doc.content_hash };
+    });
   } catch (err) {
-    await client.query("ROLLBACK");
     if (storedPath) {
       try { await storage.delete(storedPath); } catch (cleanupErr) {
         logger.error({ err: cleanupErr, storedPath, quoteRequestId: id },
@@ -245,8 +241,7 @@ async function removeAttachment(client, { id, attachment_id, actor = {} }) {
   }
   const link = await repo.getAttachment(client, { quote_request_id: id, attachment_id });
   if (!link) throw new AppError("NOT_FOUND", "Attachment not found", 404);
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     await repo.removeAttachment(client, { quote_request_id: id, attachment_id });
     // The vault row is ARCHIVED, never deleted: the document is evidence of what
     // the client sent, and MOD-64's whole contract is that vault rows are
@@ -254,9 +249,8 @@ async function removeAttachment(client, { id, attachment_id, actor = {} }) {
     // it is not.
     await vault.archiveDocument(client, { id: link.vault_id, actor });
     await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_REMOVED, moduleKey: events.MODULE, entityRef: ref(id), before: link, after: { attachment_id } });
-    await client.query("COMMIT");
     return { removed: true };
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 async function listAttachments(client, id) {

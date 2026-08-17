@@ -26,6 +26,7 @@ const storage = require("../../src/services/storage.service");
 const service = require("../../src/modules/sales/quote_request/quote_request.service");
 const rules = require("../../src/modules/sales/quote_request/quote_request.rules");
 const numbering = require("../../src/services/documents/numbering.service");
+const { atomically } = require("../../src/shared/db/tx");
 
 const QR = "11111111-1111-4111-8111-111111111111";
 const ENTITY = "22222222-2222-4222-8222-222222222222";
@@ -34,10 +35,17 @@ const OPP = "33333333-3333-4333-8333-333333333333";
 /** A client that records the transaction verbs it was asked to run. */
 function makeClient() {
   const calls = [];
+  let inTransaction = false;
   return {
     calls,
     query: jest.fn(async (sql, params) => {
-      calls.push(String(sql).trim().split(/\s+/)[0].toUpperCase());
+      const verb = String(sql).trim().split(/\s+/)[0].toUpperCase();
+      calls.push(verb);
+      // Model PostgreSQL rather than treating an out-of-transaction SAVEPOINT
+      // probe as successful (which would falsely tell atomically() it is nested).
+      if (verb === "SAVEPOINT" && !inTransaction) throw Object.assign(new Error("no transaction"), { code: "25P01" });
+      if (verb === "BEGIN") inTransaction = true;
+      if (verb === "COMMIT" || verb === "ROLLBACK") inTransaction = false;
       if (/INSERT INTO doc_sequence/i.test(sql)) return { rows: [{ seq: 7 }] };
       if (/FROM corporate_entity/i.test(sql)) return { rows: [{ doc_prefix: null }] };
       if (/FROM setting/i.test(sql)) return { rows: [] };
@@ -168,6 +176,24 @@ describe("convert to opportunity", () => {
     // opportunity.service is NOT used: it opens its own BEGIN/COMMIT, which
     // would commit the opportunity before this function's own write.
     expect(opportunityRepo.insert).toHaveBeenCalledTimes(1);
+  });
+
+  test("joining an outer lead-conversion transaction never commits it early", async () => {
+    await atomically(client, () => service.convertToOpportunity(client, {
+      id: QR, opportunity: { name: "Nested conversion" }, actor: {},
+    }));
+    expect(client.calls.filter((v) => v === "BEGIN")).toHaveLength(1);
+    expect(client.calls.filter((v) => v === "COMMIT")).toHaveLength(1);
+  });
+
+  test("a nested failure rolls back the outer transaction with no early commit", async () => {
+    repo.update.mockRejectedValueOnce(new Error("update failed"));
+    await expect(atomically(client, () => service.convertToOpportunity(client, {
+      id: QR, opportunity: { name: "Nested failure" }, actor: {},
+    }))).rejects.toThrow("update failed");
+    expect(client.calls.filter((v) => v === "BEGIN")).toHaveLength(1);
+    expect(client.calls).toContain("ROLLBACK");
+    expect(client.calls).not.toContain("COMMIT");
   });
 
   test("a failure after the opportunity insert leaves no orphan opportunity", async () => {

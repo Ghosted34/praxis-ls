@@ -34,6 +34,11 @@ function PoForm({
   onSaved: () => void;
 }) {
   const { rows: suppliers } = useList<Supplier>("/suppliers");
+  const usableSuppliers = (suppliers || []).filter(
+    (s) => s.registration_status === "ACTIVE"
+      && s.verification_status === "VERIFIED"
+      && s.avl_status === "APPROVED",
+  );
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [f, setF] = React.useState({
     supplier_id: "",
@@ -93,7 +98,7 @@ function PoForm({
               onChange={(e) => set("supplier_id", e.target.value)}
             >
               <option value="">—</option>
-              {(suppliers || []).map((s) => (
+              {usableSuppliers.map((s) => (
                 <option key={s.supplier_id} value={s.supplier_id}>
                   {s.name}
                 </option>

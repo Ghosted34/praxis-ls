@@ -34,6 +34,11 @@ function SupplierInvoiceForm({
 }) {
   const { rows: entities } = useList<Entity>("/entities");
   const { rows: suppliers } = useList<Supplier>("/suppliers");
+  const usableSuppliers = (suppliers || []).filter(
+    (s) => s.registration_status === "ACTIVE"
+      && s.verification_status === "VERIFIED"
+      && s.avl_status === "APPROVED",
+  );
   const [f, setF] = React.useState({
     entity_id: "",
     supplier_id: "",
@@ -112,7 +117,7 @@ function SupplierInvoiceForm({
               onChange={(e) => set("supplier_id", e.target.value)}
             >
               <option value="">—</option>
-              {(suppliers || []).map((s) => (
+              {usableSuppliers.map((s) => (
                 <option key={s.supplier_id} value={s.supplier_id}>
                   {s.name}
                 </option>

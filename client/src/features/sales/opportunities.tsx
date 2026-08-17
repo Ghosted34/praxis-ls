@@ -125,22 +125,33 @@ export function OpportunitiesPage() {
     const p = new URLSearchParams();
     if (sourceFilter) p.set("source", sourceFilter);
     if (search.trim()) p.set("q", search.trim());
-    // The board needs every open deal, not one page of them.
-    p.set("limit", "200");
     return p;
   }, [sourceFilter, search]);
 
   const load = React.useCallback(async () => {
     setOppErr(null);
-    const qs = query().toString();
+    const filters = query();
+    const qs = filters.toString();
     try {
-      const [listOut, metricsOut] = await Promise.all([
-        tenant<Row[] | { data: Row[] }>(`/opportunities${qs ? `?${qs}` : ""}`),
+      const loadAllPages = async () => {
+        const all: Row[] = [];
+        const pageSize = 200;
+        for (let offset = 0; ; offset += pageSize) {
+          const pageQuery = new URLSearchParams(filters);
+          pageQuery.set("limit", String(pageSize));
+          pageQuery.set("offset", String(offset));
+          const out = await tenant<Row[] | { data: Row[] }>(
+            `/opportunities?${pageQuery.toString()}`,
+          );
+          const rows = Array.isArray(out) ? out : (out as { data?: Row[] })?.data || [];
+          all.push(...rows);
+          if (rows.length < pageSize) return all;
+        }
+      };
+      const [list, metricsOut] = await Promise.all([
+        loadAllPages(),
         tenant<Metrics | { data: Metrics }>(`/opportunities/metrics${qs ? `?${qs}` : ""}`),
       ]);
-      const list = Array.isArray(listOut)
-        ? listOut
-        : (listOut as { data?: Row[] })?.data || [];
       const m =
         metricsOut && typeof metricsOut === "object" && "pipeline_value" in metricsOut
           ? (metricsOut as Metrics)

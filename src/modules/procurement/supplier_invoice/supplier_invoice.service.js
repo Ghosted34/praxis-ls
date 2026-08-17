@@ -19,6 +19,7 @@ const { assertNoPendingChain } = require("../../../services/workflow/pending-gua
 const { getRule } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { assertSupplierUsable } = require("../supplier-eligibility");
 
 const ref = (id) => "supplier_invoice:" + id;
 
@@ -35,6 +36,7 @@ async function replaceLines(client, id, lines) {
 async function createDraft(client, { entityId, supplierId = null, poId = null, grnId = null, dossierId = null, supplierRef = null, currency = "XAF", vatTotal = 0, whtTotal = 0, dueOn = null, lines = [], actor = {} }) {
   await client.query("BEGIN");
   try {
+    await assertSupplierUsable(client, supplierId, { required: true, lock: true });
     const si = await repo.insertSI(client, { entity_id: entityId, supplier_id: supplierId, po_id: poId, grn_id: grnId, dossier_id: dossierId, supplier_ref: supplierRef, currency, vat_total: vatTotal, wht_total: whtTotal, due_on: dueOn, status: "DRAFT" });
     if (lines.length) await replaceLines(client, si.supplier_invoice_id, lines);
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(si.supplier_invoice_id), after: si });
@@ -89,6 +91,9 @@ async function post(client, { supplierInvoiceId, entryDate, sourceDocRef, suppli
 
   await client.query("BEGIN");
   try {
+    // Re-check under lock immediately before the first payable/GL side effect.
+    // Verification can be revoked after capture or matching.
+    await assertSupplierUsable(client, si.supplier_id, { required: true, lock: true });
     const { entry } = await journalEntry.buildAndInsert(client, {
       journalCode: "AC", entityId: si.entity_id, entryDate,
       description: "Supplier invoice " + (si.supplier_ref || si.supplier_invoice_id), sourceDocRef: sourceDocRef || ref(supplierInvoiceId), source: "SYSTEM_RULE",

@@ -17,11 +17,18 @@ import {
   portalClientDocumentDownload,
   portalInvestorView,
   portalAuditorView,
+  portalDataRoomList,
+  portalDataRoomCreate,
+  portalDataRoomDetail,
+  portalDataRoomDownload,
   type PortalMe,
   type ClientView,
   type PortalDocument,
   type InvestorView,
   type AuditorView,
+  type PortalDataRoom,
+  type PortalDataRoomDetail,
+  type PortalDataRoomDoc,
 } from "@/lib/portal-api";
 import { msg } from "./portal-chrome";
 import { label } from "./portal-auth";
@@ -190,15 +197,79 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
   const [view, setView] = React.useState<AuditorView | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Data room state — the auditor's document requests (PRD §5.2).
+  const [rooms, setRooms] = React.useState<PortalDataRoom[] | null>(null);
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [detail, setDetail] = React.useState<PortalDataRoomDetail | null>(null);
+  const [note, setNote] = React.useState("");
+  const [roomBusy, setRoomBusy] = React.useState<"list" | "create" | "detail" | "download" | null>(null);
+  const [roomError, setRoomError] = React.useState<string | null>(null);
+  const [dlDocId, setDlDocId] = React.useState<string | null>(null);
+
+  const loadRooms = React.useCallback(() => {
+    portalDataRoomList()
+      .then((r) => setRooms(r))
+      .catch((e) => setRoomError(msg(e)));
+  }, []);
+
   React.useEffect(() => {
     let alive = true;
     portalAuditorView()
       .then((v) => alive && setView(v))
       .catch((e) => alive && setError(msg(e)));
+    portalDataRoomList()
+      .then((r) => alive && setRooms(r))
+      .catch(() => alive && setRooms([]));
     return () => {
       alive = false;
     };
   }, []);
+
+  async function createRoom() {
+    const trimmed = note.trim();
+    if (!trimmed) return setRoomError("Describe the document you need first.");
+    setRoomBusy("create");
+    setRoomError(null);
+    try {
+      await portalDataRoomCreate(trimmed);
+      setNote("");
+      loadRooms();
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setRoomBusy(null);
+    }
+  }
+
+  async function openRoom(id: string) {
+    setOpenId(id);
+    setDetail(null);
+    setRoomBusy("detail");
+    setRoomError(null);
+    try {
+      setDetail(await portalDataRoomDetail(id));
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setRoomBusy(null);
+    }
+  }
+
+  async function downloadDoc(doc: PortalDataRoomDoc) {
+    if (!openId) return;
+    setDlDocId(doc.doc_id);
+    setRoomError(null);
+    try {
+      const name =
+        doc.original_name ||
+        (doc.doc_type_code || doc.doc_type || "document") + ".pdf";
+      await portalDataRoomDownload(openId, doc.doc_id, name);
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setDlDocId(null);
+    }
+  }
 
   if (error) return <ErrorState message={error} />;
   if (!view) return <SkeletonTable />;
@@ -334,6 +405,130 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
                 ))}
               </ul>
             </div>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel title="Data room">
+          <p className="mb-4 text-sm text-muted-foreground">
+            Ask the tenant for a document — a signed transit order, a customs
+            file — and the documents they share with you appear here.
+          </p>
+
+          {roomError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {roomError}
+            </div>
+          )}
+
+          <form
+            className="mb-6 space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createRoom();
+            }}
+          >
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              placeholder="What document do you need, and for which period/file?"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button
+              type="submit"
+              disabled={roomBusy === "create"}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {roomBusy === "create" ? "Requesting…" : "Request document"}
+            </button>
+          </form>
+
+          {rooms === null ? (
+            <SkeletonTable />
+          ) : rooms.length === 0 ? (
+            <EmptyState
+              title="No requests yet"
+              hint="Requests you make and the documents shared in answer appear here."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {rooms.map((r) => (
+                <li key={r.room_id} className="py-3">
+                  <button
+                    type="button"
+                    onClick={() => void openRoom(r.room_id)}
+                    className="flex w-full items-center justify-between gap-4 text-left hover:opacity-80"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {r.request_note}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {dateFmt(r.created_at)} · {r.doc_count} document
+                        {r.doc_count === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {r.status === "ANSWERED" ? "Answered" : "Open"}
+                    </span>
+                  </button>
+
+                  {openId === r.room_id && (
+                    <div className="mt-3 rounded-lg border border-border bg-card/60 p-3">
+                      {roomBusy === "detail" ? (
+                        <p className="text-sm text-muted-foreground">
+                          Loading…
+                        </p>
+                      ) : detail && detail.room.room_id === r.room_id ? (
+                        detail.docs.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No documents shared yet — the tenant has not answered
+                            this request.
+                          </p>
+                        ) : (
+                          <ul className="divide-y divide-border">
+                            {detail.docs.map((doc) => {
+                              const name =
+                                doc.original_name ||
+                                (doc.doc_type_code || doc.doc_type || "document") +
+                                  ".pdf";
+                              return (
+                                <li
+                                  key={doc.doc_id}
+                                  className="flex items-center justify-between gap-3 py-2"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm text-foreground">
+                                      {name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Shared {dateFmt(doc.created_at)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={dlDocId === doc.doc_id}
+                                    onClick={() => void downloadDoc(doc)}
+                                    className="shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
+                                  >
+                                    {dlDocId === doc.doc_id
+                                      ? "Downloading…"
+                                      : "Download"}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </Panel>
       </div>

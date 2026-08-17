@@ -76,6 +76,10 @@ const PortalAccessPage = lazyNamed(
   () => import("@/features/portal/pages"),
   "PortalAccessPage",
 );
+const AuditRoomPage = lazyNamed(
+  () => import("@/features/portal/data-room"),
+  "AuditRoomPage",
+);
 
 const DashboardPage = lazyNamed(
   () => import("@/features/dashboard"),
@@ -581,6 +585,7 @@ export function App() {
                 path="settings/portal-access"
                 element={<PortalAccessPage />}
               />
+              <Route path="settings/audit-room" element={<AuditRoomPage />} />
               {/* Settings hub cards without a dedicated editor yet */}
               {/* Business setup was a duplicate of the Corporate entities editor (MOD-01) —
             same profile / financial identity / fiscal-year fields. Retired 2026-07-18;

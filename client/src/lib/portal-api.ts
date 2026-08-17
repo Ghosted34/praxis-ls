@@ -324,3 +324,71 @@ export const portalAuditorView = (q?: { from?: string; to?: string }) => {
   const s = periodQs(q);
   return portalApi<AuditorView>(`/auditor${s ? `?${s}` : ""}`);
 };
+
+// ── Auditor data room (PRD §5.2 — "data room for document requests/answers") ─
+
+export type PortalDataRoom = {
+  room_id: string;
+  subject_email: string;
+  request_note: string;
+  status: "OPEN" | "ANSWERED";
+  created_at: string;
+  answered_at: string | null;
+  answered_by: string | null;
+  doc_count: number;
+};
+
+export type PortalDataRoomDoc = {
+  doc_id: string;
+  doc_type: string | null;
+  original_name: string | null;
+  created_at: string;
+  name_en: string | null;
+  name_fr: string | null;
+  doc_type_code: string | null;
+};
+
+export type PortalDataRoomDetail = {
+  room: PortalDataRoom;
+  docs: PortalDataRoomDoc[];
+};
+
+export const portalDataRoomList = () =>
+  portalApi<PortalDataRoom[]>("/auditor/data-room");
+export const portalDataRoomCreate = (note: string) =>
+  portalApi<PortalDataRoom>("/auditor/data-room", {
+    method: "POST",
+    body: { note },
+  });
+export const portalDataRoomDetail = (id: string) =>
+  portalApi<PortalDataRoomDetail>(`/auditor/data-room/${encodeURIComponent(id)}`);
+
+/** Fetch an answered document with the portal session and save it. */
+export async function portalDataRoomDownload(
+  roomId: string,
+  docId: string,
+  filename: string,
+): Promise<void> {
+  const token = portalToken.get();
+  const res = await fetch(
+    `/api/tenant/portal/auditor/data-room/${encodeURIComponent(roomId)}/documents/${encodeURIComponent(docId)}/download`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) {
+    const message =
+      res.status === 404
+        ? "That document is no longer in the data room."
+        : res.status === 401
+          ? "Your session has expired — sign in again."
+          : "Download failed.";
+    throw new PortalError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

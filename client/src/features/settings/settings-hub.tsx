@@ -202,6 +202,12 @@ const SECTIONS: Section[] = [
         desc: "External client, investor & auditor users",
         icon: "id",
       },
+      {
+        to: "/settings/audit-room",
+        label: "Auditor data room",
+        desc: "Auditor document requests & shared files",
+        icon: "doc",
+      },
     ],
   },
 ];

@@ -79,12 +79,21 @@ const SCANS = {
   },
 };
 
+// Dispatched by an explicit switch on LITERAL keys — never by indexing SCANS
+// with a caller-supplied value. `SCANS[ruleKey]` (even guarded) reads as a
+// dynamic method call to CodeQL (js/unvalidated-dynamic-method-call), and the
+// rule key is caller-influenced (service.run accepts a `rules` subset), so the
+// dispatch must be static. Unknown keys are the same no-op empty result.
 const scan = (client, ruleKey) => {
-  // A fixed map lookup, never a computed dispatch: ruleKey is caller-supplied
-  // (service.run filters it, but the repo must not trust that). Unknown keys
-  // resolve to the no-op scan — same behaviour as before, no dynamic call.
-  const fn = Object.prototype.hasOwnProperty.call(SCANS, ruleKey) ? SCANS[ruleKey] : null;
-  return fn ? fn(client) : Promise.resolve([]);
+  switch (ruleKey) {
+    case "cost_entry.missing_proof": return SCANS["cost_entry.missing_proof"](client);
+    case "procurement.unmatched": return SCANS["procurement.unmatched"](client);
+    case "regie.aged_unjustified": return SCANS["regie.aged_unjustified"](client);
+    case "disbursement.tax_violation": return SCANS["disbursement.tax_violation"](client);
+    case "dictionary.proof_missing.cash_request": return SCANS["dictionary.proof_missing.cash_request"](client);
+    case "dictionary.proof_missing.cost_entry": return SCANS["dictionary.proof_missing.cost_entry"](client);
+    default: return Promise.resolve([]);
+  }
 };
 
 const insertFlag = (client, data) => insertOne(client, "compliance_flag", data);

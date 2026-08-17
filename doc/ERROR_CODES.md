@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (348)
+## All codes (349)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -116,6 +116,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COMPLIANCE_BLOCKED` | 409 | 4× | — |
 | `CONFIG_MISSING` | 424 | 1× | — |
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
+| `CONTRACT_TEXT_FROZEN` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |

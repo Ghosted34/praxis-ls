@@ -396,17 +396,20 @@ export function ContractsPage() {
     {
       key: "_edit",
       label: "",
-      // The contract's TEXT — the thing that decides whether the printed PDF
-      // has clauses in it. Only on a DRAFT: past that the server refuses a
-      // redraft, and offering the button anyway teaches people to expect a 422.
-      render: (c) =>
-        c.status === "DRAFT" ? (
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={() => setEditing(c)}>
-              {c.body_md ? "Edit text" : "Draft text"}
-            </Button>
-          </div>
-        ) : null,
+      /* Two different jobs behind one button.
+       *
+       * On a DRAFT it opens the TEXT — the thing that decides whether the
+       * printed PDF has any clauses in it. Past that the wording is fixed, but
+       * the TERMS are not: every contract signed before this existed has no
+       * notice period and no probation date on the row, and recording what the
+       * signed paper says is what puts it in front of the expiry watcher. */
+      render: (c) => (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => setEditing(c)}>
+            {c.status !== "DRAFT" ? "Record terms" : c.body_md ? "Edit text" : "Draft text"}
+          </Button>
+        </div>
+      ),
     },
   ];
 

@@ -94,6 +94,66 @@ module.exports = {
     return row;
   },
 
+  /**
+   * Edit a contract.
+   *
+   * ── WHY THE TEXT AND THE TERMS PART COMPANY HERE ────────────────────────
+   *
+   * `applyDraft` refuses to rewrite the TEXT of a contract past DRAFT, and
+   * that is right: the wording is what the parties signed, and changing it is
+   * rewriting history rather than editing a record. A renewal supersedes it —
+   * that is what `renews_contract_id` is for.
+   *
+   * But `update` came straight off the CRUD base with no guard at all, so a
+   * PATCH could do exactly what `applyDraft` forbids. That hole is closed
+   * below.
+   *
+   * RECORDING THE TERMS is a different act, and it must stay open at any
+   * status. Every contract signed before 0700 has no `probation_ends_on`, no
+   * `notice_days` and no salary on the row — the agreement happened on paper
+   * and the system simply has no structured copy of it. Refusing to record
+   * those would mean the expiry watcher can never see an existing fixed term
+   * and payroll can never know a notice period, for the whole back catalogue,
+   * for ever. Typing in what a signed contract already says is not amending
+   * it.
+   */
+  async update(client, { id, patch, actor = {} }) {
+    const before = await repo.findById(client, id);
+    if (!before) return null;
+
+    if (before.status !== "DRAFT") {
+      // The wording, and the document rendered from it. Named explicitly so the
+      // message says which field was refused rather than rejecting the whole
+      // patch — an HR officer recording a notice period should not be told
+      // "no".
+      const frozen = ["body_md", "title"].filter((k) => patch[k] !== undefined && patch[k] !== before[k]);
+      if (frozen.length) {
+        throw new AppError(
+          "CONTRACT_TEXT_FROZEN",
+          `The wording of a ${before.status.toLowerCase()} contract cannot be changed — supersede it with a renewal`,
+          422,
+          { body_md: ["This is what the parties signed. Raise a renewal to change it."] },
+        );
+      }
+    }
+
+    // Kept in step with the dates whichever route sets them. Computed here as
+    // well as in `applyDraft` because recording a probation on an already
+    // signed contract is precisely the case the watcher exists for.
+    const next = { ...patch };
+    // `!== undefined`, NOT `??`: null is nullish, so `patch.probation_months ??
+    // before.probation_months` read an explicit "clear this" as "not
+    // provided" and kept the old figure — leaving the watcher warning about a
+    // probation nobody was serving.
+    const effectiveOn = patch.effective_on !== undefined ? patch.effective_on : before.effective_on;
+    const months = patch.probation_months !== undefined ? patch.probation_months : before.probation_months;
+    if (patch.effective_on !== undefined || patch.probation_months !== undefined) {
+      next.probation_ends_on = effectiveOn && months ? addMonths(effectiveOn, months) : null;
+    }
+
+    return base.update(client, { id, patch: next, actor });
+  },
+
   async setStatus(client, { id, status, actor }) {
     const before = await repo.findById(client, id);
     if (!before) return null;

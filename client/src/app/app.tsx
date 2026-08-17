@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { ComponentType } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
 import { AppShell } from "@/app/layout/app-shell";
@@ -344,6 +344,36 @@ function OfflineBootGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Redirect a pre-rename public/portal slug to its new home, preserving the
+ * rest of the path (`/client-portal/login` → `/portal/login`,
+ * `/proposal/abc` → `/public/proposals/abc`). <Navigate to> cannot do this
+ * because it does not substitute route params, and the old URLs are already
+ * in circulation (invite emails, share links, SEO).
+ */
+function OldPathRedirect() {
+  const loc = useLocation();
+  const [seg, ...rest] = loc.pathname.split("/").filter(Boolean);
+  const map: Record<string, string> = {
+    "client-portal": "/portal",
+    track: "/public/track",
+    portfolio: "/public/portfolio",
+    proposal: "/public/proposals",
+    careers: "/public/careers",
+  };
+  const base = map[seg || ""];
+  if (!base) return <Navigate to="/" replace />;
+  const suffix = rest.map(encodeURIComponent).join("/");
+  // loc.search carries the token for set-password links — dropping it would
+  // break the one-time invite/reset flow.
+  return (
+    <Navigate
+      to={`${base}${suffix ? `/${suffix}` : ""}${loc.search}`}
+      replace
+    />
+  );
+}
+
 export function App() {
   return (
     <BootGate>
@@ -367,42 +397,67 @@ export function App() {
             <Route path="/login" element={<LandingPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-            {/* External client portal. OUTSIDE RequireAuth and AppShell on purpose:
-            a portal user has no app_user row, no role and no refresh token, so
-            it authenticates against its own token store (lib/portal-api.ts) and
-            never renders staff navigation. The wildcard keeps every path inside
-            the portal — an external user should never fall through to a staff
-            screen or a staff 404.
+            {/* External portal (client / investor / auditor). OUTSIDE RequireAuth
+            and AppShell on purpose: a portal user has no app_user row, no role
+            and no refresh token, so it authenticates against its own token store
+            (lib/portal-api.ts) and never renders staff navigation. The wildcard
+            keeps every path inside the portal — an external user should never
+            fall through to a staff screen or a staff 404.
 
-            NOT `/portal/*`: the STAFF grant-management screen already owns
-            `/portal/access` (below). React Router would rank the static path
-            above the splat and probably keep them apart, but an authentication
-            boundary should not depend on route-scoring subtleties — one nested
-            route added later and an external user is looking at a staff screen.
-            Separate prefix, no overlap, and it reads better in an invite email. */}
-            <Route path="/client-portal/*" element={<PortalApp />} />
+            The audience-neutral `/portal/*` prefix (it serves investors and
+            auditors too, not just clients) matches the API namespace
+            `/api/tenant/portal/...`. The staff grant-management screen moved to
+            `/settings/portal-access`, so there is no overlap to score around. */}
+            <Route path="/portal/*" element={<PortalApp />} />
+            {/* Redirect the pre-rename slug: invite emails already in the wild
+                carry `/client-portal/set-password?...` (7-day TTL), so keep the
+                old prefix working while preserving the subpath. */}
+            <Route
+              path="/client-portal/*"
+              element={<OldPathRedirect />}
+            />
 
-            {/* Public careers. OUTSIDE RequireAuth and OUTSIDE AppShell, for the
-            same reason the client portal is: the visitor is a stranger with no
-            account. The shell would put the icon rail, the ribbon, the LIVE/TEST
-            toggle, the clock and the copilot in front of a job applicant —
-            several of which fire authenticated requests on mount and would send
-            an anonymous visitor down the session-death path.
+            {/* Public pages — the marketing-site surfaces. OUTSIDE RequireAuth
+            and OUTSIDE AppShell, for the same reason the portal is: the visitor
+            is a stranger with no account. The shell would put the icon rail, the
+            ribbon, the LIVE/TEST toggle, the clock and the copilot in front of a
+            job applicant — several of which fire authenticated requests on mount
+            and would send an anonymous visitor down the session-death path.
 
-            The token in the URL is the vacancy's minted `public_token`, which is
-            the ONLY credential the apply endpoint accepts. It is never a
-            vacancy_id: ids appear in staff URLs and logs, and accepting one here
-            would make every internal identifier a public credential.
+            Grouped under `/public/*` to mirror the API namespace
+            (`/api/tenant/public/...`), so the stranger-facing surface is visibly
+            separate from the app in URLs, logs and analytics. The old top-level
+            slugs redirect for links already in circulation (SEO, emails).
 
-            Two routes rather than a splat, so `/careers/anything/else` falls to
-            the catch-all rather than rendering a detail view for a token that
-            has a slash in it. */}
-            <Route path="/track" element={<PublicTrackingPage />} />
-            <Route path="/portfolio" element={<PublicPortfolioPage />} />
-            <Route path="/portfolio/:slug" element={<PublicPortfolioPage />} />
-            <Route path="/proposal/:token" element={<PublicProposalPage />} />
-            <Route path="/careers" element={<CareersPage />} />
-            <Route path="/careers/:token" element={<CareersPage />} />
+            The token in a URL is the record's minted public token (careers,
+            proposals), which is the ONLY credential the public endpoint accepts.
+            It is never an internal id: ids appear in staff URLs and logs, and
+            accepting one here would make every internal identifier a public
+            credential. Two routes rather than a splat, so `/public/careers/
+            anything/else` falls to the catch-all rather than rendering a detail
+            view for a token that has a slash in it. */}
+            <Route path="/public/track" element={<PublicTrackingPage />} />
+            <Route path="/public/portfolio" element={<PublicPortfolioPage />} />
+            <Route
+              path="/public/portfolio/:slug"
+              element={<PublicPortfolioPage />}
+            />
+            <Route
+              path="/public/proposals/:token"
+              element={<PublicProposalPage />}
+            />
+            <Route path="/public/careers" element={<CareersPage />} />
+            <Route
+              path="/public/careers/:token"
+              element={<CareersPage />}
+            />
+            {/* Old public slugs → /public/* (links already in circulation). */}
+            <Route path="/track" element={<OldPathRedirect />} />
+            <Route path="/portfolio" element={<OldPathRedirect />} />
+            <Route path="/portfolio/:slug" element={<OldPathRedirect />} />
+            <Route path="/proposal/:token" element={<OldPathRedirect />} />
+            <Route path="/careers" element={<OldPathRedirect />} />
+            <Route path="/careers/:token" element={<OldPathRedirect />} />
 
             {/* ShellProvider sits INSIDE RequireAuth (its two reads need a token) and
           OUTSIDE AppShell, so the routed screens are inside it too — the rail
@@ -520,7 +575,12 @@ export function App() {
                 path="settings/catalogue"
                 element={<ModuleCataloguePage />}
               />
-              <Route path="portal/access" element={<PortalAccessPage />} />
+              {/* Portal grant management. Moved off `/portal/*` (2026-08-17) so
+                  the external multi-audience portal can own that prefix. */}
+              <Route
+                path="settings/portal-access"
+                element={<PortalAccessPage />}
+              />
               {/* Settings hub cards without a dedicated editor yet */}
               {/* Business setup was a duplicate of the Corporate entities editor (MOD-01) —
             same profile / financial identity / fiscal-year fields. Retired 2026-07-18;

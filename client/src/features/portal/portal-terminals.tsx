@@ -13,10 +13,13 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import {
   portalClientView,
+  portalClientDocuments,
+  portalClientDocumentDownload,
   portalInvestorView,
   portalAuditorView,
   type PortalMe,
   type ClientView,
+  type PortalDocument,
   type InvestorView,
   type AuditorView,
 } from "@/lib/portal-api";
@@ -350,6 +353,9 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   // router because the portal shell is deliberately a single authenticated view.
   const [openDossier, setOpenDossier] = React.useState<string | null>(null);
   const [view, setView] = React.useState<ClientView | null>(null);
+  const [docs, setDocs] = React.useState<PortalDocument[] | null>(null);
+  const [dlBusy, setDlBusy] = React.useState<string | null>(null);
+  const [dlError, setDlError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -357,10 +363,29 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
     portalClientView()
       .then((v) => alive && setView(v))
       .catch((e) => alive && setError(msg(e)));
+    // The document vault is the client's own; loaded beside the summary.
+    portalClientDocuments()
+      .then((d) => alive && setDocs(d))
+      .catch(() => alive && setDocs([]));
     return () => {
       alive = false;
     };
   }, []);
+
+  async function downloadDoc(doc: PortalDocument) {
+    setDlBusy(doc.doc_id);
+    setDlError(null);
+    try {
+      const label =
+        doc.original_name ||
+        (doc.doc_type_code || doc.doc_type || "document") + ".pdf";
+      await portalClientDocumentDownload(doc.doc_id, label);
+    } catch (e) {
+      setDlError(msg(e));
+    } finally {
+      setDlBusy(null);
+    }
+  }
 
   if (error) return <ErrorState message={error} />;
   if (openDossier)
@@ -456,6 +481,59 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                   </div>
                 </li>
               ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel title="Documents">
+          {dlError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {dlError}
+            </div>
+          )}
+          {docs === null ? (
+            <SkeletonTable />
+          ) : docs.length === 0 ? (
+            <EmptyState
+              title="No documents yet"
+              hint="Files your team shares with you will appear here — bills of lading, waybills and other shipment documents."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {docs.map((doc) => {
+                const name =
+                  doc.original_name ||
+                  (doc.doc_type_code || doc.doc_type || "document") +
+                    ".pdf";
+                return (
+                  <li
+                    key={doc.doc_id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {doc.dossier_ref
+                          ? `${doc.dossier_ref} · `
+                          : ""}
+                        Filed {dateFmt(doc.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={dlBusy === doc.doc_id}
+                      onClick={() => void downloadDoc(doc)}
+                      className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
+                    >
+                      {dlBusy === doc.doc_id ? "Downloading…" : "Download"}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>

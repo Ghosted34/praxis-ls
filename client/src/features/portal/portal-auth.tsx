@@ -32,7 +32,7 @@ export function PortalLogin() {
     try {
       const r = await portalLogin(email.trim(), password);
       portalToken.set(r.access_token);
-      nav("/client-portal", { replace: true });
+      nav("/portal", { replace: true });
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -144,7 +144,7 @@ export function PortalSetPassword() {
       // bouncing them to a login form to retype what they typed is friction for
       // no security gain.
       portalToken.set(r.access_token);
-      nav("/client-portal", { replace: true });
+      nav("/portal", { replace: true });
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -157,7 +157,7 @@ export function PortalSetPassword() {
       <PortalFrame>
         <ErrorState message="That link is incomplete. Please use the link exactly as it appears in your email." />
         <p className="mt-4 text-sm">
-          <Link to="/client-portal/login" className="text-primary-ink">
+          <Link to="/portal/login" className="text-primary-ink">
             Back to sign in
           </Link>
         </p>

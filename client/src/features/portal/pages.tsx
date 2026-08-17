@@ -67,7 +67,7 @@ function GrantModal({
 
   async function submit() {
     if (portal === "CLIENT" && !clientId) {
-      setError("A client-portal grant needs a client to scope it to.");
+      setError("A CLIENT portal grant needs a client to scope it to.");
       return;
     }
     setBusy(true);
@@ -371,7 +371,7 @@ export function PortalAccessPage() {
   return (
     <section className={pageShell.wide}>
       <PageHeader
-        eyebrow={<HubCrumb area="Portal" to="/portal/access" />}
+        eyebrow={<HubCrumb area="Portal" to="/settings/portal-access" />}
         title="Portal access"
         description="Grant and revoke external read-access — client, investor and auditor portals."
         action={

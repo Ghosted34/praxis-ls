@@ -65,7 +65,7 @@ export function PublicPortfolioPage() {
         <h1 className="text-3xl font-bold">Success stories</h1>
         <div className="mt-6 grid gap-5 md:grid-cols-3">
           {data.map((story) => (
-            <Link key={story.slug} to={`/portfolio/${story.slug}`} className="lux-card overflow-hidden">
+            <Link key={story.slug} to={`/public/portfolio/${story.slug}`} className="lux-card overflow-hidden">
               {story.cover_url && <img src={story.cover_url} alt="" className="h-44 w-full object-cover" />}
               <div className="space-y-2 p-4">
                 <p className="text-xs">{story.service_category || ""}</p>

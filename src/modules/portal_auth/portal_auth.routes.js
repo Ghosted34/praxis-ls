@@ -7,6 +7,8 @@
  *                         POST /portal/auth/accept   (invite/reset token)
  *   PORTAL USER (token)   GET  /portal/me
  *                         GET  /portal/client   (CLIENT grant)
+ *                         GET  /portal/client/documents          (CLIENT grant)
+ *                         GET  /portal/client/documents/:id/download (CLIENT grant)
  *                         GET  /portal/investor (INVESTOR grant)
  *                         GET  /portal/auditor  (AUDITOR grant)
  *   STAFF (MOD-67)        GET  /portal/users
@@ -44,6 +46,11 @@ router.post("/auth/accept", resetLimiter, v.accept, c.accept);
 router.get("/me", portalAuth(), c.me);
 router.get("/client", portalAuth("CLIENT"), c.client);
 router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), c.clientChain);
+// Document vault — the client's own client-visible documents (PRD §11.1).
+// The list is scoped to their dossiers + client filings; the download re-checks
+// ownership + visibility in SQL before streaming bytes.
+router.get("/client/documents", portalAuth("CLIENT"), c.clientDocuments);
+router.get("/client/documents/:id/download", portalAuth("CLIENT"), c.clientDocumentDownload);
 // Q tickets — the client raises a query against a milestone and it stays in
 // the system, which is the whole reason this exists rather than an email.
 router.get("/client/tickets", portalAuth("CLIENT"), c.tickets);

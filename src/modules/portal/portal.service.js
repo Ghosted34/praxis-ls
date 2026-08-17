@@ -13,6 +13,7 @@ const repo = require("./portal.repo");
 const events = require("./portal.events");
 const { isGrantUsable } = require("./portal.rules");
 const report = require("../vault/report/report.service");
+const vault = require("../vault/document_vault/document_vault.service");
 const receivables = require("../finance/smart_receivables/smart_receivables.service");
 const milestone = require("../operations/milestone/milestone.service");
 const qTicket = require("../operations/q_ticket/q_ticket.service");
@@ -57,6 +58,25 @@ const listAccess = (client, q) => repo.listAccess(client, q);
 async function checkAccess(client, { email, portal }) {
   const grant = await repo.activeFor(client, String(email || "").toLowerCase(), portal);
   return { allowed: isGrantUsable(grant), grant: grant || null };
+}
+
+/** The client's own documents (PRD §11.1 "document vault — own docs"). */
+async function clientDocuments(client, { clientId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  return repo.clientDocuments(client, clientId);
+}
+
+/**
+ * A client-visible document's bytes. The ownership + visibility check happens
+ * in SQL (repo.clientDocument), so a client can only ever download their own
+ * client-visible files — the same scoping as the rest of the portal.
+ */
+async function clientDocumentDownload(client, { clientId, docId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const doc = await repo.clientDocument(client, clientId, docId);
+  if (!doc) throw new AppError("NOT_FOUND", "No such document for this client", 404);
+  const buffer = await vault.fetchBytes(client, doc.doc_id);
+  return { doc, buffer };
 }
 
 // ── Portal data views (scoped, delegated) ──
@@ -228,4 +248,5 @@ module.exports = {
   grantAccess, revokeAccess, listAccess, checkAccess,
   clientView, clientChain, investorView, auditorView,
   clientTickets, clientRaiseTicket, clientTicketDetail, clientReplyTicket,
+  clientDocuments, clientDocumentDownload,
 };

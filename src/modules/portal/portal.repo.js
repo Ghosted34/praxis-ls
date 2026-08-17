@@ -23,6 +23,47 @@ async function revoke(client, id) {
 async function clientDossiers(client, clientId) {
   return (await client.query("SELECT dossier_id, ref, status, created_at FROM dossier_visible WHERE client_id = $1 ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
 }
+
+// ── Client documents (PRD §11.1 "document vault — own docs") ────────────────
+//
+// A document is client-visible ONLY when its registry doc type carries
+// `client_visible: true` (dictionary_ref.extra, seeded for BL/MAWB; a tenant
+// adds more from the picker) AND the vault row is VERIFIED AND it belongs to
+// this client — either filed against one of their dossiers or filed directly
+// against the client (vault.client_id, 0669). Docs with a free-text doc_type
+// and no registry reference are deliberately invisible: the registry decision
+// is the thing that says "who a document is for", and nothing else is allowed
+// to second-guess it.
+
+const CLIENT_DOCUMENT_SELECT = `
+  SELECT v.doc_id, v.doc_type, v.original_name, v.status, v.created_at,
+         v.dossier_id, d.ref AS dossier_ref,
+         dr.name_en, dr.name_fr, dr.code AS doc_type_code
+    FROM document_vault v
+    LEFT JOIN dossier_visible d ON d.dossier_id = v.dossier_id
+    LEFT JOIN dictionary_ref dr ON dr.ref_id = v.doc_type_ref_id
+   WHERE v.status = 'VERIFIED'
+     AND dr.extra->>'client_visible' = 'true'
+     AND ( (v.dossier_id IS NOT NULL AND d.client_id = $1)
+        OR (v.client_id = $1) )`;
+
+async function clientDocuments(client, clientId) {
+  return (await client.query(
+    `${CLIENT_DOCUMENT_SELECT} ORDER BY v.created_at DESC LIMIT 200`,
+    [clientId],
+  )).rows;
+}
+
+/** Ownership + visibility check for one document, or null. The download route
+ *  goes through this so the bytes are served only when the doc is VERIFIED,
+ *  client-visible by type, and the caller's client actually owns it. */
+async function clientDocument(client, clientId, docId) {
+  const { rows } = await client.query(
+    `${CLIENT_DOCUMENT_SELECT} AND v.doc_id = $2 LIMIT 1`,
+    [clientId, docId],
+  );
+  return rows[0] || null;
+}
 /**
  * The client-facing milestone chain for one of their dossiers, plus the
  * published assumptions the dates rest on.
@@ -92,4 +133,4 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page };
+module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page, clientDocuments, clientDocument };

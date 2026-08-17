@@ -48,9 +48,9 @@ const ROLE = {
 function view(role: Record<string, unknown> = ROLE) {
   getVacancy.mockResolvedValue(role);
   return render(
-    <MemoryRouter initialEntries={["/careers/tok"]}>
+    <MemoryRouter initialEntries={["/public/careers/tok"]}>
       <Routes>
-        <Route path="/careers/:token" element={<CareersPage />} />
+        <Route path="/public/careers/:token" element={<CareersPage />} />
       </Routes>
     </MemoryRouter>,
   );

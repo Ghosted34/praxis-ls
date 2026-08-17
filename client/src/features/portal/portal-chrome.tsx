@@ -52,7 +52,7 @@ export function PortalFrame({
               size="sm"
               onClick={() => {
                 portalToken.clear();
-                window.location.assign("/client-portal/login");
+                window.location.assign("/portal/login");
               }}
             >
               Sign out

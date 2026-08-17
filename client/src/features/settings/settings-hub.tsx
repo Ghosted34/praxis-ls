@@ -197,7 +197,7 @@ const SECTIONS: Section[] = [
         icon: "doc",
       },
       {
-        to: "/portal/access",
+        to: "/settings/portal-access",
         label: "Portal Access",
         desc: "External client, investor & auditor users",
         icon: "id",

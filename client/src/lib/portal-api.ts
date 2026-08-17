@@ -208,6 +208,59 @@ export type AuditorView = {
 export const portalMe = () => portalApi<PortalMe>("/me");
 export const portalClientView = () => portalApi<ClientView>("/client");
 
+/** A client-visible vault document (PRD §11.1 — the client's document vault). */
+export type PortalDocument = {
+  doc_id: string;
+  doc_type: string | null;
+  original_name: string | null;
+  status: string;
+  created_at: string;
+  dossier_id: string | null;
+  dossier_ref: string | null;
+  name_en: string | null;
+  name_fr: string | null;
+  doc_type_code: string | null;
+};
+
+export const portalClientDocuments = () =>
+  portalApi<PortalDocument[]>("/client/documents");
+
+/**
+ * Fetch a client-visible document with the portal session and save it. Same
+ * reasoning as the staff `downloadVaultDoc`: the /download endpoint returns
+ * bytes (not JSON), so we fetch with the portal token and trigger a real
+ * Save-As via an anchor click rather than a pop-up-prone window.open.
+ */
+export async function portalClientDocumentDownload(
+  id: string,
+  filename: string,
+): Promise<void> {
+  const token = portalToken.get();
+  const res = await fetch(
+    `/api/tenant/portal/client/documents/${encodeURIComponent(id)}/download`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  );
+  if (!res.ok) {
+    const message =
+      res.status === 404
+        ? "That document is no longer available."
+        : res.status === 401
+          ? "Your session has expired — sign in again."
+          : "Download failed.";
+    throw new PortalError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * One of the client's own files: the stages we chose to show them, the dates
  * they were committed to, and the published assumptions those dates rest on.

@@ -97,7 +97,7 @@ export function ProposalDetail({
     const tone=window.prompt("Tone","Consultative and expert")||"Consultative and expert";
     await run(()=>tenant(`/proposals/${id}/generate`,{method:"POST",body:{client_operations,pain_points,proposed_strategy,tone}}));
   }
-  async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/proposal/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
+  async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/public/proposals/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
   const doAccept = () =>
     run(() =>
       tenant(`/proposals/${id}/accept`, {

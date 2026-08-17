@@ -19,7 +19,9 @@ import { tenant } from "@/lib/api-client";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { READINESS, eyebrow, readinessMeta } from "./sops";
-import { shell, type EmployeeLite } from "./shared";
+import { shell } from "./shared";
+import { EmployeePicker } from "@/components/employee-picker";
+import { ConsiderDialog, type ConsiderSource } from "./consider-dialog";
 
 type Talent = {
   talent_pool_id: string;
@@ -27,6 +29,8 @@ type Talent = {
   skills?: string | null;
   notes?: string | null;
   created_at?: string | null;
+  /** When somebody last put them in front of a role (0703). */
+  last_considered_at?: string | null;
 };
 
 function TalentForm({
@@ -120,11 +124,9 @@ type Succession = {
 };
 
 function SuccessionForm({
-  employees,
   onClose,
   onSaved,
 }: {
-  employees: EmployeeLite[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -135,6 +137,9 @@ function SuccessionForm({
     readiness: "1_2_years",
     notes: "",
   });
+  // The names behind the two ids, so the form can show who is chosen without
+  // holding a roster of the whole company to look them up.
+  const [names, setNames] = React.useState({ incumbent: "", successor: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -161,16 +166,6 @@ function SuccessionForm({
       setBusy(false);
     }
   }
-  const empOptions = (
-    <>
-      <option value="">—</option>
-      {employees.map((e) => (
-        <option key={e.employee_id} value={e.employee_id}>
-          {e.full_name || e.employee_id}
-        </option>
-      ))}
-    </>
-  );
   return (
     <Modal
       open
@@ -186,23 +181,34 @@ function SuccessionForm({
             placeholder="Head of Operations"
           />
         </Field>
+        {/* Was a pair of <Select>s built from an unpaginated `/employees` call,
+            which the API caps at 50 rows: on any tenant with more than fifty
+            staff the fifty-first person onwards could not be named as a
+            successor AT ALL, and nothing on screen said so. Same defect, same
+            fix as the training roster. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Incumbent">
-            <Select
-              value={f.incumbent_id}
-              onChange={(e) => set("incumbent_id", e.target.value)}
-            >
-              {empOptions}
-            </Select>
-          </Field>
-          <Field label="Successor">
-            <Select
-              value={f.successor_id}
-              onChange={(e) => set("successor_id", e.target.value)}
-            >
-              {empOptions}
-            </Select>
-          </Field>
+          <div>
+            <EmployeePicker
+              id="succession-incumbent"
+              label={names.incumbent ? `Incumbent — ${names.incumbent}` : "Incumbent"}
+              placeholder="Search for the current holder…"
+              onPick={(e) => {
+                set("incumbent_id", e.employee_id);
+                setNames((n) => ({ ...n, incumbent: e.full_name || e.employee_id }));
+              }}
+            />
+          </div>
+          <div>
+            <EmployeePicker
+              id="succession-successor"
+              label={names.successor ? `Successor — ${names.successor}` : "Successor"}
+              placeholder="Search for the successor…"
+              onPick={(e) => {
+                set("successor_id", e.employee_id);
+                setNames((n) => ({ ...n, successor: e.full_name || e.employee_id }));
+              }}
+            />
+          </div>
         </div>
         <Field label="Readiness">
           <Select
@@ -257,6 +263,7 @@ function SuccessionForm({
 function PastApplicants() {
   const [term, setTerm] = React.useState("");
   const [q, setQ] = React.useState("");
+  const [considering, setConsidering] = React.useState<ConsiderSource | null>(null);
   // Committed on submit rather than per keystroke — this query scans applicants
   // across every vacancy and does not belong on a typing path.
   const pool = useResource(
@@ -320,6 +327,30 @@ function PastApplicants() {
         </span>
       ),
     },
+    {
+      // THE action this table has been missing since 0525. Finding somebody was
+      // never the hard part; going back to them was.
+      key: "_a",
+      label: "",
+      render: (r) => (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setConsidering({
+                kind: "applicant",
+                id: r.applicant_id,
+                name: r.full_name,
+                from: r.vacancy_title,
+              })
+            }
+          >
+            Consider
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -358,6 +389,13 @@ function PastApplicants() {
             : "Candidates you reject or move to the pool appear here for future roles.",
         }}
       />
+      {considering && (
+        <ConsiderDialog
+          source={considering}
+          onClose={() => setConsidering(null)}
+          onDone={() => pool.reload()}
+        />
+      )}
     </>
   );
 }
@@ -368,9 +406,9 @@ export function TalentPoolPage() {
     () => tenant<Succession[]>("/succession").then((r) => r),
     [],
   );
-  const { rows: employees } = useList<EmployeeLite>("/employees");
   const [creating, setCreating] = React.useState(false);
   const [planning, setPlanning] = React.useState(false);
+  const [considering, setConsidering] = React.useState<ConsiderSource | null>(null);
   const list = rows || [];
   const planList = plans.data || [];
   const readyNow = planList.filter((p) => p.readiness === "ready_now").length;
@@ -414,6 +452,42 @@ export function TalentPoolPage() {
         <span className="num text-muted-foreground">
           {dateFmt(r.created_at)}
         </span>
+      ),
+    },
+    {
+      key: "last",
+      label: "Last approached",
+      // Stops two recruiters ringing the same person about two roles in the
+      // same week — the thing that makes a company look disorganised to exactly
+      // the people it wants to hire.
+      render: (r) =>
+        r.last_considered_at ? (
+          <span className="num text-muted-foreground">
+            {dateFmt(r.last_considered_at)}
+          </span>
+        ) : (
+          <span className="micro">—</span>
+        ),
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (r) => (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setConsidering({
+                kind: "bench",
+                id: r.talent_pool_id,
+                name: r.full_name || "this candidate",
+              })
+            }
+          >
+            Consider
+          </Button>
+        </div>
       ),
     },
   ];
@@ -502,9 +576,15 @@ export function TalentPoolPage() {
       )}
       {planning && (
         <SuccessionForm
-          employees={employees || []}
           onClose={() => setPlanning(false)}
           onSaved={plans.reload}
+        />
+      )}
+      {considering && (
+        <ConsiderDialog
+          source={considering}
+          onClose={() => setConsidering(null)}
+          onDone={reload}
         />
       )}
     </section>

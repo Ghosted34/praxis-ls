@@ -40,6 +40,8 @@ const leaveRules = require("../leave_allowance/leave.rules");
 const { getSetting } = require("../../../shared/config/settings");
 const { audit, resolveActorId } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
+// 0704: the shared query writer. The punch raises it; this adopts it.
+const hrQuery = require("./attendance.query");
 
 const MODULE = "MOD-14";
 
@@ -192,11 +194,26 @@ async function reconcileDate(client, { date = null, actor = {} } = {}) {
     written += 1;
     if (Number(row.deduction_amount) > 0 && !row.justified) charged += 1;
 
-    // The query is raised AFTER the row exists, so it can point at it — and
-    // only once, however many times the day is reconciled.
+    /*
+     * The query is raised AFTER the row exists, so it can point at it.
+     *
+     * 0704 CHANGED THE CONDITION HERE, and the old one is the bug. It was
+     * `!row.hr_query_id` — "this day has no query yet" — which was true and
+     * sufficient while the reconciler was the only thing that raised one. Now
+     * the PUNCH raises the lateness query the moment somebody clocks in late,
+     * hours before any `attendance_day` row exists to hold the link. The old
+     * test would have seen an empty `hr_query_id`, concluded nobody had asked,
+     * and asked a second time that night about the same morning.
+     *
+     * So the reconciler now looks for the query by (employee, day, rule) and
+     * ADOPTS it — linking the day to it and updating it with the settled
+     * figure, which is the number that actually gets charged. The upsert is
+     * keyed on the same partial unique index, so even a path that skips this
+     * lookup cannot produce the duplicate.
+     */
     const rule = decided.hr_rule_id === (latenessRule && latenessRule.hr_rule_id) ? latenessRule : absenceRule;
-    if (rule && rule.auto_query && !row.hr_query_id && !row.justified && decided.hr_rule_id) {
-      await raiseQuery(client, { day: row, employee: emp, rule, actorId });
+    if (rule && rule.auto_query && !row.justified && decided.hr_rule_id) {
+      await settleQuery(client, { day: row, employee: emp, rule, actorId });
     }
   }
 
@@ -254,23 +271,50 @@ async function upsertDay(client, d) {
   return rows[0];
 }
 
-/** Raise the rule's query and point the day at it. */
-async function raiseQuery(client, { day, employee, rule, actorId }) {
-  const what = day.status === "ABSENT"
-    ? `You were recorded absent on ${day.work_date}, with no approved leave.`
-    : `You clocked in ${day.minutes_late} minute(s) after your ${day.expected_start_time} start on ${day.work_date}.`;
-  const cost = Number(day.deduction_amount) > 0
-    ? ` Under "${rule.name}" this carries a deduction of ${day.deduction_amount}, which stands until this query is resolved.`
-    : "";
-  const { rows } = await client.query(
-    `INSERT INTO hr_query (employee_id, subject, body, severity, due_at, issued_by)
-     VALUES ($1,$2,$3,$4, now() + ($5 || ' days')::interval, $6) RETURNING hr_query_id`,
-    [employee.employee_id, `${rule.name} — ${day.work_date}`, `${what}${cost}\n\nPlease explain.`,
-      rule.query_severity, String(rule.query_due_days), actorId],
+/**
+ * Settle the day's query: adopt the one the punch already raised, or raise it.
+ *
+ * Either way the day ends up pointing at exactly one query carrying the SETTLED
+ * figure. `settled: true` is what changes the wording from "this would carry a
+ * deduction of X" — which is all the punch could honestly say, with the day
+ * still running — to "this carries a deduction of X", which is what is actually
+ * coming off the payslip.
+ *
+ * An ABSENCE has no punch to have raised anything, so that path is always a
+ * first raise; it goes through the same writer so the two kinds of query cannot
+ * drift in wording or severity.
+ */
+async function settleQuery(client, { day, employee, rule, actorId }) {
+  const absent = day.status === "ABSENT";
+  const existing = await hrQuery.findAutoQuery(client, {
+    employeeId: employee.employee_id, workDate: day.work_date, ruleId: rule.hr_rule_id,
+  });
+  const q = await hrQuery.upsertAutoQuery(client, {
+    employeeId: employee.employee_id,
+    workDate: day.work_date,
+    rule,
+    // The FIRST raiser owns `source` (the upsert does not overwrite it), so
+    // passing RECONCILE here only takes effect when nothing existed.
+    source: "RECONCILE",
+    minutesLate: absent ? null : day.minutes_late,
+    expectedStart: day.expected_start_time,
+    deduction: day.deduction_amount,
+    absent,
+    settled: true,
+    attendanceId: day.attendance_id || null,
+    actorId,
+  });
+  if (day.hr_query_id !== q.hr_query_id) {
+    await client.query(
+      "UPDATE attendance_day SET hr_query_id = $2 WHERE attendance_day_id = $1",
+      [day.attendance_day_id, q.hr_query_id],
+    );
+  }
+  logger.debug(
+    { employee: employee.employee_id, date: day.work_date, rule: rule.code, adopted: !!existing },
+    existing ? "[attendance] adopted the clock-in query" : "[attendance] auto-query raised",
   );
-  await client.query("UPDATE attendance_day SET hr_query_id = $2 WHERE attendance_day_id = $1", [day.attendance_day_id, rows[0].hr_query_id]);
-  logger.debug({ employee: employee.employee_id, date: day.work_date, rule: rule.code }, "[attendance] auto-query raised");
-  return rows[0].hr_query_id;
+  return q.hr_query_id;
 }
 
 /**

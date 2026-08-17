@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1175,
+  "route_count": 1209,
   "tiers": {
     "public": 32,
-    "self-scoped": 71,
-    "gated": 1072
+    "self-scoped": 73,
+    "gated": 1104
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -308,6 +308,12 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "DELETE /api/tenant/onboarding/templates/items/:itemId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/outbound/:id": {
       "auth": true,
@@ -2241,6 +2247,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/onboarding/outstanding": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/onboarding/templates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/onboarding/templates/:templateId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/operations/": {
       "auth": true,
       "rbac": true,
@@ -2421,6 +2445,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/payroll/mine/:runItemId/pdf": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/permissions/": {
       "auth": true,
       "rbac": true,
@@ -2451,13 +2481,67 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/auditor/data-room": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/auditor/data-room/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/auditor/data-room/:id/documents/:docId/download": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/client": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/client/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/documents/:id/download": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/client/dossier/:dossierId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/messages": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/messages/export": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/onboarding": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/quote-requests": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2475,6 +2559,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/data-room": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/data-room/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/investor": {
       "auth": true,
       "rbac": true,
@@ -2482,6 +2578,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/portal/me": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/messages": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/onboarding": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3940,6 +4048,18 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/onboarding/items/:itemId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/onboarding/templates/:templateId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/onboarding/templates/items/:itemId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5559,6 +5679,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/leave/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "POST /api/tenant/leave/types": {
       "auth": true,
       "rbac": true,
@@ -5751,6 +5877,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/onboarding/:id/reschedule": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/onboarding/templates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/onboarding/templates/:templateId/items": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/operations/": {
       "auth": true,
       "rbac": true,
@@ -5895,6 +6039,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/portal/auditor/data-room": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/auth/accept": {
       "auth": false,
       "rbac": false,
@@ -5913,6 +6063,18 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/portal/client/messages": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/quote-requests": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/client/tickets": {
       "auth": true,
       "rbac": true,
@@ -5920,6 +6082,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/portal/client/tickets/:id/replies": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/data-room/:id/answer": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/data-room/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/messages": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/onboarding/:clientId/:stepKey": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6334,6 +6520,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/sops/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/sops/:id/draft": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/sops/:id/render": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6754,6 +6952,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/vacancies/:id/applicants/:applicantId/score": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/vacancies/:id/consider": {
       "auth": true,
       "rbac": true,
       "validated": false,

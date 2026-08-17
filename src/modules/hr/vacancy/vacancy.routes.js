@@ -117,6 +117,9 @@ router.post("/:id/applicants/:applicantId/answers", requirePermission(M, "edit")
 
 router.post("/:id/publish", requirePermission(M, "approve"), validator.publish, controller.setPublished);
 router.post("/:id/applicants", requirePermission(M, "edit"), validator.applicant, controller.addApplicant);
+// `edit` and not `create`: putting somebody already on file in front of a role
+// is working the pipeline, not creating a candidate record from nothing.
+router.post("/:id/consider", requirePermission(M, "edit"), validator.consider, controller.considerForVacancy);
 router.patch("/:id/applicants/:applicantId", requirePermission(M, "edit"), validator.applicantStatus, controller.setApplicantStatus);
 // API F-17: `update: create.partial()` makes the lifecycle field patchable, so
 // PATCH was a second, cheaper route to the same state change. It now meets the

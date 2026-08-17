@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1175 |
+| Routes | 1209 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1175 mounted routes, grouped by path prefix.
+All 1209 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -972,6 +972,7 @@ All 1175 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/leave/holidays/:id` | — |
 | GET | `/api/tenant/leave/ledger/:employeeId` | — |
 | GET | `/api/tenant/leave/mine` | — |
+| POST | `/api/tenant/leave/mine` | — |
 | GET | `/api/tenant/leave/mine/balances` | — |
 | GET | `/api/tenant/leave/types` | — |
 | POST | `/api/tenant/leave/types` | — |
@@ -1113,7 +1114,16 @@ All 1175 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/onboarding/:id` | — |
 | POST | `/api/tenant/onboarding/:id/complete` | — |
 | POST | `/api/tenant/onboarding/:id/items` | — |
+| POST | `/api/tenant/onboarding/:id/reschedule` | — |
 | PATCH | `/api/tenant/onboarding/items/:itemId` | — |
+| GET | `/api/tenant/onboarding/outstanding` | — |
+| GET | `/api/tenant/onboarding/templates` | — |
+| POST | `/api/tenant/onboarding/templates` | — |
+| GET | `/api/tenant/onboarding/templates/:templateId` | — |
+| PATCH | `/api/tenant/onboarding/templates/:templateId` | — |
+| POST | `/api/tenant/onboarding/templates/:templateId/items` | — |
+| DELETE | `/api/tenant/onboarding/templates/items/:itemId` | — |
+| PATCH | `/api/tenant/onboarding/templates/items/:itemId` | — |
 
 ### `tenant/operations`
 
@@ -1216,6 +1226,7 @@ All 1175 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/payroll/advances/:advanceId` | — |
 | GET | `/api/tenant/payroll/advances/mine` | — |
 | GET | `/api/tenant/payroll/mine` | — |
+| GET | `/api/tenant/payroll/mine/:runItemId/pdf` | — |
 
 ### `tenant/permissions`
 
@@ -1235,17 +1246,37 @@ All 1175 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/portal/auditor` | — |
+| GET | `/api/tenant/portal/auditor/data-room` | — |
+| POST | `/api/tenant/portal/auditor/data-room` | — |
+| GET | `/api/tenant/portal/auditor/data-room/:id` | — |
+| GET | `/api/tenant/portal/auditor/data-room/:id/documents/:docId/download` | — |
 | POST | `/api/tenant/portal/auth/accept` | — |
 | POST | `/api/tenant/portal/auth/forgot` | — |
 | POST | `/api/tenant/portal/auth/login` | — |
 | GET | `/api/tenant/portal/client` | — |
+| GET | `/api/tenant/portal/client/documents` | — |
+| GET | `/api/tenant/portal/client/documents/:id/download` | — |
 | GET | `/api/tenant/portal/client/dossier/:dossierId` | — |
+| GET | `/api/tenant/portal/client/messages` | — |
+| POST | `/api/tenant/portal/client/messages` | — |
+| GET | `/api/tenant/portal/client/messages/export` | — |
+| GET | `/api/tenant/portal/client/onboarding` | — |
+| GET | `/api/tenant/portal/client/quote-requests` | — |
+| POST | `/api/tenant/portal/client/quote-requests` | — |
 | GET | `/api/tenant/portal/client/tickets` | — |
 | POST | `/api/tenant/portal/client/tickets` | — |
 | GET | `/api/tenant/portal/client/tickets/:id` | — |
 | POST | `/api/tenant/portal/client/tickets/:id/replies` | — |
+| GET | `/api/tenant/portal/data-room` | — |
+| GET | `/api/tenant/portal/data-room/:id` | — |
+| POST | `/api/tenant/portal/data-room/:id/answer` | — |
+| POST | `/api/tenant/portal/data-room/:id/documents` | — |
 | GET | `/api/tenant/portal/investor` | — |
 | GET | `/api/tenant/portal/me` | — |
+| GET | `/api/tenant/portal/messages` | — |
+| POST | `/api/tenant/portal/messages` | — |
+| GET | `/api/tenant/portal/onboarding` | — |
+| POST | `/api/tenant/portal/onboarding/:clientId/:stepKey` | — |
 | GET | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users/:id/password` | — |
@@ -1547,6 +1578,8 @@ All 1175 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/sops/:id` | — |
 | GET | `/api/tenant/sops/:id` | — |
 | PATCH | `/api/tenant/sops/:id` | — |
+| POST | `/api/tenant/sops/:id/draft` | — |
+| POST | `/api/tenant/sops/:id/render` | — |
 | GET | `/api/tenant/sops/rules` | — |
 | POST | `/api/tenant/sops/rules` | — |
 | DELETE | `/api/tenant/sops/rules/:id` | — |
@@ -1804,6 +1837,7 @@ All 1175 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/answers` | — |
 | GET | `/api/tenant/vacancies/:id/applicants/:applicantId/cv` | — |
 | POST | `/api/tenant/vacancies/:id/applicants/:applicantId/score` | — |
+| POST | `/api/tenant/vacancies/:id/consider` | — |
 | GET | `/api/tenant/vacancies/:id/criteria` | — |
 | POST | `/api/tenant/vacancies/:id/criteria` | — |
 | DELETE | `/api/tenant/vacancies/:id/criteria/:criterionId` | — |

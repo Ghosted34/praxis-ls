@@ -1,7 +1,7 @@
 "use strict";
 const crypto = require("crypto");
 const { makeService } = require("../../../shared/crud/resource");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { parseDataUrl } = require("../../../utils/data-url");
 const repo = require("./vacancy.repo");
@@ -9,6 +9,9 @@ const events = require("./vacancy.events");
 const scoring = require("./vacancy.scoring");
 const questions = require("./vacancy.questions");
 const drafting = require("./vacancy.draft");
+// 0703: what a candidate carries from the bench, and the checklist a hire raises.
+const rules = require("../onboarding/onboarding.rules");
+const onboarding = require("../onboarding/onboarding.service");
 const transcription = require("../../../services/ai/transcription.service");
 const vault = require("../../vault/document_vault/document_vault.service");
 const { logger } = require("../../../config/logger");
@@ -101,7 +104,113 @@ module.exports = {
     return row;
   },
 
-  async setApplicantStatus(client, { vacancyId, applicantId, status, actor }) {
+  /**
+   * Put somebody from the bench in front of a live vacancy (0703).
+   *
+   * ── THE VERB 0525 LEFT OUT ────────────────────────────────────────────────
+   *
+   * 0525 made past candidates findable — skills, a score, a CV, a summary — and
+   * its header says why: "a candidate who was right but late is the cheapest
+   * hire available next quarter". It delivered the FINDING. It did not deliver
+   * the GOING BACK. A recruiter could read that Marie scored 84 on last year's
+   * Customs Officer role and then had no action at all: to put her forward they
+   * retyped her name, re-uploaded her CV, and lost the assessment and the fact
+   * that she had ever been seen.
+   *
+   * ── WHAT IS CARRIED, AND WHAT IS DELIBERATELY NOT ─────────────────────────
+   *
+   * `rules.carryForward` decides, and the important half is what it drops. The
+   * previous SCORE does not travel: a score is against a JOB DESCRIPTION, so
+   * last year's Customs Officer number on a Finance Manager vacancy means
+   * nothing — and it would sort, putting a meaningless figure at the top of a
+   * shortlist. The new row gets a provisional estimate against THIS vacancy from
+   * `addApplicant`, like every other candidate.
+   *
+   * The CV rides across as a vault REFERENCE rather than a copy. It is the same
+   * document; duplicating the bytes would give the same person two CVs that can
+   * drift, and the vault's own access rules already cover it.
+   *
+   * ── PROVENANCE IS THE POINT ───────────────────────────────────────────────
+   *
+   * `sourced_from_applicant_id` is what makes this an act rather than a
+   * duplicate. Without it the new row is indistinguishable from the candidate
+   * applying twice, and the pipeline fills with apparent duplicates that nobody
+   * can tell apart from real ones.
+   */
+  async considerForVacancy(client, { vacancyId, applicantId = null, talentPoolId = null, actor = {} }) {
+    const vacancy = await repo.findById(client, vacancyId);
+    if (!vacancy) throw new AppError("NOT_FOUND", "Vacancy not found", 404);
+    // A closed role cannot take candidates. Caught here rather than at the
+    // screen, because the pool search spans vacancies and a stale tab is the
+    // normal way somebody arrives at this with a role that shut yesterday.
+    if (vacancy.status === "CLOSED") {
+      throw new AppError("VACANCY_CLOSED", "This vacancy is closed — reopen it, or choose another role.", 422);
+    }
+    if (!applicantId && !talentPoolId) {
+      throw new AppError("VALIDATION_ERROR", "An applicant_id or a talent_pool_id is required", 422);
+    }
+
+    let source = null;
+    let provenance = {};
+    if (applicantId) {
+      source = await repo.getApplicant(client, applicantId);
+      if (!source) throw new AppError("NOT_FOUND", "Candidate not found", 404);
+      if (source.vacancy_id === vacancyId) {
+        // Already on this pipeline. Idempotent rather than an error: the
+        // honest answer to "put them forward for this role" when they are
+        // already on it is the row they are already on.
+        return { ...source, already_on_vacancy: true };
+      }
+      provenance = { sourced_from_applicant_id: applicantId };
+    } else {
+      const { rows } = await client.query("SELECT * FROM talent_pool WHERE talent_pool_id = $1", [talentPoolId]);
+      source = rows[0];
+      if (!source) throw new AppError("NOT_FOUND", "Bench candidate not found", 404);
+      // The hand-entered bench stores skills as free text; the applicant table
+      // wants an array. Split here rather than in `carryForward`, which should
+      // not know that one of its two sources is a different shape.
+      source = {
+        ...source,
+        skills: String(source.skills || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean),
+      };
+      provenance = { sourced_from_talent_pool_id: talentPoolId };
+    }
+
+    const row = await this.addApplicant(client, {
+      vacancyId,
+      data: {
+        ...rules.carryForward(source),
+        ...provenance,
+        sourced_at: new Date(),
+        sourced_by: await resolveActorId(client, actor.user_id),
+        source: applicantId ? "talent_pool" : "bench",
+        status: "APPLIED",
+      },
+      actor,
+    });
+
+    if (talentPoolId) {
+      // Stops two recruiters approaching the same person about two roles in the
+      // same week — the failure that makes a company look disorganised to
+      // exactly the people it wants to hire.
+      await client.query("UPDATE talent_pool SET last_considered_at = now() WHERE talent_pool_id = $1", [talentPoolId]);
+    }
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.APPLICANT_ADDED, moduleKey: events.MODULE,
+      entityRef: `vacancy:${vacancyId}`,
+      after: { applicant_id: row.applicant_id, ...provenance, from_vacancy: source.vacancy_id || null },
+    });
+    return row;
+  },
+
+  /**
+   * Move an applicant through the pipeline. `startsOn` is accepted only for the
+   * transition into HIRED, where it becomes the employee's hire date and the
+   * base every onboarding due date is computed from — a hire with no start date
+   * gets a checklist whose items are all undated, which is the correct fallback
+   * but a poor default when the recruiter knows the date.
+   */
+  async setApplicantStatus(client, { vacancyId, applicantId, status, startsOn = null, actor }) {
     const before = await repo.getApplicant(client, applicantId);
     if (!before || before.vacancy_id !== vacancyId) return null;
     const row = await repo.updateApplicant(client, applicantId, { status });
@@ -121,14 +230,40 @@ module.exports = {
       // employee master, which is how one department became three; carrying the
       // reference means the new hire lands in the same node the vacancy named.
       const vacancy = await repo.findById(client, vacancyId);
+      // `hired_on` (0696) is stamped HERE and was not before. Leave-accrual
+      // counts service from it and 0703's onboarding dates are offsets against
+      // it, so a hire provisioned without one accrues no leave and gets a
+      // checklist with no dates on it.
       const ins = await client.query(
-        "INSERT INTO employee (full_name, job_title, department, scope_id, is_active) VALUES ($1, $2, $3, $4, true) RETURNING employee_id",
-        [row.full_name, vacancy?.title || null, vacancy?.department || null, vacancy?.scope_id || null],
+        "INSERT INTO employee (full_name, job_title, department, scope_id, hired_on, is_active) VALUES ($1, $2, $3, $4, $5, true) RETURNING *",
+        [row.full_name, vacancy?.title || null, vacancy?.department || null, vacancy?.scope_id || null, startsOn || null],
       );
-      const employeeId = ins.rows[0].employee_id;
+      const employee = ins.rows[0];
+      const employeeId = employee.employee_id;
       await emitEvent(client, { eventTypeKey: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, actorUserId: actor.user_id, payload: { provisioned_from_applicant: applicantId, vacancy_id: vacancyId } });
       await audit(client, { actorUserId: actor.user_id, action: "employee_provisioned", moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, after: { employee_id: employeeId, full_name: row.full_name, source: "vacancy_hire" } });
-      return { ...row, provisioned_employee_id: employeeId };
+
+      /*
+       * Raise the onboarding checklist (0703).
+       *
+       * Until now, hiring provisioned an employee row and stopped — the
+       * checklist existed only if somebody remembered to make one, at exactly
+       * the moment everybody is busy, and the item they forgot to type was the
+       * one that got missed.
+       *
+       * `raiseForEmployee` returns null and never throws: it is idempotent on
+       * re-saving the status, and a tenant with no active template must still
+       * be able to hire somebody. A missing onboarding template is not a reason
+       * to refuse a hire, and this runs inside the hiring transaction.
+       */
+      const checklist = await onboarding.raiseForEmployee(client, {
+        employee, applicantId, startsOn: startsOn || null, actor,
+      });
+      return {
+        ...row,
+        provisioned_employee_id: employeeId,
+        onboarding_checklist_id: checklist ? checklist.onboarding_checklist_id : null,
+      };
     }
     return row;
   },

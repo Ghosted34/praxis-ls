@@ -616,6 +616,32 @@ const TEMPLATES = {
     sampleData: { number: "CT-2026-0007", kind: "CDI", effective_on: "2026-08-01", employee_name: "Jean Mballa", job_title: "Chef de quai", articles: [{ title: "Fonctions / Duties", body: "Le salarié est engagé en qualité de Chef de quai et exercera ses fonctions au port de Douala." }, { title: "Rémunération / Pay", body: "Le salaire brut mensuel est fixé à 850 000 XAF, payable en fin de mois." }, { title: "Durée / Term", body: "Le présent contrat est conclu pour une durée indéterminée (CDI)." }], currency: "XAF" },
   },
 
+  SOP_DOCUMENT: {
+    docType: "SOP_DOCUMENT", title: { fr: "Procédure opérationnelle", en: "Standard operating procedure" }, module: "hr/sop_onboarding", fields: ["sections", "review date"],
+    build: (d, cfg, entity, verify) => {
+      // Same section-per-heading shape as EMPLOYMENT_CONTRACT: the body is
+      // markdown cut at its `##` headings, so what a person edited on screen is
+      // what the printed procedure is divided into.
+      const secs = (d.sections || []).map((a) => k.section({ fr: a.title, en: a.title }, `<div class="box">${k.esc(a.body).replace(/\n/g, "<br>")}</div>`, cfg)).join("");
+      const meta = [
+        [{ fr: "Portée", en: "Scope" }, d.scope],
+        [{ fr: "Version", en: "Version" }, d.version],
+        [{ fr: "En vigueur", en: "Effective" }, k.dateFmt(d.effective_on)],
+        [{ fr: "Révision", en: "Review" }, k.dateFmt(d.review_on)],
+      ];
+      const body = [
+        k.head(entity, { fr: d.title, en: d.title }, d.number, meta, cfg),
+        secs,
+        // A procedure is issued, not agreed between two parties — so it carries
+        // an owner's sign-off rather than the two-party block a contract uses.
+        k.signatureBlock({ ...cfg, show: { ...cfg.show, signature: true } }),
+        k.footer(entity, cfg, verify),
+      ].join("");
+      return k.shell("SOP " + (d.number || ""), body, cfg);
+    },
+    sampleData: { number: "SOP-2026-0004", title: "Container loading at the quay", scope: "Operations", version: 2, effective_on: "2026-09-01", review_on: "2027-09-01", sections: [{ title: "Purpose", body: "To set out how a container is loaded, sealed and released at the Douala quay." }, { title: "Scope", body: "Applies to whoever is performing this operation, whatever their department." }, { title: "Procedure", body: "1. Confirm the booking reference against the transit order.\n2. Inspect the container and record its condition." }], currency: "XAF" },
+  },
+
   GRN: {
     docType: "GRN", title: { fr: "Bon de réception", en: "Goods-received note" }, module: "wms/inbound", fields: ["QA sign-off"],
     build: (d, cfg, entity, verify) => {

@@ -281,6 +281,29 @@ docker compose build \
   --build-arg BUILD_SHA="$BUILD_SHA" \
   --build-arg BUILD_TIME="$BUILD_TIME"
 
+# Prove Chromium is actually usable before migrations or any application
+# rollout. If the first attempt fails, rebuild the protected images once without
+# cache so both `apk add chromium` and `npm install` rerun, then retry. The second
+# failure is a hard stop; runtime package installation is deliberately avoided.
+echo "── running Puppeteer/Chromium PDF-render preflight"
+if ! docker compose run --rm --no-deps puppeteer-preflight; then
+  echo "!! Browser preflight failed — rebuilding protected images once without cache."
+  if ! docker compose build --no-cache \
+    --build-arg BUILD_SHA="$BUILD_SHA" \
+    --build-arg BUILD_TIME="$BUILD_TIME" \
+    api api-standby worker puppeteer-preflight; then
+    announce "DEPLOY ABORTED on ${HOSTNAME_S}: no-cache browser recovery rebuild failed before migrations"
+    exit 1
+  fi
+
+  echo "── retrying Puppeteer/Chromium PDF-render preflight"
+  if ! docker compose run --rm --no-deps puppeteer-preflight; then
+    announce "DEPLOY ABORTED on ${HOSTNAME_S}: browser preflight failed after the no-cache rebuild; nothing was migrated or rolled out"
+    exit 1
+  fi
+fi
+echo "   Puppeteer launched Chromium and rendered a valid PDF"
+
 # Tag what we just built so a rollback has something it can name. Without this
 # every image is `latest` and "the previous one" is not addressable.
 #

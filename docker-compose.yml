@@ -248,6 +248,19 @@ services:
       # database and to public hostnames over HTTP, and to nothing else.
     command: ["node", "scripts/ops/uptime-probe.js"]
 
+  # One-shot deployment gate: prove the image can launch Alpine's system
+  # Chromium through Puppeteer and render a valid PDF before any migration or
+  # application process is allowed to start.
+  puppeteer-preflight:
+    build:
+      context: .
+      target: runtime
+    environment:
+      NODE_ENV: production
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    command: ["node", "scripts/ops/puppeteer-preflight.js"]
+    restart: "no"
+
   # One-shot: runs platform + all-tenant migrations, then exits. api/worker wait
   # for it, so a plain `docker compose up -d` is always schema-current — on the
   # first boot AND on every update. Migrations are tracked per file (re-running
@@ -257,6 +270,7 @@ services:
       context: .
       target: runtime
     depends_on:
+      puppeteer-preflight: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
     env_file: .env
     environment:
@@ -294,6 +308,7 @@ services:
     # deliberately stopped during an incident.
     restart: unless-stopped
     depends_on:
+      puppeteer-preflight: { condition: service_completed_successfully }
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -354,6 +369,7 @@ services:
     # deliberately stopped during an incident.
     restart: unless-stopped
     depends_on:
+      puppeteer-preflight: { condition: service_completed_successfully }
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -404,6 +420,7 @@ services:
     # deliberately stopped during an incident.
     restart: unless-stopped
     depends_on:
+      puppeteer-preflight: { condition: service_completed_successfully }
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

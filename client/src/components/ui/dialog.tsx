@@ -186,6 +186,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive,
   busy,
+  confirmDisabled,
 }: {
   open: boolean;
   onClose: () => void;
@@ -196,6 +197,17 @@ export function ConfirmDialog({
   cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
+  /**
+   * The confirmation cannot proceed yet — a required attachment is missing, a
+   * name has not been typed.
+   *
+   * Distinct from `busy`, which means "it is already happening". Both grey the
+   * button, and conflating them would say "working…" over a dialog that has not
+   * started and cannot. Prefer this to letting the press through and reporting a
+   * validation error afterwards: a dialog that accepts a click it will refuse is
+   * a dialog people click twice.
+   */
+  confirmDisabled?: boolean;
 }) {
   return (
     <Dialog
@@ -215,7 +227,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             className={cn(
               "h-9 rounded-md px-3 text-sm font-semibold text-white transition-opacity disabled:opacity-50",
               destructive ? "bg-[rgb(var(--bad))]" : "bg-primary",

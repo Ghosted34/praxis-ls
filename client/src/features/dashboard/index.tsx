@@ -33,6 +33,7 @@
  * This is a rehousing, not a redesign.
  */
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/app/auth/auth-context";
 import { useCommandPalette } from "@/app/layout/command-palette-context";
 import { PageContainer } from "@/components/layout/page-container";
@@ -79,6 +80,7 @@ function summariseFilters(f: ControlTowerFilters): string {
 }
 
 export function DashboardPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const palette = useCommandPalette();
   const [filters, setFilters] = React.useState<ControlTowerFilters>({});
@@ -122,16 +124,16 @@ export function DashboardPage() {
   );
 
   const meetingStats: MeetingStat[] = [
-    { label: "Active files", value: String(data.activeFiles) },
-    { label: "Moving", value: String(data.movementFiles) },
-    { label: "At a facility", value: String(data.activityFiles) },
+    { label: t("dash.activeFiles"), value: String(data.activeFiles) },
+    { label: t("dash.moving"), value: String(data.movementFiles) },
+    { label: t("dash.atFacility"), value: String(data.activityFiles) },
     {
-      label: "Need a location",
+      label: t("dash.needLocation"),
       value: String(data.needsLocation),
       tone: data.needsLocation > 0 ? "warn" : "ok",
     },
     {
-      label: "Approvals waiting",
+      label: t("dash.approvalsWaiting"),
       value: String(data.approvals),
       tone: data.approvals > 0 ? "warn" : "ok",
     },

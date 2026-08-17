@@ -63,6 +63,7 @@ import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LangToggle } from "@/components/lang-toggle";
+import { navT } from "@/lib/i18n";
 import { getMode, setMode, resolved } from "@/lib/theme-mode";
 import { ClockPunchChip } from "@/components/clock-punch";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
@@ -533,6 +534,7 @@ function UserMenu({
  *  group carries its area icon. Single-screen areas (now hubs) are a single
  *  link; multi-item areas (Overview) are a collapsible section with a chevron. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
+  const { t } = useTranslation();
   const nav = useVisibleNav();
   const { pathname } = useLocation();
   // Route-driven expansion: a multi-item section is open only while you're on one
@@ -566,7 +568,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
           const it = g.items[0];
           return (
             <NavLink
-              key={g.heading}
+              key={navT(t, g.heading)}
               to={it.to}
               end={it.to === "/"}
               onClick={onNavigate}
@@ -581,7 +583,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               }
             >
               <Icon />
-              <span>{g.heading}</span>
+              <span>{navT(t, g.heading)}</span>
             </NavLink>
           );
         }
@@ -590,7 +592,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
         // one of its screens (route-driven), collapsed everywhere else.
         const open = inGroup(g) || !!manual[g.heading];
         return (
-          <div key={g.heading}>
+          <div key={navT(t, g.heading)}>
             <button
               type="button"
               onClick={() => setManual((m) => ({ ...m, [g.heading]: !open }))}
@@ -598,7 +600,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
             >
               <Icon />
-              <span className="flex-1 text-left">{g.heading}</span>
+              <span className="flex-1 text-left">{navT(t, g.heading)}</span>
               <ChevronIcon
                 className={cn(
                   "h-3.5 w-3.5 transition-transform",

@@ -45,6 +45,16 @@ export function setLang(lang: "en" | "fr") {
   void i18n.changeLanguage(lang);
 }
 
+/**
+ * Translate a navigation label by its EXACT English text. The dict's `nav`
+ * section is keyed by the label itself, so a surface that renders a label
+ * (areas.ts, nav-model.ts, ribbon, rail, tabs) can translate without knowing
+ * an id — and anything missing falls back to the English label harmlessly.
+ */
+export function navT(t: (k: string, o?: { defaultValue?: string }) => string, label: string): string {
+  return t(`nav.${label}`, { defaultValue: label });
+}
+
 /** Locale for Intl formatting — French numbers/dates use fr-FR, everything
  *  else stays en. Kept here so format.ts and any component agree. */
 export function currentLocale(): string {

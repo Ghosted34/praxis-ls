@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 117,
-  "route_count": 1152,
+  "route_count": 1160,
   "tiers": {
     "public": 32,
-    "self-scoped": 69,
-    "gated": 1051
+    "self-scoped": 71,
+    "gated": 1057
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -885,7 +885,31 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/appraisals/cycles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/appraisals/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/appraisals/reviews": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/appraisals/reviews/:reviewId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/appraisals/reviews/mine": {
       "auth": true,
       "rbac": false,
       "validated": false,
@@ -4468,6 +4492,48 @@
       "tier": "gated"
     },
     "POST /api/tenant/appraisals/:id/reward": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/cycles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/cycles/:cycleId/reviews": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/cycles/:cycleId/score": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/cycles/:cycleId/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/reviews/:reviewId/narrate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/appraisals/reviews/:reviewId/respond": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/appraisals/reviews/:reviewId/submit": {
       "auth": true,
       "rbac": true,
       "validated": false,

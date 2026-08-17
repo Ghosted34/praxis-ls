@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1172 |
+| Routes | 1175 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1172 mounted routes, grouped by path prefix.
+All 1175 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1069,6 +1069,7 @@ All 1172 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | POST | `/api/tenant/milestones/:id/advance` | — |
+| PATCH | `/api/tenant/milestones/:id/public-details` | — |
 | POST | `/api/tenant/milestones/:id/reopen` | — |
 | GET | `/api/tenant/milestones/assumptions/:serviceTypeId` | — |
 | PUT | `/api/tenant/milestones/assumptions/:serviceTypeId` | — |
@@ -1573,6 +1574,8 @@ All 1172 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/success-stories/` | — |
 | GET | `/api/tenant/success-stories/:id` | — |
 | PATCH | `/api/tenant/success-stories/:id` | — |
+| POST | `/api/tenant/success-stories/:id/media` | — |
+| DELETE | `/api/tenant/success-stories/:id/media/:documentId` | — |
 | POST | `/api/tenant/success-stories/:id/publish` | — |
 | POST | `/api/tenant/success-stories/:id/sign-off` | — |
 | POST | `/api/tenant/success-stories/:id/unpublish` | — |

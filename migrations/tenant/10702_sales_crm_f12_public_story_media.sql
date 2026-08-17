@@ -48,3 +48,6 @@ END $$;
 CREATE INDEX IF NOT EXISTS ix_vault_public_media_binding
   ON document_vault(public_media_scope, public_media_entity_ref, public_media_role)
   WHERE public_media_scope IS NOT NULL;
+
+-- DOWN
+-- ALTER TABLE live.thing DROP COLUMN new_col;

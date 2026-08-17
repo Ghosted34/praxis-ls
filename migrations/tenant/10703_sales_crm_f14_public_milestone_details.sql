@@ -32,3 +32,7 @@ BEGIN
       CHECK (public_progress_note IS NULL OR char_length(public_progress_note) <= 1000);
   END IF;
 END $$;
+
+
+-- DOWN
+-- ALTER TABLE live.thing DROP COLUMN new_col;

@@ -121,7 +121,7 @@ export function PublicTrackingPage() {
                 <h2 className="mt-1 text-xl font-semibold">{data.reference}</h2>
                 <p className="mt-1 text-muted-foreground">{data.origin || "Origin pending"} → {data.destination || "Destination pending"}</p>
               </div>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary-ink">
                 {STATUS_LABEL[data.computed_status] || data.computed_status}
               </span>
             </div>

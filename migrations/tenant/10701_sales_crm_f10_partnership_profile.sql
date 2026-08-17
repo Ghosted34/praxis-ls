@@ -8,3 +8,7 @@ INSERT INTO party_document_type (
   true, true, false, false, 'WARN'
 )
 ON CONFLICT (code) DO NOTHING;
+
+
+-- DOWN
+-- ALTER TABLE live.thing DROP COLUMN new_col;

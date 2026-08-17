@@ -17,3 +17,6 @@ END $$;
 CREATE INDEX IF NOT EXISTS ix_quote_request_converted_opportunity
   ON quote_request(converted_opportunity_id)
   WHERE converted_opportunity_id IS NOT NULL;
+
+-- DOWN
+-- ALTER TABLE live.thing DROP COLUMN new_col;

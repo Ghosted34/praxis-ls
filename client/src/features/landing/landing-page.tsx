@@ -168,6 +168,12 @@ export function LandingPage() {
         </button>
       </main>
 
+      {/* G4 — the PRD §5.4 [RULE] line, on the pre-auth marketing surface.
+          Same placement and styling as the client portal's footer. */}
+      <footer className="px-6 pb-8 pt-2 text-center text-xs text-muted-foreground">
+        Powered by JBS Praxis LLC
+      </footer>
+
       {open && <LoginModal onClose={() => setOpen(false)} />}
     </div>
   );

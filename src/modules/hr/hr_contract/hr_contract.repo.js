@@ -21,7 +21,12 @@ module.exports = {
     const { rows } = await client.query(
       `SELECT hc.*, e.full_name AS employee_name, e.department, e.job_title AS employee_job_title,
               e.base_salary, e.hired_on,
-              ce.legal_name AS entity_name, ce.country AS entity_country,
+              -- country_code, not country: 0100 named it that, and 0515 built
+              -- payroll_country / incorporation_country on top of it. The alias
+              -- stays entity_country -- hr_contract.draft prints it beside the
+              -- employer name, and a two-letter code is what that line has
+              -- always shown.
+              ce.legal_name AS entity_name, ce.country_code AS entity_country,
               v.title AS vacancy_title
          FROM hr_contract hc
          LEFT JOIN employee e ON e.employee_id = hc.employee_id

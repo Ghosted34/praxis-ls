@@ -155,4 +155,43 @@ async function periodReconciled(client, periodCode) {
   return !!rows[0];
 }
 
-module.exports = { createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems, payslipsForEmployee, itemBelongsToEmployee, attendanceInputs, periodReconciled };
+// ── G18: effective-dated payroll config ─────────────────────────────────────
+
+/** The most recent config effective on or before `onOrBefore` for an entity. */
+async function configForPeriod(client, entityId, onOrBefore) {
+  const { rows } = await client.query(
+    `SELECT * FROM payroll_config
+      WHERE entity_id = $1 AND effective_date <= $2
+      ORDER BY effective_date DESC LIMIT 1`,
+    [entityId, onOrBefore],
+  );
+  return rows[0] || null;
+}
+
+/** Upsert a config row (one per entity + effective date). */
+async function upsertConfig(client, { entityId, effectiveDate, config, actorUserId }) {
+  const { rows } = await client.query(
+    `INSERT INTO payroll_config (entity_id, effective_date, config, created_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (entity_id, effective_date)
+       DO UPDATE SET config = EXCLUDED.config, created_by = EXCLUDED.created_by
+     RETURNING *`,
+    [entityId, effectiveDate, JSON.stringify(config), actorUserId || null],
+  );
+  return rows[0];
+}
+
+/** Full history for an entity, newest first. */
+async function listConfig(client, entityId) {
+  const { rows } = await client.query(
+    "SELECT * FROM payroll_config WHERE entity_id = $1 ORDER BY effective_date DESC",
+    [entityId],
+  );
+  return rows;
+}
+
+module.exports = {
+  createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems,
+  payslipsForEmployee, itemBelongsToEmployee, attendanceInputs, periodReconciled,
+  configForPeriod, upsertConfig, listConfig,
+};

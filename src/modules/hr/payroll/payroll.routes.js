@@ -41,6 +41,10 @@ router.patch("/advances/:advanceId", requirePermission(M, "approve"), validator.
  * `/:id` so the path is not read as a run id. */
 router.get("/employees/:employeeId/payslips", requirePermission(M, "view"), controller.employeePayslips);
 
+// G18 — effective-dated rate configuration (the legacy's admin task). Declared
+// before "/:id" so "config" is never captured as an id.
+router.get("/config", requirePermission(M, "view"), controller.listConfig);
+router.post("/config", requirePermission(M, "edit"), validator.saveConfig, controller.saveConfig);
 router.get("/", requirePermission(M, "view"), controller.list);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.post("/", requirePermission(M, "create"), validator.createRun, controller.create);

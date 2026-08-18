@@ -778,6 +778,8 @@ async function generate(client, { docType, entityId, recordId, actor }) {
   const { cfg, entity } = await resolveCfg(client, docType, ent);
   const entityRef = `${docType.toLowerCase()}:${recordId || "adhoc"}`;
   const key = `documents/${docType}/${recordId || "adhoc"}-${Date.now()}.pdf`;
+  // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
+  cfg.watermark = kit.watermarkFor(client, cfg.watermark);
   const html = tpl.build(data, cfg, entity, `praxis://verify/${entityRef}`);
   return pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
 }
@@ -792,6 +794,8 @@ async function renderPdfFromData(client, { docType, data, entityId, actor }) {
   const stamp = Date.now();
   const entityRef = `${docType.toLowerCase()}:${stamp}`;
   const key = `documents/${docType}/${stamp}.pdf`;
+  // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
+  cfg.watermark = kit.watermarkFor(client, cfg.watermark);
   const html = tpl.build(data, cfg, entity, `praxis://verify/${entityRef}`);
   return pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
 }

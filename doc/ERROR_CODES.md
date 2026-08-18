@@ -19,13 +19,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | Alias | Prefer | Raised |
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
-| `BAD_STATE` | `BAD_STATUS` | 25× |
+| `BAD_STATE` | `BAD_STATUS` | 28× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (377)
+## All codes (381)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -91,7 +91,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 25× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 28× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 1× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
@@ -146,6 +146,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_FILE` | 422 | 1× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
+| `EMPTY_RECON` | 422 | 1× | — |
 | `EMPTY_SET` | 422 | 1× | — |
 | `EMPTY_STATEMENT` | 422 | 2× | — |
 | `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
@@ -227,7 +228,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 431× | — |
+| `NOT_FOUND` | 404 | 436× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -312,9 +313,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
-| `REASON_REQUIRED` | 422 | 3× | — |
+| `REASON_REQUIRED` | 422 | 4× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
+| `RECON_OPEN` | 409 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |
 | `REF_ENTITY_REQUIRED` | 422 | 2× | — |
@@ -342,6 +344,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
+| `SELF_VALIDATE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | — | 1× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
@@ -387,6 +390,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_JOURNAL` | 422 | 1× | — |
 | `UNKNOWN_LOAD_MODE` | 422 | 1× | — |
 | `UNKNOWN_METRIC` | 422 | 1× | — |
+| `UNKNOWN_RATE` | 422 | 1× | — |
 | `UNKNOWN_REPORT` | 404, 422 | 4× | — |
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
@@ -395,7 +399,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 172× | — |
+| `VALIDATION_ERROR` | 422 | 176× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

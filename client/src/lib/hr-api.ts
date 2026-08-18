@@ -4,6 +4,7 @@
  */
 import { tenant } from "./api-client";
 import { tokenStore } from "./token-store";
+import { deviceId } from "./device-id";
 
 export type WorkSite = {
   work_site_id: string;
@@ -68,39 +69,11 @@ function qs(params?: Record<string, string | undefined>) {
 
 /* ── Registered devices (0524) ────────────────────────────────────────────────
  *
- * WHAT THIS IS NOT. The fingerprint below is a random id this browser generated
- * once and kept — it is not a hardware identifier and it is not an
- * authentication factor. Anyone who wants to copy it can. Its value is that a
- * SECOND device showing up against one employee becomes a dated row a manager
- * can see, which is what turns casual buddy-punching into something deliberate
- * that leaves a trace.
- *
- * NOT a browser-signal fingerprint (canvas, fonts, screen metrics) on purpose:
- * those identify the person across sites whether or not they consented, which is
- * a far larger thing to do to an employee than the problem warrants. A random
- * value in this app's own storage identifies the device only to this app, and
- * clearing site data resets it — the cost of which is one re-registration.
+ * The id itself now lives in ./device-id, because it has to survive sign-out
+ * and only auth-context's logout can arrange that — see the header there.
+ * Re-exported from here so the clock's call sites keep one import.
  */
-const DEVICE_KEY = "praxis.device.id";
-
-/** This browser's device id, minted on first read. Empty string when storage is
- *  unavailable (private mode, embedded webview) — the server treats a missing
- *  fingerprint as "no device presented" rather than failing the punch. */
-export function deviceId(): string {
-  try {
-    let id = localStorage.getItem(DEVICE_KEY);
-    if (!id) {
-      id = (
-        crypto.randomUUID?.() ??
-        `${Date.now()}-${Math.random().toString(36).slice(2)}`
-      ).replace(/-/g, "");
-      localStorage.setItem(DEVICE_KEY, id);
-    }
-    return id;
-  } catch {
-    return "";
-  }
-}
+export { deviceId } from "./device-id";
 
 export type DeviceInfo = {
   fingerprint: string;

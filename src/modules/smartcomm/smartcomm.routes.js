@@ -88,6 +88,9 @@ router.patch("/messages/:messageId", edit, v.editMessage, c.edit);
 router.delete("/messages/:messageId", edit, c.del);
 // Own-preference writes again: a reaction and a star are rows keyed on the caller.
 router.post("/messages/:messageId/react", view, v.react, c.react);
+// G22 — acknowledge a message (read receipt on a directive). Any member may
+// acknowledge; the sender sees acknowledged_by/acknowledged_at on the row.
+router.post("/messages/:messageId/acknowledge", view, c.ack);
 router.post("/messages/:messageId/star", view, c.star);
 
 module.exports = { basePath: "/smartcomm", feature: "comms", router };

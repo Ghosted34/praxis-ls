@@ -38,7 +38,13 @@ const {
 } = require("../../src/modules/operations/operations_file/operations_file.repo");
 
 /** Columns set by the database or by `touch`, never by a caller's payload. */
-const NOT_WRITABLE = new Set(["dossier_id", "created_at", "updated_at"]);
+const NOT_WRITABLE = new Set([
+  "dossier_id", "created_at", "updated_at",
+  // G19 — OCR write-back columns. Written only by the reconciliation module
+  // (dossier_reconciliation.service stampDossier), never through the dossier
+  // CRUD writable list.
+  "ocr_reconciliation_id", "ocr_amount", "ocr_status",
+]);
 
 /**
  * Strip SQL comments before scanning.

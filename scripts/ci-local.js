@@ -72,6 +72,7 @@ const GATES = [
   { group: "backend", name: "Migration idempotency", cmd: node("scripts/db/check-migration-idempotency.js") },
   { group: "backend", name: "Destructive migrations declared", cmd: node("scripts/db/check-destructive-migrations.js") },
   { group: "backend", name: "Schema drift", cmd: node("scripts/db/check-schema-drift.js") },
+  { group: "backend", name: "Query columns exist", cmd: node("scripts/db/check-query-columns.js") },
   { group: "backend", name: "Write routes are validated", cmd: node("scripts/check-write-route-validators.js") },
   { group: "backend", name: "API contract", cmd: node("scripts/check-api-contract.js") },
   { group: "backend", name: "Response-contract drift", cmd: node("scripts/check-response-contract.js") },

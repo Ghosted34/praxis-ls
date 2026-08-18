@@ -111,6 +111,11 @@ function tenantIdOf(client) {
  * search_path` that `ensureTenantRole()` now applies.
  */
 const NEEDS_PIN = Symbol.for("praxis.conn.needsPin");
+// G2 — which environment a pooled client is bound to, so downstream services
+// (email, PDF watermarking) can refuse or mark side-effects without the caller
+// threading `env` through every signature. Set in acquire(), re-set by the
+// tenant-context lease when it switches schemas.
+const ENV = Symbol.for("praxis.conn.env");
 
 /**
  * Whether a transaction pooler sits between this process and Postgres.
@@ -367,7 +372,7 @@ async function createPool(meta) {
     try {
       await registerType(c);
     } catch {
-      /* pgvector optional in some envs */
+      /* @silent:storage|parse|teardown — pgvector optional in some envs */
     }
   });
   pool.on("error", (err) =>
@@ -418,6 +423,7 @@ async function acquire(meta, env) {
   // resolve the tenant from the client rather than from an argument each caller
   // has to remember to pass.
   client[TENANT_ID] = meta.tenant_id || null;
+  client[ENV] = env;
 
   if (POOLED) {
     // Verify rather than assume, once per connection. A tenant provisioned before
@@ -476,7 +482,7 @@ async function withTenantConnection(meta, env, fn) {
       try {
         await client.query("ROLLBACK");
       } catch {
-        /* the connection is going back to the pool either way */
+        /* @silent:storage|parse|teardown — the connection is going back to the pool either way */
       }
       throw err;
     }
@@ -513,6 +519,7 @@ function poolStats() {
 async function listActiveTenants() {
   const { rows } = await platform().query(
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
+            t.last_sandbox_wipe_at,
             td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
             td.live_schema, td.sandbox_schema, td.pool_max
        FROM platform.tenant t
@@ -567,5 +574,6 @@ module.exports = {
   closeAll,
   SCHEMA,
   TENANT_ID,
+  ENV,
   tenantIdOf,
 };

@@ -30,6 +30,7 @@ module.exports = {
   del: A((c, req) => service.deleteMessage(c, { messageId: req.params.messageId, actor: actor(req) })),
   react: A((c, req) => service.react(c, { messageId: req.params.messageId, emoji: req.body.emoji, actor: actor(req) })),
   star: A((c, req) => service.star(c, { messageId: req.params.messageId, actor: actor(req) })),
+  ack: A((c, req) => service.acknowledge(c, { messageId: req.params.messageId, actor: actor(req) })),
   starred: A((c, req) => service.starred(c, actor(req))),
   search: A((c, req) => service.search(c, { actor: actor(req), term: req.query.q })),
   markRead: A((c, req) => service.markRead(c, { groupId: req.params.id, actor: actor(req) })),

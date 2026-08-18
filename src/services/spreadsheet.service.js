@@ -213,6 +213,15 @@ function buildCsv({ columns, rows = [] }) {
 function parseCsv(input) {
   let text = Buffer.isBuffer(input) ? input.toString("utf8") : String(input);
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // strip BOM
+  // Bound the input (CodeQL js/loop-bound-injection): the parse loop below is
+  // O(text.length) with `length` user-controlled. A 25 MB upload would walk
+  // 25 million characters in one request; imports are register-sized, so the
+  // cap is generous and the rejection is loud.
+  if (text.length > 5 * 1024 * 1024) {
+    const e = new Error("Spreadsheet is too large — the limit is 5 MB");
+    e.status = 413;
+    throw e;
+  }
 
   const grid = [];
   let row = [];

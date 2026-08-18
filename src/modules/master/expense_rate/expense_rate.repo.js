@@ -37,4 +37,29 @@ async function list(client, q = {}) {
   const { rows } = await client.query(`${SELECT} ${where} ORDER BY er.effective_from DESC LIMIT $1 OFFSET $2`, params);
   return rows;
 }
-module.exports = { insert, get, forItem, update, remove, list };
+// ── G7 import lookups — the tenant's real values for the template reference
+// sheet and the validate/commit resolution. All rows are small registers; a
+// per-row lookup would be 400 queries, these are one each. ────────────────
+
+async function listDictionaryItems(c) {
+  const { rows } = await c.query(
+    "SELECT dictionary_item_id, code, name_en, name_fr FROM dictionary_item WHERE is_active ORDER BY name_en, name_fr",
+  );
+  return rows;
+}
+
+async function listProviders(c) {
+  const { rows } = await c.query(
+    "SELECT rate_provider_id, code, name FROM rate_provider WHERE is_active ORDER BY name",
+  );
+  return rows;
+}
+
+async function listContainerTypes(c) {
+  const { rows } = await c.query(
+    "SELECT ref_id, code, name_en, name_fr FROM dictionary_ref WHERE kind = 'CONTAINER_TYPE' AND is_active ORDER BY code",
+  );
+  return rows;
+}
+
+module.exports = { insert, get, forItem, update, remove, list, listDictionaryItems, listProviders, listContainerTypes };

@@ -8,6 +8,14 @@ const createRun = z.object({
   period_code: z.string().regex(/^\d{4}-\d{2}$/, "period_code must be YYYY-MM"),
 });
 const compute = z.object({ config: z.record(z.string(), z.any()).optional() });
+
+// G18 — saving an effective-dated rate config. Keys are checked against the
+// known rate keys in the service (a typo must not silently ride along).
+const saveConfig = z.object({
+  entity_id: z.string().uuid(),
+  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  config: z.record(z.string(), z.any()).default({}),
+});
 const status = z.object({
   status: z.enum(["OPEN", "COMPUTED", "SUBMITTED", "APPROVED", "VALIDATED", "DISBURSED", "REJECTED"]),
 });
@@ -52,6 +60,7 @@ const mw = (k) => (req, _res, next) => {
 module.exports = {
   createRun: mw("createRun"),
   compute: mw("compute"),
+  saveConfig: mw("saveConfig"),
   status: mw("status"),
   advance: mw("advance"),
   advanceUpdate: mw("advanceUpdate"),

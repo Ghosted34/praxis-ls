@@ -96,6 +96,7 @@ function tenantContext(req, res, next) {
         : req.tenant.live_schema || "live";
     await lease.query(`SET search_path = ${schema}, public`);
     lease[registry.SCHEMA] = schema;
+    lease[registry.ENV] = wantEnv;
     leaseEnv = wantEnv;
   }
 

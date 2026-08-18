@@ -17,8 +17,14 @@ import {
 } from "@/lib/ai-api";
 
 const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
+// A native <select> without a solid bg (or without explicit option colours)
+// pops its option list with the browser default — light bg + light text in
+// dark mode, which is what NativeSelect in ui/modal already fixes. Mirror
+// that fix here so these compact copilot inputs stay WCAG-legible on both
+// themes. Applies to the <input> too; the option-only selectors are inert
+// on non-select elements.
 const inputCls =
-  "w-full rounded-lg border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary";
+  "w-full rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-primary [&>option]:bg-background [&>option]:text-foreground";
 
 type Options = Record<string, AiOption[]>;
 type Loading = Record<string, boolean>;

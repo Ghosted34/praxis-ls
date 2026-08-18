@@ -19,6 +19,7 @@ const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 
 const ref = (id) => "cash_request:" + id;
 
@@ -125,16 +126,19 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
 }
 
 /** Disburse an APPROVED request: issue a régie advance (Dr 581 / Cr treasury) and link it. */
-async function disburse(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = "521", holderUserId = null, actor = {}, ip = null }) {
+async function disburse(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = null, holderUserId = null, actor = {}, ip = null }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, "DISBURSED");
   if (!(Number(cr.amount) > 0)) throw new AppError("BAD_AMOUNT", "cash request amount must be > 0 to disburse", 422);
+  // Was hardcoded "521" — a non-postable grouping (9000:77) that the ledger
+  // trigger refuses. Resolved from settings; an explicit override still wins.
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
   await client.query("BEGIN");
   try {
     const advance = await regie.issue(client, {
       holderUserId: holderUserId || cr.requested_by, amount: Number(cr.amount), entityId, entryDate,
-      sourceDocRef: sourceDocRef || ref(id), treasuryCoa, actor, ip,
+      sourceDocRef: sourceDocRef || ref(id), treasuryCoa: treasury, actor, ip,
     });
     const regieAdvanceId = advance.advance ? advance.advance.regie_advance_id : (advance.regie_advance_id || null);
     const updated = await repo.update(client, id, { status: "DISBURSED", regie_advance_id: regieAdvanceId });

@@ -12,20 +12,28 @@ const journalEntry = require("../../finance/journal_entry/journal_entry.service"
 const proofObligations = require("../../../services/compliance/proof-obligation.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 
 async function recordCost(client, opts) {
   const {
     dossierId, dictionaryItemId = null, amount, category = null, isDisbursement = false,
-    expenseCoa = null, treasuryCoa = "521", disbursementAccount = "4731",
+    expenseCoa = null, treasuryCoa = null, disbursementAccount = null,
     entityId, entryDate, sourceDocRef, proofVaultId = null, actor = {}, ip = null,
   } = opts;
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
   if (!dossierId) throw new AppError("NO_DOSSIER", "dossierId is required (§6.7 analytical)", 422);
 
+  // Resolved from ('finance','accounts'), NOT a JS literal. The old default was
+  // "521", which is_postable=false (9000:77) — assert_line_valid (0640:150)
+  // rejected it, so this posting failed whenever the caller did not name an
+  // account. An explicit treasury_coa from the request still wins.
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
+  const disbursement = await accountFor(client, "disbursement", disbursementAccount);
+
   await client.query("BEGIN");
   try {
     let debitAccount = expenseCoa;
-    if (isDisbursement) debitAccount = disbursementAccount;
+    if (isDisbursement) debitAccount = disbursement;
     else if (!debitAccount) debitAccount = await repo.purchaseRuleAccount(client, dictionaryItemId);
     if (!debitAccount) throw new AppError("NO_EXPENSE_ACCOUNT", "no expense account (pass expenseCoa or map a purchase posting_rule)", 422);
 
@@ -34,7 +42,7 @@ async function recordCost(client, opts) {
       description: "Dossier cost" + (category ? " — " + category : ""), sourceDocRef, source: "SYSTEM_RULE",
       lines: [
         { account_code: debitAccount, debit: amount, credit: 0, dossier_id: dossierId, dictionary_item_id: dictionaryItemId, is_disbursement: isDisbursement === true },
-        { account_code: treasuryCoa, debit: 0, credit: amount, dossier_id: dossierId },
+        { account_code: treasury, debit: 0, credit: amount, dossier_id: dossierId },
       ],
       validate: true, actor, ip,
     });

@@ -197,7 +197,7 @@ function MappingPane({
           value={institution}
           onChange={(e) => setInstitution(e.target.value)}
           placeholder={tr("e.g. Afriland First Bank, MTN MoMo Business")}
-          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-md border bg-background text-foreground px-3 py-2 text-sm"
         />
       </div>
 
@@ -219,7 +219,11 @@ function MappingPane({
                     aria-label={f}
                     value={map[f] ?? ""}
                     onChange={(e) => setMap({ ...map, [f]: e.target.value || null })}
-                    className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    // bg/text on the trigger AND on the options: a native
+                    // <select> without explicit option colours pops its list in
+                    // the browser's own palette, which is light-on-light in dark
+                    // mode. Mirrors NativeSelect in components/ui/modal.tsx.
+                    className="w-full rounded-md border bg-background text-foreground px-2 py-1 text-sm [&>option]:bg-background [&>option]:text-foreground"
                   >
                     <option value="">{tr("— not present —")}</option>
                     {/* Ranked by plausibility rather than alphabetically: the

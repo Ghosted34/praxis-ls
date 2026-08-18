@@ -65,9 +65,14 @@ async function listTemplates(client, q = {}) {
   // `name_fr`/`name_en`, and nothing since has added the shorter pair. The
   // aliases stay — the client reads service_type_code/_name — only the source
   // columns are corrected.
+  //
+  // name_en FIRST, and the order is not cosmetic: 0310 declares name_fr NOT
+  // NULL and name_en nullable, so COALESCE(name_fr, name_en) can never reach
+  // its second argument — it is a French-only read wearing a fallback. English
+  // first is the fallback actually doing something.
   const { rows } = await client.query(
     `SELECT t.*, st.key AS service_type_code,
-            COALESCE(st.name_fr, st.name_en) AS service_type_name,
+            COALESCE(st.name_en, st.name_fr) AS service_type_name,
             (SELECT count(*)::int FROM milestone_template_stage s
               WHERE s.milestone_template_id = t.milestone_template_id) AS stage_count
        FROM milestone_template t

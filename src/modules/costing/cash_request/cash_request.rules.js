@@ -7,7 +7,10 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 const NEXT = {
   DRAFT: ["SUBMITTED"],
-  SUBMITTED: ["APPROVED", "REJECTED"],
+  // The two-step restored (10721, legacy parity): finance validates
+  // (SUBMITTED → VALIDATED), management approves (VALIDATED → APPROVED).
+  SUBMITTED: ["VALIDATED", "REJECTED"],
+  VALIDATED: ["APPROVED", "REJECTED"],
   // A first instalment lands in PARTIALLY_DISBURSED; a single full payment goes
   // straight to DISBURSED. Both are reachable from APPROVED because which one
   // happens depends on the amount paid, not on a separate decision.

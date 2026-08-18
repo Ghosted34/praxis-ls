@@ -21,6 +21,93 @@ const dateFmt = (d) => {
   return Number.isNaN(dt.getTime()) ? String(d) : dt.toISOString().slice(0, 10);
 };
 
+/* ── amount in words (FR/EN) ────────────────────────────────────────────────
+ * The legacy printed it on the PO ("… AND 00 CENTS") and the final invoice
+ * ("ARRÊTÉE LA PRÉSENTE FACTURE À LA SOMME DE :"), and it is a convention of
+ * OHADA-zone commercial documents. This is the shared implementation the PO,
+ * supplier invoice and invoice family templates call — one number, two
+ * languages, so a beautify language switch cannot change the amount.
+ */
+const WORDS_ONES = {
+  en: ["ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN", "EIGHTEEN", "NINETEEN"],
+  fr: ["ZÉRO", "UN", "DEUX", "TROIS", "QUATRE", "CINQ", "SIX", "SEPT", "HUIT", "NEUF", "DIX", "ONZE", "DOUZE", "TREIZE", "QUATORZE", "QUINZE", "SEIZE", "DIX-SEPT", "DIX-HUIT", "DIX-NEUF"],
+};
+const WORDS_TENS = {
+  en: ["", "TEN", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY"],
+  fr: ["", "DIX", "VINGT", "TRENTE", "QUARANTE", "CINQUANTE", "SOIXANTE", "SOIXANTE-DIX", "QUATRE-VINGT", "QUATRE-VINGT-DIX"],
+};
+const SCALE = {
+  en: ["", "THOUSAND", "MILLION", "BILLION"],
+  fr: ["", "MILLE", "MILLION", "MILLIARD"],
+};
+
+/** Integer part (< 1e12) in words. */
+function wordsInt(n, lang) {
+  if (n === 0) return WORDS_ONES[lang][0];
+  const ones = WORDS_ONES[lang];
+  const tens = WORDS_TENS[lang];
+  const scale = SCALE[lang];
+  const join = lang === "fr" ? " " : " ";
+  const under100 = (x) => {
+    if (x < 20) return ones[x];
+    const ten = Math.floor(x / 10);
+    const o = x % 10;
+    if (o === 0) return tens[ten];
+    if (lang === "fr") {
+      if (ten === 7) return "SOIXANTE-" + ones[10 + o];
+      if (ten === 9) return "QUATRE-VINGT-" + ones[10 + o];
+      if (o === 1) return tens[ten] + " ET UN";
+      return tens[ten] + "-" + ones[o];
+    }
+    return tens[ten] + "-" + ones[o];
+  };
+  const under1000 = (x) => {
+    const h = Math.floor(x / 100);
+    const rest = x % 100;
+    let out = "";
+    if (h > 0) out += (lang === "fr" && h === 1 ? "CENT" : ones[h] + " HUNDRED");
+    if (rest > 0) out += join + under100(rest);
+    return out.trim();
+  };
+  const groups = [];
+  let v = n;
+  while (v > 0) { groups.push(v % 1000); v = Math.floor(v / 1000); }
+  const parts = [];
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const g = groups[i];
+    if (g === 0) continue;
+    const gWords = i === 0 ? under1000(g) : (lang === "fr" && g === 1 && i === 1 ? "MILLE" : under1000(g) + " " + scale[i]);
+    parts.push(gWords);
+  }
+  return parts.join(join);
+}
+
+/**
+ * Amount in words: "… AND 00/100" (en) / "… et 00/100" (fr), cents always two
+ * digits so no amount can be misread between languages.
+ */
+function words(amount, lang = "en") {
+  const n = Number(amount || 0);
+  const neg = n < 0;
+  const abs = Math.abs(Math.round(n * 100) / 100);
+  const whole = Math.floor(abs);
+  const cents = Math.round((abs - whole) * 100);
+  const pad = String(cents).padStart(2, "0");
+  const body = `${wordsInt(whole, lang)}${lang === "fr" ? " ET" : " AND"} ${pad}/100`;
+  return neg ? "MOINS " + body : body;
+}
+
+/** Section block rendering the amount in words, e.g. "ARRÊTÉE … À LA SOMME DE". */
+function wordsBlock(amount, ccy, cfg = {}) {
+  const lang = cfg.language || "bilingual";
+  const text = `${words(amount, lang === "fr" ? "fr" : "en")} ${ccy || "XAF"}`;
+  return section(
+    { fr: "Arrêtée la présente à la somme de :", en: "Amount in words" },
+    `<div class="box"><strong>${esc(text)}</strong></div>`,
+    cfg,
+  );
+}
+
 /** Bilingual label: cfg.language ∈ fr | en | bilingual. */
 function t(pair, lang = "bilingual") {
   const fr = pair.fr ?? pair.en ?? "";
@@ -47,7 +134,7 @@ function defaults(brand = {}) {
     margin_mm: 16,
     language: "bilingual",
     logo: { url: brand.logo_url || null, show: true, height_mm: 15, align: "left" },
-    show: { tax_breakdown: true, notes: true, bank: true, signature: true, terms: true, qr: true },
+    show: { tax_breakdown: true, notes: true, bank: true, signature: true, terms: true, qr: true, words: true },
     footer_text: "",
     terms: "",
     signature: { name: "", title: "", image_url: "" },
@@ -193,7 +280,7 @@ function footer(entity = {}, cfg = {}, verify) {
 }
 
 module.exports = {
-  esc, money, xaf, dateFmt, t, defaults, mergeCfg,
+  esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, watermark, watermarkFor, footer,
 };

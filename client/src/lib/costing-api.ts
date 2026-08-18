@@ -161,20 +161,37 @@ export type CashRequest = {
   total_budget?: number | null;
   /** Σ of the payment rows (10719). Derived server-side, never set by hand. */
   disbursed_amount?: number | null;
+  amount?: number | null;
+  beneficiary?: string | null;
+  category?: string | null;
+  cost_center?: string | null;
+  overhead_justification?: string | null;
+  remarks?: string | null;
   created_at?: string;
 };
 export type CashRequestInput = {
   dossier_id?: string;
   costing_id?: string;
   requested_by?: string;
+  beneficiary?: string;
+  category?: "OPS" | "OVH";
+  cost_center?: string;
+  overhead_justification?: string;
+  remarks?: string;
   lines?: CashLine[];
 };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");
 export const createCashRequest = (body: CashRequestInput) =>
   tenant<CashRequest>("/cash-requests", { method: "POST", body });
+/** Import the budget lines from the linked APPROVED_LOCKED costing (10720). */
+export const importCostingLines = (id: string) =>
+  tenant<CashRequestDetail>(`/cash-requests/${id}/import-costing`, {
+    method: "POST",
+    body: {},
+  });
 export const transitionCashRequest = (
   id: string,
-  to: "SUBMITTED" | "APPROVED" | "REJECTED",
+  to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED",
   extra: { entity_id?: string; date?: string } = {},
 ) =>
   tenant<CashRequest>(`/cash-requests/${id}/transition`, {

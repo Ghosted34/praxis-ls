@@ -346,7 +346,7 @@ export function CashRequestActions({
 }: {
   request: api.CashRequest;
   busy: boolean;
-  onTransition: (to: "SUBMITTED" | "APPROVED" | "REJECTED") => void;
+  onTransition: (to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED") => void;
   onDisburse: () => void;
   onJustify: () => void;
 }) {
@@ -364,6 +364,27 @@ export function CashRequestActions({
         </Button>
       )}
       {st === "SUBMITTED" && (
+        <>
+          {/* 10721: the legacy two-step — finance validates first. */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy}
+            onClick={() => onTransition("VALIDATED")}
+          >
+            {tr("Validate")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy}
+            onClick={() => onTransition("REJECTED")}
+          >
+            {tr("Reject")}
+          </Button>
+        </>
+      )}
+      {st === "VALIDATED" && (
         <>
           <Button
             size="sm"

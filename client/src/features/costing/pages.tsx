@@ -49,6 +49,8 @@ const TONES: Record<string, Tone> = {
   SUBMITTED_FOR_VALIDATION: "warn",
   SUBMITTED_FOR_APPROVAL: "warn",
   REJECTED: "bad",
+  VALIDATED: "blue",
+  PARTIALLY_DISBURSED: "warn",
   DISBURSED: "ok",
   OPEN: "blue",
   SETTLED: "ok",
@@ -867,7 +869,27 @@ function CashRequestForm({
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const { rows: dict } = useList<DictItem>("/financial-dictionary");
+  const { rows: costings } = useList<api.Costing>("/costings");
   const [dossierId, setDossierId] = React.useState("");
+  // 10720: the legacy cash request carried beneficiary + an OPS/OVH context —
+  // OPS requires an operations file, OVH requires a cost centre + justification.
+  const [category, setCategory] = React.useState<"OPS" | "OVH">("OPS");
+  const [costingId, setCostingId] = React.useState("");
+  // Auto-link the dossier's APPROVED_LOCKED costing when one is picked, so
+  // "Import costing" works without hunting — the legacy linked it through the
+  // ops file automatically.
+  React.useEffect(() => {
+    if (!dossierId) return;
+    const match = (costings || []).find(
+      (c) => c.dossier_id === dossierId && c.status === "APPROVED_LOCKED",
+    );
+    if (match) setCostingId(match.costing_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dossierId]);
+  const [beneficiary, setBeneficiary] = React.useState("");
+  const [costCenter, setCostCenter] = React.useState("");
+  const [overheadJustification, setOverheadJustification] = React.useState("");
+  const [remarks, setRemarks] = React.useState("");
   const [lines, setLines] = React.useState<api.CashLine[]>([
     { dictionary_item_id: null, label: "", budget_amount: 0 },
   ]);
@@ -892,7 +914,14 @@ function CashRequestForm({
     setError(null);
     try {
       await api.createCashRequest({
-        dossier_id: dossierId || undefined,
+        dossier_id: category === "OPS" ? dossierId || undefined : undefined,
+        costing_id: costingId || undefined,
+        category,
+        beneficiary: beneficiary || undefined,
+        cost_center: category === "OVH" ? costCenter || undefined : undefined,
+        overhead_justification:
+          category === "OVH" ? overheadJustification || undefined : undefined,
+        remarks: remarks || undefined,
         lines: lines
           .filter((l) => l.dictionary_item_id || l.label)
           .map((l) => ({
@@ -919,18 +948,76 @@ function CashRequestForm({
       description="Request an advance against a dossier budget."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label={tr("Dossier")}>
-          <Select
-            value={dossierId}
-            onChange={(e) => setDossierId(e.target.value)}
-          >
-            <option value="">—</option>
-            {(dossiers || []).map((d) => (
-              <option key={d.dossier_id} value={d.dossier_id}>
-                {d.ref}
-              </option>
-            ))}
-          </Select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Category")}>
+            <Select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as "OPS" | "OVH")}
+            >
+              <option value="OPS">Operations</option>
+              <option value="OVH">Overhead</option>
+            </Select>
+          </Field>
+          <Field label={tr("Beneficiary")}>
+            <Input
+              value={beneficiary}
+              onChange={(e) => setBeneficiary(e.target.value)}
+              placeholder="Who is paid"
+            />
+          </Field>
+          {category === "OPS" ? (
+            <>
+              <Field label={tr("Dossier")}>
+                <Select
+                  value={dossierId}
+                  onChange={(e) => setDossierId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(dossiers || []).map((d) => (
+                    <option key={d.dossier_id} value={d.dossier_id}>
+                      {d.ref}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Costing" hint="Approved costing feeding the budget lines (Import costing).">
+                <Select
+                  value={costingId}
+                  onChange={(e) => setCostingId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(costings || []).map((c) => (
+                    <option key={c.costing_id} value={c.costing_id}>
+                      {c.doc_number || c.costing_id.slice(0, 8)}
+                      {c.status === "APPROVED_LOCKED" ? " ✓" : ` (${c.status})`}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label={tr("Cost centre")}>
+                <Input
+                  value={costCenter}
+                  onChange={(e) => setCostCenter(e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Justification")}>
+                <Input
+                  value={overheadJustification}
+                  onChange={(e) => setOverheadJustification(e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+        </div>
+        <Field label={tr("Remarks")}>
+          <Input
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            placeholder="Instructions that print on the request"
+          />
         </Field>
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -1023,11 +1110,25 @@ export function CashRequestsPage() {
 
   async function moveCr(
     c: api.CashRequest,
-    to: "SUBMITTED" | "APPROVED" | "REJECTED",
+    to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED",
   ) {
     setBusyId(c.cash_request_id);
     try {
       await api.transitionCashRequest(c.cash_request_id, to);
+      reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // The legacy cash request imported its lines from the APPROVED_LOCKED costing
+  // (costing_lines_get); the route exists again and DRAFT rows get the button.
+  async function importCosting(c: api.CashRequest) {
+    setBusyId(c.cash_request_id);
+    try {
+      await api.importCostingLines(c.cash_request_id);
       reload();
     } catch (e) {
       reportActionError(e);
@@ -1052,6 +1153,17 @@ export function CashRequestsPage() {
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
     {
+      key: "beneficiary",
+      label: "Beneficiary",
+      render: (r) => r.beneficiary || "—",
+    },
+    {
+      key: "category",
+      label: "Type",
+      render: (r) =>
+        r.category ? <Pill tone="mute">{r.category}</Pill> : "—",
+    },
+    {
       key: "total_budget",
       label: "Budget",
       className: "num text-right",
@@ -1073,6 +1185,17 @@ export function CashRequestsPage() {
             title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`}
             label={tr("View")}
           />
+          {r.status === "DRAFT" && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={busyId === r.cash_request_id}
+              onClick={() => importCosting(r)}
+              title="Import budget lines from the approved costing"
+            >
+              Import costing
+            </Button>
+          )}
           <CashRequestActions
             request={r}
             busy={busyId === r.cash_request_id}

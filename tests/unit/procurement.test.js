@@ -31,6 +31,35 @@ describe("PO totals + lifecycle", () => {
   });
 });
 
+describe("PO totals with VAT (10720)", () => {
+  test("computeTotals splits HT / VAT / TTC per line tax rate", () => {
+    const t = poRules.computeTotals(
+      [
+        { dictionary_item_id: "a", qty: 2, unit_price: 100 },
+        { dictionary_item_id: "b", qty: 1, unit_price: 200 },
+      ],
+      (id) => (id === "a" ? 19.25 : 0),
+    );
+    expect(t.total_ht).toBe(400);
+    expect(t.total_vat).toBe(38.5); // 2 × 100 × 19.25%
+    expect(t.total_ttc).toBe(438.5);
+  });
+  test("a line without a tax code is HT-only, never assumed 19.25%", () => {
+    const t = poRules.computeTotals([{ qty: 1, unit_price: 1000 }], () => 0);
+    expect(t).toEqual({ total_ht: 1000, total_vat: 0, total_ttc: 1000 });
+  });
+  test("netPayable = TTC − withholding (air % of HT) − advance", () => {
+    expect(
+      poRules.netPayable({ total_ttc: 1192.5, total_ht: 1000, air_rate: 5, adv_paid: 100 }),
+    ).toBe(1042.5); // 1192.5 − 50 − 100
+  });
+  test("dueOn = delivery + pay days", () => {
+    expect(poRules.dueOn("2026-08-05", 14)).toBe("2026-08-19");
+    expect(poRules.dueOn("2026-08-05", 0)).toBe(null);
+    expect(poRules.dueOn(null, 14)).toBe(null);
+  });
+});
+
 describe("supplier invoice three-way match", () => {
   test("matches within tolerance with GRN present", () => {
     const r = si.matchThreeWay({
@@ -61,6 +90,54 @@ describe("supplier invoice three-way match", () => {
     expect(r.variance_percent).toBe(10);
     expect(r.matched).toBe(false);
   });
+  test("old-style calls still work — no PR/qty/currency inputs", () => {
+    const r = si.matchThreeWay({ poTotal: 1000, invoiceTotalHt: 1000, grnExists: true });
+    expect(r.matched).toBe(true);
+  });
+});
+
+describe("three-way match — PR ↔ PO ↔ GRN ↔ invoice (10720)", () => {
+  const base = {
+    poTotal: 1000,
+    invoiceTotalHt: 1000,
+    grnExists: true,
+    poLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 10 }],
+    grnLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 10 }],
+    invoiceLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 10 }],
+    poCurrency: "XAF",
+    invoiceCurrency: "XAF",
+  };
+  test("matches when PR, qty and currency all agree", () => {
+    const r = si.matchThreeWay({ ...base, prTotal: 1000 });
+    expect(r.matched).toBe(true);
+  });
+  test("PR total far from the PO is a reason, not a silent pass", () => {
+    const r = si.matchThreeWay({ ...base, prTotal: 1500, tolerancePercent: 0 });
+    expect(r.matched).toBe(false);
+    expect(r.reasons.join()).toMatch(/purchase-request total/);
+  });
+  test("invoicing more than was received fails by quantity", () => {
+    const r = si.matchThreeWay({
+      ...base,
+      grnLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 8 }],
+      invoiceLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 10 }],
+    });
+    expect(r.matched).toBe(false);
+    expect(r.reasons.join()).toMatch(/invoiced qty 10 exceeds received 8/);
+  });
+  test("receiving more than was ordered fails by quantity", () => {
+    const r = si.matchThreeWay({
+      ...base,
+      grnLines: [{ dictionary_item_id: "a", label: "Ciment", qty: 12 }],
+    });
+    expect(r.matched).toBe(false);
+    expect(r.reasons.join()).toMatch(/over-received/);
+  });
+  test("currency mismatch is refused even when amounts agree", () => {
+    const r = si.matchThreeWay({ ...base, invoiceCurrency: "EUR" });
+    expect(r.matched).toBe(false);
+    expect(r.reasons.join()).toMatch(/currency mismatch/);
+  });
 });
 
 describe("supplier invoice posting lines balance", () => {
@@ -85,5 +162,25 @@ describe("supplier invoice posting lines balance", () => {
     expect(() =>
       si.buildPostingLines({ lines: [{ qty: 1, unit_price: 100 }] }),
     ).toThrow();
+  });
+});
+
+describe("supplier invoice AP payment (10720)", () => {
+  test("buildPaymentLines is Dr supplier / Cr treasury and balanced", () => {
+    const lines = si.buildPaymentLines({ amount: 1000, supplierAccount: "4011", treasuryAccount: "5211" });
+    expect(lines[0]).toEqual({ account_code: "4011", debit: 1000, credit: 0 });
+    expect(lines[1]).toEqual({ account_code: "5211", debit: 0, credit: 1000 });
+  });
+  test("rejects zero amount and missing treasury account", () => {
+    expect(() => si.buildPaymentLines({ amount: 0, treasuryAccount: "5211" })).toThrow();
+    expect(() => si.buildPaymentLines({ amount: 100 })).toThrow();
+  });
+  test("payState derives PAID only when payments cover the invoice", () => {
+    expect(si.payState(1000, 0)).toBe("POSTED_LOCKED");
+    expect(si.payState(1000, 400)).toBe("POSTED_LOCKED");
+    expect(si.payState(1000, 1000)).toBe("PAID");
+  });
+  test("over-payment is refused, not clamped", () => {
+    expect(() => si.payState(1000, 1000.01)).toThrow();
   });
 });

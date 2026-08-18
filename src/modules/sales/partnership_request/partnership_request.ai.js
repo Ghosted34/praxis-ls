@@ -6,8 +6,8 @@ module.exports = {
   module_key: "MOD-25",
   screens: [],
   reads: [
-    { key: "list_partnership_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), describe: "List partnership / vendor applications. Returns rows + total + the KPI tiles (total, agency partnerships, vendor registrations, pending review), computed from two partitions that each sum to the total." },
-    { key: "get_partnership_request", service: (c, p) => service.get(c, p.id || p), describe: "Get one partnership application by id, including its network memberships and vetting notes." },
+    { key: "list_partnership_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), permission: { module: "MOD-25", action: "view" }, describe: "List partnership / vendor applications. Returns rows + total + the KPI tiles (total, agency partnerships, vendor registrations, pending review), computed from two partitions that each sum to the total." },
+    { key: "get_partnership_request", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-25", action: "view" }, describe: "Get one partnership application by id, including its network memberships and vetting notes." },
   ],
   writes: [
     { key: "create_partnership_request", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-25", action: "create" }, confirm: true, describe: "Record a partnership or vendor application. `network_memberships` is how a forwarding agent is vetted — WCA, JCTrans and similar." },

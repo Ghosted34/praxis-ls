@@ -10,8 +10,8 @@ module.exports = {
   screens: ["cycle-counts"],
 
   reads: [
-    { key: "list_cycle_counts", service: service.list, describe: "List cycle counts." },
-    { key: "get_cycle_count", service: service.get, describe: "Get one cycle count by id." },
+    { key: "list_cycle_counts", service: service.list, permission: { module: "MOD-38", action: "view" }, describe: "List cycle counts." },
+    { key: "get_cycle_count", service: service.get, permission: { module: "MOD-38", action: "view" }, describe: "Get one cycle count by id." },
   ],
 
   writes: [

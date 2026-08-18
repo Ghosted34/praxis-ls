@@ -10,8 +10,8 @@ module.exports = {
   screens: ["locations"],
 
   reads: [
-    { key: "list_locations", service: service.list, describe: "List warehouse locations (zone/aisle/rack/bin/yard)." },
-    { key: "get_location", service: service.get, describe: "Get one location by id." },
+    { key: "list_locations", service: service.list, permission: { module: "MOD-34", action: "view" }, describe: "List warehouse locations (zone/aisle/rack/bin/yard)." },
+    { key: "get_location", service: service.get, permission: { module: "MOD-34", action: "view" }, describe: "Get one location by id." },
   ],
 
   writes: [

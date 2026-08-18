@@ -10,9 +10,9 @@ module.exports = {
   screens: ["vacancies"],
 
   reads: [
-    { key: "list_vacancies", service: service.list, describe: "List job vacancies." },
-    { key: "get_vacancy", service: service.get, describe: "Get one vacancy by id." },
-    { key: "list_applicants", service: service.listApplicants, describe: "List applicants for a vacancy." },
+    { key: "list_vacancies", service: service.list, permission: { module: "MOD-11", action: "view" }, describe: "List job vacancies." },
+    { key: "get_vacancy", service: service.get, permission: { module: "MOD-11", action: "view" }, describe: "Get one vacancy by id." },
+    { key: "list_applicants", service: service.listApplicants, permission: { module: "MOD-11", action: "view" }, describe: "List applicants for a vacancy." },
   ],
 
   writes: [

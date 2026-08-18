@@ -13,6 +13,7 @@ const { buildDrawdownLines, buildRepaymentLines } = require("./debt.rules");
 const journalEntry = require("../journal_entry/journal_entry.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 
 const ref = (id) => "debt_engagement:" + id;
 
@@ -29,12 +30,14 @@ async function createEngagement(client, { entityId, dossierId = null, lenderKind
 }
 
 /** Post the loan drawdown to the GL (Dr treasury / Cr loan-liability). */
-async function drawdown(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = "521", actor = {}, ip = null }) {
+async function drawdown(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = null, actor = {}, ip = null }) {
   const eng = await repo.getEngagement(client, id);
   if (!eng) throw new AppError("NOT_FOUND", "Debt engagement not found", 404);
+  // "521" is not postable (9000:77); resolve the real leaf from settings.
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
   await client.query("BEGIN");
   try {
-    const lines = buildDrawdownLines({ principal: Number(eng.principal), treasuryCoa, loanCoa: eng.coa_code || "162" });
+    const lines = buildDrawdownLines({ principal: Number(eng.principal), treasuryCoa: treasury, loanCoa: eng.coa_code || "162" });
     const { entry } = await journalEntry.buildAndInsert(client, {
       journalCode: "BQ", entityId: entityId || eng.entity_id, entryDate,
       description: "Loan drawdown " + (eng.lender_name || eng.lender_kind), sourceDocRef: sourceDocRef || ref(id), source: "SYSTEM_RULE",
@@ -47,13 +50,17 @@ async function drawdown(client, { id, entityId, entryDate, sourceDocRef, treasur
 }
 
 /** Record and post a repayment; auto-settle when principal is fully repaid. */
-async function repay(client, { id, entityId, entryDate, principalPart = 0, interestPart = 0, treasuryCoa = "521", interestCoa = "671", sourceDocRef, actor = {}, ip = null }) {
+async function repay(client, { id, entityId, entryDate, principalPart = 0, interestPart = 0, treasuryCoa = null, interestCoa = null, sourceDocRef, actor = {}, ip = null }) {
   const eng = await repo.getEngagement(client, id);
   if (!eng) throw new AppError("NOT_FOUND", "Debt engagement not found", 404);
   if (eng.status !== "ACTIVE") throw new AppError("NOT_ACTIVE", "Only an ACTIVE engagement can be repaid", 422);
+  // BOTH old defaults were non-postable: "521" (a grouping) and "671" (a
+  // childless leaf wrongly flagged — corrected by seed 9095).
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
+  const interest = await accountFor(client, "loan_interest", interestCoa);
   await client.query("BEGIN");
   try {
-    const lines = buildRepaymentLines({ principalPart, interestPart, treasuryCoa, loanCoa: eng.coa_code || "162", interestCoa });
+    const lines = buildRepaymentLines({ principalPart, interestPart, treasuryCoa: treasury, loanCoa: eng.coa_code || "162", interestCoa: interest });
     const { entry } = await journalEntry.buildAndInsert(client, {
       journalCode: "BQ", entityId: entityId || eng.entity_id, entryDate,
       description: "Loan repayment " + (eng.lender_name || eng.lender_kind), sourceDocRef: sourceDocRef || ref(id), source: "SYSTEM_RULE",

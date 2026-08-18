@@ -5,8 +5,8 @@ module.exports = {
   module_key: "MOD-07",
   screens: [],
   reads: [
-    { key: "get_vat_return", service: service.vatReturn, describe: "TVA return over the GL: output − input VAT, net due/credit. KB §16." },
-    { key: "get_corporate_tax", service: service.corporateTax, describe: "IS vs minimum tax (2.2% of turnover, débours excluded); greater is due. KB §15." },
+    { key: "get_vat_return", service: service.vatReturn, permission: { module: "MOD-07", action: "view" }, describe: "TVA return over the GL: output − input VAT, net due/credit. KB §16." },
+    { key: "get_corporate_tax", service: service.corporateTax, permission: { module: "MOD-07", action: "view" }, describe: "IS vs minimum tax (2.2% of turnover, débours excluded); greater is due. KB §15." },
   ],
   writes: [],
 };

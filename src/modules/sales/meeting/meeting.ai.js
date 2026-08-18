@@ -4,12 +4,12 @@ const validator = require("./meeting.validator");
 module.exports = {
   entity: "meeting", module_key: "MOD-21", screens: [],
   reads: [
-    { key: "list_meetings", service: (c, p) => service.list(c, p), describe: "List meetings (filter lead/client)." },
-    { key: "get_meeting", service: (c, p) => service.get(c, p.id || p), describe: "Get a meeting with its notes/minutes and discovery sections." },
-    { key: "get_meeting_discovery", service: (c, p) => service.discovery(c, p.meeting_id || p.id || p), describe: "Get the three client-discovery sections of a meeting, with their probing questions." },
+    { key: "list_meetings", service: (c, p) => service.list(c, p), permission: { module: "MOD-21", action: "view" }, describe: "List meetings (filter lead/client)." },
+    { key: "get_meeting", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-21", action: "view" }, describe: "Get a meeting with its notes/minutes and discovery sections." },
+    { key: "get_meeting_discovery", service: (c, p) => service.discovery(c, p.meeting_id || p.id || p), permission: { module: "MOD-21", action: "view" }, describe: "Get the three client-discovery sections of a meeting, with their probing questions." },
     // The read F4 (proposal generation) makes: the client's own words, most
     // recent first, without having to know which meeting they were said at.
-    { key: "get_lead_discovery", service: (c, p) => service.latestDiscoveryFor(c, { leadId: p.lead_id }), schema: validator.schemas.aiDiscovery, describe: "Get the latest client-discovery set captured for a lead (by id)." },
+    { key: "get_lead_discovery", service: (c, p) => service.latestDiscoveryFor(c, { leadId: p.lead_id }), permission: { module: "MOD-21", action: "view" }, schema: validator.schemas.aiDiscovery, describe: "Get the latest client-discovery set captured for a lead (by id)." },
   ],
   writes: [
     { key: "schedule_meeting", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-21", action: "create" }, confirm: true, describe: "Schedule a meeting." },

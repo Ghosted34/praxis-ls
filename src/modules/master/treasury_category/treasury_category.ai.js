@@ -4,7 +4,7 @@ const validator = require("./treasury_category.validator");
 module.exports = {
   entity: "treasury_category", module_key: "MOD-09", screens: [],
   reads: [
-    { key: "list_treasury_categories", service: service.list, describe: "List treasury categories (Bank, Cash, Petty Cash, MTN MoMo, etc.)." },
+    { key: "list_treasury_categories", service: service.list, permission: { module: "MOD-09", action: "view" }, describe: "List treasury categories (Bank, Cash, Petty Cash, MTN MoMo, etc.)." },
   ],
   writes: [
     {

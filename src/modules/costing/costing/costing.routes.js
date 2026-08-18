@@ -35,4 +35,21 @@ router.post(
   requireTransitionCapability(TRANSITION_CAPABILITY),
   controller.setStatus,
 );
+// The unlock loop (10718) — the way out of APPROVED_LOCKED.
+//
+// Gated on `action` rather than `to`, and the split mirrors SUBMIT vs APPROVE
+// above: asking to reopen is an author's act (`edit`), while granting or
+// refusing is a decision (`approve` + the APPROVER capability). The legacy role
+// lists are NOT ported — hardcoded role names are strictly less expressive than
+// module grants plus the SoD overlay, and CEO already bypasses both.
+const UNLOCK_ACTION = { REQUEST_UNLOCK: "edit", UNLOCK: "approve", DENY_UNLOCK: "approve" };
+const UNLOCK_CAPABILITY = { UNLOCK: "APPROVER", DENY_UNLOCK: "APPROVER" };
+
+router.post(
+  "/:id/unlock",
+  validator.unlock,
+  requireTransitionPermission(MODULE, UNLOCK_ACTION, { field: "action" }),
+  requireTransitionCapability(UNLOCK_CAPABILITY, { field: "action" }),
+  controller.unlock,
+);
 module.exports = { basePath: "/costings", feature: "costing", router };

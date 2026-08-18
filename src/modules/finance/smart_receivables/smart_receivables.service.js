@@ -13,12 +13,21 @@ const journalEntry = require("../journal_entry/journal_entry.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const { getSetting } = require("../../../shared/config/settings");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 const ref = (id) => "payment_receipt:" + id;
-const CASH_DEFAULT = { CASH: "571", MOBILE_MONEY: "521", BANK: "521", CHEQUE: "521" };
+/**
+ * Which settings ROLE each receipt method maps to. The values used to be raw
+ * codes, three of which were "521" — a non-postable grouping (9000:77) that
+ * assert_line_valid (0640:150) rejects, so posting a bank/cheque/MoMo receipt
+ * failed whenever the receipt had no treasury_account_id to resolve from.
+ * Mapping to roles instead keeps the method→account decision here while the
+ * account NUMBERS live in ('finance','accounts').
+ */
+const CASH_ROLE = { CASH: "cash", MOBILE_MONEY: "treasury", BANK: "treasury", CHEQUE: "treasury" };
 
 async function createDraft(client, { clientId = null, method = "BANK", treasuryAccountId = null, amount, receivedOn, actor = {} }) {
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
@@ -39,7 +48,7 @@ async function cashCoaFor(client, receipt) {
     const coa = await repo.treasuryCoa(client, receipt.treasury_account_id);
     if (coa) return coa;
   }
-  return CASH_DEFAULT[receipt.method] || "521";
+  return accountFor(client, CASH_ROLE[receipt.method] || "treasury");
 }
 
 /** Post a DRAFT receipt: FIFO-allocate, Dr cash / Cr 4111 (full amount), capture. */
@@ -55,7 +64,7 @@ async function post(client, opts) {
   );
 }
 
-async function postCore(client, { receiptId, entityId, entryDate, sourceDocRef, customerAccount = "4111", actor = {}, ip = null }) {
+async function postCore(client, { receiptId, entityId, entryDate, sourceDocRef, customerAccount = null, actor = {}, ip = null }) {
   const receipt = await repo.getReceipt(client, receiptId);
   if (!receipt) throw new AppError("NOT_FOUND", "Receipt not found", 404);
   if (receipt.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT receipt can be posted", 422);
@@ -78,7 +87,7 @@ async function postCore(client, { receiptId, entityId, entryDate, sourceDocRef, 
       description: "Customer receipt", sourceDocRef: sourceDocRef || ref(receiptId), source: "SYSTEM_RULE",
       lines: [
         { account_code: cashCoa, debit: Number(receipt.amount), credit: 0 },
-        { account_code: customerAccount, debit: 0, credit: Number(receipt.amount) },
+        { account_code: await accountFor(client, "customer", customerAccount), debit: 0, credit: Number(receipt.amount) },
       ],
       validate: true, actor, ip,
     });

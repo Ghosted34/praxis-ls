@@ -10,8 +10,8 @@ module.exports = {
   screens: ["vehicles"],
 
   reads: [
-    { key: "list_vehicles", service: service.list, describe: "List fleet vehicles." },
-    { key: "get_vehicle", service: service.get, describe: "Get one vehicle by id." },
+    { key: "list_vehicles", service: service.list, permission: { module: "MOD-39", action: "view" }, describe: "List fleet vehicles." },
+    { key: "get_vehicle", service: service.get, permission: { module: "MOD-39", action: "view" }, describe: "Get one vehicle by id." },
   ],
 
   writes: [

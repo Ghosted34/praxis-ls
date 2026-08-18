@@ -966,7 +966,8 @@
         "get_costing",
         "create_costing",
         "update_costing",
-        "costing_status"
+        "costing_status",
+        "costing_unlock"
       ]
     },
     {
@@ -975,9 +976,11 @@
       "route": "/costing/cost-tracking",
       "area": "costing",
       "module_key": "MOD-47",
-      "purpose": "Actual costs booked against a dossier.",
+      "purpose": "Actual costs booked against a dossier, and the portfolio view across all files.",
       "actions": [
         "reconcile_dossier",
+        "cost_tracking_portfolio",
+        "cost_tracking_kpis",
         "record_cost"
       ]
     },
@@ -1004,11 +1007,16 @@
       "route": "/costing/regie",
       "area": "costing",
       "module_key": "MOD-49",
-      "purpose": "Cash advances held by a régisseur and their justification.",
+      "purpose": "Cash advances held by a régisseur: issue, retire against receipts or returned cash, query, write off, and the aging watchlist.",
       "actions": [
         "list_regie_advances",
         "get_regie_advance",
+        "regie_watchlist",
         "issue_regie_advance",
+        "retire_regie_advance",
+        "query_regie_advance",
+        "write_off_regie_advance",
+        "unage_regie_advance",
         "age_regie_advances"
       ]
     },

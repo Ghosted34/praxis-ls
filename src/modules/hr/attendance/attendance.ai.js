@@ -10,8 +10,8 @@ module.exports = {
   screens: ["attendance"],
 
   reads: [
-    { key: "list_attendance", service: service.list, describe: "List attendance logs (clock-in/out)." },
-    { key: "get_attendance", service: service.get, describe: "Get one attendance log by id." },
+    { key: "list_attendance", service: service.list, permission: { module: "MOD-14", action: "view" }, describe: "List attendance logs (clock-in/out)." },
+    { key: "get_attendance", service: service.get, permission: { module: "MOD-14", action: "view" }, describe: "Get one attendance log by id." },
   ],
 
   writes: [

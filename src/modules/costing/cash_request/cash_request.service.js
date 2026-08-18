@@ -9,7 +9,7 @@
 
 const repo = require("./cash_request.repo");
 const events = require("./cash_request.events");
-const { assertTransition, sumField } = require("./cash_request.rules");
+const { assertTransition, sumField, disbursementState } = require("./cash_request.rules");
 const regie = require("../regie/regie.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
@@ -17,8 +17,9 @@ const executor = require("../../../services/workflow/executor");
 const proofObligations = require("../../../services/compliance/proof-obligation.service");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 
 const ref = (id) => "cash_request:" + id;
 
@@ -124,42 +125,194 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-/** Disburse an APPROVED request: issue a régie advance (Dr 581 / Cr treasury) and link it. */
-async function disburse(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = "521", holderUserId = null, actor = {}, ip = null }) {
-  const cr = await repo.getCR(client, id);
-  if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
-  assertTransition(cr.status, "DISBURSED");
-  if (!(Number(cr.amount) > 0)) throw new AppError("BAD_AMOUNT", "cash request amount must be > 0 to disburse", 422);
+/**
+ * Disburse an APPROVED request, in full or in instalments (10719).
+ *
+ * WHAT THIS USED TO DO, AND WHY IT WAS WRONG. It took no amount, issued ONE
+ * advance for the whole of `cr.amount`, and set the status straight to
+ * DISBURSED. `cash_request_payment` — one-to-many, with a treasury account, a
+ * date and an entry_id, hardened by 0498 and CHECKed by 0497 — was never
+ * written to by anything. So a request the treasury could only fund in two
+ * tranches read as fully disbursed the moment the first franc moved, and the
+ * second tranche had nowhere to go.
+ *
+ * EACH INSTALMENT ISSUES ITS OWN RÉGIE ADVANCE. A régie advance is a quantity
+ * of cash in a holder's hands from a date: two payments a fortnight apart are
+ * two advances, each with its own issue posting, its own policy window and its
+ * own aging clock. Topping up the first would restate an amount its own ledger
+ * entry contradicts. The advance is linked from the PAYMENT row
+ * (`cash_request_payment.regie_advance_id`, UNIQUE); `cash_request.regie_advance_id`
+ * keeps pointing at the first so every pre-10719 reader stays correct.
+ *
+ * `amount` is optional and defaults to the whole outstanding balance, so the
+ * common case — one payment for the full request — is unchanged for callers,
+ * and the client need not send an amount it does not have a reason to vary.
+ */
+async function disburse(client, { id, amount = null, entityId, entryDate, sourceDocRef, treasuryCoa = null, treasuryAccountId = null, holderUserId = null, memo = null, actor = {}, ip = null }) {
+  // Read outside the transaction only to fail fast on a missing row; the
+  // authoritative read is the locked one below.
+  const peek = await repo.getCR(client, id);
+  if (!peek) throw new AppError("NOT_FOUND", "Cash request not found", 404);
+
+  // Was hardcoded "521" — a non-postable grouping (9000:77) that the ledger
+  // trigger refuses. Resolved from settings; an explicit override still wins.
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
+
   await client.query("BEGIN");
   try {
+    // FOR UPDATE: two concurrent instalments would otherwise both read the same
+    // total, both derive PARTIALLY_DISBURSED, and leave the cache understating
+    // the cash actually issued.
+    const cr = await repo.getCRForUpdate(client, id);
+    const requested = Number(cr.amount || 0);
+    if (!(requested > 0)) throw new AppError("BAD_AMOUNT", "cash request amount must be > 0 to disburse", 422);
+
+    const alreadyPaid = await repo.paymentsTotal(client, id);
+    const outstanding = Math.round((requested - alreadyPaid) * 100) / 100;
+    if (!(outstanding > 0)) {
+      throw new AppError("FULLY_DISBURSED", "This request has already been disbursed in full", 422);
+    }
+
+    // Default to the rest of the request: the full-payment case stays a
+    // one-argument call.
+    const pay = amount === null || amount === undefined ? outstanding : Math.round(Number(amount) * 100) / 100;
+    if (!(pay > 0)) throw new AppError("BAD_AMOUNT", "disbursement amount must be > 0", 422);
+
+    // Derive the resulting status BEFORE any posting, so an over-payment is
+    // refused without having issued an advance the caller then has to unwind.
+    const nextStatus = disbursementState(requested, alreadyPaid + pay);
+    assertTransition(cr.status, nextStatus);
+
     const advance = await regie.issue(client, {
-      holderUserId: holderUserId || cr.requested_by, amount: Number(cr.amount), entityId, entryDate,
-      sourceDocRef: sourceDocRef || ref(id), treasuryCoa, actor, ip,
+      holderUserId: holderUserId || cr.requested_by, amount: pay, entityId, entryDate,
+      sourceDocRef: sourceDocRef || ref(id), treasuryCoa: treasury, actor, ip,
     });
     const regieAdvanceId = advance.advance ? advance.advance.regie_advance_id : (advance.regie_advance_id || null);
-    const updated = await repo.update(client, id, { status: "DISBURSED", regie_advance_id: regieAdvanceId });
-    await emitEvent(client, { eventTypeKey: events.DISBURSED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.DISBURSED, moduleKey: events.MODULE, entityRef: ref(id), after: { regie_advance_id: regieAdvanceId } });
+
+    // The payment row is the record of THIS movement of money.
+    const payment = await repo.insertPayment(client, {
+      cash_request_id: id,
+      treasury_account_id: treasuryAccountId,
+      amount: pay,
+      paid_on: entryDate,
+      entry_id: advance.entry ? advance.entry.entry_id : null,
+      regie_advance_id: regieAdvanceId,
+      memo,
+      // DATA 2.4: this column is REFERENCES app_user(user_id), and identity
+      // lives in LIVE while this row lands in whichever schema the request
+      // selected. A live id stored beside SANDBOX data raises 23503 and takes
+      // the whole disbursement down with it — including the advance already
+      // issued above. resolveActorId returns null instead: losing an
+      // attribution beats failing the movement of money that it describes.
+      created_by: await resolveActorId(client, actor.user_id),
+    });
+
+    // Recompute from the children rather than incrementing — an increment
+    // drifts the first time a payment is voided (10717's rule, unchanged).
+    const paidNow = await repo.paymentsTotal(client, id);
+    const fields = { status: nextStatus, disbursed_amount: paidNow };
+    // Keep the legacy single link pointing at the FIRST advance.
+    if (!cr.regie_advance_id) fields.regie_advance_id = regieAdvanceId;
+    const updated = await repo.update(client, id, fields);
+
+    const eventKey = nextStatus === "DISBURSED" ? events.DISBURSED : events.PARTIALLY_DISBURSED;
+    await emitEvent(client, { eventTypeKey: eventKey, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: eventKey, moduleKey: events.MODULE, entityRef: ref(id), after: { amount: pay, disbursed_amount: paidNow, regie_advance_id: regieAdvanceId } });
     await client.query("COMMIT");
-    return { cash_request: updated, regie_advance_id: regieAdvanceId };
+    return { cash_request: updated, regie_advance_id: regieAdvanceId, payment, outstanding: Math.round((requested - paidNow) * 100) / 100 };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-/** Justify: record actual spend against lines (spent_amount) and close the request. */
-async function justify(client, { id, lines = [], actor = {} }) {
+/**
+ * Justify: record actual spend against lines (spent_amount), RETIRE THE LINKED
+ * RÉGIE ADVANCE, and close the request.
+ *
+ * THE DEFECT THIS FIXES. Before 10717 this marked the request JUSTIFIED and
+ * stopped. The advance it was disbursed from stayed open in 581 with
+ * justified_amount = 0, so the aging worker later reclassified the full amount
+ * to 4211 — a receivable raised against a holder who HAD already accounted for
+ * the money, evidenced by the very lines being written here. A wrong ledger
+ * entry produced by a workflow completing normally.
+ *
+ * The retirement runs inside THIS transaction (via `regie.retireCore`, which
+ * does not open its own) so the request and its advance can never disagree: if
+ * the retirement is refused — over-retirement, a missing receipt — the whole
+ * justification rolls back rather than leaving a closed request over an open
+ * advance.
+ *
+ * Each spent line becomes one RECEIPT retirement tagged with the request's
+ * dossier, which is exactly the per-dossier 4731 split KB §8.2 describes as the
+ * OUTPUT of this workflow.
+ */
+async function justify(client, { id, lines = [], entityId = null, entryDate = null, actor = {}, ip = null }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, "JUSTIFIED");
+
+  // Read policy before BEGIN: it is a plain SELECT and keeps the transaction short.
+  const pol = cr.regie_advance_id ? await regie.policy(client) : null;
+
   await client.query("BEGIN");
   try {
     // Justification is the LAST moment a receipt can still be produced, so the
     // advisory check runs here too — a line justified without its supporting
     // document is exactly what the Compliance module will want to see.
-    if (lines.length) await checkProof(client, cr, await replaceLines(client, id, lines));
+    const written = lines.length ? await replaceLines(client, id, lines) : [];
+    if (lines.length) await checkProof(client, cr, written);
+
+    const spent = sumField(lines, "spent_amount");
+    let retired = null;
+
+    if (cr.regie_advance_id) {
+      if (!cr.dossier_id) {
+        // A receipt lands in 4731, which is requires_analytic (9001:113) — the
+        // ledger trigger would refuse the posting. Fail with the reason rather
+        // than letting a raw RAISE surface from inside the transaction.
+        throw new AppError(
+          "DOSSIER_REQUIRED",
+          "This request draws on a régie advance, so it must be attached to a dossier before it can be justified",
+          422,
+        );
+      }
+      if (spent > 0) {
+        // One RECEIPT for the spend. Proof was already checked per line above;
+        // pass the first line's document so the retirement carries evidence.
+        const proof = written.find((l) => l.proof_vault_id) || null;
+        retired = await regie.retireCore(client, {
+          advanceId: cr.regie_advance_id,
+          kind: "RECEIPT",
+          dossierId: cr.dossier_id,
+          amount: spent,
+          proofVaultId: proof ? proof.proof_vault_id : null,
+          memo: "Justified by cash request " + (cr.doc_number || id),
+          entityId, entryDate,
+          sourceDocRef: ref(id),
+          actor, ip,
+          policy: pol,
+        });
+
+        // Q1, answered: the remainder must come back before the advance closes.
+        // KB §6.8 step 4 says a fully justified advance nets 581 to ZERO, and
+        // allowing a "justified" request to sit over an open advance is exactly
+        // the bug above in a smaller form. The holder returns the unspent cash
+        // (Dr 571) as a separate CASH_RETURN, which the UI offers on the advance.
+        const open = Number(retired.advance.amount)
+          - Number(retired.advance.justified_amount)
+          - Number(retired.advance.returned_amount);
+        if (open > 0 && !pol.allowPartialJustification) {
+          throw new AppError(
+            "ADVANCE_NOT_CLEARED",
+            `${Math.round(open * 100) / 100} of this advance is still open — record the unspent cash returned (or a write-off) before justifying the request`,
+            422,
+          );
+        }
+      }
+    }
+
     const updated = await repo.update(client, id, { status: "JUSTIFIED" });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.JUSTIFIED, moduleKey: events.MODULE, entityRef: ref(id), after: { spent: sumField(lines, "spent_amount") } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.JUSTIFIED, moduleKey: events.MODULE, entityRef: ref(id), after: { spent, regie_advance_id: cr.regie_advance_id || null, retired: !!retired } });
     await client.query("COMMIT");
-    return updated;
+    return { ...updated, regie_retirement: retired ? retired.retirement : null };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 

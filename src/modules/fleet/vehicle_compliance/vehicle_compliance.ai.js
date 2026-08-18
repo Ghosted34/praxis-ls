@@ -10,9 +10,9 @@ module.exports = {
   screens: ["vehicle-compliance"],
 
   reads: [
-    { key: "list_compliance", service: service.list, describe: "List vehicle compliance records (insurance, visite technique) with alert level." },
-    { key: "get_compliance", service: service.get, describe: "Get one compliance record by id." },
-    { key: "compliance_expiring", service: service.expiring, describe: "Preview compliance records expiring within N days (no alerts fired)." },
+    { key: "list_compliance", service: service.list, permission: { module: "MOD-40", action: "view" }, describe: "List vehicle compliance records (insurance, visite technique) with alert level." },
+    { key: "get_compliance", service: service.get, permission: { module: "MOD-40", action: "view" }, describe: "Get one compliance record by id." },
+    { key: "compliance_expiring", service: service.expiring, permission: { module: "MOD-40", action: "view" }, describe: "Preview compliance records expiring within N days (no alerts fired)." },
   ],
 
   writes: [

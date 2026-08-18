@@ -4,8 +4,8 @@ const validator = require("./operations_file.validator");
 module.exports = {
   entity: "dossier", module_key: "MOD-29", screens: [],
   reads: [
-    { key: "list_dossiers", service: service.list, describe: "List operation files (dossiers)." },
-    { key: "get_dossier", service: service.get, describe: "Get a dossier by id." },
+    { key: "list_dossiers", service: service.list, permission: { module: "MOD-29", action: "view" }, describe: "List operation files (dossiers)." },
+    { key: "get_dossier", service: service.get, permission: { module: "MOD-29", action: "view" }, describe: "Get a dossier by id." },
   ],
   writes: [
     { key: "open_dossier", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-29", action: "create" }, confirm: true, describe: "Open a new operations file (dossier)." },

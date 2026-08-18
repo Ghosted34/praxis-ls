@@ -18,26 +18,27 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 
 | Alias | Prefer | Raised |
 |---|---|---|
-| `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
-| `BAD_STATE` | `BAD_STATUS` | 28× |
+| `BAD_AMOUNT` | `INVALID_AMOUNT` | 10× |
+| `BAD_STATE` | `BAD_STATUS` | 30× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (381)
+## All codes (391)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `ACTUALS_LOCKED` | — | 1× | — |
+| `ADVANCE_NOT_CLEARED` | 422 | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
 | `AI_UNAVAILABLE` | 403, 503 | 4× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_ANSWERED` | 409 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 2× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
-| `ALREADY_CLOSED` | 422 | 2× | — |
+| `ALREADY_CLOSED` | 422 | 3× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |
 | `ALREADY_DECIDED` | 422 | 2× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
@@ -51,8 +52,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
 | `AUTH_REQUIRED` | 401 | 14× | — |
 | `AWAITING_DECISION` | — | 1× | — |
-| `BAD_ACTION` | 422 | 2× | — |
-| `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
+| `BAD_ACTION` | 422 | 3× | — |
+| `BAD_AMOUNT` | 422 | 10× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
 | `BAD_AUDIO` | 400 | 3× | — |
 | `BAD_AUDIO_TYPE` | — | 1× | — |
@@ -68,7 +69,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_HEADERS` | 422 | 1× | — |
 | `BAD_IMAGE` | 400 | 5× | — |
 | `BAD_INPUT` | 422 | 4× | — |
-| `BAD_KIND` | 422 | 1× | — |
+| `BAD_KIND` | 422 | 3× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
 | `BAD_LEGACY_KIND` | — | 1× | — |
 | `BAD_MIRROR` | 422 | 1× | — |
@@ -91,7 +92,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 28× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 30× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 1× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
@@ -128,7 +129,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DEVICE_REVOKED` | 422 | 1× | — |
 | `DOC_NOT_VERIFIED` | 422 | 1× | — |
 | `DOSSIERS_REQUIRED` | 422 | 1× | — |
-| `DOSSIER_REQUIRED` | 422 | 1× | — |
+| `DOSSIER_REQUIRED` | 422 | 3× | — |
 | `DUPLICATE` | 409 | 3× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
@@ -152,12 +153,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
-| `ENTITY_REQUIRED` | 422 | 9× | — |
+| `ENTITY_REQUIRED` | 422 | 11× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
+| `FULLY_DISBURSED` | 422 | 1× | — |
 | `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
@@ -191,6 +193,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 23× | — |
+| `INVOICE_ISSUED` | 422 | 1× | — |
 | `IN_USE` | 409 | 2× | — |
 | `ITINERARY_INVALID` | 422 | 1× | — |
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
@@ -217,6 +220,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NEGATIVE_STOCK` | 422 | 1× | — |
 | `NOTHING_TO_SUMMARISE` | 422 | 1× | — |
 | `NOT_ACTIVE` | 422 | 2× | — |
+| `NOT_AGED` | 422 | 1× | — |
 | `NOT_APPROVABLE` | 400 | 1× | — |
 | `NOT_A_DRAFT` | 422 | 1× | — |
 | `NOT_A_MEMBER` | 403 | 2× | `PERMISSION_DENIED` |
@@ -228,12 +232,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 436× | — |
+| `NOT_FOUND` | 404 | 441× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_PENDING` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
+| `NOT_QUERIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
 | `NOT_RELEASED` | 422 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
@@ -241,6 +246,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_TREASURY_CLASS` | 422 | 2× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
+| `NO_ACCOUNT` | 500 | 2× | — |
+| `NO_AGING_ENTRY` | 422 | 1× | — |
 | `NO_CATEGORY` | 422 | 2× | — |
 | `NO_CHANGES` | 400 | 1× | — |
 | `NO_COA` | 422 | 1× | — |
@@ -292,6 +299,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OUT_OF_GEOFENCE` | 422 | 1× | — |
 | `OVERRIDE_REASON_REQUIRED` | 422 | 1× | — |
 | `OVERRIDE_REQUIRED` | 422 | 1× | — |
+| `OVER_DISBURSED` | 422 | 1× | — |
+| `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 6× | — |
@@ -309,11 +318,12 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PREFIX_IN_USE` | 422 | 1× | — |
 | `PREFIX_TAKEN` | 422 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
+| `PROOF_REQUIRED` | 422 | 1× | — |
 | `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
-| `REASON_REQUIRED` | 422 | 4× | — |
+| `REASON_REQUIRED` | 422 | 5× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECON_OPEN` | 409 | 1× | — |

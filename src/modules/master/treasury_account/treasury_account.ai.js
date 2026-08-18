@@ -4,8 +4,8 @@ const validator = require("./treasury_account.validator");
 module.exports = {
   entity: "treasury_account", module_key: "MOD-09", screens: [],
   reads: [
-    { key: "list_treasury_accounts", service: service.list, describe: "List treasury accounts (bank/cash/MoMo)." },
-    { key: "get_treasury_account", service: service.get, describe: "Get a treasury account by id." },
+    { key: "list_treasury_accounts", service: service.list, permission: { module: "MOD-09", action: "view" }, describe: "List treasury accounts (bank/cash/MoMo)." },
+    { key: "get_treasury_account", service: service.get, permission: { module: "MOD-09", action: "view" }, describe: "Get a treasury account by id." },
   ],
   writes: [
     { key: "create_treasury_account", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-09", action: "create" }, confirm: true, describe: "Add a treasury account mapped to a class-5 GL account." },

@@ -10,9 +10,9 @@ module.exports = {
   screens: ["inventory"],
 
   reads: [
-    { key: "list_inventory", service: service.list, describe: "List inventory items (stock on hand)." },
-    { key: "get_inventory", service: service.get, describe: "Get one inventory item by id." },
-    { key: "list_movements", service: service.listMovements, describe: "List the stock-movement journal for an item." },
+    { key: "list_inventory", service: service.list, permission: { module: "MOD-35", action: "view" }, describe: "List inventory items (stock on hand)." },
+    { key: "get_inventory", service: service.get, permission: { module: "MOD-35", action: "view" }, describe: "Get one inventory item by id." },
+    { key: "list_movements", service: service.listMovements, permission: { module: "MOD-35", action: "view" }, describe: "List the stock-movement journal for an item." },
   ],
 
   writes: [

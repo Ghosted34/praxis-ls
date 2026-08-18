@@ -5,8 +5,8 @@ const generator = require("./proposal.generator");
 module.exports = {
   entity: "proposal", module_key: "MOD-23", screens: [],
   reads: [
-    { key: "list_proposals", service: (c, p) => service.list(c, p), describe: "List proposals (filter status/client)." },
-    { key: "get_proposal", service: (c, p) => service.get(c, p.id || p), describe: "Get a proposal with lines + narrative." },
+    { key: "list_proposals", service: (c, p) => service.list(c, p), permission: { module: "MOD-23", action: "view" }, describe: "List proposals (filter status/client)." },
+    { key: "get_proposal", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-23", action: "view" }, describe: "Get a proposal with lines + narrative." },
   ],
   writes: [
     { key: "generate_proposal", service: (c,p) => generator.generate(c,{proposalId:p.proposal_id,input:p}), schema: validator.schemas.aiGenerate, permission: { module: "MOD-23", action: "edit" }, confirm: true, describe: "Generate a grounded bilingual narrative for a draft proposal." },

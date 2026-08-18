@@ -10,9 +10,9 @@ module.exports = {
   screens: ["outbound"],
 
   reads: [
-    { key: "list_outbound", service: service.list, describe: "List outbound orders." },
-    { key: "get_outbound", service: service.get, describe: "Get one outbound order by id." },
-    { key: "list_outbound_lines", service: service.listLines, describe: "List the lines of an outbound order." },
+    { key: "list_outbound", service: service.list, permission: { module: "MOD-36", action: "view" }, describe: "List outbound orders." },
+    { key: "get_outbound", service: service.get, permission: { module: "MOD-36", action: "view" }, describe: "Get one outbound order by id." },
+    { key: "list_outbound_lines", service: service.listLines, permission: { module: "MOD-36", action: "view" }, describe: "List the lines of an outbound order." },
   ],
 
   writes: [

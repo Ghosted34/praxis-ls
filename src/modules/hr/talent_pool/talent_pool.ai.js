@@ -10,8 +10,8 @@ module.exports = {
   screens: ["talent-pool"],
 
   reads: [
-    { key: "list_talent", service: service.list, describe: "List talent-pool candidates." },
-    { key: "get_talent", service: service.get, describe: "Get one talent-pool entry by id." },
+    { key: "list_talent", service: service.list, permission: { module: "MOD-19", action: "view" }, describe: "List talent-pool candidates." },
+    { key: "get_talent", service: service.get, permission: { module: "MOD-19", action: "view" }, describe: "Get one talent-pool entry by id." },
   ],
 
   writes: [

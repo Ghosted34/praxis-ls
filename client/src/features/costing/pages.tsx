@@ -10,12 +10,25 @@ import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { RowActions } from "@/components/ui/row-actions";
+import { Panel } from "@/components/ui/panel";
+import {
+  RegieDetail,
+  MyAdvances,
+  WindowPill,
+  regieTone,
+} from "./regie-detail";
+import {
+  DisburseForm,
+  JustifyForm,
+  CashRequestActions,
+} from "./cash-request-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -411,6 +424,27 @@ export function CostingPage() {
     }
   }
 
+  // The unlock loop (10718). APPROVED_LOCKED used to be terminal: a wrong rate
+  // or a carrier credit had no remedy but a second costing competing with the
+  // first for the same dossier. UNLOCK is refused server-side once the dossier's
+  // final invoice has left DRAFT, and that 422 surfaces here verbatim.
+  const [unlockFor, setUnlockFor] = React.useState<api.Costing | null>(null);
+  async function unlock(
+    c: api.Costing,
+    action: "UNLOCK" | "DENY_UNLOCK",
+  ) {
+    setBusyId(c.costing_id);
+    setActionError(null);
+    try {
+      await api.unlockCosting(c.costing_id, action);
+      reload();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const columns: Column<api.Costing>[] = [
     {
       key: "ref",
@@ -459,7 +493,9 @@ export function CostingPage() {
               Submit for approval
             </Button>
           )}
-          {!["APPROVED_LOCKED", "REJECTED"].includes(r.status) && (
+          {!["APPROVED_LOCKED", "REJECTED", "UNLOCK_REQUESTED"].includes(
+            r.status,
+          ) && (
             <Button
               size="sm"
               variant="outline"
@@ -468,6 +504,35 @@ export function CostingPage() {
             >
               Approve
             </Button>
+          )}
+          {r.status === "APPROVED_LOCKED" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setUnlockFor(r)}
+            >
+              {tr("Request unlock")}
+            </Button>
+          )}
+          {r.status === "UNLOCK_REQUESTED" && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.costing_id}
+                onClick={() => unlock(r, "UNLOCK")}
+              >
+                {tr("Unlock")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.costing_id}
+                onClick={() => unlock(r, "DENY_UNLOCK")}
+              >
+                {tr("Deny")}
+              </Button>
+            </>
           )}
         </RowActions>
       ),
@@ -506,7 +571,79 @@ export function CostingPage() {
         }}
       />
       {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
+      {unlockFor && (
+        <UnlockRequestForm
+          costing={unlockFor}
+          onClose={() => setUnlockFor(null)}
+          onSaved={reload}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * REQUEST_UNLOCK needs a reason — it is the audit answer to "why is this
+ * approved costing open again", and the server refuses without one
+ * (REASON_REQUIRED). Its own dialog rather than a window.prompt, so the text is
+ * a real labelled control.
+ */
+function UnlockRequestForm({
+  costing,
+  onClose,
+  onSaved,
+}: {
+  costing: api.Costing;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.unlockCosting(costing.costing_id, "REQUEST_UNLOCK", reason);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Request unlock")}
+      description="Asks an approver to reopen this costing for correction. It returns to DRAFT only once the request is granted."
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <Field
+          label={tr("Reason")}
+          required
+          hint="Kept on the costing as the audit trail, whether or not the request is granted."
+        >
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </Field>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={busy || !reason.trim()}
+          onCancel={onClose}
+          saveLabel={tr("Request unlock")}
+        />
+      </form>
+    </Modal>
   );
 }
 
@@ -566,18 +703,33 @@ export function CostTrackingPage() {
           ))}
         </Select>
       </div>
+      {!dossierId && <CostPortfolio />}
       {dossierId && (
         <>
           <KpiRow>
+            {/* `budget`, not `planned_cost` — reconcile() returns
+                { budget, actual, variance, variance_percent, over_budget }
+                and this tile read two keys that have never existed, so it
+                rendered empty for every dossier ever selected. */}
+            <KpiTile label={tr("Budget")} value={money(rc.budget)} />
+            <KpiTile label={tr("Actual")} value={money(rc.actual)} />
             <KpiTile
-              label="Planned"
-              value={money(rc.planned_cost ?? rc.planned)}
+              label={tr("Variance")}
+              value={money(rc.variance)}
+              tone={rc.over_budget ? "bad" : "ok"}
             />
             <KpiTile
-              label={tr("Actual")}
-              value={money(rc.actual_cost ?? rc.actual)}
+              label={tr("Advance received")}
+              value={money(rc.advance_received)}
             />
-            <KpiTile label={tr("Variance")} value={money(rc.variance)} />
+            <KpiTile
+              label={tr("Coverage")}
+              value={
+                rc.coverage_percent == null
+                  ? "—"
+                  : `${num(rc.coverage_percent)}%`
+              }
+            />
           </KpiRow>
           <DataList
             columns={cols}
@@ -593,6 +745,114 @@ export function CostTrackingPage() {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * The portfolio sheet — every dossier with a budget or an actual.
+ *
+ * The legacy had a master sheet and a KPI view across all files; this module
+ * had only `/dossier/:dossierId/…`, so "which files are over budget" could not
+ * be asked without one round-trip per dossier. Shown when no single dossier is
+ * selected, so the page opens on the overview and narrows on demand.
+ *
+ * Every figure here is computed by the SAME `reconcile` and `coverage`
+ * functions the single-dossier read uses — not a second implementation in SQL.
+ * The legacy computed its status in a view AND again in PHP and the two
+ * disagreed; see doc/COST_TRACKING_LEGACY_COMPARISON.md §5.
+ */
+function CostPortfolio() {
+  const rows = useResource<api.CostPortfolioRow[]>(() => api.costPortfolio(), []);
+  const kpis = useResource<api.CostPortfolioKpis>(
+    () => api.costPortfolioKpis(),
+    [],
+  );
+  const k = kpis.data;
+
+  const cols: Column<api.CostPortfolioRow>[] = [
+    {
+      key: "ref",
+      label: "Dossier",
+      render: (r) => (
+        <span className="num font-medium text-foreground">{r.ref || "—"}</span>
+      ),
+    },
+    { key: "client_name", label: "Client", render: (r) => r.client_name || "—" },
+    {
+      key: "budget",
+      label: "Budget",
+      className: "num text-right",
+      render: (r) => money(r.budget),
+    },
+    {
+      key: "actual",
+      label: "Actual",
+      className: "num text-right",
+      render: (r) => money(r.actual),
+    },
+    {
+      key: "variance",
+      label: "Variance",
+      className: "num text-right",
+      render: (r) => (
+        <span className={r.over_budget ? "text-bad" : undefined}>
+          {money(r.variance)}
+        </span>
+      ),
+    },
+    {
+      key: "advance_received",
+      label: "Advanced",
+      className: "num text-right",
+      render: (r) => money(r.advance_received),
+    },
+    {
+      key: "coverage_percent",
+      label: "Coverage",
+      className: "num text-right",
+      // null means nothing has been spent yet — "0%" would read as "nothing is
+      // covered" when the true answer is "there is nothing to cover".
+      render: (r) =>
+        r.coverage_percent == null ? "—" : `${num(r.coverage_percent)}%`,
+    },
+  ];
+
+  return (
+    <>
+      <KpiRow>
+        <KpiTile label={tr("Files tracked")} value={num(k?.files_tracked)} />
+        <KpiTile
+          label={tr("Over budget")}
+          value={num(k?.over_budget)}
+          tone={k && k.over_budget > 0 ? "bad" : "ok"}
+        />
+        <KpiTile label={tr("Total actual")} value={money(k?.total_actual)} />
+        <KpiTile
+          label={tr("Variance")}
+          value={money(k?.total_variance)}
+          tone={k && k.total_variance > 0 ? "bad" : "ok"}
+        />
+        <KpiTile
+          label={tr("Coverage")}
+          value={
+            k?.overall_coverage_percent == null
+              ? "—"
+              : `${num(k.overall_coverage_percent)}%`
+          }
+        />
+      </KpiRow>
+      <DataList
+        columns={cols}
+        rows={rows.data}
+        error={rows.error || kpis.error}
+        loading={rows.loading}
+        rowKey={(r) => r.dossier_id}
+        empty={{
+          title: "Nothing tracked yet",
+          hint: "Dossiers appear here once they have an approved costing or a booked actual.",
+        }}
+      />
+    </>
   );
 }
 
@@ -757,10 +1017,17 @@ export function CashRequestsPage() {
   const dref = refOf(dossiers);
   const list = rows || [];
 
-  async function submitCr(c: api.CashRequest) {
+  // The two money actions open a dialog; the three status moves are one call.
+  const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
+  const [justifying, setJustifying] = React.useState<api.CashRequest | null>(null);
+
+  async function moveCr(
+    c: api.CashRequest,
+    to: "SUBMITTED" | "APPROVED" | "REJECTED",
+  ) {
     setBusyId(c.cash_request_id);
     try {
-      await api.transitionCashRequest(c.cash_request_id, "SUBMITTED");
+      await api.transitionCashRequest(c.cash_request_id, to);
       reload();
     } catch (e) {
       reportActionError(e);
@@ -806,16 +1073,13 @@ export function CashRequestsPage() {
             title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`}
             label={tr("View")}
           />
-          {(r.status === "DRAFT" || !r.status) && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={busyId === r.cash_request_id}
-              onClick={() => submitCr(r)}
-            >
-              Submit
-            </Button>
-          )}
+          <CashRequestActions
+            request={r}
+            busy={busyId === r.cash_request_id}
+            onTransition={(to) => moveCr(r, to)}
+            onDisburse={() => setDisbursing(r)}
+            onJustify={() => setJustifying(r)}
+          />
         </RowActions>
       ),
     },
@@ -853,6 +1117,20 @@ export function CashRequestsPage() {
       />
       {open && (
         <CashRequestForm onClose={() => setOpen(false)} onSaved={reload} />
+      )}
+      {disbursing && (
+        <DisburseForm
+          request={disbursing}
+          onClose={() => setDisbursing(null)}
+          onSaved={reload}
+        />
+      )}
+      {justifying && (
+        <JustifyForm
+          request={justifying}
+          onClose={() => setJustifying(null)}
+          onSaved={reload}
+        />
       )}
     </section>
   );
@@ -958,10 +1236,40 @@ function RegieForm({
   );
 }
 
+/**
+ * Régie list + the aging watchlist, with the detail view (retire / query /
+ * write off / un-age) opening over the row.
+ *
+ * The watchlist is a SEPARATE endpoint (`/regie/watchlist`) rather than a
+ * client-side filter, because "near its window" depends on each advance's own
+ * frozen `policy_window_days` and on the tenant's `warn_before_window_days`
+ * setting. Filtering here would mean shipping both to the browser and
+ * reimplementing `isDueSoon` in TSX.
+ */
 export function RegiePage() {
   const { rows, error, loading, reload } = useList<api.Regie>("/regie");
+  // `error` and `loading` are destructured because DataList REQUIRES them —
+  // they are not optional props. Passing the real ones (rather than nulls to
+  // satisfy the compiler) means a failed watchlist fetch shows as an error
+  // instead of silently rendering as "nothing due", which on an AGEING
+  // watchlist would be the most misleading possible empty state.
+  const {
+    data: watch,
+    error: watchError,
+    loading: watchLoading,
+    reload: reloadWatch,
+  } = useResource(() => api.regieWatchlist(), []);
   const [open, setOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<string | null>(null);
   const list = rows || [];
+  const watchRows = watch || [];
+  const aged = watchRows.filter((w) => w.is_aged);
+
+  const refreshAll = () => {
+    reload();
+    reloadWatch();
+  };
+
   const columns: Column<api.Regie>[] = [
     {
       key: "ref",
@@ -976,14 +1284,14 @@ export function RegiePage() {
       key: "amount",
       label: "Amount",
       className: "num text-right",
-      render: (r) => money(r.amount),
+      render: (r) => money(r.amount, r.currency),
     },
     {
       key: "status",
       label: "Status",
       render: (r) => {
         const st = r.state ?? r.status;
-        return st ? <Pill tone={tone(st)}>{st}</Pill> : "—";
+        return st ? <Pill tone={regieTone(st)}>{st}</Pill> : "—";
       },
     },
     {
@@ -995,7 +1303,17 @@ export function RegiePage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(r.regie_advance_id);
+            }}
+          >
+            {tr("Manage")}
+          </Button>
           <DocButton
             docType="REGIE_ADVANCE"
             id={r.regie_advance_id}
@@ -1006,12 +1324,51 @@ export function RegiePage() {
       ),
     },
   ];
+
+  const watchColumns: Column<api.RegieWatch>[] = [
+    {
+      key: "ref",
+      label: "Ref",
+      render: (r) => (
+        <span className="num font-medium text-foreground">
+          {r.doc_number || r.ref || r.regie_advance_id?.slice(0, 8) || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "open_balance",
+      label: "Open",
+      className: "num text-right",
+      render: (r) => money(r.open_balance, r.currency),
+    },
+    {
+      key: "days_to_window",
+      label: "Window",
+      render: (r) => <WindowPill days={r.days_to_window} aged={r.is_aged} />,
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (r) => (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelected(r.regie_advance_id)}
+          >
+            {tr("Manage")}
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Régie d'avance"
-        description="Cash advances (floats) and their ageing."
+        description="Cash advances (floats), their justification and their ageing."
         action={<Button onClick={() => setOpen(true)}>Issue advance</Button>}
       />
       <HubTabs />
@@ -1021,19 +1378,67 @@ export function RegiePage() {
           label="Total float"
           value={money(list.reduce((s, r) => s + (Number(r.amount) || 0), 0))}
         />
+        <KpiTile
+          label={tr("Open (watchlist)")}
+          value={money(
+            watchRows.reduce((s, r) => s + (Number(r.open_balance) || 0), 0),
+          )}
+        />
+        <KpiTile
+          label={tr("Aged")}
+          value={num(aged.length)}
+          tone={aged.length > 0 ? "bad" : "accent"}
+        />
       </KpiRow>
+
+      <MyAdvances onManage={(id) => setSelected(id)} />
+
+      {watchRows.length > 0 && (
+        <Panel
+          title={tr("Ageing watchlist")}
+          subtitle={tr(
+            "Open advances at or near their own policy window — chase these before they reclassify to 4211.",
+          )}
+        >
+          <DataList
+            columns={watchColumns}
+            rows={watchRows}
+            error={watchError}
+            loading={watchLoading}
+            rowKey={(r) => r.regie_advance_id}
+            empty={{ title: tr("Nothing due") }}
+          />
+        </Panel>
+      )}
+
       <DataList
         columns={columns}
         rows={rows}
         error={error}
         loading={loading}
         rowKey={(r) => r.regie_advance_id}
+        onRowClick={(r) => setSelected(r.regie_advance_id)}
+        highlightRowKey={selected || undefined}
         empty={{
           title: "No advances",
           hint: "Issue a cash advance to a holder.",
         }}
       />
-      {open && <RegieForm onClose={() => setOpen(false)} onSaved={reload} />}
+
+      {open && <RegieForm onClose={() => setOpen(false)} onSaved={refreshAll} />}
+      {selected && (
+        <Modal
+          open
+          size="wide"
+          onClose={() => setSelected(null)}
+          title={tr("Régie advance")}
+          description={tr(
+            "Balance, retirement ledger, and the actions this advance's state allows.",
+          )}
+        >
+          <RegieDetail advanceId={selected} onChanged={refreshAll} />
+        </Modal>
+      )}
     </section>
   );
 }

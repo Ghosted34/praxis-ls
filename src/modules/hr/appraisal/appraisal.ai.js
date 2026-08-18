@@ -10,8 +10,8 @@ module.exports = {
   screens: ["appraisals"],
 
   reads: [
-    { key: "list_appraisals", service: service.list, describe: "List performance appraisals." },
-    { key: "get_appraisal", service: service.get, describe: "Get one appraisal by id." },
+    { key: "list_appraisals", service: service.list, permission: { module: "MOD-13", action: "view" }, describe: "List performance appraisals." },
+    { key: "get_appraisal", service: service.get, permission: { module: "MOD-13", action: "view" }, describe: "Get one appraisal by id." },
   ],
 
   writes: [

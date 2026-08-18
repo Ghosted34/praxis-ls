@@ -25,12 +25,12 @@ module.exports = {
   reads: [
     {
       key: "list_service_types",
-      service: service.list,
+      service: service.list, permission: { module: "MOD-29", action: "view" },
       describe: "List the service taxonomy, with milestone-template coverage per service type.",
     },
     {
       key: "get_service_type",
-      service: service.get,
+      service: service.get, permission: { module: "MOD-29", action: "view" },
       describe: "Get a service type by id.",
     },
     {
@@ -40,7 +40,7 @@ module.exports = {
       // read does not carry a request context to resolve MOD-09 grants against
       // — a caller who needs the money should open the screen.
       key: "get_service_type_360",
-      service: (c, p) => dossier360.dossier(c, (p && p.service_type_id) || p, { canSeeFinancials: false }),
+      service: (c, p) => dossier360.dossier(c, (p && p.service_type_id) || p, { canSeeFinancials: false }), permission: { module: "MOD-29", action: "view" },
       describe: "Full dossier for one service type: milestone templates and their stages, applicable financial dictionary items, recent dossiers and margin simulations, and the money rollup (billed / planned / actual — masked without finance visibility).",
     },
   ],

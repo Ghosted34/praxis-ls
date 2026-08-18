@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 10721 close the procurement port gaps
+-- TENANT DB — 10722 close the procurement port gaps
 -- (doc/PROCUREMENT_PORT_LEGACY_ANALYSIS.md §0 + the four product decisions of
 -- 2026-08-18: restore two-step cash approval, SI reversal incl. paid, PO-level
 -- payment, full WMS GRN bridge).
@@ -108,7 +108,7 @@ DECLARE
 BEGIN
   SELECT event_type_id INTO v_event FROM event_type WHERE key = 'disbursal.validated';
   IF v_event IS NULL THEN
-    RAISE WARNING '[10721] disbursal.validated missing — default workflow not seeded';
+    RAISE WARNING '[10722] disbursal.validated missing — default workflow not seeded';
     RETURN;
   END IF;
   IF EXISTS (SELECT 1 FROM workflow WHERE event_type_id = v_event) THEN
@@ -123,7 +123,7 @@ BEGIN
                   ELSE 4 END), is_system DESC
    LIMIT 1;
   IF v_role IS NULL THEN
-    RAISE WARNING '[10721] no roles — disbursal.validated default workflow not seeded';
+    RAISE WARNING '[10722] no roles — disbursal.validated default workflow not seeded';
     RETURN;
   END IF;
   INSERT INTO workflow (event_type_id, name, is_active)
@@ -131,9 +131,9 @@ BEGIN
   RETURNING workflow_id INTO v_wf;
   INSERT INTO workflow_step (workflow_id, step_seq, step_kind, role_id, capability_code)
   VALUES (v_wf, 1, 'APPROVE', v_role, 'APPROVER');
-  RAISE NOTICE '[10721] seeded the disbursal.validated default approval chain';
+  RAISE NOTICE '[10722] seeded the disbursal.validated default approval chain';
 EXCEPTION WHEN OTHERS THEN
-  RAISE WARNING '[10721] could not seed disbursal.validated workflow: %', SQLERRM;
+  RAISE WARNING '[10722] could not seed disbursal.validated workflow: %', SQLERRM;
 END $$;
 
 -- ── 3. Supplier invoice reversal columns ───────────────────────────────────

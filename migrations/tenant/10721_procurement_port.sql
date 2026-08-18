@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 10720 procurement port (doc/PROCUREMENT_PORT_LEGACY_ANALYSIS.md)
+-- TENANT DB — 10721 procurement port (doc/PROCUREMENT_PORT_LEGACY_ANALYSIS.md)
 --
 -- Carries the legacy Finance & Treasury behaviour into the rebuild's
 -- procurement module. Every column below is additive; nothing here changes an

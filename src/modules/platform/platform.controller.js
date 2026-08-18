@@ -153,6 +153,9 @@ const setSandbox = asyncHandler(async (req, res) =>
 const wipeSandbox = asyncHandler(async (req, res) =>
   res.json({ data: await provisioning.wipeSandbox({ slug: req.params.slug }) }),
 );
+const seedSandboxDemo = asyncHandler(async (req, res) =>
+  res.json({ data: await provisioning.seedSandboxDemo({ slug: req.params.slug }) }),
+);
 const migrate = asyncHandler(async (req, res) =>
   res.json({ data: await provisioning.migrateTenant(req.params.slug) }),
 );
@@ -259,6 +262,7 @@ module.exports = {
   setCapacity,
   setSandbox,
   wipeSandbox,
+  seedSandboxDemo,
   migrate,
   features,
   setFeature,

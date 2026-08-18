@@ -22,8 +22,10 @@ const PIN_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
  *  storing it). */
 function mintPin() {
   let out = "";
-  const bytes = crypto.randomBytes(6);
-  for (let i = 0; i < 6; i += 1) out += PIN_ALPHABET[bytes[i] % PIN_ALPHABET.length];
+  // crypto.randomInt is rejection-sampled under the hood — no modulo bias
+  // (CodeQL js/biased-crypto: `bytes[i] % len` favours the first indices
+  // unless len divides 256 evenly, and 31 does not).
+  for (let i = 0; i < 6; i += 1) out += PIN_ALPHABET[crypto.randomInt(PIN_ALPHABET.length)];
   return out;
 }
 

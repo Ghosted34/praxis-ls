@@ -70,9 +70,12 @@ const DEFAULT_RATES = {
 function parseContainers(text) {
   const out = [];
   // q x size type — the type is optional (`3x20` is three 20' DC).
-  const re = /(\d+)\s*[xX×]\s*(\d{2})?\s*(?:([A-Za-z]{2,3}))?/g;
+  // BOUNDED quantifiers throughout (CodeQL js/polynomial-redos): `\d+` on
+  // user input with `\s*` after it can backtrack quadratically on long
+  // digit runs; `\d{1,6}` + a hard input cap make the worst case linear.
+  const re = /(\d{1,6})\s{0,4}[xX×]\s{0,4}(\d{2})?\s{0,4}(?:([A-Za-z]{2,3}))?/g;
+  const s = String(text || "").slice(0, 2000); // a container list is short
   let m;
-  const s = String(text || "");
   while ((m = re.exec(s)) !== null) {
     if (!m[1] && !m[2] && !m[3]) continue;
     const q = Math.max(1, parseInt(m[1], 10) || 1);

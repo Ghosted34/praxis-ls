@@ -102,6 +102,29 @@ async function touchPresence(client, groupId, userId) {
 // ── Messages ──
 const insertMessage = (client, data) => insertOne(client, "comms_message", data);
 const getMessage = (client, id) => getById(client, "comms_message", "message_id", id);
+
+/** G22 — the user_ids of every member of a group except `excludeUserId`. */
+async function memberUserIds(client, groupId, excludeUserId) {
+  const { rows } = await client.query(
+    "SELECT user_id FROM comms_member WHERE group_id = $1 AND user_id <> $2",
+    [groupId, excludeUserId],
+  );
+  return rows.map((r) => r.user_id);
+}
+
+/** G22 — stamp a read receipt on a message. Idempotent per user: a second
+ *  acknowledge is a no-op that returns the existing stamp. */
+async function acknowledgeMessage(client, messageId, userId) {
+  const { rows } = await client.query(
+    `UPDATE comms_message
+        SET acknowledged_at = COALESCE(acknowledged_at, now()),
+            acknowledged_by = COALESCE(acknowledged_by, $2)
+      WHERE message_id = $1
+      RETURNING *`,
+    [messageId, userId],
+  );
+  return rows[0] || null;
+}
 async function editMessage(client, id, body) {
   const { rows } = await client.query("UPDATE comms_message SET body = $2, edited_at = now() WHERE message_id = $1 AND deleted_at IS NULL RETURNING *", [id, body]);
   return rows[0] || null;
@@ -209,4 +232,12 @@ module.exports = {
   getDraft, upsertDraft, deleteDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   listColleagues,
+
+  // ── G22: notifications + acknowledgements ────────────────────────────────
+
+  /** The user_ids of everyone in a group except the caller (notify targets). */
+  memberUserIds,
+  /** Stamp a message acknowledged by a member; returns the updated row or null
+   *  if the message does not exist. */
+  acknowledgeMessage,
 };

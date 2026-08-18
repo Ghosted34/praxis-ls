@@ -56,7 +56,13 @@ async function compute(client, { id, config = null, actor = {} }) {
   if (!["OPEN", "COMPUTED"].includes(run.status)) {
     throw new AppError("RUN_LOCKED", `Cannot recompute a ${run.status} run`, 422);
   }
-  const cfg = { ...DEFAULTS, ...(config || {}) };
+  // G18 — the rates come from the effective-dated payroll_config table, not
+  // from the request body. Resolve the most recent config effective on or
+  // before the run's period end; only when NO stored config exists yet does a
+  // caller-supplied preview config fall back in (fresh-tenant path), so two
+  // people can never compute the same run differently once a config exists.
+  const stored = await repo.configForPeriod(client, run.entity_id, periodEnd(run.period_code));
+  const cfg = { ...DEFAULTS, ...(stored ? stored.config : config || {}) };
   const roster = await employeeService.roster(client, { entity_id: run.entity_id });
   await repo.deleteItems(client, id);
   // A recompute starts from clean: instalments this run had merely PROPOSED are
@@ -309,4 +315,48 @@ function periodEnd(periodCode) {
 // A cleared approval chain advances the run SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
 onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {}, viaChain: true }));
 
-module.exports = { createRun, compute, setStatus, get, list, myPayslips, employeePayslips, ownPayslipPdf };
+// ── G18: effective-dated rate configuration ─────────────────────────────────
+
+/** Top-level keys a tenant may override. Anything else is a typo, not a rate. */
+const CONFIG_KEYS = new Set(Object.keys(DEFAULTS));
+
+const listConfig = (client, { entityId }) => repo.listConfig(client, entityId);
+
+/**
+ * Save a rate config effective on a date (the legacy's one-afternoon admin
+ * task). Unknown keys are refused (a typo must not silently ride along), the
+ * row is upserted per (entity, date), and every OPEN run of the entity whose
+ * period ends on/after the effective date gets its preview snapshot refreshed
+ * so the next compute and the on-screen numbers agree. VALIDATED/APPROVED
+ * runs are untouched — past periods stay honest, which is the entire point.
+ */
+async function saveConfig(client, { entityId, effectiveDate, config = {}, actor = {} }) {
+  if (!entityId) throw new AppError("VALIDATION_ERROR", "entity_id is required", 422);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(effectiveDate || ""))) {
+    throw new AppError("VALIDATION_ERROR", "effective_date must be YYYY-MM-DD", 422);
+  }
+  const clean = {};
+  for (const [k, v] of Object.entries(config || {})) {
+    if (!CONFIG_KEYS.has(k)) {
+      throw new AppError("UNKNOWN_RATE", `"${k}" is not a payroll rate key`, 422, { config: [`unknown key "${k}"`] });
+    }
+    clean[k] = v;
+  }
+  const row = await repo.upsertConfig(client, { entityId, effectiveDate, config: clean, actorUserId: actor.user_id || null });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "payroll.config_saved", moduleKey: events.MODULE,
+    entityRef: "payroll_config:" + row.payroll_config_id, after: { entity_id: entityId, effective_date: effectiveDate },
+  });
+  // Propagate the preview to OPEN runs of this entity whose period starts at
+  // or after the effective date. Past (validated) runs are deliberately
+  // untouched.
+  await client.query(
+    `UPDATE payroll_run SET config_snapshot = $1
+      WHERE entity_id = $2 AND status IN ('OPEN','COMPUTED')
+        AND period_code >= to_char(($3::date), 'YYYY-MM')`,
+    [JSON.stringify({ ...DEFAULTS, ...clean }), entityId, effectiveDate],
+  );
+  return row;
+}
+
+module.exports = { createRun, compute, setStatus, get, list, myPayslips, employeePayslips, ownPayslipPdf, saveConfig, listConfig };

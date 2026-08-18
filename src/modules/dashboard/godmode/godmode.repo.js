@@ -8,8 +8,35 @@ async function getSoftDelete(c, id) {
   return rows[0] || null;
 }
 async function pinHash(c, userId) {
-  const { rows } = await c.query("SELECT godmode_pin_hash FROM app_user WHERE user_id=$1", [userId]);
-  return rows[0] ? rows[0].godmode_pin_hash : null;
+  const { rows } = await c.query(
+    "SELECT godmode_pin_hash, godmode_pin_set_at, godmode_pin_expires_at FROM app_user WHERE user_id=$1",
+    [userId],
+  );
+  return rows[0] || null;
+}
+
+/** Mint a fresh God-Mode PIN: hash + set_at + expires_at. G24. */
+async function setPin(c, { userId, hash, expiresAt }) {
+  const { rows } = await c.query(
+    `UPDATE app_user
+        SET godmode_pin_hash = $2, godmode_pin_set_at = now(), godmode_pin_expires_at = $3
+      WHERE user_id = $1 RETURNING godmode_pin_hash, godmode_pin_set_at, godmode_pin_expires_at`,
+    [userId, hash, expiresAt],
+  );
+  return rows[0] || null;
+}
+
+/** The tenant's CEO (the only role that may hold a God-Mode PIN). */
+async function ceoUser(c) {
+  const { rows } = await c.query(
+    `SELECT u.user_id, u.full_name, u.email
+       FROM app_user u
+       JOIN app_user_role ur ON ur.user_id = u.user_id
+       JOIN app_role r ON r.role_id = ur.role_id
+      WHERE r.code = 'CEO' AND u.status = 'ACTIVE'
+      ORDER BY u.created_at ASC LIMIT 1`,
+  );
+  return rows[0] || null;
 }
 async function recordPurge(c, { actorUserId, actorName, actorEmail, entityRef, payload, ip }) {
   // God-Mode purges are always sensitive (0510). Snapshot the actor's name
@@ -101,6 +128,6 @@ async function childCount(c, childTable, childCol, id) {
 }
 
 module.exports = {
-  listSoftDeletes, getSoftDelete, pinHash, recordPurge,
+  listSoftDeletes, getSoftDelete, pinHash, setPin, ceoUser, recordPurge,
   parseEntityRef, ledgerRefs, tablePk, referencingForeignKeys, childCount,
 };

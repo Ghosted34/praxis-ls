@@ -70,6 +70,11 @@ const PROCESSORS = [
   // wipes of one tenant would DROP/CREATE the same schema against each other.
   { name: "sandbox-wipe", concurrency: 1, handler: require("./handlers/sandbox-wipe") },
   { name: "sandbox-wipe-scheduler", concurrency: 1, handler: require("./handlers/sandbox-wipe-scheduler") },
+  // God-Mode PIN rotation (G24): weekly mint + out-of-band delivery to the
+  // CEO, per tenant. concurrency 1 — two concurrent rotations of one tenant
+  // would each email a different PIN, and the first becomes wrong instantly.
+  { name: "godmode-pin-rotation", concurrency: 1, handler: require("./handlers/godmode-pin-rotation") },
+  { name: "godmode-pin-rotation-scheduler", concurrency: 1, handler: require("./handlers/godmode-pin-rotation-scheduler") },
   // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
@@ -362,6 +367,21 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: sandboxWipeCron }, "sandbox wipe scheduler registered");
+  }
+
+  // God-Mode PIN rotation (G24): weekly, Monday 06:00 UTC — the start of the
+  // working week, matching the legacy's weekly cadence. The fan-out honours
+  // each tenant's CEO and delivers via the SECURITY email channel.
+  const pinCron = config.GODMODE_PIN_CRON;
+  if (!pinCron) {
+    logger.info("godmode pin rotation scheduler disabled (GODMODE_PIN_CRON empty)");
+  } else {
+    await enqueue("godmode-pin-rotation-scheduler", "tick", {}, {
+      repeat: { pattern: pinCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: pinCron }, "godmode pin rotation scheduler registered");
   }
 
   // Nightly fleet backup (§3.2, WS-B1). Wall-clock cron for the same reason as

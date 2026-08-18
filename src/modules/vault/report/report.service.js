@@ -30,7 +30,75 @@ const REPORTS = {
   cash_position: { describe: "Cash balance per treasury (class-5) account.", run: (c, p) => repo.cashPosition(c, p) },
   procurement_spend: { describe: "PO + posted supplier-invoice spend for a period.", run: (c, p) => repo.procurementSpend(c, p) },
   dossier_margin_portfolio: { describe: "Billed vs actual cost + margin per dossier.", run: (c, p) => repo.dossierMarginPortfolio(c, p) },
+
+  // ── G9: group read layer (PRD §13 / Settings §12) ─────────────────────────
+  // A tenant with two entities has two sets of books and, until now, no group
+  // view. Each consolidated producer runs the SAME producer the single-entity
+  // report uses, once per group member (resolved through corporate_entity
+  // parent/consolidates), and sums field-wise — the single source of truth
+  // for the maths, with a group wrapper around it.
+  consolidated_income_statement: {
+    describe: "Consolidated Compte de résultat across a corporate group (parent + consolidating children).",
+    run: (c, p) => consolidated(c, p, "income_statement", (a, b) => ({ charges: a.charges + b.charges, produits: a.produits + b.produits, hao_net: a.hao_net + b.hao_net, result: a.result + b.result })),
+  },
+  consolidated_balance_sheet: {
+    describe: "Consolidated Bilan across a corporate group.",
+    run: (c, p) => consolidated(c, p, "balance_sheet", (a, b) => ({ active: a.active + b.active, passif: a.passif + b.passif, result: a.result + b.result, balanced: Math.abs(a.active - a.passif) < 0.01 && Math.abs(b.active - b.passif) < 0.01 })),
+  },
+  consolidated_trial_balance: {
+    describe: "Consolidated trial balance across a corporate group (accounts summed by code).",
+    run: (c, p) => consolidated(c, p, "trial_balance", null, true),
+  },
 };
+
+/**
+ * Run a producer across every entity in a group and combine the results.
+ * `entityId` in params is the group parent; `combine(a, b)` folds two single-
+ * entity results field-wise; `sumRows` is used by the trial balance, whose
+ * result is a row list that must be summed per account code and re-balanced.
+ * Returns the single-entity result unchanged when the group has one member,
+ * so a leaf report is byte-identical to the non-consolidated one.
+ */
+async function consolidated(client, params, reportKey, combine, sumRows = false) {
+  const members = await repo.entityGroup(client, params.entityId);
+  if (members.length <= 1) return REPORTS[reportKey].run(client, params);
+
+  if (sumRows) {
+    const perEntity = [];
+    for (const m of members) {
+      perEntity.push(await REPORTS[reportKey].run(client, { ...params, entityId: m.entity_id }));
+    }
+    const byCode = new Map();
+    let debit = 0;
+    let credit = 0;
+    for (const tb of perEntity) {
+      for (const r of tb.rows || []) {
+        const key = r.account_code;
+        const acc = byCode.get(key) || { account_code: key, debit: 0, credit: 0 };
+        acc.debit += Number(r.debit) || 0;
+        acc.credit += Number(r.credit) || 0;
+        byCode.set(key, acc);
+      }
+      debit += Number(tb.totals && tb.totals.debit) || 0;
+      credit += Number(tb.totals && tb.totals.credit) || 0;
+    }
+    const round2 = (n) => Math.round(Number(n) * 100) / 100;
+    const rows = [...byCode.values()].map((r) => ({ account_code: r.account_code, debit: round2(r.debit), credit: round2(r.credit) })).sort((a, b) => (a.account_code < b.account_code ? -1 : 1));
+    return {
+      period: params,
+      members: members.map((m) => m.entity_id),
+      rows,
+      totals: { debit: round2(debit), credit: round2(credit), balanced: Math.abs(debit - credit) < 0.01 },
+    };
+  }
+
+  let out = null;
+  for (const m of members) {
+    const single = await REPORTS[reportKey].run(client, { ...params, entityId: m.entity_id });
+    out = out ? combine(out, single) : single;
+  }
+  return { period: params, members: members.map((m) => m.entity_id), ...out };
+}
 
 const catalogue = () => Object.entries(REPORTS).map(([key, r]) => ({ report_key: key, describe: r.describe }));
 

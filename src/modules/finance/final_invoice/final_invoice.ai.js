@@ -6,8 +6,8 @@ module.exports = {
   module_key: "MOD-51",
   screens: [],
   reads: [
-    { key: "list_final_invoices", service: service.list, describe: "List final invoices (filter status/client)." },
-    { key: "get_final_invoice", service: service.get, describe: "Get a final invoice by id, with its lines." },
+    { key: "list_final_invoices", service: service.list, permission: { module: "MOD-51", action: "view" }, describe: "List final invoices (filter status/client)." },
+    { key: "get_final_invoice", service: service.get, permission: { module: "MOD-51", action: "view" }, describe: "Get a final invoice by id, with its lines." },
   ],
   writes: [
     { key: "draft_final_invoice", service: service.createDraft, schema: validator.schemas.createDraft, permission: { module: "MOD-51", action: "create" }, confirm: true, describe: "Create a DRAFT final invoice (no GL yet)." },

@@ -10,8 +10,8 @@ module.exports = {
   screens: ["contracts"],
 
   reads: [
-    { key: "list_contracts", service: service.list, describe: "List HR contracts (offer, employment, confirmation, termination)." },
-    { key: "get_contract", service: service.get, describe: "Get one contract by id." },
+    { key: "list_contracts", service: service.list, permission: { module: "MOD-12", action: "view" }, describe: "List HR contracts (offer, employment, confirmation, termination)." },
+    { key: "get_contract", service: service.get, permission: { module: "MOD-12", action: "view" }, describe: "Get one contract by id." },
   ],
 
   writes: [

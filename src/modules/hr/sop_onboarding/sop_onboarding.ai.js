@@ -10,8 +10,8 @@ module.exports = {
   screens: ["sops"],
 
   reads: [
-    { key: "list_sops", service: service.list, describe: "List standard operating procedure documents." },
-    { key: "get_sop", service: service.get, describe: "Get one SOP document by id." },
+    { key: "list_sops", service: service.list, permission: { module: "MOD-16", action: "view" }, describe: "List standard operating procedure documents." },
+    { key: "get_sop", service: service.get, permission: { module: "MOD-16", action: "view" }, describe: "Get one SOP document by id." },
   ],
 
   writes: [

@@ -6,8 +6,8 @@ module.exports = {
   module_key: "MOD-49",
   screens: [],
   reads: [
-    { key: "list_regie_advances", service: service.list, describe: "List regie d'avances (cash advances)." },
-    { key: "get_regie_advance", service: service.get, describe: "Get a regie d'avance by id." },
+    { key: "list_regie_advances", service: service.list, permission: { module: "MOD-49", action: "view" }, describe: "List regie d'avances (cash advances)." },
+    { key: "get_regie_advance", service: service.get, permission: { module: "MOD-49", action: "view" }, describe: "Get a regie d'avance by id." },
   ],
   writes: [
     { key: "issue_regie_advance", service: service.issue, schema: validator.schemas.issue, permission: { module: "MOD-49", action: "create" }, confirm: true, describe: "Issue a cash advance to a holder (Dr 581 / Cr 521). KB 6.8." },

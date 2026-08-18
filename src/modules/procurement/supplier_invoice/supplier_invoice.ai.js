@@ -4,8 +4,8 @@ const validator = require("./supplier_invoice.validator");
 module.exports = {
   entity: "supplier_invoice", module_key: "MOD-61", screens: [],
   reads: [
-    { key: "list_supplier_invoices", service: service.list, describe: "List supplier invoices." },
-    { key: "get_supplier_invoice", service: service.get, describe: "Get a supplier invoice with lines." },
+    { key: "list_supplier_invoices", service: service.list, permission: { module: "MOD-61", action: "view" }, describe: "List supplier invoices." },
+    { key: "get_supplier_invoice", service: service.get, permission: { module: "MOD-61", action: "view" }, describe: "Get a supplier invoice with lines." },
   ],
   writes: [
     { key: "draft_supplier_invoice", service: service.createDraft, schema: validator.schemas.create, permission: { module: "MOD-61", action: "create" }, confirm: true, describe: "Create a DRAFT supplier invoice." },

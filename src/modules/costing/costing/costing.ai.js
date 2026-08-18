@@ -4,8 +4,8 @@ const validator = require("./costing.validator");
 module.exports = {
   entity: "costing", module_key: "MOD-46", screens: [],
   reads: [
-    { key: "list_costings", service: service.list, describe: "List dossier costings." },
-    { key: "get_costing", service: service.get, describe: "Get a costing with lines + computed margin." },
+    { key: "list_costings", service: service.list, permission: { module: "MOD-46", action: "view" }, describe: "List dossier costings." },
+    { key: "get_costing", service: service.get, permission: { module: "MOD-46", action: "view" }, describe: "Get a costing with lines + computed margin." },
   ],
   writes: [
     { key: "create_costing", service: service.createDraft, schema: validator.schemas.create, permission: { module: "MOD-46", action: "create" }, confirm: true, describe: "Create a DRAFT dossier costing (budget, margin, débours excluded §6.7)." },

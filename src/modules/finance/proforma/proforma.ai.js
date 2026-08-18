@@ -5,7 +5,7 @@ module.exports = {
   entity: "advance",
   module_key: "MOD-50",
   screens: [],
-  reads: [{ key: "get_advance", service: service.get, describe: "Get a customer advance by id." }],
+  reads: [{ key: "get_advance", service: service.get, permission: { module: "MOD-50", action: "view" }, describe: "Get a customer advance by id." }],
   writes: [{
     key: "record_proforma_payment", service: service.recordPayment, schema: validator.schemas.pay,
     permission: { module: "MOD-50", action: "create" }, confirm: true,

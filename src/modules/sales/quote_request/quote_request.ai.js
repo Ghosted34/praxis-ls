@@ -6,8 +6,8 @@ module.exports = {
   module_key: "MOD-20",
   screens: [],
   reads: [
-    { key: "list_quote_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), describe: "List intake quote requests. Returns rows + total + the KPI tiles, one per intake status plus TOTAL, which partition the filtered set." },
-    { key: "get_quote_request", service: (c, p) => service.get(c, p.id || p), describe: "Get a quote request by id, with attachments." },
+    { key: "list_quote_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), permission: { module: "MOD-20", action: "view" }, describe: "List intake quote requests. Returns rows + total + the KPI tiles, one per intake status plus TOTAL, which partition the filtered set." },
+    { key: "get_quote_request", service: (c, p) => service.get(c, p.id || p), permission: { module: "MOD-20", action: "view" }, describe: "Get a quote request by id, with attachments." },
   ],
   writes: [
     { key: "create_quote_request", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-20", action: "create" }, confirm: true, describe: "Create a new quote request. `incoterm` is required. Public reference is allocated from the tenant's numbering scheme in the same transaction." },

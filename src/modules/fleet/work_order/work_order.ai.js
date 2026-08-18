@@ -10,8 +10,8 @@ module.exports = {
   screens: ["work-orders"],
 
   reads: [
-    { key: "list_work_orders", service: service.list, describe: "List maintenance work orders." },
-    { key: "get_work_order", service: service.get, describe: "Get one work order by id." },
+    { key: "list_work_orders", service: service.list, permission: { module: "MOD-41", action: "view" }, describe: "List maintenance work orders." },
+    { key: "get_work_order", service: service.get, permission: { module: "MOD-41", action: "view" }, describe: "Get one work order by id." },
   ],
 
   writes: [

@@ -10,8 +10,8 @@ module.exports = {
   screens: ["incidents"],
 
   reads: [
-    { key: "list_incidents", service: service.list, describe: "List fleet incidents." },
-    { key: "get_incident", service: service.get, describe: "Get one incident by id." },
+    { key: "list_incidents", service: service.list, permission: { module: "MOD-45", action: "view" }, describe: "List fleet incidents." },
+    { key: "get_incident", service: service.get, permission: { module: "MOD-45", action: "view" }, describe: "Get one incident by id." },
   ],
 
   writes: [

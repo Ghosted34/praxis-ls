@@ -10,9 +10,9 @@ module.exports = {
   screens: ["trainings"],
 
   reads: [
-    { key: "list_trainings", service: service.list, describe: "List training sessions." },
-    { key: "get_training", service: service.get, describe: "Get one training session by id." },
-    { key: "list_attendees", service: service.listAttendees, describe: "List the attendance roster for a session." },
+    { key: "list_trainings", service: service.list, permission: { module: "MOD-18", action: "view" }, describe: "List training sessions." },
+    { key: "get_training", service: service.get, permission: { module: "MOD-18", action: "view" }, describe: "Get one training session by id." },
+    { key: "list_attendees", service: service.listAttendees, permission: { module: "MOD-18", action: "view" }, describe: "List the attendance roster for a session." },
   ],
 
   writes: [

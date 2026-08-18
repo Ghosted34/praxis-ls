@@ -4,8 +4,8 @@ const validator = require("./cash_request.validator");
 module.exports = {
   entity: "cash_request", module_key: "MOD-49", screens: [],
   reads: [
-    { key: "list_cash_requests", service: service.list, describe: "List cash requests / disbursals." },
-    { key: "get_cash_request", service: service.get, describe: "Get a cash request with lines + payments." },
+    { key: "list_cash_requests", service: service.list, permission: { module: "MOD-49", action: "view" }, describe: "List cash requests / disbursals." },
+    { key: "get_cash_request", service: service.get, permission: { module: "MOD-49", action: "view" }, describe: "Get a cash request with lines + payments." },
   ],
   writes: [
     { key: "draft_cash_request", service: service.createDraft, schema: validator.schemas.create, permission: { module: "MOD-49", action: "create" }, confirm: true, describe: "Create a DRAFT cash request." },

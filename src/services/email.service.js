@@ -111,6 +111,30 @@ function transportFrom(cfg) {
  */
 async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
+
+  // G2 — sandbox must not send real client emails (PRD §5.5 [RULE]). The env
+  // is read off the CONNECTION (registry tags every pooled client at acquire,
+  // and the tenant-context lease re-tags it on schema switches), so both the
+  // worker path (withTenantConnection) and the direct paths (req.tenantDb)
+  // are covered without threading `env` through every caller. Suppressed =
+  // no transport resolved, nothing leaves the server; the send-log records
+  // SUPPRESSED so the trail shows what would have gone out.
+  const connEnv = client ? client[Symbol.for("praxis.conn.env")] : null;
+  if (connEnv === "sandbox") {
+    if (client) {
+      await emailRepo.recordSend(client, {
+        email_identity_id: null,
+        to_address: Array.isArray(to) ? to.join(", ") : to,
+        subject: subject || null,
+        entity_ref: entityRef || null,
+        document_vault_id: documentVaultId || null,
+        status: "SUPPRESSED",
+        error: "suppressed: sandbox environment (PRD §5.5)",
+      }).catch(() => { /* log write is best-effort */ });
+    }
+    return { suppressed: true, env: connEnv, to, subject: subject || null };
+  }
+
   const cfg = await resolveMail(client, { purpose, moduleKey });
   if (!tx && !cfg.smtp_host) throw new Error("email: no sender configured (add an email_identity or SMTP settings)");
   const mailer = tx || transportFrom(cfg);

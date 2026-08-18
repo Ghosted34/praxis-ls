@@ -172,6 +172,19 @@ function watermark(text) {
   return `<div class="wm"><span>${esc(text)}</span></div>`;
 }
 
+/**
+ * G2 — the watermark a document render should carry, given the connection it
+ * is rendering for. Sandbox renders are forced to "TEST SANDBOX" (PRD §5.5
+ * [RULE]: watermarked PDFs in Test mode) no matter what the tenant configured;
+ * live renders keep the tenant's own watermark. The env is read off the pooled
+ * client (registry tags it at acquire; tenant-context re-tags on switches), so
+ * every render path is covered without threading `env` through callers.
+ */
+function watermarkFor(client, configured) {
+  const env = client ? client[Symbol.for("praxis.conn.env")] : null;
+  return env === "sandbox" ? "TEST SANDBOX" : configured || "";
+}
+
 function footer(entity = {}, cfg = {}, verify) {
   const legal = [entity.legal_name, entity.rccm ? `RCCM ${entity.rccm}` : null, entity.niu ? `NIU ${entity.niu}` : null, entity.address].filter(Boolean).map(esc).join(" · ");
   const custom = cfg.footer_text ? `<div>${esc(cfg.footer_text)}</div>` : "";
@@ -182,5 +195,5 @@ function footer(entity = {}, cfg = {}, verify) {
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
-  bankBlock, termsBlock, signatureBlock, watermark, footer,
+  bankBlock, termsBlock, signatureBlock, watermark, watermarkFor, footer,
 };

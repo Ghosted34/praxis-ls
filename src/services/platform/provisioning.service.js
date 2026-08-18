@@ -785,6 +785,26 @@ async function wipeSandbox(input) {
 }
 
 /**
+ * Record that a tenant's sandbox was rebuilt just now. The auto-wipe scheduler
+ * (G3, PRD §5.5) reads `tenant.sandbox_wipe_days` and skips tenants whose
+ * `last_sandbox_wipe_at` is newer than that window — without this stamp the
+ * daily tick would rebuild every sandbox every day.
+ */
+async function stampSandboxWipe(input) {
+  const { slug } = input;
+  const pf = m.client(config.DB_NAME, { superuser: true });
+  try {
+    await pf.query(
+      "UPDATE platform.tenant SET last_sandbox_wipe_at = now() WHERE slug = $1",
+      [slug],
+    );
+  } finally {
+    await pf.end();
+  }
+  return { slug };
+}
+
+/**
  * Bootstrap a tenant's first admin from the platform console (same effect as
  * scripts/tenant/create-admin.js). A freshly provisioned tenant has no app_user
  * rows, so nobody can log in; this creates one in the tenant's LIVE schema with
@@ -901,4 +921,5 @@ module.exports = {
   toDepsArray,
   createAdmin,
   listTenantSlugs,
+  stampSandboxWipe,
 };

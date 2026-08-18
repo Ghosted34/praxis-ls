@@ -65,6 +65,11 @@ const PROCESSORS = [
   // is told once.
   { name: "contract-lapse", concurrency: 1, handler: require("./handlers/contract-lapse") },
   { name: "contract-lapse-scheduler", concurrency: 1, handler: require("./handlers/contract-lapse-scheduler") },
+  // Sandbox auto-wipe (G3, PRD §5.5): daily fan-out honouring each tenant's
+  // sandbox_wipe_days + the rebuild worker. concurrency 1 — two concurrent
+  // wipes of one tenant would DROP/CREATE the same schema against each other.
+  { name: "sandbox-wipe", concurrency: 1, handler: require("./handlers/sandbox-wipe") },
+  { name: "sandbox-wipe-scheduler", concurrency: 1, handler: require("./handlers/sandbox-wipe-scheduler") },
   // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
@@ -339,6 +344,24 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
+  }
+
+  // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every
+  // working day in Africa/Lagos and clear of the fleet backup at 01:00, so a
+  // rebuild never races a dump. The tick itself only ENQUEUES per tenant; each
+  // tenant's sandbox_wipe_days is honoured inside the scheduler (skip if the
+  // last wipe is newer than the window), and the worker jobId is per-tenant-
+  // per-day so a re-run never double-wipes.
+  const sandboxWipeCron = config.SANDBOX_WIPE_CRON;
+  if (!sandboxWipeCron) {
+    logger.info("sandbox wipe scheduler disabled (SANDBOX_WIPE_CRON empty)");
+  } else {
+    await enqueue("sandbox-wipe-scheduler", "tick", {}, {
+      repeat: { pattern: sandboxWipeCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: sandboxWipeCron }, "sandbox wipe scheduler registered");
   }
 
   // Nightly fleet backup (§3.2, WS-B1). Wall-clock cron for the same reason as

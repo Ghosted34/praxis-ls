@@ -28,4 +28,30 @@ module.exports = {
   }),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
   remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { id: req.params.id, actor: actor(req) })) })),
+
+  // ── G7: bulk Excel import ────────────────────────────────────────────────
+  importTemplate: asyncHandler(async (req, res) => {
+    const buffer = await req.tenantDb((c) => service.importTemplate(c));
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="expense-rate-template-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  }),
+  importValidate: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.importValidate(c, { buffer: decodeUpload(req.body.file) })) })),
+  importCommit: asyncHandler(async (req, res) =>
+    res.status(201).json({ data: await req.tenantDb((c) => service.importCommit(c, { rows: req.body.rows, actor: actor(req) })) })),
 };
+
+/** Decode the base64 data-URL the client sends (same convention as the vault
+ *  and the financial-dictionary importer). */
+function decodeUpload(file) {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(String(file || ""));
+  const b64 = m ? m[2] : String(file || "");
+  const buffer = Buffer.from(b64, "base64");
+  if (buffer.length === 0) {
+    const e = new Error("Expected a base64-encoded .xlsx workbook");
+    e.status = 400;
+    throw e;
+  }
+  return buffer;
+}

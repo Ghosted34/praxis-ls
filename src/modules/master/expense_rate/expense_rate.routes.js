@@ -10,6 +10,11 @@ const MODULE = "MOD-10";
 const router = express.Router();
 router.use(authMiddleware);
 router.get("/resolve", requirePermission(MODULE, "view"), controller.resolve);
+// G7 — bulk Excel import. Declared before "/:id" so "template" is never
+// captured as an id, mirroring the financial-dictionary importer.
+router.get("/import/template", requirePermission(MODULE, "create"), controller.importTemplate);
+router.post("/import/validate", requirePermission(MODULE, "create"), validator.importUpload, controller.importValidate);
+router.post("/import/commit", requirePermission(MODULE, "create"), validator.importCommit, controller.importCommit);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

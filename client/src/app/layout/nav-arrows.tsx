@@ -230,17 +230,25 @@ function ArrowButton({
 }
 
 /**
- * The pair. Renders nothing at all when the trail has nowhere to go in either
- * direction AND has never had anywhere to go — a first visit gets no dead
- * controls. Once the user has moved once, the pair stays put: a control that
- * appears and disappears under the pointer is worse than a greyed one.
+ * The pair, and it is ALWAYS THERE.
+ *
+ * It used to return null until the trail held more than one entry, on the
+ * theory that a first visit should not be given dead controls. That was wrong,
+ * and wrong against this file's own rule two paragraphs up: the trail lives in
+ * `sessionStorage`, so every fresh tab starts with exactly one entry — meaning
+ * the arrows were absent every single time the app was opened, and appeared
+ * only after the first click. A control you cannot see on load is a control you
+ * do not know exists, and chrome that comes and goes is worse than chrome that
+ * is greyed.
+ *
+ * So both arrows render from the first frame, disabled until there is somewhere
+ * to go. Disabled is information here — it says the trail starts here, which is
+ * true, and which a button wired to `history.back()` could never say.
  */
 export function NavArrows() {
   const { t } = useTranslation();
-  const { canBack, canForward, backTarget, forwardTarget, steps, go, trail } =
+  const { canBack, canForward, backTarget, forwardTarget, steps, go } =
     useNavTrail();
-
-  if (trail.entries.length <= 1) return null;
 
   return (
     <div className="rail-nav" role="group" aria-label={navT(t, "History")}>

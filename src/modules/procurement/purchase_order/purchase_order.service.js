@@ -182,7 +182,9 @@ async function transition(client, { poId, to, entityId = null, date = null, acto
  * (purchase_order_payment + amount_paid, derived from the children); when the
  * purchase goes through the supplier-invoice path instead, THAT is where the
  * accounting happens (Dr 6xx + 4452 / Cr 4011, then /pay Dr 4011 / Cr
- * treasury). Posting twice would book the same outflow twice.
+ * treasury). Posting twice would book the same outflow twice. For the same
+ * reason the supplier payables/overdue cache reflects supplier invoices only —
+ * a direct PO payment is expense tracking, not an accounts-payable balance.
  *
  * `amount` is optional and defaults to the whole outstanding balance, so the
  * ordinary full payment is a one-argument call. The status is DERIVED by

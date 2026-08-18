@@ -151,8 +151,15 @@ DO $$ BEGIN
 END $$;
 
 -- ── 5. WMS bridge ──────────────────────────────────────────────────────────
+-- source_grn_id is the procurement GRN that handed the goods over; the
+-- procurement side links back via goods_received_note.wms_inbound_id, so each
+-- side finds the other. (Missing from the first pass of this file — the
+-- send-to-warehouse path would have failed at runtime with
+-- `column source_grn_id does not exist`.)
 ALTER TABLE grn_inbound ADD COLUMN IF NOT EXISTS po_id uuid REFERENCES purchase_order(po_id);
+ALTER TABLE grn_inbound ADD COLUMN IF NOT EXISTS source_grn_id uuid REFERENCES goods_received_note(grn_id);
 ALTER TABLE goods_received_note ADD COLUMN IF NOT EXISTS wms_inbound_id uuid REFERENCES grn_inbound(grn_inbound_id);
+CREATE INDEX IF NOT EXISTS ix_grn_inbound_source ON grn_inbound(source_grn_id) WHERE source_grn_id IS NOT NULL;
 
 -- DOWN
 -- The CHECK widenings are reversible only while no row sits in the new statuses.

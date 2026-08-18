@@ -109,6 +109,13 @@ describe("every <module>.ai.js manifest is well-formed", () => {
     for (const r of m.reads) {
       expect(typeof r.key).toBe("string");
       expect(typeof r.service).toBe("function");
+      // NOT asserted yet: `r.permission`. It should be — `action-authz`
+      // FAILS CLOSED on reads as well as writes (SEC H1), so a read with no
+      // declared permission is refused with "declares no required permission"
+      // and is dead on arrival. 190 reads across 79 manifests are currently in
+      // that state, so turning this into an assertion is a repo-wide fix, not
+      // a one-line one. MOD-28 was corrected on 2026-08-18; the rest are
+      // outstanding. See the note in extra_charge_simulation.ai.js.
     }
     for (const w of m.writes) {
       expect(typeof w.key).toBe("string");

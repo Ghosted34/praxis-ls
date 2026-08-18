@@ -582,9 +582,30 @@ no new view to diff against, so:
 2. Reconcile field by field. Only then decide whether anything is genuinely missing.
 
 Deliberately last: it is the only one of the four with no known correctness defect, and the
-comparison is analysis, not code. `cost_entry` also already carries `source_ref` with a
-partial unique index (`0463`) for idempotent analytical attribution, so the dedupe problem
-that usually bites this module is already handled.
+comparison is analysis, not code.
+
+**DONE — `doc/COST_TRACKING_LEGACY_COMPARISON.md`.** Headline findings:
+
+- **The view DDL does not exist in the reference tree.** Only the consumer
+  (`cost-tracking-api.php`) survives; no schema dump was ever committed. The _projected
+  columns_ of all three views were recovered from the PHP `SELECT` lists and array keys,
+  which is what the field-by-field comparison actually needs. Reconstructing the view
+  bodies would have been fabrication.
+- **One real gap:** advances are never joined to the cost-tracking read, so
+  `total_advance` / `total_balance` / `coverage_percentage` have no equivalent. But the new
+  system models advances _better_ — `advance` (`0230:38`) is per-dossier with its own
+  `entry_id` and `applied_amount`, versus legacy's per-cost-line column. The fix is a repo
+  query plus three derived fields on `reconcileDossier`; **no migration**. Left as its own
+  scoped change rather than folded into an analysis commit.
+- **One thing not to copy:** `calculated_status` / `manual_status`. It is implemented twice
+  (SQL view _and_ PHP) and disagrees with itself; `COMPLETED` means "the client has paid",
+  not "the work is done"; and `dossier.status` (`0310:26`) already owns that vocabulary with
+  a different meaning. Surfacing coverage as a percentage says what it means.
+- **One thing we have that legacy could not express:** variance against an _approved_
+  budget. The three views have no budget column — they can say what was spent and what was
+  collected, never whether the spend was authorised. That is the point of MOD-47. `cost_entry` also already carries `source_ref` with a
+  partial unique index (`0463`) for idempotent analytical attribution, so the dedupe problem
+  that usually bites this module is already handled.
 
 ---
 

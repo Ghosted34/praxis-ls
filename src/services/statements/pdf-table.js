@@ -71,7 +71,18 @@ function inflateStreams(buffer) {
       try {
         out.push({ dict, data: zlib.inflateSync(data) });
       } catch {
-        try { out.push({ dict, data: zlib.inflateRawSync(data) }); } catch { /* skip damaged stream */ }
+        // Some producers write raw-deflate streams without the zlib header, so
+        // that is tried before giving up on the object.
+        try {
+          out.push({ dict, data: zlib.inflateRawSync(data) });
+        } catch {
+          /* @silent:parse — a stream neither zlib nor raw-deflate can read is a
+             damaged or unsupported object in an untrusted upload. Dropping THIS
+             object is the defined fallback: the other pages still yield their
+             text, and if the loss matters the statement will not foot, which is
+             a far better signal to the treasurer than an import that dies on
+             page 9 of 12. */
+        }
       }
     } else if (!/\/(DCT|JPX|CCITT|JBIG2|RunLength|LZW)Decode/.test(dict)) {
       out.push({ dict, data });                      // uncompressed content stream

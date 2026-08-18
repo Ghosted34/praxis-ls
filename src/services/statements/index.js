@@ -22,6 +22,14 @@
  *                    called them. These need a `statement_profile`: proposed
  *                    once, confirmed by a human, then reused by header
  *                    signature forever.
+ *
+ *   SCANNED          A PDF with no text layer — a photograph of paper. Falls
+ *                    through to pdf-ocr.js, which reads the page images and
+ *                    returns canonical rows like the self-describing formats
+ *                    do. No mapping is needed, but `ocr_used` is recorded on
+ *                    the statement: an OCR'd figure is our reading of a
+ *                    picture, not something the institution asserted, and an
+ *                    auditor is entitled to know which they are looking at.
  */
 "use strict";
 
@@ -30,6 +38,7 @@ const xlsx = require("./xlsx");
 const camt053 = require("./camt053");
 const mt940 = require("./mt940");
 const pdfTable = require("./pdf-table");
+const pdfOcr = require("./pdf-ocr");
 const { AppError } = require("../../utils/errors");
 
 /** Source kinds whose rows arrive already speaking the canonical vocabulary. */
@@ -82,7 +91,7 @@ function detect(buffer, filename = "") {
  * (delimiter, sheet, header row) when one exists, so a second import of the
  * same bank reproduces the first import's parse exactly rather than re-sniffing.
  */
-async function parse(buffer, { filename = "", sourceKind = null, ...opts } = {}) {
+async function parse(buffer, { filename = "", sourceKind = null, client = null, allowOcr = true, ...opts } = {}) {
   const kind = sourceKind || detect(buffer, filename);
   let result;
 
@@ -96,12 +105,24 @@ async function parse(buffer, { filename = "", sourceKind = null, ...opts } = {})
       throw new AppError("BAD_FILE", `Unsupported statement format "${kind}"`, 400);
   }
 
+  // A PDF with no text layer is a photograph of paper. Rather than refuse it,
+  // fall through to OCR — which lifts the page images out of the container and
+  // reads them (see pdf-ocr.js). The result rejoins this pipeline as ordinary
+  // canonical rows, so the preview, the footing check and the human
+  // confirmation gate it exactly as they gate every other source.
+  //
+  // `allowOcr: false` is honoured so a caller can ask "is this readable
+  // without a model?" without spending a vision call to find out.
   if (kind === "PDF" && result.meta && result.meta.scanned) {
-    throw new AppError(
-      "SCANNED_PDF",
-      "This PDF has no text layer - it looks like a scan or a photograph. Ask the bank for a CSV, Excel or text-based PDF export.",
-      422,
-    );
+    if (!allowOcr) {
+      throw new AppError(
+        "SCANNED_PDF",
+        "This PDF has no text layer - it looks like a scan or a photograph.",
+        422,
+      );
+    }
+    const ocr = await pdfOcr.parse(buffer, { client });
+    return { ...ocr, source_kind: "PDF", canonical: true };
   }
   if (!result.rows.length) {
     throw new AppError("EMPTY_STATEMENT", "No transaction rows could be read from this file", 422);
@@ -110,4 +131,4 @@ async function parse(buffer, { filename = "", sourceKind = null, ...opts } = {})
   return { ...result, source_kind: kind, canonical: CANONICAL_KINDS.has(kind) };
 }
 
-module.exports = { parse, detect, CANONICAL_KINDS, csv, xlsx, camt053, mt940, pdfTable };
+module.exports = { parse, detect, CANONICAL_KINDS, csv, xlsx, camt053, mt940, pdfTable, pdfOcr };

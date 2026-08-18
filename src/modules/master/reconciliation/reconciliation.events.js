@@ -14,4 +14,5 @@ module.exports = {
   RECONCILIATION_APPROVED: "reconciliation.approved",
   CASH_COUNT_RECORDED: "cash_count.recorded",
   CASH_COUNT_ATTESTED: "cash_count.attested",
+  DOCUMENT_RENDERED: "reconciliation.document_rendered",
 };

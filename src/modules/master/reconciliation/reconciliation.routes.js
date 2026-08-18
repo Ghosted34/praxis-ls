@@ -52,7 +52,12 @@ router.post("/", requirePermission(MODULE, "create"), v.buildReconciliation, c.b
 router.get("/cash-counts", requirePermission(MODULE, "view"), c.listCashCounts);
 router.post("/cash-counts", requirePermission(MODULE, "create"), v.cashCount, c.recordCashCount);
 router.post("/cash-counts/:id/attest", requirePermission(MODULE, "edit"), v.attestCashCount, c.attestCashCount);
+router.post("/cash-counts/:id/document", requirePermission(MODULE, "view"), c.renderCashCountDocument);
 router.get("/:id", requirePermission(MODULE, "view"), c.getReconciliation);
 router.post("/:id/approve", requirePermission(MODULE, "approve"), c.approveReconciliation);
+// Issuing the document is a `view` act, not an `approve` one: it renders what
+// the record already says. Whether it says DRAFT across the top is decided by
+// the record's status, not by who asked for it.
+router.post("/:id/document", requirePermission(MODULE, "view"), c.renderReconciliationDocument);
 
 module.exports = { basePath: "/reconciliation", feature: null, router };

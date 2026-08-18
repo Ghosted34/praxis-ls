@@ -317,7 +317,7 @@
       "route": "/master/treasury-accounts/:id/reconciliation",
       "area": "master",
       "module_key": "MOD-09",
-      "purpose": "Reconcile a treasury account against its external truth \u2014 a bank or mobile-money statement (CSV/Excel/PDF/camt.053/MT940), or a physical count for petty cash. Upload, confirm the column mapping once per institution, sweep the ledger for candidate matches, then sign off the etat de rapprochement. The matcher only ever proposes: confirming a match, approving a reconciliation and attesting a count are human acts and are not exposed to the assistant.",
+      "purpose": "Reconcile a treasury account against its external truth — a bank or mobile-money statement (CSV/Excel/PDF/camt.053/MT940, a scanned PDF read by OCR), or a physical count for petty cash. Upload, confirm the column mapping once per institution, sweep the ledger for candidate matches, then issue the etat de rapprochement. The matcher only ever proposes: confirming a match, approving a reconciliation and attesting a count are human acts and are not exposed to the assistant.",
       "actions": [
         "list_bank_statements",
         "get_bank_statement",

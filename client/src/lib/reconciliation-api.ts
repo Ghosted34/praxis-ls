@@ -69,6 +69,10 @@ export type BankStatement = {
   duplicate_count: number;
   /** `null` means the check could not run — not that it passed. */
   foots: boolean | null;
+  /** True when the figures were read off a scan rather than exported. */
+  ocr_used?: boolean;
+  ocr_provider?: string | null;
+  ocr_page_count?: number | null;
   footing_difference: string | number | null;
   status: StatementStatus;
   imported_at: string;
@@ -131,6 +135,14 @@ export type MappingProposal = {
   alternatives: Partial<Record<CanonicalField, Array<{ header: string; score: number }>>>;
 };
 
+export type OcrProvenance = {
+  used: boolean;
+  provider: string;
+  pages: number;
+  pages_read: number;
+  page_detail: Array<{ page: number; read: boolean; rows?: number; reason?: string }>;
+};
+
 export type PreviewReady = {
   status: "READY";
   account: { treasury_account_id: string; label: string; currency: string; category_code: string | null; is_momo: boolean; is_bank: boolean };
@@ -142,6 +154,8 @@ export type PreviewReady = {
   rejected: Array<{ __row?: number; reasons: string[] }>;
   footing: FootingResult;
   preview: Array<Record<string, unknown>>;
+  /** Present only when the statement was a scan read by OCR. */
+  ocr: OcrProvenance | null;
   source_meta: Record<string, unknown>;
 };
 
@@ -299,6 +313,23 @@ export const listReconciliations = (treasuryAccountId: string) =>
 export const approveReconciliation = (id: string) =>
   tenant<Reconciliation>(`${base}/${id}/approve`, { method: "POST", body: {} });
 
+export type IssuedDocument = {
+  doc_id: string;
+  content_hash: string;
+  public_url?: string | null;
+  verify?: string;
+};
+
+export const renderReconciliationDocument = (reconciliationId: string) =>
+  tenant<{ reconciliation: Reconciliation; document: IssuedDocument }>(
+    `${base}/${reconciliationId}/document`, { method: "POST", body: {} },
+  );
+
+export const renderCashCountDocument = (cashCountId: string) =>
+  tenant<{ cash_count: CashCount; document: IssuedDocument; doc_number: string }>(
+    `${base}/cash-counts/${cashCountId}/document`, { method: "POST", body: {} },
+  );
+
 export const listCashCounts = (treasuryAccountId: string) =>
   tenant<CashCount[]>(`${base}/cash-counts?treasury_account_id=${encodeURIComponent(treasuryAccountId)}`);
 
@@ -307,6 +338,7 @@ export const recordCashCount = (body: {
   counted_on?: string;
   denominations?: Array<{ note: number; qty: number }>;
   counted_total?: number;
+  witness_user_id?: string | null;
   variance_reason?: string | null;
 }) => tenant<CashCount>(`${base}/cash-counts`, { method: "POST", body });
 

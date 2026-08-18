@@ -33,6 +33,9 @@ const rules = require("./reconciliation.rules");
 const mapping = require("./reconciliation.mapping");
 const events = require("./reconciliation.events");
 const statements = require("../../../services/statements");
+const pdf = require("../../../services/pdf.service");
+const templates = require("../../../services/pdf.templates");
+const numbering = require("../../../services/documents/numbering.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -83,7 +86,7 @@ const profileToSettings = (p) => ({
  * rows are already canonical, which is the whole argument for supporting them.
  */
 async function canonicalise(client, { buffer, filename, account, overrideProfile = null }) {
-  const parsed = await statements.parse(buffer, { filename });
+  const parsed = await statements.parse(buffer, { filename, client });
 
   if (parsed.canonical) {
     const rows = parsed.rows.map((r) => ({ ...r, fee: Math.abs(Number(r.fee || 0)), raw: r }));
@@ -167,6 +170,7 @@ async function preview(client, { treasuryAccountId, file, filename }) {
     ...base,
     status: "READY",
     profile: ctx.profile ? { statement_profile_id: ctx.profile.statement_profile_id, label: ctx.profile.label, institution: ctx.profile.institution } : null,
+    ocr: (ctx.parsed.meta && ctx.parsed.meta.ocr) || null,
     line_count: ctx.canonicalRows.length,
     duplicate_count: hashes.filter((h) => existing.has(h)).length,
     rejected: ctx.rejected,
@@ -336,6 +340,13 @@ async function importStatement(client, { treasuryAccountId, file, filename, prof
       footing_difference: footing.difference,
       status: "PARSED",
       imported_by: actorId,
+      // Provenance (10716). An OCR'd figure is our reading of a photograph,
+      // not something the institution exported, and that distinction has to
+      // survive on the row rather than in a log line.
+      ocr_used: Boolean(meta.ocr && meta.ocr.used),
+      ocr_provider: meta.ocr && meta.ocr.used ? (meta.ocr.provider || "vision") : null,
+      ocr_model: meta.ocr && meta.ocr.model ? meta.ocr.model : null,
+      ocr_page_count: meta.ocr && meta.ocr.used ? meta.ocr.pages : null,
     });
 
     let duplicateCount = 0;
@@ -992,6 +1003,200 @@ async function attestCashCount(client, { cashCountId, varianceReason, actor }) {
   }
 }
 
+/* ══ The signed documents ══════════════════════════════════════════════════ */
+
+/** A person's name for a signature block, from a user id. Never fails the render. */
+async function _userName(client, userId) {
+  if (!userId) return null;
+  try {
+    const { rows } = await client.query("SELECT full_name, email FROM app_user WHERE user_id = $1", [userId]);
+    return rows[0] ? (rows[0].full_name || rows[0].email) : null;
+  } catch {
+    /* @silent:parse — a signature block is presentation. A name we cannot look
+       up prints blank; failing the whole document over it would be worse. */
+    return null;
+  }
+}
+
+const _d = (v) => (v ? String(v).slice(0, 10) : "");
+
+/**
+ * Render the etat de rapprochement as a PDF, store it, and capture it in the
+ * vault exactly once.
+ *
+ * NUMBERING IS ALLOCATED ON FIRST RENDER AND NEVER AGAIN. `doc_sequence` is
+ * gap-free, so re-rendering a reconciliation to pick up a corrected match must
+ * not burn a second number — the same document is being reissued, not a new one
+ * created. The vault row follows the same rule via `capture`, which upserts on
+ * `entity_ref`: one reconciliation, one vault row, whose content_hash moves as
+ * the document is regenerated (BUILD_CONVENTIONS §3).
+ *
+ * A DRAFT renders too, and says DRAFT across the top. Refusing to render one
+ * would mean a treasurer could not circulate the working paper they need
+ * reviewed in order to get it approved.
+ */
+async function renderReconciliationDocument(client, { reconciliationId, actor }) {
+  const row = await repo.getReconciliation(client, reconciliationId);
+  if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
+
+  const account = await requireAccount(client, row.treasury_account_id);
+  const { rows: ent } = await client.query(
+    "SELECT legal_name FROM corporate_entity WHERE entity_id = $1", [row.entity_id],
+  );
+
+  // The working papers behind the totals — the same query the screen uses, so
+  // the document and the screen cannot disagree.
+  const unmatchedLedger = await repo.unmatchedLedgerLines(client, {
+    accountCode: account.coa_code, from: row.period_start, to: row.period_end,
+  });
+  const statementLines = row.statement_id
+    ? await repo.listLines(client, { statementId: row.statement_id, limit: 5000 })
+    : [];
+  const outstandingStatement = statementLines.filter(
+    (l) => l.duplicate_of === null && (l.match_status === "UNMATCHED" || l.match_status === "SUGGESTED"),
+  );
+
+  const ledgerItem = (l) => ({
+    date: _d(l.entry_date),
+    label: [l.journal_code && `${l.journal_code}-${l.entry_no}`, l.description || l.source_doc_ref].filter(Boolean).join(" · "),
+    amount: Math.abs(Number(l.debit || 0) - Number(l.credit || 0)),
+  });
+  const stmtItem = (l) => ({
+    date: _d(l.booking_date),
+    label: l.description || l.counterparty || l.external_ref || "",
+    amount: Math.abs(Number(l.amount)),
+  });
+
+  await client.query("BEGIN");
+  try {
+    // Allocate once. A re-render reuses the number the document already carries.
+    let docNumber = row.doc_number;
+    if (!docNumber) {
+      const allocated = await numbering.allocate(client, {
+        moduleKey: events.MODULE, entityId: row.entity_id, date: row.period_end,
+      });
+      docNumber = allocated.number;
+    }
+
+    const html = templates.buildReconciliationHtml({
+      doc_number: docNumber,
+      entity: ent[0] ? ent[0].legal_name : "",
+      account: `${account.label} (${account.coa_code})`,
+      period: `${_d(row.period_start)} → ${_d(row.period_end)}`,
+      currency: row.currency,
+      status: row.status,
+      prepared_by: await _userName(client, row.prepared_by),
+      approved_by: await _userName(client, row.approved_by),
+      approved_at: _d(row.approved_at),
+      balances: {
+        ledger_balance: row.ledger_balance,
+        deposits_in_transit: row.deposits_in_transit,
+        outstanding_payments: row.outstanding_payments,
+        unrecorded_credits: row.unrecorded_credits,
+        unrecorded_debits: row.unrecorded_debits,
+        statement_balance: row.statement_balance,
+        unexplained_difference: row.unexplained_difference,
+      },
+      outstanding: {
+        deposits_in_transit: unmatchedLedger.filter((l) => Number(l.debit || 0) > 0).map(ledgerItem),
+        outstanding_payments: unmatchedLedger.filter((l) => Number(l.credit || 0) > 0).map(ledgerItem),
+        unrecorded_credits: outstandingStatement.filter((l) => Number(l.amount) > 0).map(stmtItem),
+        unrecorded_debits: outstandingStatement.filter((l) => Number(l.amount) < 0).map(stmtItem),
+      },
+    });
+
+    const stored = await pdf.renderAndStore(client, {
+      html,
+      key: `reconciliation/${reconciliationId}.pdf`,
+      entityRef: reconRef(reconciliationId),
+      docType: "BANK_RECONCILIATION",
+    });
+
+    const updated = await repo.updateReconciliation(client, reconciliationId, {
+      doc_number: docNumber,
+      vault_doc_id: stored.doc_id,
+      content_hash: stored.content_hash,
+    });
+
+    await audit(client, {
+      actorUserId: actor && actor.user_id ? actor.user_id : null, action: events.DOCUMENT_RENDERED,
+      moduleKey: events.MODULE, entityRef: reconRef(reconciliationId), after: updated,
+      metadata: { doc_number: docNumber, status: row.status },
+    });
+    await client.query("COMMIT");
+    return { reconciliation: updated, document: stored };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
+ * The petty-cash equivalent: render the count sheet an auditor files beside a
+ * bank rapprochement.
+ *
+ * Only an ATTESTED (or approved) count renders. A DRAFT count is a tally
+ * someone is still typing; printing it as a proces-verbal would put an
+ * unattested figure into the audit file wearing a signature block.
+ */
+async function renderCashCountDocument(client, { cashCountId, actor }) {
+  const row = await repo.getCashCount(client, cashCountId);
+  if (!row) throw new AppError("NOT_FOUND", "Cash count not found", 404);
+  if (row.status === "DRAFT") {
+    throw new AppError(
+      "COUNT_NOT_ATTESTED",
+      "A count sheet can only be issued once the custodian has attested it — a draft tally is not a proces-verbal.",
+      409,
+    );
+  }
+
+  const account = await requireAccount(client, row.treasury_account_id);
+  const { rows: ent } = await client.query(
+    "SELECT legal_name FROM corporate_entity WHERE entity_id = $1", [row.entity_id],
+  );
+
+  await client.query("BEGIN");
+  try {
+    const allocated = await numbering.allocate(client, {
+      moduleKey: events.MODULE, entityId: row.entity_id, date: row.counted_on,
+    });
+
+    const html = templates.buildCashCountHtml({
+      doc_number: allocated.number,
+      entity: ent[0] ? ent[0].legal_name : "",
+      account: account.label,
+      counted_on: _d(row.counted_on),
+      currency: row.currency,
+      denominations: Array.isArray(row.denominations) ? row.denominations : [],
+      counted_total: row.counted_total,
+      ledger_balance: row.ledger_balance,
+      difference: row.difference,
+      variance_reason: row.variance_reason,
+      custodian: await _userName(client, row.custodian_user_id),
+      witness: await _userName(client, row.witness_user_id),
+      attested_at: _d(row.attested_at),
+    });
+
+    const stored = await pdf.renderAndStore(client, {
+      html,
+      key: `cash-count/${cashCountId}.pdf`,
+      entityRef: countRef(cashCountId),
+      docType: "CASH_COUNT_SHEET",
+    });
+
+    await audit(client, {
+      actorUserId: actor && actor.user_id ? actor.user_id : null, action: events.DOCUMENT_RENDERED,
+      moduleKey: events.MODULE, entityRef: countRef(cashCountId),
+      metadata: { doc_number: allocated.number, difference: row.difference },
+    });
+    await client.query("COMMIT");
+    return { cash_count: row, document: stored, doc_number: allocated.number };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
 /* ══ Reads ════════════════════════════════════════════════════════════════ */
 
 const listStatements = (client, query = {}) => repo.listStatements(client, {
@@ -1027,7 +1232,7 @@ const listCashCounts = (client, query = {}) => repo.listCashCounts(client, {
 module.exports = {
   preview, confirmProfile, importStatement,
   runMatcher, confirmMatch, rejectMatch, manualMatch, ignoreLine,
-  buildReconciliation, approveReconciliation,
+  buildReconciliation, approveReconciliation, renderReconciliationDocument, renderCashCountDocument,
   recordCashCount, attestCashCount,
   listStatements, getStatement, lineMatches, listProfiles,
   listReconciliations, getReconciliation, listCashCounts,

@@ -33,6 +33,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { errMsg } from "@/lib/use-resource";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as recon from "@/lib/reconciliation-api";
+import { CashCountSheet } from "./cash-count-sheet";
 
 const ACCEPT = ".csv,.txt,.xlsx,.xlsm,.pdf,.xml,.sta,.mt940";
 const num = (v: unknown) => Number(v ?? 0);
@@ -498,6 +499,7 @@ function ReconciliationPane({
   const [row, setRow] = React.useState<recon.Reconciliation | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [issued, setIssued] = React.useState<string | null>(null);
 
   const build = async () => {
     setBusy(true); setError(null);
@@ -526,6 +528,20 @@ function ReconciliationPane({
     }
   };
 
+  const issue = async () => {
+    if (!row) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await recon.renderReconciliationDocument(row.reconciliation_id);
+      setRow(r.reconciliation);
+      setIssued(r.reconciliation.doc_number);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const gap = row ? num(row.unexplained_difference) : 0;
 
   return (
@@ -539,8 +555,22 @@ function ReconciliationPane({
             {tr("Approve")}
           </Button>
         )}
+        {row && (
+          <Button variant="outline" onClick={issue} disabled={busy}>
+            {tr("Issue document")}
+          </Button>
+        )}
         {row && <Pill tone={row.status === "APPROVED_LOCKED" ? "ok" : "warn"}>{row.status.toLowerCase()}</Pill>}
       </div>
+
+      {issued && (
+        <Callout tone="ok" title={tr("Filed in the vault")}>
+          {tr("État de rapprochement")} {issued}
+          {row && row.status !== "APPROVED_LOCKED"
+            ? ` — ${tr("marked DRAFT, because the reconciliation is not approved yet.")}`
+            : ""}
+        </Callout>
+      )}
 
       {error && <ErrorState message={error} />}
 
@@ -590,7 +620,7 @@ function ReconciliationPane({
 /* ── the tab ─────────────────────────────────────────────────────────────── */
 
 export function ReconciliationTab({
-  accountId, entityId, currency, categoryCode, requiresCustodian,
+  accountId, entityId, currency, categoryCode, requiresCustodian, floatLimit,
 }: {
   accountId: string;
   entityId: string;
@@ -598,6 +628,8 @@ export function ReconciliationTab({
   categoryCode: string | null;
   /** Petty cash has no external statement — it reconciles against a count. */
   requiresCustodian: boolean;
+  /** treasury_account.float_limit, for the count sheet's over-float warning. */
+  floatLimit?: number | null;
 }) {
   const [statements, setStatements] = React.useState<recon.BankStatement[] | null>(null);
   const [selected, setSelected] = React.useState<recon.BankStatement | null>(null);
@@ -661,13 +693,12 @@ export function ReconciliationTab({
     }
   };
 
+  // Petty cash reconciles against a physical count, not a statement — the same
+  // question ("does the declared external truth agree with the ledger?") with a
+  // different source, so it gets its own screen rather than a disabled version
+  // of this one.
   if (requiresCustodian) {
-    return (
-      <EmptyState
-        title={tr("This account reconciles against a physical count")}
-        hint={tr("Nobody issues a statement for petty cash, so the external truth is a count sheet attested by the custodian. Recording a count is available from the API; the count screen lands with the cash-census UI.")}
-      />
-    );
+    return <CashCountSheet accountId={accountId} currency={currency} floatLimit={floatLimit} />;
   }
 
   return (
@@ -723,6 +754,16 @@ export function ReconciliationTab({
               )}
               {preview.profile && <Pill tone="ok">{preview.profile.label}</Pill>}
             </div>
+
+            {preview.ocr && preview.ocr.used && (
+              <Callout tone="warn" title={tr("These figures were read off a scan")}>
+                <p className="micro text-muted-foreground">
+                  {tr("This PDF had no text layer, so it was read by OCR — the numbers below are our reading of a picture, not an export the institution produced.")}{" "}
+                  {preview.ocr.pages_read}/{preview.ocr.pages} {tr("page(s) read.")}{" "}
+                  {tr("Check them against the paper; the totals check below is the arithmetic backstop.")}
+                </p>
+              </Callout>
+            )}
 
             <FootingBanner footing={preview.footing} currency={preview.account.currency} />
 
@@ -799,7 +840,10 @@ export function ReconciliationTab({
                     <td className="px-3 py-1.5 whitespace-nowrap">
                       {s.period_start ? `${dateFmt(s.period_start)} → ${dateFmt(s.period_end)}` : dateFmt(s.imported_at)}
                     </td>
-                    <td className="px-3 py-1.5">{cell(s.file_name)} <span className="micro text-muted-foreground">{s.source_kind}</span></td>
+                    <td className="px-3 py-1.5">
+                      {cell(s.file_name)} <span className="micro text-muted-foreground">{s.source_kind}</span>
+                      {s.ocr_used && <Pill tone="warn">{tr("OCR")}</Pill>}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{s.line_count}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{String(s.unmatched_count ?? "—")}</td>
                     <td className="px-3 py-1.5">

@@ -52,6 +52,15 @@ const DOC_TYPES = {
   DELIVERY_NOTE:         { label: "Delivery note",            module: "operations/delivery_note",      moduleKey: "MOD-32" },
   TRANSIT_ORDER:         { label: "Transit order",            module: "operations/transit_order",      moduleKey: "MOD-30" },
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },
+  /*
+   * The etat de rapprochement bancaire (MOD-09) and the petty-cash count sheet
+   * that stands in for it where no institution issues a statement. Both are
+   * signed control documents an auditor asks for by name, so both are captured
+   * rather than re-rendered on demand: the figures in the vault copy are the
+   * ones the treasurer signed, not whatever the ledger says today.
+   */
+  BANK_RECONCILIATION:   { label: "Bank reconciliation",       module: "master/reconciliation",         moduleKey: "MOD-09" },
+  CASH_COUNT_SHEET:      { label: "Cash count sheet",          module: "master/reconciliation",         moduleKey: "MOD-09" },
   REGIE_ADVANCE:         { label: "Régie advance",            module: "costing/regie",                 moduleKey: "MOD-49" },
   COMMS_CERTIFIED_EXPORT:{ label: "Certified comms export",   module: "smartcomm",                     moduleKey: "MOD-64" },
   /*

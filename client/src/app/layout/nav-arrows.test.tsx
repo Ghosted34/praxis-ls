@@ -15,13 +15,7 @@
  * that says "Back" when it could say where back goes.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  render,
-  screen,
-  act,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter, Link, Routes, Route } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -77,11 +71,26 @@ describe("NavArrows", () => {
     window.sessionStorage.clear();
   });
 
-  it("stays out of the rail until there is a trail", () => {
+  it("is present from the first frame, greyed, on a cold open", () => {
     render(<Harness />);
-    // One entry is not a trail. A pair of permanently dead arrows on a first
-    // visit teaches nothing and takes rail height from the shortcuts.
-    expect(screen.queryByRole("button", { name: /^Back/ })).toBeNull();
+    // THE REGRESSION THIS PINS. The pair used to render nothing until the trail
+    // held more than one entry — and since the trail is per-tab, that meant the
+    // arrows were missing every time the app was opened and appeared only after
+    // the first click. Chrome that comes and goes teaches users it is not there.
+    expect(back().getAttribute("aria-disabled")).toBe("true");
+    expect(forward().getAttribute("aria-disabled")).toBe("true");
+    // And they say why, rather than sitting there mute.
+    expect(back().getAttribute("aria-label")).toMatch(/nothing behind/);
+    expect(forward().getAttribute("aria-label")).toMatch(/nothing ahead/);
+  });
+
+  it("does nothing when pressed with nowhere to go", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const before = window.location.pathname;
+    await user.click(back());
+    await settle();
+    expect(window.location.pathname).toBe(before);
   });
 
   it("appears once the user has moved, and names where back leads", async () => {
@@ -101,9 +110,7 @@ describe("NavArrows", () => {
     render(<Harness />);
     await user.click(screen.getByText("Files"));
     await user.click(screen.getByText("Open dossier"));
-    await waitFor(() =>
-      expect(window.location.search).toBe("?focus=abc"),
-    );
+    await waitFor(() => expect(window.location.search).toBe("?focus=abc"));
 
     // Back closes the record and lands on the list it was opened from.
     await user.click(back());
@@ -113,7 +120,9 @@ describe("NavArrows", () => {
 
     // Forward re-opens the same record — the half a plain history.back()
     // wired to a `useState` modal can never do.
-    await waitFor(() => expect(forward().getAttribute("aria-disabled")).toBe("false"));
+    await waitFor(() =>
+      expect(forward().getAttribute("aria-disabled")).toBe("false"),
+    );
     await user.click(forward());
     await settle();
     await waitFor(() => expect(window.location.search).toBe("?focus=abc"));
@@ -140,7 +149,9 @@ describe("NavArrows", () => {
     // At the oldest entry we hold. The browser would happily keep going, into
     // whatever was open in this tab before Praxis — with no address bar to
     // return from in an installed window.
-    await waitFor(() => expect(back().getAttribute("aria-disabled")).toBe("true"));
+    await waitFor(() =>
+      expect(back().getAttribute("aria-disabled")).toBe("true"),
+    );
     const before = window.location.pathname;
     await user.click(back());
     await settle();
@@ -151,7 +162,9 @@ describe("NavArrows", () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByText("Files"));
-    await waitFor(() => expect(window.location.pathname).toBe("/operations/files"));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/operations/files"),
+    );
 
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}");
     await settle();
@@ -159,7 +172,9 @@ describe("NavArrows", () => {
 
     await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
     await settle();
-    await waitFor(() => expect(window.location.pathname).toBe("/operations/files"));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/operations/files"),
+    );
   });
 
   it("leaves Alt+Arrow alone while the user is typing", async () => {
@@ -171,7 +186,9 @@ describe("NavArrows", () => {
       </>,
     );
     await user.click(screen.getByText("Files"));
-    await waitFor(() => expect(window.location.pathname).toBe("/operations/files"));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/operations/files"),
+    );
 
     await user.click(screen.getByLabelText("Search"));
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}");

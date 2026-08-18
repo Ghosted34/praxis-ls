@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (403)
+## All codes (406)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -125,6 +125,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CONTRACT_TEXT_FROZEN` | 422 | 1× | — |
 | `COSTING_NOT_APPROVED` | 403 | 1× | — |
 | `COST_CENTER_REQUIRED` | 422 | 1× | — |
+| `COUNT_NOT_ATTESTED` | 409 | 1× | — |
 | `COUNT_SHEET_DISAGREES` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
@@ -238,7 +239,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 448× | — |
+| `NOT_FOUND` | 404 | 450× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -357,8 +358,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
 | `SAME_PASSWORD` | 422 | 1× | — |
-| `SCANNED_PDF` | — | 1× | — |
+| `SCANNED_PDF` | 422 | 2× | — |
+| `SCAN_ENCODING_UNSUPPORTED` | — | 1× | — |
 | `SCAN_REQUIRED` | 422 | 3× | — |
+| `SCAN_UNREADABLE` | — | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
 | `SCORING_UNAVAILABLE` | 502 | 1× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |

@@ -189,7 +189,11 @@ describe("Treasury · reconciliation tab", () => {
     expect(screen.getByRole("button", { name: "MM/DD/YYYY" })).toBeInTheDocument();
   });
 
-  it("tells a petty-cash account it reconciles against a count, not a statement", async () => {
+  /**
+   * Petty cash has no statement to upload, so the tab hands over to the count
+   * sheet entirely rather than offering a dropzone that could never be used.
+   */
+  it("gives a petty-cash account the count sheet instead of a statement upload", async () => {
     renderScreen(
       <ReconciliationTab
         accountId="t1" entityId="e1" currency="XAF"
@@ -197,8 +201,21 @@ describe("Treasury · reconciliation tab", () => {
       />,
       { routes: { "/reconciliation": [] } },
     );
-    // `findBy` rather than `getBy`: the statement list still loads behind the
-    // early return, and settling it here keeps the state update inside act().
-    expect(await screen.findByText(/reconciles against a physical count/i)).toBeInTheDocument();
+    expect(await screen.findByText(/count the cash/i)).toBeInTheDocument();
+    expect(screen.queryByText(/import a statement/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * An OCR'd statement is our reading of a photograph, not something the
+   * institution exported. The screen has to say which it is looking at.
+   */
+  it("says plainly when the figures were read off a scan", async () => {
+    const user = userEvent.setup();
+    render({
+      ...READY,
+      ocr: { used: true, provider: "gemini", pages: 3, pages_read: 3, page_detail: [] },
+    });
+    await upload(user);
+    expect(await screen.findByText(/read off a scan/i)).toBeInTheDocument();
   });
 });

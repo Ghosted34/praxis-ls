@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1264,
+  "route_count": 1266,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1158
+    "gated": 1160
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -6543,6 +6543,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/reconciliation/:id/document": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/reconciliation/cash-counts": {
       "auth": true,
       "rbac": true,
@@ -6550,6 +6556,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/reconciliation/cash-counts/:id/attest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/cash-counts/:id/document": {
       "auth": true,
       "rbac": true,
       "validated": false,

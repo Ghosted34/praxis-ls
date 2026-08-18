@@ -157,6 +157,24 @@ module.exports = {
   approveReconciliation: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.approveReconciliation(c, { reconciliationId: req.params.id, actor: actor(req) })) })),
 
+  // Renders, stores and vaults the signed document. Returns the vault
+  // reference rather than the bytes: the viewer already knows how to fetch a
+  // document by doc_id, and streaming a PDF through this route would give the
+  // product a second way to read the same file.
+  renderReconciliationDocument: asyncHandler(async (req, res) =>
+    res.status(201).json({
+      data: await req.tenantDb((c) => service.renderReconciliationDocument(c, {
+        reconciliationId: req.params.id, actor: actor(req),
+      })),
+    })),
+
+  renderCashCountDocument: asyncHandler(async (req, res) =>
+    res.status(201).json({
+      data: await req.tenantDb((c) => service.renderCashCountDocument(c, {
+        cashCountId: req.params.id, actor: actor(req),
+      })),
+    })),
+
   /* ── cash census ───────────────────────────────────────────────────────── */
 
   recordCashCount: asyncHandler(async (req, res) =>

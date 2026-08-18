@@ -198,7 +198,7 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
             neverBlock: true,
           })
           ?.catch(() => { /* warn-only by definition; never touches the send */ });
-      } catch { /* telemetry must never mask a successful send */ }
+      } catch { /* @silent:storage|parse|teardown — telemetry must never mask a successful send */ }
     }
     return info;
   } catch (err) {

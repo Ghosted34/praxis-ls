@@ -372,7 +372,7 @@ async function createPool(meta) {
     try {
       await registerType(c);
     } catch {
-      /* pgvector optional in some envs */
+      /* @silent:storage|parse|teardown — pgvector optional in some envs */
     }
   });
   pool.on("error", (err) =>
@@ -482,7 +482,7 @@ async function withTenantConnection(meta, env, fn) {
       try {
         await client.query("ROLLBACK");
       } catch {
-        /* the connection is going back to the pool either way */
+        /* @silent:storage|parse|teardown — the connection is going back to the pool either way */
       }
       throw err;
     }

@@ -8,6 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
 import { ComposeIconButton } from "@/features/comms/mail";
 import { DocButton } from "@/components/doc-button";
@@ -64,7 +65,11 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
+    return (
+      <div className="px-3 py-6 text-center micro">
+        {tr("Nothing here yet.")}
+      </div>
+    );
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
@@ -661,7 +666,9 @@ function EmployeeDetail({
               <Td>{money(a.amount)}</Td>
               <Td r>{money(a.recovered)}</Td>
               <Td r>
-                <span className={Number(a.outstanding) > 0 ? "font-semibold" : ""}>
+                <span
+                  className={Number(a.outstanding) > 0 ? "font-semibold" : ""}
+                >
                   {money(a.outstanding)}
                 </span>
               </Td>
@@ -804,20 +811,37 @@ function EmployeeDetail({
 
 export function EmployeesPage() {
   const employees = useResource(() => api.listEmployees(), []);
-  const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
   const rows = React.useMemo(() => employees.data || [], [employees.data]);
+  /*
+   * WHICH RECORD IS OPEN LIVES IN THE URL (`?focus=<id>`), not in state, so
+   * that picking one from this list is a step the back and forward arrows can
+   * reach — see app/layout/nav-trail-context.tsx. It also makes every row
+   * here linkable, which the 360 drill-ins elsewhere in the app already
+   * assume they can do.
+   */
+  const {
+    record: selected,
+    id: selId,
+    open: select,
+    openId: selectId,
+    preselect,
+  } = useRecordParam(rows, (e) => e.employee_id);
   const filtered = q
     ? rows.filter((e) =>
         (e.full_name || "").toLowerCase().includes(q.toLowerCase()),
       )
     : rows;
-  const selected = rows.find((e) => e.employee_id === selId) || null;
+  // The list opens on its first row. `preselect` writes the same param with
+  // `replace`: the user did not navigate here, so it must not become a step
+  // the back arrow can land on.
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].employee_id);
-  }, [rows, selId]);
+    if (!selId && rows.length) preselect(rows[0]);
+  }, [rows, selId, preselect]);
+  // Names this step for the arrow tooltips and the hold-menu.
+  useTrailTitle(selected ? selected.full_name : null);
 
   return (
     <section className={shell}>
@@ -847,7 +871,7 @@ export function EmployeesPage() {
                 filtered.map((e) => (
                   <button
                     key={e.employee_id}
-                    onClick={() => setSelId(e.employee_id)}
+                    onClick={() => select(e)}
                     className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${e.employee_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
                   >
                     <span className="truncate font-medium">
@@ -876,7 +900,7 @@ export function EmployeesPage() {
           onClose={() => setCreating(false)}
           onSaved={(e) => {
             employees.reload();
-            setSelId(e.employee_id);
+            selectId(e.employee_id);
           }}
         />
       )}

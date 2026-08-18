@@ -35,6 +35,7 @@ import { useCommandPalette } from "./command-palette-context";
 import { useQuickActions } from "@/components/quick-actions";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
 import { RailPinsSkeleton } from "./shell-skeleton";
+import { NavArrows } from "./nav-arrows";
 import { SearchIcon, TowerIcon, type IP } from "./nav-icons";
 
 function PlusIcon(p: IP) {
@@ -136,7 +137,19 @@ export function IconRail() {
       className="rail hidden flex-none flex-col items-center md:flex"
       aria-label={navT(t, "Shortcuts")}
     >
-      <RailButton label={navT(t, "Control Tower")} to="/" active={pathname === "/"}>
+      {/* Above everything, including Control Tower. Back and forward are the
+          only two controls here that act on where the user just WAS rather than
+          on where they might go, and the top of the strip is the one place a
+          hand reaches for them — see `nav-arrows.tsx` for why they are here at
+          all and not in the title bar. Renders nothing until the trail has
+          somewhere to lead. */}
+      <NavArrows />
+
+      <RailButton
+        label={navT(t, "Control Tower")}
+        to="/"
+        active={pathname === "/"}
+      >
         <TowerIcon width={18} height={18} />
       </RailButton>
       <RailButton label={navT(t, "Search (⌘K)")} onSelect={palette.open}>

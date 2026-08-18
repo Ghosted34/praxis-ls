@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -47,7 +48,11 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
+    return (
+      <div className="px-3 py-6 text-center micro">
+        {tr("Nothing here yet.")}
+      </div>
+    );
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
@@ -328,20 +333,36 @@ export function LocationsPage() {
   const inventory = useResource(() => api.listInventory(), []);
   const equipment = useResource(() => api.listEquipment(), []);
   const counts = useResource(() => api.listCycleCounts(), []);
-  const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
   const rows = React.useMemo(() => locs.data || [], [locs.data]);
+  /*
+   * WHICH RECORD IS OPEN LIVES IN THE URL (`?focus=<id>`), not in state, so
+   * that picking one from this list is a step the back and forward arrows can
+   * reach — see app/layout/nav-trail-context.tsx. It also makes every row
+   * here linkable, which the 360 drill-ins elsewhere in the app already
+   * assume they can do.
+   */
+  const {
+    record: selected,
+    id: selId,
+    open: select,
+    preselect,
+  } = useRecordParam(rows, (l) => l.location_id);
   const filtered = q
     ? rows.filter((l) =>
         api.locationLabel(l).toLowerCase().includes(q.toLowerCase()),
       )
     : rows;
-  const selected = rows.find((l) => l.location_id === selId) || null;
+  // The list opens on its first row. `preselect` writes the same param with
+  // `replace`: the user did not navigate here, so it must not become a step
+  // the back arrow can land on.
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].location_id);
-  }, [rows, selId]);
+    if (!selId && rows.length) preselect(rows[0]);
+  }, [rows, selId, preselect]);
+  // Names this step for the arrow tooltips and the hold-menu.
+  useTrailTitle(selected ? api.locationLabel(selected) : null);
 
   const groups = React.useMemo(() => {
     const m: Record<string, api.WarehouseLocation[]> = {};
@@ -360,7 +381,11 @@ export function LocationsPage() {
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
         title="Locations"
         description="Warehouse slotting with a per-location 360 — stock, equipment, counts and capacity."
-        action={<Button onClick={() => setCreating(true)}>{tr("New location")}</Button>}
+        action={
+          <Button onClick={() => setCreating(true)}>
+            {tr("New location")}
+          </Button>
+        }
       />
       <HubTabs />
       {locs.error ? (
@@ -385,7 +410,7 @@ export function LocationsPage() {
                     {items.map((l) => (
                       <button
                         key={l.location_id}
-                        onClick={() => setSelId(l.location_id)}
+                        onClick={() => select(l)}
                         className={`block w-full truncate rounded-md px-3 py-1.5 text-left text-sm transition-colors ${l.location_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
                       >
                         <span className="num font-medium">

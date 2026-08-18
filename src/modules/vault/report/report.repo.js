@@ -145,16 +145,20 @@ async function markScheduledRan(client, id, nextRunAt) {
 async function entityGroup(client, entityId) {
   if (!entityId) return [];
   const { rows } = await client.query(
+    // legal_name, not full_name: 0100 gives corporate_entity `code` and
+    // `legal_name`; full_name is the EMPLOYEE column (0300) and does not exist
+    // here. The anchor arm would have failed first at runtime, before the
+    // recursive arm the checker could see.
     `WITH RECURSIVE grp AS (
-       SELECT entity_id, full_name, 0 AS depth
+       SELECT entity_id, legal_name, 0 AS depth
          FROM corporate_entity WHERE entity_id = $1
        UNION ALL
-       SELECT ce.entity_id, ce.full_name, grp.depth + 1
+       SELECT ce.entity_id, ce.legal_name, grp.depth + 1
          FROM corporate_entity ce
          JOIN grp ON ce.parent_entity_id = grp.entity_id
         WHERE ce.consolidates = true
      )
-     SELECT entity_id, full_name, depth FROM grp ORDER BY depth`,
+     SELECT entity_id, legal_name, depth FROM grp ORDER BY depth`,
     [entityId],
   );
   return rows;

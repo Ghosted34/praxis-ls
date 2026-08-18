@@ -8,6 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,19 +27,35 @@ const shell = pageShell.wide;
 
 export function ClientsPage() {
   const clients = useResource(() => api.listClients(), []);
-  const [selId, setSelId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Client | "new" | null>(null);
   const [settings, setSettings] = React.useState(false);
 
   const rows = React.useMemo(() => clients.data || [], [clients.data]);
+  /*
+   * WHICH RECORD IS OPEN LIVES IN THE URL (`?focus=<id>`), not in state, so
+   * that picking one from this list is a step the back and forward arrows can
+   * reach — see app/layout/nav-trail-context.tsx. It also makes every row
+   * here linkable, which the 360 drill-ins elsewhere in the app already
+   * assume they can do.
+   */
+  const {
+    record: selected,
+    id: selId,
+    open: select,
+    preselect,
+  } = useRecordParam(rows, (c) => c.client_id);
   const filtered = q
     ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
     : rows;
-  const selected = rows.find((c) => c.client_id === selId) || null;
+  // The list opens on its first row. `preselect` writes the same param with
+  // `replace`: the user did not navigate here, so it must not become a step
+  // the back arrow can land on.
   React.useEffect(() => {
-    if (!selId && rows.length) setSelId(rows[0].client_id);
-  }, [rows, selId]);
+    if (!selId && rows.length) preselect(rows[0]);
+  }, [rows, selId, preselect]);
+  // Names this step for the arrow tooltips and the hold-menu.
+  useTrailTitle(selected ? selected.name : null);
 
   return (
     <section className={shell}>
@@ -51,7 +68,9 @@ export function ClientsPage() {
             <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>
               ⚙ Settings
             </Button>
-            <Button onClick={() => setEditing("new")}>{tr("New client")}</Button>
+            <Button onClick={() => setEditing("new")}>
+              {tr("New client")}
+            </Button>
           </div>
         }
       />
@@ -81,7 +100,7 @@ export function ClientsPage() {
                 filtered.map((c) => (
                   <button
                     key={c.client_id}
-                    onClick={() => setSelId(c.client_id)}
+                    onClick={() => select(c)}
                     className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${c.client_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
                   >
                     <span className="truncate font-medium">{c.name}</span>

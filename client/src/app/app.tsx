@@ -5,6 +5,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
 import { AppShell } from "@/app/layout/app-shell";
+import { NavTrailProvider } from "@/app/layout/nav-trail-provider";
 import { ShellProvider } from "@/app/layout/shell-providers";
 import { LandingPage } from "@/features/landing/landing-page";
 import { BootGate } from "@/app/boot-gate";
@@ -486,7 +487,15 @@ export function App() {
               element={
                 <RequireAuth>
                   <ShellProvider>
-                    <AppShell />
+                    {/* The back/forward trail (app/layout/nav-trail.ts). Mounted
+                    here rather than inside AppShell so the routed screens are
+                    inside it too — `useRecordParam` on a list page and the
+                    arrows in the rail have to be reading the same trail. Inside
+                    RequireAuth because it is the authenticated app's history:
+                    the login screen has nothing to step back through. */}
+                    <NavTrailProvider>
+                      <AppShell />
+                    </NavTrailProvider>
                   </ShellProvider>
                 </RequireAuth>
               }

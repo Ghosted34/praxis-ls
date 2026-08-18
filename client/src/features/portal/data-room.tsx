@@ -249,7 +249,7 @@ export function AuditRoomPage() {
                                   [r.room_id]: e.target.value,
                                 }))
                               }
-                              className="max-w-sm rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                              className="max-w-sm rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 [&>option]:bg-background [&>option]:text-foreground"
                             >
                               <option value="">
                                 {attachable.length === 0

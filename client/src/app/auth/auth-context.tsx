@@ -20,6 +20,7 @@ import {
 } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
+import { deviceIdStore } from "@/lib/device-id";
 import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
 
 export type User = {
@@ -329,11 +330,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tokenStore.clear();
     persistUser(null);
     // Clear all persisted client state on logout (until told otherwise): tokens,
-    // cached user, theme + env preferences — nothing survives a sign-out.
+    // cached user, theme + env preferences. Two keys are DEVICE facts rather
+    // than session state and are carried across the wipe:
+    //   - pin devices: the whole point of Quick PIN is signing back in fast.
+    //   - device id (0524): the time clock's register counts HARDWARE. Wiping
+    //     it re-minted a fresh fingerprint on the next punch, so every sign-out
+    //     produced a second PENDING hr_device row against the same employee —
+    //     the clock asked a returning laptop to name itself again, and the
+    //     label the employee had already given it stayed on the orphaned row.
     try {
       const pinSnap = pinStore.snapshot(); // trusted PIN devices survive sign-out
+      const devSnap = deviceIdStore.snapshot();
       localStorage.clear();
       pinStore.restore(pinSnap);
+      deviceIdStore.restore(devSnap);
     } catch {
       /* @silent:storage */
     }

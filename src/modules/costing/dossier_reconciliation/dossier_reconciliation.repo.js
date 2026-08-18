@@ -71,7 +71,9 @@ async function costCompare(client, dossierId) {
     `SELECT
        COALESCE(b.dictionary_item_id, a.dictionary_item_id) AS dictionary_item_id,
        COALESCE(di.code, 'OTHER') AS item_code,
-       COALESCE(di.name_en, di.name_fr, 'Other') AS item_label,
+       -- label_en/label_fr: dictionary_item has never had a name_* pair (0200),
+       -- and every other read of the billing dictionary uses the label_ names.
+       COALESCE(di.label_en, di.label_fr, 'Other') AS item_label,
        COALESCE(b.budget_ttc, 0) AS budget_ttc,
        COALESCE(a.actual_ttc, 0) AS actual_ttc
      FROM

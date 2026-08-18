@@ -352,7 +352,7 @@ function StoryForm({
           <Field label={tr("Title")} required><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
           <Field label="Public slug"><Input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase())} placeholder="generated-from-title-if-empty" /></Field>
           <Field label={tr("Client")} hint="Name and logo appear publicly only with NAMED consent.">
-            <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+            <select className="h-10 w-full rounded-md border border-input bg-background text-foreground px-3 text-sm [&>option]:bg-background [&>option]:text-foreground" value={clientId} onChange={(event) => setClientId(event.target.value)}>
               <option value="">No named client</option>
               {(clients || []).map((client) => <option key={client.client_id} value={client.client_id}>{client.name || client.client_id}</option>)}
             </select>

@@ -1971,6 +1971,67 @@
   }
 
   /**
+   * ── BACK / FORWARD ────────────────────────────────────────────────────────
+   *
+   * ONE PILL, TWO ENDS. Drawn as a bordered segmented pair rather than as two
+   * `.rail-btn` cells, because the rail is a column of ten icon cells and two
+   * more of them read as two more shortcuts. The border and the hairline
+   * between the halves are what say "this is one instrument", which is how a
+   * toolbar's back/forward has always been drawn.
+   *
+   * SHORTER THAN A RAIL CELL — 30px each rather than 36 — so the pair costs
+   * about as much of the strip's height as one shortcut does. They are the
+   * chrome above the shortcuts, not a competitor to them.
+   */
+  .rail-nav {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  }
+  .rail-nav-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 30px;
+    color: var(--muted-foreground);
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
+  }
+  .rail-nav-btn:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  .rail-nav-btn:active {
+    background: rgb(var(--ink) / 0.08);
+  }
+  /*
+   * `aria-disabled`, not `disabled`. A disabled button fires no pointer events,
+   * so its tooltip never opens — and "nothing behind" is precisely the state a
+   * user most needs explained. The attribute keeps the control focusable and
+   * announced while the handler declines to act.
+   */
+  .rail-nav-btn[aria-disabled="true"] {
+    color: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+    cursor: default;
+  }
+  .rail-nav-btn[aria-disabled="true"]:hover,
+  .rail-nav-btn[aria-disabled="true"]:active {
+    background: transparent;
+    color: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  }
+  .rail-nav-split {
+    height: 1px;
+    flex: none;
+    background: var(--border);
+  }
+
+  /**
    * The one-time nudge on the rail's edit affordance.
    *
    * 240ms, once — a buzz, not a dance. It fires on a user's first session only

@@ -32,6 +32,7 @@ import { AiActions } from "@/components/ai-actions";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { useList, useListPaged } from "@/lib/use-resource";
 import { useFocusRow } from "@/lib/use-focus-row";
+import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { useDebounced } from "@/lib/use-debounced";
 import { money0 } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
@@ -77,7 +78,6 @@ export function OperationsFilesPage() {
   const [editing, setEditing] = React.useState<api.Dossier | "new" | null>(
     null,
   );
-  const [view, setView] = React.useState<api.Dossier | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
@@ -98,21 +98,32 @@ export function OperationsFilesPage() {
     page,
     pageSize: PAGE_SIZE,
   });
-  // `?focus=<dossier_id>` from the client 360's dossiers drill-in. Operations
-  // already honours the friendlier `?ref=<ref>` (seeded into the search box
-  // above); this is the fallback for links that only had the uuid at hand.
+  // `?focus=<dossier_id>` scrolls the row into view and highlights it — from
+  // the client 360's dossiers drill-in, and now from the back arrow too.
+  // Operations also honours the friendlier `?ref=<ref>` (seeded into the search
+  // box above); this is the path for links that only had the uuid at hand.
   const { focusId } = useFocusRow(list.rows);
-  // Auto-open the 360 modal if the focus id matches — "select that file"
-  // (parity with the click on any row here).
-  React.useEffect(() => {
-    if (!focusId || !list.rows) return;
-    const hit = list.rows.find((d) => d.dossier_id === focusId);
-    if (hit && !view) setView(hit);
-    // Only trigger the auto-open once per focus id — the deps intentionally
-    // exclude `view` so closing the modal doesn't re-pop it while the URL
-    // param is still there.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusId, list.rows]);
+
+  /*
+   * THE OPEN DOSSIER LIVES IN THE URL, which is what makes it a place the back
+   * and forward arrows can reach (app/layout/nav-trail-context.tsx).
+   *
+   * It used to be `useState`, so opening a file changed nothing the browser
+   * could see: back from an open dossier left Operations entirely, and forward
+   * could never bring it back. Writing the id the app ALREADY deep-links by
+   * turns "I opened SLS-2481" into a real step — and collapses the separate
+   * auto-open effect that used to mirror `?focus=` into local state, since the
+   * param is now the only thing that decides whether the 360 is showing.
+   */
+  const {
+    record: view,
+    open: openDossier,
+    close: closeDossier,
+  } = useRecordParam(list.rows, (d) => d.dossier_id);
+
+  // What the back tooltip and the hold-menu call this step. The route can only
+  // ever say "Files"; this screen is the one thing that knows the reference.
+  useTrailTitle(view ? `Dossier ${view.ref}` : null);
 
   /**
    * Chip counts, honestly.
@@ -303,7 +314,7 @@ export function OperationsFilesPage() {
       error={list.error}
       loading={list.loading}
       rowKey={(r) => r.dossier_id}
-      onRowClick={(r) => setView(r)}
+      onRowClick={openDossier}
       highlightRowKey={focusId}
       empty={{
         title: "No operation files yet",
@@ -356,7 +367,7 @@ export function OperationsFilesPage() {
         <Dossier360Modal
           dossier={view}
           clientLabel={clientOf(view)}
-          onClose={() => setView(null)}
+          onClose={closeDossier}
         />
       )}
       <AiActions actions={OPS_FILES_AI} />

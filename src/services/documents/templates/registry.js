@@ -34,11 +34,16 @@ function fmtLines(lines = [], ccy) {
 
 /**
  * Shared builder for the line-item + totals family (invoice / proforma /
- * quotation / credit note). `opts`: { title, meta, totalsRows(data), notesLabel }.
+ * quotation / credit note). `opts`: { title, meta, totalsRows(data), notesLabel,
+ * words? } — `words` adds the amount-in-words block (the legacy PO and invoice
+ * both carried it; see kit.wordsBlock).
  */
 function lineDoc(opts) {
   return (data, cfg, entity, verify) => {
     const ccy = data.currency || "XAF";
+    const words = opts.words && cfg.show && cfg.show.words !== false && has(data.amount_in_words)
+      ? k.wordsBlock(data.amount_in_words, ccy, cfg)
+      : "";
     const body = [
       k.head(entity, opts.title, data.number, opts.meta(data), cfg),
       k.parties([
@@ -47,6 +52,7 @@ function lineDoc(opts) {
       ], cfg),
       k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
       k.totals(opts.totalsRows(data, ccy), cfg),
+      words,
       cfg.show && cfg.show.notes && data.notes ? k.section({ fr: "Notes", en: "Notes" }, `<div class="box">${k.esc(data.notes).replace(/\n/g, "<br>")}</div>`, cfg) : "",
       cfg.show && cfg.show.bank ? k.bankBlock(entity, cfg) : "",
       k.termsBlock(cfg),
@@ -82,8 +88,11 @@ const TEMPLATES = {
         [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
       ],
+      // The legacy invoice printed "ARRÊTÉE LA PRÉSENTE FACTURE À LA SOMME DE :"
+      // (printfi.php) — kept, bilingual.
+      words: true,
     }),
-    sampleData: { number: "FCT-2026-0001", date: "2026-07-27", due: "2026-08-26", dossier_ref: "SBX-2026-0001", party: sampleParty, lines: sampleLines, totals: sampleTotals, currency: "XAF" },
+    sampleData: { number: "FCT-2026-0001", date: "2026-07-27", due: "2026-08-26", dossier_ref: "SBX-2026-0001", party: sampleParty, lines: sampleLines, totals: sampleTotals, amount_in_words: sampleTotals.total_ttc, currency: "XAF" },
   },
 
   PROFORMA_ADVANCE: {
@@ -192,32 +201,66 @@ const TEMPLATES = {
   },
 
   /* ── Phase 2 — operations & procurement ──────────────────────────────────── */
+  /**
+   * BON DE COMMANDE — the supplier-facing PO, rebuilt to the legacy print
+   * (print-po.php): payment terms + place of delivery in the meta block, the
+   * full totals ladder (HT / VAT / TTC / withholding / advance / NET PAYABLE)
+   * the legacy printed, the amount in words, and the remarks box. Every extra
+   * row is conditional — a PO with no withholding prints none.
+   */
   PURCHASE_ORDER: {
-    docType: "PURCHASE_ORDER", title: { fr: "Bon de commande", en: "Purchase order" }, module: "procurement/purchase_order", fields: ["supplier terms", "delivery address"],
-    build: lineDoc({
-      title: { fr: "Bon de commande", en: "Purchase order" }, partyLabel: { fr: "Fournisseur", en: "Supplier" },
-      meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Livraison", en: "Delivery" }, k.dateFmt(d.delivery_on)]],
-      totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
-      ],
-    }),
-    sampleData: { number: "BC-2026-0031", date: "2026-07-27", delivery_on: "2026-08-05", party: { name: "Établissements TENOR", lines: ["Douala, Cameroun"] }, lines: sampleLines.slice(0, 2), totals: { service_ht: 1080000, vat_total: 207900, total_ttc: 1287900 }, currency: "XAF" },
+    docType: "PURCHASE_ORDER", title: { fr: "Bon de commande", en: "Purchase order" }, module: "procurement/purchase_order", fields: ["supplier terms", "delivery address", "payment terms", "withholding", "net payable", "amount in words"],
+    build: (data, cfg, entity, verify) => {
+      const ccy = data.currency || "XAF";
+      const terms = data.payment_means
+        ? `${data.pay_days > 0 ? `${data.pay_days} ${cfg.language === "fr" ? "jours" : "days"}` : (cfg.language === "fr" ? "immédiat" : "immediate")} (${data.payment_means})`
+        : "";
+      const body = [
+        k.head(entity, { fr: "Bon de commande", en: "Purchase order" }, data.number, [
+          [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+          [{ fr: "Livraison", en: "Delivery" }, k.dateFmt(data.delivery_on)],
+          [{ fr: "Échéance", en: "Due" }, k.dateFmt(data.due_on)],
+          [{ fr: "Conditions de paiement", en: "Payment terms" }, terms || ""],
+          [{ fr: "Lieu de livraison", en: "Place of delivery" }, data.delivery_location],
+        ].filter((m) => m[1]), cfg),
+        k.parties([
+          { label: { fr: "Fournisseur", en: "Supplier" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
+          { label: { fr: "Destinataire", en: "Ship to" }, name: data.ship_to || entity.legal_name, lines: [data.delivery_location].filter(Boolean) },
+        ], cfg),
+        k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
+        k.totals([
+          [{ fr: "Total HT", en: "Subtotal" }, k.money(data.totals.service_ht, ccy)],
+          [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
+          [{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy), { grand: true }],
+          has(data.air_rate) && data.air_rate > 0 ? [{ fr: `Retenue à la source ${data.air_rate}%`, en: `Withholding ${data.air_rate}%` }, "- " + k.money(data.totals.withholding, ccy)] : null,
+          has(data.adv_paid) && data.adv_paid > 0 ? [{ fr: "Acompte versé", en: "Advance paid" }, "- " + k.money(data.adv_paid, ccy)] : null,
+          has(data.totals.net_payable) ? [{ fr: "Net à payer", en: "Net payable" }, k.money(data.totals.net_payable, ccy), { grand: true }] : null,
+        ], cfg),
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words) ? k.wordsBlock(data.amount_in_words, ccy, cfg) : "",
+        data.remarks ? k.section({ fr: "Observations", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
+        k.termsBlock(cfg),
+        k.signatureBlock(cfg),
+        k.footer(entity, cfg, verify),
+      ].join("");
+      return k.shell("PO " + (data.number || ""), body, cfg);
+    },
+    sampleData: { number: "BC-2026-0031", date: "2026-07-27", delivery_on: "2026-08-05", due_on: "2026-08-19", payment_means: "BANK", pay_days: 14, delivery_location: "Entrepôt Douala", party: { name: "Établissements TENOR", lines: ["Douala, Cameroun", "NIU M042116033580Q"] }, lines: sampleLines.slice(0, 2), totals: { service_ht: 1080000, vat_total: 207900, total_ttc: 1287900, withholding: 54000, net_payable: 1233900 }, air_rate: 5, adv_paid: 0, amount_in_words: 1233900, currency: "XAF", remarks: "Livraison en deux tranches." },
   },
 
   SUPPLIER_INVOICE: {
-    docType: "SUPPLIER_INVOICE", title: { fr: "Facture fournisseur", en: "Supplier invoice" }, module: "procurement/supplier_invoice", fields: ["COPY watermark"],
+    docType: "SUPPLIER_INVOICE", title: { fr: "Facture fournisseur", en: "Supplier invoice" }, module: "procurement/supplier_invoice", fields: ["COPY watermark", "amount in words"],
     build: (data, cfg, entity, verify) => lineDoc({
       title: { fr: "Facture fournisseur", en: "Supplier invoice" }, partyLabel: { fr: "Fournisseur", en: "Supplier" },
-      meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "N° fournisseur", en: "Supplier ref" }, d.supplier_ref]],
+      meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "N° fournisseur", en: "Supplier ref" }, d.supplier_ref], [{ fr: "Échéance", en: "Due" }, k.dateFmt(d.due)], [{ fr: "PO", en: "PO" }, d.po_ref]],
       totalsRows: (d, ccy) => [
         [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
         [{ fr: "TVA", en: "VAT" }, k.money(d.totals.vat_total, ccy)],
+        [{ fr: "Retenue à la source", en: "Withholding" }, "- " + k.money(d.totals.wht_total || 0, ccy)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
       ],
+      words: true,
     })(data, { ...cfg, watermark: cfg.watermark || "COPY" }, entity, verify),
-    sampleData: { number: "FF-2026-0088", date: "2026-07-27", supplier_ref: "INV-9921", party: { name: "SDV Cameroun", lines: ["Douala"] }, lines: sampleLines.slice(0, 2), totals: { service_ht: 1080000, vat_total: 207900, total_ttc: 1287900 }, currency: "XAF" },
+    sampleData: { number: "FF-2026-0088", date: "2026-07-27", due: "2026-08-26", supplier_ref: "INV-9921", po_ref: "BC-2026-0031", party: { name: "SDV Cameroun", lines: ["Douala", "NIU M042116033580Q"] }, lines: sampleLines.slice(0, 2), totals: { service_ht: 1080000, vat_total: 207900, wht_total: 54000, total_ttc: 1233900 }, amount_in_words: 1233900, currency: "XAF" },
   },
 
   PURCHASE_REQUEST: {
@@ -545,20 +588,40 @@ const TEMPLATES = {
     },
   },
 
+  /**
+   * DEMANDE DE FONDS / PAYMENT REQUEST — the legacy printed this as an internal
+   * finance voucher with a requisitioner grid, a beneficiary, and
+   * VALIDATED/APPROVED/RECEIVED signature boxes (cash-request.php #print-area).
+   * The rebuild's version carries the same facts — requester, beneficiary,
+   * OPS/OVH context, remarks — as real data from the record, not stamps of one
+   * hard-coded signature image.
+   */
   CASH_REQUEST: {
-    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request", fields: ["approval chain"],
+    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request", fields: ["approval chain", "beneficiary", "requisitioner", "remarks"],
     build: (data, cfg, entity, verify) => {
+      const meta = [
+        [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+        [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        [{ fr: "Catégorie", en: "Category" }, data.category],
+        [{ fr: "Centre de coût", en: "Cost centre" }, data.cost_center],
+        [{ fr: "Bénéficiaire", en: "Beneficiary" }, data.beneficiary],
+      ].filter((m) => m[1]);
+      const context = data.overhead_justification
+        ? k.section({ fr: "Justification (frais généraux)", en: "Justification (overhead)" }, `<div class="box">${k.esc(data.overhead_justification)}</div>`, cfg)
+        : "";
       const body = [
-        k.head(entity, { fr: "Demande de fonds", en: "Cash request" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Dossier", en: "File" }, data.dossier_ref]], cfg),
+        k.head(entity, { fr: "Demande de fonds", en: "Cash request" }, data.number, meta, cfg),
         k.parties([{ label: { fr: "Demandeur", en: "Requested by" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
         k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || "XAF")}</div>`, cfg),
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
+        context,
+        data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
         k.signatureBlock(cfg),
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Cash request " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", amount: 500000, purpose: "Frais de dédouanement et manutention", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
+    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 500000, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
   },
 
   REGIE_ADVANCE: {
@@ -660,6 +723,39 @@ const TEMPLATES = {
       return k.shell("GRN " + (d.number || ""), body, cfg);
     },
     sampleData: { number: "BR-2026-0044", date: "2026-07-27", po_ref: "BC-2026-0031", qa_status: "Conforme / Passed", supplier: "SDV Cameroun", lines: [{ item: "Ciment 50kg", ordered: "500", received: "500", condition: "Bon" }, { item: "Palettes bois", ordered: "24", received: "22", condition: "2 endommagées" }], currency: "XAF" },
+  },
+
+  /**
+   * BON DE RÉCEPTION (procurement) — the goods-received note MOD-61 issues
+   * against a PO (10720). Distinct from the WMS inbound GRN: it names the
+   * supplier, the PO it settles, and the received lines with their condition,
+   * so a partial delivery is a document, not a checkbox. `condition` shows as
+   * the QA note beside each line.
+   */
+  GOODS_RECEIVED: {
+    docType: "GOODS_RECEIVED", title: { fr: "Bon de réception", en: "Goods-received note" }, module: "procurement/goods_received", fields: ["received lines", "condition", "note"],
+    build: (d, cfg, entity, verify) => {
+      const col = [
+        { key: "item", label: { fr: "Article", en: "Item" } },
+        { key: "ordered", label: { fr: "Commandé", en: "Ordered" }, num: true },
+        { key: "received", label: { fr: "Reçu", en: "Received" }, num: true },
+        { key: "condition", label: { fr: "État", en: "Condition" } },
+      ];
+      const body = [
+        k.head(entity, { fr: "Bon de réception", en: "Goods-received note" }, d.number, [
+          [{ fr: "Date", en: "Date" }, k.dateFmt(d.date)],
+          [{ fr: "Commande", en: "PO" }, d.po_ref],
+          [{ fr: "Facture fournisseur", en: "Supplier invoice" }, d.supplier_invoice_ref],
+        ].filter((m) => m[1]), cfg),
+        k.parties([{ label: { fr: "Fournisseur", en: "Supplier" }, name: d.supplier, lines: (d.supplier_lines || []).filter(Boolean) }], cfg),
+        k.lineTable(col, d.lines || [], cfg),
+        d.note ? k.section({ fr: "Note", en: "Note" }, `<div class="box">${k.esc(d.note)}</div>`, cfg) : "",
+        k.signatureBlock(cfg),
+        k.footer(entity, cfg, verify),
+      ].join("");
+      return k.shell("GRN " + (d.number || ""), body, cfg);
+    },
+    sampleData: { number: "SLAS-GRN-2026-0044", date: "2026-07-27", po_ref: "BC-2026-0031", supplier_invoice_ref: "INV-9921", supplier: "Établissements TENOR", supplier_lines: ["Douala, Cameroun", "NIU M042116033580Q"], lines: [{ item: "Ciment 50kg", ordered: "500", received: "500", condition: "Bon" }, { item: "Palettes bois", ordered: "24", received: "22", condition: "2 endommagées" }], note: "Réception partielle — 2 palettes manquantes à réclamer.", currency: "XAF" },
   },
 
   TRIP_SHEET: {

@@ -67,10 +67,38 @@ async function checkProof(client, cr, lines) {
   );
 }
 
-async function createDraft(client, { dossierId = null, costingId = null, requestedBy = null, lines = [], actor = {} }) {
+/**
+ * The OPS/OVH context the legacy cash request enforced (analysis doc §6.7):
+ * an OPS request must name the dossier the money is spent against; an OVH
+ * request must name a cost centre AND justify the overhead. Both come from the
+ * legacy screen's validation rules (cash-request.php pr_save).
+ */
+function assertContext({ category, dossierId, costCenter, overheadJustification }) {
+  const cat = (category || "OPS").toUpperCase();
+  if (cat === "OPS") {
+    if (!dossierId) throw new AppError("OPS_CONTEXT_REQUIRED", "An operations file is required for an OPS cash request", 422);
+    return cat;
+  }
+  if (cat === "OVH") {
+    if (!costCenter) throw new AppError("COST_CENTER_REQUIRED", "Cost centre is required for an overhead cash request", 422);
+    if (!overheadJustification) throw new AppError("OVERHEAD_JUSTIFICATION_REQUIRED", "Justification is required for an overhead cash request", 422);
+    return cat;
+  }
+  throw new AppError("BAD_CATEGORY", "cash request category must be OPS or OVH", 422);
+}
+
+async function createDraft(client, { dossierId = null, costingId = null, requestedBy = null, lines = [], beneficiary = null, category = null, costCenter = null, overheadJustification = null, remarks = null, actor = {} }) {
+  const cat = assertContext({ category, dossierId, costCenter, overheadJustification });
   await client.query("BEGIN");
   try {
-    const cr = await repo.insertCR(client, { dossier_id: dossierId, costing_id: costingId, requested_by: requestedBy || actor.user_id || null, status: "DRAFT", amount: sumField(lines, "budget_amount") });
+    const cr = await repo.insertCR(client, {
+      dossier_id: cat === "OPS" ? dossierId : null, costing_id: costingId,
+      requested_by: requestedBy || actor.user_id || null, status: "DRAFT",
+      amount: sumField(lines, "budget_amount"), beneficiary, category: cat,
+      cost_center: cat === "OVH" ? costCenter : null,
+      overhead_justification: cat === "OVH" ? overheadJustification : null,
+      remarks,
+    });
     if (lines.length) await checkProof(client, cr, await replaceLines(client, cr.cash_request_id, lines));
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(cr.cash_request_id), after: cr });
     await client.query("COMMIT");
@@ -78,16 +106,68 @@ async function createDraft(client, { dossierId = null, costingId = null, request
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-async function updateDraft(client, { id, lines = null, actor = {} }) {
+async function updateDraft(client, { id, lines = null, patch = {}, actor: _actor = {} }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   if (cr.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT cash request can be edited", 422);
   await client.query("BEGIN");
   try {
+    const fields = {};
+    for (const k of ["dossier_id", "costing_id", "beneficiary", "category", "cost_center", "overhead_justification", "remarks"]) {
+      if (patch[k] !== undefined) fields[k] = patch[k];
+    }
+    if (fields.category !== undefined || fields.dossier_id !== undefined || fields.cost_center !== undefined || fields.overhead_justification !== undefined) {
+      const cat = assertContext({
+        category: fields.category !== undefined ? fields.category : cr.category,
+        dossierId: fields.dossier_id !== undefined ? fields.dossier_id : cr.dossier_id,
+        costCenter: fields.cost_center !== undefined ? fields.cost_center : cr.cost_center,
+        overheadJustification: fields.overhead_justification !== undefined ? fields.overhead_justification : cr.overhead_justification,
+      });
+      fields.category = cat;
+      // Context fields are exclusive per category — the legacy cleared the
+      // other side's fields when the category flipped (cash-request.php pr_save).
+      if (cat === "OPS") { fields.cost_center = null; fields.overhead_justification = null; }
+      if (cat === "OVH") { fields.dossier_id = null; }
+    }
     if (Array.isArray(lines)) {
       await checkProof(client, cr, await replaceLines(client, id, lines));
-      await repo.update(client, id, { amount: sumField(lines, "budget_amount") });
+      fields.amount = sumField(lines, "budget_amount");
     }
+    if (Object.keys(fields).length) await repo.update(client, id, fields);
+    await client.query("COMMIT");
+    return get(client, id);
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * Import the budget lines from the linked APPROVED_LOCKED costing — the legacy
+ * `costing_lines_get` behaviour (only an approved costing may feed a cash
+ * request; the legacy refused anything else). Lines become budget lines at
+ * qty × unit_cost (HT), the amount is recomputed from the children, and the
+ * request stays a DRAFT for the requester to review before submitting.
+ */
+async function importCostingLines(client, { id, actor = {} }) {
+  const cr = await repo.getCR(client, id);
+  if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
+  if (cr.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT cash request can import costing lines", 422);
+  if (!cr.costing_id) throw new AppError("NO_COSTING", "This cash request has no linked costing", 422);
+  const costing = await repo.costingForImport(client, cr.costing_id);
+  if (!costing) throw new AppError("NOT_FOUND", "Linked costing not found", 404);
+  if (costing.status !== "APPROVED_LOCKED") {
+    throw new AppError("COSTING_NOT_APPROVED", `Costing ${costing.doc_number || ""} is ${costing.status} — only an APPROVED_LOCKED costing can feed a cash request`.trim(), 403);
+  }
+  await client.query("BEGIN");
+  try {
+    const lines = costing.lines.map((l) => ({
+      dictionary_item_id: l.dictionary_item_id || null,
+      label: l.label,
+      budget_amount: Math.round(Number(l.qty || 0) * Number(l.unit_cost || 0) * 100) / 100,
+      spent_amount: 0,
+      is_disbursement: l.is_disbursement === true,
+    }));
+    await checkProof(client, cr, await replaceLines(client, id, lines));
+    await repo.update(client, id, { amount: sumField(lines, "budget_amount") });
+    await audit(client, { actorUserId: actor.user_id || null, action: "cash_request.lines_imported", moduleKey: events.MODULE, entityRef: ref(id), after: { costing_id: cr.costing_id, line_count: lines.length } });
     await client.query("COMMIT");
     return get(client, id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
@@ -99,7 +179,7 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
   assertTransition(cr.status, to);
   // Approving/rejecting directly while a chain is live would skip it (W4).
   // Before BEGIN so the refusal doesn't open and roll back a transaction.
-  if (to === "APPROVED" || to === "REJECTED") {
+  if (to === "VALIDATED" || to === "APPROVED" || to === "REJECTED") {
     await assertNoPendingChain(client, ref(id), { viaChain, what: "cash request" });
   }
   await client.query("BEGIN");
@@ -109,14 +189,25 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
       const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: date || new Date().toISOString().slice(0, 10) });
       fields.doc_number = number;
     }
+    if (to === "VALIDATED") {
+      // DATA 2.4 — FK to app_user lives in LIVE while this row may land in
+      // SANDBOX; resolveActorId returns null instead of raising 23503.
+      fields.validated_by = await resolveActorId(client, actor.user_id);
+      fields.validated_at = new Date().toISOString();
+    }
     if (to === "APPROVED") fields.approver_id = actor.user_id || null;
     const updated = await repo.update(client, id, fields);
     if (to === "SUBMITTED") {
       await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "PENDING" });
-      // Open the tenant's configurable approval chain (bound to disbursal.requested).
-      // No workflow bound → autoApproved and the manual APPROVED path stays
-      // available; see the note on W8 in purchase_order.service.js.
+      // First approval leg: finance validates. No workflow bound → autoApproved
+      // and the manual VALIDATED path stays available (W8 pattern).
       await executor.start(client, { eventTypeKey: "disbursal.requested", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
+    }
+    if (to === "VALIDATED") {
+      // Second approval leg: management approves (10721, seeded default
+      // workflow on disbursal.validated). Completion → APPROVED via the
+      // onApproved handler below.
+      await executor.start(client, { eventTypeKey: "disbursal.validated", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
     }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });
@@ -326,6 +417,17 @@ async function get(client, id) {
 const list = (client, q) => repo.list(client, q);
 
 // A cleared approval chain advances the request SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
-onApproved.register("cash_request", (client, { id, actor }) => transition(client, { id, to: "APPROVED", actor: actor || {}, viaChain: true }));
+/**
+ * A cleared approval chain advances the request ONE step of the two (10721):
+ * the disbursal.requested chain (finance, default) completing a SUBMITTED
+ * request validates it; the disbursal.validated chain (management, default)
+ * completing a VALIDATED request approves it. The target is read from the
+ * current status so the same handler serves both legs.
+ */
+onApproved.register("cash_request", async (client, { id, actor }) => {
+  const cr = await repo.getCR(client, id);
+  const to = cr && cr.status === "SUBMITTED" ? "VALIDATED" : "APPROVED";
+  return transition(client, { id, to, actor: actor || {}, viaChain: true });
+});
 
-module.exports = { createDraft, updateDraft, transition, disburse, justify, get, list };
+module.exports = { createDraft, updateDraft, transition, disburse, justify, importCostingLines, get, list };

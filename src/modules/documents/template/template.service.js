@@ -125,6 +125,7 @@ const SIMPLE = {
   DELIVERY_NOTE: { table: "delivery_note", pk: "delivery_note_id", label: "doc_number" },
   TRANSIT_ORDER: { table: "transit_order", pk: "transit_order_id", label: "ot_number" },
   GRN: { table: "grn_inbound", pk: "grn_inbound_id", label: null },
+  GOODS_RECEIVED: { table: "goods_received_note", pk: "grn_id", label: "doc_number" },
   CYCLE_COUNT_SHEET: { table: "cycle_count", pk: "cycle_count_id", label: null },
   TRIP_SHEET: { table: "fleet_dispatch", pk: "fleet_dispatch_id", label: null },
 };
@@ -465,19 +466,27 @@ async function loadRecord(client, docType, recordId) {
 
   if (docType === "SUPPLIER_INVOICE") {
     const { rows } = await client.query(
-      "SELECT si.*, sm.name AS supplier_name, sm.niu AS supplier_niu FROM supplier_invoice si LEFT JOIN supplier_master sm ON sm.supplier_id = si.supplier_id WHERE si.supplier_invoice_id = $1",
+      `SELECT si.*, sm.name AS supplier_name, sm.niu AS supplier_niu, sm.address AS supplier_address, sm.city AS supplier_city,
+              po.doc_number AS po_doc_number
+         FROM supplier_invoice si
+         LEFT JOIN supplier_master sm ON sm.supplier_id = si.supplier_id
+         LEFT JOIN purchase_order po ON po.po_id = si.po_id
+        WHERE si.supplier_invoice_id = $1`,
       [recordId],
     );
     const si = rows[0];
     if (!si) return null;
     const lr = await client.query("SELECT * FROM supplier_invoice_line WHERE supplier_invoice_id = $1 ORDER BY supplier_invoice_line_id", [recordId]);
+    const ttc = Number(si.amount_ttc || 0);
     return {
       entity_id: si.entity_id,
       data: {
         number: si.doc_number || String(si.supplier_invoice_id).slice(0, 8), date: si.created_at, status: si.status, supplier_ref: si.supplier_ref,
-        party: { name: si.supplier_name || "—", lines: [si.supplier_niu && `NIU ${si.supplier_niu}`].filter(Boolean) },
+        due: si.due_on, po_ref: si.po_doc_number,
+        party: { name: si.supplier_name || "—", lines: [si.supplier_address, si.supplier_city, si.supplier_niu && `NIU ${si.supplier_niu}`].filter(Boolean) },
         lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), amount: Number(l.qty) * Number(l.unit_price) })),
-        totals: { service_ht: Number(si.amount_ht), vat_total: Number(si.vat_total), total_ttc: Number(si.amount_ttc) },
+        totals: { service_ht: Number(si.amount_ht), vat_total: Number(si.vat_total), wht_total: Number(si.wht_total), total_ttc: ttc },
+        amount_in_words: ttc,
         currency: si.currency || "XAF",
       },
     };
@@ -485,22 +494,44 @@ async function loadRecord(client, docType, recordId) {
 
   if (docType === "PURCHASE_ORDER") {
     const { rows } = await client.query(
-      "SELECT po.*, sm.name AS supplier_name, sm.niu AS supplier_niu FROM purchase_order po LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id WHERE po.po_id = $1",
+      `SELECT po.*,
+              COALESCE(po.supplier_name, sm.name) AS supplier_name,
+              COALESCE(po.supplier_niu, sm.niu) AS supplier_niu,
+              COALESCE(po.supplier_address, sm.address) AS supplier_address,
+              COALESCE(po.supplier_city, sm.city) AS supplier_city
+         FROM purchase_order po
+         LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+        WHERE po.po_id = $1`,
       [recordId],
     );
     const po = rows[0];
     if (!po) return null;
-    const lr = await client.query("SELECT * FROM purchase_order_item WHERE po_id = $1 ORDER BY po_item_id", [recordId]);
+    // Per-line VAT resolved through the line's tax code, so the printed column
+    // and the printed totals agree with what the PO was priced at (10720).
+    const lr = await client.query(
+      `SELECT poi.*, tc.rate_percent AS vat_rate
+         FROM purchase_order_item poi
+         LEFT JOIN tax_code tc ON tc.tax_code_id = poi.tax_code_id
+        WHERE poi.po_id = $1 ORDER BY poi.po_item_id`,
+      [recordId],
+    );
     const ht = lr.rows.reduce((s2, l) => s2 + Number(l.qty) * Number(l.unit_price), 0);
-    const ttc = Number(po.total_ttc) || Math.round(ht * 1.1925);
+    const ttc = Number(po.total_ttc) || ht;
+    const vat = Number(po.total_vat) || Math.max(0, ttc - ht);
+    const withholding = Math.round((ht * Number(po.air_rate || 0)) / 100 * 100) / 100;
+    const net = po.net_payable !== null && po.net_payable !== undefined ? Number(po.net_payable) : Math.round((ttc - withholding - Number(po.adv_paid || 0)) * 100) / 100;
     return {
-      entity_id: null,
+      entity_id: po.entity_id || null,
       data: {
         number: po.doc_number || String(po.po_id).slice(0, 8), date: po.created_at, status: po.status,
-        party: { name: po.supplier_name || "—", lines: [po.supplier_niu && `NIU ${po.supplier_niu}`].filter(Boolean) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), amount: Number(l.qty) * Number(l.unit_price) })),
-        totals: { service_ht: ht, vat_total: ttc - ht, total_ttc: ttc },
-        currency: "XAF",
+        currency: po.currency || "XAF",
+        delivery_on: po.delivery_on, due_on: po.due_on, delivery_location: po.delivery_location,
+        payment_means: po.payment_means, pay_days: Number(po.pay_days || 0),
+        air_rate: Number(po.air_rate || 0), adv_paid: Number(po.adv_paid || 0), remarks: po.remarks,
+        party: { name: po.supplier_name || "—", lines: [po.supplier_address, po.supplier_city, po.supplier_niu && `NIU ${po.supplier_niu}`].filter(Boolean) },
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.vat_rate !== null && l.vat_rate !== undefined ? String(l.vat_rate) : "", amount: Number(l.qty) * Number(l.unit_price) })),
+        totals: { service_ht: ht, vat_total: vat, total_ttc: ttc, withholding, net_payable: net },
+        amount_in_words: net,
       },
     };
   }
@@ -526,12 +557,29 @@ async function loadRecord(client, docType, recordId) {
   }
 
   if (docType === "CASH_REQUEST") {
-    const { rows } = await client.query("SELECT * FROM cash_request WHERE cash_request_id = $1", [recordId]);
+    const { rows } = await client.query(
+      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref
+         FROM cash_request cr
+         LEFT JOIN app_user u ON u.user_id = cr.requested_by
+         LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+        WHERE cr.cash_request_id = $1`,
+      [recordId],
+    );
     const cr = rows[0];
     if (!cr) return null;
     const lr = await client.query("SELECT label, budget_amount FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
     const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
-    return { entity_id: null, data: { number: cr.doc_number || String(cr.cash_request_id).slice(0, 8), date: cr.created_at, status: cr.status, amount: Number(cr.amount), purpose, party: { name: "—", lines: [] }, currency: "XAF" } };
+    return {
+      entity_id: null,
+      data: {
+        number: cr.doc_number || String(cr.cash_request_id).slice(0, 8), date: cr.created_at, status: cr.status,
+        amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
+        beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
+        overhead_justification: cr.overhead_justification, remarks: cr.remarks,
+        party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        currency: "XAF",
+      },
+    };
   }
 
   if (docType === "REGIE_ADVANCE") {
@@ -642,6 +690,35 @@ async function loadRecord(client, docType, recordId) {
     if (!g) return null;
     const lr = await client.query("SELECT item, ordered, received, condition FROM grn_line WHERE grn_inbound_id = $1 ORDER BY grn_line_id", [recordId]);
     return { entity_id: null, data: { number: String(g.grn_inbound_id).slice(0, 8), date: g.created_at, po_ref: g.dossier_id ? String(g.dossier_id).slice(0, 8) : null, qa_status: g.qa_status, supplier: "—", lines: lr.rows.map((l) => ({ item: l.item, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })), currency: "XAF" } };
+  }
+
+  if (docType === "GOODS_RECEIVED") {
+    const { rows } = await client.query(
+      `SELECT grn.*, po.doc_number AS po_doc_number, po.currency AS po_currency,
+              sm.name AS supplier_name, sm.address AS supplier_address, sm.city AS supplier_city, sm.niu AS supplier_niu
+         FROM goods_received_note grn
+         LEFT JOIN purchase_order po ON po.po_id = grn.po_id
+         LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+        WHERE grn.grn_id = $1`,
+      [recordId],
+    );
+    const g = rows[0];
+    if (!g) return null;
+    const lr = await client.query("SELECT * FROM goods_received_line WHERE grn_id = $1 ORDER BY grn_line_id", [recordId]);
+    return {
+      entity_id: g.entity_id || null,
+      data: {
+        number: g.doc_number || String(g.grn_id).slice(0, 8),
+        date: g.received_on || g.created_at,
+        po_ref: g.po_doc_number || (g.po_id ? String(g.po_id).slice(0, 8) : null),
+        supplier_invoice_ref: g.supplier_invoice_ref,
+        supplier: g.supplier_name || "—",
+        supplier_lines: [g.supplier_address, g.supplier_city, g.supplier_niu && `NIU ${g.supplier_niu}`].filter(Boolean),
+        note: g.note,
+        lines: lr.rows.map((l) => ({ item: l.label, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })),
+        currency: g.po_currency || "XAF",
+      },
+    };
   }
 
   if (docType === "CYCLE_COUNT_SHEET") {

@@ -59,6 +59,25 @@ Consequences, in order of severity:
 
 This is why §1 below is the first landing and why it is not optional.
 
+### 0.1 What "enrich the process and flow" means concretely
+
+Régie is being written fresh, so the target is not parity with anything — it is the workflow
+done properly. Eight concrete gaps, each with its section:
+
+| #   | Gap today                                                          | Becomes                                          | §      |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------ | ------ |
+| 1   | No way to record a receipt                                         | `regie_retirement` child table, 3 kinds          | 1.1    |
+| 2   | 3 of 5 states unreachable, no transition table                     | Full `NEXT` map incl. back-edges                 | 1.2    |
+| 3   | Aging is a one-way door                                            | `unage` via `aged_entry_id`                      | 1.3    |
+| 4   | `justify` closes the request, not the advance                      | Both, one transaction                            | 1.4    |
+| 5   | Accounts/journals frozen in JS                                     | `setting`, validated against `chart_of_accounts` | 1.5 L1 |
+| 6   | **Flat permission — a 50 K and a 50 M advance take the same path** | Workflow engine + amount thresholds              | 1.5 L2 |
+| 7   | No currency on a money table                                       | `currency` + `exchange_rate_to_xaf`              | 1.5    |
+| 8   | Holder is never asked for receipts                                 | "My advances" + pre-window notification          | 2.2    |
+
+Number 6 is the one that most deserves the word "dynamic", and it is not a settings value —
+see §1.5 Layer 2.
+
 ---
 
 ## 1. Landing A — close the régie loop (correctness)
@@ -118,34 +137,81 @@ the schema leaking into the API. `aged_entry_id` so the aging reclassification i
 reversible; `ageOne` posts it and keeps no reference. Both mirror the existing
 `issue_entry_id` column.
 
-### 1.2 Service work — `regie.service.js`
+### 1.2 The enriched lifecycle
 
-Add, each posting through `journalEntry.buildAndInsert` exactly as `issue`/`ageOne` do:
+KB §6.8 gives five steps and five states but no transition table. Régie currently has neither
+— `ageOne` writes `state: "AGED_UNJUSTIFIED"` directly with no guard, which is how three
+states ended up unreachable. The full machine, to live as a `NEXT` map in `regie.rules.js`
+(the shape `cash_request.rules.js:7` already uses):
+
+```
+                    ┌──────────────┐
+   retire(RECEIPT | │              │ retire(...) leaving open > 0
+   CASH_RETURN)     ▼              │
+  ┌────────► PARTIALLY_JUSTIFIED ──┘
+  │                 │
+ISSUED              │ retire(...) closing to open = 0
+  │  │              ▼
+  │  └────────► JUSTIFIED  (terminal, sets closed_on)
+  │                 ▲
+  │                 │ writeOff (Dr 658)
+  │                 │
+  ├─ query ──► QUERIED ──► retire(RECEIPT) ──► (back to PARTIALLY_JUSTIFIED / JUSTIFIED)
+  │
+  └─ age (past window, open > 0) ──► AGED_UNJUSTIFIED
+                                          │
+                          unage, or a late retire(RECEIPT)
+                                          │
+                                          └──► ISSUED / PARTIALLY_JUSTIFIED
+```
+
+`NEXT` as data, so the routes, the AI manifest and the client all read one source:
+
+```js
+const NEXT = {
+  ISSUED: ["PARTIALLY_JUSTIFIED", "JUSTIFIED", "AGED_UNJUSTIFIED", "QUERIED"],
+  PARTIALLY_JUSTIFIED: ["JUSTIFIED", "AGED_UNJUSTIFIED", "QUERIED"],
+  AGED_UNJUSTIFIED: ["PARTIALLY_JUSTIFIED", "JUSTIFIED", "QUERIED"], // unage / late receipts
+  QUERIED: ["PARTIALLY_JUSTIFIED", "JUSTIFIED"], // resolved or written off
+  JUSTIFIED: [], // terminal
+};
+```
+
+Two things this makes explicit that the KB leaves implicit, and both are deliberate:
+
+- **`AGED_UNJUSTIFIED` is not terminal.** A holder who produces receipts a week late must be
+  able to retire the advance. Without the back-edge, aging is a one-way door: the balance
+  sits in 4211 and a later receipt cannot post against 581 because 581 is already flat. This
+  is exactly the costing-unlock defect (§3.1) — a lock with no key — and repeating it in a
+  module we are writing fresh would be inexcusable.
+- **`QUERIED` can resolve either way.** Write-off is not the only exit; the KB says "write
+  off to 658 **or** recover from the holder".
+
+### 1.3 Service work — `regie.service.js`
+
+Each posting goes through `journalEntry.buildAndInsert`, exactly as `issue`/`ageOne` already do:
 
 - **`retire(client, {advanceId, kind, dossierId, amount, proofVaultId, ...})`** — inserts the
-  `regie_retirement` row, posts per the table above, then **recomputes** the advance from its
+  `regie_retirement` row, posts per the §1.1 table, then **recomputes** the advance from its
   children rather than incrementing a counter:
   `justified_amount = Σ RECEIPT`, `returned_amount = Σ (CASH_RETURN + WRITE_OFF)`.
-  Recompute-from-children is the point: an increment would drift the moment a retirement is
-  corrected, and these two columns are what `openBalance` depends on.
-- **`recomputeState(advance)`** in `regie.rules.js` (pure, testable without a DB):
-  `open === 0 → JUSTIFIED` (set `closed_on`); `0 < justified+returned < amount →
-PARTIALLY_JUSTIFIED`; unchanged otherwise. Never downgrades out of `QUERIED` or
-  `AGED_UNJUSTIFIED` without an explicit call.
+  Recompute-from-children is the point: an increment drifts the moment a retirement is
+  corrected, and these two columns are what `openBalance` depends on. Reject over-retirement
+  before the UPDATE — `0497:137` already constrains `justified + returned <= amount`, and a
+  clean 422 beats a constraint violation surfacing from inside a transaction.
+- **`recomputeState(advance)`** in `regie.rules.js` (pure, no DB, per the `NEXT` map above).
 - **`query(client, {advanceId, reason})`** → `QUERIED`, no posting (KB: "hold as a query").
 - **`writeOff(client, {advanceId, amount, ...})`** → a `WRITE_OFF` retirement, `Dr 658`,
-  only permitted from `QUERIED`. Requires `approve`.
-- **`unage(...)`** — reverse an `AGED_UNJUSTIFIED` reclassification when the holder finally
-  produces receipts, using `aged_entry_id`. Without this, aging is a one-way door: the
-  balance sits in 4211 and a later receipt cannot be posted against 581 because 581 is
-  already flat. This is the régie equivalent of the costing-unlock gap in §3.1 and should
-  not be repeated.
+  only from `QUERIED`, routed through the approval chain (§1.5 Layer 2).
+- **`unage(client, {advanceId, ...})`** — reverses the aging reclassification using
+  `aged_entry_id`, restoring the balance to 581 so late receipts can post.
 
-Transitions belong in `regie.rules.js` as a `NEXT` map, the shape `cash_request.rules.js`
-already uses — currently régie has no transition table at all, and `ageOne` writes
-`state: "AGED_UNJUSTIFIED"` with no guard.
+**Concurrency.** `retire` must `SELECT ... FOR UPDATE` the advance row before recomputing.
+Two receipts filed simultaneously would otherwise both read the same `justified_amount`, and
+the recompute-from-children design only holds if the read and the write are serialised.
+Worth stating because the existing `issue`/`ageOne` never needed it — they touch one row once.
 
-### 1.3 The `cash_request` ↔ `regie` seam
+### 1.4 The `cash_request` ↔ `regie` seam
 
 `cash_request.justify` must retire the linked advance in the **same transaction**, not leave
 it open. The cash request's lines already carry `spent_amount`, `is_disbursement` (renamed by
@@ -159,9 +225,15 @@ advance `PARTIALLY_JUSTIFIED`. **Recommend (a)** — KB step 4 says a fully just
 nets 581 to zero, and (b) lets a "justified" request sit against an open advance, which is
 the bug this landing exists to remove.
 
-### 1.4 Nothing hardcoded
+### 1.5 Dynamic, not hardcoded — the four layers
 
-Every account code in the set is currently a JS default parameter:
+"Not hardcoded" is not one change; there are four distinct things currently frozen in JS,
+and they want four different mechanisms. Putting them all in one settings blob would be as
+wrong as leaving them in code.
+
+#### Layer 1 — account codes and journals → `setting` (tenant-editable values)
+
+Every account code in the set is a JS default parameter:
 
 ```
 regie.service.js:22   treasuryCoa = "521", regieCoa = "581"
@@ -172,33 +244,115 @@ cost_tracking.service.js:19  "4731", "521"     :33  "OD"
 ```
 
 `9050_seed_settings.sql:19` seeds `('finance','regie','{"policy_window_days":7}')` and
-nothing else, so `policy_window_days` is the _only_ régie value a tenant can change.
+nothing else, so `policy_window_days` is the **only** régie value a tenant can change today.
 
-Replace with one settings read, seeded in `9094_seed_regie_accounts.sql`:
+Extend that same key in `9094_seed_regie_policy.sql`:
 
 ```json
 ("finance", "regie", {
   "policy_window_days": 7,
   "accounts": { "regie": "581", "treasury": "521", "cash": "571",
                 "holder_receivable": "4211", "dossier_mandant": "4731", "write_off": "658" },
-  "journals": { "issue": "BQ", "retire": "OD", "age": "OD" },
-  "require_proof_for_receipt": true,
-  "allow_partial_justification": true
+  "journals": { "issue": "BQ", "retire": "OD", "age": "OD" }
 })
 ```
 
-Read via `getRule(client, "finance", "regie", "accounts", …)` — the function already exists
-and `issue()` already uses it for `policy_window_days`, so this is applying the established
-convention, not inventing one. Keep the JS literals as the final fallback so an un-seeded
-tenant still posts correctly.
+Read through the existing `getRule` — `issue()` already uses it for the window, so this
+applies the convention rather than inventing one. Keep the JS literals as last-resort
+fallbacks so an un-seeded tenant still posts correctly.
 
-**Precedent check:** `posting_rule` (`0200_coa_dictionary.sql:63`) already models
-per-dictionary-item debit/credit accounts for `sale`/`purchase`/`disbursement`, with a
-trigger asserting every item has one. Régie postings are workflow-level rather than
-item-level, so settings is the right home — but if a tenant ever needs per-dossier-type
-régie accounts, `posting_rule` is the pattern to extend rather than a second settings blob.
+**Validate the codes on write, not on post.** A typo'd account in `setting` currently fails
+at posting time, deep inside a transaction, as a foreign-key error against
+`chart_of_accounts(code)`. The Settings write path should reject an account code that is not
+in `chart_of_accounts` — the difference between "you cannot save that" and "the month-end
+close crashed".
 
-### 1.5 Tests
+#### Layer 2 — who may approve what → the **workflow engine**, which régie is not wired to
+
+This is the substantive "more dynamic" gap, and it is not a settings value.
+
+`workflow_step` (`0120_events_workflow.sql:31`) already models exactly what régie needs:
+
+```
+step_seq, step_kind CHECK IN ('VALIDATE','APPROVE'),
+role_id, capability_code CHECK IN ('VALIDATOR','APPROVER'), scope_id,
+min_amount_xaf, max_amount_xaf          -- amount-threshold routing
+```
+
+`cash_request` is already wired to it: `disburse` runs through `executor.start` bound to
+`disbursal.requested`, with `assertNoPendingChain` guarding double-approval, and
+`0469_default_workflows.sql` seeds a default single-step chain. So a tenant can already say
+"disbursals over 5 M XAF need a second approver" **without a code change**.
+
+Régie has none of this. `regie.routes.js` gates `POST /issue` on a flat
+`requirePermission("MOD-49","create")` and `POST /age-due` on `approve`. There is no chain,
+no amount threshold, no VALIDATE step — a 50 000 XAF advance and a 50 000 000 XAF advance
+take exactly the same path.
+
+Worse, **`regie.issued` is not a seeded `event_type` at all.** `9020_seed_rbac_events.sql`
+seeds `disbursal.requested` (approvable) and `advance.aged_unjustified` (not approvable);
+`grep -rn "'regie.issued'" migrations/` returns nothing. `regie.events.js:2` acknowledges
+this — the key is emitted into `event_log` as free-form citext. An event type that does not
+exist cannot have a workflow bound to it, so régie is structurally unroutable today.
+
+The work: seed `regie.issued` (and the new `regie.retired` / `regie.write_off`) as event
+types with `is_approvable` set appropriately, then call `executor.start` from `issue`,
+`writeOff` and `unage`, passing `amountXaf` so the threshold columns actually do something.
+Write-off especially — "hold as a query, then write off to 658" (KB §6.8 step 5) is precisely
+the decision a tenant will want routed by value.
+
+**This is the difference between configurable and hardcoded that matters most**, because it
+is about authority rather than about a number.
+
+#### Layer 3 — per-item posting accounts → `posting_rule`, if ever needed
+
+`posting_rule` (`0200_coa_dictionary.sql:63`) models per-dictionary-item debit/credit
+accounts for `sale`/`purchase`/`disbursement`, with a deferrable trigger asserting every item
+has one (KB §23.14). Régie postings are workflow-level, not item-level, so Layer 1 is the
+right home **for now** — but retirement receipts are tagged per dossier and could plausibly
+need per-service-type accounts later. If that day comes, extend `posting_rule` rather than
+growing a second settings blob. Recorded so the next person does not re-litigate it.
+
+#### Layer 4 — policy switches → `setting`, but each one must earn its place
+
+```json
+{
+  "require_proof_for_receipt": true, // KB §6.8 step 5: never a 4731 line without a document
+  "allow_partial_justification": true, // see the §1.4 remainder question
+  "auto_age": true, // whether the worker ages automatically
+  "warn_before_window_days": 2
+} // watchlist lead time (Landing B)
+```
+
+`require_proof_for_receipt` defaults **true** because the KB states it as a rule, not a
+preference. A tenant may relax it; the default must not.
+
+**Deliberately NOT configurable:** the _shape_ of the postings. Which accounts get debited
+and credited is a setting; that a `RECEIPT` is `Dr <mandant> / Cr <regie>` and balances is
+not. Making the posting shape data would let a tenant configure an unbalanced entry, and
+Σ Dr = Σ Cr is the one thing that must never be a tenant's decision.
+
+#### What "richer" adds to the schema
+
+Two columns in `10717` that the current design cannot express:
+
+```sql
+ALTER TABLE regie_advance ADD COLUMN IF NOT EXISTS currency char(3) REFERENCES currency(code);
+ALTER TABLE regie_advance ADD COLUMN IF NOT EXISTS exchange_rate_to_xaf numeric(18,8);
+```
+
+`regie_advance` stores a bare `numeric(18,2)` with **no currency** — the only money table in
+the set that does not carry one (`costing` has `currency` + `exchange_rate_to_xaf`,
+`0320:10-11`). An advance drawn in EUR for a European carrier is currently unrepresentable,
+and the amount-threshold routing in Layer 2 is meaningless without a rate to convert to XAF.
+Default `'XAF'` / `1` so existing rows and the common case are unaffected.
+
+Note the existing constraint this must respect: `0497_money_constraints.sql:137` already
+enforces `justified_amount + returned_amount <= amount` (NOT VALID). The recompute in §1.3
+therefore has to reject over-retirement _before_ the UPDATE, or it will surface as a
+constraint violation rather than a clean 422.
+
+### 1.6 Tests
 
 `tests/unit/` — no DB, following `extra-charge-five-families-g16.test.js`:
 
@@ -206,41 +360,79 @@ régie accounts, `posting_rule` is the pattern to extend rather than a second se
   boundary (0, partial, exact, over-retirement must throw); `isAged` unchanged.
 - Retirement postings balance (Σ Dr = Σ Cr) for all three `kind`s.
 - `recomputeState` never downgrades out of `QUERIED`.
-- The §1.3 seam: justify → advance `JUSTIFIED`, `open === 0`.
+- The §1.4 seam: justify → advance `JUSTIFIED`, `open === 0`.
 - A receipt with no `proof_vault_id` is refused when `require_proof_for_receipt` is true.
 
 ---
 
-## 2. Landing B — régie UI (the "enrich the flow" half)
+## 2. Landing B — régie UI and the operational surfaces
 
-Current surface: `RegiePage` lists advances and `RegieForm` issues one
-(`client/src/features/costing/pages.tsx:863,961`). `costing-api.ts` exports exactly
-`listRegie` and `issueRegie`. **There is no way to retire, return cash, query or write off
-from the UI** — consistent with the backend, and equally incomplete.
+Current surface: `RegiePage` lists advances, `RegieForm` issues one
+(`client/src/features/costing/pages.tsx:961,863`). `client/src/lib/costing-api.ts:138-140`
+exports exactly `listRegie` and `issueRegie`. **There is no way to retire, return cash, query, write off or
+un-age from the UI** — consistent with the backend, and equally incomplete.
 
-Build a **régie detail view**, because an advance is a running balance with a history, and a
-row in a list cannot show that:
+### 2.1 The advance detail view
+
+An advance is a running balance with a history; a list row cannot show that.
 
 - **Balance header** — issued / justified / returned / **open**, open being the number that
-  matters, with the state pill and days-to-window (or days overdue) beside it. Derived from
-  the same `openBalance` the backend uses, never recomputed in the client with its own
-  arithmetic.
-- **Retirement ledger** — the `regie_retirement` rows in date order, each with kind,
-  dossier, amount, proof link and its journal entry. This is the audit trail KB §6.8 implies
-  and nothing currently renders.
-- **Actions gated by state, from the API not the client** — Retire (receipt), Return cash,
-  Raise query, Write off, Un-age. Which are available follows the `NEXT` map in
-  `regie.rules.js`; the client must not carry a second copy of the state machine.
-- **Aging watchlist** on the list page — advances inside N days of their window and those
-  past it. The window is per-advance (`policy_window_days` is a column, defaulted from
-  settings at issue), so this must read the row, not a global constant.
+  matters, with the state pill and days-to-window (or days overdue). Derived from the same
+  `openBalance` the backend uses; the client must not re-implement the arithmetic.
+- **Retirement ledger** — the `regie_retirement` rows in date order: kind, dossier, amount,
+  proof link, journal entry. This is the audit trail KB §6.8 implies and nothing renders today.
+- **Actions gated by the API's `NEXT` map**, not by client-side conditionals. The client
+  renders what the server says is available; a second copy of the state machine in TSX is
+  how the two drift.
+- **Aging watchlist** on the list page — inside `warn_before_window_days` of the window, and
+  past it. The window is **per-advance** (`policy_window_days` is a column, defaulted from
+  settings at issue), so this reads the row, never a global constant.
 
-Per the standing UI rules (`doc/FRONTEND_GUIDE.md`): desktop layout at `lg`/`xl`/`2xl` only;
-dense; `PageContainer width="wide"`; the balance header and retirement ledger side by side at
-`xl` rather than stacked. The `useIsDesktop` hook and `Dialog size="wide"` added in `810da6f`
-are available for the detail-in-modal-vs-page decision.
+Per `doc/FRONTEND_GUIDE.md`: desktop layout at `lg`/`xl`/`2xl` only, dense,
+`PageContainer width="wide"`, balance header and retirement ledger side by side at `xl`
+rather than stacked. `useIsDesktop` and `Dialog size="wide"` (added in `810da6f`) cover the
+detail-in-modal-vs-page decision.
 
----
+### 2.2 The holder's view — the flow's missing half
+
+Every surface in this module today is finance-facing. But the person who **owes** the
+justification is the holder, and nothing tells them so. The workflow's whole premise is that
+a holder takes cash to the port and comes back with receipts; if the system never asks them
+for those receipts, aging is guaranteed and the 4211 reclassification becomes routine rather
+than exceptional.
+
+So: **"My advances"** — the holder's own open advances, what each is for, what is still
+unjustified, and a file-a-receipt action. `regie_advance.holder_user_id` already exists and
+is already populated (`cash_request.disburse` passes `holderUserId || cr.requested_by`), so
+this is a filtered read, not new schema.
+
+Pair it with a **notification at `warn_before_window_days`** rather than only a compliance
+flag after the fact. The notification module is self-scoped ("read your own"), which fits
+exactly. Chasing a receipt two days before the window is worth more than flagging a breach
+after it.
+
+### 2.3 Wire the compliance flag that is already specified
+
+`compliance_flag.rule_key` is documented in the DDL comment as
+`'dossier.missing_bl' | 'advance.aged_unjustified'` (`0340_vault_comms.sql:29`), and
+`advance.aged_unjustified` is a seeded event type (`9020_seed_rbac_events.sql:69`). KB §6.8
+closes with "**MOD-49** owns issuance and retirement; **MOD-65** raises the aging flag."
+
+`ageOne` emits the event but **never raises the flag**, so the MOD-65 half of that sentence
+is unimplemented. One insert in `ageOne`, severity from settings (`WARN` default, `RED` past
+a configurable multiple of the window). The plumbing all exists.
+
+### 2.4 The AI manifest must grow with the workflow
+
+`regie.ai.js` declares two reads and two writes (`issue_regie_advance`, `age_regie_advances`).
+Every new service in §1.3 needs an entry, or the assistant can issue an advance and then be
+unable to retire it — which is worse than not exposing régie at all, because it can start
+something it cannot finish.
+
+Per `87d8e03`, each entry needs a `permission` whose module matches the routes
+(`MOD-49`) and whose verb resolves through `action-authz`. `retire` is `edit`; `write_off`
+and `unage` are `approve` and must set `confirm: true` — they move money between accounts on
+a human's say-so.
 
 ## 3. Landing C — the two legacy gaps
 
@@ -310,15 +502,25 @@ that usually bites this module is already handled.
 
 ## 6. Open questions
 
-1. **§1.3 remainder** — require `CASH_RETURN` before `JUSTIFIED` (recommended), or allow a
+1. **§1.4 remainder** — require `CASH_RETURN` before `JUSTIFIED` (recommended), or allow a
    partially-justified close?
 2. **§3.2 `VALIDATED`** — restore the two-step for consistency with costing, or record the
    one-step as deliberate?
-3. **Un-age (§1.2)** — confirm reversing an aging reclassification is wanted. It is the right
+3. **Un-age (§1.3)** — confirm reversing an aging reclassification is wanted. It is the right
    accounting answer, but it is not in KB §6.8 explicitly.
 4. **Write-off account** — KB §6.8 step 5 says "write off to 658 **or** recover from the
    holder". Recovery is `4211`, i.e. the aging posting. Confirm write-off and recover are two
    distinct user actions rather than one.
+5. **Multi-currency advances (§1.5)** — add `currency` + `exchange_rate_to_xaf` to
+   `regie_advance` now, or keep it XAF-only? Recommend adding: it is two additive columns
+   with safe defaults, every sibling money table has them, and amount-threshold approval
+   routing needs a rate to convert against. Retrofitting after advances exist is harder.
+6. **Default approval chain for régie (§1.5 Layer 2)** — `0469_default_workflows.sql` seeds
+   single-step chains for six events. Should `regie.issued` get one by default, or ship
+   unbound (auto-approve) and let tenants opt in? Recommend **unbound with a documented
+   threshold example**: seeding a mandatory approver for every petty advance would make the
+   common case slower than it is today, and `executor.start` already logs an explicit
+   `no_workflow` auto-approve so the behaviour is visible rather than silent.
 
 Unless answered, these take the recommended option and it is recorded in the commit, matching
 how the pricing set handled its §9.

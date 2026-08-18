@@ -61,9 +61,13 @@ async function listTemplates(client, q = {}) {
   const params = [limit, offset]; const wh = [];
   if (q.service_type_id) { params.push(q.service_type_id); wh.push(`t.service_type_id = $${params.length}`); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
+  // `service_type` carries no `code`/`name`: 0310 named them `key` and
+  // `name_fr`/`name_en`, and nothing since has added the shorter pair. The
+  // aliases stay — the client reads service_type_code/_name — only the source
+  // columns are corrected.
   const { rows } = await client.query(
     `SELECT t.*, st.key AS service_type_code,
-            COALESCE(st.name_en, st.name_fr) AS service_type_name,
+            COALESCE(st.name_fr, st.name_en) AS service_type_name,
             (SELECT count(*)::int FROM milestone_template_stage s
               WHERE s.milestone_template_id = t.milestone_template_id) AS stage_count
        FROM milestone_template t

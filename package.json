@@ -39,6 +39,8 @@
     "ai:reindex": "node scripts/ai/reindex.js",
     "ai:reindex:all": "node scripts/ai/reindex.js --all",
     "db:check:idempotency": "node scripts/db/check-migration-idempotency.js",
+    "db:check:columns": "node scripts/db/check-query-columns.js",
+    "db:check:columns:report": "node scripts/db/check-query-columns.js --report",
     "db:mark-applied": "node scripts/db/mark-migration-applied.js",
     "db:repair:trgm": "node scripts/db/repair-trgm-schema.js",
     "db:creds": "node scripts/db/tenant-credentials.js",

@@ -1,0 +1,348 @@
+{
+  "note": "References already broken when check-query-columns landed. Fix and remove; do not add.",
+  "generated_against_tables": 294,
+  "grandfathered": [
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "a.category",
+      "table": "asset",
+      "column": "category"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "a.name",
+      "table": "asset",
+      "column": "name"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "a.net_book_value",
+      "table": "asset",
+      "column": "net_book_value"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "c.margin_pct",
+      "table": "costing",
+      "column": "margin_pct"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "c.total_cost",
+      "table": "costing",
+      "column": "total_cost"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "c.total_revenue",
+      "table": "costing",
+      "column": "total_revenue"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "coa.account_class",
+      "table": "chart_of_accounts",
+      "column": "account_class"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "coa.account_id",
+      "table": "chart_of_accounts",
+      "column": "account_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "coa.account_name",
+      "table": "chart_of_accounts",
+      "column": "account_name"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "coa.account_number",
+      "table": "chart_of_accounts",
+      "column": "account_number"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "cr.total_amount",
+      "table": "cash_request",
+      "column": "total_amount"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "d.debt_id",
+      "table": "debt_engagement",
+      "column": "debt_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "d.lender",
+      "table": "debt_engagement",
+      "column": "lender"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "d.outstanding_balance",
+      "table": "debt_engagement",
+      "column": "outstanding_balance"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "d.principal_amount",
+      "table": "debt_engagement",
+      "column": "principal_amount"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "d.reference",
+      "table": "debt_engagement",
+      "column": "reference"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "dn.client_id",
+      "table": "delivery_note",
+      "column": "client_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "fl.log_date",
+      "table": "fuel_log",
+      "column": "log_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "fl.quantity_litres",
+      "table": "fuel_log",
+      "column": "quantity_litres"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "grn.doc_number",
+      "table": "goods_received_note",
+      "column": "doc_number"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "grn.goods_received_note_id",
+      "table": "goods_received_note",
+      "column": "goods_received_note_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "grn.received_date",
+      "table": "goods_received_note",
+      "column": "received_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "grn.status",
+      "table": "goods_received_note",
+      "column": "status"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "grn.supplier_id",
+      "table": "goods_received_note",
+      "column": "supplier_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "hc.contract_id",
+      "table": "hr_contract",
+      "column": "contract_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "hc.contract_type",
+      "table": "hr_contract",
+      "column": "contract_type"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "hc.end_date",
+      "table": "hr_contract",
+      "column": "end_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "hc.start_date",
+      "table": "hr_contract",
+      "column": "start_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "je.entry_ref",
+      "table": "journal_entry",
+      "column": "entry_ref"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "je.journal_entry_id",
+      "table": "journal_entry",
+      "column": "journal_entry_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "je.total_debit",
+      "table": "journal_entry",
+      "column": "total_debit"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "o.expected_value",
+      "table": "opportunity",
+      "column": "expected_value"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "o.title",
+      "table": "opportunity",
+      "column": "title"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "p.total_ttc",
+      "table": "proposal",
+      "column": "total_ttc"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "pr.purchase_request_id",
+      "table": "purchase_request",
+      "column": "purchase_request_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "pr.total_ttc",
+      "table": "purchase_request",
+      "column": "total_ttc"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "si.total_ttc",
+      "table": "supplier_invoice",
+      "column": "total_ttc"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "t.budget",
+      "table": "training",
+      "column": "budget"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "t.end_date",
+      "table": "training",
+      "column": "end_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "t.start_date",
+      "table": "training",
+      "column": "start_date"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "ta.account_type",
+      "table": "treasury_account",
+      "column": "account_type"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "ta.name",
+      "table": "treasury_account",
+      "column": "name"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "ta.status",
+      "table": "treasury_account",
+      "column": "status"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "td.doc_number",
+      "table": "tax_declaration",
+      "column": "doc_number"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "td.tax_period",
+      "table": "tax_declaration",
+      "column": "tax_period"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "td.total_tax_due",
+      "table": "tax_declaration",
+      "column": "total_tax_due"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "v.plate",
+      "table": "vehicle",
+      "column": "plate"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "v.plate",
+      "table": "vehicle",
+      "column": "plate"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "w.name",
+      "table": "warehouse_location",
+      "column": "name"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "w.warehouse_location_id",
+      "table": "warehouse_location",
+      "column": "warehouse_location_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.capacity",
+      "table": "warehouse_location",
+      "column": "capacity"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.created_at",
+      "table": "warehouse_location",
+      "column": "created_at"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.location_type",
+      "table": "warehouse_location",
+      "column": "location_type"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.name",
+      "table": "warehouse_location",
+      "column": "name"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.status",
+      "table": "warehouse_location",
+      "column": "status"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wl.warehouse_location_id",
+      "table": "warehouse_location",
+      "column": "warehouse_location_id"
+    },
+    {
+      "file": "src/services/ai/knowledge/entity-cards.js",
+      "ref": "wo.doc_number",
+      "table": "work_order",
+      "column": "doc_number"
+    }
+  ]
+}

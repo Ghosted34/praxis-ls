@@ -115,6 +115,13 @@ jest.mock("../../src/services/workflow/executor", () => ({ start: jest.fn() }));
 jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(),
   audit: jest.fn(),
+  // DATA 2.4: retireCore resolves the actor before writing created_by.
+  resolveActorId: jest.fn(async (_client, userId) => userId || null),
+}));
+// ageOne logs a warning when the best-effort compliance flag cannot be raised;
+// stubbed so the suite never reaches pino's real transport.
+jest.mock("../../src/config/logger", () => ({
+  logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
 describe("service.mine", () => {

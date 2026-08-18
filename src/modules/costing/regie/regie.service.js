@@ -28,7 +28,11 @@ const repo = require("./regie.repo");
 const events = require("./regie.events");
 const rules = require("./regie.rules");
 const journalEntry = require("../../finance/journal_entry/journal_entry.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
+const { logger } = require("../../../config/logger");
+// Reused rather than re-implemented: a failed statement inside a transaction
+// poisons it, so the best-effort compliance flag in ageOne needs a savepoint.
+const { withSavepoint } = require("../../../services/documents/operation-reference");
 const { AppError } = require("../../../utils/errors");
 const { getRule } = require("../../../shared/config/settings");
 const numbering = require("../../../services/documents/numbering.service");
@@ -199,7 +203,11 @@ async function retireCore(client, opts) {
   const retirement = await repo.insertRetirement(client, {
     regie_advance_id: advanceId, kind, dossier_id: dossierId,
     amount, proof_vault_id: proofVaultId, entry_id: entry.entry_id,
-    memo, retired_on: date, created_by: actor.user_id || null,
+    memo, retired_on: date,
+    // DATA 2.4 — see the note in cash_request.service.disburse. The journal
+    // entry above is already written at this point, so a 23503 here would roll
+    // back a retirement that had otherwise fully succeeded.
+    created_by: await resolveActorId(client, actor.user_id),
   });
 
   // Re-derive from every child, including the one just inserted.
@@ -389,20 +397,35 @@ async function ageOne(client, advance, opts) {
     // MOD-65 half of KB §6.8's closing sentence: "MOD-49 owns issuance and
     // retirement; MOD-65 raises the aging flag." The event was emitted but the
     // flag never was, and `compliance_flag`'s own DDL comment (0340:29) names
-    // 'advance.aged_unjustified' as an intended rule_key. Best-effort: a
-    // failure to raise the flag must not roll back a correct reclassification.
+    // 'advance.aged_unjustified' as an intended rule_key.
+    //
+    // THE SAVEPOINT IS LOAD-BEARING, and this catch was a real bug before it.
+    // The intent is best-effort — a failure to raise the flag must not roll
+    // back a correct reclassification — but a bare try/catch does NOT buy that
+    // inside a transaction. We are between BEGIN and COMMIT, and Postgres
+    // aborts the whole transaction on any statement error: after a failed
+    // INSERT every later statement answers 25P02 "current transaction is
+    // aborted", so the emitEvent, the audit and the COMMIT below would all
+    // fail and the reclassification would be lost — the exact outcome the
+    // comment promised to prevent. withSavepoint scopes the failure so only
+    // the flag is rolled back.
     try {
-      await client.query(
-        "INSERT INTO compliance_flag (rule_key, entity_ref, severity, message) VALUES ($1,$2,$3,$4)",
-        [
-          events.AGED,
-          ref(advance.regie_advance_id),
-          "WARN",
-          `Advance ${advance.doc_number || advance.regie_advance_id} unjustified ${rules.daysBetween(advance.issued_on, entryDate)} days after issue; ${open} reclassified to holder receivable`,
-        ],
+      await withSavepoint(client, "regie_aging_flag", () =>
+        client.query(
+          "INSERT INTO compliance_flag (rule_key, entity_ref, severity, message) VALUES ($1,$2,$3,$4)",
+          [
+            events.AGED,
+            ref(advance.regie_advance_id),
+            "WARN",
+            `Advance ${advance.doc_number || advance.regie_advance_id} unjustified ${rules.daysBetween(advance.issued_on, entryDate)} days after issue; ${open} reclassified to holder receivable`,
+          ],
+        ),
       );
     } catch (flagErr) {
-      // Swallowed deliberately — see above.
+      /* @silent:storage — the advisory flag is a secondary record; the
+         savepoint above already undid it, and the reclassification it
+         annotates is the operation that must survive. */
+      logger.warn({ err: flagErr, advance: advance.regie_advance_id }, "regie aging flag not raised");
     }
 
     await emitEvent(client, { eventTypeKey: events.AGED, moduleKey: events.MODULE, entityRef: ref(advance.regie_advance_id), actorUserId: actor.user_id || null });

@@ -13,7 +13,7 @@ const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const finalInvoice = require("../../finance/final_invoice/final_invoice.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
 const shipmentDetails = require("../../operations/shipment_details/shipment_details.service");
@@ -107,12 +107,17 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
 
   const patch = { status: step.to };
   if (action === "REQUEST_UNLOCK") {
-    patch.unlock_requested_by = actor.user_id || null;
+    // DATA 2.4: FK to app_user, which lives in LIVE while this row may land in
+    // SANDBOX. check-actor-fk-guard.js cannot see this idiom (it matches
+    // `x_by:` in an object literal, not `patch.x_by =`), so it is guarded by
+    // hand for the same reason the guard exists.
+    patch.unlock_requested_by = await resolveActorId(client, actor.user_id);
     patch.unlock_requested_at = new Date().toISOString();
     patch.unlock_reason = reason;
   }
   if (action === "UNLOCK") {
-    patch.unlocked_by = actor.user_id || null;
+    // DATA 2.4 — as above.
+    patch.unlocked_by = await resolveActorId(client, actor.user_id);
     patch.unlocked_at = new Date().toISOString();
   }
   // DENY_UNLOCK deliberately keeps unlock_reason and the request metadata: the

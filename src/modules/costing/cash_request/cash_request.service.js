@@ -17,7 +17,7 @@ const executor = require("../../../services/workflow/executor");
 const proofObligations = require("../../../services/compliance/proof-obligation.service");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { accountFor } = require("../../../shared/config/finance-accounts");
 
@@ -198,7 +198,13 @@ async function disburse(client, { id, amount = null, entityId, entryDate, source
       entry_id: advance.entry ? advance.entry.entry_id : null,
       regie_advance_id: regieAdvanceId,
       memo,
-      created_by: actor.user_id || null,
+      // DATA 2.4: this column is REFERENCES app_user(user_id), and identity
+      // lives in LIVE while this row lands in whichever schema the request
+      // selected. A live id stored beside SANDBOX data raises 23503 and takes
+      // the whole disbursement down with it — including the advance already
+      // issued above. resolveActorId returns null instead: losing an
+      // attribution beats failing the movement of money that it describes.
+      created_by: await resolveActorId(client, actor.user_id),
     });
 
     // Recompute from the children rather than incrementing — an increment

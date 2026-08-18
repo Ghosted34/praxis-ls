@@ -57,6 +57,12 @@ jest.mock(
 jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(),
   audit: jest.fn(),
+  // DATA 2.4: unlockTransition resolves the actor against the schema being
+  // written to before storing it in unlock_requested_by / unlocked_by (both
+  // REFERENCES app_user). The real helper does a SELECT; the stub client below
+  // answers it, so this passes the id straight through and the attribution
+  // assertions stay meaningful.
+  resolveActorId: jest.fn(async (_client, userId) => userId || null),
 }));
 jest.mock("../../src/config/logger", () => ({
   logger: { error: jest.fn(), info: jest.fn() },

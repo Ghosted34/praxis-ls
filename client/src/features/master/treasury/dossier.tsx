@@ -488,6 +488,7 @@ export function TreasuryDossier({
           currency={a.currency}
           categoryCode={a.category_code ?? null}
           requiresCustodian={a.category_requires_custodian === true}
+          floatLimit={a.float_limit === null || a.float_limit === undefined ? null : Number(a.float_limit)}
         />
       )}
 

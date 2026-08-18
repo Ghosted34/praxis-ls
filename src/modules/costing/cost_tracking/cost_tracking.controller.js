@@ -13,5 +13,9 @@ module.exports = {
     res.status(201).json({ data: r });
   }),
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listByDossier(c, req.params.dossierId, req.query)) })),
+  // Portfolio-wide reads (Landing C decision). Both routes are registered
+  // BEFORE /dossier/:dossierId so "portfolio" is never captured as a param.
+  portfolio: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.portfolio(c, req.query)) })),
+  kpis: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.portfolioKpis(c, req.query)) })),
   reconcile: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.reconcileDossier(c, { dossierId: req.params.dossierId })) })),
 };

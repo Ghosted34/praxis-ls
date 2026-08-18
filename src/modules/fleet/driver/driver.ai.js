@@ -10,9 +10,9 @@ module.exports = {
   screens: ["drivers"],
 
   reads: [
-    { key: "list_drivers", service: service.list, describe: "List driver licences with expiry alert level." },
-    { key: "get_driver", service: service.get, describe: "Get one driver licence by id." },
-    { key: "drivers_expiring", service: service.expiring, describe: "Preview driver licences expiring within N days." },
+    { key: "list_drivers", service: service.list, permission: { module: "MOD-44", action: "view" }, describe: "List driver licences with expiry alert level." },
+    { key: "get_driver", service: service.get, permission: { module: "MOD-44", action: "view" }, describe: "Get one driver licence by id." },
+    { key: "drivers_expiring", service: service.expiring, permission: { module: "MOD-44", action: "view" }, describe: "Preview driver licences expiring within N days." },
   ],
 
   writes: [

@@ -63,11 +63,23 @@ export function Dialog({
   footer?: React.ReactNode;
   /** Actions/status shown in the header, left of the close button. */
   headerRight?: React.ReactNode;
-  size?: "md" | "lg" | "xl";
+  size?: "md" | "lg" | "xl" | "wide";
   bodyClassName?: string;
 }) {
+  // `wide` (1152px) is for dialogs whose body is a WIDE TABLE rather than a
+  // form. At `xl` (768px) a seven-column register scrolls horizontally inside a
+  // dialog that is itself centred in a 2560px viewport, which is the worst of
+  // both — the reader loses the row while the screen sits half empty. Forms do
+  // not want it: `max-w-lg` exists because a single-column form at 1152px is
+  // unreadable, and that is still true.
   const width =
-    size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
+    size === "wide"
+      ? "max-w-6xl"
+      : size === "xl"
+        ? "max-w-3xl"
+        : size === "lg"
+          ? "max-w-2xl"
+          : "max-w-lg";
 
   /**
    * Explicit focus restoration.

@@ -19,26 +19,26 @@ const validator = require("./corporate_entity.validator");
 module.exports = {
   entity: "corporate_entity", module_key: "MOD-01", screens: [],
   reads: [
-    { key: "list_entities", service: service.list, describe: "List corporate entities (filter: q, country_code, registration_status, is_active)." },
-    { key: "get_entity", service: service.get, describe: "Get a corporate entity by id." },
+    { key: "list_entities", service: service.list, permission: { module: "MOD-01", action: "view" }, describe: "List corporate entities (filter: q, country_code, registration_status, is_active)." },
+    { key: "get_entity", service: service.get, permission: { module: "MOD-01", action: "view" }, describe: "Get a corporate entity by id." },
     {
       key: "get_entity_360",
-      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }),
+      service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }), permission: { module: "MOD-01", action: "view" },
       describe: "Full dossier for one entity: identity, group structure, people and shareholding, contacts, addresses, registrations, establishments, treasury accounts (read-only) and the readiness checklist.",
     },
     {
       key: "get_entity_cap_table",
-      service: (c, p) => service.capTable(c, p.entity_id || p, (p && p.as_of) || null),
+      service: (c, p) => service.capTable(c, p.entity_id || p, (p && p.as_of) || null), permission: { module: "MOD-01", action: "view" },
       describe: "Shareholding reconciliation for one entity: holders, totals and any mismatch findings, optionally as of a past date.",
     },
     {
       key: "get_entity_renewals",
-      service: (c, p) => service.renewals(c, p.entity_id || p, (p && p.as_of) || null),
+      service: (c, p) => service.renewals(c, p.entity_id || p, (p && p.as_of) || null), permission: { module: "MOD-01", action: "view" },
       describe: "Documents, registrations and tax registrations on one entity that have expired or are approaching expiry, most urgent first. Answers 'when does our France VAT certificate expire' and 'what is lapsing this quarter'.",
     },
     {
       key: "get_entity_letterhead",
-      service: (c, p) => service.letterhead(c, p.entity_id || p, (p && p.lang) || null),
+      service: (c, p) => service.letterhead(c, p.entity_id || p, (p && p.lang) || null), permission: { module: "MOD-01", action: "view" },
       describe: "The letterhead/footer configuration for one entity and the rendered header, footer and payment block in both languages.",
     },
   ],

@@ -21,9 +21,9 @@ module.exports = {
   module_key: "MOD-30",
   screens: [],
   reads: [
-    { key: "list_transit_orders", service: service.list, describe: "List transit orders. Filter by dossier_id, entity_id, status (DRAFT|ISSUED|SIGNED|LODGED|CANCELLED), customs_regime, or q (searches OT number, file reference and declaration reference)." },
-    { key: "get_transit_order", service: service.get, describe: "Get one transit order by id, with its cargo lines, value reconciliation and shipment details." },
-    { key: "transit_order_summary", service: service.summary, describe: "Count transit orders by lifecycle state." },
+    { key: "list_transit_orders", service: service.list, permission: { module: "MOD-30", action: "view" }, describe: "List transit orders. Filter by dossier_id, entity_id, status (DRAFT|ISSUED|SIGNED|LODGED|CANCELLED), customs_regime, or q (searches OT number, file reference and declaration reference)." },
+    { key: "get_transit_order", service: service.get, permission: { module: "MOD-30", action: "view" }, describe: "Get one transit order by id, with its cargo lines, value reconciliation and shipment details." },
+    { key: "transit_order_summary", service: service.summary, permission: { module: "MOD-30", action: "view" }, describe: "Count transit orders by lifecycle state." },
   ],
   writes: [
     {

@@ -10,8 +10,8 @@ module.exports = {
   screens: ["inbound"],
 
   reads: [
-    { key: "list_inbound", service: service.list, describe: "List goods-received notes (GRN)." },
-    { key: "get_inbound", service: service.get, describe: "Get one GRN by id." },
+    { key: "list_inbound", service: service.list, permission: { module: "MOD-33", action: "view" }, describe: "List goods-received notes (GRN)." },
+    { key: "get_inbound", service: service.get, permission: { module: "MOD-33", action: "view" }, describe: "Get one GRN by id." },
   ],
 
   writes: [

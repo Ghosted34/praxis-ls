@@ -100,6 +100,44 @@ describe("every <module>.ai.js manifest is well-formed", () => {
     expect(manifests.length).toBeGreaterThanOrEqual(1);
   });
 
+  /**
+   * A declared permission is only worth anything if `action-authz` can parse
+   * it. `parseRequirement` returns null for an unknown verb — "list", "get",
+   * "run" all look reasonable in a manifest and all resolve to nothing, which
+   * fails closed exactly like declaring no permission at all. So the vocabulary
+   * is asserted against the production COLUMN map rather than a copy of it.
+   */
+  // Read the verb vocabulary out of action-authz's own COLUMN map rather than
+  // requiring the module (it pulls in identity-cache -> ioredis, and this suite
+  // is DB-free by design) and rather than copying the list here (a copy drifts
+  // silently, which is the same class of bug this test exists to catch).
+  const AUTHZ_SRC = fs.readFileSync(
+    path.join(__dirname, "../../src/services/ai/action-authz.js"),
+    "utf8",
+  );
+  const COLUMN_BLOCK = AUTHZ_SRC.match(/const COLUMN = \{([\s\S]*?)\n\};/);
+  const KNOWN_ACTIONS = new Set(
+    [...(COLUMN_BLOCK ? COLUMN_BLOCK[1] : "").matchAll(/^\s*(\w+)\s*:/gm)].map(
+      (m) => m[1],
+    ),
+  );
+
+  it("could read the authz verb vocabulary (guards the regex above)", () => {
+    expect(COLUMN_BLOCK).not.toBeNull();
+    expect(KNOWN_ACTIONS.size).toBeGreaterThanOrEqual(7);
+    expect(KNOWN_ACTIONS.has("view")).toBe(true);
+  });
+
+  // Mirrors parseRequirement: unknown verb -> null -> denied at execution.
+  const assertResolves = (a, kind) => {
+    const action = String(a.permission.action || "").toLowerCase();
+    expect(
+      KNOWN_ACTIONS.has(action)
+        ? null
+        : `${kind} "${a.key}" declares action "${a.permission.action}", which action-authz cannot map to a grant column (known: ${[...KNOWN_ACTIONS].join(", ")}) — it would be denied at execution`,
+    ).toBeNull();
+  };
+
   it.each(manifests)("%s has valid entity/reads/writes", (file) => {
     // dynamic require of a discovered manifest path (trusted, local)
     const m = require(file);
@@ -109,6 +147,20 @@ describe("every <module>.ai.js manifest is well-formed", () => {
     for (const r of m.reads) {
       expect(typeof r.key).toBe("string");
       expect(typeof r.service).toBe("function");
+      // A READ NEEDS A PERMISSION FOR THE SAME REASON A WRITE DOES.
+      //
+      // This gate asked for one on writes and not on reads, and the result was
+      // 190 read actions across 79 manifests declaring none. That was never a
+      // leak — `action-authz.assertAllowed` runs on reads too (SEC H1) and
+      // FAILS CLOSED, refusing any action whose `required_permission` is null.
+      // It was the opposite failure: every one of those reads was dead on
+      // arrival, denied with "declares no required permission", so most of the
+      // app was unreachable by the assistant and the denial looked like a
+      // permissions problem rather than a missing declaration.
+      expect(r.permission).toBeDefined();
+      expect(typeof r.permission.module).toBe("string");
+      expect(typeof r.permission.action).toBe("string");
+      assertResolves(r, "read");
     }
     for (const w of m.writes) {
       expect(typeof w.key).toBe("string");
@@ -116,6 +168,7 @@ describe("every <module>.ai.js manifest is well-formed", () => {
       expect(w.schema).toBeDefined();
       expect(typeof w.permission.module).toBe("string");
       expect(typeof w.permission.action).toBe("string");
+      assertResolves(w, "write");
       expect(typeof w.confirm).toBe("boolean");
     }
   });

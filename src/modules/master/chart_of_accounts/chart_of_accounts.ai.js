@@ -4,8 +4,8 @@ const validator = require("./chart_of_accounts.validator");
 module.exports = {
   entity: "chart_of_accounts", module_key: "MOD-06", screens: [],
   reads: [
-    { key: "list_accounts", service: service.list, describe: "List chart-of-accounts (filter class/postable/parent)." },
-    { key: "get_account", service: service.get, describe: "Get an account by code." },
+    { key: "list_accounts", service: service.list, permission: { module: "MOD-06", action: "view" }, describe: "List chart-of-accounts (filter class/postable/parent)." },
+    { key: "get_account", service: service.get, permission: { module: "MOD-06", action: "view" }, describe: "Get an account by code." },
   ],
   writes: [
     { key: "create_account", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-06", action: "create" }, confirm: true, describe: "Add a tenant sub-account (class-consistent; leaf becomes postable)." },

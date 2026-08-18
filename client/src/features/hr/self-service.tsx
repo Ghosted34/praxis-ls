@@ -99,8 +99,8 @@ export function SelfServicePage() {
 
   const loadAll = React.useCallback(() => {
     tenant<Payslip[]>("/payroll/mine").then(setPayslips).catch((e) => setError(errMsg(e)));
-    tenant<Balance[]>("/leave-allowance/mine/balances").then(setBalances).catch((e) => setError(errMsg(e)));
-    tenant<LeaveReq[]>("/leave-allowance/mine").then(setLeave).catch((e) => setError(errMsg(e)));
+    tenant<Balance[]>("/leave/mine/balances").then(setBalances).catch((e) => setError(errMsg(e)));
+    tenant<LeaveReq[]>("/leave/mine").then(setLeave).catch((e) => setError(errMsg(e)));
     tenant<Advance[]>("/payroll/advances/mine").then(setAdvances).catch((e) => setError(errMsg(e)));
   }, []);
 
@@ -126,7 +126,7 @@ export function SelfServicePage() {
     setBusy("leave");
     setError(null);
     try {
-      await tenant("/leave-allowance/mine", {
+      await tenant("/leave/mine", {
         method: "POST",
         body: {
           kind: leaveForm.kind,

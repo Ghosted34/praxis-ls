@@ -1,362 +1,736 @@
 /**
- * Commercial — extra-charge (demurrage/detention) simulations.
+ * Commercial — extra-charge simulator (MOD-28), the five-family model.
  *
- * Split out of `features/commercial/pages.tsx` in Phase 4 (audit F7). Tiered by
- * day band, which is why it has its own editor rather than reusing the margin
- * one.
+ * WHAT CHANGED AND WHY. This screen used to drive the generic tiered engine:
+ * one container variant, a free-days/occupied-days pair, and a hand-edited
+ * `tiers[]` list, rendering a per-day breakdown. That engine bills one box and
+ * only demurrage. The business runs the legacy `extra-charges-simulator.php`,
+ * which takes a CONTAINER LIST and three dates and returns five charge families
+ * — demurrage, storage, yard occupancy, plugging, detention — with HT/VAT/TTC.
+ * The API had both engines behind one endpoint and the UI reached the wrong one,
+ * so the screen could not produce the number the carrier actually invoices.
+ *
+ * LAYOUT. A workbench, not a form-then-nothing. Below `xl` it is one column:
+ * inputs, metrics, then the charge table. At `xl` it splits into a fixed 400px
+ * input rail and a results column that owns the rest of the width, and the rail
+ * is `sticky` so the operator can scroll a 60-row charge table while the dates
+ * that produced it stay on screen. The results table is `sticky` with a bounded
+ * height so its headings and its totals footer both stay put — on a 1440px
+ * display that is roughly 30 charge lines visible at once against the 8 a modal
+ * managed. Every band is a real `lg`/`xl`/`2xl` decision, never `sm:`-and-stop.
+ *
+ * NO MODAL. The previous version computed inside a dialog, which capped the
+ * result at the dialog's height and hid the saved list behind it. Simulation is
+ * the primary work of this screen, so it is the page.
  */
 
-import { pageShell } from "@/lib/layout";
-import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/data-list";
+import { tr } from "@/lib/i18n";
+import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { useRibbonCommands } from "@/app/layout/ribbon-commands";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal, Field } from "@/components/ui/modal";
+import { Field } from "@/components/ui/modal";
+import { DateField } from "@/components/ui/date-field";
+import { Select } from "@/components/ui/select";
+import { Chips } from "@/components/ui/chips";
+import { Pill } from "@/components/ui/pill";
+import { Panel } from "@/components/ui/panel";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
-import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { cell, dateFmt, money } from "@/lib/format";
-import { Stat } from "@/components/ui/stat";
+import { useDebounced } from "@/lib/use-debounced";
+import { cell, dateFmt, money, money0 } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 const EXTRA_AI: AiAction[] = [
   {
     label: "Explain the charge",
     kind: "assist",
     describe:
-      "Explain a demurrage estimate — which days fall in which tier and why.",
+      "Explain an extra-charge estimate — which containers drive which family, and which days fall in which band.",
+  },
+  {
+    label: "Draft the dispute letter",
+    kind: "assist",
+    describe:
+      "Draft a letter contesting a carrier's demurrage invoice against this simulation's day count.",
   },
 ];
 
-type Tier = { from_day: string; to_day: string; rate: string };
+/** The five families the legacy computed, in the order it listed them. */
+const FAMILIES = [
+  "Demurrage",
+  "Storage",
+  "Yard Occupancy",
+  "Plugging",
+  "Detention",
+] as const;
 
-function ExtraSimForm({
-  open,
-  onClose,
-  onSaved,
+const CURRENCIES = [
+  { value: "XAF", label: "XAF — CFA franc" },
+  { value: "USD", label: "USD — US dollar" },
+  { value: "EUR", label: "EUR — Euro" },
+];
+
+type ChargeRow = {
+  cat: string;
+  desc: string;
+  qty: number;
+  unit: number;
+  total: number;
+};
+
+/**
+ * Narrow a `Row`'s `unknown` value to what `money0` accepts. `money0` is typed
+ * `number | string | null | undefined` and a list row is
+ * `Record<string, unknown>`, so the two do not meet without this — and casting
+ * at each call site would hide the day a column really does arrive as an
+ * object. Anything unexpected becomes `null`, which renders as an em dash.
+ */
+function amount(v: unknown): number | string | null {
+  if (typeof v === "number" || typeof v === "string") return v;
+  return null;
+}
+
+type Computed = {
+  currency: string;
+  rows: ChargeRow[];
+  families: Record<string, number>;
+  total_ht: number;
+  vat: number;
+  total_ttc: number;
+  vat_rate: number;
+  containers: { q: number; s: number; t: string }[];
+  free_days: number;
+  port_stay_days: number;
+  yard_trigger: number;
+  due_date: string | null;
+  status: "OK" | "EXCEEDED" | "WAITING";
+  container_count: number;
+  teu: number;
+};
+
+/* ── Metrics band ─────────────────────────────────────────────────────────── */
+
+/**
+ * A metric tile. Deliberately not `<Stat>`: Stat is a 3-line block sized for a
+ * dashboard, and six of them would eat the vertical budget this screen is
+ * trying to spend on charge lines. This is one line of label over one line of
+ * figure, ~52px, and it wraps from 2-up on a phone to 6-up at `2xl`.
+ */
+function Metric({
+  label,
+  value,
+  sub,
+  tone,
 }: {
-  open: boolean;
-  onClose: () => void;
-  onSaved: () => void;
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  tone?: "ok" | "warn" | "bad" | "accent";
 }) {
-  const [shippingLine, setShippingLine] = React.useState("");
-  const [variant, setVariant] = React.useState("");
-  const [freeDays, setFreeDays] = React.useState("0");
-  const [occupiedDays, setOccupiedDays] = React.useState("0");
-  const [currency, setCurrency] = React.useState("XAF");
-  const [tiers, setTiers] = React.useState<Tier[]>([
-    { from_day: "1", to_day: "", rate: "0" },
-  ]);
-  const [computed, setComputed] = React.useState<Row | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [previewing, setPreviewing] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setShippingLine("");
-    setVariant("");
-    setFreeDays("0");
-    setOccupiedDays("0");
-    setCurrency("XAF");
-    setTiers([{ from_day: "1", to_day: "", rate: "0" }]);
-    setComputed(null);
-    setError(null);
-  }, [open]);
-
-  const setTier = (i: number, patch: Partial<Tier>) =>
-    setTiers((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  function body(): Record<string, unknown> {
-    return {
-      shipping_line: shippingLine.trim() || undefined,
-      container_variant: variant.trim() || undefined,
-      free_days: Number(freeDays) || 0,
-      occupied_days: Number(occupiedDays) || 0,
-      currency: currency.trim().toUpperCase() || "XAF",
-      tiers: tiers
-        .filter((t) => t.from_day && t.rate)
-        .map((t) => ({
-          from_day: Number(t.from_day),
-          to_day: t.to_day === "" ? null : Number(t.to_day),
-          rate: Number(t.rate),
-        })),
-    };
-  }
-
-  async function preview() {
-    setPreviewing(true);
-    setError(null);
-    try {
-      const c = await tenant<Row>("/extra-charge-simulations/preview", {
-        method: "POST",
-        body: body(),
-      });
-      setComputed(c);
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setPreviewing(false);
-    }
-  }
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await tenant("/extra-charge-simulations", {
-        method: "POST",
-        body: body(),
-      });
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const breakdown = (computed?.breakdown as Row[] | undefined) || [];
-
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Demurrage / extra-charge simulation"
-      description="Per-day charge beyond the free period, from a tiered tariff. No GL."
-      size="xl"
-    >
-      <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Shipping line")}>
-            <Input
-              value={shippingLine}
-              onChange={(e) => setShippingLine(e.target.value)}
-              placeholder="Maersk"
-            />
-          </Field>
-          <Field label="Container variant">
-            <Input
-              value={variant}
-              onChange={(e) => setVariant(e.target.value)}
-              placeholder="40HC"
-            />
-          </Field>
-          <Field label="Free days">
-            <Input
-              type="number"
-              min="0"
-              className="num text-right"
-              value={freeDays}
-              onChange={(e) => setFreeDays(e.target.value)}
-            />
-          </Field>
-          <Field label="Occupied days">
-            <Input
-              type="number"
-              min="0"
-              className="num text-right"
-              value={occupiedDays}
-              onChange={(e) => setOccupiedDays(e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">
-              Tariff tiers{" "}
-              <span className="text-xs text-muted-foreground">
-                (day ranges after the free period; blank “to” = open-ended)
-              </span>
-            </p>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                setTiers((t) => [...t, { from_day: "", to_day: "", rate: "0" }])
-              }
-            >
-              + Tier
-            </Button>
-          </div>
-          <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs font-medium text-muted-foreground">
-            <span>From day</span>
-            <span>To day</span>
-            <span>Rate / day</span>
-            <span />
-          </div>
-          {tiers.map((t, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2"
-            >
-              <Input
-                type="number"
-                min="1"
-                className="num text-right"
-                value={t.from_day}
-                onChange={(e) => setTier(i, { from_day: e.target.value })}
-              />
-              <Input
-                type="number"
-                min="1"
-                className="num text-right"
-                value={t.to_day}
-                onChange={(e) => setTier(i, { to_day: e.target.value })}
-                placeholder="∞"
-              />
-              <Input
-                type="number"
-                min="0"
-                className="num text-right"
-                value={t.rate}
-                onChange={(e) => setTier(i, { rate: e.target.value })}
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  setTiers((rs) =>
-                    rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs,
-                  )
-                }
-              >
-                ✕
-              </Button>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={preview} loading={previewing}>
-            Preview
-          </Button>
-          <div className="w-24">
-            <Input
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              maxLength={3}
-              placeholder={tr("XAF")}
-            />
-          </div>
-        </div>
-
-        {computed && (
-          <div className="space-y-2">
-            <div className="grid grid-cols-3 gap-3">
-              <Stat
-                label="Chargeable days"
-                value={String(computed.chargeable_days ?? "—")}
-              />
-              <Stat
-                label="Free days"
-                value={String(computed.free_days ?? "—")}
-              />
-              <Stat
-                label={tr("Total")}
-                value={money(computed.total_amount, currency)}
-                tone="accent"
-              />
-            </div>
-            {breakdown.length > 0 && (
-              <div className="max-h-40 overflow-y-auto rounded-lg border text-sm">
-                {breakdown.map((b) => (
-                  <div
-                    key={String(b.day)}
-                    className="flex justify-between border-b px-3 py-1 last:border-0"
-                  >
-                    <span className="text-muted-foreground">
-                      Day {cell(b.day)}
-                    </span>
-                    <span>{money(b.rate, currency)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+    <div className="rounded-lg border bg-card px-3 py-2">
+      <div className="text-micro uppercase text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "num truncate text-base font-semibold leading-tight",
+          tone === "ok" && "text-[rgb(var(--ok))]",
+          tone === "warn" && "text-[rgb(var(--warn))]",
+          tone === "bad" && "text-[rgb(var(--bad))]",
+          tone === "accent" && "text-primary-ink",
         )}
-
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={save} loading={busy}>
-            Save simulation
-          </Button>
-        </div>
+      >
+        {value}
       </div>
-    </Modal>
+      {sub && (
+        <div className="truncate text-micro text-muted-foreground">{sub}</div>
+      )}
+    </div>
   );
 }
 
+/* ── The screen ───────────────────────────────────────────────────────────── */
+
 export function ExtraChargeSimulationsPage() {
   const reload = useRefresh();
-  const { rows, error } = useList("/extra-charge-simulations");
-  const [formOpen, setFormOpen] = React.useState(false);
+  const { rows: saved, error: listError } = useList("/extra-charge-simulations");
+
+  // Inputs. The legacy's defaults: 11 free days (billing opens on day 12) and a
+  // 14-day yard trigger — both editable, because a shipping line's contract can
+  // move either and the operator is usually reading one off a bill of lading.
+  const [containers, setContainers] = React.useState("2x40HC, 1x20RF");
+  const [ata, setAta] = React.useState("");
+  const [gateOut, setGateOut] = React.useState("");
+  const [emptyReturn, setEmptyReturn] = React.useState("");
+  const [freeDays, setFreeDays] = React.useState("11");
+  const [yardTrigger, setYardTrigger] = React.useState("14");
+  const [currency, setCurrency] = React.useState("XAF");
+  const [shippingLine, setShippingLine] = React.useState("");
+
+  const [computed, setComputed] = React.useState<Computed | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [computing, setComputing] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [savedNote, setSavedNote] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState("all");
+
+  const body = React.useCallback(
+    (): Record<string, unknown> => ({
+      containers: containers.trim(),
+      ata: ata || undefined,
+      gate_out: gateOut || undefined,
+      empty_return: emptyReturn || undefined,
+      free_days: Number(freeDays) || 0,
+      yard_trigger: Number(yardTrigger) || undefined,
+      currency,
+      shipping_line: shippingLine.trim() || undefined,
+    }),
+    [containers, ata, gateOut, emptyReturn, freeDays, yardTrigger, currency, shippingLine],
+  );
+
+  // Live preview. The legacy recomputed on every keystroke because the whole
+  // point is watching the total move as you try dates; debounced here so a
+  // typed container list is one request, not twelve.
+  const signature = useDebounced(JSON.stringify(body()), 350);
+  const ready = containers.trim() !== "" && ata !== "" && gateOut !== "";
+
+  React.useEffect(() => {
+    if (!ready) {
+      setComputed(null);
+      return;
+    }
+    let cancelled = false;
+    setComputing(true);
+    tenant<Computed>("/extra-charge-simulations/preview", {
+      method: "POST",
+      // Parsed from the debounced signature, not from `body()`: the signature
+      // is what the effect actually depends on, so sending anything else could
+      // post inputs the dependency array never saw.
+      body: JSON.parse(signature),
+    })
+      .then((c) => {
+        if (cancelled) return;
+        setComputed(c);
+        setError(null);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errMsg(e));
+      })
+      .finally(() => {
+        if (!cancelled) setComputing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signature, ready]);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await tenant("/extra-charge-simulations", { method: "POST", body: body() });
+      setSavedNote("Simulation saved.");
+      reload();
+      window.setTimeout(() => setSavedNote(null), 4000);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // The ribbon command must be a STABLE array — republishing it on every
+  // keystroke would re-run the registry effect against a live-previewing
+  // screen. So the callback is held in a ref and the array never changes
+  // identity; without the ref the command would close over the first render's
+  // `save` and post an empty simulation.
+  const saveRef = React.useRef(save);
+  saveRef.current = save;
+  useRibbonCommands(
+    React.useMemo(
+      () => [
+        {
+          key: "save",
+          label: "Save simulation",
+          primary: true,
+          onSelect: () => void saveRef.current(),
+        },
+      ],
+      [],
+    ),
+  );
+
+  const charges = computed?.rows ?? [];
+
+  // Drop a filter whose family stopped existing. Change the dates so nothing is
+  // billable in the family you were looking at and the chip row would lose that
+  // option while `filter` still held it — leaving a table that reads "0 lines"
+  // with no visibly selected chip to explain why, and no way back but reload.
+  const hasFilter = charges.some((r) => r.cat === filter);
+  React.useEffect(() => {
+    if (filter !== "all" && !hasFilter) setFilter("all");
+  }, [filter, hasFilter]);
+
+  const shown =
+    filter === "all" ? charges : charges.filter((r) => r.cat === filter);
+
+  // Filtering the table filters the TOTAL too. The legacy did this and it is
+  // the right behaviour: "what am I paying in storage alone" is the question
+  // the filter is being asked, and a total that ignores it answers a different
+  // one. The full TTC stays visible in the metrics band regardless.
+  const shownHt = shown.reduce((a, r) => a + r.total, 0);
+  const shownVat = shownHt * (computed?.vat_rate ?? 0.1925);
+
+  const chipOptions = [
+    { value: "all", label: "All", count: charges.length },
+    ...FAMILIES.filter((f) => charges.some((r) => r.cat === f)).map((f) => ({
+      value: f,
+      label: f,
+      count: charges.filter((r) => r.cat === f).length,
+    })),
+  ];
+
+  const statusTone =
+    computed?.status === "EXCEEDED"
+      ? "bad"
+      : computed?.status === "OK"
+        ? "ok"
+        : "mute";
+
+  const savedCols: Column<Row>[] = [
+    {
+      key: "created",
+      label: "Simulated",
+      render: (r) => (
+        <span className="whitespace-nowrap font-medium">
+          {dateFmt(r.created_at)}
+        </span>
+      ),
+    },
+    {
+      key: "line",
+      label: "Shipping line",
+      render: (r) => cell(r.shipping_line),
+    },
+    {
+      key: "boxes",
+      label: "Containers",
+      render: (r) => {
+        const list = (r.containers as { q: number; s: number; t: string }[]) || [];
+        if (!Array.isArray(list) || list.length === 0)
+          return cell(r.container_variant);
+        return (
+          <span className="num">
+            {list.map((c) => `${c.q}x${c.s}${c.t}`).join(", ")}
+          </span>
+        );
+      },
+    },
+    {
+      key: "window",
+      label: "ATA → gate-out",
+      className: "hidden lg:table-cell",
+      render: (r) =>
+        r.ata ? (
+          <span className="num whitespace-nowrap text-muted-foreground">
+            {dateFmt(r.ata)} → {dateFmt(r.gate_out)}
+          </span>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "free",
+      label: "Free",
+      className: "hidden xl:table-cell text-right",
+      render: (r) => <span className="num">{cell(r.free_days)}</span>,
+    },
+    {
+      key: "ht",
+      label: "Total HT",
+      className: "text-right",
+      render: (r) => <span className="num">{money0(amount(r.total_ht))}</span>,
+    },
+    {
+      key: "vat",
+      label: "VAT",
+      className: "hidden lg:table-cell text-right",
+      render: (r) => (
+        <span className="num text-muted-foreground">
+          {money0(amount(r.vat_total))}
+        </span>
+      ),
+    },
+    {
+      key: "ttc",
+      label: "Total TTC",
+      className: "text-right",
+      render: (r) => (
+        <span className="num font-semibold text-primary-ink">
+          {money(r.total_amount, r.currency)}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <section className={pageShell.wide}>
+    <PageContainer>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
-        title="Extra-charge simulation"
-        description="Demurrage / detention estimates from a tiered tariff — no accounting entries."
+        title="Extra-charge simulator"
+        description="Demurrage, storage, yard occupancy, plugging and detention across a container list — an estimate, with no accounting entries."
         action={
-          <Button onClick={() => setFormOpen(true)}>New simulation</Button>
+          // The ribbon carries this on desktop — see useRibbonCommands above.
+          <Button
+            className="md:hidden"
+            onClick={save}
+            loading={saving}
+            disabled={!computed || computed.total_ttc === 0}
+          >
+            Save simulation
+          </Button>
         }
       />
       <HubTabs />
 
-      {error ? (
-        <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No simulations yet"
-          hint="Estimate a demurrage charge before it lands on a dossier."
-        />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((r) => (
-            <div
-              key={String(r.extra_charge_simulation_id)}
-              className="lux-card p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">
-                  {cell(r.shipping_line) === "—"
-                    ? "Demurrage"
-                    : cell(r.shipping_line)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {dateFmt(r.created_at)}
-                </span>
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[400px_minmax(0,1fr)] 2xl:grid-cols-[440px_minmax(0,1fr)]">
+        {/* ── Input rail. Sticky from xl, where there is height to spend. ── */}
+        <div className="xl:sticky xl:top-2 xl:self-start">
+          <Panel
+            title="The file"
+            subtitle="Dates and boxes — the charge follows"
+            className="p-4"
+          >
+            <div className="space-y-3">
+              <Field
+                label="Containers"
+                hint="Free text, as on the bill of lading — “2x40HC, 1x20RF”."
+              >
+                <Input
+                  value={containers}
+                  onChange={(e) => setContainers(e.target.value)}
+                  placeholder="2x40HC, 1x20RF"
+                />
+              </Field>
+
+              {computed && computed.containers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {computed.containers.map((c, i) => (
+                    <Pill key={i} tone={c.t === "RF" ? "blue" : "mute"}>
+                      <span className="num">
+                        {c.q} × {c.s}′ {c.t}
+                      </span>
+                    </Pill>
+                  ))}
+                </div>
+              )}
+
+              {/* Two-up from the narrowest useful width: these are short date
+                  boxes and stacking them wastes the rail's whole budget. */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="ATA" hint="Vessel arrival">
+                  <DateField value={ata} onChange={setAta} />
+                </Field>
+                <Field label="Gate-out" hint="Left the port">
+                  <DateField value={gateOut} onChange={setGateOut} />
+                </Field>
+                <Field label="Empty return" hint="Drives detention">
+                  <DateField value={emptyReturn} onChange={setEmptyReturn} />
+                </Field>
+                <Field label="Shipping line">
+                  <Input
+                    value={shippingLine}
+                    onChange={(e) => setShippingLine(e.target.value)}
+                    placeholder="Maersk"
+                  />
+                </Field>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {cell(r.container_variant)} ·{" "}
-                {r.free_days != null ? `${cell(r.free_days)} free days` : "—"}
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Field label="Free days">
+                  <Input
+                    type="number"
+                    min="0"
+                    className="num text-right"
+                    value={freeDays}
+                    onChange={(e) => setFreeDays(e.target.value)}
+                  />
+                </Field>
+                <Field label="Yard from">
+                  <Input
+                    type="number"
+                    min="1"
+                    className="num text-right"
+                    value={yardTrigger}
+                    onChange={(e) => setYardTrigger(e.target.value)}
+                  />
+                </Field>
+                <Field label={tr("Currency")} className="col-span-2 sm:col-span-1">
+                  <Select
+                    value={currency}
+                    onValueChange={setCurrency}
+                    options={CURRENCIES}
+                  />
+                </Field>
+              </div>
+
+              <p className="text-micro text-muted-foreground">
+                Rates come from the tenant tariff (Settings › Commercial). The
+                total recomputes as you type; saving freezes the tariff onto the
+                record so it can still explain itself after a rate change.
               </p>
-              <p className="mt-2 text-sm font-semibold text-primary-ink">
-                {money(r.total_amount, r.currency)}
-              </p>
+
+              <div className="hidden justify-end md:flex">
+                <Button
+                  onClick={save}
+                  loading={saving}
+                  disabled={!computed || computed.total_ttc === 0}
+                >
+                  Save simulation
+                </Button>
+              </div>
             </div>
-          ))}
+          </Panel>
         </div>
-      )}
+
+        {/* ── Results ────────────────────────────────────────────────────── */}
+        <div className="space-y-3">
+          {error && <ErrorState message={error} />}
+          {savedNote && (
+            <div className="rounded-lg border border-[rgb(var(--ok)_/_0.3)] bg-[rgb(var(--ok)_/_0.06)] px-3 py-2 text-sm text-[rgb(var(--ok))]">
+              {savedNote}
+            </div>
+          )}
+
+          {/* 2-up on a phone, 3-up at md, all six across at xl — the band is
+              one row of height on a desktop rather than three. */}
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Metric
+              label="Port stay"
+              value={computed ? `${computed.port_stay_days} d` : "—"}
+              sub={computed ? `${computed.free_days} free` : undefined}
+            />
+            <Metric
+              label="Free until"
+              value={computed?.due_date ? dateFmt(computed.due_date) : "—"}
+              sub="ATA + free − 1"
+            />
+            <Metric
+              label="Status"
+              value={computed?.status ?? "WAITING"}
+              tone={
+                computed?.status === "EXCEEDED"
+                  ? "bad"
+                  : computed?.status === "OK"
+                    ? "ok"
+                    : undefined
+              }
+            />
+            <Metric
+              label="Boxes"
+              value={computed ? String(computed.container_count) : "—"}
+              sub={computed ? `${computed.teu} TEU` : undefined}
+            />
+            <Metric
+              label="Total HT"
+              value={computed ? money0(computed.total_ht) : "—"}
+              sub={currency}
+            />
+            <Metric
+              label="Total TTC"
+              value={computed ? money0(computed.total_ttc) : "—"}
+              sub={
+                computed
+                  ? `incl. ${(computed.vat_rate * 100).toFixed(2)}% VAT`
+                  : undefined
+              }
+              tone="accent"
+            />
+          </div>
+
+          {/* Family totals: five small cards, the shape of the charge at a
+              glance. Also the fastest way to spot a family billing zero when
+              it should not — the defect that made this rebuild necessary. */}
+          {computed && charges.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {FAMILIES.map((f) => {
+                const v = computed.families[f] ?? 0;
+                const pct = computed.total_ht ? (v / computed.total_ht) * 100 : 0;
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFilter(filter === f ? "all" : f)}
+                    aria-pressed={filter === f}
+                    className={cn(
+                      "rounded-lg border bg-card px-3 py-2 text-left transition-colors",
+                      "hover:bg-[color-mix(in_srgb,var(--primary)_4%,transparent)]",
+                      filter === f && "border-[rgb(var(--brand-blue))]",
+                    )}
+                  >
+                    <div className="truncate text-micro uppercase text-muted-foreground">
+                      {f}
+                    </div>
+                    <div className="num text-sm font-semibold">{money0(v)}</div>
+                    <div
+                      className="mt-1 h-1 rounded-full bg-secondary"
+                      aria-hidden="true"
+                    >
+                      <div
+                        className="h-1 rounded-full bg-[rgb(var(--brand-blue))]"
+                        style={{ width: `${Math.min(100, pct)}%` }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <Panel
+            title="Charge breakdown"
+            subtitle={
+              computed
+                ? `${shown.length} line${shown.length === 1 ? "" : "s"} · ${computed.currency}`
+                : "Awaiting ATA, gate-out and a container list"
+            }
+            action={
+              computed && computed.status === "EXCEEDED" ? (
+                <Pill tone={statusTone}>Free period exceeded</Pill>
+              ) : undefined
+            }
+            className="p-4"
+            bodyClassName="space-y-3"
+          >
+            {chipOptions.length > 1 && (
+              <Chips
+                label="Filter by charge family"
+                value={filter}
+                onChange={setFilter}
+                options={chipOptions}
+              />
+            )}
+
+            {!ready ? (
+              <EmptyState
+                title="Enter the file"
+                hint="A container list, an ATA and a gate-out date are all it needs. Everything else has a sensible default."
+              />
+            ) : charges.length === 0 ? (
+              <EmptyState
+                title={computing ? "Computing…" : "No charges"}
+                hint={
+                  computing
+                    ? undefined
+                    : "The boxes left inside every free period — nothing is billable on these dates."
+                }
+              />
+            ) : (
+              /* `sticky` bounds the table's height, which is what keeps the
+                 headings AND the totals row on screen while 60 charge lines
+                 scroll underneath. The cap is generous on tall displays and
+                 shrinks on short ones. */
+              <Table
+                sticky
+                maxHeight="clamp(280px, calc(100vh - 30rem), 900px)"
+                density="compact"
+                containerClassName={computing ? "opacity-60" : undefined}
+              >
+                <THead>
+                  <TR>
+                    <TH>Family</TH>
+                    <TH>Detail</TH>
+                    <TH className="text-right">Days</TH>
+                    <TH className="hidden text-right sm:table-cell">
+                      Unit rate
+                    </TH>
+                    <TH className="text-right">Amount HT</TH>
+                    <TH className="hidden text-right lg:table-cell">VAT</TH>
+                    <TH className="text-right">TTC</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {shown.map((r, i) => (
+                    <TR key={`${r.cat}-${r.desc}-${i}`}>
+                      <TD>
+                        <Pill
+                          tone={r.cat === "Demurrage" ? "orange" : "mute"}
+                        >
+                          {r.cat}
+                        </Pill>
+                      </TD>
+                      <TD className="text-muted-foreground">{r.desc}</TD>
+                      <TD className="num text-right">{r.qty}</TD>
+                      <TD className="num hidden text-right text-muted-foreground sm:table-cell">
+                        {money0(r.unit)}
+                      </TD>
+                      <TD className="num text-right">{money0(r.total)}</TD>
+                      <TD className="num hidden text-right text-muted-foreground lg:table-cell">
+                        {money0(r.total * (computed?.vat_rate ?? 0.1925))}
+                      </TD>
+                      <TD className="num text-right font-medium">
+                        {money0(r.total * (1 + (computed?.vat_rate ?? 0.1925)))}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+                <tfoot className="sticky bottom-0 border-t bg-secondary">
+                  <TR className="hover:bg-transparent">
+                    <TD className="font-semibold" colSpan={2}>
+                      {filter === "all" ? "Total" : `Total — ${filter}`}
+                    </TD>
+                    <TD />
+                    <TD className="hidden sm:table-cell" />
+                    <TD className="num text-right font-semibold">
+                      {money0(shownHt)}
+                    </TD>
+                    <TD className="num hidden text-right text-muted-foreground lg:table-cell">
+                      {money0(shownVat)}
+                    </TD>
+                    <TD className="num text-right font-semibold text-primary-ink">
+                      {money0(shownHt + shownVat)}
+                    </TD>
+                  </TR>
+                </tfoot>
+              </Table>
+            )}
+          </Panel>
+        </div>
+      </div>
+
+      {/* ── Saved simulations. Full width under the workbench: it is history,
+             not a working surface, so it does not compete for the rail. ── */}
+      <div className="mt-4">
+        <Panel
+          title="Saved simulations"
+          subtitle="Each row keeps the tariff it was computed with"
+          className="p-4"
+        >
+          <DataList
+            columns={savedCols}
+            rows={saved}
+            error={listError}
+            loading={saved === null}
+            density="compact"
+            sticky
+            maxHeight="420px"
+            rowKey={(r, i) => String(r.extra_charge_simulation_id ?? i)}
+            empty={{
+              title: "No simulations saved yet",
+              hint: "Compute one above, then save it to keep the estimate against the file.",
+            }}
+          />
+        </Panel>
+      </div>
 
       <AiActions actions={EXTRA_AI} />
-      <ExtraSimForm
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSaved={reload}
-      />
-    </section>
+    </PageContainer>
   );
 }
-
-/* ═══════════════════════════════ PRICING VARIANCE ═══════════════════════════════ */

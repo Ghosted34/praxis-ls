@@ -9,6 +9,7 @@ module.exports = {
     if (!row) throw new AppError("NOT_FOUND", "Simulation not found", 404);
     res.json({ data: row });
   }),
+  rates: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.rates(c)) })),
   preview: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.preview(c, req.body)) })),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, req.body, actor(req))) })),
 };

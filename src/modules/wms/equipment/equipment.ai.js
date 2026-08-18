@@ -10,8 +10,8 @@ module.exports = {
   screens: ["equipment"],
 
   reads: [
-    { key: "list_equipment", service: service.list, describe: "List handling equipment (forklifts, reach-stackers)." },
-    { key: "get_equipment", service: service.get, describe: "Get one equipment unit by id." },
+    { key: "list_equipment", service: service.list, permission: { module: "MOD-37", action: "view" }, describe: "List handling equipment (forklifts, reach-stackers)." },
+    { key: "get_equipment", service: service.get, permission: { module: "MOD-37", action: "view" }, describe: "Get one equipment unit by id." },
   ],
 
   writes: [

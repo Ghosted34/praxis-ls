@@ -10,8 +10,8 @@ module.exports = {
   screens: ["fuel"],
 
   reads: [
-    { key: "list_fuel", service: service.list, describe: "List fuel logs." },
-    { key: "get_fuel", service: service.get, describe: "Get one fuel log by id." },
+    { key: "list_fuel", service: service.list, permission: { module: "MOD-43", action: "view" }, describe: "List fuel logs." },
+    { key: "get_fuel", service: service.get, permission: { module: "MOD-43", action: "view" }, describe: "Get one fuel log by id." },
   ],
 
   writes: [

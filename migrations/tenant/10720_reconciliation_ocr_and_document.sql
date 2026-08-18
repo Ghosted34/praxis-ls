@@ -1,5 +1,10 @@
 -- ============================================================================
--- TENANT DB — 10716 reconciliation follow-ups: OCR provenance (MOD-09).
+-- TENANT DB — 10720 reconciliation follow-ups: OCR provenance (MOD-09).
+--
+-- (Drafted as 10716; renumbered to 10720 because 10716_extra_charge_container_qty.sql
+--  landed on main while this branch was open. Renumbering is safe here and only
+--  here: this file has never been applied to any database, and the migrator keys
+--  on filename — see scripts/db/check-migration-numbers.js.)
 --
 -- Closes one of the three gaps left open by 10709: a scanned statement can now
 -- be read, and the fact that a machine read it has to be part of the record.

@@ -184,9 +184,8 @@ const local = {
     // the one place untrusted bytes are allowed to reach disk. What must be
     // safe is the PATH, and it is: `localPath` proves containment inside the
     // storage root (charset allow-list + resolved-path check) and the buffer
-    // is type-checked and size-capped above. The taint query cannot see the
-    // path validation, so it is stated here.
-    // codeql[js/http-to-file-access] — validated-path storage write (see above)
+    // is type-checked and size-capped above.
+    // codeql[js/http-to-file-access]
     await fs.writeFile(filePath, buffer);
     return { key: finalKey, public_url: publicUrl(finalKey), size: buffer.length, content_type: contentType };
   },

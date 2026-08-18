@@ -104,6 +104,25 @@ function send(body: ClientErrorReport): void {
 /** Report a client-side error. Safe to call from anywhere, never throws. */
 export function reportClientError(r: ClientErrorReport): void {
   try {
+    // G8 — remember the most recent capture so the Support page can snapshot
+    // it onto a ticket ("send this to your system admin" carries what you
+    // saw). Written BEFORE the dedupe/session caps: the caps govern what is
+    // POSTED to the platform, not what the user's own ticket can reference.
+    try {
+      if (typeof window !== "undefined") {
+        (window as unknown as { __praxisLastClientError?: unknown }).__praxisLastClientError = {
+          message: r.message,
+          route: r.route,
+          kind: r.kind,
+          stack: r.stack,
+          at: new Date().toISOString(),
+        };
+      }
+    } catch {
+      /* @silent:storage|parse|teardown */
+      /* best-effort — a frozen window must not block reporting */
+    }
+
     if (sentThisSession >= MAX_PER_SESSION) return;
 
     const fp = fingerprint(r);

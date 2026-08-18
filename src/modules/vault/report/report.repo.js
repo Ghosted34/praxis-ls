@@ -134,8 +134,34 @@ async function markScheduledRan(client, id, nextRunAt) {
   return rows[0] || null;
 }
 
+/**
+ * G9 — the consolidation group for an entity: the entity itself plus every
+ * descendant connected through `parent_entity_id` where the child's
+ * `consolidates` flag is true (migration 0515: "consolidates is what later
+ * lets group reporting roll France into the parent"). Recursive, so a
+ * three-level group is found in one query; a leaf with no children returns
+ * just itself, which is the honest single-entity report.
+ */
+async function entityGroup(client, entityId) {
+  if (!entityId) return [];
+  const { rows } = await client.query(
+    `WITH RECURSIVE grp AS (
+       SELECT entity_id, full_name, 0 AS depth
+         FROM corporate_entity WHERE entity_id = $1
+       UNION ALL
+       SELECT ce.entity_id, ce.full_name, grp.depth + 1
+         FROM corporate_entity ce
+         JOIN grp ON ce.parent_entity_id = grp.entity_id
+        WHERE ce.consolidates = true
+     )
+     SELECT entity_id, full_name, depth FROM grp ORDER BY depth`,
+    [entityId],
+  );
+  return rows;
+}
+
 module.exports = {
-  cashPosition, procurementSpend, dossierMarginPortfolio,
+  cashPosition, procurementSpend, dossierMarginPortfolio, entityGroup,
   insertSaved, getSaved, deleteSaved, listSaved, listTiles, upsertTile,
   insertScheduled, getScheduled, listScheduled, updateScheduled, deleteScheduled,
   listDueScheduled, markScheduledRan,

@@ -8,7 +8,7 @@
 
 const repo = require("./extra_charge_simulation.repo");
 const events = require("./extra_charge_simulation.events");
-const { computeDemurrage, daysBetween } = require("./extra_charge_simulation.rules");
+const { computeDemurrage, daysBetween, simulateCharges, parseContainers, DEFAULT_RATES } = require("./extra_charge_simulation.rules");
 const { getSetting } = require("../../../shared/config/settings");
 const { audit, resolveActorId } = require("../../../shared/events/emit");
 
@@ -32,6 +32,23 @@ function occupiedDaysFrom({ occupiedDays, outOfPortOn, asOf }) {
 }
 
 async function preview(client, body) {
+  // G16 — the full five-family simulator when a container list is supplied
+  // ("2x40HC, 1x20RF"), exactly as the legacy computed it. The legacy
+  // demurrage-only path stays for callers who still send occupied_days/tiers.
+  if (body.containers) {
+    const rates = (await getSetting(client, "commercial", "extra_charge_rates", null)) || null;
+    return simulateCharges({
+      containers: body.containers,
+      ata: body.ata || null,
+      gateOut: body.gate_out || null,
+      emptyReturn: body.empty_return || null,
+      freeDays: body.free_days ?? 11,
+      yardTrigger: body.yard_trigger ?? null,
+      rates: body.rates || rates,
+      fx: body.fx || null,
+      currency: body.currency || "XAF",
+    });
+  }
   const tiers = await tiersFor(client, { containerVariant: body.container_variant, override: body.tiers });
   const occupiedDays = occupiedDaysFrom({ occupiedDays: body.occupied_days, outOfPortOn: body.out_of_port_on, asOf: body.as_of });
   return computeDemurrage({ freeDays: body.free_days, occupiedDays, tiers });

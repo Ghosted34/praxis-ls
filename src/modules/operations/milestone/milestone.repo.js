@@ -62,7 +62,8 @@ async function listTemplates(client, q = {}) {
   if (q.service_type_id) { params.push(q.service_type_id); wh.push(`t.service_type_id = $${params.length}`); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    `SELECT t.*, st.code AS service_type_code, st.name AS service_type_name,
+    `SELECT t.*, st.key AS service_type_code,
+            COALESCE(st.name_en, st.name_fr) AS service_type_name,
             (SELECT count(*)::int FROM milestone_template_stage s
               WHERE s.milestone_template_id = t.milestone_template_id) AS stage_count
        FROM milestone_template t

@@ -77,6 +77,7 @@ router.patch("/tenants/:slug/plan", requireCap("tenants.write"), validate("plan"
 router.patch("/tenants/:slug/capacity", requireCap("tenants.write"), validate("capacity"), c.setCapacity);
 router.patch("/tenants/:slug/sandbox", requireCap("tenants.write"), validate("sandbox"), c.setSandbox);
 router.post("/tenants/:slug/sandbox/wipe", requireCap("tenants.write"), c.wipeSandbox);
+router.post("/tenants/:slug/sandbox/seed", requireCap("tenants.write"), c.seedSandboxDemo);
 router.post("/tenants/:slug/migrate", requireCap("tenants.write"), c.migrate);
 
 router.get("/tenants/:slug/features", requireCap("tenants.read"), c.features);

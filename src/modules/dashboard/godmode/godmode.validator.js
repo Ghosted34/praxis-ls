@@ -24,4 +24,13 @@ const purge = z
   })
   .strict();
 
-module.exports = { ...passthrough, purge: body(purge), schemas: { purge } };
+// G24 — CEO sets/rotates their PIN. The same bounded-not-shaped rule: 6–64
+// chars is enforced in the service so both the endpoint and the weekly
+// rotation agree on what a valid PIN is.
+const setPin = z
+  .object({
+    pin: z.string().min(6).max(64),
+  })
+  .strict();
+
+module.exports = { ...passthrough, purge: body(purge), setPin: body(setPin), schemas: { purge, setPin } };

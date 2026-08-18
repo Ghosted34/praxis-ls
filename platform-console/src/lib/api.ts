@@ -159,6 +159,7 @@ export const platform = {
   goLive: (slug: string) => api(`/tenants/${encodeURIComponent(slug)}/go-live`, { method: "POST" }),
   migrate: (slug: string) => api(`/tenants/${encodeURIComponent(slug)}/migrate`, { method: "POST" }),
   wipeSandbox: (slug: string) => api(`/tenants/${encodeURIComponent(slug)}/sandbox/wipe`, { method: "POST" }),
+  seedSandboxDemo: (slug: string) => api(`/tenants/${encodeURIComponent(slug)}/sandbox/seed`, { method: "POST" }),
   setPlan: (slug: string, plan: string) =>
     api(`/tenants/${encodeURIComponent(slug)}/plan`, { method: "PATCH", body: { plan } }),
   setCapacity: (slug: string, tier: string) =>

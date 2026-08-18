@@ -38,10 +38,25 @@ const schemas = {
     rate_provider_id: z.string().uuid().optional(),
     container_type_ref_id: z.string().uuid().optional(),
   }),
+  // G7 — bulk import. Uploads ride the same base64 data-URL convention as the
+  // vault and the financial-dictionary importer (one upload shape, no
+  // multipart middleware). Commit carries the STAGING rows; raw cell values
+  // are re-validated server-side.
+  importUpload: z.object({
+    file: z.string().min(1),
+    filename: z.string().optional(),
+  }),
+  importCommit: z.object({
+    rows: z.array(z.object({
+      row: z.number().int().positive().optional(),
+      data: z.record(z.string(), z.unknown()).optional(),
+      raw: z.record(z.string(), z.unknown()).default({}),
+    })).max(2000),
+  }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), update: mw("update"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), importUpload: mw("importUpload"), importCommit: mw("importCommit"), schemas };

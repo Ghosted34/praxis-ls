@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1209 |
-| Modules mounted | 117 |
+| Routes | 1229 |
+| Modules mounted | 118 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1209 mounted routes, grouped by path prefix.
+All 1229 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -210,6 +210,7 @@ All 1209 mounted routes, grouped by path prefix.
 | PATCH | `/api/platform/tenants/:slug/plan` | — |
 | POST | `/api/platform/tenants/:slug/resume` | — |
 | PATCH | `/api/platform/tenants/:slug/sandbox` | — |
+| POST | `/api/platform/tenants/:slug/sandbox/seed` | — |
 | POST | `/api/platform/tenants/:slug/sandbox/wipe` | — |
 | POST | `/api/platform/tenants/:slug/suspend` | — |
 
@@ -265,6 +266,7 @@ All 1209 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/appraisals/mine` | — |
 | GET | `/api/tenant/appraisals/reviews` | — |
 | GET | `/api/tenant/appraisals/reviews/:reviewId` | — |
+| POST | `/api/tenant/appraisals/reviews/:reviewId/lines/:appraisalId/rate` | — |
 | POST | `/api/tenant/appraisals/reviews/:reviewId/narrate` | — |
 | POST | `/api/tenant/appraisals/reviews/:reviewId/respond` | — |
 | POST | `/api/tenant/appraisals/reviews/:reviewId/submit` | — |
@@ -529,6 +531,7 @@ All 1209 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/contracts/:id` | — |
 | PATCH | `/api/tenant/contracts/:id` | — |
 | POST | `/api/tenant/contracts/:id/draft` | — |
+| POST | `/api/tenant/contracts/:id/renew` | — |
 | POST | `/api/tenant/contracts/:id/status` | — |
 | GET | `/api/tenant/contracts/lapsing` | — |
 | GET | `/api/tenant/contracts/mine` | — |
@@ -540,6 +543,17 @@ All 1209 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/cost-tracking/` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId/reconcile` | — |
+
+### `tenant/costing`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/costing/reconciliations/` | — |
+| POST | `/api/tenant/costing/reconciliations/` | — |
+| GET | `/api/tenant/costing/reconciliations/:id` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/reject` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/submit` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/validate` | — |
 
 ### `tenant/costings`
 
@@ -765,6 +779,9 @@ All 1209 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/expense-rates/:id` | — |
 | GET | `/api/tenant/expense-rates/:id` | — |
 | PATCH | `/api/tenant/expense-rates/:id` | — |
+| POST | `/api/tenant/expense-rates/import/commit` | — |
+| GET | `/api/tenant/expense-rates/import/template` | — |
+| POST | `/api/tenant/expense-rates/import/validate` | — |
 | GET | `/api/tenant/expense-rates/resolve` | — |
 
 ### `tenant/extra-charge-simulations`
@@ -853,6 +870,8 @@ All 1209 mounted routes, grouped by path prefix.
 
 | Method | Path | Body validated |
 |---|---|---|
+| GET | `/api/tenant/god-mode/:id/dependencies` | — |
+| POST | `/api/tenant/god-mode/pin` | — |
 | POST | `/api/tenant/god-mode/purge` | — |
 | GET | `/api/tenant/god-mode/soft-deletes` | — |
 
@@ -1082,6 +1101,7 @@ All 1209 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/milestones/system-default/:serviceTypeId` | — |
 | GET | `/api/tenant/milestones/templates` | — |
 | POST | `/api/tenant/milestones/templates` | — |
+| POST | `/api/tenant/milestones/templates/:templateId/activate` | — |
 
 ### `tenant/notifications`
 
@@ -1225,6 +1245,9 @@ All 1209 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/payroll/advances/:advanceId` | — |
 | PATCH | `/api/tenant/payroll/advances/:advanceId` | — |
 | GET | `/api/tenant/payroll/advances/mine` | — |
+| GET | `/api/tenant/payroll/config` | — |
+| POST | `/api/tenant/payroll/config` | — |
+| GET | `/api/tenant/payroll/employees/:employeeId/payslips` | — |
 | GET | `/api/tenant/payroll/mine` | — |
 | GET | `/api/tenant/payroll/mine/:runItemId/pdf` | — |
 
@@ -1559,6 +1582,7 @@ All 1209 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
 | DELETE | `/api/tenant/smartcomm/messages/:messageId` | — |
 | PATCH | `/api/tenant/smartcomm/messages/:messageId` | — |
+| POST | `/api/tenant/smartcomm/messages/:messageId/acknowledge` | — |
 | POST | `/api/tenant/smartcomm/messages/:messageId/react` | — |
 | POST | `/api/tenant/smartcomm/messages/:messageId/star` | — |
 | GET | `/api/tenant/smartcomm/quick-replies` | — |
@@ -1752,6 +1776,7 @@ All 1209 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/trainings/:id/attendees` | — |
 | POST | `/api/tenant/trainings/:id/attendees` | — |
 | PATCH | `/api/tenant/trainings/:id/attendees/:attendeeId` | — |
+| POST | `/api/tenant/trainings/:id/dictate` | — |
 | POST | `/api/tenant/trainings/:id/join` | — |
 | POST | `/api/tenant/trainings/:id/leave` | — |
 | POST | `/api/tenant/trainings/:id/notes` | — |

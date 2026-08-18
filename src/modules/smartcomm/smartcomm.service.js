@@ -102,8 +102,42 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
     await client.query("COMMIT");
     rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
+    // G22 — a posted message notifies the OTHER members through the same
+    // preference-honouring channel every other module uses (IN_APP + optional
+    // EMAIL/PUSH per user preference). Best-effort and AFTER commit: a notify
+    // failure must never fail the message itself. The sender is excluded — you
+    // already know you wrote it.
+    try {
+      const others = await repo.memberUserIds(client, groupId, actor.user_id || null);
+      if (others.length) {
+        await require("../../notification/notification.service").notifyMany(client, others, {
+          eventTypeKey: "comms.message_posted",
+          title: String(body || "New message in Smart Comms").slice(0, 120),
+          body: body ? String(body).slice(0, 500) : "New message",
+          entityRef: "comms_message:" + m.message_id,
+          category: "comms",
+        });
+      }
+    } catch {
+      /* @silent:storage|parse|teardown */
+      /* notify is best-effort — never mask the message that succeeded */
+    }
     return m;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * G22 — acknowledge a message (the legacy's read-receipt-on-a-directive).
+ * Only a channel member may acknowledge; idempotent per user (the first stamp
+ * sticks). The sender can see who acknowledged via the message row's
+ * acknowledged_by/acknowledged_at columns.
+ */
+async function acknowledge(client, { messageId, actor }) {
+  const m = await repo.getMessage(client, messageId);
+  if (!m) throw new AppError("NOT_FOUND", "Message not found", 404);
+  await assertMember(client, m.group_id, actor.user_id);
+  const row = await repo.acknowledgeMessage(client, messageId, actor.user_id);
+  return { acknowledged: true, message_id: messageId, acknowledged_by: row.acknowledged_by, acknowledged_at: row.acknowledged_at };
 }
 async function editMessage(client, { messageId, body, actor }) {
   const m = await repo.getMessage(client, messageId);
@@ -204,5 +238,5 @@ module.exports = {
   react, star, starred, search, markRead, unread,
   getDraft, saveDraft, clearDraft,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
-  colleagues, certifiedExport,
+  colleagues, certifiedExport, acknowledge,
 };

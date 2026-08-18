@@ -40,6 +40,36 @@ const KIND_LABEL: Record<Kind, string> = {
   BUG: "Bug",
   FEATURE: "Feature",
 };
+
+/**
+ * G8 — snapshot the current app context onto a support ticket. Every part is
+ * independently guarded and never throws: triage gets what is available and
+ * a missing piece must not sink the ticket. Includes the last client error
+ * the global error-reporting captured (route + message + stack), the page the
+ * user was on, and static browser facts.
+ */
+function buildTicketContext(): Record<string, unknown> {
+  const ctx: Record<string, unknown> = {
+    captured_at: new Date().toISOString(),
+    route: typeof window !== "undefined" ? window.location.pathname : null,
+    user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+  };
+  try {
+    const last = (window as unknown as { __praxisLastClientError?: { message: string; route?: string; stack?: string; kind?: string; at?: string } }).__praxisLastClientError;
+    if (last) {
+      ctx.last_error = {
+        message: String(last.message || "").slice(0, 500),
+        route: last.route || null,
+        kind: last.kind || "render",
+        at: last.at || null,
+        stack: last.stack ? String(last.stack).slice(0, 2000) : null,
+      };
+    }
+  } catch {
+    /* context capture is best-effort */
+  }
+  return ctx;
+}
 const KIND_TONE: Record<Kind, Tone> = {
   SUPPORT: "blue",
   BUG: "bad",
@@ -81,7 +111,18 @@ function NewTicketModal({
     try {
       await tenant("/support/tickets", {
         method: "POST",
-        body: { kind, title: title.trim(), body: body.trim() },
+        body: {
+          kind,
+          title: title.trim(),
+          body: body.trim(),
+          // G8 — the Pixie Girl model (meeting §11.16): "Need help? Send this
+          // to your system admin" capturing full context. The route + last
+          // client error (ErrorBoundary/window.onerror/unhandledrejection)
+          // are already collected by lib/error-reporting; snapshot them onto
+          // the ticket so triage starts with what the user saw, not a bare
+          // "it's broken". Best-effort: each part is independently guarded.
+          context: buildTicketContext(),
+        },
       });
       onCreated();
       onClose();

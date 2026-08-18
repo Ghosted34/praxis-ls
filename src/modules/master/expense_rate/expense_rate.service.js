@@ -11,8 +11,9 @@
 const repo = require("./expense_rate.repo");
 const providerRepo = require("../rate_provider/rate_provider.repo");
 const events = require("./expense_rate.events");
-const { pickRate } = require("./expense_rate.rules");
-const { audit } = require("../../../shared/events/emit");
+const rules = require("./expense_rate.rules");
+const importer = require("./expense_rate.import");
+const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "expense_rate:" + id;
@@ -66,9 +67,76 @@ async function remove(client, { id, actor = {} }) {
 /** Resolve the effective rate for an item at a date (used by simulators/costing). */
 async function resolve(client, { dictionaryItemId, date = null, rateProviderId = null, containerTypeRefId = null }) {
   const rows = await repo.forItem(client, dictionaryItemId);
-  return pickRate(rows, { date: date || new Date().toISOString().slice(0, 10), rateProviderId, containerTypeRefId });
+  return rules.pickRate(rows, { date: date || new Date().toISOString().slice(0, 10), rateProviderId, containerTypeRefId });
 }
 
 const get = (client, id) => repo.get(client, id);
 const list = (client, q) => repo.list(client, q);
-module.exports = { create, update, remove, resolve, get, list };
+
+// ── G7: bulk Excel import (meeting §11.3) ───────────────────────────────────
+
+/** The registers the template's Reference sheet and the row resolution read. */
+async function importContext(client) {
+  const [dictionaryItems, rateProviders, containerTypes] = await Promise.all([
+    repo.listDictionaryItems(client),
+    repo.listProviders(client),
+    repo.listContainerTypes(client),
+  ]);
+  return { dictionaryItems, rateProviders, containerTypes };
+}
+
+/** The .xlsx a user downloads: the column contract + this tenant's real values. */
+async function importTemplate(client) {
+  const ctx = await importContext(client);
+  return importer.buildTemplate(ctx);
+}
+
+/** Parse + validate an upload. Writes NOTHING — staging first, like the dict
+ *  importer, so the user sees exactly what will be created before commit. */
+async function importValidate(client, { buffer }) {
+  const parsed = await importer.parseUploaded(buffer);
+  const ctx = await importContext(client);
+  const { valid, rejected } = rules.partitionImport(parsed.rows, ctx);
+  return {
+    sheet: parsed.sheet,
+    parsed: parsed.rows.length,
+    valid,
+    rejected,
+    summary: { total: parsed.rows.length, valid: valid.length, rejected: rejected.length },
+  };
+}
+
+/**
+ * Commit the valid rows. PARTIAL by design — each row is its own create, so a
+ * 400-row import never rolls back wholesale because one row fails. Rows are
+ * RE-validated server-side from the raw cell values (the client round-trip is
+ * a convenience, not a security boundary), and each insert goes through
+ * repo.insert's WRITABLE allow-list.
+ */
+async function importCommit(client, { rows = [], actor }) {
+  const ctx = await importContext(client);
+  const created = [];
+  const rejected = [];
+  for (const entry of rows) {
+    const rowNumber = entry.row || null;
+    const check = rules.validateImportRow(entry.raw || {}, rules.buildLookups(ctx));
+    if (!check.valid) {
+      rejected.push({ row: rowNumber, reasons: check.reasons, raw: entry.raw || {} });
+      continue;
+    }
+    try {
+      const row = await create(client, { ...check.data, actor });
+      created.push({ row: rowNumber, expense_rate_id: row.expense_rate_id, rate: row.rate, dictionary_item_id: row.dictionary_item_id });
+    } catch (err) {
+      rejected.push({ row: rowNumber, reasons: [err.message || "could not be created"], raw: entry.raw || {} });
+    }
+  }
+  const summary = { attempted: rows.length, created: created.length, rejected: rejected.length };
+  if (created.length) {
+    await emitEvent(client, { eventTypeKey: events.IMPORTED, moduleKey: events.MODULE, entityRef: "expense_rate:import", actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.IMPORTED, moduleKey: events.MODULE, entityRef: "expense_rate:import", after: summary });
+  }
+  return { created, rejected, summary };
+}
+
+module.exports = { create, update, remove, resolve, get, list, importTemplate, importValidate, importCommit };

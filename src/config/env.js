@@ -355,6 +355,14 @@ const Schema = z.object({
   // warnings; the "lapsing soon" screen still answers the same question on
   // demand.
   CONTRACT_LAPSE_CRON: z.string().default("0 7 * * *"),
+  // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
+  // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
+  // working day and clear of the 01:00 fleet backup.
+  SANDBOX_WIPE_CRON: z.string().default("30 3 * * *"),
+  // God-Mode PIN rotation (G24): weekly, Monday 06:00 UTC — the legacy's
+  // cadence, so a destructive credential is never standing for more than a
+  // week.
+  GODMODE_PIN_CRON: z.string().default("0 6 * * 1"),
 
   // Milestone SLA scan (MOD-31): 06:00 and 18:00 — the start and the end of a
   // working day, which is when somebody can still act on "this file will

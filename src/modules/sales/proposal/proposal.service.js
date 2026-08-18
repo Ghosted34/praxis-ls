@@ -86,13 +86,21 @@ async function transition(client, { id, to, entityId = null, actor = {} }) {
         ? (await client.query("SELECT name, legal_name FROM client_master WHERE client_id=$1", [full.client_id])).rows[0]
         : null;
       const languages = full.language === "BILINGUAL" ? ["EN", "FR"] : [full.language || "EN"];
+      // G2 — sandbox renders carry a TEST SANDBOX watermark (PRD §5.5 [RULE]).
+      const sandbox = client && client[Symbol.for("praxis.conn.env")] === "sandbox";
+      const watermark = sandbox
+        ? '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;opacity:.16;font-size:64px;font-weight:800;color:#172033;pointer-events:none;transform:rotate(-24deg)">TEST SANDBOX</div>'
+        : "";
       for (const language of languages) {
         const presentation = proposalPresentation.build({
           proposal: { ...full, ...fields }, lines: full.lines,
           narratives: full.narratives, client: clientRow, language,
         });
         await pdf.renderAndStore(client, {
-          html: proposalDocument.html({ presentation }),
+          html: proposalDocument.html({ presentation }).replace(
+            "</body>",
+            `${watermark}</body>`,
+          ),
           key: `proposals/${id}-${language.toLowerCase()}.pdf`,
           entityRef: languageRef(id, language),
           docType: "PROPOSAL",

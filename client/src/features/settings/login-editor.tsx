@@ -5,6 +5,7 @@
  * All fields persist.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
@@ -96,11 +97,11 @@ export function LoginEditor() {
       />
 
       {!loaded ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <p className="mt-6 text-sm text-muted-foreground">{tr("Loading…")}</p>
       ) : (
         <div className="mt-6 flex flex-col gap-5">
           <SettingsCard
-            title="Copy"
+            title={tr("Copy")}
             desc="Headline and supporting line shown on the sign-in screen."
           >
             <div className="flex flex-col gap-4">

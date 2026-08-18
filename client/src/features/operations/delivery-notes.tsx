@@ -34,6 +34,7 @@
  * never exist for a transition the API would refuse.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -403,12 +404,12 @@ function DeliveryForm({
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
             >
-              <option value="">Select…</option>
+              <option value="">{tr("Select…")}</option>
               {(entities || []).map((x) => (
                 <option key={x.entity_id} value={x.entity_id}>
                   {x.trading_name || x.legal_name}
@@ -416,12 +417,12 @@ function DeliveryForm({
               ))}
             </Select>
           </Field>
-          <Field label="Dossier" hint="The consignee and containers come from the file.">
+          <Field label={tr("Dossier")} hint="The consignee and containers come from the file.">
             <Select
               value={f.dossier_id}
               onChange={(e) => void pickDossier(e.target.value)}
             >
-              <option value="">Select…</option>
+              <option value="">{tr("Select…")}</option>
               {(dossiers || []).map((d) => (
                 <option key={d.dossier_id} value={d.dossier_id}>
                   {d.ref}
@@ -429,7 +430,7 @@ function DeliveryForm({
               ))}
             </Select>
           </Field>
-          <Field label="Consignee" className="sm:col-span-2">
+          <Field label={tr("Consignee")} className="sm:col-span-2">
             <Input
               value={f.consignee}
               onChange={(e) => set("consignee", e.target.value)}
@@ -483,7 +484,7 @@ function DeliveryForm({
               placeholder="Zone Industrielle, Rue 4321, Douala"
             />
           </Field>
-          <Field label="Phone" hint="Reached at the gate if nobody answers.">
+          <Field label={tr("Phone")} hint="Reached at the gate if nobody answers.">
             <Input
               value={f.phone}
               onChange={(e) => set("phone", e.target.value)}
@@ -491,7 +492,7 @@ function DeliveryForm({
             />
           </Field>
           <Field
-            label="Delivery date"
+            label={tr("Delivery date")}
             hint="When the goods are expected. Confirmed when somebody signs."
           >
             <DateField
@@ -505,7 +506,7 @@ function DeliveryForm({
           <ShipmentDetailsPanel dossierId={f.dossier_id} variant="strip" />
         )}
 
-        <Panel title="Containers">
+        <Panel title={tr("Containers")}>
           <ContainerPicker
             dossierId={f.dossier_id}
             excludeNoteId={note?.delivery_note_id}
@@ -537,14 +538,14 @@ function DeliveryForm({
                     }
                   />
                 </div>
-                <Field label="Description" className="min-w-[12rem] flex-1">
+                <Field label={tr("Description")} className="min-w-[12rem] flex-1">
                   <Input
                     value={l.label}
                     onChange={(e) => setLine(i, { label: e.target.value })}
                     placeholder="2 pallets, unlisted spares"
                   />
                 </Field>
-                <Field label="Qty" className="w-24">
+                <Field label={tr("Qty")} className="w-24">
                   <Input
                     inputMode="decimal"
                     value={l.qty}
@@ -714,7 +715,7 @@ function NoteDetail({
             docType="DELIVERY_NOTE"
             id={data.delivery_note_id}
             title={data.ref || "Delivery note"}
-            label="Print"
+            label={tr("Print")}
           />
         </div>
 
@@ -734,30 +735,30 @@ function NoteDetail({
         )}
 
         {data.status === "CANCELLED" && data.cancel_reason && (
-          <Callout tone="bad" title="Cancelled">
+          <Callout tone="bad" title={tr("Cancelled")}>
             {data.cancel_reason}
           </Callout>
         )}
 
         <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-xs uppercase text-muted">Consignee</dt>
+            <dt className="text-xs uppercase text-muted">{tr("Consignee")}</dt>
             <dd>{data.consignee || "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-muted">Delivery date</dt>
+            <dt className="text-xs uppercase text-muted">{tr("Delivery date")}</dt>
             <dd>{data.delivery_date ? dateFmt(data.delivery_date) : "—"}</dd>
           </div>
           <div className="sm:col-span-2">
-            <dt className="text-xs uppercase text-muted">Address</dt>
+            <dt className="text-xs uppercase text-muted">{tr("Address")}</dt>
             <dd>{data.address || "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-muted">Contact</dt>
+            <dt className="text-xs uppercase text-muted">{tr("Contact")}</dt>
             <dd>{data.contact_person || "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-muted">Phone</dt>
+            <dt className="text-xs uppercase text-muted">{tr("Phone")}</dt>
             <dd>{data.phone || "—"}</dd>
           </div>
         </dl>
@@ -849,7 +850,7 @@ function NoteDetail({
               The number is retained and never re-used, so the reason is what
               explains the gap in the sequence later.
             </p>
-            <Field label="Reason" required>
+            <Field label={tr("Reason")} required>
               <Input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -937,7 +938,7 @@ export function DeliveryNotesPage() {
             docType="DELIVERY_NOTE"
             id={r.delivery_note_id}
             title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
         </div>
       ),
@@ -947,7 +948,7 @@ export function DeliveryNotesPage() {
   return (
     <ListPage<api.DeliveryNote>
       eyebrow={<HubCrumb area="Operations" to="/operations" />}
-      title="Delivery notes"
+      title={tr("Delivery notes")}
       description="Proof that goods reached the consignee — and who signed for them."
       action={<Button onClick={() => setOpen(true)}>New note</Button>}
       tabs={<HubTabs />}

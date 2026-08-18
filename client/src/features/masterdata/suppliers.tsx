@@ -7,6 +7,7 @@
  * actions. The detail view is shared (party-360.tsx); the edit form stays here.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -130,14 +131,14 @@ function SupplierForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           {/* 1 · Identity — country first, it drives the registration IDs. */}
-          <Field label="Country" required className="sm:col-span-2">
+          <Field label={tr("Country")} required className="sm:col-span-2">
             <SmartCountryPicker
               value={countryCode}
               onChange={setCountryCode}
               allowEmpty={false}
             />
           </Field>
-          <Field label="Legal name" required>
+          <Field label={tr("Legal name")} required>
             <Input
               value={legalName}
               onChange={(e) => setLegalName(e.target.value)}
@@ -175,7 +176,7 @@ function SupplierForm({
             ].filter((r) => r.number)}
           />
 
-          <Field label="Category">
+          <Field label={tr("Category")}>
             <Input
               value={type}
               onChange={(e) => setType(e.target.value)}
@@ -230,13 +231,13 @@ function SupplierForm({
                   placeholder="Zone industrielle, Bonabéri"
                 />
               </Field>
-              <Field label="City">
+              <Field label={tr("City")}>
                 <Input
                   value={address.city}
                   onChange={(e) =>
                     setAddress({ ...address, city: e.target.value })
                   }
-                  placeholder="Douala"
+                  placeholder={tr("Douala")}
                 />
               </Field>
             </>
@@ -246,7 +247,7 @@ function SupplierForm({
           <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Terms
           </div>
-          <Field label="Email" hint="Used to send purchase orders">
+          <Field label={tr("Email")} hint="Used to send purchase orders">
             <Input
               type="email"
               value={email}
@@ -317,7 +318,7 @@ export function SuppliersPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
-        title="Suppliers"
+        title={tr("Suppliers")}
         description="Vendor master with a live 360 — AVL, KYC, banks, WHT and payables."
         action={
           <div className="flex items-center gap-2">

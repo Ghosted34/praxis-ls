@@ -12,12 +12,22 @@
  */
 
 const repo = require("../../src/modules/sales/opportunity/opportunity.repo");
+const dossierService = require("../../src/modules/operations/operations_file/operations_file.service");
 const service = require("../../src/modules/sales/opportunity/opportunity.service");
 
 /** A pg client that records the transaction verbs and does nothing else. */
 function fakeClient() {
   const calls = [];
-  return { calls, query: async (sql) => { calls.push(String(sql).trim()); return { rows: [] }; } };
+  let inTransaction = false;
+  return { calls, query: async (sql) => {
+    const statement = String(sql).trim();
+    const verb = statement.split(/\s+/)[0].toUpperCase();
+    calls.push(verb);
+    if (verb === "SAVEPOINT" && !inTransaction) throw Object.assign(new Error("no transaction"), { code: "25P01" });
+    if (verb === "BEGIN") inTransaction = true;
+    if (verb === "COMMIT" || verb === "ROLLBACK") inTransaction = false;
+    return { rows: [] };
+  } };
 }
 
 const STAGES = [
@@ -154,6 +164,33 @@ describe("win / lose land the deal in the matching column", () => {
     expect(Number(out.opportunity.probability)).toBe(100);
   });
 
+  test("dossier insertion and win are one transaction, with initialization only after commit", async () => {
+    const client = fakeClient();
+    await service.create(client, { data: { name: "Acme", client_id: "client-1" } });
+    client.calls.length = 0;
+    jest.spyOn(dossierService, "insertForCreate").mockResolvedValue({ dossier_id: "d1" });
+    jest.spyOn(dossierService, "initializeCreated").mockImplementation(async () => { client.calls.push("INITIALIZE"); });
+    const out = await service.win(client, { id: "o1", createDossier: true, entityId: "entity-1" });
+    expect(out.dossier_id).toBe("d1");
+    expect(client.calls.filter((v) => v === "BEGIN")).toHaveLength(1);
+    expect(client.calls.filter((v) => v === "COMMIT")).toHaveLength(1);
+    expect(client.calls.indexOf("COMMIT")).toBeLessThan(client.calls.indexOf("INITIALIZE"));
+  });
+
+  test("a failure after dossier insertion rolls back and never initializes it", async () => {
+    const client = fakeClient();
+    await service.create(client, { data: { name: "Acme", client_id: "client-1" } });
+    client.calls.length = 0;
+    const initialize = jest.spyOn(dossierService, "initializeCreated").mockResolvedValue(undefined);
+    jest.spyOn(dossierService, "insertForCreate").mockResolvedValue({ dossier_id: "d1" });
+    repo.update.mockRejectedValueOnce(new Error("win failed"));
+    await expect(service.win(client, { id: "o1", createDossier: true, entityId: "entity-1" }))
+      .rejects.toThrow("win failed");
+    expect(client.calls).toContain("ROLLBACK");
+    expect(client.calls).not.toContain("COMMIT");
+    expect(initialize).not.toHaveBeenCalled();
+  });
+
   test("lose moves the deal into the lost stage", async () => {
     await service.create(fakeClient(), { data: { name: "Acme" } });
     const row = await service.lose(fakeClient(), { id: "o1" });
@@ -190,6 +227,18 @@ describe("update", () => {
     await expect(
       service.update(fakeClient(), { id: "o1", patch: { name: "x" } }),
     ).rejects.toThrow(/settled/i);
+  });
+});
+
+describe("Kanban pagination", () => {
+  test("the board follows every 200-row page instead of silently truncating", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const source = fs.readFileSync(path.join(__dirname, "../../client/src/features/sales/opportunities.tsx"), "utf8");
+    expect(source).toContain("for (let offset = 0; ; offset += pageSize)");
+    expect(source).toContain('pageQuery.set("offset", String(offset))');
+    expect(source).toContain("if (rows.length < pageSize) return all");
+    expect(source).not.toContain('tenant<Row[]>(`/opportunities?limit=200');
   });
 });
 

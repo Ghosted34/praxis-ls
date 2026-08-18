@@ -10,6 +10,7 @@
  * than a number in that case. Do not "fix" a blank margin here — it is a grant.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -180,10 +181,10 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
         />
         <MoneyRow label="TVA" value={money(m.vat_total)} />
         <MoneyRow label="Revenue HT" value={money(m.revenue_ht)} />
-        <MoneyRow label="Total TTC" value={money(m.billed_ttc)} strong />
+        <MoneyRow label={tr("Total TTC")} value={money(m.billed_ttc)} strong />
       </div>
       <div className="space-y-1.5">
-        <div className="micro mb-2">Costs</div>
+        <div className="micro mb-2">{tr("Costs")}</div>
         <MoneyRow
           label="Planned service cost"
           value={money(m.planned_service_cost)}
@@ -214,7 +215,7 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
               }
             />
             <MoneyRow
-              label="Margin %"
+              label={tr("Margin %")}
               value={
                 m.margin_percent != null ? `${num(m.margin_percent)}%` : "—"
               }
@@ -225,7 +226,7 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
       <div className="space-y-1.5">
         <div className="micro mb-2">Budget vs actual</div>
         <MoneyRow label="Budget (costing)" value={money(m.budget?.budget)} />
-        <MoneyRow label="Actual" value={money(m.budget?.actual)} />
+        <MoneyRow label={tr("Actual")} value={money(m.budget?.actual)} />
         <MoneyRow
           label={`Variance${m.budget?.variance_percent != null ? ` (${num(m.budget.variance_percent)}%)` : ""}`}
           value={money(m.budget?.variance)}
@@ -250,7 +251,7 @@ function PeopleTab({
     <div className="grid gap-5 sm:grid-cols-2">
       <div className="space-y-1.5">
         <div className="mb-2 flex items-center gap-2">
-          <span className="micro">Costing</span>
+          <span className="micro">{tr("Costing")}</span>
           {people?.costing?.doc_number && (
             <span className="num micro">{people.costing.doc_number}</span>
           )}
@@ -300,17 +301,17 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Invoices" value={num(d.invoicing.count)} />
+        <Stat label={tr("Invoices")} value={num(d.invoicing.count)} />
         <Stat
-          label="Purchase orders"
+          label={tr("Purchase orders")}
           value={`${num(d.procurement.po_count)} · ${money(d.procurement.po_total)}`}
         />
-        <Stat label="Transit orders" value={num(d.documents.transit_orders)} />
-        <Stat label="Delivery notes" value={num(d.documents.delivery_notes)} />
+        <Stat label={tr("Transit orders")} value={num(d.documents.transit_orders)} />
+        <Stat label={tr("Delivery notes")} value={num(d.documents.delivery_notes)} />
       </div>
 
       <DocGroup
-        title="Invoices"
+        title={tr("Invoices")}
         rows={docs?.invoices || []}
         empty="No invoices on this file."
         keyOf={(r) => r.invoice_id}
@@ -330,7 +331,7 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
               }
               id={r.invoice_id}
               title={r.ref || `Invoice ${r.invoice_id.slice(0, 8)}`}
-              label="View"
+              label={tr("View")}
             />
           </DocRow>
         )}
@@ -355,7 +356,7 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
         )}
       />
       <DocGroup
-        title="Transit orders"
+        title={tr("Transit orders")}
         rows={docs?.transit || []}
         empty="No transit orders on this file."
         keyOf={(r) => r.transit_order_id}
@@ -374,13 +375,13 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
               docType="TRANSIT_ORDER"
               id={r.transit_order_id}
               title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`}
-              label="View"
+              label={tr("View")}
             />
           </DocRow>
         )}
       />
       <DocGroup
-        title="Delivery notes"
+        title={tr("Delivery notes")}
         rows={docs?.delivery || []}
         empty="No delivery notes on this file."
         keyOf={(r) => r.delivery_note_id}
@@ -400,7 +401,7 @@ function DocumentsTab({ d }: { d: api.DossierOverview }) {
               docType="DELIVERY_NOTE"
               id={r.delivery_note_id}
               title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`}
-              label="View"
+              label={tr("View")}
             />
           </DocRow>
         )}
@@ -449,7 +450,7 @@ export function Dossier360Modal({
               tone="ok"
             />
             <Stat
-              label="Outstanding"
+              label={tr("Outstanding")}
               value={money(d.invoicing.outstanding)}
               tone="warn"
             />

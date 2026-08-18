@@ -26,6 +26,7 @@
  * save. The model writes an advert; the recruiter edits an advert.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -349,7 +350,7 @@ export function VacancyEditor({
           </Callout>
         )}
 
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input
             value={f.title}
             onChange={(e) => set("title", e.target.value)}
@@ -358,12 +359,12 @@ export function VacancyEditor({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Department"
-            hint="From your organigramme — Security › Scopes."
+            label={tr("Department")}
+            hint={tr("From your organigramme — Security › Scopes.")}
           >
             <DepartmentSelect value={dept} onChange={setDept} />
           </Field>
-          <Field label="Employment type">
+          <Field label={tr("Employment type")}>
             <Input
               list="vacancy-employment-types"
               value={f.employment_type}
@@ -396,7 +397,7 @@ export function VacancyEditor({
               onChange={(e) => set("working_hours", e.target.value)}
             />
           </Field>
-          <Field label="Probation" hint="Months. Blank if there is none.">
+          <Field label={tr("Probation")} hint="Months. Blank if there is none.">
             <Input
               type="number"
               min={0}
@@ -444,7 +445,7 @@ export function VacancyEditor({
           }
         />
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="City">
+          <Field label={tr("City")}>
             <Input
               value={f.location_city}
               onChange={(e) => set("location_city", e.target.value)}
@@ -456,7 +457,7 @@ export function VacancyEditor({
               onChange={(e) => set("location_state", e.target.value)}
             />
           </Field>
-          <Field label="Country">
+          <Field label={tr("Country")}>
             <Input
               value={f.location_country}
               onChange={(e) => set("location_country", e.target.value)}
@@ -569,7 +570,7 @@ export function VacancyEditor({
           </fieldset>
 
           <Field
-            label="Skills"
+            label={tr("Skills")}
             hint="Comma separated. These are what the AI scores applicants against."
           >
             <Input

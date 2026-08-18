@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { tenant } from "@/lib/api-client";
-import { openVaultDoc } from "@/lib/vault-file";
+import { downloadVaultDoc } from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
 import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -97,6 +97,9 @@ type DocData = {
   body?: string;
   headline?: string;
   signed_vault_id?: string | null;
+  /* a vaulted generated PDF (e.g. the default-language PDF produced when a
+     proposal was sent) — download that instead of re-rendering one */
+  pdf_vault_id?: string | null;
   currency?: string;
   /* delivery note (operations/delivery_note) */
   delivery_date?: string;
@@ -566,18 +569,39 @@ export function DocumentPage() {
     setError(null);
     setNote(null);
     try {
-      // Prefer an uploaded signed copy (e.g. a countersigned contract) over the
-      // freshly-rendered template.
-      const signed = pv?.data?.signed_vault_id;
+      const d = pv?.data;
+      // A readable filename: the doc number when there is one, else the title,
+      // else the doc type — never a bare UUID.
+      const base = String(
+        d?.number || (pv?.title && (pv.title.en || pv.title.fr)) || docType,
+      )
+        .replace(/[^\w.-]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      const filename = `${base || docType.toLowerCase()}.pdf`;
+      // 1. An uploaded signed copy (e.g. a countersigned contract) is the
+      //    authoritative file — prefer it over any re-render.
+      const signed = d?.signed_vault_id;
       if (signed) {
-        await openVaultDoc(String(signed));
+        await downloadVaultDoc(String(signed), filename);
         return;
       }
-      const out = await tenant<{ public_url?: string }>(
+      // 2. A vaulted PDF already produced for this record (e.g. a SENT
+      //    proposal) — reuse it rather than rendering a new one.
+      const vaulted = d?.pdf_vault_id;
+      if (vaulted) {
+        await downloadVaultDoc(String(vaulted), filename);
+        return;
+      }
+      // 3. Nothing on file yet: render and vault a fresh PDF, then download
+      //    the vaulted copy. It is deliberately NOT opened via `public_url` —
+      //    generated documents are private, so `/media/<key>` answers 404 for
+      //    them (media-guard allow-list); the auth-gated vault download is the
+      //    only route that serves them.
+      const out = await tenant<{ doc_id?: string }>(
         `/document-templates/${docType}/generate`,
         { method: "POST", body: { record_id: id } },
       );
-      if (out.public_url) window.open(out.public_url, "_blank");
+      if (out.doc_id) await downloadVaultDoc(String(out.doc_id), filename);
       else setNote("Generated and stored in the document vault.");
     } catch (e) {
       setError(errMsg(e));

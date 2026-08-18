@@ -22,6 +22,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, useResource } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
@@ -143,7 +144,7 @@ function AccountField({
   return (
     <Field label={label} hint={hint}>
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— none —</option>
+        <option value="">{tr("— none —")}</option>
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>
             {a.label}
@@ -211,25 +212,25 @@ function NewJurisdictionForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Country" hint="ISO code" required>
+          <Field label={tr("Country")} hint={tr("ISO code")} required>
             <Input
               value={country}
               onChange={(e) => setCountry(e.target.value)}
               placeholder="CM"
             />
           </Field>
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Cameroun (CEMAC)"
             />
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
             />
           </Field>
         </div>
@@ -374,7 +375,7 @@ function CodeFormModal({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Code" required hint="Uppercase key, e.g. TVA_STD">
+          <Field label={tr("Code")} required hint="Uppercase key, e.g. TVA_STD">
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -382,7 +383,7 @@ function CodeFormModal({
               disabled={mode === "amend"}
             />
           </Field>
-          <Field label="Kind" required hint={KIND_HINT[kind]}>
+          <Field label={tr("Kind")} required hint={KIND_HINT[kind]}>
             <Select
               value={kind}
               onChange={(e) => setKind(e.target.value as Kind)}
@@ -414,7 +415,7 @@ function CodeFormModal({
             />
           </Field>
           <Field
-            label="Applies to"
+            label={tr("Applies to")}
             hint="sales · purchases · salary · nonresident"
           >
             <Input
@@ -451,7 +452,7 @@ function CodeFormModal({
             onChange={setCredit}
             accounts={accounts}
           />
-          <Field label="Effective from" required>
+          <Field label={tr("Effective from")} required>
             <Input
               type="date"
               value={effectiveFrom}
@@ -534,12 +535,12 @@ function CodeGroupTable({
     <Table>
       <THead>
         <TR>
-          <TH>Code</TH>
-          <TH>Current rate</TH>
-          <TH>Applies to</TH>
+          <TH>{tr("Code")}</TH>
+          <TH>{tr("Current rate")}</TH>
+          <TH>{tr("Applies to")}</TH>
           <TH>Effective</TH>
           <TH>Legal ref</TH>
-          <TH>Actions</TH>
+          <TH>{tr("Actions")}</TH>
         </TR>
       </THead>
       <TBody>
@@ -798,11 +799,11 @@ function JurisdictionDossier({ id }: { id: string }) {
             <Table>
               <THead>
                 <TR>
-                  <TH>Code</TH>
+                  <TH>{tr("Code")}</TH>
                   <TH>Family</TH>
-                  <TH>Current rate</TH>
-                  <TH>Applies to</TH>
-                  <TH>Effective from</TH>
+                  <TH>{tr("Current rate")}</TH>
+                  <TH>{tr("Applies to")}</TH>
+                  <TH>{tr("Effective from")}</TH>
                 </TR>
               </THead>
               <TBody>

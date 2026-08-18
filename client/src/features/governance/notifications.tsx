@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/states";
@@ -330,7 +331,7 @@ export function NotificationsPage() {
       render: (r) => (
         <RowActions>
           {r.read_at ? (
-            <Pill tone="mute">Read</Pill>
+            <Pill tone="mute">{tr("Read")}</Pill>
           ) : (
             <Button
               size="sm"
@@ -350,7 +351,7 @@ export function NotificationsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Governance" to="/governance" />}
-        title="Notifications"
+        title={tr("Notifications")}
         description="Your inbox. System-generated only — Watch-the-Watcher writes HIGH alerts here on security-critical changes."
         action={
           tab === "inbox" && unread.length > 0 ? (
@@ -387,8 +388,8 @@ export function NotificationsPage() {
       {tab === "inbox" ? (
         <>
           <KpiRow>
-            <KpiTile label="Unread" value={num(unread.length)} />
-            <KpiTile label="Total" value={num(all.length)} />
+            <KpiTile label={tr("Unread")} value={num(unread.length)} />
+            <KpiTile label={tr("Total")} value={num(all.length)} />
             <KpiTile
               label="High priority"
               value={num(

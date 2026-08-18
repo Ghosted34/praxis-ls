@@ -19,6 +19,7 @@
  * belongs on the party; this is the fleet-wide view.
  */
 import { Pill } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -89,7 +90,7 @@ export function MilestoneAttribution() {
       <Table>
         <THead>
           <TR>
-            <TH>Owner</TH>
+            <TH>{tr("Owner")}</TH>
             <TH className="text-right">Late stages</TH>
             <TH className="text-right">Total lost</TH>
             <TH className="text-right">Average slip</TH>
@@ -137,12 +138,12 @@ export function MilestoneAttribution() {
         <Table>
           <THead>
             <TR>
-              <TH>Stage</TH>
+              <TH>{tr("Stage")}</TH>
               <TH>Service</TH>
-              <TH>Owner</TH>
+              <TH>{tr("Owner")}</TH>
               <TH className="text-right">Times late</TH>
               <TH className="text-right">Average</TH>
-              <TH className="text-right">Total</TH>
+              <TH className="text-right">{tr("Total")}</TH>
             </TR>
           </THead>
           <TBody>

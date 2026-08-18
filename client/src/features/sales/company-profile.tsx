@@ -1,4 +1,5 @@
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,7 +106,7 @@ export function CompanyProfilePage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
-        title="Company profile"
+        title={tr("Company profile")}
         description="Declared facts and SQL-derived operating evidence used to ground proposals."
         action={
           <Button onClick={refresh} loading={busy}>
@@ -265,7 +266,7 @@ export function CompanyProfilePage() {
               </dd>
             </div>
             <div>
-              <dt>Clients</dt>
+              <dt>{tr("Clients")}</dt>
               <dd className="text-2xl font-semibold">
                 {String(p?.client_count ?? 0)}
               </dd>

@@ -12,6 +12,7 @@
  * render a proper "enable it" state.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -109,7 +110,7 @@ function Overview() {
 
       <KpiRow>
         <KpiTile
-          label="Documents"
+          label={tr("Documents")}
           value={docs.error ? "—" : num(allDocs.length)}
           hint={docs.error ? "No access" : `${verified} verified`}
         />

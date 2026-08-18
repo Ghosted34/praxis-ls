@@ -3,6 +3,7 @@
  * requests, régie d'avance. Locked shared kit; line editors kept minimal.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,7 @@ function CostingLineRow({
   return (
     <div className="rounded-lg border bg-card p-2">
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-        <Field label="Charge">
+        <Field label={tr("Charge")}>
           <DictionaryFinder
             value={line.dictionary_item_id}
             valueLabel={line.label}
@@ -141,13 +142,13 @@ function CostingLineRow({
             reported here. A second picker on the row was the thing that used to
             drift from the file's own equipment, and it is gone. */}
         {line.containerTypeRefId && (
-          <Field label="Container type">
+          <Field label={tr("Container type")}>
             <p className="flex h-9 items-center text-sm text-foreground">
               {line.containerTypeLabel || "—"}
             </p>
           </Field>
         )}
-        <Field label="Qty">
+        <Field label={tr("Qty")}>
           <Input
             type="number"
             className="num text-right"
@@ -155,7 +156,7 @@ function CostingLineRow({
             onChange={(e) => onChange({ qty: Number(e.target.value) })}
           />
         </Field>
-        <Field label="Unit cost">
+        <Field label={tr("Unit cost")}>
           <Input
             type="number"
             className="num text-right"
@@ -307,7 +308,7 @@ function CostingForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Dossier" required>
+          <Field label={tr("Dossier")} required>
             <Select
               value={dossierId}
               onChange={(e) => setDossierId(e.target.value)}
@@ -327,7 +328,7 @@ function CostingForm({
               </p>
             )}
           </Field>
-          <Field label="Margin %">
+          <Field label={tr("Margin %")}>
             <Input
               type="number"
               step="0.01"
@@ -476,7 +477,7 @@ export function CostingPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
-        title="Costing"
+        title={tr("Costing")}
         description="Planned cost sheets and margin per dossier."
         action={<Button onClick={() => setOpen(true)}>New costing</Button>}
       />
@@ -484,11 +485,11 @@ export function CostingPage() {
       <KpiRow>
         <KpiTile label="Costings" value={num(list.length)} />
         <KpiTile
-          label="Approved"
+          label={tr("Approved")}
           value={num(list.filter((c) => c.status === "APPROVED_LOCKED").length)}
         />
         <KpiTile
-          label="Draft"
+          label={tr("Draft")}
           value={num(list.filter((c) => c.status === "DRAFT").length)}
         />
       </KpiRow>
@@ -550,7 +551,7 @@ export function CostTrackingPage() {
       />
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
-        <span className="micro">Dossier</span>
+        <span className="micro">{tr("Dossier")}</span>
         <Select
           aria-label="Filter by dossier"
           value={dossierId}
@@ -573,10 +574,10 @@ export function CostTrackingPage() {
               value={money(rc.planned_cost ?? rc.planned)}
             />
             <KpiTile
-              label="Actual"
+              label={tr("Actual")}
               value={money(rc.actual_cost ?? rc.actual)}
             />
-            <KpiTile label="Variance" value={money(rc.variance)} />
+            <KpiTile label={tr("Variance")} value={money(rc.variance)} />
           </KpiRow>
           <DataList
             columns={cols}
@@ -658,7 +659,7 @@ function CashRequestForm({
       description="Request an advance against a dossier budget."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Dossier">
+        <Field label={tr("Dossier")}>
           <Select
             value={dossierId}
             onChange={(e) => setDossierId(e.target.value)}
@@ -712,7 +713,7 @@ function CashRequestForm({
                       ))}
                   </Select>
                 </Field>
-                <Field label="Budget">
+                <Field label={tr("Budget")}>
                   <Input
                     type="number"
                     className="num text-right"
@@ -803,7 +804,7 @@ export function CashRequestsPage() {
             docType="CASH_REQUEST"
             id={r.cash_request_id}
             title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
           {(r.status === "DRAFT" || !r.status) && (
             <Button
@@ -825,13 +826,13 @@ export function CashRequestsPage() {
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Cash requests"
         description="Advances requested against dossier budgets."
-        action={<Button onClick={() => setOpen(true)}>New request</Button>}
+        action={<Button onClick={() => setOpen(true)}>{tr("New request")}</Button>}
       />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Requests" value={num(list.length)} />
         <KpiTile
-          label="Approved"
+          label={tr("Approved")}
           value={num(list.filter((c) => c.status === "APPROVED").length)}
         />
         <KpiTile
@@ -906,7 +907,7 @@ function RegieForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
@@ -919,7 +920,7 @@ function RegieForm({
               ))}
             </Select>
           </Field>
-          <Field label="Amount" required>
+          <Field label={tr("Amount")} required>
             <Input
               type="number"
               min="0"
@@ -929,13 +930,13 @@ function RegieForm({
               onChange={(e) => set("amount", e.target.value)}
             />
           </Field>
-          <Field label="Source doc ref" required>
+          <Field label={tr("Source doc ref")} required>
             <Input
               value={f.source_doc_ref}
               onChange={(e) => set("source_doc_ref", e.target.value)}
             />
           </Field>
-          <Field label="Date" required>
+          <Field label={tr("Date")} required>
             <Input
               type="date"
               value={f.entry_date}
@@ -999,7 +1000,7 @@ export function RegiePage() {
             docType="REGIE_ADVANCE"
             id={r.regie_advance_id}
             title={`Régie ${r.regie_advance_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
         </div>
       ),
@@ -1015,7 +1016,7 @@ export function RegiePage() {
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Advances" value={num(list.length)} />
+        <KpiTile label={tr("Advances")} value={num(list.length)} />
         <KpiTile
           label="Total float"
           value={money(list.reduce((s, r) => s + (Number(r.amount) || 0), 0))}

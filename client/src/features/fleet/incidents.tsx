@@ -4,6 +4,7 @@
  * UNDER_REVIEW → CLOSED. (Insurance claims hang off a reviewed incident.)
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,7 +92,7 @@ function NewIncidentForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Vehicle">
+          <Field label={tr("Vehicle")}>
             <Select
               value={f.vehicle_id}
               onChange={(e) => set("vehicle_id", e.target.value)}
@@ -104,7 +105,7 @@ function NewIncidentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Driver">
+          <Field label={tr("Driver")}>
             <Select
               value={f.driver_employee_id}
               onChange={(e) => set("driver_employee_id", e.target.value)}
@@ -126,18 +127,18 @@ function NewIncidentForm({
               onChange={(e) => set("occurred_at", e.target.value)}
             />
           </Field>
-          <Field label="Severity" required>
+          <Field label={tr("Severity")} required>
             <Select
               value={f.severity}
               onChange={(e) => set("severity", e.target.value)}
             >
-              <option value="MINOR">Minor</option>
-              <option value="MAJOR">Major</option>
-              <option value="TOTAL">Total</option>
+              <option value="MINOR">{tr("Minor")}</option>
+              <option value="MAJOR">{tr("Major")}</option>
+              <option value="TOTAL">{tr("Total")}</option>
             </Select>
           </Field>
         </div>
-        <Field label="Description">
+        <Field label={tr("Description")}>
           <Input
             value={f.description}
             onChange={(e) => set("description", e.target.value)}

@@ -56,6 +56,21 @@ async function listItems(client, runId) {
 
 /** An employee's own payslips across runs (My HR). Only DISBURSED/APPROVED runs
  *  are the employee's real pay history; drafts are excluded. */
+/** One run item, but only when it belongs to this employee (self-service
+ *  payslip download — ownership enforced here, not in the handler). */
+async function itemBelongsToEmployee(client, runItemId, employeeId) {
+  const { rows } = await client.query(
+    `SELECT pri.payroll_run_item_id, pri.gross, pri.net_pay,
+            pr.period_code, pr.status
+       FROM payroll_run_item pri
+       JOIN payroll_run pr ON pr.payroll_run_id = pri.payroll_run_id
+      WHERE pri.payroll_run_item_id = $1 AND pri.employee_id = $2
+        AND pr.status IN ('APPROVED','VALIDATED','DISBURSED')`,
+    [runItemId, employeeId],
+  );
+  return rows[0] || null;
+}
+
 async function payslipsForEmployee(client, employeeId) {
   const { rows } = await client.query(
     `SELECT pri.payroll_run_item_id, pri.gross, pri.net_pay,
@@ -128,4 +143,4 @@ async function periodReconciled(client, periodCode) {
   return !!rows[0];
 }
 
-module.exports = { createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems, payslipsForEmployee, attendanceInputs, periodReconciled };
+module.exports = { createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems, payslipsForEmployee, itemBelongsToEmployee, attendanceInputs, periodReconciled };

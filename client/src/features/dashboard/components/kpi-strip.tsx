@@ -18,6 +18,7 @@
  * now says what the query does.
  */
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { cn } from "@/lib/cn";
 import { millions } from "../model";
@@ -89,11 +90,11 @@ export function kpiCards(k: ControlTowerKpis): Card[] {
   if (k.revenue !== null) {
     cards.push({
       id: "revenue",
-      label: "Revenue · turnover",
+      label: i18n.t("dash.revenue"),
       value: millions(k.revenue),
       unit: `M ${k.currency}`,
-      hint: "Locked final invoices, all periods",
-      badge: "Locked",
+      hint: i18n.t("dash.revenueHint"),
+      badge: i18n.t("dash.locked"),
       tone: "orange",
       Icon: RevenueIcon,
     });
@@ -101,10 +102,10 @@ export function kpiCards(k: ControlTowerKpis): Card[] {
   if (k.sla !== null) {
     cards.push({
       id: "sla",
-      label: "On-time delivery",
+      label: i18n.t("dash.onTime"),
       value: String(k.sla),
       unit: "%",
-      hint: "Dossiers with an ETA and an ATA",
+      hint: i18n.t("dash.onTimeHint"),
       badge: "SLA",
       tone: "ok",
       Icon: SlaIcon,
@@ -113,11 +114,11 @@ export function kpiCards(k: ControlTowerKpis): Card[] {
   if (k.overdue !== null) {
     cards.push({
       id: "overdue",
-      label: "Receivables · past due",
+      label: i18n.t("dash.pastDue"),
       value: millions(k.overdue),
       unit: `M ${k.currency}`,
-      hint: "Outstanding past the due date",
-      badge: "Past due",
+      hint: i18n.t("dash.pastDueHint"),
+      badge: i18n.t("dash.pastDueBadge"),
       tone: "warn",
       Icon: OverdueIcon,
     });
@@ -125,10 +126,10 @@ export function kpiCards(k: ControlTowerKpis): Card[] {
   if (k.fleetTotal !== null && k.fleetTotal > 0) {
     cards.push({
       id: "fleet",
-      label: "Fleet utilisation",
+      label: i18n.t("dash.fleetUtil"),
       value: String(k.fleetActive ?? 0),
       unit: `/ ${k.fleetTotal} vehicles`,
-      hint: "Active now",
+      hint: i18n.t("dash.fleetUtilHint"),
       badge: "On road",
       tone: "blue",
       Icon: FleetIcon,

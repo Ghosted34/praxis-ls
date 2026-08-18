@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -166,7 +167,7 @@ function CustomFieldForm({
               <Input
                 value={f.label}
                 onChange={(e) => setField(i, { label: e.target.value })}
-                placeholder="Label"
+                placeholder={tr("Label")}
               />
               <Select
                 aria-label={`Field type, row ${i + 1}`}
@@ -265,7 +266,7 @@ export function CustomFieldsPage() {
             <TR>
               <TH>Entity type</TH>
               <TH>Fields</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

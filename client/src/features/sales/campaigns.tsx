@@ -29,6 +29,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -329,7 +330,7 @@ export function CampaignsPage() {
               tone="accent"
             />
             <Stat label="Leads generated" value={String(kpi.LEADS)} hint="Hand-entered" />
-            <Stat label="Deals won" value={String(kpi.WON)} hint="Hand-entered" />
+            <Stat label={tr("Deals won")} value={String(kpi.WON)} hint="Hand-entered" />
             <Stat
               label="Avg. conversion"
               value={`${kpi.AVG_CONVERSION}%`}
@@ -368,7 +369,7 @@ export function CampaignsPage() {
 
           <div className="mb-4 space-y-3">
             <Chips
-              label="Filter by status"
+              label={tr("Filter by status")}
               value={statusFilter}
               options={STATUS_FILTERS}
               onChange={setStatusFilter}
@@ -452,9 +453,9 @@ export function CampaignsPage() {
                   </p>
 
                   <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3">
-                    <TargetPair label="Leads" actual={c.actual_leads} target={c.target_leads} />
+                    <TargetPair label={tr("Leads")} actual={c.actual_leads} target={c.target_leads} />
                     <TargetPair label="Opps" actual={c.actual_opportunities} target={c.target_opportunities} />
-                    <TargetPair label="Won" actual={c.actual_won} target={c.target_won} />
+                    <TargetPair label={tr("Won")} actual={c.actual_won} target={c.target_won} />
                   </div>
                   <p className="mt-2 text-micro text-muted-foreground">
                     CPL{" "}

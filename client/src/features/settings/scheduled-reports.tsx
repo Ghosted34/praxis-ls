@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
@@ -101,7 +102,7 @@ function ScheduleForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required>
+          <Field label={tr("Name")} required>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -113,7 +114,7 @@ function ScheduleForm({
               value={reportKey}
               onChange={(e) => setReportKey(e.target.value)}
             >
-              <option value="">Select…</option>
+              <option value="">{tr("Select…")}</option>
               {catalogue.map((c) => (
                 <option key={String(c.report_key)} value={String(c.report_key)}>
                   {cell(c.report_key)}
@@ -121,7 +122,7 @@ function ScheduleForm({
               ))}
             </Select>
           </Field>
-          <Field label="Cadence" required>
+          <Field label={tr("Cadence")} required>
             <Select
               value={cadence}
               onChange={(e) => setCadence(e.target.value)}
@@ -254,14 +255,14 @@ export function ScheduledReportsPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
+              <TH>{tr("Name")}</TH>
               <TH>Report</TH>
-              <TH>Cadence</TH>
+              <TH>{tr("Cadence")}</TH>
               <TH>Recipients</TH>
               <TH>Formats</TH>
               <TH>Next run</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

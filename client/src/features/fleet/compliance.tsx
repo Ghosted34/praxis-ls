@@ -4,6 +4,7 @@
  * expired, with a one-click Renew (push the expiry forward).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,7 +88,7 @@ function NewComplianceForm({
       description="Track an insurance or visite-technique expiry."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Vehicle" required>
+        <Field label={tr("Vehicle")} required>
           <Select
             value={f.vehicle_id}
             onChange={(e) => set("vehicle_id", e.target.value)}
@@ -101,12 +102,12 @@ function NewComplianceForm({
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Kind" required>
+          <Field label={tr("Kind")} required>
             <Select
               value={f.kind}
               onChange={(e) => set("kind", e.target.value)}
             >
-              <option value="insurance">Insurance</option>
+              <option value="insurance">{tr("Insurance")}</option>
               <option value="visite_technique">Visite technique</option>
             </Select>
           </Field>

@@ -4,6 +4,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
@@ -128,7 +129,7 @@ export function InvoicesPage() {
             {enumLabel(s)}
           </Pill>
         ) : (
-          <Pill tone="mute">Draft</Pill>
+          <Pill tone="mute">{tr("Draft")}</Pill>
         );
       },
     },
@@ -189,13 +190,13 @@ export function InvoicesPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Invoices"
+        title={tr("Invoices")}
         description="Final invoices — revenue recognition, clears advance + débours."
         action={<Button onClick={() => setDraftOpen(true)}>New draft</Button>}
       />
       <KpiRow>
-        <KpiTile label="Invoices" value={String(list.length)} />
-        <KpiTile label="Drafts" value={String(list.filter(isDraft).length)} />
+        <KpiTile label={tr("Invoices")} value={String(list.length)} />
+        <KpiTile label={tr("Drafts")} value={String(list.filter(isDraft).length)} />
         <KpiTile label="Billed (TTC)" value={money0(totalTtc)} />
       </KpiRow>
       <DataList

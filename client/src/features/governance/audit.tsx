@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -194,7 +195,7 @@ function ReviewDetail({
         </div>
         {!done && decided < entries.length && (
           <Field
-            label="Note"
+            label={tr("Note")}
             hint="Optional — attached to the next decision you record."
           >
             <Input
@@ -298,7 +299,7 @@ function NewReviewForm({
       description="Snapshots every user and their roles right now, then asks you to approve, revoke or flag each one."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Name" required hint="e.g. Q3 2026 access recertification">
+        <Field label={tr("Name")} required hint="e.g. Q3 2026 access recertification">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -464,9 +465,9 @@ export function AuditPage() {
       label: "State",
       render: (r) =>
         r.completed_at ? (
-          <Pill tone="ok">Completed</Pill>
+          <Pill tone="ok">{tr("Completed")}</Pill>
         ) : (
-          <Pill tone="warn">In progress</Pill>
+          <Pill tone="warn">{tr("In progress")}</Pill>
         ),
     },
     {
@@ -608,7 +609,7 @@ export function AuditPage() {
       {tab === "events" && (
         <>
           <KpiRow>
-            <KpiTile label="Events" value={num((events.rows || []).length)} />
+            <KpiTile label={tr("Events")} value={num((events.rows || []).length)} />
             <KpiTile
               label="High priority"
               value={num(highEvents)}

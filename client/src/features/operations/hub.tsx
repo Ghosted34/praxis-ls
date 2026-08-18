@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { tr } from "@/lib/i18n";
 import { hubTabs } from "@/app/layout/areas";
 import { OperationsFilesPage } from "./operation-files";
 import { MilestonesPage } from "./milestones";
@@ -8,7 +9,7 @@ import { DeliveryNotesPage } from "./delivery-notes";
 export function OperationsHub() {
   return (
     <TabbedHub
-      eyebrow="Operations"
+      eyebrow={tr("Operations")}
       basePath="/operations"
       // Service types used to live here (the trap it makes visible — dossiers
       // with no chain — is an operations problem to notice) but it IS master

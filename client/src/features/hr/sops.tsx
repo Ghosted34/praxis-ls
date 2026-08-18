@@ -6,6 +6,8 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -94,20 +96,20 @@ function SopForm({
       description="Add a standard operating procedure document."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input
             value={f.title}
             onChange={(e) => set("title", e.target.value)}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Category">
+          <Field label={tr("Category")}>
             <Input
               value={f.category}
               onChange={(e) => set("category", e.target.value)}
             />
           </Field>
-          <Field label="Version">
+          <Field label={tr("Version")}>
             <Input
               type="number"
               className="num text-right"
@@ -181,7 +183,7 @@ function ProceduresView() {
       <KpiRow>
         <KpiTile label="Procedures" value={num(list.length)} />
         <KpiTile
-          label="Active"
+          label={tr("Active")}
           value={num(activeCount)}
           hint={`${list.length - activeCount} archived`}
         />
@@ -229,6 +231,7 @@ function ProceduresView() {
 /* Onboarding lives in ./onboarding (0703) — checklists gained templates,
  * due dates, owners and a completion guard, which is more than fits beside the
  * SOP documents it used to share a file with. */
+
 
 export function SopsPage() {
   const [view, setView] = React.useState<"procedures" | "onboarding" | "rules">(

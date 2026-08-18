@@ -9,6 +9,7 @@
  * (service_type.validator.js:9). Display names stay freely editable.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -83,7 +84,7 @@ export function ServiceTypeForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Key" required className={isNew ? "" : "opacity-60"}>
+          <Field label={tr("Key")} required className={isNew ? "" : "opacity-60"}>
             <Input
               value={f.key}
               onChange={(e) => set("key", e.target.value.toUpperCase())}
@@ -100,7 +101,7 @@ export function ServiceTypeForm({
               </p>
             )}
           </Field>
-          <Field label="Territory">
+          <Field label={tr("Territory")}>
             <Select
               value={f.territory}
               onChange={(e) => set("territory", e.target.value)}
@@ -120,7 +121,7 @@ export function ServiceTypeForm({
               placeholder="Fret maritime import"
             />
           </Field>
-          <Field label="Name (EN)">
+          <Field label={tr("Name (EN)")}>
             <Input
               value={f.name_en}
               onChange={(e) => set("name_en", e.target.value)}

@@ -82,7 +82,15 @@ const saveAssumptions = z.object({ assumptions: z.array(assumption).max(40) });
 
 const recalculate = z.object({ trigger: z.enum(["MANUAL", "TARGET_CHANGED"]).optional() });
 
-const schemas = { publishTemplate, instantiate, advance, reopen, addStage, recalculate, saveAssumptions };
+// F14: these are intentionally separate from operational cause/health fields.
+// Empty strings are accepted so staff can clear previously published copy.
+const publicDetails = z.object({
+  public_location: z.string().max(200).nullable().optional(),
+  public_stage_reference: z.string().max(120).nullable().optional(),
+  public_progress_note: z.string().max(1000).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "at least one public field is required");
+
+const schemas = { publishTemplate, instantiate, advance, reopen, addStage, recalculate, saveAssumptions, publicDetails };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = {
   publishTemplate: mw("publishTemplate"),
@@ -92,5 +100,6 @@ module.exports = {
   addStage: mw("addStage"),
   recalculate: mw("recalculate"),
   saveAssumptions: mw("saveAssumptions"),
+  publicDetails: mw("publicDetails"),
   schemas,
 };

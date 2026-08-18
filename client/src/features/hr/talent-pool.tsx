@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -72,20 +73,20 @@ function TalentForm({
       description="Keep a candidate on file for future roles."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Full name" required>
+        <Field label={tr("Full name")} required>
           <Input
             value={f.full_name}
             onChange={(e) => set("full_name", e.target.value)}
           />
         </Field>
-        <Field label="Skills">
+        <Field label={tr("Skills")}>
           <Input
             value={f.skills}
             onChange={(e) => set("skills", e.target.value)}
             placeholder="Customs, French, forklift…"
           />
         </Field>
-        <Field label="Notes">
+        <Field label={tr("Notes")}>
           <Input
             value={f.notes}
             onChange={(e) => set("notes", e.target.value)}
@@ -173,7 +174,7 @@ function SuccessionForm({
       description="Name a role's successor and how ready they are."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Role" required>
+        <Field label={tr("Role")} required>
           <Input
             value={f.role_title}
             onChange={(e) => set("role_title", e.target.value)}
@@ -221,7 +222,7 @@ function SuccessionForm({
             ))}
           </Select>
         </Field>
-        <Field label="Notes">
+        <Field label={tr("Notes")}>
           <Input
             value={f.notes}
             onChange={(e) => set("notes", e.target.value)}
@@ -553,7 +554,7 @@ export function TalentPoolPage() {
       )}
       <PastApplicants />
       <div className="sec">
-        <h2>Talent pool</h2>
+        <h2>{tr("Talent pool")}</h2>
         <span className="ln" />
         <button className="text-primary-ink" onClick={() => setCreating(true)}>
           Add candidate

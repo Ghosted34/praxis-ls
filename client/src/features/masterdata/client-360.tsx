@@ -6,6 +6,7 @@
  * the supplier master (party-360.tsx).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -43,14 +44,14 @@ export function ClientsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
-        title="Clients"
+        title={tr("Clients")}
         description="Customer master with a live 360 — compliance, KYC, banks, terms and receivables."
         action={
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>
               ⚙ Settings
             </Button>
-            <Button onClick={() => setEditing("new")}>New client</Button>
+            <Button onClick={() => setEditing("new")}>{tr("New client")}</Button>
           </div>
         }
       />

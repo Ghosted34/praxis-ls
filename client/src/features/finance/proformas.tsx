@@ -4,6 +4,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
@@ -92,12 +93,12 @@ function AdvancePaymentForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={entityId}
               onChange={(e) => setEntityId(e.target.value)}
             >
-              <option value="">Select entity…</option>
+              <option value="">{tr("Select entity…")}</option>
               {entities.map((o) => (
                 <option key={o.id} value={o.id}>
                   {optionLabel(o)}
@@ -105,7 +106,7 @@ function AdvancePaymentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <Select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -119,7 +120,7 @@ function AdvancePaymentForm({
             </Select>
           </Field>
           <Field
-            label="Dossier"
+            label={tr("Dossier")}
             hint="Links this to an operation file — sets service type and matches advances."
           >
             <Select
@@ -134,7 +135,7 @@ function AdvancePaymentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Amount" required>
+          <Field label={tr("Amount")} required>
             <Input
               type="number"
               min="0"
@@ -161,14 +162,14 @@ function AdvancePaymentForm({
               ))}
             </Select>
           </Field>
-          <Field label="Entry date" required>
+          <Field label={tr("Entry date")} required>
             <Input
               type="date"
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
             />
           </Field>
-          <Field label="Source document ref" required>
+          <Field label={tr("Source document ref")} required>
             <Input
               value={sourceRef}
               onChange={(e) => setSourceRef(e.target.value)}
@@ -306,7 +307,7 @@ export const ProformasPage = () => {
             docType="PROFORMA_ADVANCE"
             id={str(r, "advance_id")}
             title={`Proforma ${clientName[str(r, "client_id")] || ""}`.trim()}
-            label="View"
+            label={tr("View")}
           />
         </div>
       ),
@@ -332,7 +333,7 @@ export const ProformasPage = () => {
         }
       />
       <KpiRow>
-        <KpiTile label="Advances" value={String(list.length)} />
+        <KpiTile label={tr("Advances")} value={String(list.length)} />
         <KpiTile label="Open (unapplied)" value={moneyFmt(totalOpen)} />
       </KpiRow>
       <DataList

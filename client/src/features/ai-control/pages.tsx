@@ -5,6 +5,7 @@
  * (MOD-70). Composes the locked kit; accents resolve to --primary.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,11 +132,11 @@ export function AiFeaturesPage() {
       <KpiRow>
         <KpiTile label="Features" value={num(flags.length)} />
         <KpiTile
-          label="Enabled"
+          label={tr("Enabled")}
           value={num(flags.filter((f) => f.is_enabled).length)}
         />
         <KpiTile
-          label="Off"
+          label={tr("Off")}
           value={num(flags.filter((f) => !f.is_enabled).length)}
         />
       </KpiRow>
@@ -236,7 +237,7 @@ function GrantForm({
               className="num text-right"
               value={f.monthly_cap_xaf}
               onChange={(e) => set("monthly_cap_xaf", e.target.value)}
-              placeholder="Optional"
+              placeholder={tr("Optional")}
             />
           </Field>
         </div>
@@ -385,7 +386,7 @@ export function AiBudgetPage() {
       />
       <HubTabs />
       {b.loading ? (
-        <div className="py-8 text-center micro">Loading…</div>
+        <div className="py-8 text-center micro">{tr("Loading…")}</div>
       ) : b.error ? (
         <ErrorState message={b.error} />
       ) : (
@@ -394,7 +395,7 @@ export function AiBudgetPage() {
           <KpiTile label="Soft cap" value={money(d?.soft_cap_xaf)} />
           <KpiTile label="Hard cap" value={money(d?.hard_cap_xaf)} />
           <KpiTile
-            label="State"
+            label={tr("State")}
             value={<Pill tone={stateTone}>{d?.state || "OK"}</Pill>}
           />
         </KpiRow>
@@ -561,7 +562,7 @@ function VendorKeyForm({
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="API key"
+            label={tr("API key")}
             className="sm:col-span-2"
             hint={
               vendor.has_key
@@ -722,7 +723,7 @@ function AddVendorForm({
       description="Register a provider + its API key (encrypted at rest). OpenAI-compatible endpoints."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Provider">
+        <Field label={tr("Provider")}>
           <Select value={preset} onChange={(e) => applyPreset(e.target.value)}>
             {VENDOR_PRESETS.map((p) => (
               <option key={p.vendor} value={p.vendor}>
@@ -748,7 +749,7 @@ function AddVendorForm({
               disabled={preset !== "custom"}
             />
           </Field>
-          <Field label="Display name">
+          <Field label={tr("Display name")}>
             <Input
               value={f.display_name}
               onChange={(e) => set("display_name", e.target.value)}
@@ -772,7 +773,7 @@ function AddVendorForm({
             placeholder="text-embedding-3-small"
           />
         </Field>
-        <Field label="API key" required>
+        <Field label={tr("API key")} required>
           <Input
             type="password"
             value={f.api_key}
@@ -992,7 +993,7 @@ export function AiUsagePage() {
       <HubTabs />
       <KpiRow>
         <KpiTile label="Calls" value={num(list.length)} />
-        <KpiTile label="Total cost" value={money(total)} />
+        <KpiTile label={tr("Total cost")} value={money(total)} />
       </KpiRow>
       <DataList
         columns={columns}

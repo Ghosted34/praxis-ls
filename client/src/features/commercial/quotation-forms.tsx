@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,22 +230,22 @@ export function QuotationForm({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           {!editing && (
-            <Field label="Entity" hint="Numbers the quote on send">
+            <Field label={tr("Entity")} hint="Numbers the quote on send">
               <SearchSelect
                 path="/entities"
                 value={entityLabelOf(entities, entityId)}
-                placeholder="Search entities…"
+                placeholder={tr("Search entities…")}
                 getLabel={entityText}
                 getKey={(en) => String(en.entity_id)}
                 onSelect={(en) => setEntityId(String(en.entity_id))}
               />
             </Field>
           )}
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <SearchSelect
               path="/clients"
               value={clientLabel || null}
-              placeholder="Search clients…"
+              placeholder={tr("Search clients…")}
               getLabel={(r) => String(r.name ?? r.legal_name ?? "")}
               getKey={(r) => String(r.client_id)}
               onSelect={(r) => {
@@ -253,12 +254,12 @@ export function QuotationForm({
               }}
             />
           </Field>
-          <Field label="Opportunity" hint="Optional pipeline link">
+          <Field label={tr("Opportunity")} hint="Optional pipeline link">
             <Select
               value={opportunityId}
               onChange={(e) => setOpportunityId(e.target.value)}
             >
-              <option value="">— none —</option>
+              <option value="">{tr("— none —")}</option>
               {(opportunities || []).map((o) => (
                 <option
                   key={String(o.opportunity_id)}
@@ -278,22 +279,22 @@ export function QuotationForm({
               <option value="TTC">TTC (tax-inclusive)</option>
             </Select>
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
               maxLength={3}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
             />
           </Field>
-          <Field label="Valid until">
+          <Field label={tr("Valid until")}>
             <Input
               type="date"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
             />
           </Field>
-          <Field label="Target margin %" hint="Optional">
+          <Field label="Target margin %" hint={tr("Optional")}>
             <Input
               type="number"
               min="0"
@@ -396,7 +397,7 @@ export function QuotationForm({
                   débours
                 </label>
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground">Tax</span>
+                  <span className="text-xs text-muted-foreground">{tr("Tax")}</span>
                   <Select
                     value={l.tax_code_id ?? ""}
                     disabled={l.is_disbursement}

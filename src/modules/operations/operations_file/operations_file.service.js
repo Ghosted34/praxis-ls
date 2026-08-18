@@ -17,6 +17,7 @@ const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 
 /**
  * Seed the dossier's milestone chain from its service type's active template.
@@ -296,46 +297,41 @@ async function sweepDrafts(client, { olderThanHours = 48, storage = null } = {})
   return { deleted, considered: rows.length };
 }
 
-async function create(client, { data, actor = {} }) {
-  // Transactional compliance gate (§5): a hard-blocked client cannot open a
-  // dossier. Softer states (SOFT_BLOCK/ESCALATED) pass so freight keeps moving —
-  // the flags surface on the 360 and the override dialog logs the reason.
+async function insertForCreate(client, { data, actor = {} }) {
+  // This is deliberately boundary-free: callers such as opportunity.win own a
+  // larger transaction that must commit the dossier link and the opportunity
+  // transition together. It also performs no post-commit initialization.
   if (data.client_id) {
     const gate = await compliance.assertAllowed(client, { kind: "client", partyId: data.client_id, action: "dossier_create" });
     if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
   }
-  // Outside the transaction: it only reads, and a validation failure should not
-  // have opened one.
   const write = await foldDetails(client, { data, enforceRequired: true });
-  await client.query("BEGIN");
-  let row;
-  try {
-    if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
-    // `ref` used to be taken from the payload when one was supplied. It is now
-    // dropped, unconditionally and for every caller — the REST validator never
-    // accepted one, but `service.create` is also called IN PROCESS by the
-    // sales→operations handoff, the outbox handler and the AI action registry,
-    // and none of those should be able to choose a file's reference either. A
-    // reference nobody outside this allocator can pick is the whole point.
-    const fields = { ...write };
-    delete fields.ref;
-    const alloc = await numbering.allocateOperationReference(client, {
-      entityId: fields.entity_id,
-      serviceTypeId: fields.service_type_id || null,
-      write: (ref) => repo.insert(client, { ...fields, ref, status: "OPEN" }),
-    });
-    row = alloc.row;
-    await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: row });
-    await client.query("COMMIT");
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
 
-  // Both of these run outside the transaction above on purpose:
-  // milestone.instantiate opens its own BEGIN/COMMIT (nesting would make its
-  // COMMIT close ours), and resolvePlaces may wait on an HTTP geocode.
-  await seedMilestones(client, row, actor);
-  await seedItinerary(client, row);
-  return await resolvePlaces(client, row);
+  const fields = { ...write };
+  delete fields.ref;
+  const alloc = await numbering.allocateOperationReference(client, {
+    entityId: fields.entity_id,
+    serviceTypeId: fields.service_type_id || null,
+    write: (ref) => repo.insert(client, { ...fields, ref, status: "OPEN" }),
+  });
+  const row = alloc.row;
+  await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, actorUserId: actor.user_id || null });
+  await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: row });
+  return row;
+}
+
+async function initializeCreated(client, { dossier, actor = {} }) {
+  // Never call while a business transaction is open. Milestone instantiation
+  // owns its transaction and place resolution may wait on a geocoder.
+  await seedMilestones(client, dossier, actor);
+  await seedItinerary(client, dossier);
+  return resolvePlaces(client, dossier);
+}
+
+async function create(client, { data, actor = {} }) {
+  const row = await atomically(client, () => insertForCreate(client, { data, actor }));
+  return initializeCreated(client, { dossier: row, actor });
 }
 
 /** The two dates the milestone chain is scheduled against, in the order
@@ -549,4 +545,7 @@ module.exports = {
   // `create` stays for every caller that opens a file in one shot — the AI
   // path, the sales→operations handoff, imports.
   createDraft, promote, sweepDrafts,
+  // Boundary-free insertion for a wider business transaction, followed by an
+  // explicit post-commit initializer.
+  insertForCreate, initializeCreated,
 };

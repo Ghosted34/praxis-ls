@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -76,7 +77,7 @@ export function QuotationsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
-        title="Quotations"
+        title={tr("Quotations")}
         description="Priced offers between opportunity and invoice — draft, send, accept."
         action={
           <Button

@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -180,7 +181,7 @@ export function ClientForm({
           <FormField
             form={form}
             name="country_code"
-            label="Country"
+            label={tr("Country")}
             required
             className="sm:col-span-2"
           >
@@ -192,7 +193,7 @@ export function ClientForm({
               />
             )}
           </FormField>
-          <FormField form={form} name="legal_name" label="Legal name" required>
+          <FormField form={form} name="legal_name" label={tr("Legal name")} required>
             {(field) => (
               <Input
                 {...field}
@@ -237,7 +238,7 @@ export function ClientForm({
           <FormField
             form={form}
             name="entity_id"
-            label="Corporate entity"
+            label={tr("Corporate entity")}
             hint="Which of our entities bills this client"
           >
             {(field) => (
@@ -304,7 +305,7 @@ export function ClientForm({
                   onChange={(e) =>
                     setAddress({ ...address, city: e.target.value })
                   }
-                  placeholder="Douala"
+                  placeholder={tr("Douala")}
                 />
               </label>
             </>
@@ -371,12 +372,12 @@ export function ClientForm({
             )}
           </FormField>
           {!isNew && (
-            <FormField form={form} name="is_active" label="Active">
+            <FormField form={form} name="is_active" label={tr("Active")}>
               {(field) => (
                 <Checkbox
                   checked={field.value !== false}
                   onCheckedChange={field.onChange}
-                  label={<span className="sr-only">Active</span>}
+                  label={<span className="sr-only">{tr("Active")}</span>}
                 />
               )}
             </FormField>
@@ -435,7 +436,7 @@ export function ClientsPage() {
       label: "WHT",
       render: (r) =>
         r.is_withholding_agent ? (
-          <Pill tone="blue">Agent</Pill>
+          <Pill tone="blue">{tr("Agent")}</Pill>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -450,14 +451,14 @@ export function ClientsPage() {
   return (
     <section className={shell}>
       <PageHeader
-        title="Clients"
+        title={tr("Clients")}
         description="Customer master — terms, credit and withholding status."
-        action={<Button onClick={() => setEditing("new")}>New client</Button>}
+        action={<Button onClick={() => setEditing("new")}>{tr("New client")}</Button>}
       />
       <KpiRow>
-        <KpiTile label="Clients" value={num(clients.length)} />
+        <KpiTile label={tr("Clients")} value={num(clients.length)} />
         <KpiTile
-          label="Active"
+          label={tr("Active")}
           value={num(clients.filter((c) => c.is_active).length)}
         />
         <KpiTile

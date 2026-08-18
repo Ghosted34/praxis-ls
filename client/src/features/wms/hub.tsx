@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { tr } from "@/lib/i18n";
 import { hubTabs } from "@/app/layout/areas";
 import {
   LocationsPage,
@@ -12,7 +13,7 @@ import {
 export function WarehouseHub() {
   return (
     <TabbedHub
-      eyebrow="Warehouse"
+      eyebrow={tr("Warehouse")}
       basePath="/wms"
       inPlace
       tabs={hubTabs("/wms", {

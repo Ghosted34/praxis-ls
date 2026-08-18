@@ -19,6 +19,7 @@
  * against the summary does not lose one to reach the other.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -132,7 +133,7 @@ export function AppraisalReviewModal({
       {q.error ? (
         <ErrorState message={q.error} />
       ) : !r ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">{tr("Loading…")}</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -172,9 +173,9 @@ export function AppraisalReviewModal({
                   <thead className="sticky top-0 z-10 bg-[rgb(var(--surface))]">
                     <tr className="border-b text-left">
                       <th className="px-3 py-2 font-semibold uppercase text-muted-foreground">Metric</th>
-                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">Weight</th>
-                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">Evidence</th>
-                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">Rating</th>
+                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Weight")}</th>
+                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Evidence")}</th>
+                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Rating")}</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
@@ -100,7 +101,7 @@ function TemplateForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required>
+          <Field label={tr("Name")} required>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -122,7 +123,7 @@ function TemplateForm({
               disabled={!!editing}
             />
           </Field>
-          <Field label="Status">
+          <Field label={tr("Status")}>
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               {TEMPLATE_STATUS.map((s) => (
                 <option key={s} value={s}>
@@ -215,10 +216,10 @@ export function DocumentTemplatesPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>Type</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Name")}</TH>
+              <TH>{tr("Type")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

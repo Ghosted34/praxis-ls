@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -19,40 +20,13 @@ import { errMsg, useList, useRefresh } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
-import { tokenStore } from "@/lib/token-store";
+import { downloadVaultDoc } from "@/lib/vault-file";
 
 const FILE_CONTEXTS = [
   { value: "", label: "— none —" },
   { value: "OPS", label: "Operations" },
   { value: "OVH", label: "Overhead" },
 ];
-
-/** Auth-gated binary download: the /download endpoint returns bytes (not JSON),
- *  so we fetch with the Bearer token + env header and open the blob in a tab. */
-async function downloadDocument(id: string) {
-  const token = tokenStore.getAccess();
-  const res = await fetch(`/api/tenant/documents/${id}/download`, {
-    headers: {
-      "X-Praxis-Env": tokenStore.getEnv(),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (!res.ok) {
-    let msg = "Download failed.";
-    try {
-      const j = await res.json();
-      if (res.status === 409) msg = "This document hasn't been rendered yet.";
-      else if (j?.error?.message) msg = String(j.error.message);
-    } catch {
-      /* non-JSON body */
-    }
-    throw new Error(msg);
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -123,7 +97,7 @@ function UploadDocumentForm({
       size="lg"
     >
       <div className="space-y-4">
-        <Field label="File" required>
+        <Field label={tr("File")} required>
           <input
             type="file"
             accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.docx,.xlsx"
@@ -132,7 +106,7 @@ function UploadDocumentForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Document type" hint="e.g. invoice, bill_of_lading">
+          <Field label={tr("Document type")} hint="e.g. invoice, bill_of_lading">
             <Input
               value={docType}
               onChange={(e) => setDocType(e.target.value)}
@@ -152,7 +126,7 @@ function UploadDocumentForm({
             </Select>
           </Field>
           <Field
-            label="Reference"
+            label={tr("Reference")}
             hint="Optional business key (entity_ref)"
             className="sm:col-span-2"
           >
@@ -208,7 +182,26 @@ export function DocumentsPage() {
       await tenant(`/documents/${id}`, { method: "DELETE" });
       reload();
     });
-  const download = (id: string) => withRow(id, () => downloadDocument(id));
+  const download = (r: {
+    doc_id: string;
+    doc_type?: string | null;
+    entity_ref?: string | null;
+  }) =>
+    withRow(String(r.doc_id), () => {
+      // A readable filename from what the row shows: type + reference, never a
+      // bare UUID. A real Save-As (anchor click) rather than a pop-up tab —
+      // the fetch is awaited first, so window.open after it gets pop-up
+      // blocked and the button appears to do nothing.
+      const base = [
+        r.doc_type
+          ? String(r.doc_type).toLowerCase().replace(/[^\w.-]+/g, "_")
+          : "document",
+        r.entity_ref
+          ? String(r.entity_ref).replace(/[^\w.-]+/g, "_")
+          : String(r.doc_id).slice(0, 8),
+      ].join("-");
+      return downloadVaultDoc(String(r.doc_id), `${base}.pdf`);
+    });
 
   const shown = React.useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -228,7 +221,7 @@ export function DocumentsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
-        title="Documents"
+        title={tr("Documents")}
         description="The confidential document vault — uploaded evidence with tamper-evident fingerprints."
         action={
           <Button onClick={() => setUploadOpen(true)}>Upload document</Button>
@@ -274,12 +267,12 @@ export function DocumentsPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Type</TH>
-              <TH>Reference</TH>
+              <TH>{tr("Type")}</TH>
+              <TH>{tr("Reference")}</TH>
               <TH>Ver.</TH>
-              <TH>Status</TH>
+              <TH>{tr("Status")}</TH>
               <TH>Uploaded</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>
@@ -302,7 +295,15 @@ export function DocumentsPage() {
                         size="sm"
                         variant="outline"
                         loading={rowBusy === id}
-                        onClick={() => download(id)}
+                        onClick={() =>
+                          download({
+                            doc_id: String(r.doc_id),
+                            doc_type:
+                              r.doc_type == null ? undefined : String(r.doc_type),
+                            entity_ref:
+                              r.entity_ref == null ? undefined : String(r.entity_ref),
+                          })
+                        }
                       >
                         Download
                       </Button>

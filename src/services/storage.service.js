@@ -35,6 +35,11 @@ const { AppError } = require("../utils/errors");
 
 const DRIVER = config.STORAGE_DRIVER || "local";
 
+/** Per-object size cap for the local driver (and enforced before any write).
+ *  Upload paths apply their own tighter limits; this is the storage floor so a
+ *  hostile buffer can never grow a file without bound. */
+const MAX_BYTES = 25 * 1024 * 1024;
+
 /* ── shared ────────────────────────────────────────────────────────────── */
 
 // S3 credentials are DEPLOY-WIDE and resolve from the platform_setting store
@@ -69,6 +74,7 @@ async function resolveS3() {
     const r = await platformSettings.resolve("storage", "s3");
     if (r) { value = r.value || {}; secret = r.secret; }
   } catch {
+     /* @silent:storage|parse|teardown */
     // platform store unavailable (e.g. tests / no DB) → fall back to env
   }
   _s3cfg = {
@@ -158,9 +164,29 @@ function localPath(key) {
 
 const local = {
   async put(buffer, { key, contentType }) {
+    // The buffer is network-supplied (uploads, PDF renders). The KEY is the
+    // attacker-controlled half and is fully validated below; the BYTES are
+    // bounded here so a hostile upload can never grow a file on disk without
+    // limit, and the write itself is confined to the storage root by
+    // `localPath` (charset allow-list + resolved-path containment). A Buffer
+    // is required — a caller handing us a string would have skipped every
+    // size check upstream.
+    if (!Buffer.isBuffer(buffer)) {
+      throw new AppError("BAD_STORAGE_BUFFER", "Only binary buffers can be stored", 400);
+    }
+    if (buffer.length > MAX_BYTES) {
+      throw new AppError("STORAGE_LIMIT", `File exceeds the ${MAX_BYTES} byte storage limit`, 413);
+    }
     const finalKey = assertSafeKey(key || crypto.randomBytes(16).toString("hex"));
     const filePath = localPath(finalKey);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
+    // The bytes ARE network-supplied — this is a storage boundary, which is
+    // the one place untrusted bytes are allowed to reach disk. What must be
+    // safe is the PATH, and it is: `localPath` proves containment inside the
+    // storage root (charset allow-list + resolved-path check) and the buffer
+    // is type-checked and size-capped above. The taint query cannot see the
+    // path validation, so it is stated here.
+    // codeql[js/http-to-file-access] — validated-path storage write (see above)
     await fs.writeFile(filePath, buffer);
     return { key: finalKey, public_url: publicUrl(finalKey), size: buffer.length, content_type: contentType };
   },

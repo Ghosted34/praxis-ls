@@ -23,6 +23,124 @@ async function revoke(client, id) {
 async function clientDossiers(client, clientId) {
   return (await client.query("SELECT dossier_id, ref, status, created_at FROM dossier_visible WHERE client_id = $1 ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
 }
+
+// ── Client documents (PRD §11.1 "document vault — own docs") ────────────────
+//
+// A document is client-visible ONLY when its registry doc type carries
+// `client_visible: true` (dictionary_ref.extra, seeded for BL/MAWB; a tenant
+// adds more from the picker) AND the vault row is VERIFIED AND it belongs to
+// this client — either filed against one of their dossiers or filed directly
+// against the client (vault.client_id, 0669). Docs with a free-text doc_type
+// and no registry reference are deliberately invisible: the registry decision
+// is the thing that says "who a document is for", and nothing else is allowed
+// to second-guess it.
+
+const CLIENT_DOCUMENT_SELECT = `
+  SELECT v.doc_id, v.doc_type, v.original_name, v.status, v.created_at,
+         v.dossier_id, d.ref AS dossier_ref,
+         dr.name_en, dr.name_fr, dr.code AS doc_type_code
+    FROM document_vault v
+    LEFT JOIN dossier_visible d ON d.dossier_id = v.dossier_id
+    LEFT JOIN dictionary_ref dr ON dr.ref_id = v.doc_type_ref_id
+   WHERE v.status = 'VERIFIED'
+     AND dr.extra->>'client_visible' = 'true'
+     AND ( (v.dossier_id IS NOT NULL AND d.client_id = $1)
+        OR (v.client_id = $1) )`;
+
+async function clientDocuments(client, clientId) {
+  return (await client.query(
+    `${CLIENT_DOCUMENT_SELECT} ORDER BY v.created_at DESC LIMIT 200`,
+    [clientId],
+  )).rows;
+}
+
+/** Ownership + visibility check for one document, or null. The download route
+ *  goes through this so the bytes are served only when the doc is VERIFIED,
+ *  client-visible by type, and the caller's client actually owns it. */
+async function clientDocument(client, clientId, docId) {
+  const { rows } = await client.query(
+    `${CLIENT_DOCUMENT_SELECT} AND v.doc_id = $2 LIMIT 1`,
+    [clientId, docId],
+  );
+  return rows[0] || null;
+}
+
+// ── Client onboarding command centre (PRD §11.1, migration 10706) ────────────
+
+async function onboardingSteps(client, clientId) {
+  const { rows } = await client.query(
+    `SELECT client_onboarding_step_id, step_key, label_en, label_fr,
+            done, done_at, done_by, sort_order
+       FROM client_onboarding_step
+      WHERE client_id = $1 ORDER BY sort_order, created_at`,
+    [clientId],
+  );
+  return rows;
+}
+
+/** Seed the baseline checklist for a client if it has none yet. */
+async function seedOnboarding(client, clientId, defaults) {
+  const { rows } = await client.query(
+    "INSERT INTO client_onboarding_step (client_id, step_key, label_en, label_fr, sort_order) SELECT $1, d.key, d.en, d.fr, d.sort FROM jsonb_to_recordset($2::jsonb) AS d(key text, en text, fr text, sort int) ON CONFLICT (client_id, step_key) DO NOTHING RETURNING 1",
+    [clientId, JSON.stringify(defaults)],
+  );
+  return rows.length;
+}
+
+async function markOnboardingStep(client, clientId, stepKey, actorUserId) {
+  const { rows } = await client.query(
+    `UPDATE client_onboarding_step
+        SET done = NOT done, done_at = CASE WHEN NOT done THEN now() ELSE NULL END,
+            done_by = CASE WHEN NOT done THEN $3 ELSE NULL END
+      WHERE client_id = $1 AND step_key = $2
+      RETURNING *`,
+    [clientId, stepKey, actorUserId],
+  );
+  return rows[0] || null;
+}
+
+// ── Client portal secure messaging (PRD §11.1, migration 10707) ──────────────
+
+async function clientMessages(client, clientId, { dossierId = null, limit = 200 } = {}) {
+  const params = [clientId, limit];
+  let wh = "m.client_id = $1";
+  if (dossierId) {
+    params.push(dossierId);
+    wh += " AND m.dossier_id = $" + params.length;
+  }
+  const { rows } = await client.query(
+    `SELECT m.*, u.full_name AS author_name
+       FROM client_message m
+       LEFT JOIN app_user u ON u.user_id = m.author_user_id
+      WHERE ${wh} ORDER BY m.created_at ASC LIMIT $2`,
+    params,
+  );
+  return rows;
+}
+
+async function insertClientMessage(client, { clientId, dossierId = null, direction, body, authorUserId = null, authorEmail = null }) {
+  const { rows } = await client.query(
+    `INSERT INTO client_message (client_id, dossier_id, direction, body, author_user_id, author_email)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [clientId, dossierId, direction, body, authorUserId, authorEmail],
+  );
+  return rows[0];
+}
+
+// ── Self-service quoting (PRD §11.1, migration 10705) ────────────────────────
+
+async function clientQuoteRequests(client, clientId) {
+  const { rows } = await client.query(
+    `SELECT quote_request_id, public_ref, status, service_category, service_type,
+            origin_location, destination_location, estimated_weight,
+            cargo_description, created_at
+       FROM quote_request
+      WHERE client_id = $1
+      ORDER BY created_at DESC LIMIT 50`,
+    [clientId],
+  );
+  return rows;
+}
 /**
  * The client-facing milestone chain for one of their dossiers, plus the
  * published assumptions the dates rest on.
@@ -92,4 +210,4 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page };
+module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page, clientDocuments, clientDocument, onboardingSteps, seedOnboarding, markOnboardingStep, clientMessages, insertClientMessage, clientQuoteRequests };

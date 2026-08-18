@@ -29,7 +29,9 @@
  * bottom nav and a family sheet (`family-sheet.tsx`).
  */
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Link, NavLink } from "react-router-dom";
+import { navT } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { areaRoute, sectionRoute, type Area, type AreaSection } from "./areas";
 import {
@@ -125,6 +127,7 @@ function NavCluster({
   family: RibbonFamily;
   active?: RibbonArea;
 }) {
+  const { t } = useTranslation();
   const area = active ?? family.areas[0];
   if (!area) return null;
 
@@ -137,13 +140,13 @@ function NavCluster({
     asAreas
       ? family.areas.map((a) => ({
           key: a.area.key,
-          label: a.area.label,
+          label: navT(t, a.area.label),
           to: areaRoute(a.area),
           end: true,
         }))
       : area.sections.map((s: AreaSection) => ({
           key: s.key,
-          label: s.label,
+          label: navT(t, s.label),
           to: sectionRoute(area.area, s),
         }));
 
@@ -155,7 +158,7 @@ function NavCluster({
       <nav
         className="flex min-w-0 items-center gap-0.5"
         aria-label={
-          asAreas ? `${family.label} areas` : `${area.area.label} sections`
+          asAreas ? `${navT(t, family.label)} areas` : `${navT(t, area.area.label)} sections`
         }
       >
         {items.map((it, i) => (
@@ -179,7 +182,7 @@ function NavCluster({
             <button
               type="button"
               className={cn("ribbon-item", overflowHiddenAt(items.length))}
-              aria-label={`All ${asAreas ? family.label : area.area.label} destinations`}
+              aria-label={`All ${asAreas ? navT(t, family.label) : navT(t, area.area.label)} destinations`}
             >
               <MoreIcon />
             </button>
@@ -187,7 +190,7 @@ function NavCluster({
         >
           <DropdownLabel>
             <span className="micro">
-              {asAreas ? family.label : area.area.label}
+              {asAreas ? navT(t, family.label) : navT(t, area.area.label)}
             </span>
           </DropdownLabel>
           {items.map((it) => (
@@ -288,7 +291,7 @@ function CommandCluster({
 }
 
 export function Ribbon({ pathname }: { pathname: string }) {
-  const { access, resolved, prefs, setPrefs } = useShell();
+    const { access, resolved, prefs, setPrefs } = useShell();
   const families = React.useMemo(() => buildRibbon(access), [access]);
   const { family: routeFamily, area: routeArea } = React.useMemo(
     () => locate(families, pathname),

@@ -4,6 +4,7 @@
  * item by item. (Stock is decremented by the inventory move journal.)
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -252,7 +253,7 @@ function OrderDetail({
                 ))}
               </Select>
             </Field>
-            <Field label="Qty">
+            <Field label={tr("Qty")}>
               <Input
                 type="number"
                 min="1"
@@ -346,7 +347,7 @@ export function OutboundPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
-        title="Outbound"
+        title={tr("Outbound")}
         description="Pick, pack and dispatch outbound orders."
         action={
           <Button onClick={newOrder} loading={creating}>

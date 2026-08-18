@@ -26,19 +26,5 @@ async function listPO(client, q = {}) {
   const { rows } = await client.query("SELECT *, doc_number AS ref FROM purchase_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
-/**
- * A supplier's registration status, for the draft gate in the service (F10).
- *
- * Reads supplier_master directly rather than going through MOD-04's service:
- * this is a one-column read on the write path of every PO, and routing it
- * through another module's service would open that module's transaction inside
- * this one's.
- */
-async function supplierRegistrationStatus(client, supplierId) {
-  const { rows } = await client.query(
-    "SELECT registration_status, name FROM supplier_master WHERE supplier_id = $1", [supplierId],
-  );
-  return rows[0] || null;
-}
 
-module.exports = { insertPO, getPO, insertItem, deleteItems, listItems, update, listPO, supplierRegistrationStatus };
+module.exports = { insertPO, getPO, insertItem, deleteItems, listItems, update, listPO };

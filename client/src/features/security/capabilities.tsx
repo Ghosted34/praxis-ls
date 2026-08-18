@@ -6,6 +6,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -70,7 +71,7 @@ function CapabilityForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Field
-          label="Code"
+          label={tr("Code")}
           required
           hint="Fixed set — the database rejects anything outside these four."
         >
@@ -86,7 +87,7 @@ function CapabilityForm({
             ))}
           </Select>
         </Field>
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -156,7 +157,7 @@ export function CapabilitiesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
-        title="Capabilities"
+        title={tr("Capabilities")}
         description="ISSUER / VALIDATOR / APPROVER / LINE_MANAGER — who may act on a document, independent of which module they can see."
         action={
           <Button onClick={() => setForm({ cap: null })}>New capability</Button>

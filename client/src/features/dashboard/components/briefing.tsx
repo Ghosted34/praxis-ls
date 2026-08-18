@@ -12,6 +12,7 @@
  * awaiting approval": a briefing lists what needs doing, not what does not.
  */
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 
 type Fact = { n: number; one: string; many: string; to: string };
@@ -29,6 +30,7 @@ export function Briefing({
   unpostedJournals: number;
   isTest: boolean;
 }) {
+  const { t } = useTranslation();
   const facts: Fact[] = [
     {
       n: activeFiles,
@@ -103,8 +105,8 @@ export function Briefing({
         )}
         <p className="mt-1.5 text-label text-muted-foreground">
           {isTest
-            ? "Sandbox data — the Control Tower is in TEST."
-            : "Live from the Control Tower."}
+            ? t("dash.sandboxNote")
+            : t("dash.liveNote")}
         </p>
       </div>
     </Card>

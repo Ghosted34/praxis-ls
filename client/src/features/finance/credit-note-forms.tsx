@@ -5,6 +5,7 @@
  * screen and its four forms at once.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { errMsg } from "@/lib/use-resource";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ function CreditNoteLines({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Lines</span>
+        <span className="text-sm font-medium">{tr("Lines")}</span>
         <Button
           type="button"
           size="sm"
@@ -92,7 +93,7 @@ function CreditNoteLines({
             min="0"
             step="0.01"
             className="num text-right"
-            placeholder="Amount"
+            placeholder={tr("Amount")}
             aria-label={`Amount, line ${i + 1}`}
             value={l.amount}
             onChange={(e) => setLine(i, { amount: e.target.value })}
@@ -113,7 +114,7 @@ function CreditNoteLines({
             variant="ghost"
             disabled={lines.length <= 1}
             onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
-            aria-label="Remove line"
+            aria-label={tr("Remove line")}
           >
             ✕
           </Button>
@@ -197,11 +198,11 @@ export function CreditNoteCreateForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <SearchSelect
               path="/entities"
               value={entityLabel}
-              placeholder="Search entities…"
+              placeholder={tr("Search entities…")}
               getLabel={(r) =>
                 r.code
                   ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}`
@@ -211,11 +212,11 @@ export function CreditNoteCreateForm({
               onSelect={(r) => setEntityId(String(r.entity_id))}
             />
           </Field>
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <SearchSelect
               path="/clients"
               value={clientLabel}
-              placeholder="Search clients…"
+              placeholder={tr("Search clients…")}
               getLabel={(r) =>
                 r.ref
                   ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}`
@@ -382,11 +383,11 @@ export function CreditNoteEditForm({
       ) : (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Client">
+            <Field label={tr("Client")}>
               <SearchSelect
                 path="/clients"
                 value={clientLabel}
-                placeholder="Search clients…"
+                placeholder={tr("Search clients…")}
                 getLabel={(r) =>
                   r.ref
                     ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}`
@@ -502,7 +503,7 @@ export function CreditNotePostForm({
               onChange={(e) => setEntryDate(e.target.value)}
             />
           </Field>
-          <Field label="Source document ref">
+          <Field label={tr("Source document ref")}>
             <Input
               value={sourceRef}
               onChange={(e) => setSourceRef(e.target.value)}

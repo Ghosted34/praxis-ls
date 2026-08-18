@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Modal, Field } from "@/components/ui/modal";
@@ -132,10 +133,10 @@ export function QuotationDetail({
             {lines.length > 0 && (
               <div className="rounded-lg border">
                 <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-                  <span>Item</span>
-                  <span className="w-12 text-right">Qty</span>
-                  <span className="w-24 text-right">Unit</span>
-                  <span className="w-28 text-right">Total</span>
+                  <span>{tr("Item")}</span>
+                  <span className="w-12 text-right">{tr("Qty")}</span>
+                  <span className="w-24 text-right">{tr("Unit")}</span>
+                  <span className="w-28 text-right">{tr("Total")}</span>
                 </div>
                 {lines.map((l) => (
                   <div
@@ -173,14 +174,14 @@ export function QuotationDetail({
             {action === "send" && (
               <div className="rounded-lg border bg-muted/30 p-3">
                 <Field
-                  label="Entity"
+                  label={tr("Entity")}
                   hint="Numbers the quotation on send"
                   required
                 >
                   <SearchSelect
                     path="/entities"
                     value={entityLabelOf(entities, entityId)}
-                    placeholder="Search entities…"
+                    placeholder={tr("Search entities…")}
                     getLabel={entityText}
                     getKey={(en) => String(en.entity_id)}
                     onSelect={(en) => setEntityId(String(en.entity_id))}

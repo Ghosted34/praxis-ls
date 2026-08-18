@@ -35,6 +35,7 @@
  * read. See migration 0660's header for the storage split.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Select } from "@/components/ui/modal";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -191,7 +192,7 @@ export function DossierForm({
     >
       <form className="space-y-5" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
+          <Field label={tr("Entity")} required>
             <Select
               value={entityId}
               onChange={(e) => setEntityId(e.target.value)}
@@ -204,7 +205,7 @@ export function DossierForm({
               ))}
             </Select>
           </Field>
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <Select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -218,7 +219,7 @@ export function DossierForm({
             </Select>
           </Field>
           <Field
-            label="Service type"
+            label={tr("Service type")}
             className="sm:col-span-2"
             hint="Choosing a service decides which details this file captures, and its milestone chain."
           >
@@ -258,7 +259,7 @@ export function DossierForm({
         {form.error && <ErrorState message={form.error} />}
 
         {form.data && !form.data.field_set && (
-          <Callout tone="warn" title="No detail form yet">
+          <Callout tone="warn" title={tr("No detail form yet")}>
             {chosen?.name_en || chosen?.name_fr || "This service type"} has no
             shipment-detail form. Add one under Service types → Details; until
             then this file records only the fields above.

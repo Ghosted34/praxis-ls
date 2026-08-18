@@ -5,6 +5,7 @@
  * DRAFT → OPEN → CLOSED lifecycle.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -177,21 +178,21 @@ function AddApplicantForm({
       description="Add a candidate to this vacancy's pipeline. The more you fill in, the more the AI score has to read."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Full name" required>
+        <Field label={tr("Full name")} required>
           <Input
             value={f.full_name}
             onChange={(e) => set("full_name", e.target.value)}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Email">
+          <Field label={tr("Email")}>
             <Input
               type="email"
               value={f.email}
               onChange={(e) => set("email", e.target.value)}
             />
           </Field>
-          <Field label="Phone">
+          <Field label={tr("Phone")}>
             <Input
               value={f.phone}
               onChange={(e) => set("phone", e.target.value)}
@@ -199,14 +200,14 @@ function AddApplicantForm({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Address">
+          <Field label={tr("Address")}>
             <Input
               value={f.address}
               onChange={(e) => set("address", e.target.value)}
             />
           </Field>
           <Field
-            label="Source"
+            label={tr("Source")}
             hint="Where they came from — referral, walk-in, LinkedIn."
           >
             <Input
@@ -267,7 +268,7 @@ function AddApplicantForm({
           </Field>
         </div>
         <Field
-          label="Skills"
+          label={tr("Skills")}
           hint="Comma separated. The AI score matches these against the role's required skills."
         >
           <Input
@@ -373,11 +374,11 @@ function NewVacancyForm({
     <Modal
       open
       onClose={onClose}
-      title="New vacancy"
+      title={tr("New vacancy")}
       description="Open a role and start collecting applicants."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input
             value={f.title}
             onChange={(e) => set("title", e.target.value)}
@@ -386,7 +387,7 @@ function NewVacancyForm({
         </Field>
         {choices.length > 1 && (
           <Field
-            label="Company"
+            label={tr("Company")}
             hint="Which corporate entity is hiring. It sets the vacancy's currency."
           >
             <Select
@@ -402,12 +403,12 @@ function NewVacancyForm({
           </Field>
         )}
         <Field
-          label="Department"
-          hint="From your organigramme — Security › Scopes."
+          label={tr("Department")}
+          hint={tr("From your organigramme — Security › Scopes.")}
         >
           <DepartmentSelect value={dept} onChange={setDept} />
         </Field>
-        <Field label="Description">
+        <Field label={tr("Description")}>
           <Input
             value={f.description}
             onChange={(e) => set("description", e.target.value)}
@@ -860,9 +861,9 @@ export function VacanciesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Vacancies"
+        title={tr("Vacancies")}
         description="Recruitment pipeline — move applicants through the hiring stages."
-        action={<Button onClick={() => setCreating(true)}>New vacancy</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New vacancy")}</Button>}
       />
       <HubTabs />{" "}
       {vacancies.error ? (
@@ -873,7 +874,7 @@ export function VacanciesPage() {
             <div
               className="flex flex-wrap gap-1"
               role="group"
-              aria-label="Filter by status"
+              aria-label={tr("Filter by status")}
             >
               {FILTERS.map((f) => {
                 const on = filter === f.key;

@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -213,7 +214,7 @@ export function ProposalForm({
       size="xl"
     >
       <div className="space-y-4">
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -222,7 +223,7 @@ export function ProposalForm({
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           {editing ? (
-            <Field label="With">
+            <Field label={tr("With")}>
               <Input
                 value={
                   withKind === "none"
@@ -234,7 +235,7 @@ export function ProposalForm({
             </Field>
           ) : (
             <>
-              <Field label="With">
+              <Field label={tr("With")}>
                 <Select
                   value={withKind}
                   onChange={(e) => {
@@ -242,9 +243,9 @@ export function ProposalForm({
                     setWithId("");
                   }}
                 >
-                  <option value="none">— none —</option>
-                  <option value="lead">Lead</option>
-                  <option value="client">Client</option>
+                  <option value="none">{tr("— none —")}</option>
+                  <option value="lead">{tr("Lead")}</option>
+                  <option value="client">{tr("Client")}</option>
                 </Select>
               </Field>
               {withKind !== "none" && (
@@ -273,12 +274,12 @@ export function ProposalForm({
               )}
             </>
           )}
-          <Field label="Opportunity" hint="Optional — link to a pipeline deal">
+          <Field label={tr("Opportunity")} hint="Optional — link to a pipeline deal">
             <Select
               value={opportunityId}
               onChange={(e) => setOpportunityId(e.target.value)}
             >
-              <option value="">— none —</option>
+              <option value="">{tr("— none —")}</option>
               {(opportunities || []).map((o) => (
                 <option
                   key={String(o.opportunity_id)}
@@ -292,20 +293,20 @@ export function ProposalForm({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)}><option value="BILINGUAL">English + French</option><option value="EN">English</option><option value="FR">French</option></Select></Field>
-          <Field label="Currency"><Input value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></Field>
-          <Field label="Service category"><Input value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)} /></Field>
-          <Field label="Incoterm"><Input value={incoterm} onChange={(e) => setIncoterm(e.target.value)} /></Field>
-          <Field label="Origin"><Input value={origin} onChange={(e) => setOrigin(e.target.value)} /></Field>
-          <Field label="Destination"><Input value={destination} onChange={(e) => setDestination(e.target.value)} /></Field>
+          <Field label="Language"><Select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)}><option value="BILINGUAL">English + French</option><option value="EN">{tr("English")}</option><option value="FR">French</option></Select></Field>
+          <Field label={tr("Currency")}><Input value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></Field>
+          <Field label={tr("Service category")}><Input value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)} /></Field>
+          <Field label={tr("Incoterm")}><Input value={incoterm} onChange={(e) => setIncoterm(e.target.value)} /></Field>
+          <Field label={tr("Origin")}><Input value={origin} onChange={(e) => setOrigin(e.target.value)} /></Field>
+          <Field label={tr("Destination")}><Input value={destination} onChange={(e) => setDestination(e.target.value)} /></Field>
           <Field label="Validity (days)"><Input type="number" min="1" value={validity} onChange={(e) => setValidity(e.target.value)} /></Field>
           <Field label="Payment conditions"><Input value={payment} onChange={(e) => setPayment(e.target.value)} /></Field>
-          <Field label="Cargo description"><Input value={cargo} onChange={(e) => setCargo(e.target.value)} /></Field>
+          <Field label={tr("Cargo description")}><Input value={cargo} onChange={(e) => setCargo(e.target.value)} /></Field>
           <Field label="Estimated weight"><Input type="number" min="0" value={estimatedWeight} onChange={(e) => setEstimatedWeight(e.target.value)} /></Field>
           <Field label="Customs target"><Input value={customsTarget} onChange={(e) => setCustomsTarget(e.target.value)} /></Field>
           <Field label="Transit target"><Input value={transitTarget} onChange={(e) => setTransitTarget(e.target.value)} /></Field>
           <Field label="Free demurrage days"><Input type="number" min="0" value={freeDays} onChange={(e) => setFreeDays(e.target.value)} /></Field>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={projectCargo} onChange={(e) => setProjectCargo(e.target.checked)} /> Project cargo</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={projectCargo} onChange={(e) => setProjectCargo(e.target.checked)} />{tr("Project cargo")}</label>
         </div>
 
         {/* Narrative sections */}

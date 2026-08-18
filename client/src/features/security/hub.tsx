@@ -10,6 +10,7 @@
  * overview reads as a posture summary across exactly those axes.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -117,12 +118,12 @@ function Overview() {
 
       <KpiRow>
         <KpiTile
-          label="Users"
+          label={tr("Users")}
           value={num(all.length)}
           hint={`${active} active`}
         />
         <KpiTile
-          label="Roles"
+          label={tr("Roles")}
           value={num((roles.rows || []).length)}
           hint={`${(roles.rows || []).filter((r) => !r.is_system).length} tenant-defined`}
         />
@@ -213,9 +214,9 @@ function Overview() {
               >
                 <span className="flex items-center gap-2">
                   {s.killed_at ? (
-                    <Pill tone="bad">Revoked</Pill>
+                    <Pill tone="bad">{tr("Revoked")}</Pill>
                   ) : (
-                    <Pill tone="ok">Active</Pill>
+                    <Pill tone="ok">{tr("Active")}</Pill>
                   )}
                   <span className="num text-muted-foreground">
                     {s.ip || "unknown IP"}

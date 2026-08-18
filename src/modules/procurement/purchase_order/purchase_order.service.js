@@ -17,39 +17,9 @@ const { assertNoPendingChain } = require("../../../services/workflow/pending-gua
 const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { assertSupplierUsable } = require("../supplier-eligibility");
 
 const ref = (id) => "purchase_order:" + id;
-
-/**
- * A supplier that is still a DRAFT cannot be put on a purchase order (F10).
- *
- * This is the other half of "approving a vendor registration creates a DRAFT
- * supplier". The legacy refused to create the supplier at all and called the
- * re-typing a control; this system creates it and puts the control where it
- * belongs — the record exists, is visible, carries the applicant's documents,
- * and buys nothing until somebody holding MOD-04 `approve` verifies it
- * (party-lifecycle.verify, which itself requires the mandatory scans).
- *
- * NULL passes. Suppliers that predate the party-lifecycle columns carry no
- * registration_status, and refusing every one of them would break purchasing
- * for existing tenants to enforce a rule about new records. PENDING_REVIEW is
- * refused with DRAFT: both mean "not yet checked".
- */
-const NOT_YET_USABLE = ["DRAFT", "PENDING_REVIEW"];
-
-async function assertSupplierUsable(client, supplierId) {
-  if (!supplierId) return;
-  const row = await repo.supplierRegistrationStatus(client, supplierId);
-  if (!row) throw new AppError("NOT_FOUND", "Supplier not found", 404);
-  if (NOT_YET_USABLE.includes(row.registration_status)) {
-    throw new AppError(
-      "SUPPLIER_NOT_VERIFIED",
-      `${row.name || "This supplier"} is still a ${row.registration_status} record — verify it in the supplier registry before raising a purchase order against it.`,
-      422,
-      { supplier_id: ["supplier is not verified"] },
-    );
-  }
-}
 
 async function replaceItems(client, poId, items) {
   await repo.deleteItems(client, poId);
@@ -106,6 +76,9 @@ async function transition(client, { poId, to, entityId = null, date = null, acto
   }
   await client.query("BEGIN");
   try {
+    // A draft may have been created before verification was revoked. Re-check
+    // under a row lock at issue time, before allocating a number or capturing.
+    if (to === "ISSUED_LOCKED") await assertSupplierUsable(client, po.supplier_id, { required: true, lock: true });
     const fields = { status: to };
     if (to === "ISSUED_LOCKED" && !po.doc_number) {
       if (!entityId) throw new AppError("ENTITY_REQUIRED", "entity_id required to issue (number allocation)", 422);
@@ -158,4 +131,4 @@ const list = (client, q) => repo.listPO(client, q);
 // A cleared approval chain approves+locks the issued PO (BUILD_CONVENTIONS §2/§5).
 onApproved.register("purchase_order", (client, { id, actor }) => transition(client, { poId: id, to: "APPROVED_LOCKED", actor: actor || {}, viaChain: true }));
 
-module.exports = { createDraft, updateDraft, transition, get, list, assertSupplierUsable, NOT_YET_USABLE };
+module.exports = { createDraft, updateDraft, transition, get, list, assertSupplierUsable };

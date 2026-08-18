@@ -7,6 +7,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
@@ -116,7 +117,7 @@ function KeyForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Key" hint="Stable identifier used in code" required>
+          <Field label={tr("Key")} hint="Stable identifier used in code" required>
             <Input
               value={key}
               onChange={(e) => setKey(e.target.value)}
@@ -124,7 +125,7 @@ function KeyForm({
               disabled={locked}
             />
           </Field>
-          <Field label="Provider" required>
+          <Field label={tr("Provider")} required>
             <Input
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -294,10 +295,10 @@ export function ApiKeysPage() {
           <THead>
             <TR>
               <TH>Integration</TH>
-              <TH>Provider</TH>
+              <TH>{tr("Provider")}</TH>
               <TH>Secret</TH>
-              <TH>Updated</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Updated")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

@@ -13,6 +13,7 @@
  * optional passes. Required fields all live in Basic by design.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,9 +174,9 @@ function NewAccountPanel({
 
   return (
     <div className="mt-2 rounded-lg border border-dashed bg-muted/30 p-3">
-      <p className="mb-2 text-xs font-semibold text-foreground">New account</p>
+      <p className="mb-2 text-xs font-semibold text-foreground">{tr("New account")}</p>
       <div className="grid gap-2 sm:grid-cols-2">
-        <Field label="Code" required>
+        <Field label={tr("Code")} required>
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
@@ -183,7 +184,7 @@ function NewAccountPanel({
             className="num"
           />
         </Field>
-        <Field label="Label (FR)" required>
+        <Field label={tr("Label (FR)")} required>
           <Input
             value={labelFr}
             onChange={(e) => setLabelFr(e.target.value)}
@@ -545,11 +546,11 @@ export function DictForm({
         {step === 1 && (
           <>
             <Field
-              label="Direction"
+              label={tr("Direction")}
               hint="Sets the code letter and prefilters the account picker."
             >
               <Segmented
-                label="Direction"
+                label={tr("Direction")}
                 value={f.direction}
                 onChange={(v) => set({ direction: v })}
                 options={DIRECTIONS.map((d) => ({
@@ -566,14 +567,14 @@ export function DictForm({
                   placeholder="Frais portuaires (THC)"
                 />
               </Field>
-              <Field label="Name (EN)" required>
+              <Field label={tr("Name (EN)")} required>
                 <Input
                   value={f.label_en}
                   onChange={(e) => set({ label_en: e.target.value })}
                   placeholder="Port charges (THC)"
                 />
               </Field>
-              <Field label="Category" required>
+              <Field label={tr("Category")} required>
                 <Select
                   value={f.category}
                   onChange={(e) => set({ category: e.target.value })}
@@ -663,7 +664,7 @@ export function DictForm({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <AccountField
-                        label="Debit"
+                        label={tr("Debit")}
                         side="debit"
                         value={r.debit_account}
                         onChange={(v) => setRule(i, { debit_account: v })}
@@ -674,7 +675,7 @@ export function DictForm({
                         )}
                       />
                       <AccountField
-                        label="Credit"
+                        label={tr("Credit")}
                         side="credit"
                         value={r.credit_account}
                         onChange={(v) => setRule(i, { credit_account: v })}
@@ -699,7 +700,7 @@ export function DictForm({
                             setRule(i, { tax_code_id: e.target.value })
                           }
                         >
-                          <option value="">None</option>
+                          <option value="">{tr("None")}</option>
                           {taxRows.map((t) => (
                             <option key={t.tax_code_id} value={t.tax_code_id}>
                               {t.code}
@@ -768,7 +769,7 @@ export function DictForm({
                 <Checkbox
                   checked={f.is_billable}
                   onCheckedChange={(v) => set({ is_billable: !!v })}
-                  label={<span className="text-sm">Billable</span>}
+                  label={<span className="text-sm">{tr("Billable")}</span>}
                 />
               </div>
             </div>
@@ -777,7 +778,7 @@ export function DictForm({
 
         {step === 2 && (
           <>
-            <Field label="Description">
+            <Field label={tr("Description")}>
               <Textarea
                 value={f.description}
                 onChange={(e) => set({ description: e.target.value })}
@@ -786,11 +787,11 @@ export function DictForm({
               />
             </Field>
             <Field
-              label="Pricing"
+              label={tr("Pricing")}
               hint="Formula-priced items (Demurrage, Storage…) are calculated by the Extra Charges Simulation module from a tariff; the Expense Rates tab still keeps a reference rate for them."
             >
               <Segmented
-                label="Pricing"
+                label={tr("Pricing")}
                 value={f.pricing_mode}
                 onChange={(v) => set({ pricing_mode: v as api.PricingMode })}
                 options={[
@@ -813,7 +814,7 @@ export function DictForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Default price">
+              <Field label={tr("Default price")}>
                 <Input
                   type="number"
                   min="0"
@@ -823,7 +824,7 @@ export function DictForm({
                   onChange={(e) => set({ default_price: e.target.value })}
                 />
               </Field>
-              <Field label="Currency">
+              <Field label={tr("Currency")}>
                 <Input
                   value={f.currency}
                   onChange={(e) =>
@@ -1062,7 +1063,7 @@ function ServiceTiersEditor({
                 ))}
               </Select>
               <Segmented
-                label="Tier"
+                label={tr("Tier")}
                 value={r.tier}
                 onChange={(v) =>
                   setRows((rs) =>

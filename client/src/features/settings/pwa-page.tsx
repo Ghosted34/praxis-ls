@@ -23,6 +23,7 @@
  * render another's icon.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
@@ -443,7 +444,7 @@ export function PwaPage() {
             />
           </FormField>
           <div className="sm:col-span-2">
-            <FormField label="Description">
+            <FormField label={tr("Description")}>
               <Textarea
                 {...text("description")}
                 placeholder={cfg.description}
@@ -699,14 +700,14 @@ export function PwaPage() {
             label="Show the install prompt"
             hint="Staff can still install from the account menu when this is off."
           />
-          <FormField label="Title">
+          <FormField label={tr("Title")}>
             <Input
               {...text("installTitle")}
               placeholder={`Install ${cfg.name}`}
               maxLength={60}
             />
           </FormField>
-          <FormField label="Body">
+          <FormField label={tr("Body")}>
             <Textarea
               {...text("installBody")}
               rows={2}
@@ -842,7 +843,7 @@ export function PwaPage() {
       }
     >
       <SettingsCard
-        title="Colour"
+        title={tr("Colour")}
         desc="What the installed window's title bar is painted with. It also colours the small strip the operating system keeps behind the minimise, maximise and close buttons, so the two never disagree."
       >
         <div className="flex flex-col gap-4">

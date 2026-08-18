@@ -1542,7 +1542,7 @@
     {
       "id": "portal_access",
       "title": "Portal access",
-      "route": "/portal/access",
+      "route": "/settings/portal-access",
       "area": "settings",
       "module_key": "MOD-67",
       "purpose": "Grant and revoke external client, investor and auditor portal logins.",
@@ -1552,6 +1552,83 @@
         "investor_portal_view",
         "grant_portal_access"
       ]
+    },
+    {
+      "id": "settings_audit_room",
+      "title": "Auditor data room",
+      "route": "/settings/audit-room",
+      "area": "settings",
+      "module_key": "MOD-67",
+      "purpose": "External auditors' document requests and the vault documents shared in answer (data room).",
+      "actions": []
+    },
+    {
+      "id": "settings_client_support",
+      "title": "Client support",
+      "route": "/settings/client-support",
+      "area": "settings",
+      "module_key": "MOD-67",
+      "purpose": "The account team's side of the client portal — message thread and onboarding checklist per client.",
+      "actions": []
+    },
+    {
+      "id": "my_hr",
+      "title": "My HR",
+      "route": "/self-service",
+      "area": "hr",
+      "module_key": null,
+      "purpose": "Employee self-service: own payslips with PDF download, leave balances and requests, salary advances. Ungated — the caller's own data only.",
+      "actions": []
+    },
+    {
+      "id": "public_site",
+      "title": "Public website",
+      "route": "/public",
+      "area": "public",
+      "module_key": null,
+      "public": true,
+      "purpose": "Bilingual marketing site: story, services and the quote-request form feeding the intake queue.",
+      "actions": []
+    },
+    {
+      "id": "public_tracking",
+      "title": "Public tracking",
+      "route": "/public/track",
+      "area": "public",
+      "module_key": null,
+      "public": true,
+      "purpose": "Anonymous shipment tracking by reference.",
+      "actions": []
+    },
+    {
+      "id": "public_portfolio",
+      "title": "Public portfolio",
+      "route": "/public/portfolio",
+      "area": "public",
+      "module_key": null,
+      "public": true,
+      "purpose": "Published success stories and client references.",
+      "actions": []
+    },
+    {
+      "id": "public_proposal",
+      "title": "Public proposal",
+      "route": "/public/proposals/:token",
+      "area": "public",
+      "module_key": null,
+      "public": true,
+      "purpose": "Shared proposal view and PDF download by signed token.",
+      "actions": []
+    },
+    {
+      "id": "public_careers",
+      "title": "Careers",
+      "route": "/public/careers",
+      "area": "public",
+      "module_key": null,
+      "public": true,
+      "purpose": "Public job listings and applications.",
+      "actions": []
     }
   ]
 }

@@ -25,6 +25,7 @@
  * what to hide — it renders what it was given and explains the gap.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,7 +112,7 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
@@ -1269,7 +1270,7 @@ export function EntityDossier({
 
       <KpiRow>
         <KpiTile
-          label="Shareholders"
+          label={tr("Shareholders")}
           value={num(gov ? shareholders.length : cap.holder_count)}
         />
         <KpiTile
@@ -1277,7 +1278,7 @@ export function EntityDossier({
           value={`${num(cap.total_percent)}%`}
           hint={cap.balanced ? "Balanced" : "Check the cap table"}
         />
-        <KpiTile label="Employees" value={num(usage.employees)} />
+        <KpiTile label={tr("Employees")} value={num(usage.employees)} />
         <KpiTile label="Subsidiaries" value={num(usage.subsidiaries)} />
         <KpiTile label="Journal entries" value={num(usage.journal_entries)} />
       </KpiRow>
@@ -1311,12 +1312,12 @@ export function EntityDossier({
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Trading name">{e.trading_name}</Detail>
               <Detail label="Industry">{e.industry}</Detail>
-              <Detail label="Website">{e.website}</Detail>
+              <Detail label={tr("Website")}>{e.website}</Detail>
               <Detail label="Headcount">
                 {e.headcount != null ? num(e.headcount) : null}
               </Detail>
-              <Detail label="Email">{e.email}</Detail>
-              <Detail label="Phone">{e.phone}</Detail>
+              <Detail label={tr("Email")}>{e.email}</Detail>
+              <Detail label={tr("Phone")}>{e.phone}</Detail>
             </dl>
           </Section>
 
@@ -1330,7 +1331,7 @@ export function EntityDossier({
                 {e.incorporation_date ? dateFmt(e.incorporation_date) : null}
               </Detail>
               <Detail label="Place">{e.incorporation_place}</Detail>
-              <Detail label="Country">{e.incorporation_country}</Detail>
+              <Detail label={tr("Country")}>{e.incorporation_country}</Detail>
               <Detail label="Share capital">
                 {e.share_capital != null
                   ? money(e.share_capital, e.share_capital_currency || currency)
@@ -1360,8 +1361,8 @@ export function EntityDossier({
                   ? enumLabel(e.accounting_framework)
                   : null}
               </Detail>
-              <Detail label="Default currency">{e.default_currency}</Detail>
-              <Detail label="Payroll country">{e.payroll_country}</Detail>
+              <Detail label={tr("Default currency")}>{e.default_currency}</Detail>
+              <Detail label={tr("Payroll country")}>{e.payroll_country}</Detail>
               <Detail label="Default language">
                 {e.default_language === "fr"
                   ? "Français"
@@ -1378,7 +1379,7 @@ export function EntityDossier({
                     ).toLocaleString("en", { month: "long" })
                   : null}
               </Detail>
-              <Detail label="Document prefix">{e.doc_prefix}</Detail>
+              <Detail label={tr("Document prefix")}>{e.doc_prefix}</Detail>
               {/*
                 Two prefixes, two audiences. `doc_prefix` leads INVOICE numbers
                 and an accountant reads it; this one leads OPERATION-FILE
@@ -1472,7 +1473,7 @@ export function EntityDossier({
 
       {tab === "Identity & registrations" && (
         <Section
-          title="Registrations"
+          title={tr("Registrations")}
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
           action={
             <Button
@@ -1489,12 +1490,12 @@ export function EntityDossier({
             empty={registrations.length === 0}
             head={
               <>
-                <Th>Country</Th>
-                <Th>Type</Th>
-                <Th>Number</Th>
+                <Th>{tr("Country")}</Th>
+                <Th>{tr("Type")}</Th>
+                <Th>{tr("Number")}</Th>
                 <Th>Authority</Th>
-                <Th>Issued</Th>
-                <Th>Expires</Th>
+                <Th>{tr("Issued")}</Th>
+                <Th>{tr("Expires")}</Th>
                 <Th />
               </>
             }
@@ -1507,7 +1508,7 @@ export function EntityDossier({
                   {r.is_primary ? (
                     <>
                       {" "}
-                      <Pill tone="ok">Primary</Pill>
+                      <Pill tone="ok">{tr("Primary")}</Pill>
                     </>
                   ) : null}
                 </Td>
@@ -1590,12 +1591,12 @@ export function EntityDossier({
               empty={d.data.tax_registrations.length === 0}
               head={
                 <>
-                  <Th>Country</Th>
-                  <Th>Tax</Th>
-                  <Th>Number</Th>
+                  <Th>{tr("Country")}</Th>
+                  <Th>{tr("Tax")}</Th>
+                  <Th>{tr("Number")}</Th>
                   <Th>Regime</Th>
                   <Th>Filing</Th>
-                  <Th>Status</Th>
+                  <Th>{tr("Status")}</Th>
                   <Th />
                 </>
               }
@@ -1705,9 +1706,9 @@ export function EntityDossier({
               head={
                 <>
                   <Th>Obligation</Th>
-                  <Th>Period</Th>
-                  <Th>Due</Th>
-                  <Th>Status</Th>
+                  <Th>{tr("Period")}</Th>
+                  <Th>{tr("Due")}</Th>
+                  <Th>{tr("Status")}</Th>
                 </>
               }
             >
@@ -1764,7 +1765,7 @@ export function EntityDossier({
                   lapsed at the audit date". The endpoint took as_of from the
                   start and the screen never offered one. */}
               <label className="space-y-1 text-sm">
-                <span className="micro text-muted-foreground">As of</span>
+                <span className="micro text-muted-foreground">{tr("As of")}</span>
                 <Input
                   type="date"
                   value={renewalAsOf}
@@ -1788,7 +1789,7 @@ export function EntityDossier({
             <ErrorState message={errMsg(datedRenewals.error)} />
           )}
           <KpiRow>
-            <KpiTile label="Expired" value={num(renewalsView.counts.expired)} />
+            <KpiTile label={tr("Expired")} value={num(renewalsView.counts.expired)} />
             <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
             <KpiTile
               label="Approaching"
@@ -1799,12 +1800,12 @@ export function EntityDossier({
             empty={renewalsView.items.length === 0}
             head={
               <>
-                <Th>Item</Th>
-                <Th>Kind</Th>
-                <Th>Country</Th>
-                <Th>Expires</Th>
-                <Th r>Days</Th>
-                <Th>State</Th>
+                <Th>{tr("Item")}</Th>
+                <Th>{tr("Kind")}</Th>
+                <Th>{tr("Country")}</Th>
+                <Th>{tr("Expires")}</Th>
+                <Th r>{tr("Days")}</Th>
+                <Th>{tr("State")}</Th>
               </>
             }
           >
@@ -1867,7 +1868,7 @@ export function EntityDossier({
                     snapshot out of the /360 bundle. "Who held what when the
                     accounts were signed" is the question this table is asked. */}
                 <label className="space-y-1 text-sm">
-                  <span className="micro text-muted-foreground">As of</span>
+                  <span className="micro text-muted-foreground">{tr("As of")}</span>
                   <Input
                     type="date"
                     value={capAsOf}
@@ -1917,7 +1918,7 @@ export function EntityDossier({
               head={
                 <>
                   <Th>Holder</Th>
-                  <Th>Class</Th>
+                  <Th>{tr("Class")}</Th>
                   <Th r>Shares</Th>
                   <Th r>Ownership</Th>
                   <Th r>Voting</Th>
@@ -1948,13 +1949,13 @@ export function EntityDossier({
                       {p.holder_type === "COMPANY" && (
                         <>
                           {" "}
-                          <Pill tone="blue">Company</Pill>
+                          <Pill tone="blue">{tr("Company")}</Pill>
                         </>
                       )}
                       {p.is_pep && (
                         <>
                           {" "}
-                          <Pill tone="orange">PEP</Pill>
+                          <Pill tone="orange">{tr("PEP")}</Pill>
                         </>
                       )}
                       {p.holder_entity_code && (
@@ -1966,7 +1967,7 @@ export function EntityDossier({
                       {p.is_active === false && (
                         <>
                           {" "}
-                          <Pill tone="mute">Inactive</Pill>
+                          <Pill tone="mute">{tr("Inactive")}</Pill>
                         </>
                       )}
                       {!current && (
@@ -2060,9 +2061,9 @@ export function EntityDossier({
               empty={officers.length === 0}
               head={
                 <>
-                  <Th>Name</Th>
-                  <Th>Role</Th>
-                  <Th>Title</Th>
+                  <Th>{tr("Name")}</Th>
+                  <Th>{tr("Role")}</Th>
+                  <Th>{tr("Title")}</Th>
                   <Th>Appointed</Th>
                   <Th>Until</Th>
                   <Th />
@@ -2081,7 +2082,7 @@ export function EntityDossier({
                     {p.is_active === false && (
                       <>
                         {" "}
-                        <Pill tone="mute">Inactive</Pill>
+                        <Pill tone="mute">{tr("Inactive")}</Pill>
                       </>
                     )}
                   </Td>
@@ -2159,10 +2160,10 @@ export function EntityDossier({
               empty={addresses.length === 0}
               head={
                 <>
-                  <Th>Type</Th>
-                  <Th>Address</Th>
-                  <Th>City</Th>
-                  <Th>Country</Th>
+                  <Th>{tr("Type")}</Th>
+                  <Th>{tr("Address")}</Th>
+                  <Th>{tr("City")}</Th>
+                  <Th>{tr("Country")}</Th>
                   <Th />
                 </>
               }
@@ -2179,7 +2180,7 @@ export function EntityDossier({
                     {a.is_active === false && (
                       <>
                         {" "}
-                        <Pill tone="mute">Inactive</Pill>
+                        <Pill tone="mute">{tr("Inactive")}</Pill>
                       </>
                     )}
                   </Td>
@@ -2239,11 +2240,11 @@ export function EntityDossier({
               empty={contacts.length === 0}
               head={
                 <>
-                  <Th>Name</Th>
+                  <Th>{tr("Name")}</Th>
                   <Th>Departments</Th>
-                  <Th>Title</Th>
-                  <Th>Email</Th>
-                  <Th>Phone</Th>
+                  <Th>{tr("Title")}</Th>
+                  <Th>{tr("Email")}</Th>
+                  <Th>{tr("Phone")}</Th>
                   <Th />
                 </>
               }
@@ -2260,13 +2261,13 @@ export function EntityDossier({
                     {c.is_primary ? (
                       <>
                         {" "}
-                        <Pill tone="ok">Primary</Pill>
+                        <Pill tone="ok">{tr("Primary")}</Pill>
                       </>
                     ) : null}
                     {c.is_active === false ? (
                       <>
                         {" "}
-                        <Pill tone="mute">Inactive</Pill>
+                        <Pill tone="mute">{tr("Inactive")}</Pill>
                       </>
                     ) : null}
                   </Td>
@@ -2378,9 +2379,9 @@ export function EntityDossier({
               empty={structure.children.length === 0}
               head={
                 <>
-                  <Th>Code</Th>
-                  <Th>Legal name</Th>
-                  <Th>Country</Th>
+                  <Th>{tr("Code")}</Th>
+                  <Th>{tr("Legal name")}</Th>
+                  <Th>{tr("Country")}</Th>
                   <Th>Relationship</Th>
                   <Th r>Owned</Th>
                   <Th>Framework</Th>
@@ -2438,11 +2439,11 @@ export function EntityDossier({
               empty={establishments.length === 0}
               head={
                 <>
-                  <Th>Name</Th>
-                  <Th>Kind</Th>
-                  <Th>City</Th>
-                  <Th>Country</Th>
-                  <Th>Manager</Th>
+                  <Th>{tr("Name")}</Th>
+                  <Th>{tr("Kind")}</Th>
+                  <Th>{tr("City")}</Th>
+                  <Th>{tr("Country")}</Th>
+                  <Th>{tr("Manager")}</Th>
                   <Th>Tax office</Th>
                   <Th />
                 </>
@@ -2469,7 +2470,7 @@ export function EntityDossier({
                     ) : s.is_active === false ? (
                       <>
                         {" "}
-                        <Pill tone="mute">Inactive</Pill>
+                        <Pill tone="mute">{tr("Inactive")}</Pill>
                       </>
                     ) : null}
                   </Td>
@@ -2529,11 +2530,11 @@ export function EntityDossier({
             empty={treasury.length === 0}
             head={
               <>
-                <Th>Label</Th>
-                <Th>Kind</Th>
+                <Th>{tr("Label")}</Th>
+                <Th>{tr("Kind")}</Th>
                 <Th>GL account</Th>
-                <Th>Currency</Th>
-                <Th>Status</Th>
+                <Th>{tr("Currency")}</Th>
+                <Th>{tr("Status")}</Th>
               </>
             }
           >
@@ -2870,12 +2871,12 @@ function DocumentsTab({
         head={
           <>
             <Th>Document</Th>
-            <Th>Type</Th>
-            <Th>Number</Th>
-            <Th>Country</Th>
-            <Th>Expires</Th>
+            <Th>{tr("Type")}</Th>
+            <Th>{tr("Number")}</Th>
+            <Th>{tr("Country")}</Th>
+            <Th>{tr("Expires")}</Th>
             <Th>Scan</Th>
-            <Th>Verification</Th>
+            <Th>{tr("Verification")}</Th>
             <Th />
           </>
         }
@@ -3331,7 +3332,7 @@ function LetterheadTab({
               patch({ remittance_account_id: ev.target.value || null })
             }
           >
-            <option value="">— first flagged account —</option>
+            <option value="">{tr("— first flagged account —")}</option>
             {accounts.map((a) => (
               <option key={a.treasury_account_id} value={a.treasury_account_id}>
                 {a.label} ({a.currency})
@@ -3350,7 +3351,7 @@ function LetterheadTab({
 
       <div className="space-y-4">
         <Section
-          title="Preview"
+          title={tr("Preview")}
           description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}
         >
           <article
@@ -3577,7 +3578,7 @@ function StructureModal({
             value={parentId}
             onChange={(ev) => setParentId(ev.target.value)}
           >
-            <option value="">— none —</option>
+            <option value="">{tr("— none —")}</option>
             {parentOptions.map((p) => (
               <option key={p.entity_id} value={p.entity_id}>
                 {p.code} — {p.legal_name}
@@ -3708,12 +3709,12 @@ function OpsReferencePrefixModal({ entityId, current, onClose, onSaved }: {
         </Field>
         <p className="micro text-muted-foreground">
           A file would read <span className="font-mono">{(prefix || "SL")}7Z3K9QW2M4XBSM</span>. This is not the
-          invoice prefix — that is <span className="font-mono">Document prefix</span>, and it leads a different
+          invoice prefix — that is <span className="font-mono">{tr("Document prefix")}</span>, and it leads a different
           set of numbers.
         </p>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
           <Button loading={busy} disabled={busy || prefix.length !== 2 || prefix === current} onClick={save}>
             Save prefix
           </Button>
@@ -3786,7 +3787,7 @@ function StatusModal({
           </Select>
         </Field>
         {needsReason && (
-          <Field label="Reason" required hint="Recorded on the audit trail.">
+          <Field label={tr("Reason")} required hint="Recorded on the audit trail.">
             <Input
               value={reason}
               onChange={(ev) => setReason(ev.target.value)}

@@ -9,6 +9,7 @@
  * error text as-is so nobody has to memorise the constraint.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -99,7 +100,7 @@ export function NewCategoryModal({
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Code"
+            label={tr("Code")}
             required
             hint="UPPER_SNAKE (e.g. AIRTEL_SMART_CASH)"
           >
@@ -109,7 +110,7 @@ export function NewCategoryModal({
               placeholder="AIRTEL_SMART_CASH"
             />
           </Field>
-          <Field label="Label" required>
+          <Field label={tr("Label")} required>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -117,7 +118,7 @@ export function NewCategoryModal({
             />
           </Field>
           <Field
-            label="Kind"
+            label={tr("Kind")}
             required
             hint="Wide bucket used by legacy readers"
           >
@@ -125,7 +126,7 @@ export function NewCategoryModal({
               value={legacyKind}
               onChange={(e) => setLegacyKind(e.target.value as Kind)}
             >
-              <option value="BANK">Bank</option>
+              <option value="BANK">{tr("Bank")}</option>
               <option value="CASH">Cash</option>
               <option value="MOMO">Mobile Money</option>
             </Select>

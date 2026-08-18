@@ -26,6 +26,7 @@
  * number.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,7 +193,7 @@ export function ContainerEditor({
               >
                 <div className="grid gap-3 sm:grid-cols-12">
                   <Field
-                    label="Container type"
+                    label={tr("Container type")}
                     required
                     className="sm:col-span-6"
                   >
@@ -214,7 +215,7 @@ export function ContainerEditor({
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Quantity" required className="sm:col-span-3">
+                  <Field label={tr("Quantity")} required className="sm:col-span-3">
                     <Input
                       inputMode="numeric"
                       value={r.qty}
@@ -278,7 +279,7 @@ export function ContainerEditor({
                         />
                         <Input
                           className="sm:col-span-5"
-                          placeholder="Seal"
+                          placeholder={tr("Seal")}
                           aria-label={`Seal number ${ux + 1}`}
                           value={u.seal_no}
                           onChange={(e) =>

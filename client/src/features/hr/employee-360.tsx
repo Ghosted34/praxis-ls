@@ -5,6 +5,7 @@
  * system checks (payroll, contracts, dispatch).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { ComposeIconButton } from "@/features/comms/mail";
@@ -51,7 +52,7 @@ function MiniTable({
   empty: boolean;
 }) {
   if (empty)
-    return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>;
+    return <div className="px-3 py-6 text-center micro">{tr("Nothing here yet.")}</div>;
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
@@ -133,13 +134,13 @@ function NewEmployeeForm({
       description="Add a staff record — the spine payroll, HR and fleet build on."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Full name" required>
+        <Field label={tr("Full name")} required>
           <Input
             value={f.full_name}
             onChange={(e) => set("full_name", e.target.value)}
           />
         </Field>
-        <Field label="Entity">
+        <Field label={tr("Entity")}>
           <Select
             value={f.entity_id}
             onChange={(e) => set("entity_id", e.target.value)}
@@ -153,10 +154,10 @@ function NewEmployeeForm({
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Department" hint="From your organigramme.">
+          <Field label={tr("Department")} hint="From your organigramme.">
             <DepartmentSelect value={dept} onChange={setDept} />
           </Field>
-          <Field label="Job title">
+          <Field label={tr("Job title")}>
             <Input
               value={f.job_title}
               onChange={(e) => set("job_title", e.target.value)}
@@ -171,7 +172,7 @@ function NewEmployeeForm({
             value={reportsTo}
             onChange={(e) => setReportsTo(e.target.value)}
           >
-            <option value="">— nobody —</option>
+            <option value="">{tr("— nobody —")}</option>
             {(staff || []).map((p) => (
               <option key={p.employee_id} value={p.employee_id}>
                 {p.full_name}
@@ -179,7 +180,7 @@ function NewEmployeeForm({
             ))}
           </Select>
         </Field>
-        <Field label="Email" hint="Used to send payslips & contracts">
+        <Field label={tr("Email")} hint="Used to send payslips & contracts">
           <Input
             type="email"
             value={f.email}
@@ -187,7 +188,7 @@ function NewEmployeeForm({
             placeholder="name@company.cm"
           />
         </Field>
-        <Field label="Employment type">
+        <Field label={tr("Employment type")}>
           <Select
             value={f.employment_type}
             onChange={(e) => set("employment_type", e.target.value)}
@@ -285,13 +286,13 @@ function EditEmployeeForm({
       description="Update role, department and employment details."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Full name" required>
+        <Field label={tr("Full name")} required>
           <Input
             value={f.full_name}
             onChange={(e) => set("full_name", e.target.value)}
           />
         </Field>
-        <Field label="Entity">
+        <Field label={tr("Entity")}>
           <Select
             value={f.entity_id}
             onChange={(e) => set("entity_id", e.target.value)}
@@ -305,14 +306,14 @@ function EditEmployeeForm({
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Department" hint="From your organigramme.">
+          <Field label={tr("Department")} hint="From your organigramme.">
             <DepartmentSelect value={dept} onChange={setDept} />
           </Field>
-          <Field label="Job title">
+          <Field label={tr("Job title")}>
             <Input
               value={f.job_title}
               onChange={(e) => set("job_title", e.target.value)}
-              placeholder="Accountant"
+              placeholder={tr("Accountant")}
             />
           </Field>
         </div>
@@ -324,7 +325,7 @@ function EditEmployeeForm({
             value={reportsTo}
             onChange={(e) => setReportsTo(e.target.value)}
           >
-            <option value="">— nobody —</option>
+            <option value="">{tr("— nobody —")}</option>
             {(staff || [])
               .filter((p) => p.employee_id !== employee.employee_id)
               .map((p) => (
@@ -334,7 +335,7 @@ function EditEmployeeForm({
               ))}
           </Select>
         </Field>
-        <Field label="Email" hint="Used to send payslips & contracts">
+        <Field label={tr("Email")} hint="Used to send payslips & contracts">
           <Input
             type="email"
             value={f.email}
@@ -342,7 +343,7 @@ function EditEmployeeForm({
             placeholder="name@company.cm"
           />
         </Field>
-        <Field label="Employment type">
+        <Field label={tr("Employment type")}>
           <Select
             value={f.employment_type}
             onChange={(e) => set("employment_type", e.target.value)}
@@ -515,10 +516,10 @@ function EmployeeDetail({
           empty={cRows.length === 0}
           head={
             <>
-              <Th>Kind</Th>
-              <Th>Status</Th>
+              <Th>{tr("Kind")}</Th>
+              <Th>{tr("Status")}</Th>
               <Th>Effective</Th>
-              <Th>Ends</Th>
+              <Th>{tr("Ends")}</Th>
               <Th></Th>
             </>
           }
@@ -535,12 +536,12 @@ function EmployeeDetail({
               <Td>{dateFmt(c.end_on)}</Td>
               <Td>
                 <div className="flex items-center justify-end gap-2">
-                  {c.pdf_vault_id && <Pill tone="ok">Signed</Pill>}
+                  {c.pdf_vault_id && <Pill tone="ok">{tr("Signed")}</Pill>}
                   <DocButton
                     docType="EMPLOYMENT_CONTRACT"
                     id={c.hr_contract_id}
                     title={`Contract ${enumLabel(c.kind)}`}
-                    label="View"
+                    label={tr("View")}
                   />
                   <UploadSigned contract={c} onDone={contracts.reload} />
                 </div>
@@ -554,10 +555,10 @@ function EmployeeDetail({
           empty={lRows.length === 0}
           head={
             <>
-              <Th>Kind</Th>
-              <Th>From</Th>
-              <Th>To</Th>
-              <Th>Status</Th>
+              <Th>{tr("Kind")}</Th>
+              <Th>{tr("From")}</Th>
+              <Th>{tr("To")}</Th>
+              <Th>{tr("Status")}</Th>
             </>
           }
         >
@@ -580,8 +581,8 @@ function EmployeeDetail({
           empty={aRows.length === 0}
           head={
             <>
-              <Th>Clock in</Th>
-              <Th>Clock out</Th>
+              <Th>{tr("Clock in")}</Th>
+              <Th>{tr("Clock out")}</Th>
               <Th r>Lateness</Th>
             </>
           }
@@ -606,9 +607,9 @@ function EmployeeDetail({
           empty={apRows.length === 0}
           head={
             <>
-              <Th>Period</Th>
+              <Th>{tr("Period")}</Th>
               <Th>Metric</Th>
-              <Th r>Rating</Th>
+              <Th r>{tr("Rating")}</Th>
               <Th r>Reward</Th>
             </>
           }
@@ -650,7 +651,7 @@ export function EmployeesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Employees"
+        title={tr("Employees")}
         description="The staff master — pick a person for their full HR record and history."
         action={<Button onClick={() => setCreating(true)}>New employee</Button>}
       />
@@ -667,7 +668,7 @@ export function EmployeesPage() {
             />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
               {employees.loading ? (
-                <div className="px-3 py-4 micro">Loading…</div>
+                <div className="px-3 py-4 micro">{tr("Loading…")}</div>
               ) : filtered.length === 0 ? (
                 <div className="px-3 py-4 micro">No employees.</div>
               ) : (

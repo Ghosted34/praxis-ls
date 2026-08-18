@@ -208,6 +208,59 @@ export type AuditorView = {
 export const portalMe = () => portalApi<PortalMe>("/me");
 export const portalClientView = () => portalApi<ClientView>("/client");
 
+/** A client-visible vault document (PRD §11.1 — the client's document vault). */
+export type PortalDocument = {
+  doc_id: string;
+  doc_type: string | null;
+  original_name: string | null;
+  status: string;
+  created_at: string;
+  dossier_id: string | null;
+  dossier_ref: string | null;
+  name_en: string | null;
+  name_fr: string | null;
+  doc_type_code: string | null;
+};
+
+export const portalClientDocuments = () =>
+  portalApi<PortalDocument[]>("/client/documents");
+
+/**
+ * Fetch a client-visible document with the portal session and save it. Same
+ * reasoning as the staff `downloadVaultDoc`: the /download endpoint returns
+ * bytes (not JSON), so we fetch with the portal token and trigger a real
+ * Save-As via an anchor click rather than a pop-up-prone window.open.
+ */
+export async function portalClientDocumentDownload(
+  id: string,
+  filename: string,
+): Promise<void> {
+  const token = portalToken.get();
+  const res = await fetch(
+    `/api/tenant/portal/client/documents/${encodeURIComponent(id)}/download`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  );
+  if (!res.ok) {
+    const message =
+      res.status === 404
+        ? "That document is no longer available."
+        : res.status === 401
+          ? "Your session has expired — sign in again."
+          : "Download failed.";
+    throw new PortalError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * One of the client's own files: the stages we chose to show them, the dates
  * they were committed to, and the published assumptions those dates rest on.
@@ -271,3 +324,166 @@ export const portalAuditorView = (q?: { from?: string; to?: string }) => {
   const s = periodQs(q);
   return portalApi<AuditorView>(`/auditor${s ? `?${s}` : ""}`);
 };
+
+// ── Auditor data room (PRD §5.2 — "data room for document requests/answers") ─
+
+export type PortalDataRoom = {
+  room_id: string;
+  subject_email: string;
+  request_note: string;
+  status: "OPEN" | "ANSWERED";
+  created_at: string;
+  answered_at: string | null;
+  answered_by: string | null;
+  doc_count: number;
+};
+
+export type PortalDataRoomDoc = {
+  doc_id: string;
+  doc_type: string | null;
+  original_name: string | null;
+  created_at: string;
+  name_en: string | null;
+  name_fr: string | null;
+  doc_type_code: string | null;
+};
+
+export type PortalDataRoomDetail = {
+  room: PortalDataRoom;
+  docs: PortalDataRoomDoc[];
+};
+
+export const portalDataRoomList = () =>
+  portalApi<PortalDataRoom[]>("/auditor/data-room");
+export const portalDataRoomCreate = (note: string) =>
+  portalApi<PortalDataRoom>("/auditor/data-room", {
+    method: "POST",
+    body: { note },
+  });
+export const portalDataRoomDetail = (id: string) =>
+  portalApi<PortalDataRoomDetail>(`/auditor/data-room/${encodeURIComponent(id)}`);
+
+// ── Client portal: onboarding, messaging, self-service quoting (PRD §11.1) ──
+
+export type PortalOnboardingStep = {
+  client_onboarding_step_id: string;
+  step_key: string;
+  label_en: string;
+  label_fr: string;
+  done: boolean;
+  done_at: string | null;
+  done_by: string | null;
+  sort_order: number;
+};
+
+export type PortalOnboarding = {
+  client_id: string;
+  steps: PortalOnboardingStep[];
+  progress: number;
+};
+
+export type PortalMessage = {
+  message_id: string;
+  client_id: string;
+  dossier_id: string | null;
+  direction: "STAFF" | "CLIENT";
+  body: string;
+  author_user_id: string | null;
+  author_email: string | null;
+  author_name: string | null;
+  created_at: string;
+};
+
+export type PortalQuoteRequest = {
+  quote_request_id: string;
+  public_ref: string | null;
+  status: string;
+  service_category: string | null;
+  service_type: string | null;
+  origin_location: string | null;
+  destination_location: string | null;
+  estimated_weight: number | null;
+  cargo_description: string | null;
+  created_at: string;
+};
+
+export const portalClientOnboarding = () =>
+  portalApi<PortalOnboarding>("/client/onboarding");
+
+export const portalClientMessages = () =>
+  portalApi<PortalMessage[]>("/client/messages");
+export const portalClientMessageSend = (body: string) =>
+  portalApi<PortalMessage>("/client/messages", {
+    method: "POST",
+    body: { body },
+  });
+
+/** Fetch the certified chat PDF with the portal session and save it. The
+ *  verify token comes back in the X-Praxis-Verify header. */
+export async function portalClientMessagesExport(): Promise<void> {
+  const token = portalToken.get();
+  const res = await fetch("/api/tenant/portal/client/messages/export", {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const message =
+      res.status === 401
+        ? "Your session has expired — sign in again."
+        : "Couldn't export the conversation.";
+    throw new PortalError("EXPORT_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `conversation-${new Date().toISOString().slice(0, 10)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export const portalClientQuoteRequests = () =>
+  portalApi<PortalQuoteRequest[]>("/client/quote-requests");
+export const portalClientQuoteCreate = (data: {
+  service_category: string;
+  service_type?: string;
+  origin_location: string;
+  destination_location: string;
+  estimated_weight?: number;
+  cargo_description?: string;
+  incoterm?: string;
+}) =>
+  portalApi<PortalQuoteRequest>("/client/quote-requests", {
+    method: "POST",
+    body: data,
+  });
+
+/** Fetch an answered document with the portal session and save it. */
+export async function portalDataRoomDownload(
+  roomId: string,
+  docId: string,
+  filename: string,
+): Promise<void> {
+  const token = portalToken.get();
+  const res = await fetch(
+    `/api/tenant/portal/auditor/data-room/${encodeURIComponent(roomId)}/documents/${encodeURIComponent(docId)}/download`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) {
+    const message =
+      res.status === 404
+        ? "That document is no longer in the data room."
+        : res.status === 401
+          ? "Your session has expired — sign in again."
+          : "Download failed.";
+    throw new PortalError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
@@ -84,7 +85,7 @@ function GatewayForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Provider" hint="e.g. paydunya, orange, stripe" required>
+          <Field label={tr("Provider")} hint="e.g. paydunya, orange, stripe" required>
             <Input
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
@@ -92,7 +93,7 @@ function GatewayForm({
               disabled={isEdit}
             />
           </Field>
-          <Field label="Role" hint="e.g. primary, payout">
+          <Field label={tr("Role")} hint="e.g. primary, payout">
             <Input
               value={role}
               onChange={(e) => setRole(e.target.value)}
@@ -101,7 +102,7 @@ function GatewayForm({
           </Field>
         </div>
         <Field
-          label="Credentials"
+          label={tr("Credentials")}
           hint={
             isEdit
               ? "Leave blank to keep the current key. JSON or token string."
@@ -219,12 +220,12 @@ export function PaymentGatewaysPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Provider</TH>
-              <TH>Role</TH>
-              <TH>Credentials</TH>
-              <TH>Status</TH>
-              <TH>Updated</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Provider")}</TH>
+              <TH>{tr("Role")}</TH>
+              <TH>{tr("Credentials")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Updated")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

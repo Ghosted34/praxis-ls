@@ -25,6 +25,7 @@
  *   <ShipmentDetailsPanel dossierId={id} variant="strip" />     // one-line header
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
@@ -68,7 +69,7 @@ function FacetCell({ facet }: { facet: api.Facet }) {
  */
 function CompletenessPill({ c }: { c: api.ShipmentDetails["completeness"] }) {
   if (!c.total) return null;
-  if (c.is_complete) return <Pill tone="ok">Complete</Pill>;
+  if (c.is_complete) return <Pill tone="ok">{tr("Complete")}</Pill>;
   const tone = c.missing_required.length ? "warn" : "mute";
   return (
     <Pill tone={tone}>
@@ -93,7 +94,7 @@ function ContainerSummary({ block }: { block: api.ContainerBlock }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-2">
-        <h4 className="text-sm font-medium text-foreground">Equipment</h4>
+        <h4 className="text-sm font-medium text-foreground">{tr("Equipment")}</h4>
         {s ? (
           <span className="micro text-muted-foreground">
             {s.boxes} box{s.boxes === 1 ? "" : "es"} · {s.teu} TEU

@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/states";
@@ -184,11 +185,11 @@ export function ApprovalsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Governance" to="/governance" />}
-        title="Approvals"
+        title={tr("Approvals")}
         description="Your runtime approval queue — validate or approve/reject items routed to you by workflow."
       />
       <KpiRow>
-        <KpiTile label="Pending" value={num(list.length)} />
+        <KpiTile label={tr("Pending")} value={num(list.length)} />
         <KpiTile
           label="To validate"
           value={num(list.filter((r) => r.step_kind === "VALIDATE").length)}

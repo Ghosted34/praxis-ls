@@ -212,6 +212,12 @@ module.exports = {
    * A request is always bound to an active employee (HR integrity), and a leave
    * request is priced and checked for clashes before it is stored.
    */
+  /** Self-service request — the employee is the caller, never the body. */
+  async createMine(client, { data, actor = {} }) {
+    if (!actor.employee_id) throw new AppError("NO_EMPLOYEE", "No employee record on this account", 422);
+    return this.create(client, { data: { ...data, employee_id: actor.employee_id }, actor });
+  },
+
   async create(client, { data, actor = {} }) {
     if (!data.employee_id) {
       // Was optional in the validator, which allowed a request attached to

@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { tr } from "@/lib/i18n";
 import { hubTabs } from "@/app/layout/areas";
 import {
   VehiclesPage,
@@ -13,7 +14,7 @@ import {
 export function FleetHub() {
   return (
     <TabbedHub
-      eyebrow="Fleet"
+      eyebrow={tr("Fleet")}
       basePath="/fleet"
       inPlace
       tabs={hubTabs("/fleet", {

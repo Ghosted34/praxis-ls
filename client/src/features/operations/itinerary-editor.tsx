@@ -30,6 +30,7 @@
  * win. What the browser adds is telling you before you press the button.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -243,7 +244,7 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
         </div>
         <div className="flex items-center gap-2">
           {dirty && <Pill tone="orange">Unsaved changes</Pill>}
-          {justSaved && !dirty && <Pill tone="ok">Saved</Pill>}
+          {justSaved && !dirty && <Pill tone="ok">{tr("Saved")}</Pill>}
           <Button size="sm" variant="outline" onClick={add} disabled={busy}>
             Add leg
           </Button>
@@ -293,7 +294,7 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                   {LEG_LABEL[leg.leg_type]}
                 </span>
                 {fromTemplate && <Pill tone="mute">From the service type</Pill>}
-                {leg.is_optional && <Pill tone="mute">Optional</Pill>}
+                {leg.is_optional && <Pill tone="mute">{tr("Optional")}</Pill>}
               </span>
               <span className="flex items-center gap-1">
                 <Button
@@ -357,7 +358,7 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                 </Select>
               </Field>
 
-              <Field label="Status">
+              <Field label={tr("Status")}>
                 <Select
                   value={leg.status || "PLANNED"}
                   onChange={(e) =>
@@ -373,12 +374,12 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
               </Field>
 
               <Field
-                label="Carrier"
+                label={tr("Carrier")}
                 hint="The provider moving this leg — often not the one on the file."
               >
                 <SearchSelect
                   path="/rate-providers?active=true"
-                  label="Carrier"
+                  label={tr("Carrier")}
                   value={leg.provider_name || null}
                   placeholder="Search a carrier…"
                   getKey={(r) => String(r.rate_provider_id)}
@@ -420,10 +421,10 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                 longer shows.
               */}
               {!singlePoint && (
-                <Field label="Destination" error={errorFor(i, "destination")}>
+                <Field label={tr("Destination")} error={errorFor(i, "destination")}>
                   <PlacePicker
                     value={leg.destination || null}
-                    label="Destination"
+                    label={tr("Destination")}
                     canCreate={canCreatePlace}
                     onSelect={({ name, place }) =>
                       update(i, {
@@ -488,7 +489,7 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
             </div>
 
             <Field
-              label="Notes"
+              label={tr("Notes")}
               hint="Driver instructions, gate references, anything the next person needs."
             >
               <Input

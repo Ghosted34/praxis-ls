@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,7 +173,7 @@ export function OpportunityForm({
       size="lg"
     >
       <div className="space-y-4">
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -181,7 +182,7 @@ export function OpportunityForm({
         </Field>
         {!editing && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="With">
+            <Field label={tr("With")}>
               <Select
                 value={withKind}
                 onChange={(e) => {
@@ -189,9 +190,9 @@ export function OpportunityForm({
                   setWithId("");
                 }}
               >
-                <option value="none">— none —</option>
-                <option value="lead">Lead</option>
-                <option value="client">Client</option>
+                <option value="none">{tr("— none —")}</option>
+                <option value="lead">{tr("Lead")}</option>
+                <option value="client">{tr("Client")}</option>
               </Select>
             </Field>
             {withKind !== "none" ? (
@@ -218,7 +219,7 @@ export function OpportunityForm({
                 />
               </Field>
             ) : (
-              <Field label="Stage">
+              <Field label={tr("Stage")}>
                 <Select
                   value={stageId}
                   onChange={(e) => setStageId(e.target.value)}
@@ -235,7 +236,7 @@ export function OpportunityForm({
               </Field>
             )}
             {withKind !== "none" && (
-              <Field label="Stage" className="sm:col-span-2">
+              <Field label={tr("Stage")} className="sm:col-span-2">
                 <Select
                   value={stageId}
                   onChange={(e) => setStageId(e.target.value)}
@@ -265,11 +266,11 @@ export function OpportunityForm({
               placeholder="5000000"
             />
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
               maxLength={3}
             />
           </Field>
@@ -292,7 +293,7 @@ export function OpportunityForm({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Source" hint="Where the deal came from">
+          <Field label={tr("Source")} hint="Where the deal came from">
             <Select
               value={source}
               onChange={(e) => setSource(e.target.value)}
@@ -315,7 +316,7 @@ export function OpportunityForm({
             />
           </Field>
         </div>
-        <Field label="Scope" hint="What the deal is for — shown on the board card">
+        <Field label={tr("Scope")} hint="What the deal is for — shown on the board card">
           <Textarea
             rows={3}
             value={scope}
@@ -425,14 +426,14 @@ export function WinModal({
         </label>
         {createDossier && (
           <Field
-            label="Entity"
+            label={tr("Entity")}
             hint="Which legal entity delivers this"
             required
           >
             <SearchSelect
               path="/entities"
               value={entityLabel}
-              placeholder="Search entities…"
+              placeholder={tr("Search entities…")}
               getLabel={(en) =>
                 en.code
                   ? `${cell(en.code)} · ${cell(en.legal_name)}`

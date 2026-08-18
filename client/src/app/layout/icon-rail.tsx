@@ -23,6 +23,8 @@
  * spend the one time it was allowed to fire.
  */
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { navT } from "@/lib/i18n";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -91,6 +93,7 @@ function RailButton({
 }
 
 export function IconRail() {
+  const { t } = useTranslation();
   const { access, ready, resolved, prefs, setPrefs } = useShell();
   const { pathname } = useLocation();
   const palette = useCommandPalette();
@@ -131,12 +134,12 @@ export function IconRail() {
   return (
     <nav
       className="rail hidden flex-none flex-col items-center md:flex"
-      aria-label="Shortcuts"
+      aria-label={navT(t, "Shortcuts")}
     >
-      <RailButton label="Control Tower" to="/" active={pathname === "/"}>
+      <RailButton label={navT(t, "Control Tower")} to="/" active={pathname === "/"}>
         <TowerIcon width={18} height={18} />
       </RailButton>
-      <RailButton label="Search (⌘K)" onSelect={palette.open}>
+      <RailButton label={navT(t, "Search (⌘K)")} onSelect={palette.open}>
         <SearchIcon width={18} height={18} />
       </RailButton>
 
@@ -155,7 +158,7 @@ export function IconRail() {
           return (
             <RailButton
               key={area.key}
-              label={area.label}
+              label={navT(t, area.label)}
               to={to}
               active={pathname === to || pathname.startsWith(to + "/")}
             >
@@ -178,7 +181,7 @@ export function IconRail() {
       <span className="rail-rule" aria-hidden />
 
       <RailButton
-        label="Edit shortcuts"
+        label={navT(t, "Edit shortcuts")}
         to="/my-appearance"
         className={cn("rail-edit", jiggle && "rail-jiggle")}
       >

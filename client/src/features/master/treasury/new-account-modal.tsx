@@ -16,6 +16,7 @@
  * Airtel SmartCash inline the day it arrives without leaving this form.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -210,18 +211,18 @@ export function NewAccountModal({
       >
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Corporate entity" required className="sm:col-span-2">
+            <Field label={tr("Corporate entity")} required className="sm:col-span-2">
               <SearchSelect
                 path="/entities"
                 value={entityLabel}
-                placeholder="Search entities…"
+                placeholder={tr("Search entities…")}
                 getLabel={entityText}
                 getKey={(en) => String(en.entity_id)}
                 onSelect={(en) => setEntityId(String(en.entity_id))}
               />
             </Field>
             <Field
-              label="Category"
+              label={tr("Category")}
               required
               hint="Bank / Cash / Petty Cash / MTN / Orange / …"
             >
@@ -231,7 +232,7 @@ export function NewAccountModal({
                   onChange={(e) => setCategoryId(e.target.value)}
                   className="flex-1"
                 >
-                  <option value="">— pick —</option>
+                  <option value="">{tr("— pick —")}</option>
                   {(cats || []).map((c) => (
                     <option
                       key={c.treasury_category_id}
@@ -251,15 +252,15 @@ export function NewAccountModal({
                 </Button>
               </div>
             </Field>
-            <Field label="Currency" hint="ISO code">
+            <Field label={tr("Currency")} hint={tr("ISO code")}>
               <Input
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
-                placeholder="XAF"
+                placeholder={tr("XAF")}
               />
             </Field>
             <Field
-              label="Label"
+              label={tr("Label")}
               required
               className="sm:col-span-2"
               hint="Shown on the letterhead and on every posting"
@@ -284,20 +285,20 @@ export function NewAccountModal({
                   placeholder="Afriland First Bank"
                 />
               </Field>
-              <Field label="Branch">
+              <Field label={tr("Branch")}>
                 <Input
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
                   placeholder="Douala — Bonanjo"
                 />
               </Field>
-              <Field label="Account number">
+              <Field label={tr("Account number")}>
                 <Input
                   value={acctNum}
                   onChange={(e) => setAcctNum(e.target.value)}
                 />
               </Field>
-              <Field label="IBAN">
+              <Field label={tr("IBAN")}>
                 <Input
                   value={iban}
                   onChange={(e) => setIban(e.target.value)}
@@ -360,7 +361,7 @@ export function NewAccountModal({
                 Custodian (petty cash)
               </legend>
               <Field
-                label="Custodian"
+                label={tr("Custodian")}
                 required
                 className="sm:col-span-2"
                 hint="The person responsible for payouts from this account — feeds the expenses sheet."
@@ -377,7 +378,7 @@ export function NewAccountModal({
                   }}
                 />
               </Field>
-              <Field label="Location">
+              <Field label={tr("Location")}>
                 <Input
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
@@ -399,7 +400,7 @@ export function NewAccountModal({
             <legend className="px-1 text-sm font-medium">
               Opening &amp; statement
             </legend>
-            <Field label="Opening balance">
+            <Field label={tr("Opening balance")}>
               <Input
                 type="number"
                 value={openBal}

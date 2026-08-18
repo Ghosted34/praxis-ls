@@ -35,6 +35,10 @@ function insert(client, data) {
     entity_id: blankToNull(data.entity_id),
     public_ref: blankToNull(data.public_ref),
     lead_id: blankToNull(data.lead_id),
+    // A signed-in client quoting from the portal files the request against
+    // their own record (migration 10705); sales sees it in the same intake
+    // queue, linked back to the client.
+    client_id: blankToNull(data.client_id),
     intake_channel: data.intake_channel || "MANUAL",
     requester_name: blankToNull(data.requester_name),
     requester_company: blankToNull(data.requester_company),

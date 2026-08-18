@@ -7,6 +7,7 @@
  * Shared primitives from components/ui/*; AI panel gated globally.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,7 @@ function GrantModal({
 
   async function submit() {
     if (portal === "CLIENT" && !clientId) {
-      setError("A client-portal grant needs a client to scope it to.");
+      setError("A CLIENT portal grant needs a client to scope it to.");
       return;
     }
     setBusy(true);
@@ -161,7 +162,7 @@ function GrantModal({
               <SearchSelect
                 path="/clients"
                 value={clientLabel}
-                placeholder="Search clients…"
+                placeholder={tr("Search clients…")}
                 getLabel={(c) => cell(c.name ?? c.legal_name)}
                 getKey={(c) => String(c.client_id)}
                 onSelect={(c) => setClientId(String(c.client_id))}
@@ -371,7 +372,7 @@ export function PortalAccessPage() {
   return (
     <section className={pageShell.wide}>
       <PageHeader
-        eyebrow={<HubCrumb area="Portal" to="/portal/access" />}
+        eyebrow={<HubCrumb area="Portal" to="/settings/portal-access" />}
         title="Portal access"
         description="Grant and revoke external read-access — client, investor and auditor portals."
         action={

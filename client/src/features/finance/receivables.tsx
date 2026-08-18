@@ -4,6 +4,7 @@
  * locked shared kit; every accent resolves to --primary (settings-driven).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { RowActions } from "@/components/ui/row-actions";
@@ -103,12 +104,12 @@ function ReceiptForm({
     <Modal
       open
       onClose={onClose}
-      title="New receipt"
+      title={tr("New receipt")}
       description="Log a customer payment; post it to allocate FIFO against open invoices."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Client">
+          <Field label={tr("Client")}>
             <Select
               value={f.client_id}
               onChange={(e) => set("client_id", e.target.value)}
@@ -121,7 +122,7 @@ function ReceiptForm({
               ))}
             </Select>
           </Field>
-          <Field label="Method" required>
+          <Field label={tr("Method")} required>
             <Select
               value={f.method}
               onChange={(e) => {
@@ -159,7 +160,7 @@ function ReceiptForm({
               </Select>
             </Field>
           )}
-          <Field label="Amount" required>
+          <Field label={tr("Amount")} required>
             <Input
               type="number"
               min="0"
@@ -251,7 +252,7 @@ function PostForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity">
+          <Field label={tr("Entity")}>
             <Select
               value={f.entity_id}
               onChange={(e) => set("entity_id", e.target.value)}
@@ -264,14 +265,14 @@ function PostForm({
               ))}
             </Select>
           </Field>
-          <Field label="Entry date" required>
+          <Field label={tr("Entry date")} required>
             <Input
               type="date"
               value={f.entry_date}
               onChange={(e) => set("entry_date", e.target.value)}
             />
           </Field>
-          <Field label="Source doc ref" className="sm:col-span-2">
+          <Field label={tr("Source doc ref")} className="sm:col-span-2">
             <Input
               value={f.source_doc_ref}
               onChange={(e) => set("source_doc_ref", e.target.value)}
@@ -324,26 +325,26 @@ function ReceiptDrawer({
       description={`${clientLabel} · ${enumLabel(receipt.method)}`}
     >
       {d.loading ? (
-        <div className="py-8 text-center micro">Loading…</div>
+        <div className="py-8 text-center micro">{tr("Loading…")}</div>
       ) : d.error ? (
         <ErrorState message={d.error} />
       ) : rec ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5">
-              <div className="micro mb-1">Amount</div>
+              <div className="micro mb-1">{tr("Amount")}</div>
               <div className="num text-lg font-medium text-primary-ink">
                 {money(rec.amount)}
               </div>
             </div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5">
-              <div className="micro mb-1">Received</div>
+              <div className="micro mb-1">{tr("Received")}</div>
               <div className="num text-lg font-medium">
                 {dateFmt(rec.received_on)}
               </div>
             </div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5">
-              <div className="micro mb-1">Status</div>
+              <div className="micro mb-1">{tr("Status")}</div>
               <div className="mt-1">
                 <Pill tone={tone(rec.status)}>{enumLabel(rec.status)}</Pill>
               </div>
@@ -461,9 +462,9 @@ export function ReceivablesPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Receivables"
+        title={tr("Receivables")}
         description="Ageing, receipts and dunning — the collections side of the money loop."
-        action={<Button onClick={() => setCreating(true)}>New receipt</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New receipt")}</Button>}
       />
       <KpiRow>
         <KpiTile label="Current" value={money(a?.current)} />

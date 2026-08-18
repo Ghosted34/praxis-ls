@@ -19,6 +19,7 @@
  * These ship seeded per service type (9091) and are ordinary editable rows.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -178,7 +179,7 @@ export function ServiceTypeAssumptions({
                     placeholder="La douane traite du lundi au vendredi, 07h30–15h30."
                   />
                 </Field>
-                <Field label="English">
+                <Field label={tr("English")}>
                   <Textarea
                     value={a.text_en || ""}
                     onChange={(e) => set(i, { text_en: e.target.value })}
@@ -207,7 +208,7 @@ export function ServiceTypeAssumptions({
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {saved && <Pill tone="ok">Saved</Pill>}
+          {saved && <Pill tone="ok">{tr("Saved")}</Pill>}
           <Button onClick={save} loading={busy} disabled={!canSave}>
             Publish register
           </Button>

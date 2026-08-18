@@ -137,8 +137,9 @@ async function sendInviteEmail(client, { to, name, token, origin, purpose, tenan
   const base = origin || `https://app.${config.APP_BASE_DOMAIN}`;
   // Consumed by the portal SPA route, NOT the staff one — a portal user has no
   // app_user row, so the staff reset screen would reject them confusingly.
-  // `/client-portal`, not `/portal`: the staff grant screen owns `/portal/access`.
-  const link = `${base}/client-portal/set-password?token=${encodeURIComponent(token)}`;
+  // `/portal`, the external portal's own prefix (the staff grant screen lives
+  // at `/settings/portal-access`, so there is no overlap).
+  const link = `${base}/portal/set-password?token=${encodeURIComponent(token)}`;
   const firstName = name ? String(name).trim().split(/\s+/)[0] : "there";
   const text = isReset
     ? `Hi ${firstName},\n\nUse the link below within ${RESET_TTL_MIN} minutes to choose a new password (single use):\n\n${link}`

@@ -23,6 +23,7 @@
  * fetch-everything" pattern the audit's F8 is about, just moved client-side.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
@@ -364,10 +365,10 @@ export function DictImportModal({
                         </td>
                         <td className="px-3 py-1.5">
                           {r.ok ? (
-                            <Pill tone="ok">Valid</Pill>
+                            <Pill tone="ok">{tr("Valid")}</Pill>
                           ) : (
                             <>
-                              <Pill tone="bad">Rejected</Pill>
+                              <Pill tone="bad">{tr("Rejected")}</Pill>
                               {/* The reason belongs on the row, not in a tooltip:
                                 fixing 40 rows means reading 40 reasons. */}
                               <ul className="mt-1 list-none space-y-0.5 p-0 text-xs text-muted-foreground">

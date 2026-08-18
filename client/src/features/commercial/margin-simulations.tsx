@@ -7,6 +7,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -140,7 +141,7 @@ function MarginSimForm({
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Lines</p>
+            <p className="text-sm font-medium">{tr("Lines")}</p>
             <Button
               size="sm"
               variant="ghost"
@@ -161,10 +162,10 @@ function MarginSimForm({
             </Button>
           </div>
           <div className="grid grid-cols-[1fr_3rem_6rem_6rem_auto_auto] gap-2 text-xs font-medium text-muted-foreground">
-            <span>Item</span>
-            <span className="text-right">Qty</span>
-            <span className="text-right">Unit cost</span>
-            <span className="text-right">Unit price</span>
+            <span>{tr("Item")}</span>
+            <span className="text-right">{tr("Qty")}</span>
+            <span className="text-right">{tr("Unit cost")}</span>
+            <span className="text-right">{tr("Unit price")}</span>
             <span>déb.</span>
             <span />
           </div>
@@ -231,7 +232,7 @@ function MarginSimForm({
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
               maxLength={3}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
             />
           </div>
         </div>
@@ -239,7 +240,7 @@ function MarginSimForm({
         {totals && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat
-              label="Total cost"
+              label={tr("Total cost")}
               value={money(totals.total_cost, currency)}
             />
             <Stat
@@ -252,7 +253,7 @@ function MarginSimForm({
               tone="accent"
             />
             <Stat
-              label="Margin %"
+              label={tr("Margin %")}
               value={
                 totals.margin_percent != null
                   ? `${cell(totals.margin_percent)}%`

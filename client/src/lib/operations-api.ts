@@ -971,6 +971,10 @@ export type MilestoneInstance = {
   cause_reason_code?: string | null;
   required_evidence_doc_type?: string | null;
   reopen_reason?: string | null;
+  /** Dedicated client-safe copy rendered by anonymous shipment tracking. */
+  public_location?: string | null;
+  public_stage_reference?: string | null;
+  public_progress_note?: string | null;
 };
 
 /** Health of an open milestone against its commitment (milestone.schedule). */
@@ -1003,6 +1007,20 @@ export const milestoneHealthTone = (
       return "ok";
   }
 };
+
+/** Save the bounded public tracking fields; these never reuse internal cause notes. */
+export const updateMilestonePublicDetails = (
+  id: string,
+  body: {
+    public_location?: string | null;
+    public_stage_reference?: string | null;
+    public_progress_note?: string | null;
+  },
+) =>
+  tenant<MilestoneInstance>(`/milestones/${id}/public-details`, {
+    method: "PATCH",
+    body,
+  });
 
 /** Un-complete a milestone marked DONE in error. The reason is the point. */
 export const reopenMilestone = (id: string, reason: string) =>

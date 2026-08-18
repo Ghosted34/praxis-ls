@@ -4,6 +4,7 @@
  * send to maintenance or retire, following the status lifecycle.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,14 +143,14 @@ function NewEquipmentForm({
       description="Register handling equipment."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Label" required>
+        <Field label={tr("Label")} required>
           <Input
             value={f.label}
             onChange={(e) => setF((s) => ({ ...s, label: e.target.value }))}
             placeholder="Forklift 3T"
           />
         </Field>
-        <Field label="Location">
+        <Field label={tr("Location")}>
           <Select
             value={f.location_id}
             onChange={(e) =>
@@ -258,7 +259,7 @@ export function EquipmentPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
-        title="Equipment"
+        title={tr("Equipment")}
         description="Handling equipment allocation — check out, return, maintain."
         action={
           <Button onClick={() => setCreating(true)}>New equipment</Button>
@@ -302,7 +303,7 @@ export function EquipmentPage() {
               </div>
               <div className="space-y-2 rounded-lg border bg-muted/30 p-2 min-h-24">
                 {equipment.loading ? (
-                  <div className="px-2 py-3 micro">Loading…</div>
+                  <div className="px-2 py-3 micro">{tr("Loading…")}</div>
                 ) : (
                   (byStatus[col] || []).map((e) => (
                     <div

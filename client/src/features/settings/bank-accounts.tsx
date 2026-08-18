@@ -11,6 +11,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
@@ -109,17 +110,17 @@ function NewAccountForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Corporate entity" required className="sm:col-span-2">
+          <Field label={tr("Corporate entity")} required className="sm:col-span-2">
             <SearchSelect
               path="/entities"
               value={entityLabel}
-              placeholder="Search entities…"
+              placeholder={tr("Search entities…")}
               getLabel={entityText}
               getKey={(en) => String(en.entity_id)}
               onSelect={(en) => setEntityId(String(en.entity_id))}
             />
           </Field>
-          <Field label="Kind" required>
+          <Field label={tr("Kind")} required>
             <Select value={kind} onChange={(e) => setKind(e.target.value)}>
               {TREASURY_KINDS.map((k) => (
                 <option key={k} value={k}>
@@ -128,14 +129,14 @@ function NewAccountForm({
               ))}
             </Select>
           </Field>
-          <Field label="Currency" hint="ISO code">
+          <Field label={tr("Currency")} hint={tr("ISO code")}>
             <Input
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              placeholder="XAF"
+              placeholder={tr("XAF")}
             />
           </Field>
-          <Field label="Label" required className="sm:col-span-2">
+          <Field label={tr("Label")} required className="sm:col-span-2">
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -234,7 +235,7 @@ export function BankAccountsPage() {
         title="Bank accounts"
         description="Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code."
         action={
-          <Button onClick={() => setCreateOpen(true)}>New account</Button>
+          <Button onClick={() => setCreateOpen(true)}>{tr("New account")}</Button>
         }
       />
       <HubTabs />
@@ -254,13 +255,13 @@ export function BankAccountsPage() {
         <Table>
           <THead>
             <TR>
-              <TH>Label</TH>
-              <TH>Kind</TH>
-              <TH>Entity</TH>
+              <TH>{tr("Label")}</TH>
+              <TH>{tr("Kind")}</TH>
+              <TH>{tr("Entity")}</TH>
               <TH>CoA</TH>
-              <TH>Currency</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Currency")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

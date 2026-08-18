@@ -5,6 +5,7 @@
  * worksite geofences. Uses the locked kit.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,7 +154,7 @@ function AbsencePanel({ date }: { date: string }) {
         </p>
       )}
       {a.loading ? (
-        <div className="py-3 text-center micro">Loading…</div>
+        <div className="py-3 text-center micro">{tr("Loading…")}</div>
       ) : a.error ? (
         <ErrorState message={a.error} />
       ) : rows.length === 0 ? (
@@ -366,7 +367,7 @@ function SiteForm({
           Use my current location
         </Button>
 
-        <Field label="Name" required>
+        <Field label={tr("Name")} required>
           <Input
             value={f.name}
             onChange={(e) => set("name", e.target.value)}
@@ -374,7 +375,7 @@ function SiteForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Latitude" required>
+          <Field label={tr("Latitude")} required>
             <Input
               className="num"
               value={f.latitude}
@@ -382,7 +383,7 @@ function SiteForm({
               placeholder="4.0511"
             />
           </Field>
-          <Field label="Longitude" required>
+          <Field label={tr("Longitude")} required>
             <Input
               className="num"
               value={f.longitude}
@@ -754,7 +755,7 @@ export function AttendancePage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Attendance"
+        title={tr("Attendance")}
         description="Team clock-ins, lateness and absences. Employees clock in/out from the clock in the title bar (or the floating cluster on a phone)."
       />
       <HubTabs />{" "}
@@ -775,7 +776,7 @@ export function AttendancePage() {
       {view === "day" ? (
         <>
           <div className="mb-4 flex items-center gap-3">
-            <span className="micro">Day</span>
+            <span className="micro">{tr("Day")}</span>
             <Input
               type="date"
               value={date}

@@ -28,6 +28,7 @@ const scheduler = require("./milestone.schedule");
 const { getSetting } = require("../../../shared/config/settings");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 
 const MIN_STAGES = 3;
 const MAX_STAGES = 15;
@@ -482,11 +483,50 @@ async function saveAssumptions(client, { serviceTypeId, assumptions = [], actor 
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
+/**
+ * Save only the bounded, client-safe tracking copy used by F14.
+ * Operational cause notes, health and attribution are deliberately not accepted
+ * here, so updating the public timeline cannot accidentally publish them.
+ */
+async function updatePublicDetails(client, { instanceId, details, actor = {} }) {
+  const clean = (value) => {
+    if (value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed || null;
+  };
+  const fields = {};
+  for (const key of ["public_location", "public_stage_reference", "public_progress_note"]) {
+    if (Object.prototype.hasOwnProperty.call(details, key)) fields[key] = clean(details[key]);
+  }
+  return atomically(client, async () => {
+    const before = await repo.getInstance(client, instanceId);
+    if (!before) throw new AppError("NOT_FOUND", "Milestone not found", 404);
+    const row = await repo.updateInstance(client, instanceId, fields);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: "milestone.public_details_updated",
+      moduleKey: events.MODULE,
+      entityRef: "milestone:" + instanceId,
+      before: {
+        public_location: before.public_location || null,
+        public_stage_reference: before.public_stage_reference || null,
+        public_progress_note: before.public_progress_note || null,
+      },
+      after: {
+        public_location: row.public_location || null,
+        public_stage_reference: row.public_stage_reference || null,
+        public_progress_note: row.public_progress_note || null,
+      },
+    });
+    return row;
+  });
+}
+
 /** The shipped default chain for a service type — drift comparison + restore. */
 const listSystemDefault = (client, serviceTypeId) => repo.systemDefaultStages(client, serviceTypeId);
 
 module.exports = {
-  publishTemplate, instantiate, advance, reopen, addStage, recalculate,
+  publishTemplate, instantiate, advance, reopen, addStage, recalculate, updatePublicDetails,
   getTemplate, listTemplates, listByDossier, listAssumptions, listSystemDefault, saveAssumptions, attribution,
   resolveTarget, resolveCalendar, resolvePolicy,
   MIN_STAGES, MAX_STAGES,

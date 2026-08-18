@@ -4,6 +4,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
@@ -100,7 +101,7 @@ function FileDeclarationForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" hint="Leave blank for all entities">
+          <Field label={tr("Entity")} hint="Leave blank for all entities">
             <Select
               value={entityId}
               onChange={(e) => setEntityId(e.target.value)}
@@ -139,21 +140,21 @@ function FileDeclarationForm({
               placeholder="2026-06"
             />
           </Field>
-          <Field label="Due on">
+          <Field label={tr("Due on")}>
             <Input
               type="date"
               value={dueOn}
               onChange={(e) => setDueOn(e.target.value)}
             />
           </Field>
-          <Field label="From">
+          <Field label={tr("From")}>
             <Input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
             />
           </Field>
-          <Field label="To">
+          <Field label={tr("To")}>
             <Input
               type="date"
               value={to}
@@ -314,12 +315,12 @@ function DeclarationsPanel() {
         <Table>
           <THead>
             <TR>
-              <TH>Type</TH>
-              <TH>Period</TH>
-              <TH>Amount</TH>
-              <TH>Due</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Type")}</TH>
+              <TH>{tr("Period")}</TH>
+              <TH>{tr("Amount")}</TH>
+              <TH>{tr("Due")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>

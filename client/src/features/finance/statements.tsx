@@ -5,6 +5,7 @@
  * Split out of `features/finance/pages.tsx` in Phase 3 (audit F7).
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { ApiError } from "@/lib/api-client";
 import { errMsg } from "@/lib/use-resource";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -99,11 +100,11 @@ function PeriodsPanel() {
         <Table>
           <THead>
             <TR>
-              <TH>Period</TH>
-              <TH>Start</TH>
-              <TH>End</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
+              <TH>{tr("Period")}</TH>
+              <TH>{tr("Start")}</TH>
+              <TH>{tr("End")}</TH>
+              <TH>{tr("Status")}</TH>
+              <TH>{tr("Actions")}</TH>
             </TR>
           </THead>
           <TBody>
@@ -194,7 +195,7 @@ function PeriodsPanel() {
 }
 export const StatementsPage = () => (
   <ReportTabs
-    title="Statements"
+    title={tr("Statements")}
     description="SYSCOHADA financial statements, general ledger and the guided monthly close."
     periodMode="period_id"
     tabs={[

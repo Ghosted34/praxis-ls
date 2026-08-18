@@ -31,6 +31,8 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { navT } from "@/lib/i18n";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { TabList, TabsRoot, TabsContent } from "@/components/ui/tabs";
@@ -97,6 +99,7 @@ export function TabbedHub({
   inlineTabs?: boolean;
   inPlace?: boolean;
 }) {
+  const { t } = useTranslation();
   const { section } = useParams();
   const navigate = useNavigate();
   // `inPlace` swaps tab content in local state without touching the route, so the
@@ -139,7 +142,7 @@ export function TabbedHub({
     <div className={cn(carried && "md:hidden")}>
       <TabList
         label={`${eyebrow} sections`}
-        tabs={tabs.map((t) => ({ value: t.key, label: t.label }))}
+        tabs={tabs.map((x) => ({ value: x.key, label: navT(t, x.label) }))}
       />
     </div>
   );

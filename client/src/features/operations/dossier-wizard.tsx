@@ -28,6 +28,7 @@
  * somebody correcting an ETA should not be walked through three steps.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/modal";
@@ -239,7 +240,7 @@ export function DossierWizard({
       {step === 0 && (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Entity" required>
+            <Field label={tr("Entity")} required>
               <Select
                 value={entityId}
                 onChange={(e) => setEntityId(e.target.value)}
@@ -252,7 +253,7 @@ export function DossierWizard({
                 ))}
               </Select>
             </Field>
-            <Field label="Client" required>
+            <Field label={tr("Client")} required>
               <Select
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
@@ -266,7 +267,7 @@ export function DossierWizard({
               </Select>
             </Field>
             <Field
-              label="Service type"
+              label={tr("Service type")}
               required
               className="sm:col-span-2"
               hint="Decides which details this file captures, and its milestone chain."
@@ -316,7 +317,7 @@ export function DossierWizard({
             />
           )}
           {form.data && !form.data.field_set && (
-            <Callout tone="warn" title="No detail form yet">
+            <Callout tone="warn" title={tr("No detail form yet")}>
               {chosen?.name_en || chosen?.name_fr || "This service type"} has no
               shipment-detail form. Add one under Service types → Details; until
               then this file records only the fields above.
@@ -324,7 +325,7 @@ export function DossierWizard({
           )}
 
           <Field
-            label="Title"
+            label={tr("Title")}
             hint="Optional — a short name people will recognise the file by."
           >
             <Input
@@ -378,7 +379,7 @@ export function DossierWizard({
         <div className="space-y-5">
           {capturesContainers ? (
             <section className="space-y-2">
-              <h3 className="text-sm font-medium text-foreground">Equipment</h3>
+              <h3 className="text-sm font-medium text-foreground">{tr("Equipment")}</h3>
               <p className="micro text-muted-foreground">
                 What is moving, by type and count. Marks &amp; numbers are
                 generated from this.
@@ -400,7 +401,7 @@ export function DossierWizard({
           )}
 
           <section className="space-y-2">
-            <h3 className="text-sm font-medium text-foreground">Documents</h3>
+            <h3 className="text-sm font-medium text-foreground">{tr("Documents")}</h3>
             <DossierDocuments
               dossierId={draftId}
               clientId={clientId || null}

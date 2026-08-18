@@ -73,6 +73,7 @@ const DOC_TYPES = {
    * anyone holding Settings could read every applicant's file in the tenant.
    */
   PARTNERSHIP_PROFILE:   { label: "Partnership corporate profile", module: "sales/partnership_request", moduleKey: "MOD-25" },
+  SUCCESS_STORY_MEDIA:   { label: "Success story public image", module: "sales/success_story", moduleKey: "MOD-26" },
   /*
    * Master-data scans — the file behind a register entry, not a document this
    * system issues. There is no template for these three and there never will

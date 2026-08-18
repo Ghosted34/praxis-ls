@@ -17,6 +17,7 @@ router.use(authMiddleware);
 
 // Self-service — the caller's own payslips (My HR). No MOD grant.
 router.get("/mine", controller.mine);
+router.get("/mine/:runItemId/pdf", controller.ownPayslipPdf);
 // …and what they still owe. An employee is always entitled to know what is
 // being recovered from their pay and how much is left.
 router.get("/advances/mine", controller.myAdvances);

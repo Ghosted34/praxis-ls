@@ -31,6 +31,7 @@
  * variables, so it is the company's careers page and not the vendor's.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useParams, Link } from "react-router-dom";
 import { useBranding } from "@/app/branding/branding-context";
 // A standalone renderer, not shell furniture — see the note above about what
@@ -136,7 +137,7 @@ function VacancyList() {
       {rows.map((v) => (
         <li key={v.token}>
           <Link
-            to={`/careers/${v.token}`}
+            to={`/public/careers/${v.token}`}
             className="block rounded-xl border p-4 transition-colors hover:bg-accent/40"
           >
             <span className="font-medium text-foreground">{v.title}</span>
@@ -288,7 +289,7 @@ function ApplyForm({
 
   return (
     <form className="space-y-4" onSubmit={submit}>
-      <h2 className="text-base font-semibold text-foreground">Apply</h2>
+      <h2 className="text-base font-semibold text-foreground">{tr("Apply")}</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -486,7 +487,7 @@ function VacancyDetail({ token }: { token: string }) {
       <div className="rounded-xl border p-8 text-center">
         <p className="font-medium text-foreground">{error}</p>
         <Link
-          to="/careers"
+          to="/public/careers"
           className="mt-2 inline-block text-sm text-primary-ink underline"
         >
           See our other open roles
@@ -494,7 +495,7 @@ function VacancyDetail({ token }: { token: string }) {
       </div>
     );
   }
-  if (!v) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!v) return <p className="text-sm text-muted-foreground">{tr("Loading…")}</p>;
 
   return (
     <article className="space-y-8">
@@ -513,7 +514,7 @@ function VacancyDetail({ token }: { token: string }) {
         </p>
       )}
       <div>
-        <Link to="/careers" className="text-sm text-muted-foreground underline">
+        <Link to="/public/careers" className="text-sm text-muted-foreground underline">
           ← All roles
         </Link>
         <h1 className="mt-3 text-2xl font-semibold text-foreground">

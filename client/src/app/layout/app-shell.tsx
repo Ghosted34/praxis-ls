@@ -30,6 +30,7 @@
  * for the full grouped index.
  */
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
@@ -61,6 +62,8 @@ import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LangToggle } from "@/components/lang-toggle";
+import { navT } from "@/lib/i18n";
 import { getMode, setMode, resolved } from "@/lib/theme-mode";
 import { ClockPunchChip } from "@/components/clock-punch";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
@@ -421,6 +424,7 @@ function UserMenu({
   } | null;
   onLogout: () => void;
 }) {
+  const { t } = useTranslation();
   const name = (
     user?.display_name ||
     user?.full_name ||
@@ -488,10 +492,10 @@ function UserMenu({
         </DropdownLabel>
         <DropdownSeparator />
         <DropdownItem to="/my-hr">
-          <HrIcon /> My HR
+          <HrIcon /> {t("shell.myHr")}
         </DropdownItem>
         <DropdownItem to="/security/my-security">
-          <SecurityIcon /> My security
+          <SecurityIcon /> {t("shell.mySecurity")}
         </DropdownItem>
         {/* Points at the PERSONAL screen, not the tenant editor. This menu is
             the "me" menu — My HR, My security — and every user can reach it,
@@ -500,11 +504,11 @@ function UserMenu({
             tenant editor is still one click away under Settings → Appearance,
             where the people who hold that grant look for it. */}
         <DropdownItem to="/my-appearance">
-          <PaletteIcon /> My appearance
+          <PaletteIcon /> {t("shell.myAppearance")}
         </DropdownItem>
         {!isStandalone() && (
           <DropdownItem onSelect={openInstallUi}>
-            <DownloadIcon /> Install app
+            <DownloadIcon /> {t("shell.installApp")}
           </DropdownItem>
         )}
         <DropdownSeparator />
@@ -519,7 +523,7 @@ function UserMenu({
         <DensityChoice />
         <DropdownSeparator />
         <DropdownItem destructive onSelect={onLogout}>
-          <LogoutIcon /> Sign out
+          <LogoutIcon /> {t("shell.signOut")}
         </DropdownItem>
       </DropdownMenu>
     </div>
@@ -530,6 +534,7 @@ function UserMenu({
  *  group carries its area icon. Single-screen areas (now hubs) are a single
  *  link; multi-item areas (Overview) are a collapsible section with a chevron. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
+  const { t } = useTranslation();
   const nav = useVisibleNav();
   const { pathname } = useLocation();
   // Route-driven expansion: a multi-item section is open only while you're on one
@@ -563,7 +568,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
           const it = g.items[0];
           return (
             <NavLink
-              key={g.heading}
+              key={navT(t, g.heading)}
               to={it.to}
               end={it.to === "/"}
               onClick={onNavigate}
@@ -578,7 +583,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               }
             >
               <Icon />
-              <span>{g.heading}</span>
+              <span>{navT(t, g.heading)}</span>
             </NavLink>
           );
         }
@@ -587,7 +592,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
         // one of its screens (route-driven), collapsed everywhere else.
         const open = inGroup(g) || !!manual[g.heading];
         return (
-          <div key={g.heading}>
+          <div key={navT(t, g.heading)}>
             <button
               type="button"
               onClick={() => setManual((m) => ({ ...m, [g.heading]: !open }))}
@@ -595,7 +600,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
             >
               <Icon />
-              <span className="flex-1 text-left">{g.heading}</span>
+              <span className="flex-1 text-left">{navT(t, g.heading)}</span>
               <ChevronIcon
                 className={cn(
                   "h-3.5 w-3.5 transition-transform",
@@ -693,6 +698,7 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
 }
 
 export function AppShell() {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   // `pwa` is the resolved installed-app identity (icon, app name, title-bar
   // treatment); `branding` is the in-app token layer. The title bar uses the
@@ -899,7 +905,7 @@ export function AppShell() {
                 className="wco-touch flex min-w-[40px] items-center justify-center rounded-lg border bg-accent/40 text-muted-foreground transition-colors hover:text-foreground lg:h-auto lg:min-w-0 lg:justify-start lg:gap-2 lg:px-3 lg:py-1.5"
               >
                 <SearchIcon width={16} height={16} />
-                <span className="hidden text-xs lg:inline">Search…</span>
+                <span className="hidden text-xs lg:inline">{t("common.search")}</span>
                 <span className="ml-4 hidden rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold lg:inline">
                   ⌘K
                 </span>
@@ -917,6 +923,9 @@ export function AppShell() {
               it. Below `sm` the same choice lives in the account menu
               (`ThemeChoice`), which is where the other display preference this
               user owns already is. */}
+              <span className="hidden sm:inline-flex">
+                <LangToggle />
+              </span>
               <span className="hidden sm:inline-flex">
                 <ThemeToggle />
               </span>
@@ -962,7 +971,7 @@ export function AppShell() {
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
-                    aria-label="Close menu"
+                    aria-label={t("shell.closeMenu")}
                     className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <XIcon width={18} height={18} />
@@ -984,10 +993,7 @@ export function AppShell() {
           {env === "sandbox" && (
             <div className="flex flex-none items-center justify-center gap-2 border-b border-[rgb(var(--warn-fill)_/_0.35)] bg-[rgb(var(--warn-fill)_/_0.14)] px-4 py-2 text-center text-xs font-medium text-[rgb(var(--warn))]">
               <AlertIcon width={14} height={14} className="shrink-0" />
-              <span>
-                TEST MODE — you&rsquo;re viewing sandbox data. Changes here
-                don&rsquo;t affect live.
-              </span>
+              <span>{t("shell.testMode")}</span>
               <SwitchToLiveButton onSwitch={switchEnv} />
             </div>
           )}

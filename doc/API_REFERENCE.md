@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1184 |
+| Routes | 1209 |
 | Modules mounted | 117 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1184 mounted routes, grouped by path prefix.
+All 1209 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -972,6 +972,7 @@ All 1184 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/leave/holidays/:id` | — |
 | GET | `/api/tenant/leave/ledger/:employeeId` | — |
 | GET | `/api/tenant/leave/mine` | — |
+| POST | `/api/tenant/leave/mine` | — |
 | GET | `/api/tenant/leave/mine/balances` | — |
 | GET | `/api/tenant/leave/types` | — |
 | POST | `/api/tenant/leave/types` | — |
@@ -1069,6 +1070,7 @@ All 1184 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | POST | `/api/tenant/milestones/:id/advance` | — |
+| PATCH | `/api/tenant/milestones/:id/public-details` | — |
 | POST | `/api/tenant/milestones/:id/reopen` | — |
 | GET | `/api/tenant/milestones/assumptions/:serviceTypeId` | — |
 | PUT | `/api/tenant/milestones/assumptions/:serviceTypeId` | — |
@@ -1224,6 +1226,7 @@ All 1184 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/payroll/advances/:advanceId` | — |
 | GET | `/api/tenant/payroll/advances/mine` | — |
 | GET | `/api/tenant/payroll/mine` | — |
+| GET | `/api/tenant/payroll/mine/:runItemId/pdf` | — |
 
 ### `tenant/permissions`
 
@@ -1243,17 +1246,37 @@ All 1184 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/portal/auditor` | — |
+| GET | `/api/tenant/portal/auditor/data-room` | — |
+| POST | `/api/tenant/portal/auditor/data-room` | — |
+| GET | `/api/tenant/portal/auditor/data-room/:id` | — |
+| GET | `/api/tenant/portal/auditor/data-room/:id/documents/:docId/download` | — |
 | POST | `/api/tenant/portal/auth/accept` | — |
 | POST | `/api/tenant/portal/auth/forgot` | — |
 | POST | `/api/tenant/portal/auth/login` | — |
 | GET | `/api/tenant/portal/client` | — |
+| GET | `/api/tenant/portal/client/documents` | — |
+| GET | `/api/tenant/portal/client/documents/:id/download` | — |
 | GET | `/api/tenant/portal/client/dossier/:dossierId` | — |
+| GET | `/api/tenant/portal/client/messages` | — |
+| POST | `/api/tenant/portal/client/messages` | — |
+| GET | `/api/tenant/portal/client/messages/export` | — |
+| GET | `/api/tenant/portal/client/onboarding` | — |
+| GET | `/api/tenant/portal/client/quote-requests` | — |
+| POST | `/api/tenant/portal/client/quote-requests` | — |
 | GET | `/api/tenant/portal/client/tickets` | — |
 | POST | `/api/tenant/portal/client/tickets` | — |
 | GET | `/api/tenant/portal/client/tickets/:id` | — |
 | POST | `/api/tenant/portal/client/tickets/:id/replies` | — |
+| GET | `/api/tenant/portal/data-room` | — |
+| GET | `/api/tenant/portal/data-room/:id` | — |
+| POST | `/api/tenant/portal/data-room/:id/answer` | — |
+| POST | `/api/tenant/portal/data-room/:id/documents` | — |
 | GET | `/api/tenant/portal/investor` | — |
 | GET | `/api/tenant/portal/me` | — |
+| GET | `/api/tenant/portal/messages` | — |
+| POST | `/api/tenant/portal/messages` | — |
+| GET | `/api/tenant/portal/onboarding` | — |
+| POST | `/api/tenant/portal/onboarding/:clientId/:stepKey` | — |
 | GET | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users` | — |
 | POST | `/api/tenant/portal/users/:id/password` | — |
@@ -1584,6 +1607,8 @@ All 1184 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/success-stories/` | — |
 | GET | `/api/tenant/success-stories/:id` | — |
 | PATCH | `/api/tenant/success-stories/:id` | — |
+| POST | `/api/tenant/success-stories/:id/media` | — |
+| DELETE | `/api/tenant/success-stories/:id/media/:documentId` | — |
 | POST | `/api/tenant/success-stories/:id/publish` | — |
 | POST | `/api/tenant/success-stories/:id/sign-off` | — |
 | POST | `/api/tenant/success-stories/:id/unpublish` | — |

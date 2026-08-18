@@ -35,6 +35,7 @@
  * never exist for a transition the API would refuse.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -504,8 +505,8 @@ function TransitForm({
                 disabled={locked}
                 onChange={(e) => set("service_direction", e.target.value)}
               >
-                <option value="IMPORT">Import</option>
-                <option value="EXPORT">Export</option>
+                <option value="IMPORT">{tr("Import")}</option>
+                <option value="EXPORT">{tr("Export")}</option>
               </Select>
             </Field>
             <Field
@@ -578,7 +579,7 @@ function TransitForm({
               />
             </Field>
             <Field
-              label="Currency"
+              label={tr("Currency")}
               hint="From Master data → Currencies."
             >
               <Select
@@ -698,7 +699,7 @@ function TransitForm({
                   value={l.weight}
                   onChange={(e) => setLine(i, { weight: e.target.value })}
                   aria-label={`Weight, cargo line ${i + 1}`}
-                  placeholder="Weight"
+                  placeholder={tr("Weight")}
                 />
                 <Input
                   type="number"
@@ -708,7 +709,7 @@ function TransitForm({
                   value={l.value_amount}
                   onChange={(e) => setLine(i, { value_amount: e.target.value })}
                   aria-label={`Value, cargo line ${i + 1}`}
-                  placeholder="Value"
+                  placeholder={tr("Value")}
                 />
                 <Button
                   type="button"
@@ -944,7 +945,7 @@ function OrderActions({
               own is not evidence.
             </p>
             <Field
-              label="Signed copy"
+              label={tr("Signed copy")}
               required
               error={scanError || undefined}
               hint="PDF or a photo of the stamped page."
@@ -965,7 +966,7 @@ function OrderActions({
                 className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
               />
             </Field>
-            <Field label="Signed by">
+            <Field label={tr("Signed by")}>
               <Input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -1015,7 +1016,7 @@ function OrderActions({
               The OT number is retained and never re-used, so the reason is what
               explains the gap in the sequence later.
             </p>
-            <Field label="Reason" required>
+            <Field label={tr("Reason")} required>
               <Input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -1097,13 +1098,13 @@ function OrderDetail({
           <ShipmentDetailsPanel
             data={data.shipment_details || undefined}
             dossierId={data.shipment_details ? undefined : data.dossier_id}
-            title="Shipment"
+            title={tr("Shipment")}
           />
         )}
 
         <Panel title="Instruction">
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <Fact label="Direction" value={data.service_direction} />
+            <Fact label={tr("Direction")} value={data.service_direction} />
             <Fact
               label="Regime"
               value={data.customs_regime || data.customs_regime_other}
@@ -1126,14 +1127,14 @@ function OrderDetail({
             />
             <Fact label="Departure" value={data.departure_date} />
             <Fact
-              label="Insurance"
+              label={tr("Insurance")}
               value={data.insurance_type === "COMPANY" ? "Us" : "Client"}
             />
             <Fact
-              label="Surveyor"
+              label={tr("Surveyor")}
               value={data.surveyor_party === "COMPANY" ? "Us" : "Client"}
             />
-            <Fact label="Declaration" value={data.declaration_ref} />
+            <Fact label={tr("Declaration")} value={data.declaration_ref} />
           </dl>
         </Panel>
 
@@ -1142,11 +1143,11 @@ function OrderDetail({
             <table className="w-full text-sm">
               <thead>
                 <tr className="micro text-left text-muted-foreground">
-                  <th className="pb-1">Description</th>
+                  <th className="pb-1">{tr("Description")}</th>
                   <th className="pb-1">Marks</th>
                   <th className="pb-1 text-right">Pkgs</th>
-                  <th className="pb-1 text-right">Weight</th>
-                  <th className="pb-1 text-right">Value</th>
+                  <th className="pb-1 text-right">{tr("Weight")}</th>
+                  <th className="pb-1 text-right">{tr("Value")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1277,7 +1278,7 @@ export function TransitOrdersPage() {
             docType="TRANSIT_ORDER"
             id={r.transit_order_id}
             title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`}
-            label="View"
+            label={tr("View")}
           />
         </div>
       ),
@@ -1287,7 +1288,7 @@ export function TransitOrdersPage() {
   return (
     <ListPage<api.TransitOrder>
       eyebrow={<HubCrumb area="Operations" to="/operations" />}
-      title="Transit orders"
+      title={tr("Transit orders")}
       description="The client's written authorisation to declare their cargo."
       action={<Button onClick={() => setCreating(true)}>New order</Button>}
       tabs={<HubTabs />}
@@ -1304,7 +1305,7 @@ export function TransitOrdersPage() {
             onClick={() => setStatus("")}
           />
           <KpiTile
-            label="Drafts"
+            label={tr("Drafts")}
             value={num(counts?.DRAFT ?? 0)}
             onClick={() => setStatus("DRAFT")}
           />

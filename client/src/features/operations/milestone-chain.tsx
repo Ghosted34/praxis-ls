@@ -19,8 +19,10 @@
  * than leaving someone to infer it from a row halfway down.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
@@ -106,6 +108,70 @@ function ReopenDialog({
   );
 }
 
+/** Client-safe copy for the anonymous F14 timeline — never an internal cause note. */
+function PublicDetailsDialog({
+  milestone,
+  onClose,
+  onDone,
+}: {
+  milestone: api.MilestoneInstance;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [location, setLocation] = React.useState(milestone.public_location || "");
+  const [reference, setReference] = React.useState(milestone.public_stage_reference || "");
+  const [note, setNote] = React.useState(milestone.public_progress_note || "");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateMilestonePublicDetails(milestone.milestone_instance_id, {
+        public_location: location,
+        public_stage_reference: reference,
+        public_progress_note: note,
+      });
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const label = milestone.label_fr || milestone.label || milestone.code;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Public tracking · ${label}`}
+      description="Only this client-safe copy is shown on anonymous shipment tracking. Internal health, delay attribution and cause notes remain private."
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>{tr("Cancel")}</Button>
+          <Button onClick={submit} loading={busy} disabled={busy}>Save public details</Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field label={tr("Location")} hint="Current client-facing place for this stage (maximum 200 characters).">
+          <Input maxLength={200} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Port of Douala" />
+        </Field>
+        <Field label="Stage reference" hint="Operational reference safe to share with the client (maximum 120 characters).">
+          <Input maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="BL MEDU1234567" />
+        </Field>
+        <Field label="Progress note" hint={`${note.length}/1000 characters · do not copy internal exception commentary.`}>
+          <Textarea maxLength={1000} rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Cargo discharged and awaiting terminal release." />
+        </Field>
+        {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
 /** Insert a stage between two existing ones — the "a problem came up" case. */
 function InsertDialog({
   dossierId,
@@ -171,21 +237,21 @@ function InsertDialog({
       }
     >
       <div className="space-y-3">
-        <Field label="Code" required>
+        <Field label={tr("Code")} required>
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="CUSTOMS_QUERY"
           />
         </Field>
-        <Field label="Label" required>
+        <Field label={tr("Label")} required>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Réserve douanière à lever"
           />
         </Field>
-        <Field label="Owner" hint="Who a delay on this stage is attributed to.">
+        <Field label={tr("Owner")} hint="Who a delay on this stage is attributed to.">
           <Select
             value={owner}
             onChange={(e) => setOwner(e.target.value as api.OwnerTier)}
@@ -234,6 +300,8 @@ export function MilestoneChain({
   const [reopening, setReopening] =
     React.useState<api.MilestoneInstance | null>(null);
   const [inserting, setInserting] =
+    React.useState<api.MilestoneInstance | null>(null);
+  const [editingPublic, setEditingPublic] =
     React.useState<api.MilestoneInstance | null>(null);
 
   const rows = React.useMemo(() => chain.data || [], [chain.data]);
@@ -331,7 +399,7 @@ export function MilestoneChain({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm text-foreground">{label}</span>
-                    {m.is_target_lock && <Pill tone="orange">SLA</Pill>}
+                    {m.is_target_lock && <Pill tone="orange">{tr("SLA")}</Pill>}
                     {m.is_anchor && <Pill tone="blue">anchor</Pill>}
                     {m.is_ad_hoc && <Pill tone="mute">added</Pill>}
                     {!m.is_client_visible && <Pill tone="mute">internal</Pill>}
@@ -346,6 +414,12 @@ export function MilestoneChain({
                       : ""}
                     {m.reopen_reason ? ` · reopened: ${m.reopen_reason}` : ""}
                   </span>
+                  {(m.public_location || m.public_stage_reference || m.public_progress_note) && (
+                    <p className="micro mt-1">
+                      Public: {[m.public_location, m.public_stage_reference, m.public_progress_note]
+                        .filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -386,6 +460,15 @@ export function MilestoneChain({
                           Reopen
                         </Button>
                       )}
+                      {m.is_client_visible && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingPublic(m)}
+                        >
+                          Public details
+                        </Button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setInserting(m)}
@@ -409,6 +492,13 @@ export function MilestoneChain({
         <ReopenDialog
           milestone={reopening}
           onClose={() => setReopening(null)}
+          onDone={chain.reload}
+        />
+      )}
+      {editingPublic && (
+        <PublicDetailsDialog
+          milestone={editingPublic}
+          onClose={() => setEditingPublic(null)}
           onDone={chain.reload}
         />
       )}

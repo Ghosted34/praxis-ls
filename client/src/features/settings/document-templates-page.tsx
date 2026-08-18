@@ -6,6 +6,7 @@
  * Talks to /document-templates (MOD-70).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -226,7 +227,7 @@ export function TemplateStudioPage() {
       <div className="mb-4 max-w-sm">
         <span className="micro mb-1 block">Document</span>
         <Select
-          aria-label="Document type"
+          aria-label={tr("Document type")}
           value={docType}
           onChange={(e) => setDocType(e.target.value)}
         >
@@ -244,7 +245,7 @@ export function TemplateStudioPage() {
         <div className="lux-card overflow-hidden p-0">
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="micro">Entity</span>
+              <span className="micro">{tr("Entity")}</span>
               <Select
                 aria-label="Preview as entity"
                 value={entityId}
@@ -258,7 +259,7 @@ export function TemplateStudioPage() {
                   </option>
                 ))}
               </Select>
-              <span className="micro ml-2">Preview</span>
+              <span className="micro ml-2">{tr("Preview")}</span>
               <Select
                 aria-label="Preview with record"
                 value={recordId}
@@ -301,8 +302,8 @@ export function TemplateStudioPage() {
                   onChange={(e) => set({ language: e.target.value })}
                 >
                   <option value="bilingual">Bilingual FR/EN</option>
-                  <option value="fr">Français</option>
-                  <option value="en">English</option>
+                  <option value="fr">{tr("Français")}</option>
+                  <option value="en">{tr("English")}</option>
                 </Select>
               </Field>
               <div className="grid grid-cols-2 gap-2">
@@ -348,7 +349,7 @@ export function TemplateStudioPage() {
               onChange={(v) => setNested("show", { tax_breakdown: v })}
             />
             <Check
-              label="Notes"
+              label={tr("Notes")}
               checked={show.notes !== false}
               onChange={(v) => setNested("show", { notes: v })}
             />

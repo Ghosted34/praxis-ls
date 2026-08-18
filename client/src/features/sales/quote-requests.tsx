@@ -27,6 +27,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant, download } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,7 +209,7 @@ export function QuoteRequestsPage() {
 
       <div className="mb-4 space-y-3">
         <Chips
-          label="Filter by status"
+          label={tr("Filter by status")}
           value={statusFilter}
           options={STATUS_FILTERS}
           onChange={setStatusFilter}

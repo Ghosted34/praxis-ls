@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ import {
 import { PortalFrame, msg } from "./portal-chrome";
 
 export function PortalLogin() {
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -32,7 +34,7 @@ export function PortalLogin() {
     try {
       const r = await portalLogin(email.trim(), password);
       portalToken.set(r.access_token);
-      nav("/client-portal", { replace: true });
+      nav("/portal", { replace: true });
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -58,9 +60,9 @@ export function PortalLogin() {
 
   return (
     <PortalFrame>
-      <h1 className="font-display text-2xl text-foreground">Sign in</h1>
+      <h1 className="font-display text-2xl text-foreground">{t("portal.signIn")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Track your shipments, documents and invoices.
+        {t("portal.signInSub")}
       </p>
 
       {sent ? (
@@ -76,7 +78,7 @@ export function PortalLogin() {
             className="mb-1 block text-sm text-foreground"
             htmlFor="portal-email"
           >
-            Email
+            {t("portal.email")}
           </label>
           <Input
             id="portal-email"
@@ -92,7 +94,7 @@ export function PortalLogin() {
             className="mb-1 block text-sm text-foreground"
             htmlFor="portal-password"
           >
-            Password
+            {t("portal.password")}
           </label>
           <Input
             id="portal-password"
@@ -107,14 +109,14 @@ export function PortalLogin() {
           <p className="text-sm text-[hsl(var(--bad))]">{error}</p>
         ) : null}
         <Button type="submit" className="w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? t("portal.signingIn") : t("portal.signIn")}
         </Button>
         <button
           type="button"
           onClick={forgot}
           className="w-full text-sm text-muted-foreground transition-colors hover:text-primary-ink"
         >
-          Forgot your password?
+          {t("portal.forgotPassword")}
         </button>
       </form>
     </PortalFrame>
@@ -144,7 +146,7 @@ export function PortalSetPassword() {
       // bouncing them to a login form to retype what they typed is friction for
       // no security gain.
       portalToken.set(r.access_token);
-      nav("/client-portal", { replace: true });
+      nav("/portal", { replace: true });
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -157,7 +159,7 @@ export function PortalSetPassword() {
       <PortalFrame>
         <ErrorState message="That link is incomplete. Please use the link exactly as it appears in your email." />
         <p className="mt-4 text-sm">
-          <Link to="/client-portal/login" className="text-primary-ink">
+          <Link to="/portal/login" className="text-primary-ink">
             Back to sign in
           </Link>
         </p>

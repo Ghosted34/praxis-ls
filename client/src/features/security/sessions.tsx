@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/states";
@@ -87,9 +88,9 @@ export function SessionsPage() {
       label: "State",
       render: (r) =>
         r.killed_at ? (
-          <Pill tone="bad">Revoked</Pill>
+          <Pill tone="bad">{tr("Revoked")}</Pill>
         ) : (
-          <Pill tone="ok">Active</Pill>
+          <Pill tone="ok">{tr("Active")}</Pill>
         ),
     },
   ];
@@ -131,7 +132,7 @@ export function SessionsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
-        title="Sessions"
+        title={tr("Sessions")}
         description="Active sign-ins. Revoking a session invalidates its refresh token immediately — the next refresh is rejected as reuse."
         action={
           tab === "mine" ? (

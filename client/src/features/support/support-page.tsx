@@ -7,6 +7,7 @@
  * store, scoped to this tenant).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -99,7 +100,7 @@ function NewTicketModal({
       description="Reach the Praxis team directly — ask for help, report a bug, or request a feature."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Type" required>
+        <Field label={tr("Type")} required>
           <Select
             value={kind}
             onChange={(e) => setKind(e.target.value as Kind)}
@@ -109,7 +110,7 @@ function NewTicketModal({
             <option value="FEATURE">Feature — I’d like an improvement</option>
           </Select>
         </Field>
-        <Field label="Summary" required>
+        <Field label={tr("Summary")} required>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -118,7 +119,7 @@ function NewTicketModal({
           />
         </Field>
         <Field
-          label="Details"
+          label={tr("Details")}
           hint="What happened, what you expected, where in the app (optional)."
         >
           <Textarea
@@ -309,7 +310,7 @@ export function SupportPage() {
       />
       <KpiRow>
         <KpiTile label="Total tickets" value={num(list.length)} />
-        <KpiTile label="Open" value={num(open)} />
+        <KpiTile label={tr("Open")} value={num(open)} />
         <KpiTile label="Resolved" value={num(resolved)} />
       </KpiRow>
       <DataList

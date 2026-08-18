@@ -20,6 +20,7 @@
  * than after; the server sniffs the actual bytes, which is the check that counts.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -145,14 +146,14 @@ export function DossierDocuments({
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
-          label="Document type"
+          label={tr("Document type")}
           hint="Not listed? Add it — it stays available on every file."
         >
           <div className="flex gap-2">
             <Select
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
-              aria-label="Document type"
+              aria-label={tr("Document type")}
             >
               <option value="">—</option>
               {active.map((t) => (
@@ -175,7 +176,7 @@ export function DossierDocuments({
           file={file}
           onPick={setFile}
           accept={ACCEPT}
-          label="File"
+          label={tr("File")}
           hint="PDF, PNG or JPG — up to 5 MB."
           error={fileError}
         />
@@ -235,7 +236,7 @@ export function DossierDocuments({
       {error && <ErrorState message={error} />}
 
       {attached.length > 0 && (
-        <ul className="space-y-1" aria-label="Attached documents">
+        <ul className="space-y-1" aria-label={tr("Attached documents")}>
           {attached.map((d) => (
             <li
               key={d.doc_id}

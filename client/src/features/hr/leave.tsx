@@ -20,6 +20,7 @@
  * missions) consume no entitlement and are not asked about at all.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -201,12 +202,12 @@ function NewRequestForm({
     <Modal
       open
       onClose={onClose}
-      title="New request"
+      title={tr("New request")}
       description="Raise a leave, salary-advance or mission request for approval."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Employee" required>
+          <Field label={tr("Employee")} required>
             <Select
               value={f.employee_id}
               onChange={(e) => set("employee_id", e.target.value)}
@@ -231,7 +232,7 @@ function NewRequestForm({
               value={f.kind}
               onChange={(e) => set("kind", e.target.value)}
             >
-              <option value="leave">Leave</option>
+              <option value="leave">{tr("Leave")}</option>
               <option value="mission">Mission</option>
             </Select>
           </Field>
@@ -258,14 +259,14 @@ function NewRequestForm({
               </Select>
             </Field>
           )}
-          <Field label="From">
+          <Field label={tr("From")}>
             <Input
               type="date"
               value={f.starts_on}
               onChange={(e) => set("starts_on", e.target.value)}
             />
           </Field>
-          <Field label="To">
+          <Field label={tr("To")}>
             <Input
               type="date"
               value={f.ends_on}
@@ -296,7 +297,7 @@ function NewRequestForm({
           )}
           {isAdvance && (
             <Field
-              label="Amount (XAF)"
+              label={tr("Amount (XAF)")}
               hint="Recovered in payroll (→ 4211)"
               className="sm:col-span-2"
             >
@@ -309,7 +310,7 @@ function NewRequestForm({
               />
             </Field>
           )}
-          <Field label="Reason" className="sm:col-span-2">
+          <Field label={tr("Reason")} className="sm:col-span-2">
             <Input
               value={f.reason}
               onChange={(e) => set("reason", e.target.value)}
@@ -527,7 +528,7 @@ export function LeavePage() {
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
         title="Leave & allowances"
         description="Approve or reject leave, salary-advance and mission requests."
-        action={<Button onClick={() => setCreating(true)}>New request</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New request")}</Button>}
       />
       <HubTabs />{" "}
       <div className="mb-4 inline-flex rounded-lg border p-0.5 text-sm">

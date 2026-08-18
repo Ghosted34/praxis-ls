@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -97,7 +98,7 @@ export function ProposalDetail({
     const tone=window.prompt("Tone","Consultative and expert")||"Consultative and expert";
     await run(()=>tenant(`/proposals/${id}/generate`,{method:"POST",body:{client_operations,pain_points,proposed_strategy,tone}}));
   }
-  async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/proposal/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
+  async function shareProposal(){setBusy(true);setError(null);try{const out=await tenant<{path:string}>(`/proposals/${id}/share`,{method:"POST",body:{expires_in_days:30}});const url=`${window.location.origin}/public/proposals/${out.path.split("/").pop()}`;setShareUrl(url);await navigator.clipboard?.writeText(url);setBusy(false);}catch(e){setError(errMsg(e));setBusy(false);}}
   const doAccept = () =>
     run(() =>
       tenant(`/proposals/${id}/accept`, {
@@ -164,10 +165,10 @@ export function ProposalDetail({
             {lines.length > 0 && (
               <div className="rounded-lg border">
                 <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-                  <span>Item</span>
-                  <span className="w-12 text-right">Qty</span>
-                  <span className="w-24 text-right">Unit</span>
-                  <span className="w-28 text-right">Total</span>
+                  <span>{tr("Item")}</span>
+                  <span className="w-12 text-right">{tr("Qty")}</span>
+                  <span className="w-24 text-right">{tr("Unit")}</span>
+                  <span className="w-28 text-right">{tr("Total")}</span>
                 </div>
                 {lines.map((l) => (
                   <div
@@ -194,14 +195,14 @@ export function ProposalDetail({
             {action === "send" && (
               <div className="rounded-lg border bg-muted/30 p-3">
                 <Field
-                  label="Entity"
+                  label={tr("Entity")}
                   hint="Numbers the proposal on send"
                   required
                 >
                   <SearchSelect
                     path="/entities"
                     value={entityLabel}
-                    placeholder="Search entities…"
+                    placeholder={tr("Search entities…")}
                     getLabel={(en) =>
                       en.code
                         ? `${String(en.code)} · ${String(en.legal_name ?? "")}`
@@ -242,11 +243,11 @@ export function ProposalDetail({
                   Create a quotation from these lines
                 </label>
                 {createQuotation && (
-                  <Field label="Entity" required>
+                  <Field label={tr("Entity")} required>
                     <SearchSelect
                       path="/entities"
                       value={entityLabel}
-                      placeholder="Search entities…"
+                      placeholder={tr("Search entities…")}
                       getLabel={(en) =>
                         en.code
                           ? `${String(en.code)} · ${String(en.legal_name ?? "")}`

@@ -7,6 +7,7 @@
  * journal-line editor had to copy it).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { dateFmt, amount, smartCell } from "@/lib/format";
@@ -130,10 +131,10 @@ function JournalEntryForm({
         }}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField form={form} name="entity_id" label="Entity" required>
+          <FormField form={form} name="entity_id" label={tr("Entity")} required>
             {(field) => (
               <Select {...field} value={String(field.value ?? "")}>
-                <option value="">Select entity…</option>
+                <option value="">{tr("Select entity…")}</option>
                 {entities.map((o) => (
                   <option key={o.id} value={o.id}>
                     {optionLabel(o)}
@@ -145,7 +146,7 @@ function JournalEntryForm({
           <FormField
             form={form}
             name="journal_code"
-            label="Journal"
+            label={tr("Journal")}
             required
             hint="OHADA journal code (e.g. VT, AC, BQ, PAIE, OD)."
           >
@@ -167,7 +168,7 @@ function JournalEntryForm({
               </>
             )}
           </FormField>
-          <FormField form={form} name="entry_date" label="Entry date" required>
+          <FormField form={form} name="entry_date" label={tr("Entry date")} required>
             {(field) => (
               <Input type="date" {...field} value={String(field.value ?? "")} />
             )}
@@ -175,7 +176,7 @@ function JournalEntryForm({
           <FormField
             form={form}
             name="source_doc_ref"
-            label="Source document ref"
+            label={tr("Source document ref")}
             required
             hint="Mandatory — the ledger rejects entries without a source ref."
           >
@@ -188,7 +189,7 @@ function JournalEntryForm({
             )}
           </FormField>
         </div>
-        <FormField form={form} name="description" label="Description">
+        <FormField form={form} name="description" label={tr("Description")}>
           {(field) => (
             <Input
               {...field}
@@ -200,7 +201,7 @@ function JournalEntryForm({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Lines</span>
+            <span className="text-sm font-medium">{tr("Lines")}</span>
             <Button
               type="button"
               size="sm"
@@ -253,7 +254,7 @@ function JournalEntryForm({
                       min="0"
                       step="0.01"
                       className="num text-right"
-                      placeholder="Debit"
+                      placeholder={tr("Debit")}
                       {...field}
                       value={String(field.value ?? "")}
                     />
@@ -271,7 +272,7 @@ function JournalEntryForm({
                       min="0"
                       step="0.01"
                       className="num text-right"
-                      placeholder="Credit"
+                      placeholder={tr("Credit")}
                       {...field}
                       value={String(field.value ?? "")}
                     />
@@ -425,7 +426,7 @@ function JournalReverseForm({
               onChange={(e) => setEntryDate(e.target.value)}
             />
           </Field>
-          <Field label="Reason">
+          <Field label={tr("Reason")}>
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -536,7 +537,7 @@ export function JournalsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Journals"
+        title={tr("Journals")}
         description="General ledger journal entries — balanced-or-rejected, reversal-not-edit."
         action={<Button onClick={() => setPostOpen(true)}>Post entry</Button>}
       />

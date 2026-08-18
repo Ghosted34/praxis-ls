@@ -13,6 +13,9 @@ const repo = require("./portal.repo");
 const events = require("./portal.events");
 const { isGrantUsable } = require("./portal.rules");
 const report = require("../vault/report/report.service");
+const vault = require("../vault/document_vault/document_vault.service");
+const pdf = require("../../services/pdf.service");
+const quoteRequest = require("../sales/quote_request/quote_request.service");
 const receivables = require("../finance/smart_receivables/smart_receivables.service");
 const milestone = require("../operations/milestone/milestone.service");
 const qTicket = require("../operations/q_ticket/q_ticket.service");
@@ -57,6 +60,150 @@ const listAccess = (client, q) => repo.listAccess(client, q);
 async function checkAccess(client, { email, portal }) {
   const grant = await repo.activeFor(client, String(email || "").toLowerCase(), portal);
   return { allowed: isGrantUsable(grant), grant: grant || null };
+}
+
+/** The client's own documents (PRD §11.1 "document vault — own docs"). */
+async function clientDocuments(client, { clientId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  return repo.clientDocuments(client, clientId);
+}
+
+/**
+ * A client-visible document's bytes. The ownership + visibility check happens
+ * in SQL (repo.clientDocument), so a client can only ever download their own
+ * client-visible files — the same scoping as the rest of the portal.
+ */
+async function clientDocumentDownload(client, { clientId, docId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const doc = await repo.clientDocument(client, clientId, docId);
+  if (!doc) throw new AppError("NOT_FOUND", "No such document for this client", 404);
+  const buffer = await vault.fetchBytes(client, doc.doc_id);
+  return { doc, buffer };
+}
+
+// ── Client onboarding command centre (PRD §11.1) ─────────────────────────────
+
+/** The baseline checklist every client starts from. Seeded on first read;
+ *  tenants extend per-client later without a migration. */
+const ONBOARDING_DEFAULTS = [
+  { key: "COMPANY_PROFILE", en: "Company profile completed", fr: "Profil d'entreprise complété", sort: 10 },
+  { key: "KYC_DOCUMENTS", en: "KYC documents received", fr: "Documents KYC reçus", sort: 20 },
+  { key: "SERVICE_AGREEMENT", en: "Service agreement signed", fr: "Convention de service signée", sort: 30 },
+  { key: "FIRST_BOOKING", en: "First shipment booked", fr: "Première expédition réservée", sort: 40 },
+];
+
+async function clientOnboarding(client, { clientId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  await repo.seedOnboarding(client, clientId, ONBOARDING_DEFAULTS);
+  const steps = await repo.onboardingSteps(client, clientId);
+  const done = steps.filter((s) => s.done).length;
+  return { client_id: clientId, steps, progress: steps.length ? Math.round((done / steps.length) * 100) : 0 };
+}
+
+/** Staff toggle a step (done ↔ undone) and record who did it. */
+async function toggleOnboardingStep(client, { clientId, stepKey, actor }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const row = await repo.markOnboardingStep(client, clientId, stepKey, actor.user_id || null);
+  if (!row) throw new AppError("NOT_FOUND", "No such onboarding step for this client", 404);
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: row.done ? "portal.onboarding_step_done" : "portal.onboarding_step_undone",
+    moduleKey: events.MODULE, entityRef: "client_onboarding:" + clientId, after: { step_key: stepKey, done: row.done },
+  });
+  return row;
+}
+
+// ── Client portal secure messaging (PRD §11.1) ───────────────────────────────
+
+const clientMessages = (client, { clientId, dossierId }) =>
+  repo.clientMessages(client, clientId, { dossierId });
+
+/** A message from the client's side of the thread. */
+async function sendClientMessage(client, { clientId, body, dossierId, authorEmail }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const row = await repo.insertClientMessage(client, {
+    clientId, dossierId: dossierId || null, direction: "CLIENT", body, authorEmail,
+  });
+  await emitEvent(client, { eventTypeKey: "portal.client_message", moduleKey: events.MODULE, entityRef: "client_message:" + row.message_id, actorUserId: null });
+  return row;
+}
+
+/** A reply from the account team. */
+async function staffSendMessage(client, { clientId, body, dossierId, actor }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const row = await repo.insertClientMessage(client, {
+    clientId, dossierId: dossierId || null, direction: "STAFF", body, authorUserId: actor.user_id || null,
+  });
+  await emitEvent(client, { eventTypeKey: "portal.client_message", moduleKey: events.MODULE, entityRef: "client_message:" + row.message_id, actorUserId: actor.user_id || null });
+  return row;
+}
+
+const staffMessages = (client, { clientId, dossierId }) =>
+  repo.clientMessages(client, clientId, { dossierId });
+
+/**
+ * The certified PDF of a thread (PRD §11.1). Renders the conversation, stores
+ * it in the vault (content hash + QR verification token), and streams the
+ * bytes back — the chat export is a document like any other, and the hash
+ * proves it has not been edited since.
+ */
+async function exportClientChat(client, { clientId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const messages = await repo.clientMessages(client, clientId, { limit: 500 });
+  const rows = messages.map((m) => ({
+    direction: m.direction,
+    author: m.direction === "STAFF" ? (m.author_name || "Account team") : (m.author_email || "Client"),
+    body: m.body,
+    at: m.created_at,
+  }));
+  const html = chatHtml(rows);
+  const entityRef = `client_chat:${clientId}:${Date.now()}`;
+  const key = `documents/client-chat/${clientId}-${Date.now()}.pdf`;
+  // docType null: no registry type fits a chat export, and capture allows a
+  // null type for exactly this case (placeholder/uncategorised captures).
+  const out = await pdf.renderAndStore(client, { html, key, entityRef, docType: null });
+  const { buffer } = await vault.fetchBytes(client, out.doc_id);
+  return { buffer, verify: out.verify, doc_id: out.doc_id, count: rows.length };
+}
+
+function chatHtml(rows) {
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const items = rows.map((m) =>
+    `<div style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:${m.direction === "STAFF" ? "#eef2f7" : "#fdf1e3"};border:1px solid #e3e9f2">
+       <div style="font-size:11px;color:#64748b;margin-bottom:4px">${esc(m.author)} · ${esc(String(m.at).slice(0, 16).replace("T", " "))}</div>
+       <div style="font-size:13px;color:#0b2030;white-space:pre-wrap">${esc(m.body)}</div>
+     </div>`).join("\n");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:18mm}body{font-family:Roboto,'Noto Sans',sans-serif;color:#0b2030}h1{font-size:16px;margin:0 0 4px}p.lead{font-size:12px;color:#64748b;margin:0 0 20px}</style></head><body>
+    <h1>Client portal — conversation</h1>
+    <p class="lead">Exported from the client portal. Verified by content hash.</p>
+    ${items || "<p>No messages.</p>"}
+  </body></html>`;
+}
+
+// ── Self-service quoting (PRD §11.1) ─────────────────────────────────────────
+
+const clientQuoteRequests = (client, { clientId }) =>
+  repo.clientQuoteRequests(client, clientId);
+
+/** A signed-in client books a quote for themselves. The request is filed
+ *  against their client record with intake_channel PORTAL, so sales sees it in
+ *  the same intake queue as website and manual requests. */
+async function createClientQuote(client, { clientId, data, actor }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const { rows } = await client.query(
+    "SELECT name, email FROM client_master WHERE client_id = $1", [clientId],
+  );
+  const cm = rows[0];
+  const row = await quoteRequest.create(client, {
+    data: {
+      ...data,
+      client_id: clientId,
+      intake_channel: "PORTAL",
+      requester_name: data.requester_name || cm?.name || null,
+      requester_email: data.requester_email || cm?.email || null,
+    },
+    actor,
+  });
+  return row;
 }
 
 // ── Portal data views (scoped, delegated) ──
@@ -228,4 +375,8 @@ module.exports = {
   grantAccess, revokeAccess, listAccess, checkAccess,
   clientView, clientChain, investorView, auditorView,
   clientTickets, clientRaiseTicket, clientTicketDetail, clientReplyTicket,
+  clientDocuments, clientDocumentDownload,
+  clientOnboarding, toggleOnboardingStep,
+  clientMessages, sendClientMessage, staffSendMessage, staffMessages, exportClientChat,
+  clientQuoteRequests, createClientQuote,
 };

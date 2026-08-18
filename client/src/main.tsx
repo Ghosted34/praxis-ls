@@ -7,6 +7,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { initThemeMode } from "@/lib/theme-mode";
 import { installGlobalErrorReporting } from "@/lib/error-reporting";
 import { initDensity } from "@/lib/density";
+// i18n bootstraps before the first render so the initial paint is already in
+// the right language (PRD §605 — full EN/FR UI).
+import "@/lib/i18n";
 import { queryClient } from "@/lib/query-client";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastProvider } from "@/components/ui/toast";

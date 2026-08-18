@@ -20,6 +20,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,14 +166,14 @@ export function QuoteRequestForm({
         <Field label="Requester company">
           <Input value={requesterCompany} onChange={(e) => setRequesterCompany(e.target.value)} />
         </Field>
-        <Field label="Email">
+        <Field label={tr("Email")}>
           <Input
             type="email"
             value={requesterEmail}
             onChange={(e) => setRequesterEmail(e.target.value)}
           />
         </Field>
-        <Field label="Phone">
+        <Field label={tr("Phone")}>
           <Input value={requesterPhone} onChange={(e) => setRequesterPhone(e.target.value)} />
         </Field>
         <Field label="Intake channel">
@@ -184,9 +185,9 @@ export function QuoteRequestForm({
             ))}
           </Select>
         </Field>
-        <Field label="Service category">
+        <Field label={tr("Service category")}>
           <Select value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)}>
-            <option value="">Select…</option>
+            <option value="">{tr("Select…")}</option>
             {SERVICE_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -194,7 +195,7 @@ export function QuoteRequestForm({
             ))}
           </Select>
         </Field>
-        <Field label="Incoterm" required>
+        <Field label={tr("Incoterm")} required>
           <Select value={incoterm} onChange={(e) => setIncoterm(e.target.value)}>
             {INCOTERMS.map((c) => (
               <option key={c} value={c}>
@@ -203,14 +204,14 @@ export function QuoteRequestForm({
             ))}
           </Select>
         </Field>
-        <Field label="Origin">
+        <Field label={tr("Origin")}>
           <Input
             value={origin}
             onChange={(e) => setOrigin(e.target.value)}
             placeholder="City, Country"
           />
         </Field>
-        <Field label="Destination">
+        <Field label={tr("Destination")}>
           <Input
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
@@ -237,17 +238,17 @@ export function QuoteRequestForm({
             onChange={(e) => setWeight(e.target.value)}
           />
         </Field>
-        <Field label="Project cargo">
+        <Field label={tr("Project cargo")}>
           <Select
             value={projectCargo ? "yes" : "no"}
             onChange={(e) => setProjectCargo(e.target.value === "yes")}
           >
-            <option value="no">No</option>
-            <option value="yes">Yes</option>
+            <option value="no">{tr("No")}</option>
+            <option value="yes">{tr("Yes")}</option>
           </Select>
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Cargo description" hint="Up to 5000 characters.">
+          <Field label={tr("Cargo description")} hint="Up to 5000 characters.">
             <Textarea
               rows={3}
               value={cargo}
@@ -339,7 +340,7 @@ export function AttachmentsPanel({ requestId }: { requestId: string }) {
   return (
     <div className="mt-5 border-t pt-4">
       <div className="flex items-center justify-between">
-        <p className="micro">Attachments</p>
+        <p className="micro">{tr("Attachments")}</p>
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -365,7 +366,7 @@ export function AttachmentsPanel({ requestId }: { requestId: string }) {
       {error && <ErrorState message={error} />}
 
       {rows === null ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        <p className="mt-2 text-sm text-muted-foreground">{tr("Loading…")}</p>
       ) : rows.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
           Nothing attached yet. PDF or image, up to 10 MB — a packing list, a photo of the cargo, a spec sheet.
@@ -495,7 +496,7 @@ export function ConvertToOpportunityModal({
               onChange={(e) => setEstimatedValue(e.target.value)}
             />
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={currency}
               onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}

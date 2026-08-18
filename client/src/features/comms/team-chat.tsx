@@ -5,6 +5,7 @@
  * Conversation rides in the URL (?channel=…). On our Control-Tower skin.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,7 +142,7 @@ function NewChoiceModal({
           <span className="micro">A shared channel with your team</span>
         </button>
         <button type="button" className={opt} onClick={() => onPick("email")}>
-          <span className="block font-medium text-foreground">Email</span>
+          <span className="block font-medium text-foreground">{tr("Email")}</span>
           <span className="micro">
             Email a client, supplier, colleague or lead — from your mailbox
           </span>
@@ -203,11 +204,11 @@ function NewChatModal({
     <Modal
       open
       onClose={onClose}
-      title="New conversation"
+      title={tr("New conversation")}
       description="Start a direct message or a group channel with colleagues."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Type">
+        <Field label={tr("Type")}>
           <Select
             value={mode}
             onChange={(e) => setMode(e.target.value as "DIRECT" | "GROUP")}
@@ -417,7 +418,7 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
           <span className="num">{channel.member_count ?? "—"}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Opened</span>
+          <span className="text-muted-foreground">{tr("Opened")}</span>
           <span className="num">
             {channel.created_at
               ? new Date(channel.created_at).toLocaleDateString()
@@ -495,8 +496,8 @@ export function TeamChatPage() {
             <button
               onClick={() => setNewKind("menu")}
               className="text-muted-foreground hover:text-foreground"
-              title="New conversation"
-              aria-label="New conversation"
+              title={tr("New conversation")}
+              aria-label={tr("New conversation")}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -705,7 +706,7 @@ function Thread({
         <button
           className="text-muted-foreground hover:text-foreground md:hidden"
           onClick={onBack}
-          aria-label="Back"
+          aria-label={tr("Back")}
         >
           ←
         </button>
@@ -723,7 +724,7 @@ function Thread({
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3">
         {thread.loading && msgs.length === 0 ? (
-          <div className="micro">Loading…</div>
+          <div className="micro">{tr("Loading…")}</div>
         ) : thread.error ? (
           <ErrorState message={thread.error} />
         ) : msgs.length ? (

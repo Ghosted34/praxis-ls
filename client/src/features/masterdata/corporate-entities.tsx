@@ -32,6 +32,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { useSearchParams } from "react-router-dom";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -293,7 +294,7 @@ function EntityForm({
         )}
 
         <Fieldset legend="Identity">
-          <Field label="Code" required hint="Short unique key">
+          <Field label={tr("Code")} required hint="Short unique key">
             <Input
               value={v.code}
               onChange={(e) => set("code", e.target.value)}
@@ -301,7 +302,7 @@ function EntityForm({
               disabled={!isNew}
             />
           </Field>
-          <Field label="Legal name" required>
+          <Field label={tr("Legal name")} required>
             <Input
               value={v.legal_name}
               onChange={(e) => set("legal_name", e.target.value)}
@@ -327,12 +328,12 @@ function EntityForm({
               placeholder="SARL"
             />
           </Field>
-          <Field label="Country">
+          <Field label={tr("Country")}>
             <CountrySelect
               value={v.country_code}
               onChange={(c) => set("country_code", c)}
               allowEmpty={false}
-              label="Country"
+              label={tr("Country")}
             />
           </Field>
           <Field label="Industry">
@@ -360,7 +361,7 @@ function EntityForm({
             </Field>
           )}
           <Field
-            label="Description"
+            label={tr("Description")}
             hint="Shown on the entity picker and internal directories"
             className="sm:col-span-2"
           >
@@ -376,7 +377,7 @@ function EntityForm({
           legend="Public contact"
           hint="Printed in the letterhead's contact line. The readiness checklist wants at least one of email or phone."
         >
-          <Field label="Email">
+          <Field label={tr("Email")}>
             <Input
               type="email"
               value={v.email}
@@ -384,14 +385,14 @@ function EntityForm({
               placeholder="contact@example.cm"
             />
           </Field>
-          <Field label="Phone">
+          <Field label={tr("Phone")}>
             <Input
               value={v.phone}
               onChange={(e) => set("phone", e.target.value)}
               placeholder="+237690000000"
             />
           </Field>
-          <Field label="Website">
+          <Field label={tr("Website")}>
             <Input
               value={v.website}
               onChange={(e) => set("website", e.target.value)}
@@ -439,7 +440,7 @@ function EntityForm({
             <Input
               value={v.incorporation_place}
               onChange={(e) => set("incorporation_place", e.target.value)}
-              placeholder="Douala"
+              placeholder={tr("Douala")}
             />
           </Field>
           <Field
@@ -501,7 +502,7 @@ function EntityForm({
 
         <Fieldset legend="Documents and reporting">
           <Field
-            label="Document prefix"
+            label={tr("Document prefix")}
             hint="Leads this entity's invoice numbers"
           >
             <Input
@@ -515,8 +516,8 @@ function EntityForm({
               value={v.default_language}
               onChange={(e) => set("default_language", e.target.value)}
             >
-              <option value="fr">Français</option>
-              <option value="en">English</option>
+              <option value="fr">{tr("Français")}</option>
+              <option value="en">{tr("English")}</option>
             </Select>
           </Field>
           <Field label="Fiscal year start month">
@@ -557,7 +558,7 @@ function EntityForm({
               value={v.numbering_reset}
               onChange={(e) => set("numbering_reset", e.target.value)}
             >
-              <option value="">— tenant default —</option>
+              <option value="">{tr("— tenant default —")}</option>
               {NUMBERING_RESETS.map((n) => (
                 <option key={n} value={n}>
                   {enumLabel(n)}
@@ -572,23 +573,23 @@ function EntityForm({
           hint="What HR, payroll and billing inherit when someone picks this entity."
         >
           <Field
-            label="Default currency"
+            label={tr("Default currency")}
             hint="What this entity invoices and reports in"
           >
             <SmartCurrencyPicker
               value={v.default_currency}
               onChange={(c) => set("default_currency", c)}
-              label="Default currency"
+              label={tr("Default currency")}
             />
           </Field>
           <Field
-            label="Payroll country"
+            label={tr("Payroll country")}
             hint="Which country's payroll rules apply to its staff"
           >
             <CountrySelect
               value={v.payroll_country}
               onChange={(c) => set("payroll_country", c)}
-              label="Payroll country"
+              label={tr("Payroll country")}
             />
           </Field>
           <Field
@@ -601,7 +602,7 @@ function EntityForm({
                 set("default_tax_jurisdiction_id", e.target.value)
               }
             >
-              <option value="">— none —</option>
+              <option value="">{tr("— none —")}</option>
               {(jurisdictions || []).map((j) => (
                 <option key={j.jurisdiction_id} value={j.jurisdiction_id}>
                   {j.name}
@@ -618,9 +619,9 @@ function EntityForm({
               value={v.vat_registered}
               onChange={(e) => set("vat_registered", e.target.value)}
             >
-              <option value="">— not stated —</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
+              <option value="">{tr("— not stated —")}</option>
+              <option value="true">{tr("Yes")}</option>
+              <option value="false">{tr("No")}</option>
             </Select>
           </Field>
         </Fieldset>
@@ -638,7 +639,7 @@ function EntityForm({
               value={v.parent_entity_id}
               onChange={(e) => set("parent_entity_id", e.target.value)}
             >
-              <option value="">— none —</option>
+              <option value="">{tr("— none —")}</option>
               {parentOptions.map((p) => (
                 <option key={p.entity_id} value={p.entity_id}>
                   {p.code} — {p.legal_name}

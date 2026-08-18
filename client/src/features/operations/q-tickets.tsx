@@ -14,6 +14,7 @@
  * client never receives them.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,7 +156,7 @@ function TicketThread({
         <div className="space-y-3">
           {t?.body && (
             <div className="rounded-lg border border-border p-3">
-              <p className="micro mb-1">Client</p>
+              <p className="micro mb-1">{tr("Client")}</p>
               <p className="text-sm text-foreground">{t.body}</p>
             </div>
           )}
@@ -253,7 +254,7 @@ function RaiseDialog({
       }
     >
       <div className="space-y-3">
-        <Field label="Subject" required>
+        <Field label={tr("Subject")} required>
           <Input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}

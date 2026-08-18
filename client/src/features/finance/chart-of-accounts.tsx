@@ -10,6 +10,7 @@
  * code column, a column-visibility menu, and a selection that exports.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { RowActions } from "@/components/ui/row-actions";
@@ -109,7 +110,7 @@ function AccountForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Code" required>
+          <Field label={tr("Code")} required>
             <Input
               value={f.code}
               onChange={(e) => set("code", e.target.value)}
@@ -126,7 +127,7 @@ function AccountForm({
               placeholder="706"
             />
           </Field>
-          <Field label="Label (FR)" required className="sm:col-span-2">
+          <Field label={tr("Label (FR)")} required className="sm:col-span-2">
             <Input
               value={f.label_fr}
               onChange={(e) => set("label_fr", e.target.value)}
@@ -138,7 +139,7 @@ function AccountForm({
               onChange={(e) => set("label_en", e.target.value)}
             />
           </Field>
-          <Field label="Class" required>
+          <Field label={tr("Class")} required>
             <Select
               value={f.klass}
               onChange={(e) => set("klass", e.target.value)}
@@ -156,8 +157,8 @@ function AccountForm({
               value={f.normal_balance}
               onChange={(e) => set("normal_balance", e.target.value)}
             >
-              <option value="D">Debit</option>
-              <option value="C">Credit</option>
+              <option value="D">{tr("Debit")}</option>
+              <option value="C">{tr("Credit")}</option>
             </Select>
           </Field>
           <label className="flex items-center gap-2 text-sm">
@@ -250,7 +251,7 @@ export function ChartOfAccountsPage() {
       label: "Postable",
       render: (a) =>
         a.is_postable ? (
-          <Pill tone="ok">Postable</Pill>
+          <Pill tone="ok">{tr("Postable")}</Pill>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -260,7 +261,7 @@ export function ChartOfAccountsPage() {
       label: "Analytic",
       render: (a) =>
         a.requires_analytic ? (
-          <Pill tone="warn">Dossier</Pill>
+          <Pill tone="warn">{tr("Dossier")}</Pill>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -297,14 +298,14 @@ export function ChartOfAccountsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
-        title="Chart of accounts"
+        title={tr("Chart of accounts")}
         description="SYSCOHADA/OHADA statutory chart — postable leaves and analytic accounts."
-        action={<Button onClick={() => setEditing("new")}>New account</Button>}
+        action={<Button onClick={() => setEditing("new")}>{tr("New account")}</Button>}
       />
       <KpiRow>
-        <KpiTile label="Accounts" value={num(accounts.length)} />
+        <KpiTile label={tr("Accounts")} value={num(accounts.length)} />
         <KpiTile
-          label="Postable"
+          label={tr("Postable")}
           value={num(accounts.filter((a) => a.is_postable).length)}
         />
         <KpiTile

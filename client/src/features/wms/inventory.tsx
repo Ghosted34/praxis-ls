@@ -4,6 +4,7 @@
  * state transitions (QA hold, damaged…), and the append-only movement journal.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,7 +171,7 @@ function ItemDetail({
           className="rounded-lg border bg-muted/30 p-4"
         >
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-            <Field label="Movement">
+            <Field label={tr("Movement")}>
               <Select
                 value={type}
                 onChange={(e) => setType(e.target.value as typeof type)}
@@ -197,7 +198,7 @@ function ItemDetail({
                 </Select>
               </Field>
             ) : (
-              <Field label="Quantity">
+              <Field label={tr("Quantity")}>
                 <Input
                   type="number"
                   className="num text-right"
@@ -287,7 +288,7 @@ function NewItemForm({
       description="Add an item to inventory. On-hand can start at zero and be received via a movement."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Description" required>
+        <Field label={tr("Description")} required>
           <Input
             value={f.description}
             onChange={(e) => set("description", e.target.value)}
@@ -295,7 +296,7 @@ function NewItemForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="SKU">
+          <Field label={tr("SKU")}>
             <Input
               value={f.sku}
               onChange={(e) => set("sku", e.target.value)}
@@ -320,7 +321,7 @@ function NewItemForm({
               placeholder="0"
             />
           </Field>
-          <Field label="Location">
+          <Field label={tr("Location")}>
             <Select
               value={f.location_id}
               onChange={(e) => set("location_id", e.target.value)}
@@ -424,7 +425,7 @@ export function InventoryPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
-        title="Inventory"
+        title={tr("Inventory")}
         description="Stock on hand by item and state — receive, issue, adjust, transfer, and the movement journal."
         action={<Button onClick={() => setCreating(true)}>New item</Button>}
       />

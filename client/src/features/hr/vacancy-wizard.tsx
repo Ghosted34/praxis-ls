@@ -51,6 +51,7 @@
  * and hiding the old form behind the new one would make this feel like a tax.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -209,7 +210,7 @@ export function VacancyWizard({
     <Modal
       open
       onClose={close}
-      title="New vacancy"
+      title={tr("New vacancy")}
       description="Answer a few questions — type or speak them — and AI writes the advert."
       size="lg"
     >
@@ -378,7 +379,7 @@ function QuestionControl({
     // A select rather than a card of buttons: a group running twelve companies
     // is as ordinary here as one running two, and twelve buttons is a wall.
     return (
-      <Field label="Company">
+      <Field label={tr("Company")}>
         <Select
           value={str(q.key)}
           onValueChange={(v) => onSet(q.key, v)}

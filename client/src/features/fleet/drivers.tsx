@@ -3,6 +3,7 @@
  * per driver, flagged valid / due-soon / expired, with a one-click Renew.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,7 +87,7 @@ function NewLicenceForm({
       description="Record a driver licence or certification with its expiry."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Driver" required>
+        <Field label={tr("Driver")} required>
           <Select
             value={f.employee_id}
             onChange={(e) => set("employee_id", e.target.value)}
@@ -100,14 +101,14 @@ function NewLicenceForm({
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Class" required>
+          <Field label={tr("Class")} required>
             <Input
               value={f.license_class}
               onChange={(e) => set("license_class", e.target.value)}
               placeholder="Poids lourd C/E"
             />
           </Field>
-          <Field label="Number">
+          <Field label={tr("Number")}>
             <Input
               value={f.license_number}
               onChange={(e) => set("license_number", e.target.value)}
@@ -130,7 +131,7 @@ function NewLicenceForm({
             />
           </Field>
         </div>
-        <Field label="Certification">
+        <Field label={tr("Certification")}>
           <Input
             value={f.certification}
             onChange={(e) => set("certification", e.target.value)}

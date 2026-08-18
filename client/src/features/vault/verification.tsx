@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -86,7 +87,7 @@ export function VerificationPage() {
           />
         </Field>
         <Field
-          label="Hash"
+          label={tr("Hash")}
           required
           hint="The fingerprint from the QR / document (min 4 chars)"
         >
@@ -118,15 +119,15 @@ export function VerificationPage() {
           </Callout>
           <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Type</dt>
+              <dt className="text-muted-foreground">{tr("Type")}</dt>
               <dd className="font-medium">{cell(result.doc_type)}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Version</dt>
+              <dt className="text-muted-foreground">{tr("Version")}</dt>
               <dd className="font-medium">{cell(result.version_no)}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Reference</dt>
+              <dt className="text-muted-foreground">{tr("Reference")}</dt>
               <dd className="font-medium">{cell(result.entity_ref)}</dd>
             </div>
             <div className="flex justify-between gap-4 sm:col-span-2">

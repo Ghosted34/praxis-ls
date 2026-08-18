@@ -21,6 +21,7 @@
  * independent, so each is behind its own toggle.
  */
 import { Input } from "@/components/ui/input";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { num } from "@/lib/format";
 
@@ -361,7 +362,7 @@ export function BracketsEditor({
                       onChange={(e) => set({ annualAbatement: e.target.value })}
                       placeholder="500000"
                     />
-                    <span className="micro text-muted-foreground">XAF</span>
+                    <span className="micro text-muted-foreground">{tr("XAF")}</span>
                   </div>
                 </div>
               )}
@@ -380,7 +381,7 @@ export function BracketsEditor({
         />
         {state.capOn && (
           <div className="flex items-center gap-2 pl-6">
-            <span className="micro text-muted-foreground">Cap</span>
+            <span className="micro text-muted-foreground">{tr("Cap")}</span>
             <Input
               type="number"
               min="0"
@@ -390,7 +391,7 @@ export function BracketsEditor({
               onChange={(e) => set({ capXaf: e.target.value })}
               placeholder="750000"
             />
-            <span className="micro text-muted-foreground">XAF</span>
+            <span className="micro text-muted-foreground">{tr("XAF")}</span>
           </div>
         )}
       </div>

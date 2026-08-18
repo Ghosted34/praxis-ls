@@ -162,6 +162,9 @@ export type Supplier = {
   is_non_resident?: boolean;
   rating?: number | null;
   is_active: boolean;
+  registration_status?: string | null;
+  verification_status?: string | null;
+  avl_status?: string | null;
 };
 export type SupplierInput = {
   name: string;

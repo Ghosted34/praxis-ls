@@ -13,6 +13,7 @@
  * from. That was the whole point of the audit.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Link, useParams } from "react-router-dom";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -165,7 +166,7 @@ export function TreasuryDossier({
   if (!data)
     return (
       <EmptyState
-        title="Not found"
+        title={tr("Not found")}
         hint="This treasury account does not exist or you don't have access."
       />
     );
@@ -181,11 +182,11 @@ export function TreasuryDossier({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">{cell(a.label)}</h2>
-            {a.is_primary && <Pill tone="blue">Primary</Pill>}
+            {a.is_primary && <Pill tone="blue">{tr("Primary")}</Pill>}
             {a.is_verified ? (
-              <Pill tone="ok">Verified</Pill>
+              <Pill tone="ok">{tr("Verified")}</Pill>
             ) : (
-              <Pill tone="warn">Unverified</Pill>
+              <Pill tone="warn">{tr("Unverified")}</Pill>
             )}
             <Pill tone={activeTone}>{a.is_active ? "Active" : "Inactive"}</Pill>
           </div>
@@ -254,7 +255,7 @@ export function TreasuryDossier({
       {/* ── KPIs ────────────────────────────────────────────────────────── */}
       <KpiRow>
         <KpiTile
-          label="Balance"
+          label={tr("Balance")}
           value={amount(data.kpis.balance, data.kpis.currency)}
         />
         <KpiTile
@@ -325,10 +326,10 @@ export function TreasuryDossier({
           {c?.is_bank_identity && (
             <Section title="Bank identity">
               <dl className="grid gap-3 sm:grid-cols-2">
-                <Detail label="Bank">{cell(a.bank_name)}</Detail>
-                <Detail label="Branch">{cell(a.branch)}</Detail>
-                <Detail label="Account number">{cell(a.account_number)}</Detail>
-                <Detail label="IBAN">{cell(a.iban)}</Detail>
+                <Detail label={tr("Bank")}>{cell(a.bank_name)}</Detail>
+                <Detail label={tr("Branch")}>{cell(a.branch)}</Detail>
+                <Detail label={tr("Account number")}>{cell(a.account_number)}</Detail>
+                <Detail label={tr("IBAN")}>{cell(a.iban)}</Detail>
                 <Detail label="SWIFT / BIC">{cell(a.swift_bic)}</Detail>
                 <Detail label="Routing">{cell(a.routing_code)}</Detail>
                 <Detail label="Holder">{cell(a.holder_name)}</Detail>
@@ -341,7 +342,7 @@ export function TreasuryDossier({
           {c?.is_momo_identity && (
             <Section title="Mobile-money identity">
               <dl className="grid gap-3 sm:grid-cols-2">
-                <Detail label="Number">{cell(a.momo_number)}</Detail>
+                <Detail label={tr("Number")}>{cell(a.momo_number)}</Detail>
                 <Detail label="Till">{cell(a.momo_till)}</Detail>
                 <Detail label="Merchant / Agent">{cell(a.momo_agent)}</Detail>
                 <Detail label="Fee CoA">{cell(a.momo_fee_account)}</Detail>
@@ -350,18 +351,18 @@ export function TreasuryDossier({
           )}
           {c?.requires_custodian && (
             <Section
-              title="Custodian"
+              title={tr("Custodian")}
               description="Responsible for payouts from this account."
             >
               <dl className="grid gap-3 sm:grid-cols-2">
-                <Detail label="Custodian">
+                <Detail label={tr("Custodian")}>
                   {data.custodian ? data.custodian.full_name : null}
                 </Detail>
-                <Detail label="Location">{cell(a.location)}</Detail>
+                <Detail label={tr("Location")}>{cell(a.location)}</Detail>
                 <Detail label="Float limit">
                   {amount(a.float_limit, a.currency)}
                 </Detail>
-                <Detail label="Contact">
+                <Detail label={tr("Contact")}>
                   {data.custodian
                     ? [data.custodian.email, data.custodian.phone]
                         .filter(Boolean)
@@ -401,9 +402,9 @@ export function TreasuryDossier({
               </Detail>
             </dl>
           </Section>
-          <Section title="Verification">
+          <Section title={tr("Verification")}>
             <dl className="grid gap-3 sm:grid-cols-2">
-              <Detail label="Status">
+              <Detail label={tr("Status")}>
                 {a.is_verified ? "Verified" : "Unverified"}
               </Detail>
               <Detail label="Verified by">
@@ -424,12 +425,12 @@ export function TreasuryDossier({
           <MiniTable
             head={
               <>
-                <Th>Date</Th>
+                <Th>{tr("Date")}</Th>
                 <Th>Journal · No</Th>
-                <Th>Description</Th>
-                <Th r>Debit</Th>
-                <Th r>Credit</Th>
-                <Th>Status</Th>
+                <Th>{tr("Description")}</Th>
+                <Th r>{tr("Debit")}</Th>
+                <Th r>{tr("Credit")}</Th>
+                <Th>{tr("Status")}</Th>
               </>
             }
             empty={data.recent_lines.length === 0}
@@ -473,16 +474,16 @@ export function TreasuryDossier({
         >
           {data.coa_leaf ? (
             <dl className="grid gap-3 sm:grid-cols-2">
-              <Detail label="Code">{cell(data.coa_leaf.code)}</Detail>
+              <Detail label={tr("Code")}>{cell(data.coa_leaf.code)}</Detail>
               <Detail label="Parent">{cell(data.coa_leaf.parent_code)}</Detail>
-              <Detail label="Label">
+              <Detail label={tr("Label")}>
                 {cell(data.coa_leaf.label_en || data.coa_leaf.label_fr)}
               </Detail>
-              <Detail label="Class">{String(data.coa_leaf.class)}</Detail>
-              <Detail label="Postable">
+              <Detail label={tr("Class")}>{String(data.coa_leaf.class)}</Detail>
+              <Detail label={tr("Postable")}>
                 {data.coa_leaf.is_postable ? "Yes" : "No"}
               </Detail>
-              <Detail label="Active">
+              <Detail label={tr("Active")}>
                 {data.coa_leaf.is_active ? "Yes" : "No"}
               </Detail>
             </dl>
@@ -511,13 +512,13 @@ export function TreasuryDossier({
 
       {tab === "Timeline" && (
         <Section
-          title="Timeline"
+          title={tr("Timeline")}
           description="Every change to this account, from the audit log."
         >
           <MiniTable
             head={
               <>
-                <Th>When</Th>
+                <Th>{tr("When")}</Th>
                 <Th>Action</Th>
                 <Th>Actor</Th>
               </>

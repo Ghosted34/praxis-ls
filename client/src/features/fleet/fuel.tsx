@@ -4,6 +4,7 @@
  * to see its consumption stats (litres, cost, distance, L/100km).
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,7 @@ function LogFillForm({
       description="Record a fill. The odometer can't go below the last recorded reading."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Vehicle" required>
+        <Field label={tr("Vehicle")} required>
           <Select
             value={f.vehicle_id}
             onChange={(e) => set("vehicle_id", e.target.value)}
@@ -92,7 +93,7 @@ function LogFillForm({
               onChange={(e) => set("odometer", e.target.value)}
             />
           </Field>
-          <Field label="Litres">
+          <Field label={tr("Litres")}>
             <Input
               type="number"
               step="any"
@@ -101,7 +102,7 @@ function LogFillForm({
               onChange={(e) => set("litres", e.target.value)}
             />
           </Field>
-          <Field label="Cost">
+          <Field label={tr("Cost")}>
             <Input
               type="number"
               step="any"
@@ -112,7 +113,7 @@ function LogFillForm({
           </Field>
         </div>
         <Field
-          label="Dossier"
+          label={tr("Dossier")}
           hint="Optional — attribute the fuel cost to an operation"
         >
           <Select
@@ -245,10 +246,10 @@ export function FuelLogPage() {
       {eff && (
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Fills" value={num(eff.fills)} />
-          <Stat label="Litres" value={num(Math.round(eff.litres))} />
+          <Stat label={tr("Litres")} value={num(Math.round(eff.litres))} />
           <Stat label="Fuel cost" value={money(eff.cost)} />
           <Stat
-            label="Distance"
+            label={tr("Distance")}
             value={eff.distance ? `${num(eff.distance)} km` : "—"}
           />
           <Stat

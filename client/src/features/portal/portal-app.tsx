@@ -6,6 +6,7 @@
  */
 
 import * as React from "react";
+import { useLang } from "@/lib/i18n";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -109,11 +110,12 @@ function PortalHome() {
  * user and must land on the portal sign-in like anyone else.
  */
 function PortalGuard({ children }: { children: React.ReactNode }) {
-  if (!portalToken.get()) return <Navigate to="/client-portal/login" replace />;
+  if (!portalToken.get()) return <Navigate to="/portal/login" replace />;
   return <>{children}</>;
 }
 
 export function PortalApp() {
+  useLang();
   return (
     <Routes>
       <Route path="login" element={<PortalLogin />} />
@@ -126,9 +128,9 @@ export function PortalApp() {
           </PortalGuard>
         }
       />
-      {/* Anything else under /client-portal goes to the portal's own entry, never
+      {/* Anything else under /portal goes to the portal's own entry, never
           the staff app — an external user should never see a staff 404 or nav. */}
-      <Route path="*" element={<Navigate to="/client-portal" replace />} />
+      <Route path="*" element={<Navigate to="/portal" replace />} />
     </Routes>
   );
 }

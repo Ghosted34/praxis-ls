@@ -5,6 +5,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
@@ -129,7 +130,7 @@ function MeetingForm({
       size="lg"
     >
       <div className="space-y-4">
-        <Field label="Subject" required>
+        <Field label={tr("Subject")} required>
           <Input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
@@ -137,7 +138,7 @@ function MeetingForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="With">
+          <Field label={tr("With")}>
             <Select
               value={withKind}
               onChange={(e) => {
@@ -145,9 +146,9 @@ function MeetingForm({
                 setWithId("");
               }}
             >
-              <option value="none">— none —</option>
-              <option value="lead">Lead</option>
-              <option value="client">Client</option>
+              <option value="none">{tr("— none —")}</option>
+              <option value="lead">{tr("Lead")}</option>
+              <option value="client">{tr("Client")}</option>
             </Select>
           </Field>
           {withKind !== "none" && (
@@ -183,11 +184,11 @@ function MeetingForm({
           </Field>
           {/* The discovery wizard asks for it and the old schema had nowhere
               to put it, so it was lost at the point of capture. */}
-          <Field label="Location">
+          <Field label={tr("Location")}>
             <Input
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Client HQ, Douala"
+              placeholder={tr("e.g. Client HQ, Douala")}
             />
           </Field>
         </div>
@@ -420,7 +421,7 @@ export function MeetingsPage() {
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
-        title="Meetings"
+        title={tr("Meetings")}
         description="Scheduling and minutes against a lead or client — the CRM activity log."
         action={
           <div className="flex gap-2">

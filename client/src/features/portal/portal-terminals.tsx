@@ -7,18 +7,39 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
+import { useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { num, dateFmt } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import {
   portalClientView,
+  portalClientDocuments,
+  portalClientDocumentDownload,
+  portalClientOnboarding,
+  portalClientMessages,
+  portalClientMessageSend,
+  portalClientMessagesExport,
+  portalClientQuoteRequests,
+  portalClientQuoteCreate,
   portalInvestorView,
   portalAuditorView,
+  portalDataRoomList,
+  portalDataRoomCreate,
+  portalDataRoomDetail,
+  portalDataRoomDownload,
   type PortalMe,
   type ClientView,
+  type PortalDocument,
+  type PortalOnboarding,
+  type PortalMessage,
+  type PortalQuoteRequest,
   type InvestorView,
   type AuditorView,
+  type PortalDataRoom,
+  type PortalDataRoomDetail,
+  type PortalDataRoomDoc,
 } from "@/lib/portal-api";
 import { msg } from "./portal-chrome";
 import { label } from "./portal-auth";
@@ -110,7 +131,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          label="Revenue"
+          label={tr("Revenue")}
           value={kpis.revenue}
           hint="Produits for the period"
         />
@@ -120,7 +141,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
           hint="Produits less charges"
         />
         <Kpi
-          label="Cash on hand"
+          label={tr("Cash on hand")}
           value={kpis.cash_on_hand}
           hint="Today, not period-end"
         />
@@ -130,7 +151,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Compte de résultat">
           <Line label="Produits" value={is.produits} />
-          <Line label="Charges" value={is.charges} />
+          <Line label={tr("Charges")} value={is.charges} />
           {is.hao_net ? (
             <Line label="Hors activités ordinaires (net)" value={is.hao_net} />
           ) : null}
@@ -152,7 +173,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
           ) : null}
         </Panel>
 
-        <Panel title="Cash position">
+        <Panel title={tr("Cash position")}>
           {cash.accounts.length === 0 ? (
             <EmptyState
               title="No treasury accounts"
@@ -167,7 +188,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
                   value={a.balance}
                 />
               ))}
-              <Line label="Total" value={cash.total_cash} strong />
+              <Line label={tr("Total")} value={cash.total_cash} strong />
             </>
           )}
         </Panel>
@@ -184,18 +205,83 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
 /* ── auditor room ───────────────────────────────────────────────────────── */
 
 export function AuditorTerminal({ me }: { me: PortalMe }) {
+  const { t } = useTranslation();
   const [view, setView] = React.useState<AuditorView | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Data room state — the auditor's document requests (PRD §5.2).
+  const [rooms, setRooms] = React.useState<PortalDataRoom[] | null>(null);
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [detail, setDetail] = React.useState<PortalDataRoomDetail | null>(null);
+  const [note, setNote] = React.useState("");
+  const [roomBusy, setRoomBusy] = React.useState<"list" | "create" | "detail" | "download" | null>(null);
+  const [roomError, setRoomError] = React.useState<string | null>(null);
+  const [dlDocId, setDlDocId] = React.useState<string | null>(null);
+
+  const loadRooms = React.useCallback(() => {
+    portalDataRoomList()
+      .then((r) => setRooms(r))
+      .catch((e) => setRoomError(msg(e)));
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
     portalAuditorView()
       .then((v) => alive && setView(v))
       .catch((e) => alive && setError(msg(e)));
+    portalDataRoomList()
+      .then((r) => alive && setRooms(r))
+      .catch(() => alive && setRooms([]));
     return () => {
       alive = false;
     };
   }, []);
+
+  async function createRoom() {
+    const trimmed = note.trim();
+    if (!trimmed) return setRoomError("Describe the document you need first.");
+    setRoomBusy("create");
+    setRoomError(null);
+    try {
+      await portalDataRoomCreate(trimmed);
+      setNote("");
+      loadRooms();
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setRoomBusy(null);
+    }
+  }
+
+  async function openRoom(id: string) {
+    setOpenId(id);
+    setDetail(null);
+    setRoomBusy("detail");
+    setRoomError(null);
+    try {
+      setDetail(await portalDataRoomDetail(id));
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setRoomBusy(null);
+    }
+  }
+
+  async function downloadDoc(doc: PortalDataRoomDoc) {
+    if (!openId) return;
+    setDlDocId(doc.doc_id);
+    setRoomError(null);
+    try {
+      const name =
+        doc.original_name ||
+        (doc.doc_type_code || doc.doc_type || "document") + ".pdf";
+      await portalDataRoomDownload(openId, doc.doc_id, name);
+    } catch (e) {
+      setRoomError(msg(e));
+    } finally {
+      setDlDocId(null);
+    }
+  }
 
   if (error) return <ErrorState message={error} />;
   if (!view) return <SkeletonTable />;
@@ -212,7 +298,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Audit room
+        {t("portal.auditRoom")}
         {me.portal_user.full_name
           ? `, ${me.portal_user.full_name.split(" ")[0]}`
           : ""}
@@ -231,7 +317,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Compte de résultat">
           <Line label="Produits" value={is.produits} />
-          <Line label="Charges" value={is.charges} />
+          <Line label={tr("Charges")} value={is.charges} />
           <Line label="Résultat net" value={is.result} strong />
         </Panel>
         <Panel title="Bilan">
@@ -248,7 +334,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Trial balance">
+        <Panel title={tr("Trial balance")}>
           {tb.rows.length === 0 ? (
             <EmptyState
               title="No movements"
@@ -259,9 +345,9 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-card text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="py-2 text-left font-medium">Account</th>
-                    <th className="py-2 text-right font-medium">Debit</th>
-                    <th className="py-2 text-right font-medium">Credit</th>
+                    <th className="py-2 text-left font-medium">{tr("Account")}</th>
+                    <th className="py-2 text-right font-medium">{tr("Debit")}</th>
+                    <th className="py-2 text-right font-medium">{tr("Credit")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -297,7 +383,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
       </div>
 
       <div className="mt-6">
-        <Panel title="Audit trail">
+        <Panel title={tr("Audit trail")}>
           {trail.length === 0 ? (
             <EmptyState
               title="No postings"
@@ -335,6 +421,129 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
         </Panel>
       </div>
 
+      <div className="mt-6">
+        <Panel title={t("portal.dataRoom")}>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Ask the tenant for a document — a signed transit order, a customs
+            file — and the documents they share with you appear here.
+          </p>
+
+          {roomError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {roomError}
+            </div>
+          )}
+
+          <form
+            className="mb-6 space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void createRoom();
+            }}
+          >
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              placeholder="What document do you need, and for which period/file?"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button
+              type="submit"
+              disabled={roomBusy === "create"}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {roomBusy === "create" ? "Requesting…" : "Request document"}
+            </button>
+          </form>
+
+          {rooms === null ? (
+            <SkeletonTable />
+          ) : rooms.length === 0 ? (
+            <EmptyState
+              title="No requests yet"
+              hint="Requests you make and the documents shared in answer appear here."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {rooms.map((r) => (
+                <li key={r.room_id} className="py-3">
+                  <button
+                    type="button"
+                    onClick={() => void openRoom(r.room_id)}
+                    className="flex w-full items-center justify-between gap-4 text-left hover:opacity-80"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {r.request_note}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {dateFmt(r.created_at)} · {r.doc_count} document
+                        {r.doc_count === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {r.status === "ANSWERED" ? t("portal.answered") : t("portal.open")}
+                    </span>
+                  </button>
+
+                  {openId === r.room_id && (
+                    <div className="mt-3 rounded-lg border border-border bg-card/60 p-3">
+                      {roomBusy === "detail" ? (
+                        <p className="text-sm text-muted-foreground">
+                          Loading…
+                        </p>
+                      ) : detail && detail.room.room_id === r.room_id ? (
+                        detail.docs.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {t("portal.noDocsShared")}
+                          </p>
+                        ) : (
+                          <ul className="divide-y divide-border">
+                            {detail.docs.map((doc) => {
+                              const name =
+                                doc.original_name ||
+                                (doc.doc_type_code || doc.doc_type || "document") +
+                                  ".pdf";
+                              return (
+                                <li
+                                  key={doc.doc_id}
+                                  className="flex items-center justify-between gap-3 py-2"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm text-foreground">
+                                      {name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Shared {dateFmt(doc.created_at)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={dlDocId === doc.doc_id}
+                                    onClick={() => void downloadDoc(doc)}
+                                    className="shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
+                                  >
+                                    {dlDocId === doc.doc_id
+                                      ? t("portal.downloading")
+                                      : t("common.download")}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
       <p className="mt-6 text-xs text-muted-foreground">
         Read-only, prepared on the {view.basis} basis for the period shown. HR,
         payroll and security events are excluded.
@@ -346,21 +555,144 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
 /* ── client view ────────────────────────────────────────────────────────── */
 
 export function ClientTerminal({ me }: { me: PortalMe }) {
+  const { t } = useTranslation();
   // Which shipment the client has opened, if any. Kept here rather than in the
   // router because the portal shell is deliberately a single authenticated view.
   const [openDossier, setOpenDossier] = React.useState<string | null>(null);
   const [view, setView] = React.useState<ClientView | null>(null);
+  const [docs, setDocs] = React.useState<PortalDocument[] | null>(null);
+  const [dlBusy, setDlBusy] = React.useState<string | null>(null);
+  const [dlError, setDlError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Onboarding command centre (PRD §11.1).
+  const [onb, setOnb] = React.useState<PortalOnboarding | null>(null);
+
+  // Secure messaging (PRD §11.1).
+  const [msgs, setMsgs] = React.useState<PortalMessage[]>([]);
+  const [msgDraft, setMsgDraft] = React.useState("");
+  const [msgBusy, setMsgBusy] = React.useState<"send" | "export" | null>(null);
+  const [msgError, setMsgError] = React.useState<string | null>(null);
+
+  // Self-service quoting (PRD §11.1).
+  const [quotes, setQuotes] = React.useState<PortalQuoteRequest[] | null>(null);
+  const [quoteForm, setQuoteForm] = React.useState({
+    service_category: "",
+    service_type: "",
+    origin_location: "",
+    destination_location: "",
+    estimated_weight: "",
+    cargo_description: "",
+    incoterm: "",
+  });
+  const [quoteBusy, setQuoteBusy] = React.useState(false);
+  const [quoteError, setQuoteError] = React.useState<string | null>(null);
+
+  const reloadMessages = React.useCallback(() => {
+    portalClientMessages()
+      .then((m) => setMsgs(m))
+      .catch((e) => setMsgError(msg(e)));
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
     portalClientView()
       .then((v) => alive && setView(v))
       .catch((e) => alive && setError(msg(e)));
+    // The document vault is the client's own; loaded beside the summary.
+    portalClientDocuments()
+      .then((d) => alive && setDocs(d))
+      .catch(() => alive && setDocs([]));
+    portalClientOnboarding()
+      .then((o) => alive && setOnb(o))
+      .catch(() => alive && setOnb(null));
+    portalClientMessages()
+      .then((m) => alive && setMsgs(m))
+      .catch(() => alive && setMsgs([]));
+    portalClientQuoteRequests()
+      .then((q) => alive && setQuotes(q))
+      .catch(() => alive && setQuotes([]));
     return () => {
       alive = false;
     };
   }, []);
+
+  async function sendMessage() {
+    const body = msgDraft.trim();
+    if (!body) return;
+    setMsgBusy("send");
+    setMsgError(null);
+    try {
+      await portalClientMessageSend(body);
+      setMsgDraft("");
+      reloadMessages();
+    } catch (e) {
+      setMsgError(msg(e));
+    } finally {
+      setMsgBusy(null);
+    }
+  }
+
+  async function exportChat() {
+    setMsgBusy("export");
+    setMsgError(null);
+    try {
+      await portalClientMessagesExport();
+    } catch (e) {
+      setMsgError(msg(e));
+    } finally {
+      setMsgBusy(null);
+    }
+  }
+
+  async function submitQuote(e: React.FormEvent) {
+    e.preventDefault();
+    setQuoteBusy(true);
+    setQuoteError(null);
+    try {
+      await portalClientQuoteCreate({
+        service_category: quoteForm.service_category,
+        service_type: quoteForm.service_type || undefined,
+        origin_location: quoteForm.origin_location,
+        destination_location: quoteForm.destination_location,
+        estimated_weight: quoteForm.estimated_weight
+          ? Number(quoteForm.estimated_weight)
+          : undefined,
+        cargo_description: quoteForm.cargo_description || undefined,
+        incoterm: quoteForm.incoterm || undefined,
+      });
+      setQuoteForm({
+        service_category: "",
+        service_type: "",
+        origin_location: "",
+        destination_location: "",
+        estimated_weight: "",
+        cargo_description: "",
+        incoterm: "",
+      });
+      const q = await portalClientQuoteRequests();
+      setQuotes(q);
+    } catch (e) {
+      setQuoteError(msg(e));
+    } finally {
+      setQuoteBusy(false);
+    }
+  }
+
+  async function downloadDoc(doc: PortalDocument) {
+    setDlBusy(doc.doc_id);
+    setDlError(null);
+    try {
+      const label =
+        doc.original_name ||
+        (doc.doc_type_code || doc.doc_type || "document") + ".pdf";
+      await portalClientDocumentDownload(doc.doc_id, label);
+    } catch (e) {
+      setDlError(msg(e));
+    } finally {
+      setDlBusy(null);
+    }
+  }
 
   if (error) return <ErrorState message={error} />;
   if (openDossier)
@@ -377,7 +709,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   return (
     <>
       <h1 className="font-display text-2xl text-foreground">
-        Welcome
+        {t("portal.welcome")}
         {me.portal_user.full_name
           ? `, ${me.portal_user.full_name.split(" ")[0]}`
           : ""}
@@ -389,13 +721,13 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel title="Shipments">
+        <Panel title={t("portal.shipments")}>
           {!view ? (
             <SkeletonTable />
           ) : dossiers.length === 0 ? (
             <EmptyState
-              title="No shipments yet"
-              hint="New files will appear here as they're opened."
+              title={t("portal.noShipments")}
+              hint={t("portal.noShipmentsHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -425,13 +757,13 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           )}
         </Panel>
 
-        <Panel title="Invoices">
+        <Panel title={t("portal.invoices")}>
           {!view ? (
             <SkeletonTable />
           ) : invoices.length === 0 ? (
             <EmptyState
-              title="Nothing outstanding"
-              hint="Issued invoices will appear here."
+              title={t("portal.nothingOutstanding")}
+              hint={t("portal.nothingOutstandingHint")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -456,6 +788,311 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
                   </div>
                 </li>
               ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Panel title={t("portal.onboarding")}>
+          {!onb ? (
+            <SkeletonTable />
+          ) : (
+            <>
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{t("portal.accountComplete")}</span>
+                  <span className="font-medium text-foreground">
+                    {onb.progress}% {t("portal.complete")}
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${onb.progress}%` }}
+                  />
+                </div>
+              </div>
+              <ul className="space-y-2">
+                {onb.steps.map((s) => (
+                  <li
+                    key={s.step_key}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-2"
+                  >
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] ${
+                        s.done
+                          ? "bg-[rgb(var(--ok))] text-white"
+                          : "border border-border text-muted-foreground"
+                      }`}
+                    >
+                      {s.done ? "✓" : ""}
+                    </span>
+                    <span
+                      className={
+                        s.done
+                          ? "text-sm text-muted-foreground line-through"
+                          : "text-sm text-foreground"
+                      }
+                    >
+                      {s.label_en}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Panel>
+
+        <Panel title={t("portal.messages")}>
+          {msgError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {msgError}
+            </div>
+          )}
+          <div className="mb-3 max-h-56 space-y-2 overflow-auto">
+            {msgs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t("portal.noMessages")}
+              </p>
+            ) : (
+              msgs.map((m) => (
+                <div
+                  key={m.message_id}
+                  className={`rounded-xl px-3 py-2 text-sm ${
+                    m.direction === "CLIENT"
+                      ? "ml-6 bg-primary/10 text-foreground"
+                      : "mr-6 bg-card text-foreground"
+                  }`}
+                >
+                  <div className="mb-0.5 text-[11px] text-muted-foreground">
+                    {m.direction === "STAFF"
+                      ? m.author_name || "Account team"
+                      : "You"}{" "}
+                    · {dateFmt(m.created_at)}
+                  </div>
+                  <p className="whitespace-pre-wrap">{m.body}</p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              value={msgDraft}
+              onChange={(e) => setMsgDraft(e.target.value)}
+              rows={2}
+              maxLength={4000}
+              placeholder={t("portal.writeMessage")}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={!msgDraft.trim() || msgBusy === "send"}
+              onClick={() => void sendMessage()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {msgBusy === "send" ? t("portal.sending") : t("common.send")}
+            </button>
+            <button
+              type="button"
+              disabled={msgs.length === 0 || msgBusy === "export"}
+              onClick={() => void exportChat()}
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-opacity hover:opacity-80 disabled:opacity-50"
+            >
+              {msgBusy === "export" ? t("portal.exporting") : t("portal.exportChat")}
+            </button>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Panel title={t("portal.requestQuote")}>
+          {quoteError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {quoteError}
+            </div>
+          )}
+          <form onSubmit={(e) => void submitQuote(e)} className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                required
+                value={quoteForm.service_category}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    service_category: e.target.value,
+                  }))
+                }
+                placeholder={t("portal.service")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={quoteForm.service_type}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    service_type: e.target.value,
+                  }))
+                }
+                placeholder={t("portal.serviceType")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                required
+                value={quoteForm.origin_location}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    origin_location: e.target.value,
+                  }))
+                }
+                placeholder={t("portal.origin")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                required
+                value={quoteForm.destination_location}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    destination_location: e.target.value,
+                  }))
+                }
+                placeholder={t("portal.destination")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                value={quoteForm.estimated_weight}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({
+                    ...f,
+                    estimated_weight: e.target.value,
+                  }))
+                }
+                type="number"
+                min="0"
+                step="0.0001"
+                placeholder={t("portal.weight")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <input
+                value={quoteForm.incoterm}
+                onChange={(e) =>
+                  setQuoteForm((f) => ({ ...f, incoterm: e.target.value }))
+                }
+                placeholder={t("portal.incoterm")}
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <textarea
+              value={quoteForm.cargo_description}
+              onChange={(e) =>
+                setQuoteForm((f) => ({
+                  ...f,
+                  cargo_description: e.target.value,
+                }))
+              }
+              rows={2}
+              maxLength={2000}
+              placeholder={t("portal.cargo")}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button
+              type="submit"
+              disabled={quoteBusy}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {quoteBusy ? t("portal.submitting") : t("portal.requestQuote")}
+            </button>
+          </form>
+        </Panel>
+
+        <Panel title={t("portal.myQuotes")}>
+          {quotes === null ? (
+            <SkeletonTable />
+          ) : quotes.length === 0 ? (
+            <EmptyState
+              title={t("portal.noQuotes")}
+              hint={t("portal.noQuotesHint")}
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {quotes.map((q) => (
+                <li key={q.quote_request_id} className="py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {q.public_ref || "Quote request"}
+                    </p>
+                    <span className="status">{label(q.status)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {q.origin_location || "—"} → {q.destination_location || "—"}
+                    {q.estimated_weight
+                      ? ` · ${q.estimated_weight} kg`
+                      : ""}{" "}
+                    · {dateFmt(q.created_at)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel title={t("portal.documents")}>
+          {dlError && (
+            <div className="mb-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              {dlError}
+            </div>
+          )}
+          {docs === null ? (
+            <SkeletonTable />
+          ) : docs.length === 0 ? (
+            <EmptyState
+              title={t("portal.noDocuments")}
+              hint={t("portal.noDocumentsHint")}
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {docs.map((doc) => {
+                const name =
+                  doc.original_name ||
+                  (doc.doc_type_code || doc.doc_type || "document") +
+                    ".pdf";
+                return (
+                  <li
+                    key={doc.doc_id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {doc.dossier_ref
+                          ? `${doc.dossier_ref} · `
+                          : ""}
+                        Filed {dateFmt(doc.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={dlBusy === doc.doc_id}
+                      onClick={() => void downloadDoc(doc)}
+                      className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-50"
+                    >
+                      {dlBusy === doc.doc_id ? t("portal.downloading") : t("common.download")}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>

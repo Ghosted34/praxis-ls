@@ -14,6 +14,7 @@
  * them to another screen mid-sentence.
  */
 import { Link } from "react-router-dom";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/states";
@@ -92,7 +93,7 @@ function LegRow({ leg }: { leg: ItineraryLeg }) {
           <span className="text-micro font-medium normal-case text-muted-foreground">
             {MODE_LABEL[leg.mode]}
           </span>
-          {leg.isOptional && <Pill tone="mute">Optional</Pill>}
+          {leg.isOptional && <Pill tone="mute">{tr("Optional")}</Pill>}
           {leg.status !== "PLANNED" && (
             <Pill tone="blue">
               {LEG_STATUS_LABEL[leg.status] || leg.status}

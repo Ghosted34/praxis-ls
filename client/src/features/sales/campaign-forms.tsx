@@ -9,6 +9,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -160,7 +161,7 @@ export function CampaignForm({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Name" required className="sm:col-span-2">
+          <Field label={tr("Name")} required className="sm:col-span-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -194,7 +195,7 @@ export function CampaignForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Budget" required>
+          <Field label={tr("Budget")} required>
             <Input
               type="number"
               min={0}
@@ -202,7 +203,7 @@ export function CampaignForm({
               onChange={(e) => setBudget(e.target.value)}
             />
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={currency}
               maxLength={3}
@@ -235,13 +236,13 @@ export function CampaignForm({
             </span>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Leads">
+            <Field label={tr("Leads")}>
               <Input type="number" min={0} value={tLeads} onChange={(e) => setTLeads(e.target.value)} />
             </Field>
-            <Field label="Opportunities">
+            <Field label={tr("Opportunities")}>
               <Input type="number" min={0} value={tOps} onChange={(e) => setTOps(e.target.value)} />
             </Field>
-            <Field label="Deals won">
+            <Field label={tr("Deals won")}>
               <Input type="number" min={0} value={tWon} onChange={(e) => setTWon(e.target.value)} />
             </Field>
           </div>
@@ -362,10 +363,10 @@ export function ActualsForm({
           <Field label="Leads generated">
             <Input type="number" min={0} value={leads} onChange={(e) => setLeads(e.target.value)} />
           </Field>
-          <Field label="Opportunities">
+          <Field label={tr("Opportunities")}>
             <Input type="number" min={0} value={ops} onChange={(e) => setOps(e.target.value)} />
           </Field>
-          <Field label="Deals won">
+          <Field label={tr("Deals won")}>
             <Input type="number" min={0} value={won} onChange={(e) => setWon(e.target.value)} />
           </Field>
         </div>
@@ -460,7 +461,7 @@ export function RejectCampaignModal({
       size="lg"
     >
       <div className="space-y-4">
-        <Field label="Reason" required>
+        <Field label={tr("Reason")} required>
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -534,7 +535,7 @@ export function SubscriberForm({
       description="Add someone to the newsletter audience."
     >
       <div className="space-y-4">
-        <Field label="Email" required>
+        <Field label={tr("Email")} required>
           <Input
             type="email"
             value={email}
@@ -543,14 +544,14 @@ export function SubscriberForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name">
+          <Field label={tr("Name")}>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Jane Doe"
+              placeholder={tr("Jane Doe")}
             />
           </Field>
-          <Field label="Source">
+          <Field label={tr("Source")}>
             <Input
               value={source}
               onChange={(e) => setSource(e.target.value)}
@@ -749,7 +750,7 @@ export function TemplateForm({
               placeholder="Monthly newsletter"
             />
           </Field>
-          <Field label="Subject" className="sm:col-span-2">
+          <Field label={tr("Subject")} className="sm:col-span-2">
             <Input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -767,7 +768,7 @@ export function TemplateForm({
                   value={senderId}
                   onChange={(e) => setSenderId(e.target.value)}
                 >
-                  <option value="">— none —</option>
+                  <option value="">{tr("— none —")}</option>
                   {(senders || []).map((s) => (
                     <option
                       key={String(s.sender_id)}
@@ -789,7 +790,7 @@ export function TemplateForm({
             </div>
           </Field>
           <Field
-            label="Body"
+            label={tr("Body")}
             className="sm:col-span-2"
             hint="HTML or plain text"
           >
@@ -893,7 +894,7 @@ export function SendCampaignModal({
             value={templateId}
             onChange={(e) => setTemplateId(e.target.value)}
           >
-            <option value="">— select a template —</option>
+            <option value="">{tr("— select a template —")}</option>
             {(templates || []).map((t) => (
               <option key={String(t.template_id)} value={String(t.template_id)}>
                 {cell(t.name)}

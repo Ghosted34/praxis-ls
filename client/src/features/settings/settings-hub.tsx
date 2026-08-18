@@ -17,6 +17,8 @@
  * failure, and this is a refusal.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useCanOpenRoute } from "@/lib/route-access";
 
@@ -44,6 +46,12 @@ const SECTIONS: Section[] = [
         label: "My Appearance",
         desc: "Your own fonts — overrides the workspace, for you only",
         icon: "palette",
+      },
+      {
+        to: "/self-service",
+        label: "My HR",
+        desc: "Your payslips, leave & advances",
+        icon: "id",
       },
       {
         to: "/settings/login",
@@ -197,10 +205,22 @@ const SECTIONS: Section[] = [
         icon: "doc",
       },
       {
-        to: "/portal/access",
+        to: "/settings/portal-access",
         label: "Portal Access",
         desc: "External client, investor & auditor users",
         icon: "id",
+      },
+      {
+        to: "/settings/audit-room",
+        label: "Auditor data room",
+        desc: "Auditor document requests & shared files",
+        icon: "doc",
+      },
+      {
+        to: "/settings/client-support",
+        label: "Client support",
+        desc: "Client portal messages & onboarding",
+        icon: "comms",
       },
     ],
   },
@@ -326,7 +346,17 @@ function ChevIcon() {
   );
 }
 
+/** Translation keys for the hub cards, keyed by route — everything else stays
+ *  English until its screen is converted. */
+const SETTINGS_T: Record<string, { label: string; desc: string }> = {
+  "/settings/portal-access": { label: "settings.portalAccess", desc: "settings.portalAccessDesc" },
+  "/settings/audit-room": { label: "settings.auditorDataRoom", desc: "settings.auditorDataRoomDesc" },
+  "/settings/client-support": { label: "settings.clientSupport", desc: "settings.clientSupportDesc" },
+  "/self-service": { label: "settings.myHr", desc: "settings.myHrDesc" },
+};
+
 export function SettingsHub() {
+  const { t } = useTranslation();
   const canOpen = useCanOpenRoute();
   const sections = SECTIONS.map((s) => ({
     ...s,
@@ -335,7 +365,7 @@ export function SettingsHub() {
 
   return (
     <section className={pageShell.wide}>
-      <h1 className="font-display text-2xl tracking-tight">Settings</h1>
+      <h1 className="font-display text-2xl tracking-tight">{tr("Settings")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Configure the hub. Business identity, money, operations, communication
         &amp; integrations.
@@ -365,14 +395,14 @@ export function SettingsHub() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-foreground">
-                        {c.label}
+                        {SETTINGS_T[c.to] ? t(SETTINGS_T[c.to].label) : c.label}
                       </span>
                       <span className="text-muted-foreground transition-transform group-hover:translate-x-0.5">
                         <ChevIcon />
                       </span>
                     </span>
                     <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                      {c.desc}
+                      {SETTINGS_T[c.to] ? t(SETTINGS_T[c.to].desc) : c.desc}
                     </span>
                   </span>
                 </Link>

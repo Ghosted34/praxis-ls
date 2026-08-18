@@ -32,6 +32,7 @@
  * dictionary_ref elsewhere in the product.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -134,7 +135,7 @@ function ProviderManager({ kind }: { kind: api.RateProviderKind }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="micro">
-          Seeded rows are marked <em>System</em> but stay editable. Add as many
+          Seeded rows are marked <em>{tr("System")}</em> but stay editable. Add as many
           as you carry.
         </p>
         <Button
@@ -149,14 +150,14 @@ function ProviderManager({ kind }: { kind: api.RateProviderKind }) {
         <div className="rounded-lg border bg-card p-3">
           <div className="grid gap-2 sm:grid-cols-3">
             <Input
-              placeholder="CODE"
+              placeholder={tr("CODE")}
               value={form.code}
               onChange={(e) =>
                 setForm((s) => ({ ...s, code: e.target.value.toUpperCase() }))
               }
             />
             <Input
-              placeholder="Name"
+              placeholder={tr("Name")}
               value={form.name}
               onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
             />
@@ -186,11 +187,11 @@ function ProviderManager({ kind }: { kind: api.RateProviderKind }) {
         </div>
       )}
       {list.loading ? (
-        <LoadingRow label="Loading…" />
+        <LoadingRow label={tr("Loading…")} />
       ) : list.error ? (
         <ErrorState message={list.error} />
       ) : (list.data || []).length === 0 ? (
-        <EmptyState title="Nothing yet" hint="Add your first carrier." />
+        <EmptyState title={tr("Nothing yet")} hint="Add your first carrier." />
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
@@ -208,7 +209,7 @@ function ProviderManager({ kind }: { kind: api.RateProviderKind }) {
                     {r.carrier_code ? ` · ${r.carrier_code}` : ""}
                   </td>
                   <td className="px-3 py-1.5">
-                    {r.is_system && <Pill tone="mute">System</Pill>}
+                    {r.is_system && <Pill tone="mute">{tr("System")}</Pill>}
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <button
@@ -304,13 +305,13 @@ function QuickAddProvider({
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-card p-2">
       <Input
-        placeholder="CODE"
+        placeholder={tr("CODE")}
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         className="w-28"
       />
       <Input
-        placeholder="Name"
+        placeholder={tr("Name")}
         value={name}
         onChange={(e) => setName(e.target.value)}
         className="w-48"
@@ -388,13 +389,13 @@ function SetRateModal({
     >
       <form className="space-y-4" onSubmit={submit}>
         {current && (
-          <Callout tone="info" title="Current rate">
+          <Callout tone="info" title={tr("Current rate")}>
             {money(current.rate, current.currency || curr)} since{" "}
             {dateFmt(current.effective_from)}
           </Callout>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Rate" required>
+          <Field label={tr("Rate")} required>
             <Input
               type="number"
               min="0"
@@ -404,7 +405,7 @@ function SetRateModal({
               onChange={(e) => setRate(e.target.value)}
             />
           </Field>
-          <Field label="Currency">
+          <Field label={tr("Currency")}>
             <Input
               value={curr}
               onChange={(e) =>
@@ -412,18 +413,18 @@ function SetRateModal({
               }
             />
           </Field>
-          <Field label="Effective from" required>
+          <Field label={tr("Effective from")} required>
             <Input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
             />
           </Field>
-          <Field label="Note">
+          <Field label={tr("Note")}>
             <Input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional"
+              placeholder={tr("Optional")}
             />
           </Field>
         </div>
@@ -492,7 +493,7 @@ function DefaultRateGrid({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-            <th className="px-3 py-2">Container type</th>
+            <th className="px-3 py-2">{tr("Container type")}</th>
             <th className="px-3 py-2 text-right">Standard rate</th>
           </tr>
         </thead>
@@ -546,8 +547,8 @@ function CarrierRateGrid({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <th className="px-3 py-2">Carrier</th>
-                <th className="px-3 py-2 text-right">Rate</th>
+                <th className="px-3 py-2">{tr("Carrier")}</th>
+                <th className="px-3 py-2 text-right">{tr("Rate")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

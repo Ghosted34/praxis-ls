@@ -4,6 +4,7 @@
  * a New location form.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,40 +62,40 @@ function NewLocationForm({
     <Modal
       open
       onClose={onClose}
-      title="New location"
+      title={tr("New location")}
       description="Add a slotting location — a zone/aisle/rack/bin, or a yard slot."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Zone">
+          <Field label={tr("Zone")}>
             <Input
               value={f.zone}
               onChange={(e) => set("zone", e.target.value)}
               placeholder="A"
             />
           </Field>
-          <Field label="Aisle">
+          <Field label={tr("Aisle")}>
             <Input
               value={f.aisle}
               onChange={(e) => set("aisle", e.target.value)}
               placeholder="01"
             />
           </Field>
-          <Field label="Rack">
+          <Field label={tr("Rack")}>
             <Input
               value={f.rack}
               onChange={(e) => set("rack", e.target.value)}
               placeholder="R1"
             />
           </Field>
-          <Field label="Bin">
+          <Field label={tr("Bin")}>
             <Input
               value={f.bin}
               onChange={(e) => set("bin", e.target.value)}
               placeholder="B1"
             />
           </Field>
-          <Field label="Yard" hint="For open-yard slots">
+          <Field label={tr("Yard")} hint="For open-yard slots">
             <Input
               value={f.yard}
               onChange={(e) => set("yard", e.target.value)}
@@ -155,13 +156,13 @@ export function LocationsPage() {
         eyebrow={<HubCrumb area="Warehouse" to="/wms" />}
         title="Locations"
         description="Warehouse slotting by zone, aisle, rack and bin."
-        action={<Button onClick={() => setCreating(true)}>New location</Button>}
+        action={<Button onClick={() => setCreating(true)}>{tr("New location")}</Button>}
       />
       <HubTabs />
       {locs.error ? (
         <ErrorState message={locs.error} />
       ) : locs.loading ? (
-        <div className="px-3 py-6 text-center micro">Loading…</div>
+        <div className="px-3 py-6 text-center micro">{tr("Loading…")}</div>
       ) : groups.length === 0 ? (
         <div className="rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
           No locations yet.

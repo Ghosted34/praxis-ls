@@ -28,6 +28,7 @@
  * little to be useful.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,14 +161,14 @@ function ScheduleForm({
       description="A session has a time, a way in, and — optionally — the qualification it satisfies."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Forklift safety" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Starts" hint="Local time.">
+          <Field label={tr("Starts")} hint="Local time.">
             <Input type="datetime-local" value={f.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
           </Field>
-          <Field label="Ends">
+          <Field label={tr("Ends")}>
             <Input type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
           </Field>
         </div>
@@ -176,10 +177,10 @@ function ScheduleForm({
             <Select value={f.mode} onChange={(e) => set("mode", e.target.value)}>
               <option value="IN_PERSON">In person</option>
               <option value="ONLINE">Online</option>
-              <option value="HYBRID">Hybrid</option>
+              <option value="HYBRID">{tr("Hybrid")}</option>
             </Select>
           </Field>
-          <Field label="Capacity" hint="Leave blank for no limit.">
+          <Field label={tr("Capacity")} hint="Leave blank for no limit.">
             <Input
               type="number"
               min="1"
@@ -190,7 +191,7 @@ function ScheduleForm({
           </Field>
         </div>
         {needsRoom && (
-          <Field label="Location" required>
+          <Field label={tr("Location")} required>
             <Input value={f.location} onChange={(e) => set("location", e.target.value)} placeholder="Training room, Douala depot" />
           </Field>
         )}
@@ -210,7 +211,7 @@ function ScheduleForm({
           </Field>
           <Field label="Satisfies requirement" hint="Sets the certificate expiry when one is issued.">
             <Select value={f.training_requirement_id} onChange={(e) => set("training_requirement_id", e.target.value)}>
-              <option value="">— none —</option>
+              <option value="">{tr("— none —")}</option>
               {requirements.map((r) => (
                 <option key={r.training_requirement_id} value={r.training_requirement_id}>
                   {r.title}
@@ -220,7 +221,7 @@ function ScheduleForm({
             </Select>
           </Field>
         </div>
-        <Field label="Description">
+        <Field label={tr("Description")}>
           <textarea
             className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm"
             rows={3}
@@ -387,7 +388,7 @@ function SessionPanel({
       {/* ── Roster ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <p className="micro">Roster</p>
+          <p className="micro">{tr("Roster")}</p>
           <p className="micro">
             {roster.length} booked
             {cap?.capacity ? ` of ${cap.capacity}` : ""}
@@ -517,14 +518,14 @@ function RequirementForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
           }
         }}
       >
-        <Field label="Title" required>
+        <Field label={tr("Title")} required>
           <Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Manual handling" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Department" hint="Blank means everybody.">
+          <Field label={tr("Department")} hint="Blank means everybody.">
             <Input value={f.department} onChange={(e) => set("department", e.target.value)} />
           </Field>
-          <Field label="Job title" hint="Blank means every role in the department.">
+          <Field label={tr("Job title")} hint="Blank means every role in the department.">
             <Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} />
           </Field>
         </div>
@@ -738,7 +739,7 @@ export function TrainingsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Trainings"
+        title={tr("Trainings")}
         description="Schedule sessions, run them, and see who holds a current qualification."
         action={<Button onClick={() => setEditing(null)}>Schedule training</Button>}
       />

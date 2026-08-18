@@ -23,6 +23,7 @@
  * thing that makes editing one unpleasant.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -157,7 +158,7 @@ export function ContractEditor({
           {/* THE TERMS — facts, echoed verbatim into the text. */}
           <div className="flex flex-col gap-3">
             <p className="micro">Agreed terms</p>
-            <Field label="Title" hint={locked ? "Fixed once the contract is issued." : undefined}>
+            <Field label={tr("Title")} hint={locked ? "Fixed once the contract is issued." : undefined}>
               <Input
                 value={f.title}
                 disabled={locked}
@@ -165,14 +166,14 @@ export function ContractEditor({
                 placeholder="Employment contract"
               />
             </Field>
-            <Field label="Job title">
+            <Field label={tr("Job title")}>
               <Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} />
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Starts">
+              <Field label={tr("Starts")}>
                 <Input type="date" value={f.effective_on} onChange={(e) => set("effective_on", e.target.value)} />
               </Field>
-              <Field label="Ends" hint="Leave blank for an indefinite term.">
+              <Field label={tr("Ends")} hint="Leave blank for an indefinite term.">
                 <Input type="date" value={f.end_on} onChange={(e) => set("end_on", e.target.value)} />
               </Field>
               <Field label="Gross monthly">
@@ -184,9 +185,9 @@ export function ContractEditor({
                   onChange={(e) => set("gross_salary", e.target.value)}
                 />
               </Field>
-              <Field label="Currency">
+              <Field label={tr("Currency")}>
                 <Select value={f.salary_currency} onChange={(e) => set("salary_currency", e.target.value)}>
-                  <option value="XAF">XAF</option>
+                  <option value="XAF">{tr("XAF")}</option>
                   <option value="EUR">EUR</option>
                   <option value="USD">USD</option>
                 </Select>

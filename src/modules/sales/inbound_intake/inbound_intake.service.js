@@ -64,6 +64,7 @@ const { mapSmtpError, isSmtpError } = require("../../mail/smtp-error.map");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
+const { atomically } = require("../../../shared/db/tx");
 
 const ref = (id) => "contact_enquiry:" + id;
 
@@ -83,12 +84,14 @@ const MAIL_PURPOSE = "SUPPORT";
 /* ─── intake ──────────────────────────────────────────────────────────────── */
 
 async function submitEnquiry(client, { data, actor = {} }) {
-  const row = await repo.insertEnquiry(client, data);
-  await emitEvent(client, {
-    eventTypeKey: events.ENQUIRY_CREATED, moduleKey: events.MODULE,
-    entityRef: ref(row.contact_enquiry_id), actorUserId: actor.user_id || null,
+  return atomically(client, async () => {
+    const row = await repo.insertEnquiry(client, data);
+    await emitEvent(client, {
+      eventTypeKey: events.ENQUIRY_CREATED, moduleKey: events.MODULE,
+      entityRef: ref(row.contact_enquiry_id), actorUserId: actor.user_id || null,
+    });
+    return row;
   });
-  return row;
 }
 
 /* ─── lifecycle ───────────────────────────────────────────────────────────── */

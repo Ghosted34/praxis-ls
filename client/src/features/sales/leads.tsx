@@ -13,6 +13,7 @@
  */
 
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -149,12 +150,12 @@ function LeadsTab() {
       </div>
 
       <KpiRow>
-        <KpiTile label="Leads" value={num(tiles.TOTAL)} />
+        <KpiTile label={tr("Leads")} value={num(tiles.TOTAL)} />
         <KpiTile label="New" value={num(tiles.NEW)} />
         <KpiTile label="Contacted" value={num(tiles.CONTACTED)} />
-        <KpiTile label="Qualified" value={num(tiles.QUALIFIED)} />
-        <KpiTile label="Converted" value={num(tiles.CONVERTED)} />
-        <KpiTile label="Lost" value={num(tiles.LOST)} />
+        <KpiTile label={tr("Qualified")} value={num(tiles.QUALIFIED)} />
+        <KpiTile label={tr("Converted")} value={num(tiles.CONVERTED)} />
+        <KpiTile label={tr("Lost")} value={num(tiles.LOST)} />
       </KpiRow>
 
       {error ? (

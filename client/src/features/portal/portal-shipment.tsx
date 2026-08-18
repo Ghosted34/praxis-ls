@@ -16,6 +16,7 @@
  * client who was shown only dates has an argument.
  */
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -103,7 +104,7 @@ export function PortalShipment({
         </p>
       </div>
 
-      <Panel title="Progress">
+      <Panel title={tr("Progress")}>
         {chain.milestones.length === 0 ? (
           <EmptyState
             title="Nothing to show yet"

@@ -5,6 +5,7 @@
  * enforced server-side). Payslips drill into the Cameroon statutory breakdown.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -270,9 +271,9 @@ function RunDetail({
       ) : d ? (
         <div className="space-y-5">
           <KpiRow>
-            <KpiTile label="Employees" value={num(items.length)} />
-            <KpiTile label="Gross" value={money(totals.gross)} />
-            <KpiTile label="Net pay" value={money(totals.net)} />
+            <KpiTile label={tr("Employees")} value={num(items.length)} />
+            <KpiTile label={tr("Gross")} value={money(totals.gross)} />
+            <KpiTile label={tr("Net pay")} value={money(totals.net)} />
             <KpiTile label="Employer charges" value={money(totals.er)} />
           </KpiRow>
 
@@ -352,7 +353,7 @@ function NewRunForm({
       description="One run per entity per month. Compute generates payslips over the active roster."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Entity" required>
+        <Field label={tr("Entity")} required>
           <Select
             value={entityId}
             onChange={(e) => setEntityId(e.target.value)}
@@ -366,7 +367,7 @@ function NewRunForm({
             ))}
           </Select>
         </Field>
-        <Field label="Period" hint="Month (YYYY-MM)" required>
+        <Field label={tr("Period")} hint="Month (YYYY-MM)" required>
           <Input
             type="month"
             value={period}
@@ -421,7 +422,7 @@ export function PayrollPage() {
       label: "GL",
       render: (r) =>
         r.entry_id ? (
-          <Pill tone="ok">Posted</Pill>
+          <Pill tone="ok">{tr("Posted")}</Pill>
         ) : (
           <span className="micro">—</span>
         ),
@@ -452,7 +453,7 @@ export function PayrollPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Payroll"
+        title={tr("Payroll")}
         description="Monthly runs — compute payslips, run the approval chain, and post the payroll journal."
         action={<Button onClick={() => setCreating(true)}>New run</Button>}
       />

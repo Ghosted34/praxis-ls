@@ -20,6 +20,7 @@ const { assertTransition } = require("./lead.rules");
 const clientMaster = require("../../master/client_master/client_master.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { atomically } = require("../../../shared/db/tx");
 const ref = (id) => "lead:" + id;
 
 const LEAD_FIELDS = [
@@ -29,8 +30,7 @@ const LEAD_FIELDS = [
 ];
 
 async function create(client, { data, actor = {} }) {
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     const row = await repo.insert(client, {
       entity_id: data.entity_id || null,
       company_name: data.company_name,
@@ -52,9 +52,8 @@ async function create(client, { data, actor = {} }) {
     });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.lead_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.lead_id), after: row });
-    await client.query("COMMIT");
     return row;
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 async function update(client, { id, patch = {}, actor = {} }) {
@@ -123,8 +122,7 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
   if (niu) registrations.push({ country_code: country, kind: "NIU", number: niu });
   if (rccm) registrations.push({ country_code: country, kind: "RCCM", number: rccm });
 
-  await client.query("BEGIN");
-  try {
+  return atomically(client, async () => {
     // The code the drawer collects is not a column. `client_master` carries a
     // `client_type_id` FK and no `client_type`; `insertOne` is called with a
     // null allow-list, so an unknown key goes straight into the INSERT column
@@ -185,9 +183,8 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
     const row = await repo.update(client, id, { status: "CONVERTED", client_id: clientId });
     await emitEvent(client, { eventTypeKey: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), after: { client_id: clientId, client_type: clientType, client_type_id: clientTypeId, payment_terms_days: paymentTerms } });
-    await client.query("COMMIT");
     return { lead: row, client_id: clientId, entity_id: entityId, client_type: clientType, client_type_id: clientTypeId, payment_terms_days: paymentTerms };
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 const get = (client, id) => repo.get(client, id);

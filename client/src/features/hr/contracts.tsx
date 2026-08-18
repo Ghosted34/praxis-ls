@@ -4,6 +4,7 @@
  * contract is terminal for forward flow.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -103,7 +104,7 @@ function NewContractForm({
       description="Draft a contract for an employee. It starts in draft."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Employee" required>
+        <Field label={tr("Employee")} required>
           <Select
             value={f.employee_id}
             onChange={(e) => set("employee_id", e.target.value)}
@@ -116,12 +117,12 @@ function NewContractForm({
             ))}
           </Select>
         </Field>
-        <Field label="Kind" required>
+        <Field label={tr("Kind")} required>
           <Select value={f.kind} onChange={(e) => set("kind", e.target.value)}>
             <option value="OFFER_LETTER">Offer letter</option>
             <option value="EMPLOYMENT">Employment</option>
             <option value="CONFIRMATION">Confirmation</option>
-            <option value="TERMINATION">Termination</option>
+            <option value="TERMINATION">{tr("Termination")}</option>
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -378,7 +379,7 @@ export function ContractsPage() {
             title={
               c.employee_name || `Contract ${c.hr_contract_id.slice(0, 8)}`
             }
-            label="View"
+            label={tr("View")}
           />
           <UploadSigned contract={c} onDone={rows.reload} />
           <TransitionButtons
@@ -417,7 +418,7 @@ export function ContractsPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
-        title="Contracts"
+        title={tr("Contracts")}
         description="Issue and progress employee contracts through their lifecycle."
         action={<Button onClick={() => setCreating(true)}>New contract</Button>}
       />

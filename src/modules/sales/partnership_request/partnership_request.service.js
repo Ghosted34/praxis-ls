@@ -265,6 +265,29 @@ async function draftSupplierFor(client, { request, supplier = {}, actor = {} }) 
   return { supplier: row, reused: false };
 }
 
+/** Carry the application profile into the governed supplier document register. */
+async function attachProfileToSupplier(client, { request, supplierId, actor = {} }) {
+  if (!request.corporate_profile_vault_id || !supplierId) return null;
+  const { rows } = await client.query(
+    `INSERT INTO supplier_document (
+       supplier_id, document_type_id, vault_id, scan_status,
+       verification_status, content_hash, created_by
+     )
+     SELECT $1, pdt.document_type_id, v.doc_id, 'SCANNED',
+            'PENDING', v.content_hash, $3
+       FROM document_vault v
+       JOIN party_document_type pdt ON pdt.code = 'PARTNERSHIP_PROFILE'
+      WHERE v.doc_id = $2
+        AND NOT EXISTS (
+          SELECT 1 FROM supplier_document sd
+           WHERE sd.supplier_id = $1 AND sd.vault_id = v.doc_id
+        )
+     RETURNING *`,
+    [supplierId, request.corporate_profile_vault_id, actor.user_id || null],
+  );
+  return rows[0] || null;
+}
+
 /**
  * Approve an application.
  *
@@ -308,6 +331,7 @@ async function approve(client, { id, create_supplier = false, supplier = {}, not
       const out = await draftSupplierFor(client, { request: before, supplier, actor });
       supplierRow = out.supplier;
       reused = out.reused;
+      await attachProfileToSupplier(client, { request: before, supplierId: supplierRow.supplier_id, actor });
       await emitEvent(client, { eventTypeKey: events.SUPPLIER_DRAFTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     }
 
@@ -399,6 +423,6 @@ const listForExport = (client, q = {}) => repo.listForExport(client, q, EXPORT_C
 
 module.exports = {
   create, update, transition, approve, reject, uploadProfile,
-  get, list, listForExport, draftSupplierFor, resolveEntityId,
+  get, list, listForExport, draftSupplierFor, attachProfileToSupplier, resolveEntityId,
   PROFILE_MAX_BYTES, PROFILE_TYPES, EXPORT_CAP,
 };

@@ -15,6 +15,7 @@
  */
 
 import * as React from "react";
+import { tr } from "@/lib/i18n";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,14 +156,14 @@ export function PartnershipForm({
       description="A forwarding agent or vendor applying to work with the company."
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
           <Button onClick={save} loading={busy}>{editing ? "Save changes" : "Record application"}</Button>
         </div>
       }
     >
       {error && <ErrorState message={error} />}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Company" required>
+        <Field label={tr("Company")} required>
           <Input value={company} onChange={(e) => setCompany(e.target.value)} />
         </Field>
         <Field label="Country of origin">
@@ -181,16 +182,16 @@ export function PartnershipForm({
         <Field label="Contact person">
           <Input value={contact} onChange={(e) => setContact(e.target.value)} />
         </Field>
-        <Field label="Title">
+        <Field label={tr("Title")}>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
-        <Field label="Email">
+        <Field label={tr("Email")}>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
-        <Field label="Phone">
+        <Field label={tr("Phone")}>
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
-        <Field label="Website">
+        <Field label={tr("Website")}>
           <Input value={website} onChange={(e) => setWebsite(e.target.value)} />
         </Field>
         <div className="sm:col-span-2">
@@ -250,7 +251,7 @@ export function ProfilePanel({ request, onChanged }: { request: Row; onChanged: 
         <p className="micro">Corporate profile</p>
         <div className="flex items-center gap-2">
           {vaultId ? (
-            <Button variant="ghost" onClick={() => void openVaultDoc(vaultId)}>Open</Button>
+            <Button variant="ghost" onClick={() => void openVaultDoc(vaultId)}>{tr("Open")}</Button>
           ) : null}
           <input
             ref={inputRef}
@@ -354,7 +355,7 @@ export function ReviewModal({
       description={`${cell(request.proposal_type).replace("_", " ")} · received ${dateFmt(request.created_at)}`}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>{tr("Close")}</Button>
           {status === "NEW" && (
             <Button variant="outline" loading={busy === "IN_REVIEW"} onClick={() => void move("IN_REVIEW")}>
               Start review
@@ -371,7 +372,7 @@ export function ReviewModal({
             </Button>
           )}
           {status === "IN_REVIEW" && (
-            <Button loading={busy === "approve"} onClick={() => void approve()}>Approve</Button>
+            <Button loading={busy === "approve"} onClick={() => void approve()}>{tr("Approve")}</Button>
           )}
         </div>
       }
@@ -386,7 +387,7 @@ export function ReviewModal({
 
       <dl className="mb-4 grid gap-2 text-sm sm:grid-cols-2">
         <div>
-          <dt className="micro">Contact</dt>
+          <dt className="micro">{tr("Contact")}</dt>
           <dd>{[cell(request.contact_name), cell(request.contact_title)].filter((x) => x !== "—").join(" · ") || "—"}</dd>
         </div>
         <div>

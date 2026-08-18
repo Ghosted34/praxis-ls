@@ -18,6 +18,8 @@
  * wrong, and `Dialog` is already a bottom sheet at this width.
  */
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { navT } from "@/lib/i18n";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Dialog } from "@/components/ui/dialog";
@@ -39,11 +41,12 @@ function FamilySheet({
   family: RibbonFamily | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog
       open={!!family}
       onClose={onClose}
-      title={family?.label ?? ""}
+      title={family?.label ? navT(t, family.label) : ""}
       size="md"
     >
       {family && (
@@ -58,7 +61,7 @@ function FamilySheet({
                   className="flex items-center gap-2.5 rounded-md px-1 py-2 text-sm font-semibold text-foreground"
                 >
                   <Icon />
-                  <span>{area.label}</span>
+                  <span>{navT(t, area.label)}</span>
                 </Link>
                 {sections.length > 0 && (
                   <div className="mt-0.5 flex flex-col gap-0.5 pl-[26px]">
@@ -69,7 +72,7 @@ function FamilySheet({
                         onClick={onClose}
                         className="rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
                       >
-                        {s.label}
+                        {navT(t, s.label)}
                       </Link>
                     ))}
                   </div>
@@ -113,6 +116,7 @@ function FamilySheet({
  *   families  the real bar
  */
 export function BottomNav({ onMenu }: { onMenu?: () => void }) {
+  const { t } = useTranslation();
   const { access, ready } = useShell();
   const { pathname } = useLocation();
   const families = React.useMemo(() => buildRibbon(access), [access]);
@@ -169,7 +173,7 @@ export function BottomNav({ onMenu }: { onMenu?: () => void }) {
               onClick={() => setOpen(f.key)}
             >
               <f.Icon width={20} height={20} />
-              <span>{f.label}</span>
+              <span>{navT(t, f.label)}</span>
             </button>
           ))
         )}

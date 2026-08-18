@@ -4,6 +4,7 @@
  * ASSIGNED → OUT → RETURNED. Driver time on a dossier is costed on return.
  */
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -152,7 +153,7 @@ function NewDispatchForm({
       description="Assign a vehicle and driver — optionally to a dossier for cost attribution."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Vehicle" required>
+        <Field label={tr("Vehicle")} required>
           <Select
             value={f.vehicle_id}
             onChange={(e) => set("vehicle_id", e.target.value)}
@@ -166,7 +167,7 @@ function NewDispatchForm({
             ))}
           </Select>
         </Field>
-        <Field label="Driver">
+        <Field label={tr("Driver")}>
           <Select
             value={f.driver_employee_id}
             onChange={(e) => set("driver_employee_id", e.target.value)}
@@ -180,7 +181,7 @@ function NewDispatchForm({
           </Select>
         </Field>
         <Field
-          label="Dossier"
+          label={tr("Dossier")}
           hint="Optional — driver time is costed here on return"
         >
           <Select
@@ -305,7 +306,7 @@ export function DispatchPage() {
               docType="TRIP_SHEET"
               id={d.fleet_dispatch_id}
               title={`Trip sheet ${d.registration || d.fleet_dispatch_id.slice(0, 8)}`}
-              label="View"
+              label={tr("View")}
             />
             <TransitionButtons
               items={items}
@@ -325,7 +326,7 @@ export function DispatchPage() {
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Fleet" to="/fleet" />}
-        title="Dispatch"
+        title={tr("Dispatch")}
         description="Assign vehicles and drivers; check out and in with odometer readings."
         action={<Button onClick={() => setCreating(true)}>New dispatch</Button>}
       />

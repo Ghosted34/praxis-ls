@@ -59,11 +59,16 @@ Dates are ISO-8601, UTC.
   printed manifest renders it as the file states it. Boxes another note
   already covers are flagged (`already_on`) and no longer auto-ticked, so a
   twice-delivered box is a deliberate split load, not an accident.
-- **The milestones Templates tab is now a register you can read.** Each
+- **The milestones Templates tab is now a register you can act on.** Each
   template lists its service type, version, stage count and every stage with
   its due offset, weight, owner tier and flags (anchor, SLA-locked, internal
   only, needs proof, auto-advance) — with a plain-English explanation of what
-  a template does and what each column means.
+  a template does. And the dead list is dead no longer: **New template**
+  publishes a first chain for any service type from this screen (the picker
+  surfaces the ones with no chain), **Edit chain** opens the full stage editor
+  seeded from the CURRENT version — so re-publishing does not silently revert
+  it to the shipped default — and **Activate** rolls a superseded version back
+  instead of minting a byte-identical new one.
 
 - **Partnership and vendor applications are vetted, and an approved vendor
   stops being re-typed (F10).** `partnership_request` was five columns against a

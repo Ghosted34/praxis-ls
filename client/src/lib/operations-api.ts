@@ -717,6 +717,16 @@ export const publishMilestoneTemplate = (body: {
     method: "POST",
     body,
   });
+/**
+ * Re-activate a superseded template version (10708b) — the rollback the
+ * register could never express. Existing dossiers keep the chain they were
+ * stamped with; this changes what FUTURE dossiers open with.
+ */
+export const activateMilestoneTemplate = (templateId: string) =>
+  tenant<MilestoneTemplate>(`/milestones/templates/${templateId}/activate`, {
+    method: "POST",
+    body: {},
+  });
 
 /* ── Places (/geo-places) — the verified place catalogue behind every location
       field on a file: POL/POD, airports, inland terminals, custody sites ──── */

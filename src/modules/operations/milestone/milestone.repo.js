@@ -4,6 +4,8 @@ const { insertOne, getById, page, updateOne } = require("../../../shared/db/quer
 
 function insertTemplate(client, data) { return insertOne(client, "milestone_template", data); }
 function insertStage(client, data) { return insertOne(client, "milestone_template_stage", data); }
+const updateTemplate = (client, id, patch) =>
+  updateOne(client, "milestone_template", "milestone_template_id", id, patch, "*", null);
 
 async function nextVersion(client, serviceTypeId) {
   const { rows } = await client.query("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM milestone_template WHERE service_type_id = $1", [serviceTypeId]);
@@ -255,7 +257,7 @@ async function seqBetween(client, dossierId, afterSeq) {
 }
 
 module.exports = {
-  insertTemplate, insertStage, nextVersion, activeTemplate, stages, deactivateOthers, getTemplate,
+  insertTemplate, insertStage, updateTemplate, nextVersion, activeTemplate, stages, deactivateOthers, getTemplate,
   insertInstance, getInstance, updateInstance, listByDossier, existingInstances, listTemplates,
   scheduleContext, workingCalendar, assumptions, replaceAssumptions, logRebaseline, openInstances, seqBetween,
   attributionSummary, attributionByStage,

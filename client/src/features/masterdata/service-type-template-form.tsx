@@ -138,10 +138,18 @@ export function TemplateForm({
   svc,
   onClose,
   onSaved,
+  initial,
 }: {
   svc: api.ServiceType;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * Stages to seed the editor from. When given — "Edit chain" on an existing
+   * template — the editor starts from THAT version, so re-publishing a chain
+   * does not silently revert it to the shipped default. Omitted for a first
+   * template, which starts from what shipped.
+   */
+  initial?: api.MilestoneStage[];
 }) {
   const shipped = useResource(
     () => api.milestoneSystemDefault(svc.service_type_id),
@@ -152,14 +160,18 @@ export function TemplateForm({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Start from what shipped. A tenant editing their chain almost always wants
-  // the real 14 stages in front of them, not a blank row — and the previous
-  // version's five-stage presets are exactly the "one company's chain as
-  // everyone's default" this seed replaced.
+  // Seed from the current version when editing one; from what shipped when
+  // publishing a first template. A tenant editing their chain wants the REAL
+  // stages in front of them — either their own, or the 14 that shipped.
   React.useEffect(() => {
-    if (rows || !shipped.data) return;
+    if (rows) return;
+    if (initial && initial.length) {
+      setRows(initial.map(toRow));
+      return;
+    }
+    if (!shipped.data) return;
     setRows(shipped.data.length ? shipped.data.map(toRow) : [{ ...BLANK }]);
-  }, [shipped.data, rows]);
+  }, [initial, shipped.data, rows]);
 
   const list = rows || [];
   const setRow = (i: number, patch: Partial<Row>) =>

@@ -1,10 +1,15 @@
 "use strict";
 const service = require("./milestone.service");
-const { asyncHandler } = require("../../../utils/errors");
+const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
   listTemplates: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listTemplates(c, req.query)) })),
   publishTemplate: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.publishTemplate(c, { serviceTypeId: req.body.service_type_id, stages: req.body.stages, actor: actor(req) })) })),
+  activateTemplate: asyncHandler(async (req, res) => {
+    const row = await req.tenantDb((c) => service.activateTemplate(c, { id: req.params.templateId, actor: actor(req) }));
+    if (!row) throw new AppError("NOT_FOUND", "Template not found", 404);
+    res.json({ data: row });
+  }),
   instantiate: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.instantiate(c, { dossierId: req.body.dossier_id, serviceTypeId: req.body.service_type_id, baseDate: req.body.base_date, actor: actor(req) })) })),
   byDossier: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listByDossier(c, req.params.dossierId)) })),
   advance: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.advance(c, { instanceId: req.params.id, to: req.body.to, evidenceVaultId: req.body.evidence_vault_id, causeReasonCode: req.body.cause_reason_code, causeNote: req.body.cause_note, actor: actor(req) })) })),

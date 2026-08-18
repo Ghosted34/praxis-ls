@@ -126,7 +126,59 @@ export type Regie = {
   status?: string | null;
   issued_on?: string | null;
   created_at?: string;
+  /** Frozen onto the row at issue from `finance.regie.policy_window_days`, so a
+   *  later change to the tenant default cannot retroactively age advances
+   *  already in flight. Always read the ROW, never a constant. */
+  policy_window_days?: number | null;
+  currency?: string | null;
+  exchange_rate_to_xaf?: number | null;
+  justified_amount?: number | null;
+  returned_amount?: number | null;
 };
+
+/** One row of the retirement ledger — `regie_retirement` (10717). */
+export type RegieRetirement = {
+  regie_retirement_id: string;
+  regie_advance_id: string;
+  kind: RegieRetirementKind;
+  dossier_id?: string | null;
+  amount: number;
+  proof_vault_id?: string | null;
+  entry_id?: string | null;
+  memo?: string | null;
+  retired_on?: string | null;
+  created_at?: string;
+};
+
+export type RegieRetirementKind = "RECEIPT" | "CASH_RETURN" | "WRITE_OFF";
+
+/**
+ * `GET /regie/:id`. Everything below `retirements` is DERIVED SERVER-SIDE and
+ * must be rendered as given.
+ *
+ * `open_balance` in particular is `amount - justified - returned`, the number
+ * aging keys off; recomputing it in TSX would put a second implementation of
+ * the balance next to the one the ledger actually posts against. Likewise
+ * `next` is the server's `NEXT[state]` — the client renders the actions the
+ * state machine permits instead of keeping its own copy of the machine.
+ */
+export type RegieDetail = Regie & {
+  retirements?: RegieRetirement[];
+  open_balance?: number;
+  amount_xaf?: number;
+  days_to_window?: number;
+  is_aged?: boolean;
+  is_due_soon?: boolean;
+  next?: string[];
+};
+
+/** A watchlist row: open, and at or near its own policy window. */
+export type RegieWatch = Regie & {
+  open_balance?: number;
+  days_to_window?: number;
+  is_aged?: boolean;
+};
+
 export type RegieIssueInput = {
   holder_user_id?: string;
   amount: number;
@@ -134,7 +186,55 @@ export type RegieIssueInput = {
   entry_date: string;
   source_doc_ref: string;
   policy_window_days?: number;
+  currency?: string;
+  exchange_rate_to_xaf?: number;
 };
-export const listRegie = () => tenant<Regie[]>("/regie");
+
+/** Body of `POST /regie/:id/retire`. `dossier_id` is required for a RECEIPT
+ *  (4731 is `requires_analytic`); the server refines the same rule. */
+export type RegieRetireInput = {
+  kind: RegieRetirementKind;
+  amount: number;
+  dossier_id?: string;
+  proof_vault_id?: string;
+  memo?: string;
+  entity_id?: string;
+  entry_date?: string;
+  source_doc_ref?: string;
+};
+
+export const listRegie = (q?: string) =>
+  tenant<Regie[]>(`/regie${q ? `?${q}` : ""}`);
+export const getRegie = (id: string) => tenant<RegieDetail>(`/regie/${id}`);
+export const regieWatchlist = () => tenant<RegieWatch[]>("/regie/watchlist");
+
+/** The caller's OWN open advances. Self-scoped server-side from the session —
+ *  it takes no holder argument, deliberately, so it cannot be aimed at someone
+ *  else's float. Needs no MOD-49 grant. */
+export const myRegie = () => tenant<RegieWatch[]>("/regie/mine");
 export const issueRegie = (body: RegieIssueInput) =>
   tenant<Regie>("/regie/issue", { method: "POST", body });
+
+/** Recording a receipt / returned cash. `edit`, not `approve`: gating
+ *  justification harder is what produces aged advances in the first place. */
+export const retireRegie = (id: string, body: RegieRetireInput) =>
+  tenant<RegieDetail>(`/regie/${id}/retire`, { method: "POST", body });
+
+/** A hold, not a verdict — QUERIED exits both ways (write off, or justify). */
+export const queryRegie = (id: string, reason: string) =>
+  tenant<Regie>(`/regie/${id}/query`, { method: "POST", body: { reason } });
+
+/** Dr 658 / Cr 581. Only reachable from QUERIED, and may open an approval
+ *  chain, so the response can come back pending rather than posted. */
+export const writeOffRegie = (
+  id: string,
+  body: { amount?: number; memo?: string; entity_id?: string; entry_date?: string; source_doc_ref?: string },
+) => tenant<Regie>(`/regie/${id}/write-off`, { method: "POST", body });
+
+/** Reverse an aging reclassification (Dr 581 / Cr 4211) after a late
+ *  justification. Advances aged before 10717 have no `aged_entry_id` and the
+ *  server refuses rather than posting a second, unlinked entry. */
+export const unageRegie = (
+  id: string,
+  body: { reason?: string; entry_date?: string },
+) => tenant<Regie>(`/regie/${id}/unage`, { method: "POST", body });

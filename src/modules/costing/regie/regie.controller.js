@@ -9,6 +9,11 @@ module.exports = {
   watchlist: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.watchlist(c, req.query)) })),
 
+  // Self-scoped: the holder id comes from the authenticated session, NOT from
+  // req.query, so this endpoint cannot be aimed at another holder's float.
+  mine: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.mine(c, req.user && req.user.user_id, req.query)) })),
+
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!row) throw new AppError("NOT_FOUND", "Régie advance not found", 404);

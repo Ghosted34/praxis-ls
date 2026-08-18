@@ -20,6 +20,12 @@ module.exports = {
     { key: "list_regie_advances", service: service.list, permission: { module: "MOD-49", action: "view" }, describe: "List regie d'avances (cash advances). Filter by state, holder_user_id, or open=true." },
     { key: "get_regie_advance", service: service.get, permission: { module: "MOD-49", action: "view" }, describe: "Get one regie d'avance with its retirement ledger, open balance and available next states." },
     { key: "regie_watchlist", service: service.watchlist, permission: { module: "MOD-49", action: "view" }, describe: "Advances at or near their policy window — the aging watchlist." },
+    // NOTE: `service.mine` is deliberately NOT exposed here. The generic read
+    // adapter (action-registrar.js:125) calls `service(client, payload)` and
+    // passes no `user`, so the holder id would have to come from the model's
+    // payload — which is exactly the self-scope this endpoint exists to enforce.
+    // The AI already reaches the same rows through `list_regie_advances`, whose
+    // `holder_user_id` filter is gated on the MOD-49 view grant.
   ],
   writes: [
     { key: "issue_regie_advance", service: service.issue, schema: validator.schemas.issue, permission: { module: "MOD-49", action: "create" }, confirm: true, describe: "Issue a cash advance to a holder (Dr 581 / Cr treasury). KB 6.8 step 1." },

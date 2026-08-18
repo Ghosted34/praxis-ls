@@ -16,6 +16,13 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { RowActions } from "@/components/ui/row-actions";
+import { Panel } from "@/components/ui/panel";
+import {
+  RegieDetail,
+  MyAdvances,
+  WindowPill,
+  regieTone,
+} from "./regie-detail";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -958,10 +965,33 @@ function RegieForm({
   );
 }
 
+/**
+ * Régie list + the aging watchlist, with the detail view (retire / query /
+ * write off / un-age) opening over the row.
+ *
+ * The watchlist is a SEPARATE endpoint (`/regie/watchlist`) rather than a
+ * client-side filter, because "near its window" depends on each advance's own
+ * frozen `policy_window_days` and on the tenant's `warn_before_window_days`
+ * setting. Filtering here would mean shipping both to the browser and
+ * reimplementing `isDueSoon` in TSX.
+ */
 export function RegiePage() {
   const { rows, error, loading, reload } = useList<api.Regie>("/regie");
+  const {
+    data: watch,
+    reload: reloadWatch,
+  } = useResource(() => api.regieWatchlist(), []);
   const [open, setOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState<string | null>(null);
   const list = rows || [];
+  const watchRows = watch || [];
+  const aged = watchRows.filter((w) => w.is_aged);
+
+  const refreshAll = () => {
+    reload();
+    reloadWatch();
+  };
+
   const columns: Column<api.Regie>[] = [
     {
       key: "ref",
@@ -976,14 +1006,14 @@ export function RegiePage() {
       key: "amount",
       label: "Amount",
       className: "num text-right",
-      render: (r) => money(r.amount),
+      render: (r) => money(r.amount, r.currency),
     },
     {
       key: "status",
       label: "Status",
       render: (r) => {
         const st = r.state ?? r.status;
-        return st ? <Pill tone={tone(st)}>{st}</Pill> : "—";
+        return st ? <Pill tone={regieTone(st)}>{st}</Pill> : "—";
       },
     },
     {
@@ -995,7 +1025,17 @@ export function RegiePage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(r.regie_advance_id);
+            }}
+          >
+            {tr("Manage")}
+          </Button>
           <DocButton
             docType="REGIE_ADVANCE"
             id={r.regie_advance_id}
@@ -1006,12 +1046,51 @@ export function RegiePage() {
       ),
     },
   ];
+
+  const watchColumns: Column<api.RegieWatch>[] = [
+    {
+      key: "ref",
+      label: "Ref",
+      render: (r) => (
+        <span className="num font-medium text-foreground">
+          {r.doc_number || r.ref || r.regie_advance_id?.slice(0, 8) || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "open_balance",
+      label: "Open",
+      className: "num text-right",
+      render: (r) => money(r.open_balance, r.currency),
+    },
+    {
+      key: "days_to_window",
+      label: "Window",
+      render: (r) => <WindowPill days={r.days_to_window} aged={r.is_aged} />,
+    },
+    {
+      key: "_a",
+      label: "",
+      render: (r) => (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelected(r.regie_advance_id)}
+          >
+            {tr("Manage")}
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Régie d'avance"
-        description="Cash advances (floats) and their ageing."
+        description="Cash advances (floats), their justification and their ageing."
         action={<Button onClick={() => setOpen(true)}>Issue advance</Button>}
       />
       <HubTabs />
@@ -1021,19 +1100,65 @@ export function RegiePage() {
           label="Total float"
           value={money(list.reduce((s, r) => s + (Number(r.amount) || 0), 0))}
         />
+        <KpiTile
+          label={tr("Open (watchlist)")}
+          value={money(
+            watchRows.reduce((s, r) => s + (Number(r.open_balance) || 0), 0),
+          )}
+        />
+        <KpiTile
+          label={tr("Aged")}
+          value={num(aged.length)}
+          tone={aged.length > 0 ? "bad" : "accent"}
+        />
       </KpiRow>
+
+      <MyAdvances onManage={(id) => setSelected(id)} />
+
+      {watchRows.length > 0 && (
+        <Panel
+          title={tr("Ageing watchlist")}
+          subtitle={tr(
+            "Open advances at or near their own policy window — chase these before they reclassify to 4211.",
+          )}
+        >
+          <DataList
+            columns={watchColumns}
+            rows={watchRows}
+            rowKey={(r) => r.regie_advance_id}
+            empty={{ title: tr("Nothing due") }}
+          />
+        </Panel>
+      )}
+
       <DataList
         columns={columns}
         rows={rows}
         error={error}
         loading={loading}
         rowKey={(r) => r.regie_advance_id}
+        onRowClick={(r) => setSelected(r.regie_advance_id)}
+        highlightRowKey={selected || undefined}
         empty={{
           title: "No advances",
           hint: "Issue a cash advance to a holder.",
         }}
       />
-      {open && <RegieForm onClose={() => setOpen(false)} onSaved={reload} />}
+
+      {open && <RegieForm onClose={() => setOpen(false)} onSaved={refreshAll} />}
+      {selected && (
+        <Modal
+          open
+          size="wide"
+          onClose={() => setSelected(null)}
+          title={tr("Régie advance")}
+          description={tr(
+            "Balance, retirement ledger, and the actions this advance's state allows.",
+          )}
+        >
+          <RegieDetail advanceId={selected} onChanged={refreshAll} />
+        </Modal>
+      )}
     </section>
   );
 }

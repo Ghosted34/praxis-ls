@@ -456,6 +456,40 @@ async function get(client, id) {
 
 const list = (client, q) => repo.list(client, q);
 
+/**
+ * "My advances" — what THIS holder still owes justification for.
+ *
+ * Every other surface in this module is finance-facing, but the person who owes
+ * the receipts is the holder, and nothing told them so. An advance nobody is
+ * asked about ages by default, which turns the 4211 reclassification into
+ * routine bookkeeping instead of the exception it is meant to be.
+ *
+ * Self-scoped: the caller's own user id is passed by the controller from
+ * req.user, never from the query string, so this cannot be pointed at someone
+ * else's float. That is why the route carries no MOD-49 grant — the same
+ * pattern as hr_query's /mine.
+ */
+async function mine(client, holderUserId, q = {}) {
+  if (!holderUserId) return [];
+  const today = q.today || new Date().toISOString().slice(0, 10);
+  const pol = await policy(client);
+  const rows = await repo.list(client, {
+    holder_user_id: holderUserId,
+    open: "true",
+    limit: q.limit,
+    offset: q.offset,
+  });
+  return rows
+    .map((r) => ({
+      ...r,
+      open_balance: rules.openBalance(r),
+      days_to_window: rules.daysToWindow(r, today),
+      is_aged: rules.isAged(r, today),
+      is_due_soon: rules.isDueSoon(r, today, pol.warnBeforeWindowDays),
+    }))
+    .sort((a, b) => a.days_to_window - b.days_to_window);
+}
+
 /** The aging watchlist: open advances at or past their own window. */
 async function watchlist(client, q = {}) {
   const today = q.today || new Date().toISOString().slice(0, 10);
@@ -474,5 +508,5 @@ async function watchlist(client, q = {}) {
 
 module.exports = {
   issue, retire, retireCore, query, writeOff, unage, ageOne, ageDue,
-  get, list, watchlist, policy,
+  get, list, watchlist, mine, policy,
 };

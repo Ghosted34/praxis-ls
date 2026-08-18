@@ -13,6 +13,11 @@ router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 // Before /:id so "watchlist" is not swallowed as an id.
 router.get("/watchlist", requirePermission(MODULE, "view"), controller.watchlist);
+// Self-service: you can always see the advances YOU are holding, so this
+// carries no MOD-49 grant — the same rule as hr_query's /mine. The holder id is
+// taken from the session in the controller, never from the query string.
+// Registered before /:id so "mine" is not captured as an id.
+router.get("/mine", controller.mine);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 
 router.post("/issue", requirePermission(MODULE, "create"), validator.issue, controller.issue);

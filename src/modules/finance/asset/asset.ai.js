@@ -8,8 +8,8 @@ module.exports = {
   module_key: "MOD-54",
   screens: ["finance_assets"],
   reads: [
-    { key: "list_assets", service: service.list, describe: "List fixed assets (by entity/status)." },
-    { key: "get_asset", service: service.get, describe: "Get an asset with its depreciation schedule and net book value." },
+    { key: "list_assets", service: service.list, permission: { module: "MOD-54", action: "view" }, describe: "List fixed assets (by entity/status)." },
+    { key: "get_asset", service: service.get, permission: { module: "MOD-54", action: "view" }, describe: "Get an asset with its depreciation schedule and net book value." },
   ],
   writes: [
     { key: "create_asset", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-54", action: "create" }, confirm: true, describe: "Register a fixed asset; generates the depreciation schedule (KB §11)." },

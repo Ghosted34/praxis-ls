@@ -243,8 +243,17 @@ async function tryPost(client, run, actor) {
     taxes += Number(emp.cfc || 0) + Number(emp.irpp || 0) + Number(emp.cac || 0) + Number(er.cfc || 0) + Number(er.fne || 0);
     employer += Number(b.total_employer_charges || 0);
   }
-  // 661 gross + 664 employer charges (debit); credit 431 CNPS, 447 taxes,
-  // 422 net payable. Credits = gross + employer by construction (balanced).
+  // 661 gross + 664 employer charges (debit); credit 431 CNPS, 4471 payroll
+  // withholding, 422 net payable. Credits = gross + employer by construction.
+  //
+  // 4471, NOT 447. 447 "État, impôts retenus à la source" is a 3-digit grouping
+  // with is_postable=false (9000:68) and three children (4471/4472/4474), so
+  // assert_line_valid (0640:150) raised 'account 447 is not postable (KB §23.3)'
+  // and took the whole payroll posting with it. 4471 "Impôt sur traitements et
+  // salaires (IRPP+CAC)" (9000:122) is the payroll leaf, and it is exactly what
+  // `taxes` sums above: cfc + irpp + cac (employee) + cfc + fne (employer).
+  // Caught by tests/unit/postable-account-defaults.test.js. This is the SECOND
+  // defect to silently kill this posting — see the note below.
   const employeeDeductions = round(gross - net); // CNPS_ee + taxes_ee
   // NOTE: buildAndInsert expects `account_code` (not `account`) and requires a
   // source_doc_ref to validate — both were missing, so this post silently threw
@@ -253,7 +262,7 @@ async function tryPost(client, run, actor) {
     { account_code: "661", debit: round(gross), credit: 0 },
     { account_code: "664", debit: round(employer), credit: 0 },
     { account_code: "431", debit: 0, credit: round(cnps) },
-    { account_code: "447", debit: 0, credit: round(taxes) },
+    { account_code: "4471", debit: 0, credit: round(taxes) },
     { account_code: "422", debit: 0, credit: round(gross + employer - cnps - taxes) },
   ];
   void employeeDeductions;

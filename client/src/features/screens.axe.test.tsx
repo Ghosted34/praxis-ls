@@ -708,6 +708,15 @@ const AREAS: Area[] = [
             { simulation_id: "es1", name: "Demurrage" },
           ],
         },
+        // The reason required by `rendersRows`: this screen is a WORKBENCH
+        // beside a history list, and only the history is fetched. The
+        // calculator half cannot compute anything until a person types a
+        // container list, an ATA and a gate-out date, so with a fixture alone
+        // it correctly sits in its "Enter the file" EmptyState while the saved
+        // list below it renders the fixture's row. That is the documented
+        // "empty panel beside a populated list" case, not a fixture that
+        // missed the screen -- the route key here is the one the screen calls.
+        rendersRows: false,
       },
       {
         name: "Pricing variance",

@@ -21,9 +21,9 @@ const validator = require("./marketing_campaign.validator");
 module.exports = {
   entity: "marketing_campaign", module_key: "MOD-22", screens: ["sales_campaigns"],
   reads: [
-    { key: "list_campaigns", service: (c, p) => service.list(c, p), describe: "List marketing campaigns with their budget, targets, recorded performance and the four KPI tiles. Filters: status, platform, target_service, month, year, q." },
-    { key: "get_campaign", service: (c, p) => service.get(c, p.campaign_id), describe: "One campaign in full, including cost per lead against both the plan and the recorded figures." },
-    { key: "list_subscribers", service: (c, p) => service.subscribers(c, p), describe: "List active newsletter subscribers." },
+    { key: "list_campaigns", service: (c, p) => service.list(c, p), permission: { module: "MOD-22", action: "view" }, describe: "List marketing campaigns with their budget, targets, recorded performance and the four KPI tiles. Filters: status, platform, target_service, month, year, q." },
+    { key: "get_campaign", service: (c, p) => service.get(c, p.campaign_id), permission: { module: "MOD-22", action: "view" }, describe: "One campaign in full, including cost per lead against both the plan and the recorded figures." },
+    { key: "list_subscribers", service: (c, p) => service.subscribers(c, p), permission: { module: "MOD-22", action: "view" }, describe: "List active newsletter subscribers." },
   ],
   writes: [
     { key: "create_campaign", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-22", action: "create" }, confirm: true, describe: "Create a marketing campaign in DRAFT with its budget and targets." },

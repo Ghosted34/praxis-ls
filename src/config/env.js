@@ -355,6 +355,12 @@ const Schema = z.object({
   // warnings; the "lapsing soon" screen still answers the same question on
   // demand.
   CONTRACT_LAPSE_CRON: z.string().default("0 7 * * *"),
+  // Régie d'avance aging (KB §6.8 step 4): reclassify advances past their
+  // policy window from 581 to a receivable on the holder (4211). 06:00 UTC —
+  // it POSTS to the ledger, so it runs before the working day starts rather
+  // than mid-afternoon while someone is looking at the same advance. Empty
+  // disables it; POST /regie/age-due still ages on demand.
+  REGIE_AGING_CRON: z.string().default("0 6 * * *"),
   // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
   // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
   // working day and clear of the 01:00 fleet backup.

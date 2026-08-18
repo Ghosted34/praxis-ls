@@ -25,6 +25,7 @@ const { initRedis, createConnection, closeRedis } = require("../config/redis");
 // name: BullMQ queue name; handler: async (job) => result; concurrency optional.
 const PROCESSORS = [
   { name: "regie-aging", concurrency: 1, handler: require("./handlers/regie-aging") },
+  { name: "regie-aging-scheduler", concurrency: 1, handler: require("./handlers/regie-aging-scheduler") },
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
   { name: "email", concurrency: 3, handler: require("./handlers/email-send") },
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
@@ -349,6 +350,24 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: lapseCron, tz: config.FX_SYNC_TZ || "UTC" }, "contract lapse scheduler registered");
+  }
+
+  // Régie d'avance aging (MOD-49, KB §6.8 step 4). The `regie-aging` WORKER has
+  // been registered since the module shipped and nothing ever enqueued it, so
+  // the aging step only ran if a human POSTed /regie/age-due — which meant in
+  // practice it did not run at all, and advances sat in 581 past their window.
+  // This is the missing half. Fans out per tenant AND per corporate entity,
+  // because the reclassification is a journal entry and needs an entity.
+  const regieCron = config.REGIE_AGING_CRON;
+  if (!regieCron) {
+    logger.info("regie aging scheduler disabled (REGIE_AGING_CRON empty)");
+  } else {
+    await enqueue("regie-aging-scheduler", "tick", {}, {
+      repeat: { pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" }, "regie aging scheduler registered");
   }
 
   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every

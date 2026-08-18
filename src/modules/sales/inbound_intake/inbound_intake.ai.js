@@ -22,12 +22,12 @@ module.exports = {
   reads: [
     {
       key: "list_enquiries",
-      service: (c, p) => service.listEnquiries(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })),
+      service: (c, p) => service.listEnquiries(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), permission: { module: "MOD-25", action: "view" },
       describe: "List contact enquiries. Returns rows + total + the KPI tiles (TOTAL, NEW, READ, RESPONDED, CLOSED), which partition the filtered set. Filter by status, enquiry_type (GENERAL_ENQUIRY | PARTNERSHIP | CAREERS | MEDIA), source, triaged=true|false, month/year, or a free-text q.",
     },
     {
       key: "get_enquiry",
-      service: (c, p) => service.getEnquiry(c, p.id || p),
+      service: (c, p) => service.getEnquiry(c, p.id || p), permission: { module: "MOD-25", action: "view" },
       describe: "Get one contact enquiry by id, with every reply attempt and its delivery outcome.",
     },
   ],

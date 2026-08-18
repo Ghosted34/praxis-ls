@@ -29,21 +29,25 @@ module.exports = {
     {
       key: "list_bank_statements",
       service: (c, p) => service.listStatements(c, p || {}),
+      permission: { module: "MOD-09", action: "view" },
       describe: "List imported bank / mobile-money statements for a treasury account.",
     },
     {
       key: "get_bank_statement",
       service: (c, p) => service.getStatement(c, p.statement_id, p),
+      permission: { module: "MOD-09", action: "view" },
       describe: "Get one statement with its lines and their match status.",
     },
     {
       key: "list_reconciliations",
       service: (c, p) => service.listReconciliations(c, p || {}),
+      permission: { module: "MOD-09", action: "view" },
       describe: "List reconciliation statements (etats de rapprochement) for a treasury account.",
     },
     {
       key: "list_cash_counts",
       service: (c, p) => service.listCashCounts(c, p || {}),
+      permission: { module: "MOD-09", action: "view" },
       describe: "List physical cash counts for a cash or petty-cash account.",
     },
   ],

@@ -10,8 +10,8 @@ module.exports = {
   screens: ["leave"],
 
   reads: [
-    { key: "list_leave", service: service.list, describe: "List leave / salary-advance / mission requests." },
-    { key: "get_leave", service: service.get, describe: "Get one request by id." },
+    { key: "list_leave", service: service.list, permission: { module: "MOD-15", action: "view" }, describe: "List leave / salary-advance / mission requests." },
+    { key: "get_leave", service: service.get, permission: { module: "MOD-15", action: "view" }, describe: "Get one request by id." },
   ],
 
   writes: [

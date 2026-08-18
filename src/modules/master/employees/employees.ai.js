@@ -12,11 +12,11 @@ module.exports = {
   module_key: "MOD-02",
   screens: ["hr_employees"],
   reads: [
-    { key: "list_employees", service: service.list, describe: "List employees (filter by entity, department, employment_type, driver, active, or text)." },
-    { key: "get_employee", service: service.get, describe: "Get one employee by id, with corporate entity name." },
-    { key: "employee_roster", service: service.roster, describe: "Active-employee roster (payroll inputs: salary, CNPS, risk class)." },
-    { key: "employee_drivers", service: service.drivers, describe: "Active drivers, for fleet dispatch/incident assignment." },
-    { key: "employee_references", service: service.references, describe: "Where an employee is referenced (delete-safety check)." },
+    { key: "list_employees", service: service.list, permission: { module: "MOD-02", action: "view" }, describe: "List employees (filter by entity, department, employment_type, driver, active, or text)." },
+    { key: "get_employee", service: service.get, permission: { module: "MOD-02", action: "view" }, describe: "Get one employee by id, with corporate entity name." },
+    { key: "employee_roster", service: service.roster, permission: { module: "MOD-02", action: "view" }, describe: "Active-employee roster (payroll inputs: salary, CNPS, risk class)." },
+    { key: "employee_drivers", service: service.drivers, permission: { module: "MOD-02", action: "view" }, describe: "Active drivers, for fleet dispatch/incident assignment." },
+    { key: "employee_references", service: service.references, permission: { module: "MOD-02", action: "view" }, describe: "Where an employee is referenced (delete-safety check)." },
   ],
   writes: [
     { key: "create_employee", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-02", action: "create" }, confirm: true, describe: "Register a new employee (identity, CNPS, salary, bank block)." },

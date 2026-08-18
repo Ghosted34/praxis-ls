@@ -8,8 +8,8 @@ module.exports = {
   module_key: "MOD-17",
   screens: ["hr_payroll"],
   reads: [
-    { key: "list_payroll_runs", service: service.list, describe: "List payroll runs (by entity/status)." },
-    { key: "get_payroll_run", service: service.get, describe: "Get a payroll run with its per-employee items." },
+    { key: "list_payroll_runs", service: service.list, permission: { module: "MOD-17", action: "view" }, describe: "List payroll runs (by entity/status)." },
+    { key: "get_payroll_run", service: service.get, permission: { module: "MOD-17", action: "view" }, describe: "Get a payroll run with its per-employee items." },
   ],
   writes: [
     { key: "create_payroll_run", service: service.createRun, schema: validator.schemas.createRun, permission: { module: "MOD-17", action: "create" }, confirm: true, describe: "Open a payroll run for an entity + period (YYYY-MM)." },

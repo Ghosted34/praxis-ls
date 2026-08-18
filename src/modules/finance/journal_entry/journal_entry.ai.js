@@ -20,8 +20,8 @@ module.exports = {
   screens: ["dashboard"],
 
   reads: [
-    { key: "list_journal_entries", service: service.list, describe: "List recent journal entries (filter by journal_id/period_id/status)." },
-    { key: "get_journal_entry", service: service.get, describe: "Get one journal entry by id, with its lines." },
+    { key: "list_journal_entries", service: service.list, permission: { module: "MOD-55", action: "view" }, describe: "List recent journal entries (filter by journal_id/period_id/status)." },
+    { key: "get_journal_entry", service: service.get, permission: { module: "MOD-55", action: "view" }, describe: "Get one journal entry by id, with its lines." },
   ],
 
   writes: [

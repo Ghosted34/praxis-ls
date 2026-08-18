@@ -12,14 +12,21 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const { AppError } = require("../../../utils/errors");
+const { accountFor } = require("../../../shared/config/finance-accounts");
 
 async function recordPayment(client, opts) {
   const {
     entityId, clientId = null, dossierId = null, amount,
-    treasuryCoa = "521", advanceAccount = "4191",
+    treasuryCoa = null, advanceAccount = null,
     entryDate, sourceDocRef, actor = {}, ip = null,
   } = opts;
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
+
+  // "521" is a non-postable grouping (9000:77) — the ledger trigger refused it,
+  // so a proforma payment failed unless the caller named an account. Both now
+  // come from ('finance','accounts'); an explicit override still wins.
+  const treasury = await accountFor(client, "treasury", treasuryCoa);
+  const advance = await accountFor(client, "customer_advance", advanceAccount);
 
   await client.query("BEGIN");
   try {
@@ -27,8 +34,8 @@ async function recordPayment(client, opts) {
       journalCode: "BQ", entityId, entryDate,
       description: "Customer advance received (proforma)", sourceDocRef, source: "SYSTEM_RULE",
       lines: [
-        { account_code: treasuryCoa, debit: amount, credit: 0, dossier_id: dossierId },
-        { account_code: advanceAccount, debit: 0, credit: amount, dossier_id: dossierId },
+        { account_code: treasury, debit: amount, credit: 0, dossier_id: dossierId },
+        { account_code: advance, debit: 0, credit: amount, dossier_id: dossierId },
       ],
       validate: true, actor, ip,
     });

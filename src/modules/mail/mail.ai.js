@@ -14,9 +14,9 @@ module.exports = {
   module_key: "MOD-64",
   screens: [],
   reads: [
-    { key: "list_mail_connections", service: service.listConnections, describe: "List connected mailboxes and their sync status." },
-    { key: "list_mail_thread", service: service.listThread, describe: "List recent email (optionally filtered by connection_id) for reading or summarizing a thread." },
-    { key: "client_mail_timeline", service: service.clientTimeline, describe: "All email to/from a client (client_id) — the CRM mail timeline." },
+    { key: "list_mail_connections", service: service.listConnections, permission: { module: "MOD-72", action: "view" }, describe: "List connected mailboxes and their sync status." },
+    { key: "list_mail_thread", service: service.listThread, permission: { module: "MOD-72", action: "view" }, describe: "List recent email (optionally filtered by connection_id) for reading or summarizing a thread." },
+    { key: "client_mail_timeline", service: service.clientTimeline, permission: { module: "MOD-72", action: "view" }, describe: "All email to/from a client (client_id) — the CRM mail timeline." },
   ],
   writes: [
     {

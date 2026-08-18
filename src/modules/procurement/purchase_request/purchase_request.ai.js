@@ -4,8 +4,8 @@ const validator = require("./purchase_request.validator");
 module.exports = {
   entity: "purchase_request", module_key: "MOD-62", screens: [],
   reads: [
-    { key: "list_purchase_requests", service: service.list, describe: "List purchase requests." },
-    { key: "get_purchase_request", service: service.get, describe: "Get a purchase request by id." },
+    { key: "list_purchase_requests", service: service.list, permission: { module: "MOD-62", action: "view" }, describe: "List purchase requests." },
+    { key: "get_purchase_request", service: service.get, permission: { module: "MOD-62", action: "view" }, describe: "Get a purchase request by id." },
   ],
   writes: [
     { key: "create_purchase_request", service: service.createDraft, schema: validator.schemas.create, permission: { module: "MOD-62", action: "create" }, confirm: true, describe: "Create a DRAFT purchase requisition." },

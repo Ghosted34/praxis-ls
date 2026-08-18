@@ -27,7 +27,7 @@ import { useList, useRefresh, errMsg } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { TreasuryDossier } from "./dossier";
-import { NewAccountModal } from "./new-account-modal";
+import { AccountModal } from "./account-modal";
 import { NewCategoryModal } from "./new-category-modal";
 
 const KIND_TONE: Record<string, Tone> = {
@@ -231,10 +231,10 @@ export function TreasuryMasterPage() {
         </SplitPane>
       )}
 
-      <NewAccountModal
+      <AccountModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(created) => {
+        onSaved={(created) => {
           reload();
           setSelId(created.treasury_account_id);
         }}

@@ -153,7 +153,42 @@ export type CreateAccountBody = {
 export const createAccount = (body: CreateAccountBody) =>
   tenant<TreasuryAccountRich>("/treasury-accounts", { method: "POST", body });
 
-export const updateAccount = (id: string, patch: Partial<CreateAccountBody>) =>
+/**
+ * PATCH body. Deliberately NOT `Partial<CreateAccountBody>`:
+ *
+ *   – `entity_id` and `category_id` are absent, because the service refuses
+ *     them (the CoA leaf is already minted under the category's parent).
+ *   – the optional identity fields accept `null`, because a correction often
+ *     means "this field should be empty" — and `undefined` would leave the
+ *     wrong value sitting in the row. The server validator marks the same
+ *     fields `.nullable()`.
+ *   – `opening_balance` and `currency` stay non-nullable: they are numeric /
+ *     ISO-code columns with defaults, so they can be corrected but not blanked.
+ */
+export type UpdateAccountBody = {
+  label?: string;
+  currency?: string;
+  bank_name?: string | null;
+  branch?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  routing_code?: string | null;
+  holder_name?: string | null;
+  opening_balance?: number;
+  opening_date?: string | null;
+  statement_day?: number | null;
+  custodian_user_id?: string | null;
+  location?: string | null;
+  float_limit?: number | null;
+  momo_number?: string | null;
+  momo_till?: string | null;
+  momo_agent?: string | null;
+  momo_network?: string | null;
+  momo_fee_account?: string | null;
+};
+
+export const updateAccount = (id: string, patch: UpdateAccountBody) =>
   tenant<TreasuryAccountRich>(`/treasury-accounts/${id}`, {
     method: "PATCH",
     body: patch,

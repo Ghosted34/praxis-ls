@@ -308,6 +308,7 @@ export function ContractsPage() {
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<api.Contract | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [renewing, setRenewing] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   async function toStatus(c: api.Contract, status: string) {
@@ -320,6 +321,27 @@ export function ContractsPage() {
       setError(errMsg(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  /**
+   * Renewal (10708). A NEW draft contract supersedes this one — terms carried,
+   * dates defaulting to the day after the term ends, same length. The editor
+   * opens on the new DRAFT so the text can be drafted against the new dates
+   * (the signed wording is never copied: it carries the old dates).
+   */
+  async function renew(c: api.Contract) {
+    setRenewing(c.hr_contract_id);
+    setError(null);
+    try {
+      const renewed = await api.renewContract(c.hr_contract_id);
+      rows.reload();
+      lapsing.reload();
+      setEditing(renewed);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRenewing(null);
     }
   }
 
@@ -382,6 +404,18 @@ export function ContractsPage() {
             label={tr("View")}
           />
           <UploadSigned contract={c} onDone={rows.reload} />
+          {/* A draft has no agreed term to renew; anything past it does. */}
+          {c.status !== "DRAFT" && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={renewing === c.hr_contract_id}
+              disabled={!!renewing || !!busy}
+              onClick={() => renew(c)}
+            >
+              Renew
+            </Button>
+          )}
           <TransitionButtons
             items={(TRANSITIONS[c.status] || []).map((s) => ({
               to: s,

@@ -43,6 +43,10 @@ router.get("/reviews", requirePermission(M, "view"), controller.listReviews);
 router.get("/reviews/:reviewId", requirePermission(M, "view"), controller.getReview);
 router.post("/reviews/:reviewId/submit", requirePermission(M, "edit"), validator.reviewSubmit, controller.submitReview);
 router.post("/reviews/:reviewId/narrate", requirePermission(M, "edit"), controller.narrateReview);
+// The manager's own rating for one KPI line (10708). `edit`, like the
+// evidence scorer it answers to: it writes a judgement, not a record-level
+// decision, and only ever on a DRAFT review.
+router.post("/reviews/:reviewId/lines/:appraisalId/rate", requirePermission(M, "edit"), validator.lineRate, controller.rateLine);
 
 router.get("/", requirePermission(M, "view"), controller.list);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);

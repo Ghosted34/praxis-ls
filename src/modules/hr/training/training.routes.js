@@ -61,6 +61,10 @@ router.patch("/:id/attendees/:attendeeId", requirePermission(M, "edit"), validat
 router.post("/:id/join", requirePermission(M, "edit"), validator.presence, controller.join);
 router.post("/:id/leave", requirePermission(M, "edit"), validator.presence, controller.leave);
 router.post("/:id/notes", requirePermission(M, "edit"), validator.note, controller.addNote);
+// Live dictation (10708): transcribe one ~30s chunk of the session recording
+// and append its words to the running transcript. `edit`, like the notes it
+// feeds — it is capture, not a decision.
+router.post("/:id/dictate", requirePermission(M, "edit"), validator.dictate, controller.dictate);
 router.post("/:id/summarise", requirePermission(M, "edit"), controller.summarise);
 
 // API F-17: `update: create.partial()` makes the lifecycle field patchable, so

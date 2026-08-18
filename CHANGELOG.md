@@ -24,6 +24,47 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **The employee 360° is now the full record (10708).** The profile grew
+  Payroll (payslips per period with the standard PDF), Advances (amount,
+  recovered, outstanding and the recovery plan) and Sanctions tabs, and the
+  Contracts tab gained **Renew**: one click creates a NEW draft contract that
+  supersedes the signed one — terms carried over, new term starting the day
+  after the old one ends and keeping its length, both dates overridable. The
+  signed wording is never copied into the renewal, because it carries the old
+  dates; the new DRAFT is exactly the state redrafting exists for.
+- **Appraisals gained manual scoring beside the AI score.** Each KPI line in a
+  review now has an editable rating input the manager types into (commit on
+  Enter/blur, ✕ to clear and follow the evidence suggestion again). The
+  manager's number and the evidence-derived suggestion stay in separate
+  columns permanently — a human may disagree with the model, and the system
+  now records when they did (`rated_at`).
+- **SOPs are documents you can read and draft.** The "New SOP" form collects
+  the facts the company knows — scope, owning role, effective date, the
+  purpose in their own words and the steps they already have — and the AI
+  writes the standard professional document (Purpose, Scope, Responsibilities,
+  Procedure, Records, Compliance) around them, never inventing a clause the
+  company didn't state; where the material is thin the document says
+  "To be completed:" instead of guessing. Clicking any procedure in the
+  register opens the generated document, editable and re-draftable, with a
+  Render PDF step that files it in the vault.
+- **Trainings record the whole meeting.** A "Record meeting" button on the
+  session panel starts before the meeting and captures everything; the stream
+  is sliced every ~25 s, each slice transcribed and appended to the session's
+  transcript, and "Draft minutes with AI" folds the transcript + notes into
+  the minutes. The trainings screen also gained bottom padding so the last
+  table no longer sits flush against the viewport edge.
+- **Delivery prefill now picks up GROUPED containers.** A file that states
+  "3 × 40' HC" (container lines, no per-box numbers yet) now prefills the
+  delivery note with that line — type, quantity and remaining count — and the
+  printed manifest renders it as the file states it. Boxes another note
+  already covers are flagged (`already_on`) and no longer auto-ticked, so a
+  twice-delivered box is a deliberate split load, not an accident.
+- **The milestones Templates tab is now a register you can read.** Each
+  template lists its service type, version, stage count and every stage with
+  its due offset, weight, owner tier and flags (anchor, SLA-locked, internal
+  only, needs proof, auto-advance) — with a plain-English explanation of what
+  a template does and what each column means.
+
 - **Partnership and vendor applications are vetted, and an approved vendor
   stops being re-typed (F10).** `partnership_request` was five columns against a
   form that vets forwarding agents: no country, no contact title, and no

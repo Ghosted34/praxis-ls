@@ -29,6 +29,15 @@ function addMonths(isoDate, months) {
   return target.toISOString().slice(0, 10);
 }
 
+/** `2026-08-16` + 7 days → `2026-08-23`. Plain calendar arithmetic. */
+function addDays(isoDate, days) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || ""));
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "hr_contract", events });
 
@@ -154,6 +163,79 @@ module.exports = {
     return base.update(client, { id, patch: next, actor });
   },
 
+  /**
+   * Renew a contract (10708) — the action 0700's `renews_contract_id` has
+   * been waiting for since the column landed.
+   *
+   * ── WHY THE TEXT IS NOT COPIED ──────────────────────────────────────────
+   *
+   * The old `body_md` is the wording the parties SIGNED, dates included.
+   * Copying it into the renewal would put last term's dates under this term's
+   * number, and redrafting is exactly what the DRAFT state is for. The TERMS
+   * that stay true — job title, salary, notice, working hours, place of work,
+   * probation — carry over as columns; the prose is drafted afresh against
+   * the new dates (or written by hand).
+   *
+   * ── THE DATES ───────────────────────────────────────────────────────────
+   *
+   * The new term starts the day after the old one ends, and keeps the old
+   * term's LENGTH — a renewal continues what was agreed, it does not invent a
+   * new one. Both are overridable, because a tenant that renegotiated the
+   * term before pressing the button knows better than a default.
+   */
+  async renew(client, { id, effective_on = null, end_on = null, actor = {} }) {
+    const before = await repo.findById(client, id);
+    if (!before) return null;
+    if (before.status === "DRAFT") {
+      throw new AppError("INVALID_TRANSITION", "A draft contract has no agreed term to renew", 422);
+    }
+    if (!before.employee_id) {
+      throw new AppError("VALIDATION_ERROR", "This contract has no employee on it — raise a new contract instead", 422);
+    }
+    await employeeService.assertActive(client, before.employee_id);
+
+    const termDays =
+      before.end_on && before.effective_on
+        ? Math.round((new Date(before.end_on) - new Date(before.effective_on)) / 86_400_000)
+        : null;
+    const effective = effective_on || (before.end_on ? addDays(before.end_on, 1) : null);
+    const end =
+      end_on ||
+      (termDays !== null && termDays !== undefined && termDays > 0 && effective
+        ? addDays(effective, termDays)
+        : null);
+
+    const row = await repo.create(client, {
+      employee_id: before.employee_id,
+      kind: before.kind || "EMPLOYMENT",
+      status: "DRAFT",
+      title: before.title || null,
+      entity_id: before.entity_id ?? null,
+      job_title: before.job_title ?? null,
+      gross_salary: before.gross_salary ?? null,
+      salary_currency: before.salary_currency ?? null,
+      probation_months: before.probation_months ?? null,
+      probation_ends_on: effective && before.probation_months ? addMonths(effective, before.probation_months) : null,
+      notice_days: before.notice_days ?? null,
+      working_hours: before.working_hours ?? null,
+      place_of_work: before.place_of_work ?? null,
+      effective_on: effective,
+      end_on: end,
+      vacancy_id: before.vacancy_id ?? null,
+      renews_contract_id: before.hr_contract_id,
+    });
+    const entityRef = `hr_contract:${row.hr_contract_id}`;
+    await emitEvent(client, {
+      eventTypeKey: events.RENEWED, moduleKey: events.MODULE, entityRef,
+      actorUserId: actor.user_id || null, payload: { renewed_from: id },
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.RENEWED, moduleKey: events.MODULE,
+      entityRef, before: { renewed_from: id }, after: row,
+    });
+    return row;
+  },
+
   async setStatus(client, { id, status, actor }) {
     const before = await repo.findById(client, id);
     if (!before) return null;
@@ -176,3 +258,4 @@ module.exports = {
 
 // Exported for the test that pins the short-month clamp.
 module.exports.addMonths = addMonths;
+module.exports.addDays = addDays;

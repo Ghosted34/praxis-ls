@@ -56,6 +56,10 @@ router.post("/:id/status", validator.status, requireTransitionPermission(M, TRAN
  * signature block and the verify footer every other issued document gets. A
  * second renderer in this module would be a second letterhead to keep in step. */
 router.post("/:id/draft", requirePermission(M, "edit"), validator.draft, controller.draftFor);
+/* Renewal (10708): creates a NEW DRAFT contract that supersedes this one —
+ * `create`, not `edit`, because it is the birth of a record, not a change to
+ * one. The renewed contract's own lifecycle gates then apply as usual. */
+router.post("/:id/renew", requirePermission(M, "create"), validator.renew, controller.renewFor);
 
 router.delete("/:id", requirePermission(M, "delete"), controller.archive);
 

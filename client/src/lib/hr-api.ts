@@ -239,6 +239,69 @@ export const runReconcile = (date?: string) =>
     { method: "POST", body: date ? { date } : {} },
   );
 
+/* ── Standard operating procedures (MOD-16 / 0704) ────────────────────────
+ * A procedure is a DOCUMENT now, not a title row: `body_md` is the text (the
+ * AI draft, or the editable skeleton a tenant with no AI vendor gets), the
+ * PDF is rendered from it, and `ai_generated` says which produced it. */
+export type SopDocument = {
+  sop_document_id: string;
+  title?: string | null;
+  category?: string | null;
+  version_no?: number | null;
+  is_active?: boolean;
+  body_md?: string | null;
+  summary?: string | null;
+  scope?: "COMPANY" | "DEPARTMENT" | "OPERATIONS" | null;
+  department?: string | null;
+  owner_role?: string | null;
+  effective_on?: string | null;
+  review_on?: string | null;
+  ai_generated?: boolean | null;
+  ai_model?: string | null;
+  ai_drafted_at?: string | null;
+  pdf_vault_id?: string | null;
+  created_at?: string | null;
+};
+export const listSops = () => tenant<SopDocument[]>("/sops");
+export const getSop = (id: string) => tenant<SopDocument>(`/sops/${id}`);
+export const createSop = (body: {
+  title: string;
+  category?: string;
+  version_no?: number;
+  body_md?: string;
+  summary?: string;
+  scope?: "COMPANY" | "DEPARTMENT" | "OPERATIONS";
+  department?: string;
+  owner_role?: string;
+  effective_on?: string;
+}) => tenant<SopDocument>("/sops", { method: "POST", body });
+export const updateSop = (id: string, body: Partial<SopDocument>) =>
+  tenant<SopDocument>(`/sops/${id}`, { method: "PATCH", body });
+/**
+ * Draft the procedure from the company's own words (0704). The model writes
+ * the PROSE; the facts (scope, department, owner, effective date, purpose,
+ * steps) travel from this input to their own columns and are echoed into the
+ * document — never invented. A tenant with no AI vendor still gets an
+ * editable skeleton, and `ai_generated` records which.
+ */
+export const draftSop = (
+  id: string,
+  body: {
+    title?: string;
+    scope?: "COMPANY" | "DEPARTMENT" | "OPERATIONS";
+    department?: string;
+    owner_role?: string;
+    category?: string;
+    effective_on?: string;
+    purpose?: string;
+    steps?: string[];
+  },
+) => tenant<SopDocument>(`/sops/${id}/draft`, { method: "POST", body });
+/** Render the procedure to a real, vaulted PDF. Refuses an empty body — a
+ *  blank procedure that looks correct is worse than none. */
+export const renderSopPdf = (id: string) =>
+  tenant<SopDocument>(`/sops/${id}/render`, { method: "POST", body: {} });
+
 export const listHrRules = (p?: { kind?: string; active?: string }) =>
   tenant<HrRule[]>("/sops/rules" + qs(p));
 export const createHrRule = (body: Partial<HrRule> & { code: string; name: string; kind: string }) =>
@@ -318,6 +381,32 @@ export type SalaryAdvance = {
 
 export const listAdvances = (p?: { employee_id?: string; status?: string }) =>
   tenant<SalaryAdvance[]>("/payroll/advances" + qs(p));
+
+/* ── Discipline: queries + sanctions (MOD-71) ───────────────────────────────
+ * Filtered by employee for the profile 360 (10708); unfiltered on the
+ * discipline screens. */
+export type HrQuery = {
+  hr_query_id: string;
+  employee_name?: string | null;
+  subject: string;
+  severity: string;
+  status: string;
+  response?: string | null;
+  created_at?: string | null;
+};
+export type HrSanction = {
+  hr_sanction_id: string;
+  employee_name?: string | null;
+  type: string;
+  reason: string;
+  amount_xaf?: number | null;
+  status: string;
+  effective_date?: string | null;
+};
+export const listQueries = (p?: { employee_id?: string }) =>
+  tenant<HrQuery[]>("/hr/queries" + qs(p));
+export const listSanctions = (p?: { employee_id?: string }) =>
+  tenant<HrSanction[]>("/hr/sanctions" + qs(p));
 export const myAdvances = () => tenant<SalaryAdvance[]>("/payroll/advances/mine");
 export const getAdvance = (id: string) => tenant<SalaryAdvance>(`/payroll/advances/${id}`);
 export const createAdvance = (body: {
@@ -444,6 +533,20 @@ export const listReviews = (params?: { cycle_id?: string; employee_id?: string; 
 export const getReview = (id: string) => tenant<AppraisalReview>(`/appraisals/reviews/${id}`);
 export const submitReview = (id: string, manager_comment?: string) =>
   tenant<AppraisalReview>(`/appraisals/reviews/${id}/submit`, { method: "POST", body: { manager_comment } });
+/**
+ * The manager's own rating for one KPI line (10708). `rating: null` CLEARS
+ * the decision — the line falls back to the evidence suggestion and reopens
+ * to the scorer. Returns the refreshed review.
+ */
+export const rateAppraisalLine = (
+  reviewId: string,
+  appraisalId: string,
+  body: { rating: number | null; comments?: string },
+) =>
+  tenant<AppraisalReview>(`/appraisals/reviews/${reviewId}/lines/${appraisalId}/rate`, {
+    method: "POST",
+    body,
+  });
 export const narrateReview = (id: string) =>
   tenant<AppraisalReview>(`/appraisals/reviews/${id}/narrate`, { method: "POST", body: {} });
 export const myReviews = () => tenant<AppraisalReview[]>("/appraisals/reviews/mine");
@@ -473,6 +576,20 @@ export type PayrollRunDetail = PayrollRun & { items: PayrollItem[] };
 export const listPayrollRuns = () => tenant<PayrollRun[]>("/payroll");
 export const getPayrollRun = (id: string) =>
   tenant<PayrollRunDetail>(`/payroll/${id}`);
+/** One employee's payslips across runs — the profile 360's Payroll tab
+ *  (10708). Every run stage is included: the question a manager asks is "has
+ *  this month been computed for this person", not only "what have they been
+ *  paid". */
+export type EmployeePayslip = {
+  payroll_run_item_id: string;
+  period_code: string;
+  status: string;
+  gross: number | string;
+  net_pay: number | string;
+  entity_id?: string | null;
+};
+export const employeePayslips = (employeeId: string) =>
+  tenant<EmployeePayslip[]>(`/payroll/employees/${employeeId}/payslips`);
 export const createPayrollRun = (body: {
   entity_id: string;
   period_code: string;
@@ -717,6 +834,18 @@ export const setContractStatus = (id: string, status: string) =>
     method: "POST",
     body: { status },
   });
+/**
+ * Renew a contract (10708): creates a NEW DRAFT that supersedes it — terms
+ * carried, dates defaulting to the day after the old term ends, same length.
+ * Both dates are overridable for a term that was renegotiated before the
+ * button was pressed. The signed text is never copied; the new DRAFT is
+ * exactly the state redrafting exists for.
+ */
+export const renewContract = (
+  id: string,
+  body: { effective_on?: string; end_on?: string } = {},
+) =>
+  tenant<Contract>(`/contracts/${id}/renew`, { method: "POST", body });
 /** Draft (or re-draft) the contract text. The terms passed here are FACTS the
  *  model must reproduce, not suggestions — see hr_contract.draft. */
 export const draftContract = (
@@ -1210,6 +1339,9 @@ export type Training = {
   ai_summary?: string | null;
   ai_model?: string | null;
   minutes_vault_id?: string | null;
+  /** The running words captured by live dictation during the session (10708).
+   *  Source material for the minutes drafter, exactly like the typed notes. */
+  transcript?: string | null;
   booked_count?: number | string | null;
   attended_count?: number | string | null;
   status: string; // SCHEDULED | LIVE | DONE | CANCELLED
@@ -1377,6 +1509,18 @@ export const addTrainingNote = (
     method: "POST",
     body: { body, is_minutes },
   });
+/**
+ * Send one ~30s chunk of the live meeting recording for transcription. The
+ * words are appended to the session's running transcript server-side — the
+ * recorder slices the stream and calls this per slice, so a ninety-minute
+ * session is a series of small uploads rather than one that cannot fit
+ * through the door (10708).
+ */
+export const dictateTraining = (trainingId: string, audioDataUrl: string) =>
+  tenant<{ text: string; transcript_length: number }>(
+    `/trainings/${trainingId}/dictate`,
+    { method: "POST", body: { audio_data_url: audioDataUrl } },
+  );
 /** Draft and file the minutes. Files the raw notes when no model answered —
  *  `ai_model` says which, so nobody reads notes as a reviewed summary. */
 export const summariseTraining = (trainingId: string) =>

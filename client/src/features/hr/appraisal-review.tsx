@@ -82,6 +82,12 @@ export function AppraisalReviewModal({
   const [comment, setComment] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Manual scoring (10708): the manager's own rating per KPI line, beside the
+  // evidence-derived suggestion — never merged. `edits` holds what is typed
+  // before it is committed on blur/Enter; `lineBusy` names the line being
+  // written so the control can say so.
+  const [edits, setEdits] = React.useState<Record<string, string>>({});
+  const [lineBusy, setLineBusy] = React.useState<string | null>(null);
   const r = q.data;
 
   // Only seed once the review has loaded, and never clobber what the manager
@@ -89,6 +95,43 @@ export function AppraisalReviewModal({
   React.useEffect(() => {
     if (r && comment === null) setComment(r.manager_comment || "");
   }, [r, comment]);
+
+  async function rate(l: api.ReviewLine, rating: number | null) {
+    setLineBusy(l.appraisal_id);
+    setError(null);
+    try {
+      await api.rateAppraisalLine(reviewId, l.appraisal_id, { rating });
+      // The edit that was committed is no longer an edit — the server's row is
+      // the state. Dropping it before reload stops the control flashing the
+      // old value while the round trip is in flight.
+      setEdits((prev) => {
+        const next = { ...prev };
+        delete next[l.appraisal_id];
+        return next;
+      });
+      await q.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setLineBusy(null);
+    }
+  }
+
+  function commit(l: api.ReviewLine, raw: string) {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      // Empty = follow the evidence suggestion. If the line was calibrated,
+      // that is a deliberate clearing of the decision.
+      if (num(l.rating) !== null) void rate(l, null);
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return;
+    const scale = Number(l.scale_max) || 5;
+    const clamped = Math.min(Math.max(n, 0), scale);
+    if (num(l.rating) !== null && Math.abs(num(l.rating)! - clamped) < 0.005) return;
+    void rate(l, clamped);
+  }
 
   async function narrate() {
     setBusy("narrate");
@@ -175,7 +218,13 @@ export function AppraisalReviewModal({
                       <th className="px-3 py-2 font-semibold uppercase text-muted-foreground">Metric</th>
                       <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Weight")}</th>
                       <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Evidence")}</th>
-                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">{tr("Rating")}</th>
+                      {/* The human's number. Editable while DRAFT — the
+                          evidence column beside it is the suggestion, this is
+                          the decision, and the two are never merged. */}
+                      <th className="px-3 py-2 text-right font-semibold uppercase text-muted-foreground">
+                        {tr("Rating")}
+                        {!locked && <span className="block text-[10px] font-normal">Yours — type to score</span>}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -198,17 +247,68 @@ export function AppraisalReviewModal({
                             <span className="text-[11px] text-muted-foreground">{reasonOf(l)}</span>
                           )}
                         </td>
-                        <td className="num px-3 py-1.5 text-right">
-                          <span
-                            className={cn(
-                              num(l.rating) !== null ? "font-semibold text-foreground" : "text-muted-foreground",
-                            )}
-                          >
-                            {num(l.rating) !== null ? l.rating : "—"}
-                          </span>
-                          {l.is_calibrated && (
-                            <span className="ml-1 text-[10px] text-muted-foreground" title="Set by a person — re-scoring will not overwrite it">
-                              ✓
+                        <td className="px-3 py-1.5 text-right">
+                          {locked ? (
+                            <>
+                              <span className={cn(num(l.rating) !== null ? "num font-semibold text-foreground" : "num text-muted-foreground")}>
+                                {num(l.rating) !== null ? l.rating : "—"}
+                              </span>
+                              {l.is_calibrated && (
+                                <span className="ml-1 text-[10px] text-muted-foreground" title="Set by a person">
+                                  ✓
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            // Manual scoring (10708). Type the manager's
+                            // number and press Enter (or leave the box) to
+                            // commit; empty follows the evidence suggestion.
+                            <span className="inline-flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step={0.25}
+                                min={0}
+                                max={Number(l.scale_max) || 5}
+                                disabled={!!lineBusy || !!busy}
+                                aria-label={`Your rating for ${l.metric || "this KPI"}`}
+                                placeholder={num(l.ai_rating) !== null ? `AI ${l.ai_rating}` : "—"}
+                                className={cn(
+                                  "h-7 w-16 rounded-md border bg-background px-1.5 text-right text-sm",
+                                  num(l.rating) !== null ? "border-transparent font-semibold text-foreground" : "text-muted-foreground",
+                                  "focus:border-ring focus:outline-none",
+                                )}
+                                value={
+                                  edits[l.appraisal_id] !== undefined
+                                    ? edits[l.appraisal_id]
+                                    : num(l.rating) !== null
+                                      ? String(l.rating)
+                                      : ""
+                                }
+                                onChange={(e) =>
+                                  setEdits((prev) => ({ ...prev, [l.appraisal_id]: e.target.value }))
+                                }
+                                onBlur={(e) => commit(l, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                              />
+                              {lineBusy === l.appraisal_id ? (
+                                <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-transparent border-t-current" />
+                              ) : l.is_calibrated ? (
+                                <button
+                                  type="button"
+                                  title="Clear your rating — follow the evidence suggestion again"
+                                  aria-label={`Clear your rating for ${l.metric || "this KPI"}`}
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => void rate(l, null)}
+                                >
+                                  ✕
+                                </button>
+                              ) : null}
                             </span>
                           )}
                         </td>

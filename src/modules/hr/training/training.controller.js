@@ -52,6 +52,26 @@ module.exports = {
       data: await req.tenantDb((c) => service.addNote(c, { trainingId: req.params.id, body: req.body.body, isMinutes: req.body.is_minutes, actor: actor(req) })),
     });
   }),
+  /**
+   * Live dictation (10708): transcribe one ~30s chunk and append it.
+   *
+   * Read-check, provider call and write are three steps on purpose: the
+   * transcription takes seconds and this deployment runs a 12-connection-per-
+   * tenant ceiling, so no pooled connection is held across the model call —
+   * same shape as `narrateReview` here and `transcribeAnswer` in the vacancy
+   * intake.
+   */
+  dictate: asyncHandler(async (req, res) => {
+    const exists = await req.tenantDb((c) => service.get(c, req.params.id));
+    if (!exists) throw new AppError("NOT_FOUND", "Training not found", 404);
+    const { text } = await service.dictateAudio(req.body.audio_data_url);
+    const row = await req.tenantDb((c) =>
+      service.appendDictation(c, { trainingId: req.params.id, text, actor: actor(req) }),
+    );
+    res.json({
+      data: { text, transcript_length: (row && row.transcript ? row.transcript.length : 0) },
+    });
+  }),
   summarise: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.summarise(c, { id: req.params.id, slug: slug(req), actor: actor(req) })) });
   }),

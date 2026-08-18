@@ -222,7 +222,9 @@ async function deliveryNoteData(client, recordId) {
       [recordId],
     ),
     client.query(
-      "SELECT container_no, seal_no, gross_weight_kg FROM delivery_note_container WHERE delivery_note_id = $1 ORDER BY seq, created_at",
+      `SELECT container_no, seal_no, gross_weight_kg, dossier_container_line_id,
+              container_type_code, qty
+         FROM delivery_note_container WHERE delivery_note_id = $1 ORDER BY seq, created_at`,
       [recordId],
     ),
   ]);
@@ -241,8 +243,13 @@ async function deliveryNoteData(client, recordId) {
         lines: [dn.address, dn.city_zone, dn.contact_person, dn.phone].filter(Boolean),
       },
       lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty) })),
+      // 10708 — a container row is either a per-box unit (number + seal) or a
+      // GROUPED line ("3 × 40HC"): the note prints whichever the file stated.
       containers: cr.rows.map((c) => ({
-        container_no: c.container_no, seal_no: c.seal_no,
+        container_no: c.container_no,
+        seal_no: c.seal_no,
+        container_type_code: c.container_type_code,
+        qty: Number(c.qty) || 1,
       })),
       reservations: dn.reservations || null,
       received_by_name: dn.received_by_name || null,

@@ -201,6 +201,50 @@ describe("MT940", () => {
   });
 });
 
+/**
+ * A statement file is untrusted input — anyone who can hand the treasurer a
+ * file can hand this parser one. Both patterns below were flagged by CodeQL as
+ * polynomial ReDoS (js/polynomial-redos) and both were reproducible:
+ *
+ *   :61: amount run   4,000 commas 15ms -> 12,000 commas 174ms   (quadratic)
+ *   /\s+$/ line trim   100,000 spaces took 8.1 SECONDS; 400,000 did not finish
+ *
+ * The budgets here are deliberately loose — this asserts the growth curve is
+ * gone, not a particular machine's speed. Under the old code the second case
+ * alone would blow the 15s Jest timeout.
+ */
+describe("hostile statement files cannot hang the parser", () => {
+  it("does not degrade on a long run of commas where the amount should be", () => {
+    const started = Date.now();
+    for (const n of [4000, 12000, 40000]) {
+      // The newline matters: it is what made the old pattern's trailing `(.*)$`
+      // fail and re-split the ambiguous amount run from every position.
+      expect(mt940.parseLine61(`260403C${",".repeat(n)}\nX`)).toBeNull();
+    }
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it("does not degrade on a line that is almost entirely trailing whitespace", () => {
+    const started = Date.now();
+    for (const n of [100000, 400000]) {
+      expect(mt940.tagged(`:86:X${" ".repeat(n)}`)).toHaveLength(1);
+    }
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it("still reads a well-formed line exactly as before the hardening", () => {
+    const line = mt940.parseLine61("2604030403C250000,00NTRFFT26094XYZ12//BK99001");
+    expect(line).toMatchObject({
+      booking_date: "2026-04-03",
+      value_date: "2026-04-03",
+      amount: 250000,
+      transaction_type: "NTRF",
+      external_ref: "BK99001",
+      is_reversal: false,
+    });
+  });
+});
+
 describe("column mapping", () => {
   const propose = async (buf) => {
     const parsed = await statements.parse(buf, { filename: "s.csv" });

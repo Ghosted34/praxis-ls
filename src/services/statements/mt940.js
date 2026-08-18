@@ -46,7 +46,10 @@ function swiftAmount(s) {
  * A `D` balance is an overdraft and comes back negative.
  */
 function parseBalance(body) {
-  const m = /^([DC])(\d{6})([A-Z]{3})([\d,.]+)/.exec(String(body || "").trim());
+  // SWIFT bounds the amount subfield at 15 characters. Saying so in the pattern
+  // is not cosmetic: an unbounded run of digits/commas next to another
+  // quantifier is what turns a hostile statement file into a CPU hang.
+  const m = /^([DC])(\d{6})([A-Z]{3})([\d,.]{1,15})/.exec(String(body || "").trim());
   if (!m) return null;
   const amount = swiftAmount(m[4]);
   if ((amount === null || amount === undefined)) return null;
@@ -65,24 +68,43 @@ function parseBalance(body) {
  */
 function parseLine61(body) {
   const s = String(body || "").trim();
-  const m = /^(\d{6})(\d{4})?(RC|RD|C|D)([A-Z])?([\d,.]+)([A-Z][A-Z0-9]{3})?(.*)$/.exec(s);
-  if (!m) return null;
 
-  const magnitude = swiftAmount(m[5]);
+  // TWO BOUNDED PASSES, NOT ONE PATTERN, and this is a hardening fix rather
+  // than a style choice.
+  //
+  // The single anchored pattern this replaces ended `([\d,.]+)(...)?(.*)$`.
+  // The amount run and the trailing catch-all both accept a comma, and the
+  // amount run was unbounded, so a line carrying a long run of commas gave the
+  // engine a quadratic number of ways to split it — a statement file is
+  // untrusted input, and that is a CPU denial of service with a bank's logo on
+  // it (CodeQL js/polynomial-redos).
+  //
+  // Splitting at the amount removes the ambiguity outright: the head pattern
+  // has nothing after the amount to back-track into, and every quantifier in
+  // it is bounded by the SWIFT field widths.
+  const head = /^(\d{6})(\d{4})?(RC|RD|C|D)([A-Z])?([\d,.]{1,15})/.exec(s);
+  if (!head) return null;
+
+  const magnitude = swiftAmount(head[5]);
   if ((magnitude === null || magnitude === undefined)) return null;
 
-  const mark = m[3];
+  // The remainder: an optional 4-character transaction type code, then the
+  // bank's reference. Both groups here are bounded, so this pattern is linear.
+  const rest = s.slice(head[0].length);
+  const tail = /^([A-Z][A-Z0-9]{3})?([\s\S]*)$/.exec(rest) || [rest, null, rest];
+
+  const mark = head[3];
   const isCredit = mark === "C" || mark === "RD";      // RD = reversal of a debit = money in
   const signed = isCredit ? magnitude : -magnitude;
 
-  const valueDate = swiftDate(m[1]);
+  const valueDate = swiftDate(head[1]);
   let bookingDate = valueDate;
-  if (m[2] && valueDate) {
+  if (head[2] && valueDate) {
     // Entry date carries MMDD only; it borrows the value date's year, stepping
     // back one when the statement straddles a year end (value 02 Jan, entry 31 Dec).
     const year = Number(valueDate.slice(0, 4));
-    const mm = Number(m[2].slice(0, 2));
-    const dd = Number(m[2].slice(2, 4));
+    const mm = Number(head[2].slice(0, 2));
+    const dd = Number(head[2].slice(2, 4));
     if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
       const vMonth = Number(valueDate.slice(5, 7));
       const useYear = vMonth === 1 && mm === 12 ? year - 1 : year;
@@ -92,14 +114,14 @@ function parseLine61(body) {
 
   // The reference field is `ourRef//bankRef`; the bank's own side is the one
   // worth matching on because it is what appears on their advices.
-  const refField = (m[7] || "").trim();
+  const refField = (tail[2] || "").trim();
   const [ownRef, bankRef] = refField.split("//");
 
   return {
     booking_date: bookingDate,
     value_date: valueDate,
     amount: signed,
-    transaction_type: m[6] || null,
+    transaction_type: tail[1] || null,
     external_ref: (bankRef || ownRef || "").trim() || null,
     is_reversal: mark === "RC" || mark === "RD",
   };
@@ -113,7 +135,11 @@ function parseLine61(body) {
 function tagged(text) {
   const out = [];
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.replace(/\s+$/, "");
+    // `trimEnd()` rather than a `/\s+$/` replace: the regex form is the
+    // textbook polynomial-ReDoS shape (CodeQL js/polynomial-redos) because the
+    // engine re-scans the trailing run from every start position, and a
+    // statement file is untrusted input. The built-in is linear.
+    const line = rawLine.trimEnd();
     if (line === "-}" || line === "-") continue;
     const m = /^:(\d{2}[A-Z]?):(.*)$/.exec(line);
     if (m) out.push({ tag: m[1], body: m[2] });

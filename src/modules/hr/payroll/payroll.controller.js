@@ -8,6 +8,9 @@ const actor = (req) => req.user || { user_id: null };
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
   mine: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.myPayslips(c, req.user.employee_id)) })),
+  /** The manager's view of one employee's payslip history (profile 360). */
+  employeePayslips: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.employeePayslips(c, req.params.employeeId)) })),
   // Self-service payslip PDF — ownership checked in the service (run item must
   // belong to the caller's employee record).
   ownPayslipPdf: asyncHandler(async (req, res) => {

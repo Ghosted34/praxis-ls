@@ -22,6 +22,12 @@ const lineSchema = z.object({
  */
 const containerSchema = z.object({
   dossier_container_unit_id: z.string().uuid().optional().nullable(),
+  // 10708 — the GROUPED shape: a container line ("3 × 40' HC") from a file
+  // with no per-box numbers yet. Either a unit, a line or a typed number
+  // identifies the row; the service checks the combination.
+  dossier_container_line_id: z.string().uuid().optional().nullable(),
+  container_type_code: z.string().max(60).optional().nullable(),
+  qty: z.number().int().positive().max(10000).optional().nullable(),
   container_no: z.string().max(40).optional().nullable(),
   seal_no: z.string().max(40).optional().nullable(),
   gross_weight_kg: z.number().nonnegative().optional().nullable(),

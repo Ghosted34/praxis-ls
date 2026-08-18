@@ -1,8 +1,9 @@
 /**
  * Employees — profile 360 (replaces the CRUD table). Pick an employee to see
- * their record and history across HR: contracts, leave, attendance and
- * appraisals. Suspend/activate drives the `is_active` lifecycle the rest of the
- * system checks (payroll, contracts, dispatch).
+ * their record and history across HR: contracts (with renewal), payroll,
+ * advances, leave, attendance, sanctions and appraisals. Suspend/activate
+ * drives the `is_active` lifecycle the rest of the system checks (payroll,
+ * contracts, dispatch).
  */
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
@@ -39,7 +40,18 @@ const LEAVE_TONE: Record<string, Tone> = {
   REJECTED: "bad",
 };
 
-const TABS = ["Contracts", "Leave", "Attendance", "Appraisals"] as const;
+/** The full record: the spine (contracts) plus what it owes, what it was paid,
+ *  how it behaved, how it performed, and what discipline is on file (10708 —
+ *  payroll, advances and sanctions joined the original four tabs). */
+const TABS = [
+  "Contracts",
+  "Payroll",
+  "Advances",
+  "Leave",
+  "Attendance",
+  "Sanctions",
+  "Appraisals",
+] as const;
 type Tab = (typeof TABS)[number];
 
 function MiniTable({
@@ -396,15 +408,26 @@ function EmployeeDetail({
     () => api.listContracts({ employee_id: eid }),
     [eid],
   );
+  const payroll = useResource(() => api.employeePayslips(eid), [eid]);
+  const advances = useResource(
+    () => api.listAdvances({ employee_id: eid }),
+    [eid],
+  );
   const leave = useResource(() => api.listLeave({ employee_id: eid }), [eid]);
   const attendance = useResource(
     () => api.listAttendance({ employee_id: eid }),
+    [eid],
+  );
+  const sanctions = useResource(
+    () => api.listSanctions({ employee_id: eid }),
     [eid],
   );
   const appraisals = useResource(
     () => api.listAppraisals({ employee_id: eid }),
     [eid],
   );
+  // What one contract row is being renewed, so the button can say so.
+  const [renewing, setRenewing] = React.useState<string | null>(null);
 
   async function toggleActive() {
     setBusy(true);
@@ -419,14 +442,35 @@ function EmployeeDetail({
     }
   }
 
+  /** Renewal (10708): a NEW draft contract that supersedes the old one —
+   *  terms carried, dates defaulting to the day after the term ends. */
+  async function renewContract(c: api.Contract) {
+    setRenewing(c.hr_contract_id);
+    setError(null);
+    try {
+      await api.renewContract(c.hr_contract_id);
+      contracts.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRenewing(null);
+    }
+  }
+
   const cRows = contracts.data || [],
+    pRows = payroll.data || [],
+    adRows = advances.data || [],
     lRows = leave.data || [],
     aRows = attendance.data || [],
+    sRows = sanctions.data || [],
     apRows = appraisals.data || [];
   const counts: Record<Tab, number> = {
     Contracts: cRows.length,
+    Payroll: pRows.length,
+    Advances: adRows.length,
     Leave: lRows.length,
     Attendance: aRows.length,
+    Sanctions: sRows.length,
     Appraisals: apRows.length,
   };
 
@@ -544,7 +588,103 @@ function EmployeeDetail({
                     label={tr("View")}
                   />
                   <UploadSigned contract={c} onDone={contracts.reload} />
+                  {/* Renewal (10708): a new DRAFT that supersedes this one,
+                      terms carried, dates continuing where the term ends. A
+                      draft has no agreed term to renew. */}
+                  {c.status !== "DRAFT" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={renewing === c.hr_contract_id}
+                      disabled={!!renewing}
+                      onClick={() => renewContract(c)}
+                    >
+                      Renew
+                    </Button>
+                  )}
                 </div>
+              </Td>
+            </tr>
+          ))}
+        </MiniTable>
+      )}
+      {tab === "Payroll" && (
+        <MiniTable
+          empty={pRows.length === 0}
+          head={
+            <>
+              <Th>{tr("Period")}</Th>
+              <Th>{tr("Status")}</Th>
+              <Th r>Gross</Th>
+              <Th r>Net pay</Th>
+              <Th></Th>
+            </>
+          }
+        >
+          {pRows.map((p) => (
+            <tr key={p.payroll_run_item_id}>
+              <Td>{p.period_code}</Td>
+              <Td>
+                <Pill tone="mute">{enumLabel(p.status)}</Pill>
+              </Td>
+              <Td r>{money(p.gross)}</Td>
+              <Td r>{money(p.net_pay)}</Td>
+              <Td>
+                <div className="flex justify-end">
+                  <DocButton
+                    docType="PAYSLIP"
+                    id={p.payroll_run_item_id}
+                    title={`Payslip ${p.period_code}`}
+                    label={tr("View")}
+                  />
+                </div>
+              </Td>
+            </tr>
+          ))}
+        </MiniTable>
+      )}
+      {tab === "Advances" && (
+        <MiniTable
+          empty={adRows.length === 0}
+          head={
+            <>
+              <Th>{tr("Advanced")}</Th>
+              <Th r>Recovered</Th>
+              <Th r>Outstanding</Th>
+              <Th>{tr("Plan")}</Th>
+              <Th>{tr("Status")}</Th>
+            </>
+          }
+        >
+          {adRows.map((a) => (
+            <tr key={a.salary_advance_id}>
+              <Td>{money(a.amount)}</Td>
+              <Td r>{money(a.recovered)}</Td>
+              <Td r>
+                <span className={Number(a.outstanding) > 0 ? "font-semibold" : ""}>
+                  {money(a.outstanding)}
+                </span>
+              </Td>
+              <Td>
+                <span className="micro">
+                  {a.instalments} × {money(a.instalment_amount)} from{" "}
+                  {a.first_period_code}
+                </span>
+              </Td>
+              <Td>
+                <Pill
+                  tone={
+                    a.status === "ACTIVE"
+                      ? "ok"
+                      : a.status === "SETTLED"
+                        ? "mute"
+                        : a.status === "WRITTEN_OFF"
+                          ? "bad"
+                          : "warn"
+                  }
+                >
+                  {enumLabel(a.status)}
+                </Pill>
               </Td>
             </tr>
           ))}
@@ -598,6 +738,38 @@ function EmployeeDetail({
                   <span className="micro">On time</span>
                 )}
               </td>
+            </tr>
+          ))}
+        </MiniTable>
+      )}
+      {tab === "Sanctions" && (
+        <MiniTable
+          empty={sRows.length === 0}
+          head={
+            <>
+              <Th>{tr("Type")}</Th>
+              <Th>{tr("Reason")}</Th>
+              <Th r>Amount</Th>
+              <Th>{tr("From")}</Th>
+              <Th>{tr("Status")}</Th>
+            </>
+          }
+        >
+          {sRows.map((s) => (
+            <tr key={s.hr_sanction_id}>
+              <Td>{enumLabel(s.type)}</Td>
+              <Td>
+                <span className="block max-w-md truncate text-muted-foreground">
+                  {s.reason}
+                </span>
+              </Td>
+              <Td r>{s.amount_xaf != null ? money(s.amount_xaf) : "—"}</Td>
+              <Td>{dateFmt(s.effective_date)}</Td>
+              <Td>
+                <Pill tone={s.status === "ACTIVE" ? "bad" : "ok"}>
+                  {enumLabel(s.status)}
+                </Pill>
+              </Td>
             </tr>
           ))}
         </MiniTable>

@@ -36,6 +36,11 @@ router.post("/advances", requirePermission(M, "approve"), validator.advance, con
 router.get("/advances/:advanceId", requirePermission(M, "view"), controller.getAdvance);
 router.patch("/advances/:advanceId", requirePermission(M, "approve"), validator.advanceUpdate, controller.updateAdvance);
 
+/* One employee's payslips across runs — the profile 360's Payroll tab
+ * (10708). `view`, ordinary management information, and declared before
+ * `/:id` so the path is not read as a run id. */
+router.get("/employees/:employeeId/payslips", requirePermission(M, "view"), controller.employeePayslips);
+
 router.get("/", requirePermission(M, "view"), controller.list);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.post("/", requirePermission(M, "create"), validator.createRun, controller.create);

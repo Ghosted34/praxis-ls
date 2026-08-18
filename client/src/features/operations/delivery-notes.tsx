@@ -83,8 +83,13 @@ const blankGoods = (): GoodsLine => ({ inventory_item_id: "", label: "", qty: "1
 /* ── The container picker ───────────────────────────────────────────────── */
 
 /**
- * The file's boxes, with a tick each. This is the legacy paste box replaced by
- * the thing the paste box was a workaround for.
+ * The file's containers, with a tick each. This is the legacy paste box
+ * replaced by the thing the paste box was a workaround for.
+ *
+ * Two shapes (10708): a per-box UNIT (its number and seal, once the B/L has
+ * landed) and a grouped LINE ("3 × 40' HC" — how many of each type, which is
+ * all a file knows at booking). Both are ticked the same way; the note then
+ * prints whichever the file stated.
  *
  * `already_on` is surfaced rather than used to disable the row: delivering the
  * same container across two notes is a legitimate split load, so the UI states
@@ -112,9 +117,27 @@ function ContainerPicker({
   const pickedUnits = new Set(
     selected.map((c) => c.dossier_container_unit_id).filter(Boolean) as string[],
   );
-  const typed = selected.filter((c) => !c.dossier_container_unit_id);
+  const pickedLines = new Set(
+    selected.map((c) => c.dossier_container_line_id).filter(Boolean) as string[],
+  );
+  const typed = selected.filter((c) => !c.dossier_container_unit_id && !c.dossier_container_line_id);
 
   function toggle(u: api.AvailableContainer, on: boolean) {
+    if (u.kind === "line" && u.dossier_container_line_id) {
+      onChange(
+        on
+          ? [
+              ...selected,
+              {
+                dossier_container_line_id: u.dossier_container_line_id,
+                container_type_code: u.container_type_code || null,
+                qty: u.qty ?? 1,
+              },
+            ]
+          : selected.filter((c) => c.dossier_container_line_id !== u.dossier_container_line_id),
+      );
+      return;
+    }
     onChange(
       on
         ? [...selected, { dossier_container_unit_id: u.dossier_container_unit_id }]
@@ -145,6 +168,15 @@ function ContainerPicker({
 
   const rows = data || [];
 
+  /** What the note actually carries, in boxes — a grouped line counts its
+   *  quantity, a per-box unit counts one. */
+  const boxCount =
+    selected.filter((c) => c.dossier_container_unit_id).length +
+    selected
+      .filter((c) => c.dossier_container_line_id)
+      .reduce((t, c) => t + (Number(c.qty) || 1), 0) +
+    typed.length;
+
   return (
     <div className="space-y-3">
       {loading && <p className="text-sm text-muted">Loading the file&rsquo;s containers…</p>}
@@ -159,24 +191,45 @@ function ContainerPicker({
       {rows.length > 0 && (
         <div className="rounded-md border border-line divide-y divide-line">
           {rows.map((u) => {
-            const on = pickedUnits.has(u.dossier_container_unit_id);
+            const isLine = u.kind === "line";
+            const on = isLine
+              ? pickedLines.has(u.dossier_container_line_id || "")
+              : pickedUnits.has(u.dossier_container_unit_id || "");
             return (
               <label
-                key={u.dossier_container_unit_id}
+                key={isLine ? `line-${u.dossier_container_line_id}` : `unit-${u.dossier_container_unit_id}`}
                 className="flex items-start gap-3 p-2 cursor-pointer"
               >
                 <Checkbox
-                  label={u.container_no || "Unnumbered container"}
+                  label={
+                    isLine
+                      ? `${u.qty ?? 1} × ${u.container_type_code || "container"}`
+                      : (u.container_no || "Unnumbered container")
+                  }
                   checked={on}
                   disabled={disabled}
                   onCheckedChange={(v) => toggle(u, v === true)}
                 />
                 <span className="min-w-0 flex-1 text-sm">
-                  <span className="num font-medium">{u.container_no || "—"}</span>
-                  {u.container_type_code && (
-                    <span className="text-muted"> · {u.container_type_code}</span>
+                  {isLine ? (
+                    // The grouped shape: type × quantity, as the file states it.
+                    <span className="font-medium">
+                      {u.qty ?? 1} ×{" "}
+                      {u.container_type_en || u.container_type_fr || u.container_type_code}
+                      {u.container_type_code ? (
+                        <span className="num text-muted"> · {u.container_type_code}</span>
+                      ) : null}
+                      <span className="text-muted"> — no numbers yet</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="num font-medium">{u.container_no || "—"}</span>
+                      {u.container_type_code && (
+                        <span className="text-muted"> · {u.container_type_code}</span>
+                      )}
+                      {u.seal_no && <span className="text-muted"> · seal {u.seal_no}</span>}
+                    </>
                   )}
-                  {u.seal_no && <span className="text-muted"> · seal {u.seal_no}</span>}
                   {u.already_on && u.already_on.length > 0 && (
                     <span className="block text-xs text-warn">
                       Already on {u.already_on.join(", ")} — tick only if this is a split load.
@@ -241,9 +294,9 @@ function ContainerPicker({
       )}
 
       <p className="text-xs text-muted">
-        {selected.length} container{selected.length === 1 ? "" : "s"} on this note.
-        The number and seal are copied onto it, so a later correction to the file
-        cannot change what was signed for.
+        {boxCount} container{boxCount === 1 ? "" : "s"} on this note.
+        The number, seal and type are copied onto it, so a later correction to
+        the file cannot change what was signed for.
       </p>
     </div>
   );
@@ -284,7 +337,10 @@ function DeliveryForm({
    * A file with twelve boxes carries twelve container numbers and twelve seal
    * numbers, and this note is the document they exist to travel on. Typed by
    * hand that is twenty-four eleven-character alphanumerics, which is not a task
-   * people do accurately; copied, the note cannot drift from the file.
+   * people do accurately; copied, the note cannot drift from the file. A
+   * GROUPED file (10708) carries its equipment as lines — "3 × 40' HC" — and
+   * those are picked the same way, so the note states the equipment even
+   * before the Bill of Lading numbers any boxes.
    *
    * Only on a NEW note, and never over something already typed. The consignee
    * block is deliberately left alone — the file does not record one, and a
@@ -313,7 +369,15 @@ function DeliveryForm({
       // to lose, and an operator who has already picked boxes has made a
       // choice the file should not overrule.
       if (body.containers?.length && !containers.length) {
-        setContainers(body.containers as api.DeliveryNoteContainer[]);
+        // Boxes another note already covers are OFFERED but not auto-ticked —
+        // silently double-delivering them is the failure this prefill exists
+        // to prevent; a deliberate split load is one tick away in the picker.
+        const free = (body.containers as (api.DeliveryNoteContainer & {
+          already_on?: string[];
+        })[])
+          .filter((c) => c.dossier_container_line_id || !c.already_on?.length)
+          .map(({ already_on: _on, ...c }) => c);
+        setContainers(free);
       }
     } catch {
       /* @silent:parse -- a convenience. The file is selected and every field is
@@ -337,7 +401,11 @@ function DeliveryForm({
   const [containers, setContainers] = React.useState<api.DeliveryNoteContainer[]>(
     note?.containers?.map((c) => ({
       dossier_container_unit_id: c.dossier_container_unit_id,
-      container_no: c.dossier_container_unit_id ? undefined : c.container_no,
+      dossier_container_line_id: c.dossier_container_line_id,
+      container_type_code: c.container_type_code,
+      qty: c.qty ?? null,
+      // The typed number only matters on rows with no file link at all.
+      container_no: c.dossier_container_unit_id || c.dossier_container_line_id ? undefined : c.container_no,
     })) || [],
   );
 
@@ -763,13 +831,34 @@ function NoteDetail({
           </div>
         </dl>
 
-        <Panel title={`Containers (${(data.containers || []).length})`}>
+        <Panel
+          title={`Containers (${
+            (data.containers || []).reduce(
+              (t, c) => t + (c.dossier_container_line_id ? Number(c.qty) || 1 : 1),
+              0,
+            )
+          })`}
+        >
           {(data.containers || []).length ? (
             <ul className="grid gap-1 sm:grid-cols-2">
               {(data.containers || []).map((c) => (
                 <li key={c.delivery_note_container_id} className="text-sm">
-                  <span className="num font-medium">{c.container_no || "—"}</span>
-                  {c.seal_no && <span className="text-muted"> · seal {c.seal_no}</span>}
+                  {c.dossier_container_line_id && c.container_type_code ? (
+                    // The GROUPED shape (10708): the note states the equipment
+                    // the way the file does, before any box has a number.
+                    <span className="font-medium">
+                      {c.qty ?? 1} × {c.container_type_code}
+                      <span className="text-muted"> — numbers not yet on file</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="num font-medium">{c.container_no || "—"}</span>
+                      {c.container_type_code && (
+                        <span className="text-muted"> · {c.container_type_code}</span>
+                      )}
+                      {c.seal_no && <span className="text-muted"> · seal {c.seal_no}</span>}
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

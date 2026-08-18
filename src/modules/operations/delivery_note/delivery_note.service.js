@@ -73,25 +73,48 @@ async function replaceContainers(client, { id, dossierId, containers }) {
 
   const unitIds = rows.map((r) => r.dossier_container_unit_id).filter(Boolean);
   const known = await repo.unitsOnDossier(client, dossierId, unitIds);
+  const lineIds = rows.map((r) => r.dossier_container_line_id).filter(Boolean);
+  const knownLines = await repo.linesOnDossier(client, dossierId, lineIds);
 
   const foreign = unitIds.filter((u) => !known.has(u));
-  if (foreign.length) {
-    // Pointing a note at a box on somebody else's file is either a bug or an
-    // attempt to fabricate provenance. Either way it is not a 500.
+  const foreignLines = lineIds.filter((l) => !knownLines.has(l));
+  if (foreign.length || foreignLines.length) {
+    // Pointing a note at a box (or a container line) on somebody else's file
+    // is either a bug or an attempt to fabricate provenance. Either way it is
+    // not a 500.
     throw new AppError(
       "UNKNOWN_CONTAINER",
       "One or more containers are not on this operations file.",
       422,
-      { containers: foreign },
+      { containers: [...foreign, ...foreignLines] },
     );
   }
 
   for (const r of rows) {
+    if (r.dossier_container_line_id) {
+      // The GROUPED shape (10708). The file's own type code and remaining
+      // quantity are snapshotted here, at pick time — a later correction to
+      // the file cannot rewrite what was signed for.
+      const line = knownLines.get(r.dossier_container_line_id);
+      await repo.insertContainer(client, {
+        delivery_note_id: id,
+        dossier_container_line_id: r.dossier_container_line_id,
+        container_type_code: (line && line.container_type_code) || r.container_type_code,
+        qty: (line && Number(line.remaining) >= 1) ? Number(line.remaining) : r.qty,
+        seq: r.seq,
+        container_no: null,
+        seal_no: null,
+        gross_weight_kg: null,
+        notes: r.notes,
+      });
+      continue;
+    }
     const unit = r.dossier_container_unit_id ? known.get(r.dossier_container_unit_id) : null;
     await repo.insertContainer(client, {
       delivery_note_id: id,
       dossier_container_unit_id: r.dossier_container_unit_id,
       seq: r.seq,
+      qty: 1,
       // Prefer the file's own values; fall back to whatever was typed.
       container_no: (unit && unit.container_no) || r.container_no,
       seal_no: r.seal_no || (unit && unit.seal_no) || null,
@@ -138,7 +161,7 @@ const summary = (client, q) => repo.statusCounts(client, q);
 async function prefill(client, { dossier_id }) {
   const found = await repo.dossierForPrefill(client, dossier_id);
   if (!found) throw new AppError("NOT_FOUND", "Operations file not found", 404);
-  return prefillShared.deliveryNoteFrom(found.dossier, found.containers);
+  return prefillShared.deliveryNoteFrom(found.dossier, found.containers, found.lines);
 }
 
 /** The file's boxes, for the picker. */

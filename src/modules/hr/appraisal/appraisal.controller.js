@@ -72,6 +72,23 @@ module.exports = {
     res.json({ data: row });
   }),
 
+  /** The manager's own rating for one line (10708). Returns the refreshed
+   *  review, so the screen re-renders from the server's state rather than
+   *  patching locally and hoping. */
+  rateLine: asyncHandler(async (req, res) => {
+    const row = await req.tenantDb((c) =>
+      review.rateLine(c, {
+        reviewId: req.params.reviewId,
+        appraisalId: req.params.appraisalId,
+        rating: req.body.rating,
+        comments: req.body.comments ?? null,
+        actor: actor(req),
+      }),
+    );
+    if (!row) throw new AppError("NOT_FOUND", "Review not found", 404);
+    res.json({ data: row });
+  }),
+
   /**
    * Draft the narrative.
    *

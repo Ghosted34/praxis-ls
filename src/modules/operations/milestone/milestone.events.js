@@ -12,6 +12,9 @@
 module.exports = {
   MODULE: "MOD-31",
   TEMPLATE_PUBLISHED: "milestone.template.published",
+  /* 10708b — the register gained actions; re-activating a superseded version
+   * is a deliberate rollback and is recorded as such. */
+  TEMPLATE_ACTIVATED: "milestone.template.activated",
   INSTANTIATED: "milestone.instantiated",
   ADVANCED: "milestone.advanced",
   REOPENED: "milestone.reopened",

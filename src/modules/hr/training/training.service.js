@@ -30,6 +30,8 @@ const events = require("./training.events");
 const rules = require("./training.rules");
 const minutes = require("./training.minutes");
 const vault = require("../../vault/document_vault/document_vault.service");
+const transcription = require("../../../services/ai/transcription.service");
+const { parseDataUrl } = require("../../../utils/data-url");
 const { logger } = require("../../../config/logger");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "training", events });
@@ -224,6 +226,68 @@ async function addNote(client, { trainingId, body, isMinutes = false, actor = {}
 }
 
 /**
+ * Accept one chunk of live dictation, transcribe it, and append the words to
+ * the session's running transcript (10708).
+ *
+ * ── WHY CHUNKS, NOT ONE BIG UPLOAD ───────────────────────────────────────
+ *
+ * A meeting is long and this deployment's JSON body cap is 2 MB. The recorder
+ * slices the stream every ~30 seconds and POSTs each slice, so a session that
+ * runs ninety minutes is a series of small calls rather than one that cannot
+ * fit through the door. Each chunk is transcribed on its own and the TEXT is
+ * appended — the audio is not kept, because what the minutes drafter needs is
+ * the words, and a tenant's object store is not a landfill for hours of room
+ * noise.
+ *
+ * ── THE TRANSCRIPT IS A RECORD, NOT AN ANSWER ─────────────────────────────
+ *
+ * `transcript` accumulates verbatim. Nothing edits it here; `summarise` folds
+ * it into the minutes as the model's ONLY source, exactly like the typed
+ * notes. A chunk that transcribed to silence appends nothing rather than a
+ * line of noise, but it is still an acknowledged write — the recorder's
+ * progress bar is the upload count, not the word count.
+ */
+/** Transcribe one chunk. NO client — the caller checks the session exists
+ *  first, then calls this while holding no pooled connection across a
+ *  provider call that takes seconds (see `dictate` in the controller). */
+async function dictateAudio(audioDataUrl) {
+  const parsed = parseDataUrl(audioDataUrl);
+  if (!parsed) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
+  if (!parsed.buffer.length)
+    throw new AppError("EMPTY_AUDIO", "Nothing was recorded — hold the mic a little longer", 422);
+
+  let text = "";
+  try {
+    const out = await transcription.transcribe({ audio: parsed.buffer, mimeType: parsed.mimeType });
+    text = String((out && out.text) || "").trim();
+  } catch (err) {
+    // Same contract as the vacancy intake's transcribe: the missing-key case
+    // is named so the facilitator stops pressing the mic and asks an admin.
+    throw new AppError(
+      "TRANSCRIPTION_UNAVAILABLE",
+      /not configured/i.test(err.message || "")
+        ? "Voice capture isn't set up on this workspace — ask your administrator to configure transcription."
+        : "Couldn't transcribe that clip. Try again.",
+      502,
+    );
+  }
+  return { text };
+}
+
+/** The write half: append transcribed words to the running transcript. */
+async function appendDictation(client, { trainingId, text = "", actor = {} }) {
+  const row = await repo.appendTranscript(client, trainingId, text);
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: events.DICTATION_APPENDED,
+    moduleKey: events.MODULE,
+    entityRef: ref(trainingId),
+    after: { chars: String(text).length },
+  });
+  return row;
+}
+
+/**
  * Draft the minutes and file them.
  *
  * Filing happens EITHER WAY. If the model could not be reached, or there was
@@ -234,10 +298,13 @@ async function addNote(client, { trainingId, body, isMinutes = false, actor = {}
  */
 async function draftMinutes(client, { training, slug, actor = {} }) {
   const notes = await repo.listNotes(client, training.training_id);
-  const source = minutes.sourceText({ notes });
+  // The live dictation (10708). Treated exactly like the typed notes: it is
+  // source material for the model, never the model's output.
+  const transcript = training.transcript || null;
+  const source = minutes.sourceText({ notes, transcript });
   if (!source) return null;
 
-  const drafted = await minutes.summarise(client, { session: training, notes });
+  const drafted = await minutes.summarise(client, { session: training, notes, transcript });
   const body = drafted ? drafted.body_md : source;
   const model = drafted ? drafted.ai_model : "notes";
 
@@ -266,7 +333,7 @@ async function summarise(client, { id, slug, actor = {} }) {
   const training = await repo.get(client, id);
   if (!training) throw new AppError("NOT_FOUND", "Training not found", 404);
   const row = await draftMinutes(client, { training, slug, actor });
-  if (!row) throw new AppError("NOTHING_TO_SUMMARISE", "No notes or minutes have been captured for this session yet.", 422);
+  if (!row) throw new AppError("NOTHING_TO_SUMMARISE", "No notes or recording have been captured for this session yet.", 422);
   return repo.get(client, id);
 }
 
@@ -428,7 +495,7 @@ module.exports = {
   ...base,
   create, update, get, setStatus,
   join, leave, settleAttendance,
-  addNote, summarise,
+  addNote, dictateAudio, appendDictation, summarise,
   listAttendees, addAttendee, updateAttendee,
   listRequirements, createRequirement, updateRequirement, compliance, expiringCertificates,
 };

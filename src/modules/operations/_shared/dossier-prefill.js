@@ -158,6 +158,12 @@ function transitOrderFrom(dossier, entity, regimes) {
  * the box on the file rather than at a copy of its number that stops matching
  * the moment somebody corrects a typo upstream.
  *
+ * A GROUPED file has no units yet — it states "3 × 40' HC" as a container
+ * LINE, and until 10708 that whole shape was invisible to this prefill, so
+ * the most common file on a containerised service type prefilled nothing.
+ * The line travels as `{ dossier_container_line_id, container_type_code,
+ * qty }` and the note prints it the way the file states it.
+ *
  * ── THE CONSIGNEE BLOCK IS NOT PREFILLED AT ALL ────────────────────────────
  *
  * `consignee`, `contact_person`, `phone` and `address` are columns on
@@ -174,8 +180,10 @@ function transitOrderFrom(dossier, entity, regimes) {
  *
  * @param dossier    the row, as `dossierForPrefill` selects it
  * @param containers `dossier_container_unit` rows for that file
+ * @param lines      `dossier_container_line` rows (the GROUPED shape), with
+ *                   their remaining quantity and type code
  */
-function deliveryNoteFrom(dossier, containers = []) {
+function deliveryNoteFrom(dossier, containers = [], lines = []) {
   if (!dossier) return { body: {}, inferred: [], from: [] };
   const body = { dossier_id: dossier.dossier_id };
   const from = [];
@@ -216,14 +224,28 @@ function deliveryNoteFrom(dossier, containers = []) {
     from.push("lines");
   }
 
-  if (containers.length) {
-    body.containers = containers.map((c) => ({
-      // By ID, so the note stays pointed at the box on the file.
-      dossier_container_unit_id: c.dossier_container_unit_id,
-      container_no: c.container_no || null,
-      seal_no: c.seal_no || null,
-      gross_weight_kg: num(c.gross_weight_kg),
-    }));
+  if (containers.length || lines.length) {
+    body.containers = [
+      // Grouped lines first, the way the file states them (10708).
+      ...(lines || []).map((l) => ({
+        dossier_container_line_id: l.dossier_container_line_id,
+        container_type_code: l.container_type_code || null,
+        qty: (Number(l.qty) || 0) > 0 ? Number(l.qty) : 1,
+        container_no: null,
+        seal_no: null,
+        gross_weight_kg: null,
+      })),
+      // Per-box units by ID, so the note stays pointed at the box on the file.
+      // `already_on` rides along so the form can skip boxes another note
+      // already covers rather than silently double-delivering them.
+      ...(containers || []).map((c) => ({
+        dossier_container_unit_id: c.dossier_container_unit_id,
+        container_no: c.container_no || null,
+        seal_no: c.seal_no || null,
+        gross_weight_kg: num(c.gross_weight_kg),
+        already_on: Array.isArray(c.already_on) ? c.already_on : [],
+      })),
+    ];
     from.push("containers");
   }
 

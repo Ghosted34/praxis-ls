@@ -4,6 +4,8 @@ const { insertOne, getById, page, updateOne } = require("../../../shared/db/quer
 
 function insertTemplate(client, data) { return insertOne(client, "milestone_template", data); }
 function insertStage(client, data) { return insertOne(client, "milestone_template_stage", data); }
+const updateTemplate = (client, id, patch) =>
+  updateOne(client, "milestone_template", "milestone_template_id", id, patch, "*", null);
 
 async function nextVersion(client, serviceTypeId) {
   const { rows } = await client.query("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM milestone_template WHERE service_type_id = $1", [serviceTypeId]);
@@ -47,12 +49,32 @@ async function existingInstances(client, dossierId) {
   const { rows } = await client.query("SELECT COUNT(*)::int AS n FROM milestone_instance WHERE dossier_id = $1", [dossierId]);
   return rows[0].n;
 }
+/**
+ * The published templates, with what a reader needs to understand them: the
+ * service type they seed, how many stages they carry, and the stages
+ * themselves in chain order (10708). A stage list without its stages is a
+ * number nobody can act on — the register's whole point is that a template
+ * states, stage by stage, what the company promised a client.
+ */
 async function listTemplates(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset]; const wh = [];
-  if (q.service_type_id) { params.push(q.service_type_id); wh.push("service_type_id = $" + params.length); }
+  if (q.service_type_id) { params.push(q.service_type_id); wh.push(`t.service_type_id = $${params.length}`); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
-  const { rows } = await client.query("SELECT * FROM milestone_template " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
+  const { rows } = await client.query(
+    `SELECT t.*, st.code AS service_type_code, st.name AS service_type_name,
+            (SELECT count(*)::int FROM milestone_template_stage s
+              WHERE s.milestone_template_id = t.milestone_template_id) AS stage_count
+       FROM milestone_template t
+       LEFT JOIN service_type st ON st.service_type_id = t.service_type_id
+       ${where}
+      ORDER BY t.is_active DESC, t.created_at DESC
+      LIMIT $1 OFFSET $2`,
+    params,
+  );
+  for (const tpl of rows) {
+    tpl.stages = await stages(client, tpl.milestone_template_id);
+  }
   return rows;
 }
 
@@ -235,7 +257,7 @@ async function seqBetween(client, dossierId, afterSeq) {
 }
 
 module.exports = {
-  insertTemplate, insertStage, nextVersion, activeTemplate, stages, deactivateOthers, getTemplate,
+  insertTemplate, insertStage, updateTemplate, nextVersion, activeTemplate, stages, deactivateOthers, getTemplate,
   insertInstance, getInstance, updateInstance, listByDossier, existingInstances, listTemplates,
   scheduleContext, workingCalendar, assumptions, replaceAssumptions, logRebaseline, openInstances, seqBetween,
   attributionSummary, attributionByStage,

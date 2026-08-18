@@ -153,25 +153,37 @@ function normaliseContainers(rows) {
 
   const out = [];
   const seenUnits = new Set();
+  const seenLines = new Set();
   const seenNumbers = new Set();
 
   rows.forEach((raw, i) => {
     if (!raw) return;
     const unitId = raw.dossier_container_unit_id || null;
+    // 10708 — the GROUPED shape: a container line from a file with no per-box
+    // numbers yet. A row is identified by unit, by line, or by a typed number.
+    const lineId = raw.dossier_container_line_id || null;
     const no = raw.container_no ? String(raw.container_no).trim().toUpperCase() : null;
 
-    if (!unitId && !no) {
+    if (!unitId && !lineId && !no) {
       throw new AppError("VALIDATION_ERROR", `Container ${i + 1} needs a number.`, 422, {
         [`containers.${i}.container_no`]: ["a container needs a number (or pick one from the file)"],
       });
     }
     if (unitId && seenUnits.has(unitId)) return;
-    if (!unitId && no && seenNumbers.has(no)) return;
+    if (lineId && seenLines.has(lineId)) return;
+    if (!unitId && !lineId && no && seenNumbers.has(no)) return;
     if (unitId) seenUnits.add(unitId);
+    if (lineId) seenLines.add(lineId);
     if (no) seenNumbers.add(no);
 
+    const qty = raw.qty === null || raw.qty === undefined ? 1 : Number(raw.qty);
     out.push({
       dossier_container_unit_id: unitId,
+      dossier_container_line_id: lineId,
+      container_type_code: raw.container_type_code ? String(raw.container_type_code).trim().slice(0, 60) : null,
+      // A grouped row's quantity is how many of the type this note hands
+      // over; a per-box row is one box. At least one, and never fractional.
+      qty: Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1,
       container_no: no,
       seal_no: raw.seal_no ? String(raw.seal_no).trim() : null,
       gross_weight_kg: raw.gross_weight_kg === null || raw.gross_weight_kg === undefined

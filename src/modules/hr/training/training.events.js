@@ -14,5 +14,9 @@ module.exports = {
   ATTENDEE_LEFT: "training.attendee_left",
   ATTENDANCE_SETTLED: "training.attendance_settled",
   MINUTES_FILED: "training.minutes_filed",
+  // 10708 — live dictation. Audit-only like join/leave: a chunk lands every
+  // ~30 seconds through a whole session, and an event per chunk would drown
+  // every other HR notification in the room's microphone activity.
+  DICTATION_APPENDED: "training.dictation_appended",
   REQUIREMENT_CHANGED: "training.requirement_changed",
 };

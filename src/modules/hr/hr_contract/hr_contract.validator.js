@@ -53,7 +53,15 @@ const draft = z.object({
   vacancy_id: z.string().uuid().optional(),
 });
 
-const schemas = { create, update: create.partial(), status, draft };
+/** A renewal (10708). Only the two dates a caller may override — everything
+ *  else is carried from the contract being renewed, by design: a renewal
+ *  continues what was agreed, it does not re-negotiate it. */
+const renew = z.object({
+  effective_on: d.optional(),
+  end_on: d.optional(),
+});
+
+const schemas = { create, update: create.partial(), status, draft, renew };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -62,4 +70,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), status: mw("status"), draft: mw("draft"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), status: mw("status"), draft: mw("draft"), renew: mw("renew"), schemas };

@@ -20,6 +20,122 @@ const shipmentDetails = require("../../operations/shipment_details/shipment_deta
 
 const LOCKED = new Set(["APPROVED_LOCKED", "REJECTED"]);
 
+/**
+ * The unlock loop — the way out of APPROVED_LOCKED (10718).
+ *
+ * `setStatus` refuses ANY transition out of a locked status before it looks at
+ * the target, which is correct for the ordinary flow and is exactly why an
+ * approved costing could never be corrected. Rather than punch a hole in that
+ * guard, unlock is its own small state machine handled ahead of it: request,
+ * grant, deny. Legacy did the same (api/costing/transition.php:175-205) and
+ * parked the request in its own status so "someone has asked" is visible.
+ */
+const UNLOCK_FLOW = {
+  REQUEST_UNLOCK: { from: "APPROVED_LOCKED", to: "UNLOCK_REQUESTED" },
+  // Legacy returns to DRAFT (transition.php:192), and DRAFT is the only status
+  // updateDraft will edit (see line ~54) — anywhere else would be unlocked in
+  // name and still uneditable in fact.
+  UNLOCK: { from: "UNLOCK_REQUESTED", to: "DRAFT" },
+  DENY_UNLOCK: { from: "UNLOCK_REQUESTED", to: "APPROVED_LOCKED" },
+};
+
+/**
+ * Refuse to reopen a costing whose final invoice has left DRAFT.
+ *
+ * Approving a costing OPENS a final invoice for its dossier
+ * (`ensureDraftForCosting`, called below on APPROVED_LOCKED). That invoice can
+ * go on to ISSUED_LOCKED / POSTED_LOCKED (0230:66) and carry a posted
+ * `entry_id`. Unlocking the costing underneath it would let the priced basis
+ * change while the booked revenue stays as it was — a wrong ledger position
+ * produced by a workflow completing normally, which is the same failure 10717
+ * was written to remove.
+ *
+ * A DRAFT invoice is fine: nothing is posted and it is regenerated from the
+ * costing anyway. Checked against the invoice table rather than a costing
+ * column because the invoice is the thing that moved.
+ */
+async function assertInvoiceNotPosted(client, costing) {
+  if (!costing.dossier_id) return;
+  const { rows } = await client.query(
+    "SELECT invoice_id, doc_number, status FROM invoice " +
+      "WHERE dossier_id = $1 AND type = 'FINAL' AND status <> 'DRAFT' LIMIT 1",
+    [costing.dossier_id],
+  );
+  const inv = rows[0];
+  if (inv) {
+    throw new AppError(
+      "INVOICE_ISSUED",
+      `Final invoice ${inv.doc_number || inv.invoice_id} is ${inv.status}. ` +
+        "Reverse or cancel it before reopening the costing it was priced from.",
+      422,
+    );
+  }
+}
+
+/**
+ * REQUEST_UNLOCK / UNLOCK / DENY_UNLOCK.
+ *
+ * Permissions are NOT ported from the legacy role lists
+ * (REQUEST_UNLOCK: ADMIN/SALES/OPERATIONS/MANAGEMENT; UNLOCK and DENY_UNLOCK:
+ * ADMIN/MANAGEMENT). Hardcoded role names are strictly less expressive than
+ * this system's module grants plus the SoD capability overlay, so the routes
+ * express the same intent as `edit` for the request and `approve` + APPROVER
+ * for the decision — the split costing.routes.js already documents for
+ * SUBMIT vs APPROVE.
+ */
+async function unlockTransition(client, { id, action, reason = null, actor = {} }) {
+  const step = UNLOCK_FLOW[action];
+  if (!step) throw new AppError("BAD_ACTION", "unknown unlock action", 422);
+
+  const before = await repo.get(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Costing not found", 404);
+  if (before.status !== step.from) {
+    throw new AppError(
+      "BAD_STATE",
+      `${action} needs a costing in ${step.from}; this one is ${before.status}`,
+      422,
+    );
+  }
+  if (action === "REQUEST_UNLOCK" && !String(reason || "").trim()) {
+    // The audit answer to "why is this approved costing open again". Legacy
+    // appended it to a free-text remarks blob; here it is a column.
+    throw new AppError("REASON_REQUIRED", "Say why the costing needs reopening", 422);
+  }
+  // Checked on the GRANT, not the request: asking is harmless, and the invoice
+  // may well be reversed between the two.
+  if (action === "UNLOCK") await assertInvoiceNotPosted(client, before);
+
+  const patch = { status: step.to };
+  if (action === "REQUEST_UNLOCK") {
+    patch.unlock_requested_by = actor.user_id || null;
+    patch.unlock_requested_at = new Date().toISOString();
+    patch.unlock_reason = reason;
+  }
+  if (action === "UNLOCK") {
+    patch.unlocked_by = actor.user_id || null;
+    patch.unlocked_at = new Date().toISOString();
+  }
+  // DENY_UNLOCK deliberately keeps unlock_reason and the request metadata: the
+  // fact that a reopening was asked for and refused is the audit trail.
+
+  const row = await repo.update(client, id, patch);
+  await emitEvent(client, {
+    eventTypeKey: events.unlockEvent(action),
+    moduleKey: events.MODULE,
+    entityRef: "costing:" + id,
+    actorUserId: actor.user_id || null,
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: events.unlockEvent(action),
+    moduleKey: events.MODULE,
+    entityRef: "costing:" + id,
+    before,
+    after: row,
+  });
+  return row;
+}
+
 async function replaceLines(client, costingId, lines) {
   await repo.deleteLines(client, costingId);
   for (const l of lines) {
@@ -117,4 +233,4 @@ const list = (client, q) => repo.list(client, q);
 // A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
 onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
 
-module.exports = { createDraft, updateDraft, setStatus, get, list };
+module.exports = { createDraft, updateDraft, setStatus, unlockTransition, get, list };

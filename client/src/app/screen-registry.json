@@ -950,7 +950,8 @@
         "get_costing",
         "create_costing",
         "update_costing",
-        "costing_status"
+        "costing_status",
+        "costing_unlock"
       ]
     },
     {

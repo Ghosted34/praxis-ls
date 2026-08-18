@@ -488,20 +488,85 @@ five values and unlock returns the row to an existing state.
 **Do not port the role names.** Legacy hardcodes `['ADMIN','MANAGEMENT']`; the new system has
 module grants plus the SoD capability overlay, which is strictly more expressive.
 
-### 3.2 Cash request — two missing states
+**CORRECTION — this section said "the status vocabulary needs no migration".** It does.
+Reading `transition.php` properly shows the request and the decision are two acts by two
+people, so legacy parks the interval in a **sixth** status, `UNLOCK_REQUESTED`
+(`transition.php:181`). Without it, "someone has asked to reopen this" is unrepresentable.
+Migration `10718` widens the CHECK and adds the attribution columns
+(`unlock_requested_by/at`, `unlock_reason`, `unlocked_by/at`).
+
+**A second thing this section did not account for**, found while implementing: approving a
+costing calls `finalInvoice.ensureDraftForCosting` (`costing.service.js:99`), so approval
+**opens a FINAL invoice** for the dossier, and that invoice can reach `ISSUED_LOCKED` /
+`POSTED_LOCKED` with a posted `entry_id` (`0230:66`). Reopening the costing underneath a
+posted receivable would let the priced basis move while booked revenue stayed put. `UNLOCK`
+therefore refuses while a non-DRAFT final invoice exists, naming it in the 422 so the user
+knows what to reverse. `REQUEST_UNLOCK` is **not** blocked — asking is harmless, and the
+invoice may be reversed between the ask and the decision.
+
+### 3.2 Cash request — two missing states — **NOT IMPLEMENTED, and why**
 
 Legacy has `VALIDATED` and `PARTIALLY_DISBURSED`; the new CHECK (`0342:74`) has neither.
+**Both were investigated and both were deliberately left out.** The paragraph below is the
+correction: the premise this section was written on turned out to be wrong.
 
-- **`PARTIALLY_DISBURSED`** — the schema already supports the situation
-  (`cash_request_payment` is one-to-many), so a half-paid request currently reads as
-  `APPROVED`. Adding the state is a CHECK change plus a `NEXT` entry.
-- **`VALIDATED`** — costing kept the two-step validate-then-approve; its sibling collapsed
-  it. **This one needs a decision before code**, and it should be an explicit product call:
-  either restore the step for consistency with costing, or record why cash requests are
-  deliberately one-step. Do not add it just because legacy had it.
+#### `PARTIALLY_DISBURSED` — the premise was wrong
 
-Both are CHECK-constraint changes, so they need a migration (`10718`) and the existing
-`check-migration-*` gates apply.
+This section claimed "the schema already supports the situation (`cash_request_payment` is
+one-to-many), so a half-paid request currently reads as `APPROVED`". The table does exist and
+is one-to-many. **Nothing writes to it.**
+
+```
+$ grep -rn "insertPayment" src/
+src/modules/costing/cash_request/cash_request.repo.js:8    (the definition)
+src/modules/costing/cash_request/cash_request.repo.js:62   (the export)
+```
+
+Two call sites, both in the repo that defines it. `insertPayment` is dead code, and the only
+reader — `listPayments`, in `get` (`cash_request.service.js:249`) — returns an always-empty
+array. Following the disbursal path confirms it:
+
+- `disburse` (`cash_request.service.js:129`) takes **no amount**. Its validator
+  (`cash_request.validator.js:14`) accepts `entity_id`, `entry_date`, `source_doc_ref`,
+  `treasury_coa`, `holder_user_id` — and nothing else.
+- It issues a régie advance for `Number(cr.amount)`, the **whole** request, then sets
+  `status: "DISBURSED"` in the same statement.
+- `cash_request.regie_advance_id` (`0342:71`) is a single nullable uuid, not a child table.
+  One request draws on **one** advance.
+
+So a partial disbursement cannot be expressed today at any layer: no amount to partially
+disburse, no payment row to record it against, no second advance to hold the remainder.
+Adding `PARTIALLY_DISBURSED` to the CHECK would create **a state nothing can write** —
+which is precisely defect (1) of Landing A, where `justified_amount` and `returned_amount`
+were read by `openBalance` and written by nothing, leaving three of five states unreachable.
+Repeating that pattern in the same session that fixed it would be indefensible.
+
+**If partial disbursement is genuinely wanted**, the work is not a CHECK change. It is:
+`disburse` taking an `amount`; writing a `cash_request_payment` row per payment; deriving the
+status from `Σ payments` vs `cash_request.amount` rather than setting it directly; and
+deciding whether the second payment issues a second régie advance (needing a join table) or
+tops up the first (needing an `amount` that can change after issue, which `regie_advance`
+does not currently allow). That is a landing of its own, and it needs the product question
+answered first: _does a cash request ever get paid in instalments in this business?_
+
+#### `VALIDATED` — no evidence it is wanted
+
+The two-step exists in costing because a costing is a **priced commitment to a client** that
+someone other than the author should check before it is approved. A cash request is an
+internal ask for a float, already gated by `approve` + the APPROVER capability, and — since
+Landing A — closed out by a justification that must retire its advance to the cent.
+
+Adding a state to a lifecycle is cheap; removing one after rows have used it is not. Nothing
+in the legacy `view/finance/cash-request.php` flow, nor in the KB, argues the extra step
+earns its cost here. **Recorded as deliberate: `cash_request` is one-step.** If a tenant
+wants a second signature, `executor.start` on `cash_request.submitted` already provides one
+without a schema change — which is the configurable answer this codebase prefers over a
+hardcoded state.
+
+#### What §3 shipped instead
+
+Migration `10718` is spent on §3.1 (costing unlock), which had a real, evidenced defect: a
+state with no exit. §3.2 needs no migration.
 
 ---
 

@@ -34,6 +34,18 @@ const cycleStatus = z.object({
 const reviewOpen = z.object({ employee_id: z.string().uuid() });
 const reviewSubmit = z.object({ manager_comment: z.string().max(8000).optional() });
 
+/**
+ * The manager's own rating for one line (10708). `null` CLEARS the decision —
+ * the row falls back to the evidence suggestion and reopens to the scorer. The
+ * upper bound is checked against the line's own scale in the service, not
+ * here: a KPI's scale_max is data, and a validator should not need a query to
+ * know it.
+ */
+const lineRate = z.object({
+  rating: z.number().min(0).max(1000).nullable(),
+  comments: z.string().max(4000).optional().nullable(),
+});
+
 /** The employee's answer. A dispute needs words — the service insists too, but
  *  the message belongs on the field the form is showing. */
 const reviewRespond = z
@@ -45,7 +57,7 @@ const reviewRespond = z
 
 const scoreRun = z.object({ employee_id: z.string().uuid().optional() });
 
-const schemas = { create, update: create.partial(), reward, cycle, cycleStatus, reviewOpen, reviewSubmit, reviewRespond, scoreRun };
+const schemas = { create, update: create.partial(), reward, cycle, cycleStatus, reviewOpen, reviewSubmit, lineRate, reviewRespond, scoreRun };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -62,6 +74,7 @@ module.exports = {
   cycleStatus: mw("cycleStatus"),
   reviewOpen: mw("reviewOpen"),
   reviewSubmit: mw("reviewSubmit"),
+  lineRate: mw("lineRate"),
   reviewRespond: mw("reviewRespond"),
   scoreRun: mw("scoreRun"),
   schemas,

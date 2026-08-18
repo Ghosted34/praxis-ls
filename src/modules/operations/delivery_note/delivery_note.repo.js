@@ -50,7 +50,14 @@ const deleteContainers = (client, id) =>
   client.query("DELETE FROM delivery_note_container WHERE delivery_note_id = $1", [id]);
 
 /**
- * The file's boxes, as the picker offers them.
+ * The file's containers, as the picker offers them (10708: grouped lines as
+ * well as per-box units).
+ *
+ * A GROUPED file ("3 × 40' HC") has container LINES and no units at all —
+ * before 10708 the picker (and the prefill) read only `dossier_container_unit`
+ * and so offered nothing from exactly the files the picker exists to serve.
+ * A grouped line appears as one row carrying `kind: 'line'` and its remaining
+ * quantity; a per-box unit appears as `kind: 'unit'`.
  *
  * `already_on` is the point of the LEFT JOIN: a container already covered by
  * another delivery note on the same file is still selectable (part-deliveries
@@ -58,12 +65,14 @@ const deleteContainers = (client, id) =>
  * rather than letting somebody silently deliver it twice.
  */
 async function containersForDossier(client, dossierId, { excludeNoteId = null } = {}) {
-  const { rows } = await client.query(
-    `SELECT u.dossier_container_unit_id, u.container_no, u.seal_no,
+  const { rows: units } = await client.query(
+    `SELECT 'unit' AS kind, u.dossier_container_unit_id, NULL::uuid AS dossier_container_line_id,
+            u.container_no, u.seal_no,
             u.gross_weight_kg, u.tare_kg, u.discharged_on,
             ct.code AS container_type_code,
             ct.name_en AS container_type_en,
             ct.name_fr AS container_type_fr,
+            NULL::int AS qty,
             ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number), NULL) AS already_on
        FROM dossier_container_unit u
        JOIN dossier_container_line l
@@ -82,7 +91,29 @@ async function containersForDossier(client, dossierId, { excludeNoteId = null } 
       ORDER BY u.container_no NULLS LAST`,
     [dossierId, excludeNoteId],
   );
-  return rows;
+  const { rows: lines } = await client.query(
+    `SELECT 'line' AS kind, NULL::uuid AS dossier_container_unit_id,
+            l.dossier_container_line_id, NULL AS container_no, NULL AS seal_no,
+            NULL::numeric AS gross_weight_kg, NULL::numeric AS tare_kg, NULL::date AS discharged_on,
+            ct.code AS container_type_code,
+            ct.name_en AS container_type_en,
+            ct.name_fr AS container_type_fr,
+            (l.qty - (SELECT count(*)::int FROM dossier_container_unit u
+                       WHERE u.dossier_container_line_id = l.dossier_container_line_id)) AS qty,
+            NULL::text[] AS already_on
+       FROM dossier_container_line l
+       JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
+      WHERE l.dossier_id = $1
+      ORDER BY l.seq, l.dossier_container_line_id`,
+    [dossierId],
+  );
+  // Only the part of each line that has no per-box unit yet — a line fully
+  // broken out into units is represented by its units, not by a "0 remaining"
+  // row nobody can pick.
+  return [
+    ...lines.filter((l) => (Number(l.qty) || 0) > 0),
+    ...units,
+  ];
 }
 
 /** Verify picked units really belong to this file — one query, not per row. */
@@ -95,6 +126,27 @@ async function unitsOnDossier(client, dossierId, unitIds) {
     [dossierId, unitIds],
   );
   return new Map(rows.map((r) => [r.dossier_container_unit_id, r]));
+}
+
+/**
+ * Verify picked container LINES really belong to this file, and hand back the
+ * type code and the remaining quantity to snapshot onto the note (10708).
+ * The remaining count is read at pick time — the same snapshot rule as the
+ * unit link: a later correction to the file cannot rewrite what was signed
+ * for.
+ */
+async function linesOnDossier(client, dossierId, lineIds) {
+  if (!lineIds.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT l.dossier_container_line_id, ct.code AS container_type_code,
+            (l.qty - (SELECT count(*)::int FROM dossier_container_unit u
+                       WHERE u.dossier_container_line_id = l.dossier_container_line_id)) AS remaining
+       FROM dossier_container_line l
+       JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
+      WHERE l.dossier_id = $1 AND l.dossier_container_line_id = ANY($2::uuid[])`,
+    [dossierId, lineIds],
+  );
+  return new Map(rows.map((r) => [r.dossier_container_line_id, r]));
 }
 
 /**
@@ -140,13 +192,38 @@ async function dossierForPrefill(client, dossierId) {
   const { rows: containers } = await client.query(
     // Ordered so the note lists the boxes the way the yard reads them, and so
     // two prefills of the same file never differ in row order.
-    `SELECT dossier_container_unit_id, container_no, seal_no, gross_weight_kg
-       FROM dossier_container_unit
-      WHERE dossier_id = $1
-      ORDER BY container_no NULLS LAST, dossier_container_unit_id`,
+    // `already_on` rides along so the form can offer the free boxes without
+    // silently putting a twice-delivered unit on a new note (10708).
+    `SELECT u.dossier_container_unit_id, u.container_no, u.seal_no, u.gross_weight_kg,
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number), NULL) AS already_on
+       FROM dossier_container_unit u
+       LEFT JOIN delivery_note_container dnc
+         ON dnc.dossier_container_unit_id = u.dossier_container_unit_id
+       LEFT JOIN delivery_note other
+         ON other.delivery_note_id = dnc.delivery_note_id
+        AND other.status <> 'CANCELLED'
+      WHERE u.dossier_id = $1
+      GROUP BY u.dossier_container_unit_id
+      ORDER BY u.container_no NULLS LAST, u.dossier_container_unit_id`,
     [dossierId],
   );
-  return { dossier: rows[0], containers };
+  // The grouped lines — the only container shape a GROUPED file has (10708).
+  const { rows: lines } = await client.query(
+    `SELECT l.dossier_container_line_id, ct.code AS container_type_code,
+            ct.name_en AS container_type_en, ct.name_fr AS container_type_fr,
+            (l.qty - (SELECT count(*)::int FROM dossier_container_unit u
+                       WHERE u.dossier_container_line_id = l.dossier_container_line_id)) AS qty
+       FROM dossier_container_line l
+       JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
+      WHERE l.dossier_id = $1
+      ORDER BY l.seq, l.dossier_container_line_id`,
+    [dossierId],
+  );
+  return {
+    dossier: rows[0],
+    containers,
+    lines: lines.filter((l) => (Number(l.qty) || 0) > 0),
+  };
 }
 
 async function listDN(client, q = {}) {
@@ -190,5 +267,5 @@ module.exports = {
   insertDN, getDN, getFull, update, listDN, statusCounts,
   insertLine, listLines, deleteLines,
   insertContainer, listContainers, deleteContainers,
-  containersForDossier, unitsOnDossier, dossierBrief, dossierForPrefill,
+  containersForDossier, unitsOnDossier, linesOnDossier, dossierBrief, dossierForPrefill,
 };

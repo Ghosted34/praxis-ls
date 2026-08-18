@@ -276,6 +276,11 @@ async function get(client, id) {
 }
 const list = (client, q) => repo.listRuns(client, q);
 const myPayslips = (client, employeeId) => (employeeId ? repo.payslipsForEmployee(client, employeeId) : Promise.resolve([]));
+/** The manager's view (profile 360): every stage of the run, because the
+ *  question a manager asks is "has this month's payslip been computed for
+ *  this person", not only "what have they been paid". */
+const employeePayslips = (client, employeeId) =>
+  employeeId ? repo.payslipsForEmployee(client, employeeId, { includeAll: true }) : Promise.resolve([]);
 
 /**
  * Generate + download the caller's own payslip (self-service). The run item
@@ -304,4 +309,4 @@ function periodEnd(periodCode) {
 // A cleared approval chain advances the run SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
 onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {}, viaChain: true }));
 
-module.exports = { createRun, compute, setStatus, get, list, myPayslips, ownPayslipPdf };
+module.exports = { createRun, compute, setStatus, get, list, myPayslips, employeePayslips, ownPayslipPdf };

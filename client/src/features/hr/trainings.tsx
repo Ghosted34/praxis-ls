@@ -88,6 +88,195 @@ function toLocalInput(iso?: string | null): string {
 }
 const fromLocalInput = (v: string) => (v ? new Date(v).toISOString() : null);
 
+/* ══ The meeting recorder (10708) ══════════════════════════════════════════ */
+
+/** How long each uploaded slice is. Short enough that one slice is a small
+ *  payload (~75 KB of Opus) and a stalled upload costs one slice, long enough
+ *  that Whisper gets real sentences rather than fragments. */
+const SLICE_MS = 25_000;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("read failed"));
+    r.onload = () => resolve(String(r.result));
+    r.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Record the whole meeting, from just before it starts.
+ *
+ * ── WHY NOT HOLD-TO-TALK ──────────────────────────────────────────────────
+ *
+ * The vacancy wizard's `VoiceInput` is press-and-hold, capped at two minutes —
+ * right for an answer, wrong for a meeting. This is a toggle: press once
+ * before the session opens, the whole thing is recorded, press again when it
+ * ends. The stream is sliced every 25 s and each slice is transcribed and
+ * APPENDED to the session's running transcript, so the minutes drafter gets
+ * the entire meeting as its source — the AI then picks out the points that
+ * matter instead of a facilitator's memory of them.
+ *
+ * ── FAILURE IS SAID, NOT SWALLOWED ────────────────────────────────────────
+ *
+ * No microphone permission, a slice the provider could not transcribe — both
+ * surface as a visible line, because a recording that silently drops its
+ * middle is worse than none: the facilitator believes the record is complete.
+ */
+function MeetingRecorder({
+  trainingId,
+  canRecord,
+  onChunk,
+}: {
+  trainingId: string;
+  canRecord: boolean;
+  /** Called with each transcribed slice, newest text appended locally. */
+  onChunk: (text: string) => void;
+}) {
+  const [recording, setRecording] = React.useState(false);
+  const [elapsed, setElapsed] = React.useState(0);
+  const [sent, setSent] = React.useState(0);
+  const [queued, setQueued] = React.useState(0);
+  const [error, setError] = React.useState<string | null>(null);
+  const recorderRef = React.useRef<MediaRecorder | null>(null);
+  const queueRef = React.useRef<Blob[]>([]);
+  const pumpingRef = React.useRef(false);
+  const startedAtRef = React.useRef(0);
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Release the microphone if the panel unmounts mid-recording — the browser's
+  // recording indicator must never stay lit on a screen with no control on it.
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      recorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
+  /** Upload the queue, one slice at a time, in order. */
+  async function pump() {
+    if (pumpingRef.current) return;
+    pumpingRef.current = true;
+    try {
+      while (queueRef.current.length) {
+        const blob = queueRef.current.shift();
+        if (!blob) continue;
+        setQueued((n) => Math.max(0, n - 1));
+        try {
+          const dataUrl = await blobToDataUrl(blob);
+          const { text } = await api.dictateTraining(trainingId, dataUrl);
+          if (text) onChunk(text);
+        } catch (e) {
+          setError(
+            e instanceof Error
+              ? e.message
+              : "One slice could not be transcribed — the rest are still being sent.",
+          );
+        }
+        setSent((n) => n + 1);
+      }
+    } finally {
+      pumpingRef.current = false;
+    }
+  }
+
+  async function start() {
+    setError(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError("No microphone access — allow the mic permission and try again.");
+      return;
+    }
+    // Prefer Opus webm; fall back to whatever this browser records in.
+    const mime =
+      MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    recorderRef.current = rec;
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size) {
+        queueRef.current.push(e.data);
+        setQueued((n) => n + 1);
+        void pump();
+      }
+    };
+    rec.start(SLICE_MS);
+    setRecording(true);
+    startedAtRef.current = Date.now();
+    setElapsed(0);
+    timerRef.current = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000)),
+      1000,
+    );
+  }
+
+  function stop() {
+    // `stop()` fires one final dataavailable with the remainder of the slice.
+    recorderRef.current?.stop();
+    if (timerRef.current) clearInterval(timerRef.current);
+    setRecording(false);
+  }
+
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={recording ? "default" : "outline"}
+          disabled={!canRecord}
+          title={
+            canRecord
+              ? recording
+                ? "Stop recording"
+                : "Record the whole meeting — press just before it starts, stop when it ends"
+              : "A cancelled session cannot be recorded"
+          }
+          onClick={recording ? stop : () => void start()}
+          className={recording ? "animate-pulse" : ""}
+        >
+          {/* The mic, lit while live. */}
+          <svg
+            viewBox="0 0 24 24"
+            width={14}
+            height={14}
+            aria-hidden
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            className="mr-1.5"
+          >
+            <rect x="9" y="3" width="6" height="11" rx="3" fill={recording ? "currentColor" : "none"} />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </svg>
+          {recording ? "Stop recording" : "Record meeting"}
+        </Button>
+        {recording && (
+          <span className="micro text-[rgb(var(--bad))]">
+            {mm}:{ss} · {sent} slice{sent === 1 ? "" : "s"} transcribed
+            {queued > 0 ? ` · ${queued} uploading` : ""}
+          </span>
+        )}
+        {!recording && sent > 0 && (
+          <span className="micro text-muted-foreground">
+            {sent} slice{sent === 1 ? "" : "s"} captured — the AI drafts minutes from these.
+          </span>
+        )}
+      </div>
+      {error && <span className="text-xs text-[rgb(var(--bad))]">{error}</span>}
+    </div>
+  );
+}
+
 /* ══ Schedule form ═════════════════════════════════════════════════════════ */
 
 function ScheduleForm({
@@ -291,7 +480,26 @@ function SessionPanel({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [note, setNote] = React.useState("");
+  // Slices transcribed during THIS open panel session (10708). The server's
+  // `transcript` only refreshes on reload, so the running words the recorder
+  // produces are appended here and folded into the display — and cleared once
+  // a reload shows the server has them (the column never shrinks, so any
+  // growth means the chunks landed server-side and would otherwise display
+  // twice).
+  const [captured, setCaptured] = React.useState<string[]>([]);
   const t = session.data;
+  const serverLen = (t?.transcript || "").length;
+  const lastServerLen = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (lastServerLen.current === null) {
+      lastServerLen.current = serverLen;
+      return;
+    }
+    if (serverLen > lastServerLen.current) {
+      lastServerLen.current = serverLen;
+      setCaptured([]);
+    }
+  }, [serverLen]);
 
   async function run(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
@@ -426,6 +634,37 @@ function SessionPanel({
       {/* ── Notes and minutes ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-2">
         <p className="micro">Notes &amp; minutes</p>
+
+        {/* Live recording (10708). Press just before the meeting starts —
+            the whole session is recorded, sliced, transcribed, and the AI
+            drafts the minutes from the transcript + the notes. */}
+        <MeetingRecorder
+          trainingId={t.training_id}
+          canRecord={t.status !== "CANCELLED"}
+          onChunk={(text) => setCaptured((prev) => [...prev, text])}
+        />
+
+        {/* The running transcript — what the recorder has picked up. */}
+        {((t.transcript && t.transcript.trim()) || captured.length > 0) && (
+          <details className="rounded-lg border">
+            <summary className="cursor-pointer px-3 py-1.5 text-xs text-muted-foreground">
+              Transcript (
+              {[
+                (t.transcript || "").trim(),
+                captured.join("\n").trim(),
+              ]
+                .filter(Boolean)
+                .join("\n")
+                .split(/\s+/)
+                .filter(Boolean).length}{" "}
+              words)
+            </summary>
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-3 pb-3 text-xs leading-relaxed text-muted-foreground">
+              {[t.transcript || "", ...captured].filter(Boolean).join("\n")}
+            </pre>
+          </details>
+        )}
+
         {notes.length > 0 && (
           <ul className="max-h-40 space-y-2 overflow-y-auto rounded-lg border p-3">
             {notes.map((n) => (
@@ -457,7 +696,11 @@ function SessionPanel({
           size="sm"
           variant="outline"
           loading={busy === "sum"}
-          disabled={notes.length === 0 || !!busy}
+          // Notes OR a recording — either is source the AI can pick points
+          // out of (10708).
+          disabled={
+            (notes.length === 0 && !(t.transcript || "").trim() && captured.length === 0) || !!busy
+          }
           onClick={() => run("sum", () => api.summariseTraining(t.training_id))}
         >
           {t.ai_summary ? "Redraft minutes" : "Draft minutes with AI"}
@@ -736,7 +979,10 @@ export function TrainingsPage() {
   ];
 
   return (
-    <section className={shell}>
+    // pb-10: the hub's own frame leaves no breathing room under the last row,
+    // so the page's final table (compliance) sat flush against the viewport
+    // edge — the one screen in the hub where content touched the bottom.
+    <section className={cn(shell, "pb-10")}>
       <PageHeader
         eyebrow={<HubCrumb area="Human capital" to="/hr" />}
         title={tr("Trainings")}

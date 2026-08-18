@@ -164,6 +164,46 @@ async function publishTemplate(client, { serviceTypeId, stages, actor = {} }) {
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
+/**
+ * Re-activate a superseded version (10708b) — the rollback the register could
+ * never express.
+ *
+ * Publishing a new version deactivates the old one; until now the only way
+ * back was to publish ANOTHER new version, which bumps the version counter
+ * and leaves a "v4" that is byte-identical to v2 — a lie in the ledger. This
+ * instead re-activates the existing version and deactivates whatever is
+ * currently active, so the register stays an honest history.
+ *
+ * Already active is idempotent (the button can be pressed twice), and
+ * existing dossiers are untouched either way: a dossier keeps the chain it
+ * was stamped with, so a rollback only changes what FUTURE dossiers open
+ * with.
+ */
+async function activateTemplate(client, { id, actor = {} }) {
+  const before = await repo.getTemplate(client, id);
+  if (!before) return null;
+  if (before.is_active) return getTemplate(client, id);
+
+  await client.query("BEGIN");
+  try {
+    await repo.updateTemplate(client, id, { is_active: true });
+    await repo.deactivateOthers(client, before.service_type_id, id);
+    const row = await repo.getTemplate(client, id);
+    await emitEvent(client, {
+      eventTypeKey: events.TEMPLATE_ACTIVATED, moduleKey: events.MODULE,
+      entityRef: "milestone_template:" + id, actorUserId: actor.user_id || null,
+      payload: { service_type_id: before.service_type_id, version: before.version },
+    });
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.TEMPLATE_ACTIVATED,
+      moduleKey: events.MODULE, entityRef: "milestone_template:" + id,
+      before: { is_active: before.is_active }, after: { is_active: true },
+    });
+    await client.query("COMMIT");
+    return row;
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
 /* ── Instantiation ──────────────────────────────────────────────────────── */
 
 /**
@@ -526,7 +566,7 @@ async function updatePublicDetails(client, { instanceId, details, actor = {} }) 
 const listSystemDefault = (client, serviceTypeId) => repo.systemDefaultStages(client, serviceTypeId);
 
 module.exports = {
-  publishTemplate, instantiate, advance, reopen, addStage, recalculate, updatePublicDetails,
+  publishTemplate, activateTemplate, instantiate, advance, reopen, addStage, recalculate, updatePublicDetails,
   getTemplate, listTemplates, listByDossier, listAssumptions, listSystemDefault, saveAssumptions, attribution,
   resolveTarget, resolveCalendar, resolvePolicy,
   MIN_STAGES, MAX_STAGES,

@@ -48,6 +48,17 @@ const note = z.object({
   is_minutes: z.boolean().optional(),
 });
 
+/**
+ * One ~30s chunk of live dictation (10708). Same cap as the vacancy intake's
+ * transcribe — ~2.8 MB of base64 is a couple of minutes of Opus, comfortably
+ * more than one recorder slice, and small enough that a stalled upload is not
+ * a hung browser tab. The cap is the cheap outer bound: it stops a large blob
+ * being base64-decoded into memory before anything looks at it.
+ */
+const dictate = z.object({
+  audio_data_url: z.string().min(32).max(2_800_000),
+});
+
 const requirement = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(4000).optional().nullable(),
@@ -67,6 +78,7 @@ const schemas = {
   attendeeUpdate: attendee.partial(),
   presence,
   note,
+  dictate,
   requirement,
   requirementUpdate: requirement.partial(),
 };
@@ -86,6 +98,7 @@ module.exports = {
   attendeeUpdate: mw("attendeeUpdate"),
   presence: mw("presence"),
   note: mw("note"),
+  dictate: mw("dictate"),
   requirement: mw("requirement"),
   requirementUpdate: mw("requirementUpdate"),
   schemas,

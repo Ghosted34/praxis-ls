@@ -279,8 +279,12 @@ const TEMPLATES = {
         for (let i = 0; i < slots; i += 1) {
           const c = tcs[i];
           const n = `<span class="muted" style="margin-right:4px;">${i + 1}.</span>`;
+          // A grouped line (10708) prints as the file states it — "3 × 40HC" —
+          // rather than a "—" that reads as an unnamed box.
           const body = c
-            ? `<b>${k.esc(c.container_no || "—")}</b>${c.seal_no ? `<span class="muted" style="font-size:9px;"> / ${k.esc(c.seal_no)}</span>` : ""}`
+            ? c.container_type_code
+              ? `<b>${k.esc(String(c.qty || 1))} × ${k.esc(c.container_type_code)}</b>`
+              : `<b>${k.esc(c.container_no || "—")}</b>${c.seal_no ? `<span class="muted" style="font-size:9px;"> / ${k.esc(c.seal_no)}</span>` : ""}`
             : "<span style=\"color:#bbb;\">______________</span>";
           cells += `<div style="border-right:1px solid #ddd;border-bottom:1px solid #ddd;padding:3px 5px;font-size:10px;">${n}${body}</div>`;
         }

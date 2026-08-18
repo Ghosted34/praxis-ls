@@ -74,6 +74,22 @@ module.exports = {
     res.json({ data: saved });
   }),
 
+  /**
+   * Renew a contract (10708) — the new DRAFT lands on top of the list, terms
+   * carried over, ready to be drafted with the new dates and sent.
+   */
+  renewFor: asyncHandler(async (req, res) => {
+    const row = await req.tenantDb((c) =>
+      service.renew(c, {
+        id: req.params.id,
+        effective_on: req.body.effective_on ?? null,
+        end_on: req.body.end_on ?? null,
+        actor: req.user || { user_id: null },
+      }));
+    if (!row) throw new AppError("NOT_FOUND", "Contract not found", 404);
+    res.status(201).json({ data: row });
+  }),
+
   /** What lapses soon — the query nothing could answer before 0700. */
   lapsing: asyncHandler(async (req, res) => {
     const days = Math.min(Math.max(Number(req.query.days) || 60, 1), 365);

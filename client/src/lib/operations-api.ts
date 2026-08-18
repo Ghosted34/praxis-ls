@@ -307,27 +307,39 @@ export type DeliveryNoteLine = {
 };
 
 /**
- * A container on the note. Normally a pick from the file
- * (`dossier_container_unit_id`), but a hand-typed `container_no` is allowed —
- * boxes do turn up that were never captured on the file.
+ * A container on the note. Normally a pick from the file — a per-box unit
+ * (`dossier_container_unit_id`) or, on a GROUPED file, the container LINE it
+ * states ("3 × 40' HC", `dossier_container_line_id` + type + qty, 10708).
+ * A hand-typed `container_no` is still allowed — boxes do turn up that were
+ * never captured on the file.
  */
 export type DeliveryNoteContainer = {
   delivery_note_container_id?: string;
   dossier_container_unit_id?: string | null;
+  dossier_container_line_id?: string | null;
+  container_type_code?: string | null;
+  /** How many of the type this note hands over. 1 for a per-box unit. */
+  qty?: number | null;
   container_no?: string | null;
   seal_no?: string | null;
   gross_weight_kg?: number | null;
   notes?: string | null;
 };
 
-/** A container on the FILE, as offered by the picker. */
+/** A container on the FILE, as offered by the picker (10708: grouped lines
+ *  as well as per-box units). `kind` says which shape the row is. */
 export type AvailableContainer = {
-  dossier_container_unit_id: string;
-  container_no: string | null;
-  seal_no: string | null;
+  kind?: "unit" | "line";
+  dossier_container_unit_id?: string | null;
+  dossier_container_line_id?: string | null;
+  container_no?: string | null;
+  seal_no?: string | null;
   gross_weight_kg?: number | null;
   container_type_code?: string | null;
   container_type_en?: string | null;
+  container_type_fr?: string | null;
+  /** Line rows only: the un-numbered remainder of the line ("3" of 3 × 40HC). */
+  qty?: number | null;
   /** Note numbers this box is already on — a split load, not necessarily wrong. */
   already_on?: string[];
 };
@@ -705,6 +717,16 @@ export const publishMilestoneTemplate = (body: {
     method: "POST",
     body,
   });
+/**
+ * Re-activate a superseded template version (10708b) — the rollback the
+ * register could never express. Existing dossiers keep the chain they were
+ * stamped with; this changes what FUTURE dossiers open with.
+ */
+export const activateMilestoneTemplate = (templateId: string) =>
+  tenant<MilestoneTemplate>(`/milestones/templates/${templateId}/activate`, {
+    method: "POST",
+    body: {},
+  });
 
 /* ── Places (/geo-places) — the verified place catalogue behind every location
       field on a file: POL/POD, airports, inland terminals, custody sites ──── */
@@ -923,14 +945,28 @@ export type MilestoneStage = {
   system_code?: string | null;
 };
 
+/**
+ * A published milestone template (10708 — the register now carries the
+ * service type, the stage count and the stages themselves, so a template can
+ * be READ as the promise it encodes rather than as an id and a version).
+ *
+ * One ACTIVE template per service type; when a dossier is opened with that
+ * service type, the active template is stamped onto it as its milestone
+ * chain, and each stage's due date is forecast from the offsets.
+ */
 export type MilestoneTemplate = {
-  milestone_template_id?: string;
-  code?: string;
-  label_fr?: string;
-  label_en?: string | null;
-  stage_seq?: number;
-  default_offset_days?: number | null;
+  milestone_template_id: string;
   service_type_id?: string | null;
+  service_type_code?: string | null;
+  service_type_name?: string | null;
+  version: number;
+  is_active: boolean;
+  published_by?: string | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  stage_count?: number;
+  /** The stages in chain order, inlined by the list endpoint. */
+  stages?: MilestoneStage[];
 };
 
 /** The shipped default chain — drift comparison and "restore the default". */

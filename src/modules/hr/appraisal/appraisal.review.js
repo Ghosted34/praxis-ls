@@ -365,6 +365,74 @@ async function respond(client, { id, agree, comment = null, employeeId, actor = 
   return rows[0];
 }
 
+/**
+ * The manager's own rating for one KPI line (10708).
+ *
+ * ── WHY THIS EXISTS SEPARATELY FROM SUBMIT ────────────────────────────────
+ *
+ * 0701 shipped the evidence scorer and the two-column display, and the only
+ * way to record a manager's DIFFERENT verdict was to leave `rating` null and
+ * let submit fall back to the machine's suggestion. That made the whole
+ * "a human may disagree with the model" property theoretical: there was no
+ * control that wrote the human's number. This is that control.
+ *
+ * ── WHAT IT WRITES ────────────────────────────────────────────────────────
+ *
+ * `rating` — the human's number, in its own column beside `ai_rating`, never
+ * merged. `is_calibrated` goes true, which is what stops a later
+ * "Score from evidence" run from touching the row. `rating = null` CLEARS the
+ * decision (back to the evidence suggestion) and reopens the row to the
+ * scorer. Both directions are audit-logged.
+ *
+ * Only while the review is DRAFT: once submitted the figures are frozen, so
+ * the employee reads exactly what was submitted, not a later revision.
+ */
+async function rateLine(client, { reviewId, appraisalId, rating, comments = null, actor = {} }) {
+  const review = await getReview(client, reviewId);
+  if (!review) return null;
+  if (review.status !== "DRAFT") {
+    throw new AppError("INVALID_TRANSITION", `This review is already ${review.status.toLowerCase()}`, 422);
+  }
+  const line = (review.lines || []).find((l) => l.appraisal_id === appraisalId);
+  if (!line) throw new AppError("NOT_FOUND", "That KPI is not part of this review", 404);
+
+  if (rating !== null) {
+    const scale = Number(line.scale_max) || ev.DEFAULT_SCALE;
+    if (typeof rating !== "number" || !Number.isFinite(rating) || rating < 0 || rating > scale) {
+      throw new AppError("VALIDATION_ERROR", `Rating must be between 0 and ${scale}`, 422, {
+        rating: [`A rating between 0 and ${scale}.`],
+      });
+    }
+  }
+
+  await client.query(
+    `UPDATE appraisal
+        SET rating = $3,
+            is_calibrated = $4,
+            rated_at = now(),
+            rated_by = $5,
+            comments = coalesce($6, comments),
+            updated_at = now()
+      WHERE appraisal_id = $1 AND employee_id = $2
+      RETURNING *`,
+    [appraisalId, review.employee_id, rating, rating !== null,
+      await resolveActorId(client, actor.user_id), comments],
+  );
+
+  await emitEvent(client, {
+    eventTypeKey: events.UPDATED, moduleKey: events.MODULE,
+    entityRef: reviewRef(reviewId), actorUserId: actor.user_id || null,
+    payload: { line: appraisalId, calibrated: rating !== null },
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: rating !== null ? "appraisal_review.line_calibrated" : "appraisal_review.line_cleared",
+    moduleKey: events.MODULE, entityRef: reviewRef(reviewId),
+    before: line, after: { appraisal_id: appraisalId, rating, is_calibrated: rating !== null },
+  });
+  return getReview(client, reviewId);
+}
+
 /* ── The narrative ───────────────────────────────────────────────────────── */
 
 /**
@@ -441,5 +509,6 @@ module.exports = {
   listCycles, getCycle, createCycle, setCycleStatus, CYCLE_TRANSITIONS,
   gather, scoreEmployee,
   listReviews, getReview, mine, upsertReview, submitReview, respond,
+  rateLine,
   narrate, saveNarrative,
 };

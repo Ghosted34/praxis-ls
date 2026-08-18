@@ -10,6 +10,11 @@ const router = express.Router();
 router.use(authMiddleware);
 router.get("/templates", requirePermission(MODULE, "view"), controller.listTemplates);
 router.post("/templates", requirePermission(MODULE, "create"), validator.publishTemplate, controller.publishTemplate);
+/* Re-activate a superseded version (10708b). `approve`, not `edit`: it
+ * decides what every FUTURE dossier of that service type opens with — the
+ * same authority as publishing. Declared before `/:id/...` so the path is not
+ * read as a milestone-instance id. */
+router.post("/templates/:templateId/activate", requirePermission(MODULE, "approve"), controller.activateTemplate);
 router.post("/instantiate", requirePermission(MODULE, "create"), validator.instantiate, controller.instantiate);
 router.get("/dossier/:dossierId", requirePermission(MODULE, "view"), controller.byDossier);
 // Insert a stage into a LIVE chain (between two existing ones) and re-forecast

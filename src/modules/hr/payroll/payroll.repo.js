@@ -71,13 +71,25 @@ async function itemBelongsToEmployee(client, runItemId, employeeId) {
   return rows[0] || null;
 }
 
-async function payslipsForEmployee(client, employeeId) {
+/**
+ * One employee's payslips across runs.
+ *
+ * Self-service (`mine`) shows only money that has actually been approved —
+ * an employee seeing a COMPUTED figure would read a number that may yet
+ * change. The manager's view on the profile 360 passes `includeAll` and sees
+ * every stage, because "has this month's run been computed for this person"
+ * is exactly the question a manager opens the 360 to answer.
+ */
+async function payslipsForEmployee(client, employeeId, { includeAll = false } = {}) {
+  const statuses = includeAll
+    ? "('COMPUTED','SUBMITTED','APPROVED','VALIDATED','DISBURSED')"
+    : "('APPROVED','VALIDATED','DISBURSED')";
   const { rows } = await client.query(
     `SELECT pri.payroll_run_item_id, pri.gross, pri.net_pay,
-            pr.period_code, pr.status
+            pr.period_code, pr.status, pr.entity_id
        FROM payroll_run_item pri
        JOIN payroll_run pr ON pr.payroll_run_id = pri.payroll_run_id
-      WHERE pri.employee_id = $1 AND pr.status IN ('APPROVED','VALIDATED','DISBURSED')
+      WHERE pri.employee_id = $1 AND pr.status IN ${statuses}
       ORDER BY pr.period_code DESC`,
     [employeeId],
   );

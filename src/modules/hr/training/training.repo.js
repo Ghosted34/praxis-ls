@@ -149,6 +149,40 @@ async function listNotes(client, trainingId) {
   return rows;
 }
 
+/* ── Live dictation (10708) ─────────────────────────────────────────────── */
+
+/**
+ * Append a transcribed chunk to the session's running transcript.
+ *
+ * The separator is a real line break rather than a space: Whisper chunks
+ * arrive mid-sentence, and a glued word boundary is worse than a line that
+ * reads slightly awkwardly. An empty chunk is a no-op — a slice of room
+ * silence transcribed to nothing must not sprinkle blank lines through the
+ * record.
+ */
+async function appendTranscript(client, trainingId, chunk) {
+  const text = String(chunk || "").trim();
+  if (!text) {
+    const { rows } = await client.query(
+      "SELECT transcript FROM training WHERE training_id = $1",
+      [trainingId],
+    );
+    return rows[0] || null;
+  }
+  const { rows } = await client.query(
+    `UPDATE training
+        SET transcript = CASE
+              WHEN transcript IS NULL OR btrim(transcript) = '' THEN $2
+              ELSE transcript || E'\\n' || $2
+            END,
+            updated_at = now()
+      WHERE training_id = $1
+      RETURNING *`,
+    [trainingId, text],
+  );
+  return rows[0] || null;
+}
+
 /* ── Requirements ───────────────────────────────────────────────────────── */
 
 const insertRequirement = (client, data) => insertOne(client, "training_requirement", data);
@@ -231,7 +265,7 @@ module.exports = {
   ...base,
   get, list,
   insertAttendee, getAttendee, updateAttendee, listAttendees, findAttendee, presenceRows,
-  insertNote, listNotes,
+  insertNote, listNotes, appendTranscript,
   insertRequirement, getRequirement, updateRequirement, listRequirements,
   complianceRows, expiringCertificates,
 };

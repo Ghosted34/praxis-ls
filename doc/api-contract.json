@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 117,
-  "route_count": 1209,
+  "modules_mounted": 118,
+  "route_count": 1228,
   "tiers": {
     "public": 32,
     "self-scoped": 73,
-    "gated": 1104
+    "gated": 1123
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1311,6 +1311,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/costing/reconciliations/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/costing/reconciliations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/costings/": {
       "auth": true,
       "rbac": true,
@@ -1677,6 +1689,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/expense-rates/import/template": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/expense-rates/resolve": {
       "auth": true,
       "rbac": true,
@@ -1804,6 +1822,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/geo-places/search": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/god-mode/:id/dependencies": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2438,6 +2462,18 @@
       "rbac": false,
       "validated": false,
       "tier": "self-scoped"
+    },
+    "GET /api/tenant/payroll/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/payroll/employees/:employeeId/payslips": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payroll/mine": {
       "auth": true,
@@ -4677,6 +4713,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/appraisals/reviews/:reviewId/lines/:appraisalId/rate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/appraisals/reviews/:reviewId/narrate": {
       "auth": true,
       "rbac": true,
@@ -5139,6 +5181,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/contracts/:id/renew": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/contracts/:id/status": {
       "auth": true,
       "rbac": true,
@@ -5146,6 +5194,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/cost-tracking/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:id/submit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:id/validate": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5409,6 +5481,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/expense-rates/import/commit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/expense-rates/import/validate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/extra-charge-simulations/": {
       "auth": true,
       "rbac": true,
@@ -5506,6 +5590,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/geo-places/confirm": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/god-mode/pin": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5841,6 +5931,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/milestones/templates/:templateId/activate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/notifications/:id/read": {
       "auth": true,
       "rbac": false,
@@ -6028,6 +6124,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/payroll/advances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/payroll/config": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6501,6 +6603,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/messages/:messageId/acknowledge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/messages/:messageId/react": {
       "auth": true,
       "rbac": true,
@@ -6796,6 +6904,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/trainings/:id/attendees": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/trainings/:id/dictate": {
       "auth": true,
       "rbac": true,
       "validated": false,

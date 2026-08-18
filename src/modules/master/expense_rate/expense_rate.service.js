@@ -67,7 +67,7 @@ async function remove(client, { id, actor = {} }) {
 /** Resolve the effective rate for an item at a date (used by simulators/costing). */
 async function resolve(client, { dictionaryItemId, date = null, rateProviderId = null, containerTypeRefId = null }) {
   const rows = await repo.forItem(client, dictionaryItemId);
-  return pickRate(rows, { date: date || new Date().toISOString().slice(0, 10), rateProviderId, containerTypeRefId });
+  return rules.pickRate(rows, { date: date || new Date().toISOString().slice(0, 10), rateProviderId, containerTypeRefId });
 }
 
 const get = (client, id) => repo.get(client, id);

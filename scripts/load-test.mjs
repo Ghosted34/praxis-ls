@@ -49,7 +49,7 @@ async function agent(id) {
   const started = Date.now();
   while (running) {
     const [method, path] = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
-    const t0 = performance.now();
+    const t0 = Date.now();
     try {
       const res = await fetch(BASE + path, {
         method,
@@ -59,10 +59,10 @@ async function agent(id) {
           "Content-Type": "application/json",
         },
       });
-      const ms = performance.now() - t0;
+      const ms = Date.now() - t0;
       results.push({ ok: res.ok, status: res.status, ms });
     } catch (e) {
-      results.push({ ok: false, status: 0, ms: performance.now() - t0 });
+      results.push({ ok: false, status: 0, ms: Date.now() - t0 });
     }
     // A natural think time between requests, like a human moving between pages.
     await new Promise((r) => setTimeout(r, 200 + Math.random() * 600));

@@ -213,11 +213,184 @@ function SupplierInvoiceForm({
   );
 }
 
+/**
+ * Pay a POSTED_LOCKED invoice, in full or in instalments (10720).
+ * `amount` defaults to the whole outstanding balance — the ordinary payment.
+ * The treasury account names the COA credit leg (Dr 4011 / Cr treasury).
+ */
+function PayForm({
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  invoice: api.SupplierInvoice;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { rows: accounts } = useList<api.TreasuryAccount>("/treasury-accounts");
+  const ttc = Number(invoice.amount_ttc || 0);
+  const paid = Number(invoice.amount_paid || 0);
+  const outstanding = Math.round((ttc - paid) * 100) / 100;
+  const [f, setF] = React.useState({
+    amount: outstanding > 0 ? String(outstanding) : "",
+    entry_date: todayISO(),
+    treasury_account_id: "",
+    note: "",
+  });
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.paySupplierInvoice(invoice.supplier_invoice_id, {
+        amount: f.amount.trim() === "" ? undefined : Number(f.amount),
+        entry_date: f.entry_date,
+        treasury_account_id: f.treasury_account_id || undefined,
+        note: f.note || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Record payment"
+      description={`Settle ${invoice.ref || invoice.supplier_invoice_id.slice(0, 8)} — Dr 4011 / Cr treasury.`}
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Amount")}>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              className="num"
+              value={f.amount}
+              onChange={(e) => set("amount", e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Paid on")}>
+            <Input
+              type="date"
+              value={f.entry_date}
+              onChange={(e) => set("entry_date", e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Treasury account")}>
+            <Select
+              value={f.treasury_account_id}
+              onChange={(e) => set("treasury_account_id", e.target.value)}
+            >
+              <option value="">{tr("Default")}</option>
+              {(accounts || []).map((a) => (
+                <option key={a.treasury_account_id} value={a.treasury_account_id}>
+                  {a.label || a.coa_code}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={tr("Note")}>
+            <Input
+              value={f.note}
+              onChange={(e) => set("note", e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <span className="muted">Outstanding</span>
+          <span className="num font-semibold">{money(outstanding)}</span>
+        </div>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={busy}
+          onCancel={onClose}
+          saveLabel="Record payment"
+        />
+      </form>
+    </Modal>
+  );
+}
+
+/** Reverse a POSTED_LOCKED or PAID invoice — contra entries for the posting and
+ *  any payments (10721). The reason is the audit answer to "why did this hit
+ *  the ledger and then come back". */
+function ReverseForm({
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  invoice: api.SupplierInvoice;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.reverseSupplierInvoice(invoice.supplier_invoice_id, {
+        reason: reason || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Reverse invoice"
+      description={`Reverses ${invoice.ref || invoice.supplier_invoice_id.slice(0, 8)} — contra entries for the posting${invoice.status === "PAID" ? " and its payments" : ""}, status REVERSED.`}
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <Field
+          label={tr("Reason")}
+          hint="Kept on the invoice as the audit trail."
+        >
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Duplicate entry / supplier credit / wrong period…"
+          />
+        </Field>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={busy}
+          onCancel={onClose}
+          saveLabel="Reverse invoice"
+        />
+      </form>
+    </Modal>
+  );
+}
+
 export function SupplierInvoicesPage() {
   const { rows, error, loading, reload } =
     useList<api.SupplierInvoice>("/supplier-invoices");
   const { rows: suppliers } = useList<Supplier>("/suppliers");
   const [open, setOpen] = React.useState(false);
+  const [paying, setPaying] = React.useState<api.SupplierInvoice | null>(null);
+  const [reversing, setReversing] = React.useState<api.SupplierInvoice | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const sname = map(suppliers, "supplier_id", "name");
   const list = rows || [];
@@ -259,6 +432,15 @@ export function SupplierInvoicesPage() {
       className: "num text-right",
       render: (r) => money(r.amount_ttc),
     },
+    {
+      key: "amount_paid",
+      label: "Paid",
+      className: "num text-right",
+      render: (r) =>
+        r.amount_paid !== null && r.amount_paid !== undefined && Number(r.amount_paid) > 0
+          ? money(r.amount_paid)
+          : "—",
+    },
     { key: "due_on", label: "Due", render: (r) => dateFmt(r.due_on) },
     {
       key: "status",
@@ -284,6 +466,24 @@ export function SupplierInvoicesPage() {
               onClick={() => post(r)}
             >
               Post
+            </Button>
+          )}
+          {String(r.status) === "POSTED_LOCKED" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPaying(r)}
+            >
+              Record payment
+            </Button>
+          )}
+          {["POSTED_LOCKED", "PAID"].includes(String(r.status)) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setReversing(r)}
+            >
+              Reverse
             </Button>
           )}
         </RowActions>
@@ -312,7 +512,11 @@ export function SupplierInvoicesPage() {
           value={money(
             list
               .filter((i) => !String(i.status).includes("POSTED"))
-              .reduce((s, r) => s + (Number(r.amount_ttc) || 0), 0),
+              .reduce(
+                (s, r) =>
+                  s + (Number(r.amount_ttc) || 0) - (Number(r.amount_paid) || 0),
+                0,
+              ),
           )}
         />
       </KpiRow>
@@ -330,6 +534,20 @@ export function SupplierInvoicesPage() {
       />
       {open && (
         <SupplierInvoiceForm onClose={() => setOpen(false)} onSaved={reload} />
+      )}
+      {paying && (
+        <PayForm
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onSaved={reload}
+        />
+      )}
+      {reversing && (
+        <ReverseForm
+          invoice={reversing}
+          onClose={() => setReversing(null)}
+          onSaved={reload}
+        />
       )}
       <ScreenAi path="procurement/supplier-invoices" />
     </section>

@@ -65,6 +65,30 @@ describe("schemeFor", () => {
     expect(cfg.code).toBe("99");
   });
 
+  /**
+   * 10720 — the procurement numbering fixes (analysis doc §6.2): a purchase
+   * request is MOD-62 and must read PR, not fall back to the numeric code;
+   * financial statements (MOD-59) keep their own token so the two never share;
+   * a goods-received note allocates under MOD-33 (GRN) so it never shares the
+   * SIN counter with supplier invoices (MOD-61).
+   */
+  it("purchase requests number as PR (MOD-62, not the old MOD-59 mapping)", async () => {
+    const c = { query: async () => ({ rows: [] }) };
+    const cfg = await schemeFor(c, "MOD-62");
+    expect(cfg.code).toBe("PR");
+  });
+  it("financial statements and purchase requests have distinct tokens", async () => {
+    const c = { query: async () => ({ rows: [] }) };
+    expect((await schemeFor(c, "MOD-59")).code).toBe("FS");
+    expect((await schemeFor(c, "MOD-62")).code).toBe("PR");
+  });
+  it("goods received (MOD-33) and supplier invoice (MOD-61) never share a token", async () => {
+    const c = { query: async () => ({ rows: [] }) };
+    expect((await schemeFor(c, "MOD-33")).code).toBe("GRN");
+    expect((await schemeFor(c, "MOD-61")).code).toBe("SIN");
+    expect((await schemeFor(c, "MOD-33")).code).not.toBe((await schemeFor(c, "MOD-61")).code);
+  });
+
   it("has useful defaults for entity, client and supplier document numbers", async () => {
     const c = { query: async () => ({ rows: [] }) };
     expect(await schemeFor(c, "MOD-01-DOC")).toMatchObject({

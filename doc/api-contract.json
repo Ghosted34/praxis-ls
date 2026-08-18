@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 118,
-  "route_count": 1229,
+  "modules_mounted": 119,
+  "route_count": 1266,
   "tiers": {
     "public": 32,
-    "self-scoped": 73,
-    "gated": 1124
+    "self-scoped": 74,
+    "gated": 1160
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1311,6 +1311,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/cost-tracking/kpis": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/cost-tracking/portfolio": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/costing/reconciliations/": {
       "auth": true,
       "rbac": true,
@@ -1708,6 +1720,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/extra-charge-simulations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/extra-charge-simulations/rates": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2877,6 +2895,48 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/reconciliation/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/cash-counts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/lines/:lineId/matches": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/profiles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/statements": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/reconciliation/statements/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/regie/": {
       "auth": true,
       "rbac": true,
@@ -2884,6 +2944,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/regie/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/regie/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/regie/watchlist": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5013,6 +5085,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/cash-requests/:id/import-costing": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/cash-requests/:id/justify": {
       "auth": true,
       "rbac": true,
@@ -5236,6 +5314,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/costings/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costings/:id/unlock": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5614,6 +5698,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/goods-received/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/goods-received/:id/send-to-warehouse": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6333,7 +6423,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/purchase-orders/:id/pay": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/purchase-orders/:id/transition": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/purchase-orders/:id/unlock": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6424,6 +6526,114 @@
       "tier": "gated"
     },
     "POST /api/tenant/receivables/:id/post": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/:id/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/:id/document": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/cash-counts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/cash-counts/:id/attest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/cash-counts/:id/document": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/lines/:lineId/ignore": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/matches": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/matches/:matchId/confirm": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/matches/:matchId/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/profiles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/statements": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/statements/:id/match": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/reconciliation/statements/preview": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/regie/:id/query": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/regie/:id/retire": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/regie/:id/unage": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/regie/:id/write-off": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6717,7 +6927,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/supplier-invoices/:id/pay": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/supplier-invoices/:id/post": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/supplier-invoices/:id/reverse": {
       "auth": true,
       "rbac": true,
       "validated": false,

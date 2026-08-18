@@ -63,10 +63,11 @@ const MODULE_TOKENS = {
   "MOD-46": "CST", // costing
   "MOD-47": "CT", //  cost tracking
   "MOD-49": "CSH", // cash request / régie
-  "MOD-59": "PR", //  purchase request
+  "MOD-62": "PR", //  purchase request
   "MOD-60": "PO", //  purchase order
   "MOD-61": "SIN", // supplier invoice
-  "MOD-33": "GRN", // goods received
+  "MOD-33": "GRN", // goods received (procurement GRN allocates under MOD-33 so
+  //                it never shares the SIN sequence with supplier invoices)
   "MOD-36": "OUT", // outbound
   "MOD-38": "CC", //  cycle count
   "MOD-41": "WO", //  work order
@@ -80,6 +81,12 @@ const MODULE_TOKENS = {
   "MOD-04": "SUP", // supplier
   "MOD-03-DOC": "DOC", // client KYC document
   "MOD-04-DOC": "DOC", // supplier KYC document
+  // Financial statements (MOD-59) were previously token "PR" — a collision
+  // with purchase requests, which are MOD-62 and had no token of their own, so
+  // every purchase request numbered as "DOC-62-..." while statements read
+  // "PR-...". Statements do not allocate through doc_sequence today, but the
+  // token should say what it is either way.
+  "MOD-59": "FS", // financial statements (trial balance / CR / bilan / TAFIRE)
 };
 
 // KYC documents can belong to a party that has not yet been linked to one of

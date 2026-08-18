@@ -16,6 +16,9 @@ router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+// Importing budget lines from the linked APPROVED_LOCKED costing — a DRAFT
+// edit by the requester, not a decision, so `edit` like the PATCH itself.
+router.post("/:id/import-costing", requirePermission(MODULE, "edit"), validator.importCosting, controller.importCosting);
 // Both sides of the merge are kept.
 //
 //   permission  Submitting is the requester's own act (`edit`); approving,
@@ -24,8 +27,11 @@ router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, contro
 //   capability  APPROVER is demanded for the acts that release money, and only
 //               for those — asking a requester to hold APPROVER in order to
 //               submit would be the same bug one layer up.
-const TRANSITION_ACTION = { SUBMITTED: "edit", JUSTIFIED: "edit", APPROVED: "approve", REJECTED: "approve", DISBURSED: "approve" };
-const TRANSITION_CAPABILITY = { APPROVED: "APPROVER", REJECTED: "APPROVER", DISBURSED: "APPROVER" };
+// VALIDATED (finance, 10721) sits between SUBMITTED and APPROVED — both are
+// decisions, so both carry the approve grant + APPROVER capability, exactly
+// like the disbursement that follows them.
+const TRANSITION_ACTION = { SUBMITTED: "edit", JUSTIFIED: "edit", VALIDATED: "approve", APPROVED: "approve", REJECTED: "approve", DISBURSED: "approve" };
+const TRANSITION_CAPABILITY = { VALIDATED: "APPROVER", APPROVED: "APPROVER", REJECTED: "APPROVER", DISBURSED: "APPROVER" };
 
 router.post(
   "/:id/transition",

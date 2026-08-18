@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1229 |
-| Modules mounted | 118 |
+| Routes | 1266 |
+| Modules mounted | 119 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1229 mounted routes, grouped by path prefix.
+All 1266 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -425,6 +425,7 @@ All 1229 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/cash-requests/:id` | — |
 | PATCH | `/api/tenant/cash-requests/:id` | — |
 | POST | `/api/tenant/cash-requests/:id/disburse` | — |
+| POST | `/api/tenant/cash-requests/:id/import-costing` | — |
 | POST | `/api/tenant/cash-requests/:id/justify` | — |
 | POST | `/api/tenant/cash-requests/:id/transition` | — |
 
@@ -543,6 +544,8 @@ All 1229 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/cost-tracking/` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId/reconcile` | — |
+| GET | `/api/tenant/cost-tracking/kpis` | — |
+| GET | `/api/tenant/cost-tracking/portfolio` | — |
 
 ### `tenant/costing`
 
@@ -564,6 +567,7 @@ All 1229 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/costings/:id` | — |
 | PATCH | `/api/tenant/costings/:id` | — |
 | POST | `/api/tenant/costings/:id/status` | — |
+| POST | `/api/tenant/costings/:id/unlock` | — |
 
 ### `tenant/countries`
 
@@ -792,6 +796,7 @@ All 1229 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/extra-charge-simulations/` | — |
 | GET | `/api/tenant/extra-charge-simulations/:id` | — |
 | POST | `/api/tenant/extra-charge-simulations/preview` | — |
+| GET | `/api/tenant/extra-charge-simulations/rates` | — |
 
 ### `tenant/field-visibility`
 
@@ -882,6 +887,7 @@ All 1229 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/goods-received/` | — |
 | POST | `/api/tenant/goods-received/` | — |
 | GET | `/api/tenant/goods-received/:id` | — |
+| POST | `/api/tenant/goods-received/:id/send-to-warehouse` | — |
 
 ### `tenant/hr`
 
@@ -1373,7 +1379,9 @@ All 1229 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/purchase-orders/` | — |
 | GET | `/api/tenant/purchase-orders/:id` | — |
 | PATCH | `/api/tenant/purchase-orders/:id` | — |
+| POST | `/api/tenant/purchase-orders/:id/pay` | — |
 | POST | `/api/tenant/purchase-orders/:id/transition` | — |
+| POST | `/api/tenant/purchase-orders/:id/unlock` | — |
 
 ### `tenant/purchase-requests`
 
@@ -1443,14 +1451,46 @@ All 1229 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/receivables/overdue` | — |
 | GET | `/api/tenant/receivables/reminders` | — |
 
+### `tenant/reconciliation`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/reconciliation/` | — |
+| POST | `/api/tenant/reconciliation/` | — |
+| GET | `/api/tenant/reconciliation/:id` | — |
+| POST | `/api/tenant/reconciliation/:id/approve` | — |
+| POST | `/api/tenant/reconciliation/:id/document` | — |
+| GET | `/api/tenant/reconciliation/cash-counts` | — |
+| POST | `/api/tenant/reconciliation/cash-counts` | — |
+| POST | `/api/tenant/reconciliation/cash-counts/:id/attest` | — |
+| POST | `/api/tenant/reconciliation/cash-counts/:id/document` | — |
+| POST | `/api/tenant/reconciliation/lines/:lineId/ignore` | — |
+| GET | `/api/tenant/reconciliation/lines/:lineId/matches` | — |
+| POST | `/api/tenant/reconciliation/matches` | — |
+| POST | `/api/tenant/reconciliation/matches/:matchId/confirm` | — |
+| POST | `/api/tenant/reconciliation/matches/:matchId/reject` | — |
+| GET | `/api/tenant/reconciliation/profiles` | — |
+| POST | `/api/tenant/reconciliation/profiles` | — |
+| GET | `/api/tenant/reconciliation/statements` | — |
+| POST | `/api/tenant/reconciliation/statements` | — |
+| GET | `/api/tenant/reconciliation/statements/:id` | — |
+| POST | `/api/tenant/reconciliation/statements/:id/match` | — |
+| POST | `/api/tenant/reconciliation/statements/preview` | — |
+
 ### `tenant/regie`
 
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/regie/` | — |
 | GET | `/api/tenant/regie/:id` | — |
+| POST | `/api/tenant/regie/:id/query` | — |
+| POST | `/api/tenant/regie/:id/retire` | — |
+| POST | `/api/tenant/regie/:id/unage` | — |
+| POST | `/api/tenant/regie/:id/write-off` | — |
 | POST | `/api/tenant/regie/age-due` | — |
 | POST | `/api/tenant/regie/issue` | — |
+| GET | `/api/tenant/regie/mine` | — |
+| GET | `/api/tenant/regie/watchlist` | — |
 
 ### `tenant/reports`
 
@@ -1657,7 +1697,9 @@ All 1229 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/supplier-invoices/` | — |
 | GET | `/api/tenant/supplier-invoices/:id` | — |
 | POST | `/api/tenant/supplier-invoices/:id/match` | — |
+| POST | `/api/tenant/supplier-invoices/:id/pay` | — |
 | POST | `/api/tenant/supplier-invoices/:id/post` | — |
+| POST | `/api/tenant/supplier-invoices/:id/reverse` | — |
 
 ### `tenant/supplier-types`
 

@@ -23,6 +23,14 @@ export const TONES: Record<string, Tone> = {
   CANCELLED: "bad",
   POSTED_LOCKED: "ok",
   MATCHED: "ok",
+  PAID: "ok",
+  REVERSED: "bad",
+  UNLOCK_REQUESTED: "warn",
+  PARTIAL: "warn",
+  VALIDATED: "blue",
+  PARTIALLY_DISBURSED: "warn",
+  DISBURSED: "ok",
+  JUSTIFIED: "mute",
 };
 export const tone = (s?: string | null): Tone =>
   TONES[String(s || "").toUpperCase()] || "mute";

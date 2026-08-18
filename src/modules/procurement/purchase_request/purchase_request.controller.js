@@ -2,6 +2,7 @@
 const service = require("./purchase_request.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { withDepartment } = require("../../../shared/rbac/department-scope");
+const { enqueueDocument } = require("../../../services/documents/generate");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query, req.scope_ids ?? null)) })),
@@ -21,6 +22,10 @@ module.exports = {
   transition: asyncHandler(async (req, res) => {
     const b = req.body;
     const data = await req.tenantDb((c) => service.transition(c, { id: req.params.id, to: b.to, entityId: b.entity_id, date: b.date, actor: actor(req) }));
+    // Submitting numbers + captures the request — mint its PDF then too.
+    if (data && b.to === "SUBMITTED") {
+      enqueueDocument({ tenantMeta: req.tenant, env: req.env, docType: "PURCHASE_REQUEST", recordId: req.params.id });
+    }
     res.json({ data });
   }),
 };

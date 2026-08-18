@@ -1,5 +1,5 @@
 {
-  "$comment": "Canonical UI screen registry — the AI's map of the app's screens. Each screen maps to its route, the module it belongs to (module_key), a one-line purpose, and the AI action_keys reachable from it. Keep this in sync when adding a route (see doc/AI_READINESS.md). Ingested into the AI global corpus by src/services/ai/knowledge/codebase.js; also usable by the frontend for nav/breadcrumbs.",
+  "$comment": "Canonical UI screen registry \u2014 the AI's map of the app's screens. Each screen maps to its route, the module it belongs to (module_key), a one-line purpose, and the AI action_keys reachable from it. Keep this in sync when adding a route (see doc/AI_READINESS.md). Ingested into the AI global corpus by src/services/ai/knowledge/codebase.js; also usable by the frontend for nav/breadcrumbs.",
   "$comment_actions": "`actions[]` is now COMPLETE for every <module>.ai.js manifest action, not just a sample. It is read in both directions: screen->actions grounds the assistant ('where do I raise an invoice?'), and the INVERSION action->route is how src/services/ai/answer-sources.js turns the reads the orchestrator executed into the citations under an answer. An action missing here is an answer that cannot say where it read from, so tests/unit/ai-readiness.test.js asserts every manifest read is declared on exactly one screen. Where a module owns several screens the split is by entity, not by module_key (MOD-64's signatures live on /vault/signatures, its documents on /vault/documents).",
   "version": 1,
   "screens": [
@@ -163,7 +163,7 @@
       "route": "/my-appearance",
       "area": "settings",
       "module_key": null,
-      "purpose": "Each user's own typography, overriding the tenant fonts for themselves only. Self-service — no permission required.",
+      "purpose": "Each user's own typography, overriding the tenant fonts for themselves only. Self-service \u2014 no permission required.",
       "actions": []
     },
     {
@@ -197,7 +197,7 @@
       "route": "/master/treasury-accounts",
       "area": "master",
       "module_key": "MOD-09",
-      "purpose": "Bank, cash, petty-cash and mobile-money accounts — master-detail with a 360 dossier per account (balance, last debit/credit, statement, sub-account, timeline). Categories are user-editable so a new provider (e.g. Airtel SmartCash) is added inline.",
+      "purpose": "Bank, cash, petty-cash and mobile-money accounts \u2014 master-detail with a 360 dossier per account (balance, last debit/credit, statement, sub-account, timeline). Categories are user-editable so a new provider (e.g. Airtel SmartCash) is added inline.",
       "actions": [
         "list_treasury_accounts",
         "create_treasury_account",
@@ -213,7 +213,7 @@
       "route": "/master/treasury-accounts/:id",
       "area": "master",
       "module_key": "MOD-09",
-      "purpose": "Full dossier for a single treasury account — Overview, Statement, Reconciliation, Sub-account (CoA leaf), Signatories, Documents, Timeline. Each manifest action is declared on exactly one screen (ai-readiness): `get_treasury_account` is the dossier's unique read, `list_treasury_accounts` / `list_treasury_categories` live on the list page above.",
+      "purpose": "Full dossier for a single treasury account \u2014 Overview, Statement, Reconciliation, Sub-account (CoA leaf), Signatories, Documents, Timeline. Each manifest action is declared on exactly one screen (ai-readiness): `get_treasury_account` is the dossier's unique read, `list_treasury_accounts` / `list_treasury_categories` live on the list page above.",
       "actions": [
         "get_treasury_account"
       ]
@@ -224,7 +224,7 @@
       "route": "/master/clients",
       "area": "master",
       "module_key": "MOD-03",
-      "purpose": "Customer master — terms, credit limit and withholding status.",
+      "purpose": "Customer master \u2014 terms, credit limit and withholding status.",
       "actions": [
         "list_clients",
         "get_client",
@@ -239,7 +239,7 @@
       "route": "/master/suppliers",
       "area": "master",
       "module_key": "MOD-04",
-      "purpose": "Vendor master — payment method, tax residency and rating.",
+      "purpose": "Vendor master \u2014 payment method, tax residency and rating.",
       "actions": [
         "list_suppliers",
         "get_supplier",
@@ -567,7 +567,7 @@
       "route": "/hr/employees",
       "area": "hr",
       "module_key": "MOD-02",
-      "purpose": "Human capital master — staff records HR, payroll and fleet build on.",
+      "purpose": "Human capital master \u2014 staff records HR, payroll and fleet build on.",
       "actions": [
         "list_employees",
         "get_employee",
@@ -762,7 +762,7 @@
       "route": "/finance/invoices",
       "area": "finance",
       "module_key": "MOD-51",
-      "purpose": "Final invoices — revenue recognition, clears advance + débours.",
+      "purpose": "Final invoices \u2014 revenue recognition, clears advance + d\u00e9bours.",
       "actions": [
         "list_final_invoices",
         "get_final_invoice",
@@ -777,7 +777,7 @@
       "route": "/finance/credit-notes",
       "area": "finance",
       "module_key": "MOD-51",
-      "purpose": "Reverse a finalised invoice — draft then post the contra entry.",
+      "purpose": "Reverse a finalised invoice \u2014 draft then post the contra entry.",
       "actions": []
     },
     {
@@ -786,7 +786,7 @@
       "route": "/finance/debt",
       "area": "finance",
       "module_key": "MOD-53",
-      "purpose": "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance.",
+      "purpose": "Loans from banks/directors/third parties \u2014 engagements, drawdowns, repayments and outstanding balance.",
       "actions": [
         "list_debt",
         "get_debt",
@@ -801,7 +801,7 @@
       "route": "/finance/receivables",
       "area": "finance",
       "module_key": "MOD-56",
-      "purpose": "Smart receivables ledger — open items, ageing, reminders.",
+      "purpose": "Smart receivables ledger \u2014 open items, ageing, reminders.",
       "actions": [
         "list_receipts",
         "get_receipt",
@@ -817,7 +817,7 @@
       "route": "/finance/statements",
       "area": "finance",
       "module_key": "MOD-59",
-      "purpose": "SYSCOHADA statements: trial balance, Bilan, Compte de résultat, TAFIRE.",
+      "purpose": "SYSCOHADA statements: trial balance, Bilan, Compte de r\u00e9sultat, TAFIRE.",
       "actions": [
         "get_trial_balance",
         "get_income_statement",
@@ -844,7 +844,7 @@
       "route": "/finance/chart-of-accounts",
       "area": "finance",
       "module_key": "MOD-58",
-      "purpose": "SYSCOHADA/OHADA chart of accounts — hierarchical, is_postable / requires_analytic.",
+      "purpose": "SYSCOHADA/OHADA chart of accounts \u2014 hierarchical, is_postable / requires_analytic.",
       "actions": [
         "list_accounts",
         "get_account",
@@ -858,7 +858,7 @@
       "route": "/finance/proformas",
       "area": "finance",
       "module_key": "MOD-52",
-      "purpose": "Proforma and advance-payment invoices — advance posts to 4191, not revenue.",
+      "purpose": "Proforma and advance-payment invoices \u2014 advance posts to 4191, not revenue.",
       "actions": [
         "get_advance",
         "record_proforma_payment"
@@ -998,16 +998,17 @@
         "update_cash_request",
         "transition_cash_request",
         "disburse_cash_request",
-        "justify_cash_request"
+        "justify_cash_request",
+        "import_costing_lines"
       ]
     },
     {
       "id": "costing_regie",
-      "title": "Régie",
+      "title": "R\u00e9gie",
       "route": "/costing/regie",
       "area": "costing",
       "module_key": "MOD-49",
-      "purpose": "Cash advances held by a régisseur: issue, retire against receipts or returned cash, query, write off, and the aging watchlist.",
+      "purpose": "Cash advances held by a r\u00e9gisseur: issue, retire against receipts or returned cash, query, write off, and the aging watchlist.",
       "actions": [
         "list_regie_advances",
         "get_regie_advance",
@@ -1044,7 +1045,7 @@
       "route": "/operations/files",
       "area": "operations",
       "module_key": "MOD-29",
-      "purpose": "Operations files (dossiers) — the shipment record.",
+      "purpose": "Operations files (dossiers) \u2014 the shipment record.",
       "actions": [
         "list_dossiers",
         "get_dossier",
@@ -1108,7 +1109,7 @@
       "route": "/master/service-types",
       "area": "master",
       "module_key": "MOD-29",
-      "purpose": "Service taxonomy (Master Data hub) with per-service 360°: milestone templates, applicable financial dictionary lines, dossiers, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29.",
+      "purpose": "Service taxonomy (Master Data hub) with per-service 360\u00b0: milestone templates, applicable financial dictionary lines, dossiers, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29.",
       "actions": [
         "list_service_types",
         "get_service_type",
@@ -1141,7 +1142,9 @@
         "get_purchase_order",
         "draft_purchase_order",
         "update_purchase_order",
-        "transition_purchase_order"
+        "transition_purchase_order",
+        "pay_purchase_order",
+        "unlock_purchase_order"
       ]
     },
     {
@@ -1154,7 +1157,8 @@
       "actions": [
         "list_goods_received",
         "get_goods_received",
-        "record_goods_received"
+        "record_goods_received",
+        "send_goods_received_to_warehouse"
       ]
     },
     {
@@ -1169,7 +1173,9 @@
         "get_supplier_invoice",
         "draft_supplier_invoice",
         "match_supplier_invoice",
-        "post_supplier_invoice"
+        "post_supplier_invoice",
+        "pay_supplier_invoice",
+        "reverse_supplier_invoice"
       ]
     },
     {
@@ -1193,7 +1199,7 @@
       "route": "/sales/leads/:leadId",
       "area": "sales",
       "module_key": "MOD-20",
-      "purpose": "Full dossier for a single lead — Overview, Meetings (with the F1 discovery sections and their capture state), Quote requests, Proposals, Opportunities, Enquiries triaged in, and the audit history. The join F6 made necessary: the funnel, the intake lifecycle and the pipeline stage live on three different rows, so this is the one place that shows a company's whole story. Money is gated on finance visibility. Its reads are declared on the registers above; this screen adds no manifest action of its own.",
+      "purpose": "Full dossier for a single lead \u2014 Overview, Meetings (with the F1 discovery sections and their capture state), Quote requests, Proposals, Opportunities, Enquiries triaged in, and the audit history. The join F6 made necessary: the funnel, the intake lifecycle and the pipeline stage live on three different rows, so this is the one place that shows a company's whole story. Money is gated on finance visibility. Its reads are declared on the registers above; this screen adds no manifest action of its own.",
       "actions": []
     },
     {
@@ -1202,7 +1208,7 @@
       "route": "/sales/enquiries",
       "area": "sales",
       "module_key": "MOD-25",
-      "purpose": "Contact-form enquiry desk (MOD-25). 5 KPI tiles (TOTAL / NEW / READ / RESPONDED / CLOSED) partition the result set under every filter — the legacy's four omit READ, so opened-but-unanswered messages are counted in the total and shown in no tile. Replying sends the email through the tenant's SUPPORT identity and only marks the enquiry RESPONDED if it lands; every attempt, including failures, is kept. Triage raises a lead and/or a partnership request without touching the correspondence status.",
+      "purpose": "Contact-form enquiry desk (MOD-25). 5 KPI tiles (TOTAL / NEW / READ / RESPONDED / CLOSED) partition the result set under every filter \u2014 the legacy's four omit READ, so opened-but-unanswered messages are counted in the total and shown in no tile. Replying sends the email through the tenant's SUPPORT identity and only marks the enquiry RESPONDED if it lands; every attempt, including failures, is kept. Triage raises a lead and/or a partnership request without touching the correspondence status.",
       "actions": [
         "list_enquiries",
         "get_enquiry",
@@ -1232,7 +1238,7 @@
       "route": "/sales/quote-requests/:quoteRequestId",
       "area": "sales",
       "module_key": "MOD-20",
-      "purpose": "Full dossier for a single quote request — Overview, the full logistics Scope, Attachments from the vault, Proposals reached through the lead, and the audit history, plus the opportunity it converted into. 'Is it converted' is read from converted_opportunity_id, never from the status value. Its reads are declared on the register above; this screen adds no manifest action of its own.",
+      "purpose": "Full dossier for a single quote request \u2014 Overview, the full logistics Scope, Attachments from the vault, Proposals reached through the lead, and the audit history, plus the opportunity it converted into. 'Is it converted' is read from converted_opportunity_id, never from the status value. Its reads are declared on the register above; this screen adds no manifest action of its own.",
       "actions": []
     },
     {
@@ -1267,7 +1273,7 @@
       "route": "/sales/opportunities",
       "area": "sales",
       "module_key": "MOD-24",
-      "purpose": "Kanban of open opportunities by stage (seven stages, each with a win probability). KPI strip is server-computed: open pipeline value, weighted forecast, won value, and BOTH win rates — settled (won / won+lost) and all-deals (the legacy denominator). Filter by source and search; CSV export carries the money columns as numbers.",
+      "purpose": "Kanban of open opportunities by stage (seven stages, each with a win probability). KPI strip is server-computed: open pipeline value, weighted forecast, won value, and BOTH win rates \u2014 settled (won / won+lost) and all-deals (the legacy denominator). Filter by source and search; CSV export carries the money columns as numbers.",
       "actions": [
         "list_opportunities",
         "pipeline_board",
@@ -1438,7 +1444,7 @@
       "route": "/workspace",
       "area": "home",
       "module_key": "MOD-00A",
-      "purpose": "The signed-in user's own queue — tasks, approvals and recent work.",
+      "purpose": "The signed-in user's own queue \u2014 tasks, approvals and recent work.",
       "actions": []
     },
     {
@@ -1447,7 +1453,7 @@
       "route": "/ai",
       "area": "home",
       "module_key": "MOD-00A",
-      "purpose": "The assistant's full workspace: conversation history and Spaces, the thread, and a panel for the records, tables and drafts an answer produces. Gated on MOD-00A like the Control Tower, so it sits in Overview and is reachable by anyone who can sign in — the tenant-wide AI flag is what turns it on or off. Distinct from AI Control, which governs the assistant rather than using it.",
+      "purpose": "The assistant's full workspace: conversation history and Spaces, the thread, and a panel for the records, tables and drafts an answer produces. Gated on MOD-00A like the Control Tower, so it sits in Overview and is reachable by anyone who can sign in \u2014 the tenant-wide AI flag is what turns it on or off. Distinct from AI Control, which governs the assistant rather than using it.",
       "actions": []
     },
     {
@@ -1456,7 +1462,7 @@
       "route": "/comms",
       "area": "comms",
       "module_key": "MOD-64",
-      "purpose": "Unified inbox — team chat and email in one conversation list.",
+      "purpose": "Unified inbox \u2014 team chat and email in one conversation list.",
       "actions": [
         "list_comms_channels",
         "comms_unread",
@@ -1485,7 +1491,7 @@
       "route": "/help",
       "area": "support",
       "module_key": null,
-      "purpose": "Product guides and FAQs. Ungated — every signed-in user reaches it.",
+      "purpose": "Product guides and FAQs. Ungated \u2014 every signed-in user reaches it.",
       "actions": []
     },
     {
@@ -1494,7 +1500,7 @@
       "route": "/governance",
       "area": "governance",
       "module_key": "MOD-75",
-      "purpose": "Oversight landing — approvals, workflows, audit ledger and notifications.",
+      "purpose": "Oversight landing \u2014 approvals, workflows, audit ledger and notifications.",
       "actions": []
     },
     {
@@ -1503,7 +1509,7 @@
       "route": "/godmode",
       "area": "admin",
       "module_key": "MOD-00B",
-      "purpose": "CEO purge console — destructive tenant-wide operations.",
+      "purpose": "CEO purge console \u2014 destructive tenant-wide operations.",
       "actions": []
     },
     {
@@ -1592,7 +1598,7 @@
       "route": "/settings/client-support",
       "area": "settings",
       "module_key": "MOD-67",
-      "purpose": "The account team's side of the client portal — message thread and onboarding checklist per client.",
+      "purpose": "The account team's side of the client portal \u2014 message thread and onboarding checklist per client.",
       "actions": []
     },
     {
@@ -1601,7 +1607,7 @@
       "route": "/self-service",
       "area": "hr",
       "module_key": null,
-      "purpose": "Employee self-service: own payslips with PDF download, leave balances and requests, salary advances. Ungated — the caller's own data only.",
+      "purpose": "Employee self-service: own payslips with PDF download, leave balances and requests, salary advances. Ungated \u2014 the caller's own data only.",
       "actions": []
     },
     {

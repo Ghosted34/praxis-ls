@@ -85,4 +85,25 @@ async function list(client, q = {}) {
   );
   return rows;
 }
-module.exports = { insertCR, getCR, getCRForUpdate, paymentsTotal, insertLine, insertPayment, deleteLines, listLines, listPayments, update, list };
+/**
+ * The linked costing, only when it can feed a request: its status/ref plus the
+ * line facts (label, qty, unit_cost, is_disbursement, dictionary item). Used by
+ * `importCostingLines` — the legacy `costing_lines_get` gate lives in the
+ * service (APPROVED_LOCKED only), this is just the read.
+ */
+async function costingForImport(client, costingId) {
+  if (!costingId) return null;
+  const { rows } = await client.query(
+    "SELECT costing_id, status, doc_number FROM costing WHERE costing_id = $1 LIMIT 1",
+    [costingId],
+  );
+  const head = rows[0];
+  if (!head) return null;
+  const lr = await client.query(
+    "SELECT dictionary_item_id, label, qty, unit_cost, is_disbursement FROM costing_line WHERE costing_id = $1 ORDER BY costing_line_id",
+    [costingId],
+  );
+  return { ...head, lines: lr.rows };
+}
+
+module.exports = { insertCR, getCR, getCRForUpdate, paymentsTotal, insertLine, insertPayment, deleteLines, listLines, listPayments, update, list, costingForImport };

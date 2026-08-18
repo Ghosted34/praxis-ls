@@ -25,14 +25,83 @@ async function update(client, id, fields) {
   if (!Object.keys(fields).length) return getSI(client, id);
   return updateOne(client, "supplier_invoice", "supplier_invoice_id", id, fields, "*", null, { touch: "updated_at" });
 }
-async function poTotal(client, poId) {
-  const { rows } = await client.query("SELECT total_ttc FROM purchase_order WHERE po_id = $1", [poId]);
-  return rows[0] ? Number(rows[0].total_ttc) : null;
+/** The PO facts the match needs: TTC total, currency and its originating PR. */
+async function poFacts(client, poId) {
+  const { rows } = await client.query(
+    "SELECT total_ttc, currency, pr_id FROM purchase_order WHERE po_id = $1",
+    [poId],
+  );
+  return rows[0] || null;
 }
 async function grnCountForPO(client, poId) {
   const { rows } = await client.query("SELECT COUNT(*)::int AS n FROM goods_received_note WHERE po_id = $1", [poId]);
   return rows[0].n;
 }
+/** PO ordered qty per dictionary item (for the quantity leg of the match). */
+async function poLineQty(client, poId) {
+  const { rows } = await client.query(
+    "SELECT dictionary_item_id, label, qty FROM purchase_order_item WHERE po_id = $1",
+    [poId],
+  );
+  return rows;
+}
+/** Σ PR line totals (qty × unit_price) — the request's estimated value. */
+async function prTotal(client, prId) {
+  if (!prId) return null;
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(qty * unit_price), 0) AS total FROM purchase_request_line WHERE pr_id = $1",
+    [prId],
+  );
+  return rows[0] ? Number(rows[0].total) : null;
+}
+
+/* ── AP payments (10720) ─────────────────────────────────────────────────── */
+const insertPayment = (client, data) => insertOne(client, "supplier_invoice_payment", data);
+async function listPayments(client, id) {
+  const { rows } = await client.query(
+    "SELECT * FROM supplier_invoice_payment WHERE supplier_invoice_id = $1 ORDER BY paid_on, created_at",
+    [id],
+  );
+  return rows;
+}
+/** Σ of the payment children — the source of truth for amount_paid. */
+async function paymentsTotal(client, id) {
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(amount), 0) AS total FROM supplier_invoice_payment WHERE supplier_invoice_id = $1",
+    [id],
+  );
+  return Number(rows[0].total);
+}
+/**
+ * Recompute supplier_master.cached_payables / cached_overdue from the invoices
+ * themselves — never incremented, so a reversed payment cannot drift the cache
+ * (Landing A's rule). Payable = Σ(amount_ttc − amount_paid) over posted/paid
+ * invoices; overdue is the same sum restricted to invoices past their due date
+ * (the legacy's cached_overdue, which the rebuild never wrote until 10721).
+ */
+async function refreshSupplierCache(client, supplierId) {
+  if (!supplierId) return;
+  const { rows } = await client.query(
+    `UPDATE supplier_master
+        SET cached_payables = COALESCE((
+              SELECT SUM(amount_ttc - amount_paid)
+                FROM supplier_invoice
+               WHERE supplier_id = $1
+                 AND status IN ('POSTED_LOCKED','PAID')
+            ), 0),
+            cached_overdue = COALESCE((
+              SELECT SUM(amount_ttc - amount_paid)
+                FROM supplier_invoice
+               WHERE supplier_id = $1
+                 AND status IN ('POSTED_LOCKED','PAID')
+                 AND due_on IS NOT NULL AND due_on < CURRENT_DATE
+            ), 0)
+      WHERE supplier_id = $1`,
+    [supplierId],
+  );
+  return rows[0] || null;
+}
+
 async function listSI(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
@@ -42,4 +111,4 @@ async function listSI(client, q = {}) {
   const { rows } = await client.query("SELECT *, doc_number AS ref FROM supplier_invoice WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
-module.exports = { insertSI, getSI, insertLine, deleteLines, listLines, update, poTotal, grnCountForPO, listSI };
+module.exports = { insertSI, getSI, insertLine, deleteLines, listLines, update, poFacts, grnCountForPO, poLineQty, prTotal, insertPayment, listPayments, paymentsTotal, refreshSupplierCache, listSI };

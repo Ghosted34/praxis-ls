@@ -41,6 +41,14 @@ const DOC_TYPES = {
   PURCHASE_ORDER:        { label: "Purchase order",           module: "procurement/purchase_order",    moduleKey: "MOD-60" },
   PURCHASE_REQUEST:      { label: "Purchase request",         module: "procurement/purchase_request",  moduleKey: "MOD-62" },
   SUPPLIER_INVOICE:      { label: "Supplier invoice",         module: "procurement/supplier_invoice",  moduleKey: "MOD-61" },
+  /*
+   * The procurement goods-received note (MOD-61) — issued by the
+   * procurement/goods_received module. Distinct from the WMS inbound GRN
+   * (grn_inbound) which has no capture yet; registering this code means the
+   * vault row, the template registry entry and the RBAC gate all agree, and
+   * `moduleKeyForDocType` does not fall back to MOD-70 for it.
+   */
+  GOODS_RECEIVED:        { label: "Goods received note",      module: "procurement/goods_received",    moduleKey: "MOD-61" },
   DELIVERY_NOTE:         { label: "Delivery note",            module: "operations/delivery_note",      moduleKey: "MOD-32" },
   TRANSIT_ORDER:         { label: "Transit order",            module: "operations/transit_order",      moduleKey: "MOD-30" },
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },

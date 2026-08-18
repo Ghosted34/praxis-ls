@@ -27,4 +27,4 @@ const mw = (k) => (req, _res, next) => {
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), post: mw("post"), match: mw("match"), schemas };
+module.exports = { create: mw("create"), post: mw("post"), match: mw("match"), pay: mw("pay"), reverse: mw("reverse"), schemas };

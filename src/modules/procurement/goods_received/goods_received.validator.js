@@ -29,4 +29,4 @@ const mw = (k) => (req, _res, next) => {
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), schemas };
+module.exports = { create: mw("create"), sendToWarehouse: mw("sendToWarehouse"), schemas };

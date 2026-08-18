@@ -23,6 +23,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { AccountModal } from "./account-modal";
+import { ReconciliationTab } from "./reconciliation-tab";
 
 const TABS = [
   "Overview",
@@ -481,9 +482,12 @@ export function TreasuryDossier({
       )}
 
       {tab === "Reconciliation" && (
-        <EmptyState
-          title="Reconciliation is coming next"
-          hint="Upload a bank statement (CSV/OFX) and match its lines to the postings. Follow-up to this refactor."
+        <ReconciliationTab
+          accountId={a.treasury_account_id}
+          entityId={a.entity_id}
+          currency={a.currency}
+          categoryCode={a.category_code ?? null}
+          requiresCustodian={a.category_requires_custodian === true}
         />
       )}
 

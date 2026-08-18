@@ -1248,8 +1248,15 @@ function RegieForm({
  */
 export function RegiePage() {
   const { rows, error, loading, reload } = useList<api.Regie>("/regie");
+  // `error` and `loading` are destructured because DataList REQUIRES them —
+  // they are not optional props. Passing the real ones (rather than nulls to
+  // satisfy the compiler) means a failed watchlist fetch shows as an error
+  // instead of silently rendering as "nothing due", which on an AGEING
+  // watchlist would be the most misleading possible empty state.
   const {
     data: watch,
+    error: watchError,
+    loading: watchLoading,
     reload: reloadWatch,
   } = useResource(() => api.regieWatchlist(), []);
   const [open, setOpen] = React.useState(false);
@@ -1396,6 +1403,8 @@ export function RegiePage() {
           <DataList
             columns={watchColumns}
             rows={watchRows}
+            error={watchError}
+            loading={watchLoading}
             rowKey={(r) => r.regie_advance_id}
             empty={{ title: tr("Nothing due") }}
           />

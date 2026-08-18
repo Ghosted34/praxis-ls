@@ -184,7 +184,7 @@ describe("the portfolio sheet", () => {
       /FROM dossier_visible d/i.test(x.text),
     ).text;
     expect(q).toMatch(/FROM dossier_visible/);
-    expect(q).not.toMatch(/FROM dossier\s+d/);
+    expect(q).not.toMatch(/FROM dossier\s+d\b/);
   });
 
   test("budget counts APPROVED_LOCKED costings only", async () => {

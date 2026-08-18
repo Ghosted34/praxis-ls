@@ -99,6 +99,44 @@ export type CostEntryInput = {
 };
 export const costEntriesByDossier = (dossierId: string) =>
   tenant<CostEntry[]>(`/cost-tracking/dossier/${dossierId}`);
+/** One row of the portfolio sheet — a dossier with its budget, actual and coverage. */
+export type CostPortfolioRow = {
+  dossier_id: string;
+  ref?: string | null;
+  dossier_status?: string | null;
+  bl_mawb?: string | null;
+  eta?: string | null;
+  ata?: string | null;
+  pol?: string | null;
+  pod?: string | null;
+  client_name?: string | null;
+  service_type?: string | null;
+  budget: number;
+  actual: number;
+  variance: number;
+  variance_percent: number | null;
+  over_budget: boolean;
+  advance_received: number;
+  advance_applied: number;
+  balance: number;
+  coverage_percent: number | null;
+};
+export type CostPortfolioKpis = {
+  files_tracked: number;
+  over_budget: number;
+  total_budget: number;
+  total_actual: number;
+  total_variance: number;
+  total_advance_received: number;
+  total_balance: number;
+  overall_coverage_percent: number | null;
+};
+/** Portfolio-wide cost tracking — the legacy master sheet, restored. */
+export const costPortfolio = () =>
+  tenant<CostPortfolioRow[]>("/cost-tracking/portfolio");
+export const costPortfolioKpis = () =>
+  tenant<CostPortfolioKpis>("/cost-tracking/kpis");
+
 export const reconcileDossier = (dossierId: string) =>
   tenant<Record<string, unknown>>(
     `/cost-tracking/dossier/${dossierId}/reconcile`,
@@ -121,6 +159,8 @@ export type CashRequest = {
   dossier_id?: string | null;
   status: string;
   total_budget?: number | null;
+  /** Σ of the payment rows (10719). Derived server-side, never set by hand. */
+  disbursed_amount?: number | null;
   created_at?: string;
 };
 export type CashRequestInput = {
@@ -156,25 +196,28 @@ export type CashRequestDetail = CashRequest & {
 };
 
 /**
- * Disburse an APPROVED request. Issues a régie advance (Dr 581 / Cr treasury)
- * and links it to the request.
+ * Disburse an APPROVED request, in full or as one instalment (10719).
  *
- * Takes NO amount, deliberately: the backend disburses `cash_request.amount` in
- * full and `cash_request.regie_advance_id` is a single uuid, so one request maps
- * to exactly one advance. Adding an amount field here would imply a partial
- * disbursement the server cannot record — see §3.2 of the implementation plan.
+ * `amount` is optional and defaults server-side to the whole outstanding
+ * balance, so a single full payment is unchanged for callers. Each instalment
+ * issues its OWN régie advance — two payments a fortnight apart are two
+ * advances, each with its own policy window and aging clock — and the link
+ * lives on the payment row.
  *
- * `treasury_coa` is omitted on purpose so the server resolves it from
+ * `treasury_coa` is not sent on purpose so the server resolves it from
  * ('finance','accounts'); passing one from the browser would hardcode an
  * account number into the client.
  */
 export const disburseCashRequest = (
   id: string,
   body: {
+    /** Omit to pay the whole outstanding balance (the common case). */
+    amount?: number;
     entity_id: string;
     entry_date: string;
     source_doc_ref?: string;
     holder_user_id?: string | null;
+    memo?: string;
   },
 ) =>
   tenant<{ cash_request: CashRequest; regie_advance_id: string | null }>(

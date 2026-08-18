@@ -4,6 +4,32 @@ const { insertOne, getById, page, updateOne } = require("../../../shared/db/quer
 
 const insertCR = (client, data) => insertOne(client, "cash_request", data);
 const getCR = (client, id) => getById(client, "cash_request", "cash_request_id", id);
+
+/**
+ * The request row, locked for the duration of the transaction.
+ *
+ * `disburse` recomputes `disbursed_amount` from the payment children and writes
+ * a status derived from it. Without the lock two concurrent instalments both
+ * read the same total, both compute PARTIALLY_DISBURSED, and the request ends
+ * up with two advances and a cache that understates the cash actually issued.
+ * Same rule as regie.repo.getForUpdate (10717).
+ */
+async function getCRForUpdate(client, id) {
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request WHERE cash_request_id = $1 FOR UPDATE",
+    [id],
+  );
+  return rows[0] || null;
+}
+
+/** Σ of the payment children — the source of truth for disbursed_amount. */
+async function paymentsTotal(client, id) {
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(amount), 0) AS total FROM cash_request_payment WHERE cash_request_id = $1",
+    [id],
+  );
+  return Number(rows[0].total);
+}
 const insertLine = (client, data) => insertOne(client, "cash_request_line", data);
 const insertPayment = (client, data) => insertOne(client, "cash_request_payment", data);
 
@@ -59,4 +85,4 @@ async function list(client, q = {}) {
   );
   return rows;
 }
-module.exports = { insertCR, getCR, insertLine, insertPayment, deleteLines, listLines, listPayments, update, list };
+module.exports = { insertCR, getCR, getCRForUpdate, paymentsTotal, insertLine, insertPayment, deleteLines, listLines, listPayments, update, list };

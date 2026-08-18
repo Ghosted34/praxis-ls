@@ -9,7 +9,7 @@
 
 const repo = require("./cash_request.repo");
 const events = require("./cash_request.events");
-const { assertTransition, sumField } = require("./cash_request.rules");
+const { assertTransition, sumField, disbursementState } = require("./cash_request.rules");
 const regie = require("../regie/regie.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
@@ -125,27 +125,95 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-/** Disburse an APPROVED request: issue a régie advance (Dr 581 / Cr treasury) and link it. */
-async function disburse(client, { id, entityId, entryDate, sourceDocRef, treasuryCoa = null, holderUserId = null, actor = {}, ip = null }) {
-  const cr = await repo.getCR(client, id);
-  if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
-  assertTransition(cr.status, "DISBURSED");
-  if (!(Number(cr.amount) > 0)) throw new AppError("BAD_AMOUNT", "cash request amount must be > 0 to disburse", 422);
+/**
+ * Disburse an APPROVED request, in full or in instalments (10719).
+ *
+ * WHAT THIS USED TO DO, AND WHY IT WAS WRONG. It took no amount, issued ONE
+ * advance for the whole of `cr.amount`, and set the status straight to
+ * DISBURSED. `cash_request_payment` — one-to-many, with a treasury account, a
+ * date and an entry_id, hardened by 0498 and CHECKed by 0497 — was never
+ * written to by anything. So a request the treasury could only fund in two
+ * tranches read as fully disbursed the moment the first franc moved, and the
+ * second tranche had nowhere to go.
+ *
+ * EACH INSTALMENT ISSUES ITS OWN RÉGIE ADVANCE. A régie advance is a quantity
+ * of cash in a holder's hands from a date: two payments a fortnight apart are
+ * two advances, each with its own issue posting, its own policy window and its
+ * own aging clock. Topping up the first would restate an amount its own ledger
+ * entry contradicts. The advance is linked from the PAYMENT row
+ * (`cash_request_payment.regie_advance_id`, UNIQUE); `cash_request.regie_advance_id`
+ * keeps pointing at the first so every pre-10719 reader stays correct.
+ *
+ * `amount` is optional and defaults to the whole outstanding balance, so the
+ * common case — one payment for the full request — is unchanged for callers,
+ * and the client need not send an amount it does not have a reason to vary.
+ */
+async function disburse(client, { id, amount = null, entityId, entryDate, sourceDocRef, treasuryCoa = null, treasuryAccountId = null, holderUserId = null, memo = null, actor = {}, ip = null }) {
+  // Read outside the transaction only to fail fast on a missing row; the
+  // authoritative read is the locked one below.
+  const peek = await repo.getCR(client, id);
+  if (!peek) throw new AppError("NOT_FOUND", "Cash request not found", 404);
+
   // Was hardcoded "521" — a non-postable grouping (9000:77) that the ledger
   // trigger refuses. Resolved from settings; an explicit override still wins.
   const treasury = await accountFor(client, "treasury", treasuryCoa);
+
   await client.query("BEGIN");
   try {
+    // FOR UPDATE: two concurrent instalments would otherwise both read the same
+    // total, both derive PARTIALLY_DISBURSED, and leave the cache understating
+    // the cash actually issued.
+    const cr = await repo.getCRForUpdate(client, id);
+    const requested = Number(cr.amount || 0);
+    if (!(requested > 0)) throw new AppError("BAD_AMOUNT", "cash request amount must be > 0 to disburse", 422);
+
+    const alreadyPaid = await repo.paymentsTotal(client, id);
+    const outstanding = Math.round((requested - alreadyPaid) * 100) / 100;
+    if (!(outstanding > 0)) {
+      throw new AppError("FULLY_DISBURSED", "This request has already been disbursed in full", 422);
+    }
+
+    // Default to the rest of the request: the full-payment case stays a
+    // one-argument call.
+    const pay = amount === null || amount === undefined ? outstanding : Math.round(Number(amount) * 100) / 100;
+    if (!(pay > 0)) throw new AppError("BAD_AMOUNT", "disbursement amount must be > 0", 422);
+
+    // Derive the resulting status BEFORE any posting, so an over-payment is
+    // refused without having issued an advance the caller then has to unwind.
+    const nextStatus = disbursementState(requested, alreadyPaid + pay);
+    assertTransition(cr.status, nextStatus);
+
     const advance = await regie.issue(client, {
-      holderUserId: holderUserId || cr.requested_by, amount: Number(cr.amount), entityId, entryDate,
+      holderUserId: holderUserId || cr.requested_by, amount: pay, entityId, entryDate,
       sourceDocRef: sourceDocRef || ref(id), treasuryCoa: treasury, actor, ip,
     });
     const regieAdvanceId = advance.advance ? advance.advance.regie_advance_id : (advance.regie_advance_id || null);
-    const updated = await repo.update(client, id, { status: "DISBURSED", regie_advance_id: regieAdvanceId });
-    await emitEvent(client, { eventTypeKey: events.DISBURSED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.DISBURSED, moduleKey: events.MODULE, entityRef: ref(id), after: { regie_advance_id: regieAdvanceId } });
+
+    // The payment row is the record of THIS movement of money.
+    const payment = await repo.insertPayment(client, {
+      cash_request_id: id,
+      treasury_account_id: treasuryAccountId,
+      amount: pay,
+      paid_on: entryDate,
+      entry_id: advance.entry ? advance.entry.entry_id : null,
+      regie_advance_id: regieAdvanceId,
+      memo,
+      created_by: actor.user_id || null,
+    });
+
+    // Recompute from the children rather than incrementing — an increment
+    // drifts the first time a payment is voided (10717's rule, unchanged).
+    const paidNow = await repo.paymentsTotal(client, id);
+    const fields = { status: nextStatus, disbursed_amount: paidNow };
+    // Keep the legacy single link pointing at the FIRST advance.
+    if (!cr.regie_advance_id) fields.regie_advance_id = regieAdvanceId;
+    const updated = await repo.update(client, id, fields);
+
+    const eventKey = nextStatus === "DISBURSED" ? events.DISBURSED : events.PARTIALLY_DISBURSED;
+    await emitEvent(client, { eventTypeKey: eventKey, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: eventKey, moduleKey: events.MODULE, entityRef: ref(id), after: { amount: pay, disbursed_amount: paidNow, regie_advance_id: regieAdvanceId } });
     await client.query("COMMIT");
-    return { cash_request: updated, regie_advance_id: regieAdvanceId };
+    return { cash_request: updated, regie_advance_id: regieAdvanceId, payment, outstanding: Math.round((requested - paidNow) * 100) / 100 };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 

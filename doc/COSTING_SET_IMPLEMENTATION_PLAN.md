@@ -510,6 +510,16 @@ Legacy has `VALIDATED` and `PARTIALLY_DISBURSED`; the new CHECK (`0342:74`) has 
 **Both were investigated and both were deliberately left out.** The paragraph below is the
 correction: the premise this section was written on turned out to be wrong.
 
+> **SUPERSEDED — the user confirmed cash requests ARE paid in instalments, and
+> `PARTIALLY_DISBURSED` shipped in `10719`.** The analysis below stands as the
+> reason it could not be added as "a CHECK change plus a NEXT entry": the state
+> needed the payment recording built first, which is what 10719 does. Each
+> instalment now writes a `cash_request_payment` row and issues its OWN régie
+> advance (linked from the payment, UNIQUE), `cash_request.disbursed_amount` is
+> a derived cache recomputed under `FOR UPDATE`, and the status comes from
+> `rules.disbursementState(requested, paid)` — over-payment is refused, not
+> clamped. `VALIDATED` remains deliberately absent.
+
 #### `PARTIALLY_DISBURSED` — the premise was wrong
 
 This section claimed "the schema already supports the situation (`cash_request_payment` is
@@ -584,7 +594,16 @@ no new view to diff against, so:
 Deliberately last: it is the only one of the four with no known correctness defect, and the
 comparison is analysis, not code.
 
-**DONE — `doc/COST_TRACKING_LEGACY_COMPARISON.md`.** Headline findings:
+**DONE — `doc/COST_TRACKING_LEGACY_COMPARISON.md`**, and the two actionable
+findings have since been BUILT: `GET /cost-tracking/portfolio` and
+`/cost-tracking/kpis` (one row per dossier with budget, actual, variance and
+advance coverage; `reconcileDossier` gained `advance_received`, `balance` and
+`coverage_percent`). The per-row maths is the same `reconcile`/`coverage`
+functions the single-dossier read uses — not a second copy in SQL, which is
+exactly the drift §5 documents. The portfolio reads `dossier_visible`, not the
+base table: it enumerates, and `tests/unit/dossier-draft-isolation` caught the
+first draft of the query reading `dossier` and admitting DRAFT rows onto a cost
+sheet. Headline findings:
 
 - **The view DDL does not exist in the reference tree.** Only the consumer
   (`cost-tracking-api.php`) survives; no schema dump was ever committed. The _projected

@@ -703,18 +703,33 @@ export function CostTrackingPage() {
           ))}
         </Select>
       </div>
+      {!dossierId && <CostPortfolio />}
       {dossierId && (
         <>
           <KpiRow>
+            {/* `budget`, not `planned_cost` — reconcile() returns
+                { budget, actual, variance, variance_percent, over_budget }
+                and this tile read two keys that have never existed, so it
+                rendered empty for every dossier ever selected. */}
+            <KpiTile label={tr("Budget")} value={money(rc.budget)} />
+            <KpiTile label={tr("Actual")} value={money(rc.actual)} />
             <KpiTile
-              label="Planned"
-              value={money(rc.planned_cost ?? rc.planned)}
+              label={tr("Variance")}
+              value={money(rc.variance)}
+              tone={rc.over_budget ? "bad" : "ok"}
             />
             <KpiTile
-              label={tr("Actual")}
-              value={money(rc.actual_cost ?? rc.actual)}
+              label={tr("Advance received")}
+              value={money(rc.advance_received)}
             />
-            <KpiTile label={tr("Variance")} value={money(rc.variance)} />
+            <KpiTile
+              label={tr("Coverage")}
+              value={
+                rc.coverage_percent == null
+                  ? "—"
+                  : `${num(rc.coverage_percent)}%`
+              }
+            />
           </KpiRow>
           <DataList
             columns={cols}
@@ -730,6 +745,114 @@ export function CostTrackingPage() {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * The portfolio sheet — every dossier with a budget or an actual.
+ *
+ * The legacy had a master sheet and a KPI view across all files; this module
+ * had only `/dossier/:dossierId/…`, so "which files are over budget" could not
+ * be asked without one round-trip per dossier. Shown when no single dossier is
+ * selected, so the page opens on the overview and narrows on demand.
+ *
+ * Every figure here is computed by the SAME `reconcile` and `coverage`
+ * functions the single-dossier read uses — not a second implementation in SQL.
+ * The legacy computed its status in a view AND again in PHP and the two
+ * disagreed; see doc/COST_TRACKING_LEGACY_COMPARISON.md §5.
+ */
+function CostPortfolio() {
+  const rows = useResource<api.CostPortfolioRow[]>(() => api.costPortfolio(), []);
+  const kpis = useResource<api.CostPortfolioKpis>(
+    () => api.costPortfolioKpis(),
+    [],
+  );
+  const k = kpis.data;
+
+  const cols: Column<api.CostPortfolioRow>[] = [
+    {
+      key: "ref",
+      label: "Dossier",
+      render: (r) => (
+        <span className="num font-medium text-foreground">{r.ref || "—"}</span>
+      ),
+    },
+    { key: "client_name", label: "Client", render: (r) => r.client_name || "—" },
+    {
+      key: "budget",
+      label: "Budget",
+      className: "num text-right",
+      render: (r) => money(r.budget),
+    },
+    {
+      key: "actual",
+      label: "Actual",
+      className: "num text-right",
+      render: (r) => money(r.actual),
+    },
+    {
+      key: "variance",
+      label: "Variance",
+      className: "num text-right",
+      render: (r) => (
+        <span className={r.over_budget ? "text-bad" : undefined}>
+          {money(r.variance)}
+        </span>
+      ),
+    },
+    {
+      key: "advance_received",
+      label: "Advanced",
+      className: "num text-right",
+      render: (r) => money(r.advance_received),
+    },
+    {
+      key: "coverage_percent",
+      label: "Coverage",
+      className: "num text-right",
+      // null means nothing has been spent yet — "0%" would read as "nothing is
+      // covered" when the true answer is "there is nothing to cover".
+      render: (r) =>
+        r.coverage_percent == null ? "—" : `${num(r.coverage_percent)}%`,
+    },
+  ];
+
+  return (
+    <>
+      <KpiRow>
+        <KpiTile label={tr("Files tracked")} value={num(k?.files_tracked)} />
+        <KpiTile
+          label={tr("Over budget")}
+          value={num(k?.over_budget)}
+          tone={k && k.over_budget > 0 ? "bad" : "ok"}
+        />
+        <KpiTile label={tr("Total actual")} value={money(k?.total_actual)} />
+        <KpiTile
+          label={tr("Variance")}
+          value={money(k?.total_variance)}
+          tone={k && k.total_variance > 0 ? "bad" : "ok"}
+        />
+        <KpiTile
+          label={tr("Coverage")}
+          value={
+            k?.overall_coverage_percent == null
+              ? "—"
+              : `${num(k.overall_coverage_percent)}%`
+          }
+        />
+      </KpiRow>
+      <DataList
+        columns={cols}
+        rows={rows.data}
+        error={rows.error || kpis.error}
+        loading={rows.loading}
+        rowKey={(r) => r.dossier_id}
+        empty={{
+          title: "Nothing tracked yet",
+          hint: "Dossiers appear here once they have an approved costing or a booked actual.",
+        }}
+      />
+    </>
   );
 }
 

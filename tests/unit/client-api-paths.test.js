@@ -186,16 +186,18 @@ describe("the costing set's write actions are reachable from the client", () => 
     expect(api).toContain("/unlock");
   });
 
-  test("disburse deliberately takes no amount", () => {
-    // cash_request.regie_advance_id is a single uuid and the server disburses
-    // cr.amount in full, so an amount field here would imply a partial
-    // disbursement nothing can record. See plan §3.2.
+  test("disburse can carry an instalment amount (10719)", () => {
+    // This assertion used to be the OPPOSITE — "disburse deliberately takes no
+    // amount" — and it was correct when the server could only pay a request in
+    // full. Partial disbursement changed the answer, so the test changed with
+    // it rather than being deleted: the amount must be optional, because
+    // omitting it still means "pay the whole outstanding balance".
     const block = api.slice(
       api.indexOf("export const disburseCashRequest"),
       api.indexOf("export const justifyCashRequest"),
     );
     expect(block).toContain("entity_id");
-    expect(block).not.toMatch(/^\s*amount\??:/m);
+    expect(block).toMatch(/amount\?:\s*number/);
   });
 
   test("no client function sends a GL account code", () => {

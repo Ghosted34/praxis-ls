@@ -18,7 +18,7 @@ module.exports = {
   }),
   disburse: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.disburse(c, { id: req.params.id, entityId: b.entity_id, entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, treasuryCoa: b.treasury_coa, holderUserId: b.holder_user_id, actor: actor(req), ip: req.ip }));
+    const data = await req.tenantDb((c) => service.disburse(c, { id: req.params.id, amount: b.amount === undefined ? null : b.amount, entityId: b.entity_id, entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, treasuryCoa: b.treasury_coa, treasuryAccountId: b.treasury_account_id || null, holderUserId: b.holder_user_id, memo: b.memo || null, actor: actor(req), ip: req.ip }));
     res.json({ data });
   }),
   justify: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.justify(c, { id: req.params.id, lines: req.body.lines || [], entityId: req.body.entity_id || null, entryDate: req.body.entry_date || null, actor: actor(req), ip: req.ip })) })),

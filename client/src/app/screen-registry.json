@@ -960,9 +960,11 @@
       "route": "/costing/cost-tracking",
       "area": "costing",
       "module_key": "MOD-47",
-      "purpose": "Actual costs booked against a dossier.",
+      "purpose": "Actual costs booked against a dossier, and the portfolio view across all files.",
       "actions": [
         "reconcile_dossier",
+        "cost_tracking_portfolio",
+        "cost_tracking_kpis",
         "record_cost"
       ]
     },

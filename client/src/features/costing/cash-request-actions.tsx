@@ -14,12 +14,13 @@
  * trap (581 never clearing, then a false 4211 receivable) that Landing A was
  * written to remove.
  *
- * WHY DISBURSE TAKES NO AMOUNT. The server disburses `cash_request.amount` in
- * full, and `cash_request.regie_advance_id` (0342:71) is a single uuid — one
- * request, one advance. An amount field here would imply a partial disbursement
- * that nothing can record: `insertPayment` is dead code and `disburse` has no
- * amount parameter. See §3.2 of the implementation plan for what real partial
- * disbursement would require.
+ * DISBURSEMENT IN INSTALMENTS (10719). `cash_request_payment` had existed since
+ * the module shipped and nothing had ever written to it; `disburse` took no
+ * amount and issued one advance for the whole request. A request the treasury
+ * can only fund in two tranches now records each one, and each instalment
+ * issues its OWN régie advance — two payments a fortnight apart are two
+ * advances with two policy windows, and topping up the first would restate an
+ * amount its own ledger entry contradicts.
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -51,10 +52,16 @@ export function DisburseForm({
   onSaved: () => void;
 }) {
   const { rows: entities } = useList<Entity>("/entities");
+  const requested = Number(request.total_budget ?? 0);
+  const paid = Number(request.disbursed_amount ?? 0);
+  const outstanding = Math.round((requested - paid) * 100) / 100;
+  // Blank means "the whole outstanding balance" — the server applies that
+  // default, so an unchanged form is the ordinary full payment.
   const [f, setF] = React.useState({
     entity_id: "",
     entry_date: todayISO(),
     source_doc_ref: "",
+    amount: "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
@@ -69,6 +76,7 @@ export function DisburseForm({
         entity_id: f.entity_id,
         entry_date: f.entry_date,
         source_doc_ref: f.source_doc_ref || undefined,
+        amount: f.amount.trim() === "" ? undefined : Number(f.amount),
       });
       onSaved();
       onClose();
@@ -88,9 +96,11 @@ export function DisburseForm({
     >
       <form className="space-y-4" onSubmit={submit}>
         <Callout tone="info">
-          {tr(
-            "The full requested amount is disbursed as one advance. The holder then justifies it with receipts, and any unspent cash is returned on the advance itself.",
-          )}
+          {paid > 0
+            ? `${money(paid)} of ${money(requested)} has already been paid. ${money(outstanding)} is outstanding.`
+            : tr(
+                "Leave the amount blank to disburse the full request. Each payment issues its own régie advance, which the holder justifies with receipts.",
+              )}
         </Callout>
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label={tr("Entity")} required>
@@ -111,6 +121,24 @@ export function DisburseForm({
               type="date"
               value={f.entry_date}
               onChange={(e) => set("entry_date", e.target.value)}
+            />
+          </Field>
+          <Field
+            label={tr("Amount")}
+            hint={
+              outstanding > 0
+                ? `Blank pays the full ${money(outstanding)} outstanding.`
+                : "Blank pays the full outstanding balance."
+            }
+          >
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="num text-right"
+              placeholder={outstanding > 0 ? String(outstanding) : ""}
+              value={f.amount}
+              onChange={(e) => set("amount", e.target.value)}
             />
           </Field>
           <Field
@@ -358,6 +386,11 @@ export function CashRequestActions({
       {st === "APPROVED" && (
         <Button size="sm" variant="outline" onClick={onDisburse}>
           {tr("Disburse")}
+        </Button>
+      )}
+      {st === "PARTIALLY_DISBURSED" && (
+        <Button size="sm" variant="outline" onClick={onDisburse}>
+          {tr("Pay instalment")}
         </Button>
       )}
       {st === "DISBURSED" && (

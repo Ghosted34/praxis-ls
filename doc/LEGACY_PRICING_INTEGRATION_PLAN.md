@@ -103,7 +103,11 @@ Design notes, each deliberate:
   (`check-migration-reversibility.js`); it is plain `DROP COLUMN IF EXISTS`, commented, per house
   style.
 
-### 2.2 Settings seed `migrations/seeds/9140_seed_commercial_settings.sql`
+### 2.2 Settings seed `migrations/seeds/9093_seed_commercial_settings.sql`
+
+> **Corrected during implementation.** The plan said `9140`. `migrator.files` partitions
+> `migrations/seeds/` by prefix — `/^90/` is `tenantSeeds`, `/^91/` is `platformSeeds` — so a 91xx
+> file runs against the **platform** database, where `setting` does not exist. Renumbered to 9093.
 
 `grep -rn "'commercial'" migrations/seeds/*.sql` → zero. Three keys are read at runtime and none
 exist; the tiers path _throws_ out of the box.

@@ -50,11 +50,36 @@ function computeDemurrage({ freeDays = 0, occupiedDays, tiers = [] }) {
 
 const VAT_RATE = 0.1925;
 
-/** The legacy defaults (STATE in the PHP, lines ~825-835). A tenant overrides
- *  via settings; these are the values the client has been quoted against. */
+/**
+ * The legacy defaults — `let STATE = {…}` at
+ * `administration/view/admin/extra-charges-simulator.php:823-836`, transcribed
+ * value for value. All five role copies of that page are byte-identical here.
+ *
+ * CORRECTED 10716. The previous table claimed to mirror the legacy and did not:
+ * the STORAGE bands had been copied into the DEMURRAGE slot, so demurrage billed
+ * 300/1200 (20') and 600/2400 (40') instead of 7092/12962.4 and 13465.2/25444.8
+ * — roughly 23x under. `20RF` and `20FR` were [0, 0], so reefers and flat-racks
+ * billed no demurrage at all, and `40RF`, `20HC` and `40FR` were missing
+ * entirely and fell back to the (already wrong) plain-size rate. The unit suite
+ * pinned the wrong numbers, so it stayed green throughout.
+ *
+ * These are defaults, not policy: a tenant's real tariff lives in settings
+ * `commercial.extra_charge_rates` (seed 9093) and is merged over this table.
+ * They matter anyway, because they are what an unconfigured tenant quotes.
+ */
 const DEFAULT_RATES = {
   yardTrigger: 14,
-  demurrage: { 20: [300, 1200], 40: [600, 2400], "20RF": [0, 0], "40HC": [900, 3600], "20FR": [0, 0] },
+  fx: { XAF: 1, USD: 615, EUR: 655.957 },
+  demurrage: {
+    20: [7092, 12962.4],
+    40: [13465.2, 25444.8],
+    "20RF": [7092, 12962.4],
+    "40RF": [13465.2, 25444.8],
+    "20HC": [7092, 12962.4],
+    "40HC": [13465.2, 25444.8],
+    "20FR": [7092, 12962.4],
+    "40FR": [13465.2, 25444.8],
+  },
   storage: { 20: [300, 1200, 3600, 6000], 40: [600, 2400, 7200, 12000] },
   yard: { 20: 100000, 40: 200000 },
   detention: { dry: { 20: 7400, 40: 15000 }, rf: { 20: 37500, 40: 75000 } },
@@ -62,37 +87,62 @@ const DEFAULT_RATES = {
 };
 
 /**
+ * Normalise a free-text type fragment to a billing type code, the way the
+ * legacy did it (`updateCalc`, ~:952): substring tests, not equality, so
+ * "REEFER", "40RF", "HICUBE" and "FLATRACK" all land somewhere sensible, and
+ * anything unrecognised bills as a dry box. RE is checked with RF because the
+ * legacy accepted both spellings of reefer.
+ */
+function typeCode(raw) {
+  const t = String(raw || "").toUpperCase();
+  if (t.includes("RF") || t.includes("RE")) return "RF";
+  if (t.includes("HC")) return "HC";
+  if (t.includes("FR")) return "FR";
+  return "DC";
+}
+
+/**
  * Parse a container list like the legacy did: `2x40HC, 1x20RF` →
- * [{ q, s, t }]. Sizes 20/40/45 collapse to the billing sizeKey (20 or 40);
- * the type code is DC/RF/HC/FR. Anything unparseable is dropped, not fatal —
- * same tolerance as the legacy regex.
+ * [{ q, s, t }]. Sizes 20/40/45 are kept as written (sizeKey() collapses 45 to
+ * the 40' band at billing time); the type is normalised to DC/RF/HC/FR.
+ *
+ * Legacy shape (`parseContainers`, :876): split on comma or semicolon, then one
+ * match per part with quantity optional (`40HC` is one 40' high-cube) and the
+ * separator being any of `*`, `x`, `X` or a space. A part that matches nothing
+ * is skipped rather than raising — a half-typed list should show a partial
+ * total, not an error dialog.
+ *
+ * BOUNDED QUANTIFIERS (CodeQL js/polynomial-redos). The legacy's `\d+\s*` on
+ * user input can backtrack quadratically on a long digit run. Each repetition
+ * here has a hard ceiling and the input is capped, so the worst case is linear.
  */
 function parseContainers(text) {
   const out = [];
-  // q x size type — the type is optional (`3x20` is three 20' DC).
-  // BOUNDED quantifiers throughout (CodeQL js/polynomial-redos): `\d+` on
-  // user input with `\s*` after it can backtrack quadratically on long
-  // digit runs; `\d{1,6}` + a hard input cap make the worst case linear.
-  const re = /(\d{1,6})\s{0,4}[xX×]\s{0,4}(\d{2})?\s{0,4}(?:([A-Za-z]{2,3}))?/g;
   const s = String(text || "").slice(0, 2000); // a container list is short
-  let m;
-  while ((m = re.exec(s)) !== null) {
-    if (!m[1] && !m[2] && !m[3]) continue;
-    const q = Math.max(1, parseInt(m[1], 10) || 1);
-    const sRaw = parseInt(m[2], 10) || 20;
-    const t = (m[3] || "DC").toUpperCase();
-    out.push({ q, s: sRaw, t });
+  const re = /^(?:(\d{1,6})\s{0,4}[*xX×\s]\s{0,4})?(20|40|45)(?:['"’]|ft|FT)?\s{0,4}([A-Za-z0-9]{0,12})/;
+  for (const part of s.split(/[,;\n]/, 200)) {
+    const p = part.trim();
+    if (!p) continue;
+    const m = re.exec(p);
+    if (!m) continue;
+    out.push({
+      q: Math.max(1, parseInt(m[1], 10) || 1),
+      s: parseInt(m[2], 10),
+      t: typeCode(m[3]),
+    });
   }
   return out;
 }
 
+/** 45' boxes bill on the 40' tariff — there is no 45 column in any rate table. */
 const sizeKey = (s) => (Number(s) >= 40 ? 40 : 20);
 
 /** The legacy demurrage rate key: size, or size+type for HC/RF/FR. */
 function demurrageKey(c, rates) {
   const sk = sizeKey(c.s);
-  if (c.t === "HC" || c.t === "RF" || c.t === "FR") {
-    const k = `${sk}${c.t}`;
+  const tc = typeCode(c.t);
+  if (tc === "HC" || tc === "RF" || tc === "FR") {
+    const k = `${sk}${tc}`;
     if (rates.demurrage && rates.demurrage[k]) return k;
   }
   return sk;
@@ -115,25 +165,37 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
   R.yard = { ...DEFAULT_RATES.yard, ...(rates && rates.yard) };
   R.detention = { ...DEFAULT_RATES.detention, ...(rates && rates.detention) };
   R.plug = { ...DEFAULT_RATES.plug, ...(rates && rates.plug) };
+  const FX = { ...DEFAULT_RATES.fx, ...(rates && rates.fx), ...(fx || {}) };
+  R.fx = FX;
   const trigger = yardTrigger ?? R.yardTrigger ?? 14;
   const free = Math.max(0, Math.floor(Number(freeDays) || 0));
 
   const dATA = ata ? Date.parse(ata) : NaN;
   const dGate = gateOut ? Date.parse(gateOut) : NaN;
-  const dRet = emptyReturn ? Date.parse(emptyReturn) : NaN;
+  // The legacy defaulted an unset empty-return to the gate-out date, which makes
+  // transit zero and detention zero — not "no detention section at all".
+  const dRet = emptyReturn ? Date.parse(emptyReturn) : dGate;
 
-  const ccy = fx && fx[currency] ? fx[currency] : 1;
+  const ccy = FX[currency] || 1;
   const conv = (xaf) => Math.round((xaf / ccy) * 100) / 100;
 
   const rows = [];
   const families = {};
 
-  const list = Array.isArray(containers) ? containers : parseContainers(containers);
+  const list = (Array.isArray(containers) ? containers : parseContainers(containers)).map((c) => ({
+    q: Math.max(1, Math.floor(Number(c.q) || 1)),
+    s: Number(c.s) || 20,
+    t: typeCode(c.t),
+  }));
+
+  // Port stay is a property of the file, not of a container: same ATA, same
+  // gate-out for every box on the bill of lading. Computed once.
+  const portStay = Number.isFinite(dATA) && Number.isFinite(dGate)
+    ? Math.max(0, Math.round((dGate - dATA) / MS_DAY))
+    : 0;
+
   for (const c of list) {
     const sk = sizeKey(c.s);
-    const portStay = Number.isFinite(dATA) && Number.isFinite(dGate)
-      ? Math.max(0, Math.round((dGate - dATA) / MS_DAY))
-      : 0;
 
     // 1. Demurrage — two tiers, per size AND type key (20/40/20RF/40HC/20FR).
     const dk = demurrageKey(c, R);
@@ -176,7 +238,7 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
     }
 
     // 4. Plugging — reefers only, ATA+1 → gate-out inclusive.
-    if (c.t === "RF" && Number.isFinite(dATA) && Number.isFinite(dGate)) {
+    if (typeCode(c.t) === "RF" && Number.isFinite(dATA) && Number.isFinite(dGate)) {
       const startPlug = dATA + MS_DAY;
       let pDays = 0;
       if (dGate >= startPlug) pDays = Math.round((dGate - startPlug) / MS_DAY) + 1;
@@ -193,7 +255,7 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
       const trans = Math.max(0, Math.round((dRet - dGate) / MS_DAY));
       const detD = Math.max(0, trans - 2);
       if (detD > 0) {
-        const detKey = c.t === "RF" ? "rf" : "dry";
+        const detKey = typeCode(c.t) === "RF" ? "rf" : "dry";
         const rate = (R.detention[detKey] || {})[sk] || 0;
         const amt = conv(detD * rate * c.q);
         rows.push({ cat: "Detention", desc: `${c.s}' Return`, qty: detD, unit: conv(rate), total: amt });
@@ -204,6 +266,13 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
 
   const total_ht = round2(rows.reduce((a, r) => a + r.total, 0));
   const vat = round2(total_ht * VAT_RATE);
+
+  // The legacy KPI strip: free days, port stay, and whether the free period was
+  // blown. Due date is ATA + (free - 1) days, and the status compares gate-out
+  // against it (`updateCalc`, :913-918) — EXCEEDED is strictly after.
+  const due = Number.isFinite(dATA) ? dATA + (free - 1) * MS_DAY : NaN;
+  const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : null);
+
   return {
     currency,
     rows,
@@ -213,6 +282,16 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
     total_ttc: round2(total_ht + vat),
     vat_rate: VAT_RATE,
     containers: list,
+    // Metrics — what the screen puts above the table, computed server-side so
+    // the client never re-derives a number the invoice will be argued over.
+    free_days: free,
+    port_stay_days: portStay,
+    yard_trigger: trigger,
+    due_date: iso(due),
+    status: !Number.isFinite(dATA) || !Number.isFinite(dGate) ? "WAITING" : dGate > due ? "EXCEEDED" : "OK",
+    container_count: list.reduce((a, c) => a + c.q, 0),
+    teu: round2(list.reduce((a, c) => a + c.q * (sizeKey(c.s) === 40 ? 2 : 1), 0)),
+    rates_used: R,
   };
 }
 

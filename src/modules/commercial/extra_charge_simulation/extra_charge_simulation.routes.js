@@ -10,6 +10,8 @@ const MODULE = "MOD-28";
 const router = express.Router();
 router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
+// Before /:id — "rates" is not a uuid, but the router does not know that.
+router.get("/rates", requirePermission(MODULE, "view"), controller.rates);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/preview", requirePermission(MODULE, "view"), validator.compute, controller.preview);
 router.post("/", requirePermission(MODULE, "create"), validator.compute, controller.create);

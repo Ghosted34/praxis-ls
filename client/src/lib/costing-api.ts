@@ -30,6 +30,10 @@ export type Costing = {
   total?: number | null;
   status: string;
   created_at?: string;
+  /** Unlock audit trail (10718). Present once a reopening has been asked for. */
+  unlock_reason?: string | null;
+  unlock_requested_at?: string | null;
+  unlocked_at?: string | null;
 };
 export type CostingInput = {
   dossier_id: string;
@@ -48,6 +52,29 @@ export type CostingAction =
   "SUBMIT_VALIDATION" | "SUBMIT_APPROVAL" | "APPROVE" | "REJECT";
 export const setCostingStatus = (id: string, to: CostingAction) =>
   tenant<Costing>(`/costings/${id}/status`, { method: "POST", body: { to } });
+
+/**
+ * The unlock loop (10718) — the way out of APPROVED_LOCKED.
+ *
+ * A separate endpoint from `/status`, not a fifth `to` value: `setStatus`
+ * refuses every transition out of a locked status by design, and unlock works
+ * around that guard rather than through it.
+ *
+ * `reason` is required for REQUEST_UNLOCK and ignored for the two decisions.
+ * UNLOCK is refused (422 INVOICE_ISSUED) when the dossier's final invoice has
+ * left DRAFT — reopening a costing under a posted receivable would move the
+ * priced basis while booked revenue stayed put.
+ */
+export type UnlockAction = "REQUEST_UNLOCK" | "UNLOCK" | "DENY_UNLOCK";
+export const unlockCosting = (
+  id: string,
+  action: UnlockAction,
+  reason?: string,
+) =>
+  tenant<Costing>(`/costings/${id}/unlock`, {
+    method: "POST",
+    body: reason ? { action, reason } : { action },
+  });
 
 /* ── Cost tracking(/cost-tracking) — actuals per dossier ── */
 export type CostEntry = {
@@ -113,6 +140,63 @@ export const transitionCashRequest = (
   tenant<CashRequest>(`/cash-requests/${id}/transition`, {
     method: "POST",
     body: { to, ...extra },
+  });
+
+/** One cash request with its lines and payments. */
+export const getCashRequest = (id: string) =>
+  tenant<CashRequestDetail>(`/cash-requests/${id}`);
+
+export type CashRequestDetail = CashRequest & {
+  costing_id?: string | null;
+  requested_by?: string | null;
+  regie_advance_id?: string | null;
+  amount?: number | null;
+  lines?: CashLine[];
+  payments?: unknown[];
+};
+
+/**
+ * Disburse an APPROVED request. Issues a régie advance (Dr 581 / Cr treasury)
+ * and links it to the request.
+ *
+ * Takes NO amount, deliberately: the backend disburses `cash_request.amount` in
+ * full and `cash_request.regie_advance_id` is a single uuid, so one request maps
+ * to exactly one advance. Adding an amount field here would imply a partial
+ * disbursement the server cannot record — see §3.2 of the implementation plan.
+ *
+ * `treasury_coa` is omitted on purpose so the server resolves it from
+ * ('finance','accounts'); passing one from the browser would hardcode an
+ * account number into the client.
+ */
+export const disburseCashRequest = (
+  id: string,
+  body: {
+    entity_id: string;
+    entry_date: string;
+    source_doc_ref?: string;
+    holder_user_id?: string | null;
+  },
+) =>
+  tenant<{ cash_request: CashRequest; regie_advance_id: string | null }>(
+    `/cash-requests/${id}/disburse`,
+    { method: "POST", body },
+  );
+
+/**
+ * Justify a DISBURSED request: record actual spend per line and RETIRE the
+ * linked régie advance in the same transaction.
+ *
+ * Since Landing A this is the only thing that closes the advance. If the
+ * remainder is still open the server refuses with ADVANCE_NOT_CLEARED — the
+ * holder returns the unspent cash on the advance itself first.
+ */
+export const justifyCashRequest = (
+  id: string,
+  body: { lines: CashLine[]; entity_id?: string; entry_date?: string },
+) =>
+  tenant<CashRequestDetail>(`/cash-requests/${id}/justify`, {
+    method: "POST",
+    body,
   });
 
 /* ── Régie d'avance(/regie) ── */

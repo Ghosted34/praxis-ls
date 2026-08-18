@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -23,6 +24,11 @@ import {
   WindowPill,
   regieTone,
 } from "./regie-detail";
+import {
+  DisburseForm,
+  JustifyForm,
+  CashRequestActions,
+} from "./cash-request-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -418,6 +424,27 @@ export function CostingPage() {
     }
   }
 
+  // The unlock loop (10718). APPROVED_LOCKED used to be terminal: a wrong rate
+  // or a carrier credit had no remedy but a second costing competing with the
+  // first for the same dossier. UNLOCK is refused server-side once the dossier's
+  // final invoice has left DRAFT, and that 422 surfaces here verbatim.
+  const [unlockFor, setUnlockFor] = React.useState<api.Costing | null>(null);
+  async function unlock(
+    c: api.Costing,
+    action: "UNLOCK" | "DENY_UNLOCK",
+  ) {
+    setBusyId(c.costing_id);
+    setActionError(null);
+    try {
+      await api.unlockCosting(c.costing_id, action);
+      reload();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const columns: Column<api.Costing>[] = [
     {
       key: "ref",
@@ -466,7 +493,9 @@ export function CostingPage() {
               Submit for approval
             </Button>
           )}
-          {!["APPROVED_LOCKED", "REJECTED"].includes(r.status) && (
+          {!["APPROVED_LOCKED", "REJECTED", "UNLOCK_REQUESTED"].includes(
+            r.status,
+          ) && (
             <Button
               size="sm"
               variant="outline"
@@ -475,6 +504,35 @@ export function CostingPage() {
             >
               Approve
             </Button>
+          )}
+          {r.status === "APPROVED_LOCKED" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setUnlockFor(r)}
+            >
+              {tr("Request unlock")}
+            </Button>
+          )}
+          {r.status === "UNLOCK_REQUESTED" && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.costing_id}
+                onClick={() => unlock(r, "UNLOCK")}
+              >
+                {tr("Unlock")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.costing_id}
+                onClick={() => unlock(r, "DENY_UNLOCK")}
+              >
+                {tr("Deny")}
+              </Button>
+            </>
           )}
         </RowActions>
       ),
@@ -513,7 +571,79 @@ export function CostingPage() {
         }}
       />
       {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
+      {unlockFor && (
+        <UnlockRequestForm
+          costing={unlockFor}
+          onClose={() => setUnlockFor(null)}
+          onSaved={reload}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * REQUEST_UNLOCK needs a reason — it is the audit answer to "why is this
+ * approved costing open again", and the server refuses without one
+ * (REASON_REQUIRED). Its own dialog rather than a window.prompt, so the text is
+ * a real labelled control.
+ */
+function UnlockRequestForm({
+  costing,
+  onClose,
+  onSaved,
+}: {
+  costing: api.Costing;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.unlockCosting(costing.costing_id, "REQUEST_UNLOCK", reason);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Request unlock")}
+      description="Asks an approver to reopen this costing for correction. It returns to DRAFT only once the request is granted."
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <Field
+          label={tr("Reason")}
+          required
+          hint="Kept on the costing as the audit trail, whether or not the request is granted."
+        >
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </Field>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={busy || !reason.trim()}
+          onCancel={onClose}
+          saveLabel={tr("Request unlock")}
+        />
+      </form>
+    </Modal>
   );
 }
 
@@ -764,10 +894,17 @@ export function CashRequestsPage() {
   const dref = refOf(dossiers);
   const list = rows || [];
 
-  async function submitCr(c: api.CashRequest) {
+  // The two money actions open a dialog; the three status moves are one call.
+  const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
+  const [justifying, setJustifying] = React.useState<api.CashRequest | null>(null);
+
+  async function moveCr(
+    c: api.CashRequest,
+    to: "SUBMITTED" | "APPROVED" | "REJECTED",
+  ) {
     setBusyId(c.cash_request_id);
     try {
-      await api.transitionCashRequest(c.cash_request_id, "SUBMITTED");
+      await api.transitionCashRequest(c.cash_request_id, to);
       reload();
     } catch (e) {
       reportActionError(e);
@@ -813,16 +950,13 @@ export function CashRequestsPage() {
             title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`}
             label={tr("View")}
           />
-          {(r.status === "DRAFT" || !r.status) && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={busyId === r.cash_request_id}
-              onClick={() => submitCr(r)}
-            >
-              Submit
-            </Button>
-          )}
+          <CashRequestActions
+            request={r}
+            busy={busyId === r.cash_request_id}
+            onTransition={(to) => moveCr(r, to)}
+            onDisburse={() => setDisbursing(r)}
+            onJustify={() => setJustifying(r)}
+          />
         </RowActions>
       ),
     },
@@ -860,6 +994,20 @@ export function CashRequestsPage() {
       />
       {open && (
         <CashRequestForm onClose={() => setOpen(false)} onSaved={reload} />
+      )}
+      {disbursing && (
+        <DisburseForm
+          request={disbursing}
+          onClose={() => setDisbursing(null)}
+          onSaved={reload}
+        />
+      )}
+      {justifying && (
+        <JustifyForm
+          request={justifying}
+          onClose={() => setJustifying(null)}
+          onSaved={reload}
+        />
       )}
     </section>
   );

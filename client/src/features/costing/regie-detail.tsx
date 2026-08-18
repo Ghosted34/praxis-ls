@@ -203,7 +203,11 @@ function RetireForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { rows: dossiers } = useList<Dossier>("/dossiers");
+  // "/operations", not "/dossiers" — operations_file.routes.js:66 is the only
+  // module that serves dossiers, and every other call site in the client uses
+  // this path. "/dossiers" 404s, which would have left this picker permanently
+  // empty and made the RECEIPT path unusable.
+  const { rows: dossiers } = useList<Dossier>("/operations");
   const open = Number(advance.open_balance ?? 0);
   const [f, setF] = React.useState({
     kind: "RECEIPT" as api.RegieRetirementKind,

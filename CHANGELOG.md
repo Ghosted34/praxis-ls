@@ -24,6 +24,20 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Treasury accounts can be corrected in place.** Master data → Treasury →
+  any account now has an **Edit** button next to Verify/Deactivate, opening the
+  same category-driven form the account was created with, pre-filled. A typo'd
+  account number, a missing zero on the opening balance, a wrong IBAN or
+  statement day is a correction, not a reason to deactivate the account and
+  open a second one — a treasury account is never deleted (its class-5 CoA leaf
+  is referenced by journal history), so before this the mistake was permanent
+  in the UI. The `PATCH /treasury-accounts/:id` endpoint already existed and
+  nothing called it. Entity and category stay locked, because the CoA leaf is
+  already minted under the category's parent; renaming the account still
+  renames its leaf. Emptying a field now clears it rather than leaving the old
+  value behind, and editing a *verified* account warns that the verification
+  stamp is not cleared automatically.
+
 - **The employee 360° is now the full record (10708).** The profile grew
   Payroll (payslips per period with the standard PDF), Advances (amount,
   recovered, outstanding and the recovery plan) and Sanctions tabs, and the

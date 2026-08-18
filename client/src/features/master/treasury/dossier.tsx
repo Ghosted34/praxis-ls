@@ -22,6 +22,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
+import { AccountModal } from "./account-modal";
 
 const TABS = [
   "Overview",
@@ -146,6 +147,7 @@ export function TreasuryDossier({
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [editOpen, setEditOpen] = React.useState(false);
 
   async function doAction(key: string, run: () => Promise<unknown>) {
     setBusy(key);
@@ -208,6 +210,13 @@ export function TreasuryDossier({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Corrections live here. A treasury account is never deleted — its
+              CoA leaf is referenced by journal history — so a typo'd account
+              number or a missing zero on the opening balance is fixed in
+              place, not by creating a second account. */}
+          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+            {tr("Edit")}
+          </Button>
           {!a.is_primary && (
             <Button
               size="sm"
@@ -251,6 +260,17 @@ export function TreasuryDossier({
         </div>
       </div>
       {actionError && <ErrorState message={actionError} />}
+
+      <AccountModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        editing={a}
+        custodianName={data.custodian?.full_name ?? null}
+        onSaved={() => {
+          reload();
+          onChanged?.();
+        }}
+      />
 
       {/* ── KPIs ────────────────────────────────────────────────────────── */}
       <KpiRow>

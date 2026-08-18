@@ -145,21 +145,96 @@ async function disburse(client, { id, entityId, entryDate, sourceDocRef, treasur
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-/** Justify: record actual spend against lines (spent_amount) and close the request. */
-async function justify(client, { id, lines = [], actor = {} }) {
+/**
+ * Justify: record actual spend against lines (spent_amount), RETIRE THE LINKED
+ * RÉGIE ADVANCE, and close the request.
+ *
+ * THE DEFECT THIS FIXES. Before 10717 this marked the request JUSTIFIED and
+ * stopped. The advance it was disbursed from stayed open in 581 with
+ * justified_amount = 0, so the aging worker later reclassified the full amount
+ * to 4211 — a receivable raised against a holder who HAD already accounted for
+ * the money, evidenced by the very lines being written here. A wrong ledger
+ * entry produced by a workflow completing normally.
+ *
+ * The retirement runs inside THIS transaction (via `regie.retireCore`, which
+ * does not open its own) so the request and its advance can never disagree: if
+ * the retirement is refused — over-retirement, a missing receipt — the whole
+ * justification rolls back rather than leaving a closed request over an open
+ * advance.
+ *
+ * Each spent line becomes one RECEIPT retirement tagged with the request's
+ * dossier, which is exactly the per-dossier 4731 split KB §8.2 describes as the
+ * OUTPUT of this workflow.
+ */
+async function justify(client, { id, lines = [], entityId = null, entryDate = null, actor = {}, ip = null }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, "JUSTIFIED");
+
+  // Read policy before BEGIN: it is a plain SELECT and keeps the transaction short.
+  const pol = cr.regie_advance_id ? await regie.policy(client) : null;
+
   await client.query("BEGIN");
   try {
     // Justification is the LAST moment a receipt can still be produced, so the
     // advisory check runs here too — a line justified without its supporting
     // document is exactly what the Compliance module will want to see.
-    if (lines.length) await checkProof(client, cr, await replaceLines(client, id, lines));
+    const written = lines.length ? await replaceLines(client, id, lines) : [];
+    if (lines.length) await checkProof(client, cr, written);
+
+    const spent = sumField(lines, "spent_amount");
+    let retired = null;
+
+    if (cr.regie_advance_id) {
+      if (!cr.dossier_id) {
+        // A receipt lands in 4731, which is requires_analytic (9001:113) — the
+        // ledger trigger would refuse the posting. Fail with the reason rather
+        // than letting a raw RAISE surface from inside the transaction.
+        throw new AppError(
+          "DOSSIER_REQUIRED",
+          "This request draws on a régie advance, so it must be attached to a dossier before it can be justified",
+          422,
+        );
+      }
+      if (spent > 0) {
+        // One RECEIPT for the spend. Proof was already checked per line above;
+        // pass the first line's document so the retirement carries evidence.
+        const proof = written.find((l) => l.proof_vault_id) || null;
+        retired = await regie.retireCore(client, {
+          advanceId: cr.regie_advance_id,
+          kind: "RECEIPT",
+          dossierId: cr.dossier_id,
+          amount: spent,
+          proofVaultId: proof ? proof.proof_vault_id : null,
+          memo: "Justified by cash request " + (cr.doc_number || id),
+          entityId, entryDate,
+          sourceDocRef: ref(id),
+          actor, ip,
+          policy: pol,
+        });
+
+        // Q1, answered: the remainder must come back before the advance closes.
+        // KB §6.8 step 4 says a fully justified advance nets 581 to ZERO, and
+        // allowing a "justified" request to sit over an open advance is exactly
+        // the bug above in a smaller form. The holder returns the unspent cash
+        // (Dr 571) as a separate CASH_RETURN, which the UI offers on the advance.
+        const open = Number(retired.advance.amount)
+          - Number(retired.advance.justified_amount)
+          - Number(retired.advance.returned_amount);
+        if (open > 0 && !pol.allowPartialJustification) {
+          throw new AppError(
+            "ADVANCE_NOT_CLEARED",
+            `${Math.round(open * 100) / 100} of this advance is still open — record the unspent cash returned (or a write-off) before justifying the request`,
+            422,
+          );
+        }
+      }
+    }
+
     const updated = await repo.update(client, id, { status: "JUSTIFIED" });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.JUSTIFIED, moduleKey: events.MODULE, entityRef: ref(id), after: { spent: sumField(lines, "spent_amount") } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.JUSTIFIED, moduleKey: events.MODULE, entityRef: ref(id), after: { spent, regie_advance_id: cr.regie_advance_id || null, retired: !!retired } });
     await client.query("COMMIT");
-    return updated;
+    return { ...updated, regie_retirement: retired ? retired.retirement : null };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 

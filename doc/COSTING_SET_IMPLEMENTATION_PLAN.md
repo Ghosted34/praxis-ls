@@ -59,6 +59,38 @@ Consequences, in order of severity:
 
 This is why §1 below is the first landing and why it is not optional.
 
+### 0.0 STATUS — Landing A is implemented
+
+Shipped: `migrations/tenant/10717_regie_retirement.sql`,
+`migrations/seeds/9094_seed_regie_policy.sql`, the régie module (8 files),
+the `cash_request.justify` seam, and `tests/unit/regie-retirement.test.js` (50 tests, all
+passing, no regressions against baseline).
+
+**Three defects were found DURING implementation that this plan did not know about.** All
+three would have made Landing A fail at runtime, and none was visible from the JS:
+
+1. **`658` does not exist.** KB §6.8 step 5 names it and `grep -rn "658" migrations/`
+   returns exactly one hit — a longitude in the geo catalogue (`0675:75`). Neither `658` nor
+   its heading `65` is seeded. `journal_line.account_code` is
+   `REFERENCES chart_of_accounts(code)` (`0220:56`) **and** `assert_line_valid()`
+   (`0640:150`) raises unless `is_postable` — so every write-off would have failed twice
+   over. 9094 seeds `65` + `658`.
+2. **`521` is not postable — so régie issuance is broken TODAY.** `9000:77` seeds
+   `('521','52','Banques locales',…,is_postable=false)`: it is a 3-digit grouping whose
+   postable leaf is `5211` (`9000:126`). `9001:38` re-lists it but is `ON CONFLICT DO
+NOTHING` and runs second, so 9000's row wins. Every service in the set defaults
+   `treasuryCoa = "521"` and `regie.controller.js` never overrides it, so
+   `assert_line_valid` raises _"account 521 is not postable (KB §23.3)"_ on any régie issue.
+   This is independent of the retirement gap and predates it. The seeded default is now
+   `5211`.
+3. **`4731` is `requires_analytic`** (`9001:113`), so the ledger trigger rejects a receipt
+   posting with a NULL `dossier_id`. This makes the per-kind dossier rule a hard
+   requirement rather than a nicety, and it is why `justify` now refuses a régie-backed
+   request that has no dossier.
+
+Defects 1 and 2 are the answer to "did you read the migrations properly" — neither is
+findable without reading the CoA seeds and the ledger trigger together.
+
 ### 0.1 What "enrich the process and flow" means concretely
 
 Régie is being written fresh, so the target is not parity with anything — it is the workflow
@@ -500,30 +532,38 @@ that usually bites this module is already handled.
 | C   | Legacy gaps           | Real, bounded, and `VALIDATED` needs a product decision first.                                                                                               |
 | D   | Cost tracking         | Analysis; no known defect.                                                                                                                                   |
 
-## 6. Open questions
+## 6. Decisions taken (Landing A shipped on the recommended option)
 
-1. **§1.4 remainder** — require `CASH_RETURN` before `JUSTIFIED` (recommended), or allow a
-   partially-justified close?
+All six were implemented on the recommended default. Each is reversible by a settings edit
+or a one-line change, and each is recorded here so the choice is visible rather than
+inferred from code.
+
+| #   | Question                     | Decision                                                                                                                                                                     |
+| --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Remainder before `JUSTIFIED` | **Required.** `allow_partial_justification: false`. A "justified" request over an open advance is the defect Landing A exists to remove. Tenant-overridable.                 |
+| 3   | Un-age                       | **Implemented.** `unage()` reverses via `aged_entry_id`; `ux_one_reversal_per_entry` (`0464:59`) prevents double-unaging.                                                    |
+| 4   | Write-off vs recover         | **Two distinct actions.** Write-off = `WRITE_OFF` retirement (Dr 658). Recover = the existing aging posting (Dr 4211). Write-off is only reachable from `QUERIED`.           |
+| 5   | Multi-currency               | **Added.** `currency` + `exchange_rate_to_xaf`, defaulted `'XAF'` / `1`, with `chk_regie_advance_fx_positive`.                                                               |
+| 6   | Default approval chain       | **Not seeded.** Event types are seeded as approvable so a chain _can_ bind; none is bound by default. `executor.start` logs `no_workflow`, so auto-approval is visible.      |
+| —   | Compliance flag              | **Implemented.** `ageOne` now inserts the `advance.aged_unjustified` flag the `0340:29` DDL comment already names. Best-effort: a flag failure never rolls back the posting. |
+
+Still open, because it belongs to Landing C rather than A:
+
 2. **§3.2 `VALIDATED`** — restore the two-step for consistency with costing, or record the
-   one-step as deliberate?
-3. **Un-age (§1.3)** — confirm reversing an aging reclassification is wanted. It is the right
-   accounting answer, but it is not in KB §6.8 explicitly.
-4. **Write-off account** — KB §6.8 step 5 says "write off to 658 **or** recover from the
-   holder". Recovery is `4211`, i.e. the aging posting. Confirm write-off and recover are two
-   distinct user actions rather than one.
-5. **Multi-currency advances (§1.5)** — add `currency` + `exchange_rate_to_xaf` to
-   `regie_advance` now, or keep it XAF-only? Recommend adding: it is two additive columns
-   with safe defaults, every sibling money table has them, and amount-threshold approval
-   routing needs a rate to convert against. Retrofitting after advances exist is harder.
-6. **Default approval chain for régie (§1.5 Layer 2)** — `0469_default_workflows.sql` seeds
-   single-step chains for six events. Should `regie.issued` get one by default, or ship
-   unbound (auto-approve) and let tenants opt in? Recommend **unbound with a documented
-   threshold example**: seeding a mandatory approver for every petty advance would make the
-   common case slower than it is today, and `executor.start` already logs an explicit
-   `no_workflow` auto-approve so the behaviour is visible rather than silent.
+   one-step as deliberate? Unchanged; `cash_request` is untouched by Landing A apart from
+   the justify seam.
 
-Unless answered, these take the recommended option and it is recorded in the commit, matching
-how the pricing set handled its §9.
+### 6.1 Consequences worth knowing before Landing B
+
+- **`5211`, not `521`.** The seeded treasury default is the postable leaf. `cash_request`
+  and `cost_tracking` still carry `treasuryCoa = "521"` in JS and are therefore still broken
+  on that path — deliberately out of scope here, but they should be fixed next; the same
+  `assert_line_valid` raise applies to both.
+- **A régie-backed cash request now requires a dossier.** `4731` is `requires_analytic`, so
+  justify refuses rather than letting the trigger raise. Existing requests with no dossier
+  will surface this at justify time.
+- **Advances aged before 10717 cannot be un-aged automatically** — they have no
+  `aged_entry_id`. `unage` says so explicitly instead of posting a second unlinked entry.
 
 ## 7. Verification plan
 

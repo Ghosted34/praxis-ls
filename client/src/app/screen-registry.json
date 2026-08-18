@@ -988,11 +988,16 @@
       "route": "/costing/regie",
       "area": "costing",
       "module_key": "MOD-49",
-      "purpose": "Cash advances held by a régisseur and their justification.",
+      "purpose": "Cash advances held by a régisseur: issue, retire against receipts or returned cash, query, write off, and the aging watchlist.",
       "actions": [
         "list_regie_advances",
         "get_regie_advance",
+        "regie_watchlist",
         "issue_regie_advance",
+        "retire_regie_advance",
+        "query_regie_advance",
+        "write_off_regie_advance",
+        "unage_regie_advance",
         "age_regie_advances"
       ]
     },

@@ -21,5 +21,5 @@ module.exports = {
     const data = await req.tenantDb((c) => service.disburse(c, { id: req.params.id, entityId: b.entity_id, entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, treasuryCoa: b.treasury_coa, holderUserId: b.holder_user_id, actor: actor(req), ip: req.ip }));
     res.json({ data });
   }),
-  justify: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.justify(c, { id: req.params.id, lines: req.body.lines || [], actor: actor(req) })) })),
+  justify: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.justify(c, { id: req.params.id, lines: req.body.lines || [], entityId: req.body.entity_id || null, entryDate: req.body.entry_date || null, actor: actor(req), ip: req.ip })) })),
 };

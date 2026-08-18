@@ -77,13 +77,49 @@ describe("état de rapprochement", () => {
     expect(html).toMatch(/tot bad/);
   });
 
-  it("escapes text that came from a bank narrative", () => {
+  /**
+   * A statement narrative is untrusted text: it arrives from a bank export, or
+   * from OCR of a photograph, and lands in a document that gets rendered by a
+   * browser engine.
+   *
+   * ASSERTED AS AN INVARIANT, NOT AS A STRING MATCH. An earlier version of this
+   * test looked for a literal lowercase `<script>` and would therefore have
+   * passed against a template that escaped only lowercase tags (CodeQL
+   * js/bad-tag-filter caught exactly that). What actually matters is that NO
+   * angle bracket from the injected text survives as markup — which is the
+   * property `esc` provides by escaping the characters rather than matching
+   * tag names, and the property this now checks, in both cases.
+   */
+  it.each([
+    ["lowercase", "<script>alert(1)</script>"],
+    ["uppercase", "<SCRIPT>alert(1)</SCRIPT>"],
+    ["mixed case with an attribute", "<ImG sRc=x onerror=alert(1)>"],
+  ])("escapes a bank narrative carrying %s markup", (_label, payload) => {
     const html = templates.buildReconciliationHtml({
       ...base, status: "DRAFT",
-      outstanding: { deposits_in_transit: [{ date: "2026-04-28", label: "<script>alert(1)</script>", amount: 1 }] },
+      outstanding: { deposits_in_transit: [{ date: "2026-04-28", label: payload, amount: 1 }] },
     });
-    expect(html).not.toMatch(/<script>/);
-    expect(html).toMatch(/&lt;script&gt;/);
+
+    // No live tag from the payload survives, whatever its case.
+    expect(html).not.toMatch(/<script/i);
+    expect(html).not.toMatch(/<img/i);
+    // The payload never appears verbatim...
+    expect(html).not.toContain(payload);
+    // ...but its text is still there, escaped, so the reader sees what the
+    // statement actually said rather than a silently emptied cell. Note that a
+    // word like `onerror` legitimately survives HERE — as inert text, because
+    // the angle brackets around it did not. Escaping the characters is what
+    // makes that safe; stripping the words would not be.
+    expect(html).toContain(payload.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+  });
+
+  it("escapes the same way on the cash count sheet", () => {
+    const html = templates.buildCashCountHtml({
+      currency: "XAF", denominations: [], counted_total: 0, ledger_balance: 1,
+      difference: -1, variance_reason: "<SCRIPT>alert(1)</SCRIPT>",
+    });
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain("&lt;SCRIPT&gt;");
   });
 });
 

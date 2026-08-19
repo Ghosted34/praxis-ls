@@ -24,6 +24,7 @@ import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { XIcon } from "@/components/ui/icons";
+import { InboxPage } from "./inbox";
 
 const connTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
@@ -1038,14 +1039,22 @@ function MailboxesSection() {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-type Mode = "threads" | "mailboxes";
+/**
+ * PR-1A: "Inbox" is the conversation model — folders discovered from the mail
+ * server, human/machine triage, per-user read state and search. "Threads" is
+ * the flat message log it replaces, kept for one release so anyone mid-task can
+ * fall back, and deleted with PR-1B. Inbox is the default because it is the
+ * screen people should be using.
+ */
+type Mode = "inbox" | "threads" | "mailboxes";
 const MODES: { key: Mode; label: string }[] = [
-  { key: "threads", label: "Threads" },
+  { key: "inbox", label: "Inbox" },
+  { key: "threads", label: "Message log" },
   { key: "mailboxes", label: "Mailboxes" },
 ];
 
 export function MailPage() {
-  const [mode, setMode] = React.useState<Mode>("threads");
+  const [mode, setMode] = React.useState<Mode>("inbox");
   return (
     <section className={pageShell.wide}>
       <HubTabs />
@@ -1062,6 +1071,7 @@ export function MailPage() {
         ))}
       </div>
 
+      {mode === "inbox" && <InboxPage />}
       {mode === "threads" && <ThreadsSection />}
       {mode === "mailboxes" && <MailboxesSection />}
     </section>

@@ -307,6 +307,34 @@ const listFolders = (client, connectionId, userId = null) =>
     [connectionId, userId],
   ).then((r) => r.rows);
 
+/**
+ * Unread conversations per stream, for the rail's People / Notices counts.
+ *
+ * A conversation counts as unread if ANY message in it is unread for this user
+ * — the same rule the list's `unread_count` uses, so the rail and the list can
+ * never disagree. Counted here rather than derived in the client, because the
+ * client only holds one page of rows and a badge computed from a page is a
+ * badge that quietly stops at fifty.
+ */
+const streamUnread = (client, userId, connectionId = null) =>
+  client.query(
+    `SELECT t.stream, count(*)::int AS unread
+       FROM email_thread t
+      WHERE t.email_connection_id IN ${accessible(1)}
+        AND ($2::uuid IS NULL OR t.email_connection_id = $2)
+        AND EXISTS (SELECT 1 FROM email_message m
+                     WHERE m.email_thread_id = t.email_thread_id
+                       AND NOT EXISTS (SELECT 1 FROM email_message_state s
+                                        WHERE s.email_message_id = m.email_message_id
+                                          AND s.user_id = $1 AND s.is_read))
+      GROUP BY t.stream`,
+    [userId, connectionId],
+  ).then((r) => {
+    const out = { HUMAN: 0, SYSTEM: 0 };
+    for (const row of r.rows) out[row.stream] = row.unread;
+    return out;
+  });
+
 const upsertFolder = (client, connectionId, row) =>
   client.query(
     `INSERT INTO email_folder (email_connection_id, canonical, provider_path, display_name, is_syncable)
@@ -451,7 +479,7 @@ module.exports = {
   listThreads, getThread, getThreadById, updateThread, upsertThread, refreshThreadCounts,
   insertMessage, getMessage, moveThread,
   setThreadRead, setThreadStarred, seedStateForMembers,
-  listFolders, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
+  listFolders, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
   listLabels, createLabel, deleteLabel, applyLabel,
   streamRules, knownParty, timelineByEntity,
 };

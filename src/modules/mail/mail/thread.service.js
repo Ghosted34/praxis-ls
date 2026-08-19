@@ -203,7 +203,21 @@ async function applyLabel(client, actor, threadId, labelId, on = true) {
   return { email_thread_id: threadId, email_label_id: labelId, applied: on };
 }
 
-const folders = (client, actor, connectionId) => repo.listFolders(client, connectionId, actor.user_id);
+/**
+ * The folder rail, in one round trip: the folders with the caller's unread
+ * counts, plus the two stream totals.
+ *
+ * Returned together rather than as two endpoints because they are drawn as one
+ * thing and a rail whose halves arrive separately flickers through a state
+ * where the numbers disagree.
+ */
+async function folders(client, actor, connectionId) {
+  const [list, streams] = await Promise.all([
+    repo.listFolders(client, connectionId || null, actor.user_id),
+    repo.streamUnread(client, actor.user_id, connectionId || null),
+  ]);
+  return { folders: list, streams };
+}
 const labels = (client, actor) => repo.listLabels(client, actor.user_id);
 const createLabel = (client, actor, body) => repo.createLabel(client, actor.user_id, body);
 const deleteLabel = (client, actor, id) => repo.deleteLabel(client, actor.user_id, id);

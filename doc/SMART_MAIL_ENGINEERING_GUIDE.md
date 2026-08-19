@@ -535,7 +535,90 @@ is green.
 > undo-send and an offline queue so nothing is ever lost.
 
 **Flags:** `mail.core`, `mail.composer`, `mail.shared_inbox` (surface only), `mail.provider.oauth` (off).
-**Migrations:** `10731`–`10738`. **Depends on:** nothing. **Blocks:** everything else.
+**Migrations:** `10731`–`10739`. **Depends on:** nothing. **Blocks:** everything else.
+
+### 5.0 PR-1 SHIPS AS TWO PULL REQUESTS · **1A DELIVERED, 1B NEXT**
+
+PR-1 was specified as one pull request and is being built as two. The split was judged necessary on
+review of the actual diff, and the reasoning is recorded here because "we split it" is the kind of
+decision that later reads as drift unless the argument survives with it.
+
+|          | PR-1A — the model                                                                                                        | PR-1B — the composer                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Contains | thread/message model + backfill · folders + per-folder cursors · per-user state · labels, stars · FTS search · bulk actions · the human/machine split · the inbox, rail and conversation view | TipTap + the email-safe serializer · attachments both ways · drafts · send queue · undo-send · offline · slash commands · vault document picker |
+| Risk     | a one-way data migration over every stored message                                                                       | a large new dependency and a bundle-size gate                                                     |
+| Status   | **delivered** (migrations `10731`–`10736`)                                                                               | next                                                                                              |
+
+**Why split.** Five reasons, in the order they carried weight:
+
+1. **The model cut-over is the single riskiest change in the programme** and it deserves to be
+   reviewed, merged and — if necessary — reverted on its own. A revert that also takes out a text
+   editor is a revert nobody wants to perform at the moment they need to.
+2. **File overlap is near zero.** 1A is the schema, the engine and a read surface; 1B is a composer
+   and its plumbing. Two reviewers can hold each in their head.
+3. **1A is independently shippable.** An inbox with folders, search, triage and bulk actions is a
+   usable product on its own; a composer with no conversation model to compose into is not.
+4. **TipTap is a bundle-gate risk** (`check:bundle`, `check:motion`) and belongs where it can be
+   dealt with on its own rather than alongside a migration.
+5. **Combined, the diff would exceed PR-0's already-heavy 67-file review.** PR-0 was accepted as
+   heavy because the foundation had to land whole. This does not have to.
+
+### 5.0.1 What PR-1A actually shipped, and what changed from this specification
+
+The sections below (§5.2 onwards) are the specification as written. Three things were built
+differently, each for a reason found during the build:
+
+- **`email_inbound` becomes `email_inbound_legacy` — there is NO compatibility view.** §5.2 specifies
+  a view. A view is not insertable, so every writer would have needed changing anyway; all the
+  readers are ours and were changed in the same commit; and the view's `is_read` could only have been
+  `bool_or(is_read)` over the per-user state rows — which is exactly the mailbox-wide read flag the
+  migration exists to remove. A compatibility layer that reintroduces the defect it is compatible
+  with is worse than no compatibility layer.
+- **The folder sync cursor is PER FOLDER, not per connection.** UIDVALIDITY is a per-mailbox value in
+  IMAP. One cursor shared across folders makes a renumber in Spam look like a renumber in Inbox and
+  re-downloads the wrong folder — so `email_folder.sync_cursor` carries it and
+  `email_connection.sync_cursor` is no longer read by the loop.
+- **Migration `10736` was added** (party e-mail lookup indexes) — not in the original range plan, but
+  inside PR-1's reserved `10731`–`10739`. See the bug list below.
+
+**Four bugs the database found that no static check could have.** The unit tests mock the repo, so
+`thread.repo.js`'s SQL had never executed. Running every one of its queries against a freshly
+provisioned tenant surfaced:
+
+1. **`unaccent` landed in the tenant schema, not `public`.** Tenant migrations run with
+   `search_path = <schema>,public`, so `CREATE EXTENSION IF NOT EXISTS unaccent` created it in `live`
+   — and `unaccent_safe`'s hardcoded `public.unaccent(t)` did not exist. Its own
+   `EXCEPTION WHEN OTHERS` handler swallowed the error and returned the text unfolded. Nothing
+   failed, nothing logged, and accent folding was simply absent. `10733` now asks for the extension
+   in `public` explicitly **and** builds the wrapper with whatever schema it actually occupies.
+   *General lesson for every later PR: a guarded `EXCEPTION WHEN OTHERS` around a schema-qualified
+   call turns a wiring mistake into silence.*
+2. **The QUERY side was not folded either.** `Déclaration` is stored as the token `declaration`, but a
+   user typing the word the way French actually spells it produced `déclaration` and matched nothing.
+   Both sides go through `unaccent_safe` now.
+3. **Known-party lookup compared `email = $1`, case-sensitively.** Addresses arrive as the sender's
+   client wrote them — `Client@Maersk.CM` is an ordinary From line — so the override that keeps a
+   client's mail out of the System stream silently did not fire. Both lookups fold case; `10736` adds
+   the functional indexes so the ingest hot path stays an index scan.
+4. **Moving a conversation to a folder the server never advertised** left its messages in a folder the
+   rail could not draw, which to a user is indistinguishable from deleted mail.
+   `ensureCanonicalFolder` guarantees the row before the move.
+
+**What PR-1B must now assume.**
+
+- **A conversation is the unit.** Compose, reply and forward all key on `email_thread_id`. The
+  composer's draft rows reference the thread, not a message.
+- **Read state is per user.** A draft or a send must not write `is_read` anywhere except through
+  `thread.repo.setThreadRead(client, userId, …)`.
+- **`recordOutbound` already exists and already threads.** A sent message joins (or starts) a
+  conversation and lands in SENT immediately, and the dedup index absorbs the copy the Sent-folder
+  sync brings back a minute later. The send queue calls it; it does not reimplement it.
+- **The send queue must call `mailbox.checkSendAllowance` before it flushes** (PR-0, §4.4) — the
+  throttle is bypassed by exactly the path that most needs it otherwise.
+- **The thread view has a footer reserved for the composer** and says so on screen rather than
+  rendering an empty region.
+- **The old flat surfaces are still mounted**: `GET /mail/thread` and the "Message log" tab. PR-1B
+  deletes both once nothing calls them.
 
 ### 5.1 Scope
 

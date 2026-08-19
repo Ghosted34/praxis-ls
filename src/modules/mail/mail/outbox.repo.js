@@ -39,11 +39,26 @@ const listDrafts = (client, userId, { threadId = null, limit = 50 } = {}) =>
     [userId, threadId, Math.min(Math.max(Number(limit) || 50, 1), 200)],
   ).then((r) => r.rows);
 
-/** The columns a draft update may touch, and how each is bound. */
+/**
+ * The columns a draft update may touch, and the cast each needs.
+ *
+ * A CAST, not a placeholder template. The first version of this held strings
+ * like `"$::citext[]"` and substituted the parameter number with
+ * `.replace("$", …)`, which CodeQL flagged and was right to: it replaces only
+ * the FIRST `$`, so a template that ever needed two placeholders would silently
+ * bind one and leave the other dangling. It also depended on `String.replace`
+ * leaving `$12` alone in the replacement — true only because a string pattern
+ * has no capture groups for `$12` to refer to. Two subtle behaviours stacked
+ * under a query builder is two too many, so the placeholder is now composed
+ * rather than substituted and neither behaviour is in play.
+ *
+ * Empty string means no cast. `citext[]` is required because node-postgres sends
+ * a JS array as `text[]` and Postgres will not implicitly cast it.
+ */
 const DRAFT_FIELDS = {
-  email_connection_id: "$", email_thread_id: "$", reply_to_message_id: "$", kind: "$",
-  to_address: "$::citext[]", cc_address: "$::citext[]", bcc_address: "$::citext[]",
-  subject: "$", body_json: "$", body_html: "$", body_text: "$", send_point_key: "$",
+  email_connection_id: "", email_thread_id: "", reply_to_message_id: "", kind: "",
+  to_address: "::citext[]", cc_address: "::citext[]", bcc_address: "::citext[]",
+  subject: "", body_json: "", body_html: "", body_text: "", send_point_key: "",
 };
 
 /**
@@ -75,7 +90,7 @@ async function upsertDraft(client, userId, d = {}) {
     const params = [userId, d.email_draft_id];
     const sets = provided.map((k) => {
       params.push(d[k]);
-      return `${k} = ${DRAFT_FIELDS[k].replace("$", `$${params.length}`)}`;
+      return `${k} = $${params.length}${DRAFT_FIELDS[k]}`;
     });
     const { rows } = await client.query(
       `UPDATE email_draft SET ${[...sets, "updated_at = now()"].join(", ")}

@@ -21,17 +21,32 @@
  * the quoted fragment is ROUTED THROUGH the sanitizer; what sanitize-html then
  * does with it is that library's own business and its own test suite's.
  *
- * That boundary is acceptable precisely because it is narrow: since the erpBlock
- * change there is exactly ONE fragment in this file that is not escaped by
- * construction, and every other rule below is asserted against the real code.
+ * ── THE STUB IS A RECORDER, NOT A HALF-WRITTEN SANITIZER ────────────────────
+ *
+ * The first version of this file faked the stripping with a pair of regexes.
+ * CodeQL flagged them as incomplete sanitization and was right to: a regex that
+ * removes `<script>…</script>` misses nested and malformed forms, and one that
+ * strips `on\w+=` misses plenty more. It did not ship, but it read like a
+ * sanitizer, and a plausible-looking one in a repository is something somebody
+ * eventually copies into a place that matters.
+ *
+ * It also flattered the test. A stub that appears to strip invites the reader to
+ * believe these cases prove sanitisation works, when the header above says
+ * plainly that they prove only routing. So the stub now REPLACES the fragment
+ * with a marker and records what it was handed — which is exactly, and only,
+ * what the assertions below check.
  */
+const mockSanitizerCalls = [];
 jest.mock("sanitize-html", () => {
-  const fn = (html) => String(html)
-    .replace(/<(script|style|iframe|object|embed|noscript|textarea)\b[\s\S]*?<\/\1>/gi, "")
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  const fn = (html, opts) => {
+    mockSanitizerCalls.push({ html: String(html), opts });
+    return "[SANITIZED]";
+  };
   fn.defaults = { allowedTags: ["p", "a"], allowedAttributes: { a: ["href"] } };
   return fn;
 });
+
+beforeEach(() => { mockSanitizerCalls.length = 0; });
 
 const compose = require("../../src/modules/mail/mail/compose");
 
@@ -390,30 +405,55 @@ describe("the text part is built from the tree, not from the HTML", () => {
 describe("quoted reply history", () => {
   const opts = { quotedHtml: "<p>What they wrote</p>", quotedText: "What they wrote" };
 
-  test("is appended below a rule, in grey", () => {
+  test("is appended below a rule, in grey, under the new text", () => {
     const out = html(doc(p(t("My reply"))), opts);
-    expect(out.indexOf("My reply")).toBeLessThan(out.indexOf("What they wrote"));
+    expect(out.indexOf("My reply")).toBeLessThan(out.indexOf("[SANITIZED]"));
     expect(out).toMatch(/border-top:1px solid/);
   });
 
   test("IS NOT RE-SERIALIZED — it is already delivered mail, and re-rendering would change what the other party wrote", () => {
-    expect(html(doc(p(t("r"))), { quotedHtml: '<p style="color:#ff00ff">theirs</p>' })).toMatch(/color:#ff00ff/);
+    // Handed to the sanitizer exactly as stored, styles and all. If it went
+    // through the node renderer instead, the other party's formatting would be
+    // replaced with ours and their message would read differently than they
+    // wrote it.
+    const theirs = '<p style="color:#ff00ff">theirs</p>';
+    html(doc(p(t("r"))), { quotedHtml: theirs });
+    expect(mockSanitizerCalls.map((c) => c.html)).toEqual([theirs]);
   });
 
-  test("but it IS routed through the sanitizer — it is the one fragment that came from outside", () => {
+  test("but it IS handed to the sanitizer — it is the one fragment that came from outside", () => {
     // Sanitised on ingest and again here, because it is about to leave over the
-    // tenant's own signature. See the header for what the mock does and does not
-    // prove: this asserts the fragment goes through sanitizeQuote, not what
-    // sanitize-html does with it.
-    const out = html(doc(p(t("r"))), { quotedHtml: "<p>kept</p><script>gone()</script>" });
-    expect(out).toMatch(/kept/);
-    expect(out).not.toMatch(/<script/i);
+    // tenant's own signature. The stub returns a marker, so what this asserts is
+    // that the fragment reached it and that its return value is what lands in
+    // the message — not that sanitize-html strips anything, which is that
+    // library's own test suite's job.
+    const hostile = "<p>quoted</p><script>gone()</script>";
+    const out = html(doc(p(t("r"))), { quotedHtml: hostile });
+    expect(mockSanitizerCalls.map((c) => c.html)).toContain(hostile);
+    expect(out).toMatch(/\[SANITIZED\]/);
+    // And the raw fragment never reaches the output unrouted.
+    expect(out).not.toMatch(/gone\(\)/);
   });
 
-  test("sanitizeQuote is the single entry point, and it refuses nothing silently", () => {
+  test("NOTHING ELSE IN THE MESSAGE GOES THROUGH IT — the rest is escaped by construction", () => {
+    // If a future change routed the whole document through the sanitizer again,
+    // this would catch it. The point of the erpBlock change was that it no longer
+    // needs to: every other node is escaped as it is rendered.
+    html(doc(p(t("<script>x</script>"))), {});
+    expect(mockSanitizerCalls).toHaveLength(0);
+  });
+
+  test("sanitizeQuote is the single entry point, and an empty fragment never reaches the library", () => {
     expect(compose.sanitizeQuote("")).toBe("");
     expect(compose.sanitizeQuote(null)).toBe("");
-    expect(compose.sanitizeQuote("<p>plain</p>")).toMatch(/plain/);
+    expect(mockSanitizerCalls).toHaveLength(0);
+    expect(compose.sanitizeQuote("<p>plain</p>")).toBe("[SANITIZED]");
+    expect(mockSanitizerCalls).toHaveLength(1);
+  });
+
+  test("and it is called with the narrowed allow-list, not the library defaults", () => {
+    compose.sanitizeQuote("<p>x</p>");
+    expect(mockSanitizerCalls[0].opts).toBe(compose.QUOTE_SANITIZE);
   });
 
   test("the quote allow-list is narrower than the inbound one, because this is being re-sent", () => {

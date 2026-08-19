@@ -22,13 +22,13 @@ const LINE_COLS = [
 ];
 
 /** Format a raw line into display strings (money/qty). */
-function fmtLines(lines = [], ccy) {
+function fmtLines(lines = [], ccy, cfg = {}) {
   return lines.map((l) => ({
     label: l.label,
     qty: has(l.qty) ? String(l.qty) : "",
-    unit: has(l.unit) ? k.money(l.unit, ccy) : "",
+    unit: has(l.unit) ? k.money(l.unit, ccy, cfg) : "",
     tax: has(l.tax) ? `${l.tax}%` : "",
-    amount: k.money(has(l.amount) ? l.amount : (Number(l.qty || 1) * Number(l.unit || 0)), ccy),
+    amount: k.money(has(l.amount) ? l.amount : (Number(l.qty || 1) * Number(l.unit || 0)), ccy, cfg),
   }));
 }
 
@@ -40,9 +40,9 @@ function fmtLines(lines = [], ccy) {
  */
 function lineDoc(opts) {
   return (data, cfg, entity, verify) => {
-    const ccy = data.currency || "XAF";
+    const ccy = data.currency || cfg.base_currency || "XAF";
     const words = opts.words && cfg.show && cfg.show.words !== false && has(data.amount_in_words)
-      ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals)
+      ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals)
       : "";
     const signers = opts.signers ? opts.signers(data) : null;
     const sig = signers && signers.length ? k.signerBlock(signers, cfg) : k.signatureBlock(cfg);
@@ -52,8 +52,8 @@ function lineDoc(opts) {
         { label: { fr: "Émetteur", en: "From" }, name: entity.legal_name, lines: [entity.address, entity.niu && `NIU ${entity.niu}`] },
         { label: opts.partyLabel || { fr: "Client", en: "Bill to" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
       ], cfg),
-      k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
-      k.totals(opts.totalsRows(data, ccy), cfg),
+      k.lineTable(LINE_COLS, fmtLines(data.lines, ccy, cfg), cfg),
+      k.totals(opts.totalsRows(data, ccy, cfg), cfg),
       words,
       cfg.show && cfg.show.notes && data.notes ? k.section({ fr: "Notes", en: "Notes" }, `<div class="box">${k.esc(data.notes).replace(/\n/g, "<br>")}</div>`, cfg) : "",
       cfg.show && cfg.show.bank ? k.bankBlock(entity, cfg) : "",
@@ -84,11 +84,11 @@ const TEMPLATES = {
     build: lineDoc({
       title: { fr: "Facture", en: "Invoice" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Échéance", en: "Due" }, k.dateFmt(d.due)], [{ fr: "Dossier", en: "File" }, d.dossier_ref]],
-      totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "Débours", en: "Disbursements" }, k.money(d.totals.disbursement_total, ccy)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
+      totalsRows: (d, ccy, cfg) => [
+        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
+        [{ fr: "Débours", en: "Disbursements" }, k.money(d.totals.disbursement_total, ccy, cfg)],
+        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
       // The legacy invoice printed "ARRÊTÉE LA PRÉSENTE FACTURE À LA SOMME DE :"
       // (printfi.php) — kept, bilingual.
@@ -105,11 +105,11 @@ const TEMPLATES = {
     build: lineDoc({
       title: { fr: "Facture proforma", en: "Proforma invoice" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Valable jusqu'au", en: "Valid until" }, k.dateFmt(d.valid_until)], [{ fr: "Acompte", en: "Advance" }, has(d.advance_pct) ? `${d.advance_pct}%` : ""]],
-      totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
-        has(d.advance_pct) ? [{ fr: `Acompte ${d.advance_pct}%`, en: `Advance ${d.advance_pct}%` }, k.money(d.totals.total_ttc * (d.advance_pct / 100), ccy)] : null,
+      totalsRows: (d, ccy, cfg) => [
+        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
+        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
+        has(d.advance_pct) ? [{ fr: `Acompte ${d.advance_pct}%`, en: `Advance ${d.advance_pct}%` }, k.money(d.totals.total_ttc * (d.advance_pct / 100), ccy, cfg)] : null,
       ],
     }),
     sampleData: { number: "PRO-2026-0007", date: "2026-07-27", valid_until: "2026-08-10", advance_pct: 40, party: sampleParty, lines: sampleLines, totals: sampleTotals, currency: "XAF" },
@@ -124,10 +124,10 @@ const TEMPLATES = {
       title: { fr: "Devis", en: "Quotation" },
       partyLabel: { fr: "À l'attention de", en: "Prepared for" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Valable jusqu'au", en: "Valid until" }, k.dateFmt(d.valid_until)]],
-      totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
+      totalsRows: (d, ccy, cfg) => [
+        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
+        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
     }),
     sampleData: { number: "DEV-2026-0042", date: "2026-07-27", valid_until: "2026-08-27", party: sampleParty, lines: sampleLines, totals: sampleTotals, currency: "XAF" },
@@ -141,10 +141,10 @@ const TEMPLATES = {
     build: lineDoc({
       title: { fr: "Avoir", en: "Credit note" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Facture d'origine", en: "Original invoice" }, d.original_ref], [{ fr: "Motif", en: "Reason" }, d.reason]],
-      totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, "-" + k.money(d.totals.service_ht, ccy)],
-        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, "-" + k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Total avoir TTC", en: "Credit total" }, "-" + k.money(d.totals.total_ttc, ccy), { grand: true }],
+      totalsRows: (d, ccy, cfg) => [
+        [{ fr: "Total HT", en: "Subtotal" }, "-" + k.money(d.totals.service_ht, ccy, cfg)],
+        [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, "-" + k.money(d.totals.vat_total, ccy, cfg)],
+        [{ fr: "Total avoir TTC", en: "Credit total" }, "-" + k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
     }),
     sampleData: { number: "AVR-2026-0003", date: "2026-07-27", original_ref: "FCT-2026-0001", reason: "Remise commerciale", party: sampleParty, lines: [sampleLines[0]], totals: { service_ht: 900000, vat_total: 173250, total_ttc: 1073250 }, currency: "XAF" },
@@ -156,16 +156,16 @@ const TEMPLATES = {
     module: "finance/smart_receivables",
     fields: ["PAID stamp (default watermark)"],
     build: (data, cfg, entity, verify) => {
-      const ccy = data.currency || "XAF";
+      const ccy = data.currency || cfg.base_currency || "XAF";
       const c = { ...cfg, watermark: cfg.watermark || "PAID" };
       const body = [
         k.head(entity, { fr: "Reçu de paiement", en: "Payment receipt" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Method" }, data.method]], c),
         k.parties([{ label: { fr: "Reçu de", en: "Received from" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], c),
-        k.section({ fr: "Montant reçu", en: "Amount received" }, `<div class="box" style="font-size:22px;font-weight:700">${k.money(data.amount, ccy)}</div>`, c),
+        k.section({ fr: "Montant reçu", en: "Amount received" }, `<div class="box" style="font-size:22px;font-weight:700">${k.money(data.amount, ccy, c)}</div>`, c),
         (data.allocations && data.allocations.length)
           ? k.section({ fr: "Imputation", en: "Applied to" }, k.lineTable(
             [{ key: "label", label: { fr: "Facture", en: "Invoice" } }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }],
-            data.allocations.map((a) => ({ label: a.label, amount: k.money(a.amount, ccy) })), c), c)
+            data.allocations.map((a) => ({ label: a.label, amount: k.money(a.amount, ccy, c) })), c), c)
           : data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
         k.signatureBlock(c),
         k.footer(entity, c, verify),
@@ -181,14 +181,14 @@ const TEMPLATES = {
     module: "sales/proposal",
     fields: ["cover image", "sections"],
     build: (data, cfg, entity, verify) => {
-      const ccy = data.currency || "XAF";
+      const ccy = data.currency || cfg.base_currency || "XAF";
       const secs = (data.sections || []).map((s) => k.section({ fr: s.title, en: s.title }, `<div class="box">${k.esc(s.body).replace(/\n/g, "<br>")}</div>`, cfg)).join("");
       const body = [
         k.head(entity, { fr: "Proposition commerciale", en: "Proposal" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Client", en: "Client" }, data.party && data.party.name]], cfg),
         `<h1 style="margin-top:18px">${k.esc(data.headline || "")}</h1>`,
         secs,
-        data.lines && data.lines.length ? k.section({ fr: "Tarification", en: "Pricing" }, k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg), cfg) : "",
-        data.totals ? k.totals([[{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy), { grand: true }]], cfg) : "",
+        data.lines && data.lines.length ? k.section({ fr: "Tarification", en: "Pricing" }, k.lineTable(LINE_COLS, fmtLines(data.lines, ccy, cfg), cfg), cfg) : "",
+        data.totals ? k.totals([[{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy, cfg), { grand: true }]], cfg) : "",
         k.termsBlock(cfg),
         k.signatureBlock(cfg),
         k.footer(entity, cfg, verify),
@@ -213,7 +213,7 @@ const TEMPLATES = {
   PURCHASE_ORDER: {
     docType: "PURCHASE_ORDER", title: { fr: "Bon de commande", en: "Purchase order" }, module: "procurement/purchase_order", fields: ["supplier terms", "delivery address", "payment terms", "withholding", "net payable", "amount in words"],
     build: (data, cfg, entity, verify) => {
-      const ccy = data.currency || "XAF";
+      const ccy = data.currency || cfg.base_currency || "XAF";
       const terms = data.payment_means
         ? `${data.pay_days > 0 ? `${data.pay_days} ${cfg.language === "fr" ? "jours" : "days"}` : (cfg.language === "fr" ? "immédiat" : "immediate")} (${data.payment_means})`
         : "";
@@ -229,16 +229,16 @@ const TEMPLATES = {
           { label: { fr: "Fournisseur", en: "Supplier" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
           { label: { fr: "Destinataire", en: "Ship to" }, name: data.ship_to || entity.legal_name, lines: [data.delivery_location].filter(Boolean) },
         ], cfg),
-        k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
+        k.lineTable(LINE_COLS, fmtLines(data.lines, ccy, cfg), cfg),
         k.totals([
-          [{ fr: "Total HT", en: "Subtotal" }, k.money(data.totals.service_ht, ccy)],
-          [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
-          [{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy), { grand: true }],
-          has(data.air_rate) && data.air_rate > 0 ? [{ fr: `Retenue à la source ${data.air_rate}%`, en: `Withholding ${data.air_rate}%` }, "- " + k.money(data.totals.withholding, ccy)] : null,
-          has(data.adv_paid) && data.adv_paid > 0 ? [{ fr: "Acompte versé", en: "Advance paid" }, "- " + k.money(data.adv_paid, ccy)] : null,
-          has(data.totals.net_payable) ? [{ fr: "Net à payer", en: "Net payable" }, k.money(data.totals.net_payable, ccy), { grand: true }] : null,
+          [{ fr: "Total HT", en: "Subtotal" }, k.money(data.totals.service_ht, ccy, cfg)],
+          [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy, cfg)],
+          [{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy, cfg), { grand: true }],
+          has(data.air_rate) && data.air_rate > 0 ? [{ fr: `Retenue à la source ${data.air_rate}%`, en: `Withholding ${data.air_rate}%` }, "- " + k.money(data.totals.withholding, ccy, cfg)] : null,
+          has(data.adv_paid) && data.adv_paid > 0 ? [{ fr: "Acompte versé", en: "Advance paid" }, "- " + k.money(data.adv_paid, ccy, cfg)] : null,
+          has(data.totals.net_payable) ? [{ fr: "Net à payer", en: "Net payable" }, k.money(data.totals.net_payable, ccy, cfg), { grand: true }] : null,
         ], cfg),
-        cfg.show && cfg.show.words !== false && has(data.amount_in_words) ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals) : "",
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words) ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals) : "",
         data.remarks ? k.section({ fr: "Observations", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
         k.termsBlock(cfg),
         k.signerBlock([
@@ -258,10 +258,10 @@ const TEMPLATES = {
       title: { fr: "Facture fournisseur", en: "Supplier invoice" }, partyLabel: { fr: "Fournisseur", en: "Supplier" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "N° fournisseur", en: "Supplier ref" }, d.supplier_ref], [{ fr: "Échéance", en: "Due" }, k.dateFmt(d.due)], [{ fr: "PO", en: "PO" }, d.po_ref]],
       totalsRows: (d, ccy) => [
-        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "TVA", en: "VAT" }, k.money(d.totals.vat_total, ccy)],
-        [{ fr: "Retenue à la source", en: "Withholding" }, "- " + k.money(d.totals.wht_total || 0, ccy)],
-        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
+        [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy, cfg)],
+        [{ fr: "TVA", en: "VAT" }, k.money(d.totals.vat_total, ccy, cfg)],
+        [{ fr: "Retenue à la source", en: "Withholding" }, "- " + k.money(d.totals.wht_total || 0, ccy, cfg)],
+        [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }],
       ],
       words: true,
       signers: (d) => [{ label: { fr: "Comptabilisé par", en: "Posted by" }, name: d.posted_by_name, title: d.posted_by_title }],
@@ -274,7 +274,7 @@ const TEMPLATES = {
     build: lineDoc({
       title: { fr: "Demande d'achat", en: "Purchase request" }, partyLabel: { fr: "Demandeur", en: "Requested by" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Service", en: "Department" }, d.department]],
-      totalsRows: (d, ccy) => [[{ fr: "Total estimé", en: "Estimated total" }, k.money(d.totals.total_ttc, ccy), { grand: true }]],
+      totalsRows: (d, ccy, cfg) => [[{ fr: "Total estimé", en: "Estimated total" }, k.money(d.totals.total_ttc, ccy, cfg), { grand: true }]],
       signers: (d) => [{ label: { fr: "Demandé par", en: "Requested by" }, name: d.requester_name, title: d.requester_title }],
     }),
     sampleData: { number: "DA-2026-0014", date: "2026-07-27", department: "Opérations", party: { name: "Jean Mballa", lines: ["Chef de quai"] }, lines: sampleLines.slice(0, 2), totals: { total_ttc: 1080000 }, currency: "XAF" },
@@ -619,7 +619,7 @@ const TEMPLATES = {
       const body = [
         k.head(entity, { fr: "Demande de fonds", en: "Cash request" }, data.number, meta, cfg),
         k.parties([{ label: { fr: "Demandeur", en: "Requested by" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
-        k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || "XAF")}</div>`, cfg),
+        k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || cfg.base_currency || "XAF", cfg)}</div>`, cfg),
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
         context,
         data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
@@ -641,7 +641,7 @@ const TEMPLATES = {
       const body = [
         k.head(entity, { fr: "Régie d'avances", en: "Cash advance" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)]], cfg),
         k.parties([{ label: { fr: "Régisseur", en: "Float holder" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
-        k.section({ fr: "Montant de l'avance", en: "Advance amount" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || "XAF")}</div>`, cfg),
+        k.section({ fr: "Montant de l'avance", en: "Advance amount" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || cfg.base_currency || "XAF", cfg)}</div>`, cfg),
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
         k.signatureBlock(cfg),
         k.footer(entity, cfg, verify),
@@ -655,18 +655,18 @@ const TEMPLATES = {
   PAYSLIP: {
     docType: "PAYSLIP", title: { fr: "Bulletin de paie", en: "Payslip" }, module: "hr/payroll", fields: ["statutory breakdown"],
     build: (d, cfg, entity, verify) => {
-      const ccy = d.currency || "XAF";
+      const ccy = d.currency || cfg.base_currency || "XAF";
       const col = [{ key: "label", label: { fr: "Libellé", en: "Item" } }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }];
-      const map = (arr) => (arr || []).map((e) => ({ label: e.label, amount: k.money(e.amount, ccy) }));
+      const map = (arr) => (arr || []).map((e) => ({ label: e.label, amount: k.money(e.amount, ccy, cfg) }));
       const body = [
         k.head(entity, { fr: "Bulletin de paie", en: "Payslip" }, d.number, [[{ fr: "Période", en: "Period" }, d.period], [{ fr: "Matricule", en: "Staff no." }, d.staff_no]], cfg),
         k.parties([{ label: { fr: "Salarié", en: "Employee" }, name: d.employee_name, lines: [d.job_title, d.cnps_number && `CNPS ${d.cnps_number}`].filter(Boolean) }], cfg),
         k.section({ fr: "Gains", en: "Earnings" }, k.lineTable(col, map(d.earnings), cfg), cfg),
         k.section({ fr: "Retenues", en: "Deductions" }, k.lineTable(col, map(d.deductions), cfg), cfg),
         k.totals([
-          [{ fr: "Salaire brut", en: "Gross" }, k.money(d.gross, ccy)],
-          [{ fr: "Total retenues", en: "Total deductions" }, k.money(d.total_deductions, ccy)],
-          [{ fr: "Net à payer", en: "Net pay" }, k.money(d.net, ccy), { grand: true }],
+          [{ fr: "Salaire brut", en: "Gross" }, k.money(d.gross, ccy, cfg)],
+          [{ fr: "Total retenues", en: "Total deductions" }, k.money(d.total_deductions, ccy, cfg)],
+          [{ fr: "Net à payer", en: "Net pay" }, k.money(d.net, ccy, cfg), { grand: true }],
         ], cfg),
         k.footer(entity, cfg, verify),
       ].join("");
@@ -794,14 +794,14 @@ const TEMPLATES = {
   WORK_ORDER: {
     docType: "WORK_ORDER", title: { fr: "Ordre de réparation", en: "Work order" }, module: "fleet/work-orders", fields: ["parts & labour"],
     build: (d, cfg, entity, verify) => {
-      const ccy = d.currency || "XAF";
+      const ccy = d.currency || cfg.base_currency || "XAF";
       const col = [{ key: "label", label: { fr: "Pièce / Main d'œuvre", en: "Part / labour" } }, { key: "qty", label: { fr: "Qté", en: "Qty" }, num: true }, { key: "unit", label: { fr: "P.U.", en: "Unit" }, num: true }, { key: "total", label: { fr: "Total", en: "Total" }, num: true }];
-      const rows = (d.parts || []).map((p) => ({ label: p.label, qty: String(p.qty), unit: k.money(p.unit_cost, ccy), total: k.money(Number(p.qty) * Number(p.unit_cost), ccy) }));
+      const rows = (d.parts || []).map((p) => ({ label: p.label, qty: String(p.qty), unit: k.money(p.unit_cost, ccy, cfg), total: k.money(Number(p.qty) * Number(p.unit_cost), ccy, cfg) }));
       const body = [
         k.head(entity, { fr: "Ordre de réparation", en: "Work order" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Statut", en: "Status" }, d.status]], cfg),
         k.parties([{ label: { fr: "Véhicule", en: "Vehicle" }, name: d.vehicle, lines: [d.description].filter(Boolean) }], cfg),
         k.lineTable(col, rows, cfg),
-        k.totals([[{ fr: "Coût total", en: "Total cost" }, k.money(d.cost, ccy), { grand: true }]], cfg),
+        k.totals([[{ fr: "Coût total", en: "Total cost" }, k.money(d.cost, ccy, cfg), { grand: true }]], cfg),
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Work order " + (d.number || ""), body, cfg);
@@ -827,15 +827,15 @@ const TEMPLATES = {
   DUNNING_LETTER: {
     docType: "DUNNING_LETTER", title: { fr: "Lettre de relance", en: "Dunning letter" }, module: "finance/smart_receivables", fields: ["tone by ageing"],
     build: (d, cfg, entity, verify) => {
-      const ccy = d.currency || "XAF";
+      const ccy = d.currency || cfg.base_currency || "XAF";
       const col = [{ key: "invoice", label: { fr: "Facture", en: "Invoice" } }, { key: "date", label: { fr: "Date", en: "Date" } }, { key: "days", label: { fr: "Retard (j)", en: "Days late" }, num: true }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }];
-      const rows = (d.invoices || []).map((i) => ({ invoice: i.ref, date: k.dateFmt(i.date), days: String(i.days_late), amount: k.money(i.amount, ccy) }));
+      const rows = (d.invoices || []).map((i) => ({ invoice: i.ref, date: k.dateFmt(i.date), days: String(i.days_late), amount: k.money(i.amount, ccy, cfg) }));
       const body = [
         k.head(entity, { fr: "Lettre de relance", en: "Dunning letter" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]], cfg),
         k.parties([{ label: { fr: "À l'attention de", en: "To" }, name: d.client, lines: d.client_lines || [] }], cfg),
         `<p style="margin:14px 2px">${k.esc(d.body || "")}</p>`,
         k.lineTable(col, rows, cfg),
-        k.totals([[{ fr: "Total dû", en: "Total due" }, k.money(d.total, ccy), { grand: true }]], cfg),
+        k.totals([[{ fr: "Total dû", en: "Total due" }, k.money(d.total, ccy, cfg), { grand: true }]], cfg),
         k.signatureBlock(cfg),
         k.footer(entity, cfg, verify),
       ].join("");
@@ -873,7 +873,7 @@ function arrayTable(arr, cfg) {
   if (!Array.isArray(arr) || !arr.length) return `<div class="muted">—</div>`;
   const keys = Object.keys(arr[0]);
   const cols = keys.map((kk) => ({ key: kk, label: humanize(kk), num: isNum(arr[0][kk]) }));
-  const rows = arr.map((r) => { const o = {}; for (const kk of keys) o[kk] = isNum(r[kk]) ? k.xaf(r[kk]) : String(r[kk] === undefined || r[kk] === null ? "" : r[kk]); return o; });
+  const rows = arr.map((r) => { const o = {}; for (const kk of keys) o[kk] = isNum(r[kk]) ? k.xaf(r[kk], cfg) : String(r[kk] === undefined || r[kk] === null ? "" : r[kk]); return o; });
   return k.lineTable(cols, rows, cfg);
 }
 function kvBox(pairs) {
@@ -888,7 +888,7 @@ function autoBlocks(data, cfg) {
       if (val === null || val === undefined || key === "period") continue;
       if (Array.isArray(val)) out.push(k.section(humanize(key), arrayTable(val, cfg), cfg));
       else if (typeof val === "object") out.push(k.section(humanize(key), autoBlocks(val, cfg), cfg));
-      else scalars.push([humanize(key), isNum(val) ? k.xaf(val) : String(val)]);
+      else scalars.push([humanize(key), isNum(val) ? k.xaf(val, cfg) : String(val)]);
     }
     if (scalars.length) out.unshift(kvBox(scalars));
     return out.join("");
@@ -945,7 +945,7 @@ for (const [docType, title, moduleHint, sampleData] of [...REPORT_SPECS, ...TAX_
  * producer output and the bundled sample via field fallbacks. ──────────────── */
 const firstNum = (...xs) => { for (const x of xs) if (x !== undefined && x !== null) return Number(x); return 0; };
 function formTable(rows, cfg) {
-  return `<table class="items" style="max-width:560px"><tbody>${rows.map((r) => `<tr${r[2] ? ` style="background:${cfg.accent || "#F5821F"}0d"` : ""}><td${r[2] ? ' style="font-weight:700"' : ""}>${k.esc(r[0])}</td><td class="num"${r[2] ? ' style="font-weight:700"' : ""}>${k.xaf(r[1])}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="items" style="max-width:560px"><tbody>${rows.map((r) => `<tr${r[2] ? ` style="background:${cfg.accent || "#F5821F"}0d"` : ""}><td${r[2] ? ' style="font-weight:700"' : ""}>${k.esc(r[0])}</td><td class="num"${r[2] ? ' style="font-weight:700"' : ""}>${k.xaf(r[1], cfg)}</td></tr>`).join("")}</tbody></table>`;
 }
 
 function vatReturnBuild(data, cfg, entity, verify) {
@@ -984,7 +984,7 @@ function cnpsBuild(data, cfg, entity, verify) {
     { key: "employer_family", label: { fr: "Prest. fam. 7%", en: "Family" }, num: true },
     { key: "employer_injury", label: { fr: "Acc. travail", en: "Injury" }, num: true },
   ];
-  const trows = rows.map((r) => { const o = {}; for (const c of cols) o[c.key] = c.num ? k.xaf(r[c.key]) : (r[c.key] || ""); return o; });
+  const trows = rows.map((r) => { const o = {}; for (const c of cols) o[c.key] = c.num ? k.xaf(r[c.key], cfg) : (r[c.key] || ""); return o; });
   const period = data.period && (data.period.period_code || "");
   const meta = [entity.legal_name ? [{ fr: "Employeur", en: "Employer" }, entity.legal_name] : null, period ? [{ fr: "Période", en: "Period" }, period] : null].filter(Boolean);
   const body = [
@@ -997,7 +997,7 @@ function cnpsBuild(data, cfg, entity, verify) {
       [k.t({ fr: "Accidents du travail", en: "Work-injury" }, cfg.language), firstNum(totals.employer_injury)],
       [k.t({ fr: "TOTAL À VERSER", en: "TOTAL DUE" }, cfg.language), firstNum(totals.total, data.total_a_verser), true],
     ], cfg), cfg),
-    `<p class="muted" style="margin-top:8px">${k.t({ fr: "Plafond mensuel", en: "Monthly ceiling" }, cfg.language)}: ${k.xaf(750000)}</p>`,
+    `<p class="muted" style="margin-top:8px">${k.t({ fr: "Plafond mensuel", en: "Monthly ceiling" }, cfg.language)}: ${k.xaf(750000, cfg)}</p>`,
     k.footer(entity, cfg, verify),
   ].join("");
   return k.shell("CNPS declaration", body, cfg);
@@ -1016,7 +1016,7 @@ function dsfBuild(data, cfg, entity, verify) {
     period ? [{ fr: "Exercice", en: "Fiscal year" }, period] : null,
   ].filter(Boolean);
   const stmtCols = (labelPair) => [{ key: "poste", label: labelPair }, { key: "montant", label: { fr: "Montant", en: "Amount" }, num: true }];
-  const mapStmt = (arr) => arr.map((r) => ({ poste: r.poste || r.compte || "", montant: k.xaf(firstNum(r.montant, r.amount)) }));
+  const mapStmt = (arr) => arr.map((r) => ({ poste: r.poste || r.compte || "", montant: k.xaf(firstNum(r.montant, r.amount), cfg) }));
   const produits = data.produits || [], charges = data.charges || [], actif = data.actif || [], passif = data.passif || [];
   const sections = [
     k.head(entity, { fr: "Déclaration Statistique et Fiscale (DSF)", en: "Statistical & tax return (DSF)" }, "", meta, cfg),

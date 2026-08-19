@@ -1,5 +1,10 @@
 # Currency hardcoding sweep — report
 
+> **STATUS (2026-08-19, same day).** Fixes #1 (document loaders), #2 (money
+> formatter symbol + decimals) and #3 (UI labels) below are implemented in
+> `feat/procurement-docs-dynamic-signatories`. Fix #4 (`*_xaf` rename) is a
+> deferred follow-up — see the note in §4.
+
 **Date.** 2026-08-19. **Method.** grep over the live tree (`src/`, `client/src/`,
 `migrations/`, `scripts/`, `packages/`), excluding the read-only legacy tree
 (`doc/reference/`) and tests. Counts are exact as of this run.

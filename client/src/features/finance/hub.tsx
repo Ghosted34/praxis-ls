@@ -19,6 +19,7 @@ import { useList, useListPaged, useResource } from "@/lib/use-resource";
 import { Pagination } from "@/components/ui/pagination";
 import { useDebounced } from "@/lib/use-debounced";
 import { money, dateFmt, enumLabel } from "@/lib/format";
+import { useBaseCurrency } from "@/lib/use-base-currency";
 import type { Client } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
 import { InvoicesPage } from "./invoices";
@@ -117,6 +118,7 @@ const CHIP_META: Record<
 
 /* ── ageing panel ── */
 function AgeingPanel({ a }: { a: api.Ageing | null }) {
+  const ccy = useBaseCurrency();
   const rows = [
     { label: "Current", v: a?.current, tone: "--ok" },
     { label: "1–30 days", v: a?.d1_30, tone: "--primary" },
@@ -129,7 +131,7 @@ function AgeingPanel({ a }: { a: api.Ageing | null }) {
   ];
   const max = Math.max(1, ...rows.map((r) => Number(r.v || 0)));
   return (
-    <Panel title="Receivables ageing" subtitle="Smart receivables ledger · XAF">
+    <Panel title="Receivables ageing" subtitle={`Smart receivables ledger · ${ccy}`}>
       <div className="space-y-3">
         {rows.map((r) => (
           <div key={r.label} className="flex items-center gap-3 text-sm">
@@ -166,6 +168,7 @@ function CashPanel({
   tb: api.TrialBalance | null;
   accts: api.TreasuryAccount[] | null;
 }) {
+  const ccy = useBaseCurrency();
   const balOf = (coa: string) =>
     (tb?.rows || [])
       .filter((r) => String(r.account_code).startsWith(coa))
@@ -202,9 +205,9 @@ function CashPanel({
           >
             <div className="absolute inset-[18%] flex flex-col items-center justify-center rounded-full bg-card">
               <span className="num text-xl font-semibold">
-                {money(total).replace(" XAF", "")}
+                {money(total).replace(` ${ccy}`, "")}
               </span>
-              <span className="micro">XAF total</span>
+              <span className="micro">{ccy} total</span>
             </div>
           </div>
           <ul className="flex-1 space-y-2 text-sm">

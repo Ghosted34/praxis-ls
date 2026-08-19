@@ -50,6 +50,28 @@ describe("amount in words", () => {
   });
 });
 
+describe("money symbol + decimals from cfg.currencies", () => {
+  const cfg = { currencies: { XAF: { symbol: "FCFA", decimals: 0 }, USD: { symbol: "$", decimals: 2 } } };
+
+  test("renders the currency symbol when a catalogue is present", () => {
+    expect(k.money(1233900, "XAF", cfg)).toContain("FCFA");
+    expect(k.money(1234.56, "USD", cfg)).toContain("$");
+    expect(k.money(1234.56, "USD", cfg)).not.toContain("USD");
+  });
+
+  test("honours the currency's decimals (0 for XAF, 2 for USD)", () => {
+    // fr-FR groups with a narrow no-break space (U+202F); assert the shape, not
+    // the exact separator byte.
+    expect(k.money(1234.5, "XAF", cfg)).toMatch(/1[ \u202f]235 FCFA$/); // 0 decimals → rounded to integer
+    expect(k.money(1234.56, "USD", cfg)).toMatch(/1[ \u202f]234,56 \$$/);
+    expect(k.money(1234.5, "XAF", cfg)).not.toMatch(/\./); // no ".50" fraction for XAF
+  });
+
+  test("falls back to the code when no catalogue is passed", () => {
+    expect(k.money(1234.56, "USD")).toContain("USD");
+  });
+});
+
 describe("signerBlock", () => {
   const cfg = { show: { signature: true }, language: "bilingual" };
 

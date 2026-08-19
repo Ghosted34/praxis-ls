@@ -12,9 +12,21 @@ const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO } = require("../../pdf.fonts")
 
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/** Money in a currency (XAF default), fr-FR grouping. */
-const money = (n, ccy = "XAF") => `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${ccy}`;
-const xaf = (n) => money(n, "XAF");
+/**
+ * Money in a currency (XAF default), fr-FR grouping. `cfg.currencies` is the
+ * tenant's active-currency catalogue (code → { symbol, decimals }); when it is
+ * present the DISPLAYED unit is the currency's symbol (e.g. "FCFA") rather than
+ * the raw ISO code, and the fraction digits honour the currency's own decimals
+ * (0 for XAF, 2 for USD/EUR). Without a catalogue the code is shown unchanged,
+ * so this stays safe for callers that never see a resolved config.
+ */
+const money = (n, ccy = "XAF", cfg = {}) => {
+  const cur = (cfg && cfg.currencies && cfg.currencies[ccy]) || null;
+  const unit = (cur && cur.symbol) || ccy;
+  const dec = cur && Number.isInteger(cur.decimals) ? cur.decimals : 2;
+  return `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: dec })} ${unit}`;
+};
+const xaf = (n, cfg) => money(n, "XAF", cfg);
 const dateFmt = (d) => {
   if (!d) return "";
   const dt = new Date(d);
@@ -122,7 +134,9 @@ function words(amount, lang = "en", decimals = 2) {
 /** Section block rendering the amount in words, e.g. "ARRÊTÉE … À LA SOMME DE". */
 function wordsBlock(amount, ccy, cfg = {}, decimals = 2) {
   const lang = cfg.language || "bilingual";
-  const text = `${words(amount, lang === "fr" ? "fr" : "en", decimals)} ${ccy || "XAF"}`;
+  const cur = (cfg && cfg.currencies && cfg.currencies[ccy]) || null;
+  const unit = (cur && cur.symbol) || ccy || "XAF";
+  const text = `${words(amount, lang === "fr" ? "fr" : "en", decimals)} ${unit}`;
   return section(
     { fr: "Arrêtée la présente à la somme de :", en: "Amount in words" },
     `<div class="box"><strong>${esc(text)}</strong></div>`,

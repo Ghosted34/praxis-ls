@@ -7,8 +7,9 @@
  *    present → ok:true (with record values), missing → ok:false (with
  *    suggestions / hints), resolver failure → ok:null (self-check territory).
  * 2. smartcomm.config.service.testSend: a real send through the tenant
- *    transport; SMTP verdicts come back classified (SMTP_SENDER_REJECTED …)
- *    so the wizard renders the same fix guide the rest of the UI does.
+ *    transport; SMTP verdicts come back classified (SENDER_NOT_AUTHORIZED …)
+ *    so the wizard renders the same fix guide the rest of the UI does
+ *    (SENDER_NOT_AUTHORIZED — same code as mailbox compose).
  */
 
 const mockResolveMx = jest.fn();
@@ -117,8 +118,8 @@ describe("smartcomm.config.testSend", () => {
     err.responseCode = 550;
     email.send.mockRejectedValue(err);
     const r = await cfg.testSend({}, { to: "admin@x.cm" });
-    expect(r).toMatchObject({ ok: false, code: "SMTP_SENDER_REJECTED" });
-    expect(r.error).toMatch(/Sender verify failed/);
+    expect(r).toMatchObject({ ok: false, code: "SENDER_NOT_AUTHORIZED" });
+    expect(r.error).toMatch(/rejected the sender address/);
   });
 
   it("reports ok with the provider message id on success", async () => {

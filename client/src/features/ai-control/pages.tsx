@@ -17,6 +17,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { RowActions } from "@/components/ui/row-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
+import { useBaseCurrency } from "@/lib/use-base-currency";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import * as api from "@/lib/ai-governance-api";
 import { reportActionError } from "@/lib/action-error";
@@ -163,6 +164,7 @@ function GrantForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const ccy = useBaseCurrency();
   const { rows: users } = useList<GovUser>("/users");
   const { rows: features } = useList<api.FeatureFlag>(
     "/ai/governance/features",
@@ -229,7 +231,7 @@ function GrantForm({
               ))}
             </Select>
           </Field>
-          <Field label="Monthly cap (XAF)" className="sm:col-span-2">
+          <Field label={`Monthly cap (${ccy})`} className="sm:col-span-2">
             <Input
               type="number"
               min="0"
@@ -425,6 +427,7 @@ function BudgetForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const ccy = useBaseCurrency();
   const [f, setF] = React.useState({
     period_start: current?.period_start || todayISO(),
     period_end: current?.period_end || todayISO(),
@@ -478,7 +481,7 @@ function BudgetForm({
               onChange={(e) => set("period_end", e.target.value)}
             />
           </Field>
-          <Field label="Soft cap (XAF)" required>
+          <Field label={`Soft cap (${ccy})`} required>
             <Input
               type="number"
               min="0"
@@ -487,7 +490,7 @@ function BudgetForm({
               onChange={(e) => set("soft_cap_xaf", e.target.value)}
             />
           </Field>
-          <Field label="Hard cap (XAF)" required>
+          <Field label={`Hard cap (${ccy})`} required>
             <Input
               type="number"
               min="0"
@@ -936,6 +939,7 @@ export function AiVendorsPage() {
 
 /* ═══════════════════════ Usage ═══════════════════════ */
 export function AiUsagePage() {
+  const ccy = useBaseCurrency();
   const { rows, error, loading } = useList<api.UsageRow>(
     "/ai/governance/usage",
   );
@@ -972,7 +976,7 @@ export function AiUsagePage() {
     },
     {
       key: "cost",
-      label: "Cost · XAF",
+      label: `Cost · ${ccy}`,
       className: "num text-right",
       render: (r) => money(r.cost_xaf),
     },

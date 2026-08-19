@@ -831,7 +831,7 @@ async function handleGraphNotification(client, body, ctx = {}) {
       // work. The per-tenant DB scopes the lookup, so this also proves the
       // connection belongs here. Best-effort: a bad id never aborts the batch.
       let conn = null;
-      try { conn = await repo.getConnection(client, id); } catch { /* @silent:storage forged/stale clientState */ }
+      try { conn = await repo.getConnection(client, id); } catch { /* @silent:storage — a stale/forged connection id in a batch is skipped, not fatal */ }
       if (!conn || conn.status !== "CONNECTED") continue;
       results.push(await syncConnection(client, conn.email_connection_id, ctx));
     }
@@ -851,7 +851,7 @@ async function autoLink(client, threadId, fromAddress, subject) {
     }
     const cl = await repo.findClientByEmail(client, fromAddress);
     if (cl) await threadRepo.updateThread(client, threadId, { entity_ref: `client:${cl.client_id}` });
-  } catch { /* @silent:storage must not abort sync */ }
+  } catch { /* @silent:teardown — CRM auto-link is best-effort; a failed link never aborts the sync loop */ }
 }
 
 /** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
@@ -876,7 +876,7 @@ async function markRead(client, id, actorUserId = null) {
       try {
         const { logger } = require("../../../config/logger");
         logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
-      } catch { /* @silent:teardown logger require must not block the local read flip */ }
+      } catch { /* @silent:teardown — logging a warn must never mask the original error */ }
     }
   }
   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));

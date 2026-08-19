@@ -583,7 +583,7 @@ async function loadRecord(client, docType, recordId) {
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
         method: cr.disbursement_method || null,
         method_details: cr.disbursement_details || {},
-        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent != null ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
         totals,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
         currency: "XAF",
@@ -624,7 +624,7 @@ async function loadRecord(client, docType, recordId) {
         exchange_rate: Number(c.exchange_rate_to_xaf),
         lines: lr.rows.map((l) => ({
           label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
-          tax: l.is_disbursement ? null : (l.tax_rate_percent != null ? Number(l.tax_rate_percent) : null),
+          tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
           amount: Number(l.qty) * Number(l.unit_cost),
         })),
         totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },

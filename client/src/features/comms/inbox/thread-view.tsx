@@ -31,6 +31,8 @@ import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { dateTimeFmt } from "@/lib/format";
 import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
 
+const Composer = React.lazy(() => import("./composer"));
+
 const MOVE_TO: MailFolder[] = ["INBOX", "ARCHIVE", "SPAM", "TRASH"];
 
 /** PR-0 origin tag → what to actually show a person. */
@@ -123,6 +125,7 @@ export function ThreadView({
   onLabel,
   onToggleRead,
   onClose,
+  onReplied,
   busy,
 }: {
   thread: ThreadDetail | null;
@@ -134,8 +137,14 @@ export function ThreadView({
   onLabel: (labelId: string) => void;
   onToggleRead: (read: boolean) => void;
   onClose: () => void;
+  /** Called once a reply is accepted into the send queue, so the list refreshes. */
+  onReplied?: () => void;
   busy: boolean;
 }) {
+  // Declared before the early returns below, because hooks cannot be conditional.
+  const [replying, setReplying] = React.useState(false);
+  React.useEffect(() => { setReplying(false); }, [thread?.email_thread_id]);
+
   if (error) return <ErrorState message={error} />;
   if (loading && !thread) return <LoadingRow label="Opening conversation…" />;
   if (!thread) {
@@ -151,6 +160,11 @@ export function ThreadView({
 
   const messages = thread.messages || [];
   const lastIndex = messages.length - 1;
+
+  // Who a reply goes to: the last INBOUND sender, not simply the last message.
+  // Replying to your own last message would address the mail to yourself.
+  const lastInbound = [...messages].reverse().find((m) => m.direction === "IN");
+  const replyTo = lastInbound ? [lastInbound.from_address] : (messages[lastIndex]?.to_address || []);
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -237,12 +251,29 @@ export function ThreadView({
         ))}
       </div>
 
-      {/* PR-1B replaces this with the composer. Saying so is better than an
-          empty footer that reads as an unfinished screen. */}
+      {/* The composer, when the reader opens it. Lazily: TipTap and ProseMirror
+          are ~150 kB gzipped and most of the time somebody is reading, not
+          writing — see the isEditorPackage note in vite.config.ts. */}
       <footer className="border-t border-border px-4 py-3">
-        <p className="text-xs text-muted-foreground">
-          Replying from here arrives with the composer.
-        </p>
+        {replying ? (
+          <React.Suspense fallback={<LoadingRow label="Opening the composer…" />}>
+            <Composer
+              connectionId={thread.email_connection_id}
+              threadId={thread.email_thread_id}
+              replyToMessageId={messages[lastIndex]?.email_message_id || null}
+              kind="REPLY"
+              initialTo={replyTo}
+              initialSubject={/^re:/i.test(thread.subject || "") ? thread.subject : `Re: ${thread.subject || ""}`.trim()}
+              quotedHtml={messages[lastIndex]?.body_html || null}
+              quotedText={messages[lastIndex]?.body_text || null}
+              entityRef={thread.entity_ref || null}
+              onClose={() => setReplying(false)}
+              onSent={onReplied}
+            />
+          </React.Suspense>
+        ) : (
+          <Button size="sm" onClick={() => setReplying(true)}>Reply</Button>
+        )}
       </footer>
     </div>
   );

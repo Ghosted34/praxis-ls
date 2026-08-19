@@ -29,6 +29,28 @@ const TENANT_HOST = process.env.VITE_TENANT_HOST || "smartls.praxisls.com";
  */
 const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client", "pdfjs-dist"];
 
+/**
+ * TipTap and ProseMirror, kept OUT of the always-loaded vendor bucket.
+ *
+ * The mail composer is the only thing in the product that needs a rich-text
+ * editor, and it is opened by a fraction of sessions. In `vendor` the editor and
+ * its ProseMirror core — around 150 kB gzipped across twenty packages — would be
+ * downloaded, parsed and executed on every page load, including the login screen
+ * and the dashboard, for people who never compose an email.
+ *
+ * Excluded here, Rollup attaches them to the dynamic import that pulls them
+ * (`features/comms/mail/composer`, behind React.lazy), which is what makes the
+ * lazy loading real rather than nominal. Same reasoning as the packages above
+ * and as the font scope below; a prefix match because both ship as many small
+ * packages under one scope.
+ */
+const isEditorPackage = (id: string) => {
+  const p = id.replace(/\\/g, "/");
+  return p.includes("/node_modules/@tiptap/")
+    || p.includes("/node_modules/prosemirror-")
+    || p.includes("/node_modules/@remirror/");
+};
+
 const inPackage = (id: string, pkg: string) =>
   id.replace(/\\/g, "/").includes(`/node_modules/${pkg}/`);
 
@@ -223,6 +245,7 @@ export default defineConfig({
           if (ROUTE_LOCAL_VENDOR.some((pkg) => inPackage(id, pkg)))
             return undefined;
           if (isFontPackage(id)) return undefined;
+          if (isEditorPackage(id)) return undefined;
           return "vendor";
         },
       },

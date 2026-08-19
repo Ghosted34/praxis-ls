@@ -88,6 +88,31 @@ describe("baseSubject", () => {
     expect(threading.baseSubject("Return of goods")).toBe("Return of goods");
     expect(threading.baseSubject("Revision 3 attached")).toBe("Revision 3 attached");
   });
+
+  test("a space before the reply counter is still a reply prefix", () => {
+    expect(threading.baseSubject("Re [2]: Invoice 42")).toBe("Invoice 42");
+  });
+
+  test("A HOSTILE SUBJECT CANNOT STALL THE SYNC WORKER (ReDoS regression)", () => {
+    // The `(...)+` form of this pattern went quadratic on "re" followed by a run
+    // of spaces — 91ms at 8,000 characters, seconds at 100,000. A Subject header
+    // is written entirely by whoever sent the message and reaches this on the
+    // sync worker with no length cap in front of it, so that was a remote stall.
+    // A million characters must stay in the low milliseconds. The threshold is
+    // deliberately loose: it needs to separate linear from quadratic on a busy
+    // CI runner, not to measure anything.
+    const hostile = `re${" ".repeat(1_000_000)}!`;
+    const started = Date.now();
+    expect(threading.baseSubject(hostile)).toBe(hostile.trim());
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  test("stops after a sane number of stacked prefixes", () => {
+    // Twelve prefixes, a cap of ten: the first ten come off, the rest stay. A
+    // subject nested that deep is pathological either way; what matters is that
+    // it terminates.
+    expect(threading.baseSubject(`${"Re: ".repeat(12)}Invoice`)).toBe("Re: Re: Invoice");
+  });
 });
 
 describe("foldIntoThread", () => {

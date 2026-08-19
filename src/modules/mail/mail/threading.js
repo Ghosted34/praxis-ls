@@ -66,9 +66,38 @@ function threadKeyFor(message = {}, capabilities = {}) {
   return String(message.externalMessageId || "").trim() || null;
 }
 
-/** `Re:`, `Fwd:`, `RE :`, `TR:`, `Rép:` — stripped for display, never for keying. */
-const REPLY_PREFIX = /^\s*((re|ref|aw|sv|vs|fw|fwd|tr|rép|rep)\s*(\[\d+\])?\s*:\s*)+/i;
-const baseSubject = (s) => String(s || "").replace(REPLY_PREFIX, "").trim();
+/**
+ * `Re:`, `Fwd:`, `RE :`, `TR:`, `Rép:` — stripped for display, never for keying.
+ *
+ * ── ONE PREFIX PER PASS, NOT `(...)+` — THIS IS A ReDoS FIX ─────────────────
+ *
+ * The obvious spelling of this is a single pattern with a `+` around the whole
+ * prefix group. That version had TWO `\s*` runs inside the repeating group with
+ * nothing mandatory between them, so on input like `"re" + " ".repeat(n)` the
+ * engine tries every way of splitting the whitespace and the match goes
+ * quadratic — measurably: 20ms at 4,000 spaces, 91ms at 8,000, seconds at
+ * 100,000. A Subject header is written entirely by whoever sent the message and
+ * reaches this on the sync worker with no length cap in front of it, so that is
+ * a remote stall, not a curiosity. (Found by CodeQL on PR #225.)
+ *
+ * The loop form has no nested quantifier at all. Each pass is linear — the
+ * leading `\s*` is followed by a mandatory keyword, and the optional `[n]`
+ * counter's `\s*` is followed by a mandatory `[` — and a subject cannot carry
+ * more prefixes than it has characters, so the cap is belt-and-braces rather
+ * than load-bearing.
+ */
+const REPLY_PREFIX = /^\s*(?:re|ref|aw|sv|vs|fw|fwd|tr|rép|rep)(?:\s*\[\d+\])?\s*:/i;
+const MAX_PREFIXES = 10;
+
+function baseSubject(s) {
+  let out = String(s || "");
+  for (let i = 0; i < MAX_PREFIXES; i += 1) {
+    const next = out.replace(REPLY_PREFIX, "");
+    if (next === out) break;
+    out = next;
+  }
+  return out.trim();
+}
 
 /**
  * Everyone who has appeared in a conversation, lowercased and de-duplicated.

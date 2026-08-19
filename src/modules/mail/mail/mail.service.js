@@ -482,7 +482,7 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
       });
       saved += 1;
     } catch {
-      /* skip this attachment; bytes may exceed the vault limit or storage failed */
+      /* @silent:storage skip this attachment; bytes may exceed the vault limit or storage failed */
     }
   }
   return saved;
@@ -752,7 +752,7 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
   await repo.ensureDefaultConnection(client, claims.user_id);
-  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* push optional; polling covers it */ });
+  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
   return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
 }
 

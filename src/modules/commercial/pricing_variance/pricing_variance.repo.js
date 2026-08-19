@@ -8,14 +8,34 @@ const SALES_COLS = "pricing_variance_id, dossier_id, quotation_id, quoted_price,
 const insert = (client, data) => insertOne(client, "pricing_variance", data);
 const getFull = (client, id) => getById(client, "pricing_variance", "pricing_variance_id", id);
 
-/** Quoted price (HT) from a quotation. */
+/** Quoted price, SERVICE ONLY and HT, from a quotation's lines.
+ *
+ * `quotation.total_ht` (0345:18) INCLUDES débours lines (quotation.rules
+ * computeTotals sums every line), but the margin base must compare service
+ * revenue to service cost (OHADA_KB §6.7/§450 — débours are pass-through).
+ * Summing the non-disbursement lines here keeps the two bases apples-to-apples.
+ * BUG-3. */
 async function quotedFor(client, quotationId) {
-  const { rows } = await client.query("SELECT total_ht FROM quotation WHERE quotation_id = $1", [quotationId]);
-  return rows[0] ? Number(rows[0].total_ht) : null;
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(qty * unit_price),0) AS c FROM quotation_line WHERE quotation_id = $1 AND COALESCE(is_disbursement, false) = false",
+    [quotationId],
+  );
+  return rows[0] ? Number(rows[0].c) : null;
 }
-/** Actual incurred cost for a dossier (posted cost entries). */
+/** Actual incurred SERVICE cost for a dossier (posted cost entries).
+ *
+ * Débours are excluded (BUG-3): cost_entry has no flag of its own, so the
+ * item's dictionary flag is the authority — the same flag assert_line_valid()
+ * enforces on the ledger posting. An entry with no dictionary item is an
+ * own-cost, never a débours. */
 async function actualCostFor(client, dossierId) {
-  const { rows } = await client.query("SELECT COALESCE(SUM(amount),0) AS c FROM cost_entry WHERE dossier_id = $1", [dossierId]);
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(ce.amount),0) AS c
+       FROM cost_entry ce
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = ce.dictionary_item_id
+      WHERE ce.dossier_id = $1 AND COALESCE(di.is_disbursement, false) = false`,
+    [dossierId],
+  );
   return Number(rows[0].c);
 }
 /** Sales list — R/Y/G only, no cost. Latest per dossier first. */

@@ -24,29 +24,55 @@ async function createDraft(client, { dossierId, actor = {} }) {
   if (open) {
     throw new AppError("RECON_OPEN", `A ${open.status} reconciliation already exists for this file — validate/reject it first`, 409);
   }
-  const compare = await repo.costCompare(client, dossierId);
+  const [compare, disbursement] = await Promise.all([
+    repo.costCompare(client, dossierId),
+    repo.disbursementTotals(client, dossierId),
+  ]);
   const lines = [];
   for (const row of compare) {
     lines.push({
       dictionary_item_id: row.dictionary_item_id,
       item_code: row.item_code,
       item_label: row.item_label,
-      budget_ttc: Number(row.budget_ttc) || 0,
-      actual_ttc: Number(row.actual_ttc) || 0,
+      budget_ht: Number(row.budget_ht) || 0,
+      actual_ht: Number(row.actual_ht) || 0,
+      // Lines are service costs only (débours are excluded by costCompare);
+      // keep the stored flag false so a reader never has to re-derive that.
+      is_disbursement: false,
       doc_ref: null,
       doc_required: await repo.itemRequiresDoc(client, row.dictionary_item_id),
     });
   }
   const row = await repo.insert(client, { dossierId, actorUserId: actor.user_id || null });
   await repo.insertLines(client, row.reconciliation_id, lines);
-  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.drafted", moduleKey: MODULE, entityRef: ref(row.reconciliation_id), after: { dossier_id: dossierId, lines: lines.length } });
+  await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.drafted", moduleKey: MODULE, entityRef: ref(row.reconciliation_id), after: { dossier_id: dossierId, lines: lines.length, disbursement_actual_ht: disbursement.actual_ht } });
   return get(client, row.reconciliation_id);
 }
+
+/** Round to the column's scale (numeric(18,2)) so the stamped amount matches. */
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 async function get(client, id) {
   const row = await repo.get(client, id);
   if (!row) throw new AppError("NOT_FOUND", "Reconciliation not found", 404);
-  return { ...row, lines: await repo.lines(client, id) };
+  const [lines, disbursement] = await Promise.all([
+    repo.lines(client, id),
+    repo.disbursementTotals(client, row.dossier_id),
+  ]);
+  // Service-cost lines carry the variance; débours are a separate pass-through
+  // total (BUG-3). Both are HT (BUG-2).
+  const service_budget_ht = round2(lines.reduce((s, l) => s + (Number(l.budget_ht) || 0), 0));
+  const service_actual_ht = round2(lines.reduce((s, l) => s + (Number(l.actual_ht) || 0), 0));
+  return {
+    ...row,
+    lines,
+    service_budget_ht,
+    service_actual_ht,
+    disbursement_budget_ht: round2(disbursement.budget_ht),
+    disbursement_actual_ht: round2(disbursement.actual_ht),
+    // Total money the file actually cost, including pass-through débours.
+    total_actual_ht: round2(service_actual_ht + Number(disbursement.actual_ht || 0)),
+  };
 }
 
 const latest = (client, { dossierId }) => repo.latestForDossier(client, dossierId);
@@ -76,11 +102,18 @@ async function validate(client, { id, actor = {} }) {
   if (row.submitted_by && actor.user_id && row.submitted_by === actor.user_id) {
     throw new AppError("SELF_VALIDATE", "The person who submitted cannot validate — maker-checker", 422);
   }
-  const lines = await repo.lines(client, id);
-  const amount = lines.reduce((s, l) => s + (Number(l.actual_ttc) || 0), 0);
+  // The amount that closes the file financially is total money paid out, so it
+  // includes pass-through débours alongside the service actuals (BUG-3). Both
+  // are HT (BUG-2) — ocr_amount is the validated actual cost, not a sell price.
+  const [lines, disbursement] = await Promise.all([
+    repo.lines(client, id),
+    repo.disbursementTotals(client, row.dossier_id),
+  ]);
+  const serviceActual = lines.reduce((s, l) => s + (Number(l.actual_ht) || 0), 0);
+  const amount = round2(serviceActual + Number(disbursement.actual_ht || 0));
   const out = await repo.setStatus(client, id, {
     sql: "status = 'VALIDATED', validated_by = $2, validated_at = now(), ocr_amount = $3",
-    params: [actor.user_id || null, Math.round(amount * 100) / 100],
+    params: [actor.user_id || null, amount],
   });
   await repo.stampDossier(client, { dossierId: row.dossier_id, reconciliationId: id, amount: out.ocr_amount });
   await audit(client, { actorUserId: actor.user_id || null, action: "dossier_reconciliation.validated", moduleKey: MODULE, entityRef: ref(id), before: { status: row.status }, after: { status: out.status, amount: out.ocr_amount } });

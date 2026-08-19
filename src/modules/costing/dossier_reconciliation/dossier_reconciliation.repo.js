@@ -41,10 +41,10 @@ async function insertLines(client, reconciliationId, lines) {
   for (const l of lines) {
     await client.query(
       `INSERT INTO dossier_reconciliation_line
-         (reconciliation_id, dictionary_item_id, item_code, item_label, budget_ttc, actual_ttc, doc_ref, doc_required)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (reconciliation_id, dictionary_item_id, item_code, item_label, budget_ht, actual_ht, is_disbursement, doc_ref, doc_required)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [reconciliationId, l.dictionary_item_id || null, l.item_code || null, l.item_label || null,
-        l.budget_ttc || 0, l.actual_ttc || 0, l.doc_ref || null, l.doc_required === true],
+        l.budget_ht || 0, l.actual_ht || 0, l.is_disbursement === true, l.doc_ref || null, l.doc_required === true],
     );
   }
 }
@@ -65,7 +65,18 @@ async function setStatus(client, id, fields) {
   return rows[0] || null;
 }
 
-/** The per-item budget (approved costing lines) and actual (cost entries). */
+/** The per-item budget (approved costing lines) and actual (cost entries),
+ *  SERVICE COSTS ONLY. HT throughout (BUG-2).
+ *
+ *  Débours (pass-through) are excluded from both sides (BUG-3, OHADA_KB
+ *  §6.7/§450): they are neither revenue nor cost to the forwarder, so a file
+ *  heavy in customs/port débours must not move the service-cost variance. The
+ *  budget uses costing_line.is_disbursement directly (the flag set at costing
+ *  time); actuals join dictionary_item, because cost_entry carries no flag of
+ *  its own and the ledger's assert_line_valid() enforces the same item flag. A
+ *  cost entry with no dictionary item is an own-cost, never a débours.
+ *
+ *  Débours are reported separately by disbursementTotals(). */
 async function costCompare(client, dossierId) {
   const { rows } = await client.query(
     `SELECT
@@ -74,24 +85,52 @@ async function costCompare(client, dossierId) {
        -- label_en/label_fr: dictionary_item has never had a name_* pair (0200),
        -- and every other read of the billing dictionary uses the label_ names.
        COALESCE(di.label_en, di.label_fr, 'Other') AS item_label,
-       COALESCE(b.budget_ttc, 0) AS budget_ttc,
-       COALESCE(a.actual_ttc, 0) AS actual_ttc
+       COALESCE(b.budget_ht, 0) AS budget_ht,
+       COALESCE(a.actual_ht, 0) AS actual_ht
      FROM
-       (SELECT cl.dictionary_item_id, SUM(cl.qty * cl.unit_cost) AS budget_ttc
+       (SELECT cl.dictionary_item_id, SUM(cl.qty * cl.unit_cost) AS budget_ht
           FROM costing_line cl
           JOIN costing c ON c.costing_id = cl.costing_id
-         WHERE c.dossier_id = $1 AND c.status IN ('APPROVED','LOCKED')
+         -- costing_status_check (10718:74) permits DRAFT, SUBMITTED_FOR_*,
+         -- APPROVED_LOCKED, UNLOCK_REQUESTED, REJECTED. There is no 'APPROVED'
+         -- or 'LOCKED' status — the old IN (...) matched nothing, so every
+         -- reconciliation silently reported a zero budget. Match the single
+         -- locked/approved state; this agrees with cost_tracking.repo.js.
+         WHERE c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'
+           AND COALESCE(cl.is_disbursement, false) = false
          GROUP BY cl.dictionary_item_id) b
        FULL OUTER JOIN
-       (SELECT dictionary_item_id, SUM(amount) AS actual_ttc
-          FROM cost_entry WHERE dossier_id = $1
-          GROUP BY dictionary_item_id) a
+       (SELECT ce.dictionary_item_id, SUM(ce.amount) AS actual_ht
+          FROM cost_entry ce
+          LEFT JOIN dictionary_item d2 ON d2.dictionary_item_id = ce.dictionary_item_id
+         WHERE ce.dossier_id = $1 AND COALESCE(d2.is_disbursement, false) = false
+         GROUP BY ce.dictionary_item_id) a
          ON a.dictionary_item_id = b.dictionary_item_id
        LEFT JOIN dictionary_item di ON di.dictionary_item_id = COALESCE(b.dictionary_item_id, a.dictionary_item_id)
      ORDER BY item_code`,
     [dossierId],
   );
   return rows;
+}
+
+/** Débours for a dossier: what was budgeted on the approved costing vs what was
+ *  actually posted. Pass-through — excluded from the service-cost variance and
+ *  margin above, but a real operational total the reconciler accounts for
+ *  separately (BUG-3). The budget uses the costing line flag; actuals join
+ *  dictionary_item because cost_entry has no flag of its own. */
+async function disbursementTotals(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT
+       COALESCE((SELECT SUM(cl.qty * cl.unit_cost)
+                   FROM costing_line cl JOIN costing c ON c.costing_id = cl.costing_id
+                  WHERE c.dossier_id = $1 AND c.status = 'APPROVED_LOCKED'
+                    AND COALESCE(cl.is_disbursement, false) = true), 0) AS budget_ht,
+       COALESCE((SELECT SUM(ce.amount)
+                   FROM cost_entry ce JOIN dictionary_item di ON di.dictionary_item_id = ce.dictionary_item_id
+                  WHERE ce.dossier_id = $1 AND di.is_disbursement = true), 0) AS actual_ht`,
+    [dossierId],
+  );
+  return { budget_ht: Number(rows[0].budget_ht), actual_ht: Number(rows[0].actual_ht) };
 }
 
 /** Whether a proof document is required for an item (dictionary rule). */
@@ -116,5 +155,5 @@ async function stampDossier(client, { dossierId, reconciliationId, amount }) {
 
 module.exports = {
   get, openForDossier, latestForDossier, insert, insertLines, lines, setStatus,
-  costCompare, itemRequiresDoc, stampDossier,
+  costCompare, disbursementTotals, itemRequiresDoc, stampDossier,
 };

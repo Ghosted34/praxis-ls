@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (414)
+## All codes (415)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -242,7 +242,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 459× | — |
+| `NOT_FOUND` | 404 | 464× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -405,6 +405,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TENANT_SUSPENDED` | 403 | 1× | — |
 | `TOKEN_EXPIRED` | 401 | 1× | — |
 | `TOO_FEW_STAGES` | 422 | 1× | — |
+| `TOO_MANY` | 422 | 1× | — |
 | `TOO_MANY_STAGES` | 422 | 2× | — |
 | `TOO_MANY_UNITS` | 422 | 1× | — |
 | `TRAINING_FULL` | 422 | 2× | — |
@@ -432,7 +433,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 181× | — |
+| `VALIDATION_ERROR` | 422 | 186× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

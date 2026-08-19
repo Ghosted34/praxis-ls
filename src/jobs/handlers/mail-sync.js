@@ -1,7 +1,7 @@
 /**
  * Worker job: poll a tenant's IMAP mail connections for new inbound. Job data:
  * { tenantMeta, env }. For each CONNECTED imap_smtp connection, fetch since its
- * cursor, dedup-insert into email_inbound, emit email.received, advance cursor.
+ * per-folder cursor, dedup-insert into email_message, emit email.received, advance.
  * A per-connection failure is isolated (recorded on the row) and never aborts the
  * others. See doc/EMAIL_ENGINE_PLAN.md §5 and mail.service.syncConnection.
  */

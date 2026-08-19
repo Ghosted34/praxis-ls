@@ -21,6 +21,21 @@
 -- text through so the migration still applies and search still works for
 -- everything unaccented. Degrading is right; failing to migrate is not.
 --
+-- THE WRAPPER RESOLVES THE EXTENSION'S REAL SCHEMA, and that is not pedantry.
+-- An earlier draft of this file hardcoded `public.unaccent(t)`. Tenant
+-- migrations run with `search_path = <schema>,public`, so `CREATE EXTENSION`
+-- put unaccent in `live` on a database where nothing had created it first —
+-- and `public.unaccent` then did not exist. The wrapper's own
+-- `EXCEPTION WHEN OTHERS` swallowed the error and returned the text unfolded,
+-- so nothing failed, nothing logged, and accent-folding was simply absent.
+-- Caught by running the search against a freshly provisioned tenant; no static
+-- check could have seen it.
+--
+-- Two guards now, because either alone is insufficient: the extension is asked
+-- for in `public` explicitly, AND the wrapper is built with whatever schema the
+-- extension actually turns out to live in — which covers the database where it
+-- was already installed somewhere else before we arrived.
+--
 -- STABLE, not IMMUTABLE: `unaccent()` is STABLE because its dictionary can be
 -- reloaded, and labelling a wrapper IMMUTABLE to borrow it is how a wrong answer
 -- gets cached in an index. This function is only ever called from the trigger
@@ -43,20 +58,39 @@
 -- ============================================================================
 
 DO $$ BEGIN
-  CREATE EXTENSION IF NOT EXISTS unaccent;
+  CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'unaccent not available; mail search will not fold accents';
 END $$;
 
-CREATE OR REPLACE FUNCTION unaccent_safe(t text) RETURNS text AS $$
+DO $$
+DECLARE
+  ext_schema text;
 BEGIN
-  RETURN CASE
-    WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent')
-    THEN public.unaccent(t) ELSE t END;
-EXCEPTION WHEN OTHERS THEN
-  RETURN t;
-END;
-$$ LANGUAGE plpgsql STABLE;
+  SELECT n.nspname INTO ext_schema
+    FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+   WHERE e.extname = 'unaccent';
+
+  IF ext_schema IS NULL THEN
+    -- No extension anywhere: a pass-through, so search still works for
+    -- everything unaccented and the migration still applies.
+    EXECUTE $f$
+      CREATE OR REPLACE FUNCTION unaccent_safe(t text) RETURNS text AS $body$
+        SELECT t;
+      $body$ LANGUAGE sql STABLE;
+    $f$;
+    RAISE NOTICE 'unaccent absent; unaccent_safe() passes text through unfolded';
+  ELSE
+    -- Schema-qualified with the extension's ACTUAL schema, resolved now rather
+    -- than assumed. No EXCEPTION handler: with the schema resolved there is no
+    -- expected failure left, and a handler here is what hid the last one.
+    EXECUTE format($f$
+      CREATE OR REPLACE FUNCTION unaccent_safe(t text) RETURNS text AS $body$
+        SELECT %I.unaccent(t);
+      $body$ LANGUAGE sql STABLE;
+    $f$, ext_schema);
+  END IF;
+END $$;
 
 /** Addresses, tokenised the way people search for them: whole and in pieces. */
 CREATE OR REPLACE FUNCTION mail_address_terms(t text) RETURNS text AS $$

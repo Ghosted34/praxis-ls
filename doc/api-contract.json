@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1285,
+  "route_count": 1297,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1179
+    "gated": 1191
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -292,6 +292,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/locations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/labels/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2109,7 +2115,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/folders": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/inbox": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/labels": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2206,6 +2224,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/mail/thread/:id/attachments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/threads": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/threads/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5991,6 +6021,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/labels": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/mailboxes/:id/archive": {
       "auth": true,
       "rbac": true,
@@ -6046,6 +6082,42 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/thread/:id/reply": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/label": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/move": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/read": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/star": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/stream": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/bulk": {
       "auth": true,
       "rbac": true,
       "validated": false,

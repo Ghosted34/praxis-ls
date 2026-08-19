@@ -45,7 +45,7 @@ class ImapSmtpProvider {
 
   capabilities() {
     // SMTP does not file sent copies for us → engine/adapter must APPEND them.
-    return { ...baseCapabilities(), appendSent: true };
+    return { ...baseCapabilities(), appendSent: true, folders: true, folderMove: true, serverFlags: true };
   }
 
   _imapClient() {
@@ -167,6 +167,20 @@ class ImapSmtpProvider {
     return { externalMessageId: messageId, threadKey };
   }
 
+  /** Move a message to another folder, so the user's phone agrees with us. */
+  async moveMessage(externalMessageId, destinationPath, fromPath) {
+    const imap = this._imapClient();
+    await imap.connect();
+    const lock = await imap.getMailboxLock(fromPath || "INBOX");
+    try {
+      await imap.messageMove({ header: { "message-id": externalMessageId } }, destinationPath);
+      return { moved: true };
+    } finally {
+      lock.release();
+      try { await imap.logout(); } catch { /* @silent:teardown the move already committed */ }
+    }
+  }
+
   async createReply(externalMessageId, msg) {
     const references = [].concat(msg.references || [], externalMessageId).filter(Boolean);
     return this.sendEmail({ ...msg, inReplyTo: externalMessageId, references });
@@ -176,15 +190,44 @@ class ImapSmtpProvider {
    * Fetch messages newer than the cursor. cursor = { uidvalidity, last_uid }.
    * If uidvalidity changed, the mailbox re-numbered → full re-scan (last_uid=0).
    */
-  async fetchSince(cursor) {
+  /**
+   * Every folder the server advertises, with its RFC 6154 special-use flags.
+   *
+   * The flags are what make the mapping reliable: a folder called "Éléments
+   * envoyés" is Sent, and no list of names is ever finished. Servers that do not
+   * advertise them fall back to name matching in folders.js.
+   */
+  async listFolders() {
+    const imap = this._imapClient();
+    await imap.connect();
+    try {
+      const list = await imap.list();
+      return (list || []).map((f) => ({
+        path: f.path,
+        name: f.name,
+        delimiter: f.delimiter,
+        flags: f.flags ? [...f.flags].map((x) => String(x).toLowerCase()) : [],
+        specialUse: f.specialUse || null,
+      })).map((f) => (f.specialUse && !f.flags.includes(String(f.specialUse).toLowerCase())
+        ? { ...f, flags: [...f.flags, String(f.specialUse).toLowerCase()] } : f));
+    } finally {
+      try { await imap.logout(); } catch { /* @silent:teardown the listing already succeeded */ }
+    }
+  }
+
+  async fetchSince(cursor, folderPath) {
      
     const { simpleParser } = require("mailparser");
     const imap = this._imapClient();
     const messages = [];
     let nextCursor = cursor;
+    // Per folder, because UIDVALIDITY is per mailbox. Defaults to INBOX so a
+    // caller that predates multi-folder sync behaves exactly as it used to.
+    const box = folderPath || "INBOX";
+    const outbound = /^(sent|outbox)/i.test(box) || /\.sent$/i.test(box);
 
     await imap.connect();
-    const lock = await imap.getMailboxLock("INBOX");
+    const lock = await imap.getMailboxLock(box);
     try {
       const uidValidity = Number(imap.mailbox.uidValidity);
       const prior = cursor || {};
@@ -197,7 +240,7 @@ class ImapSmtpProvider {
       for await (const item of imap.fetch(range, { uid: true, source: true, flags: true }, { uid: true })) {
         if (item.uid <= lastUid) continue; // `n:*` can echo the last uid when none are newer
         const parsed = await simpleParser(item.source);
-        messages.push(this._normalize(parsed, item));
+        messages.push({ ...this._normalize(parsed, item), direction: outbound ? "OUT" : "IN" });
         if (item.uid > maxUid) maxUid = item.uid;
       }
       nextCursor = { uidvalidity: uidValidity, last_uid: maxUid };

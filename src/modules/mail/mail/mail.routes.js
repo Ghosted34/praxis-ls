@@ -129,7 +129,51 @@ router.delete("/send-points/:key", requirePermission(M, "edit"), c.unbindSendPoi
 // this turns a five-field form into a two-field one.
 router.get("/cpanel-preset", requirePermission(M, "view"), c.cpanel);
 
-// Engine: messages
+/* ── PR-1A: conversations ─────────────────────────────────────────────────
+ *
+ * The conversation is the unit the UI works in; a message is what a
+ * conversation is made of. Everything below is keyed on an email_thread_id.
+ *
+ * Action mapping, same discipline as above:
+ *
+ *   view    listing conversations, opening one, listing folders and labels.
+ *   edit    read state, stars, moves, stream corrections, labelling, and bulk
+ *           forms of all of those. They change how mail is organised, not what
+ *           correspondence exists.
+ *   create  making a label — it is a new object the user owns.
+ *
+ * Read state, stars and labels are PER USER, so every handler takes the actor.
+ * Which conversations a caller may see at all is decided a second time inside
+ * the repo, by the same access predicate the mailbox grants drive: MOD-72 says
+ * whether you may touch mail, the grants say whose mail.
+ *
+ * Search has no endpoint of its own on purpose. It is `GET /threads?q=`, so a
+ * search result IS a conversation list and every filter, sort and bulk action
+ * keeps working on it — an inbox that behaves differently once you type in the
+ * box is two inboxes to maintain. */
+
+// Static paths BEFORE `/threads/:id`, or Express matches "folders" as an id.
+router.get("/folders", requirePermission(M, "view"), c.mailFolders);
+router.get("/labels", requirePermission(M, "view"), c.mailLabels);
+router.post("/labels", requirePermission(M, "create"), v.label, c.createLabel);
+router.delete("/labels/:id", requirePermission(M, "edit"), c.deleteLabel);
+
+router.get("/threads", requirePermission(M, "view"), c.threads);
+router.post("/threads/bulk", requirePermission(M, "edit"), v.threadBulk, c.threadBulk);
+router.get("/threads/:id", requirePermission(M, "view"), c.threadGet);
+router.post("/threads/:id/read", requirePermission(M, "edit"), v.threadFlag, c.threadRead);
+router.post("/threads/:id/star", requirePermission(M, "edit"), v.threadFlag, c.threadStar);
+router.post("/threads/:id/move", requirePermission(M, "edit"), v.threadMove, c.threadMove);
+router.post("/threads/:id/stream", requirePermission(M, "edit"), v.threadStream, c.threadStream);
+router.post("/threads/:id/label", requirePermission(M, "edit"), v.labelApply, c.threadLabel);
+
+/* ── Engine: messages (pre-PR-1A) ─────────────────────────────────────────
+ *
+ * `/thread` (singular) is the OLD flat message list, kept because the current
+ * client still calls it and PR-1B replaces those call sites. `/threads`
+ * (plural) above is the conversation model. They are deliberately different
+ * paths rather than one path with a mode flag, so the old one can be deleted in
+ * one commit when nothing calls it. */
 router.get("/thread", requirePermission(M, "view"), c.thread);
 router.get("/thread/:id", requirePermission(M, "view"), c.message);
 router.get("/thread/:id/attachments", requirePermission(M, "view"), c.attachments);

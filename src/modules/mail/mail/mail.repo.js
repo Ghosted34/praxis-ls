@@ -43,15 +43,28 @@ async function listSentLog(client, { limit = 100, offset = 0, identityId = null 
   return rows;
 }
 
+/**
+ * The legacy flat inbox view (GET /mail/inbox), kept working over the new store.
+ *
+ * It predates threads and returns messages, not conversations, so it reads
+ * email_message directly. `is_read` here is "read by ANYONE", which is the old
+ * semantics — honest for a legacy endpoint, and the reason the thread list does
+ * not use this query. New surfaces use thread.repo.
+ */
 async function listInbox(client, { limit = 100, offset = 0, identityId = null } = {}) {
   const params = [Math.min(Math.max(Number(limit) || 100, 1), 500), Number(offset) || 0];
-  let where = "";
-  if (identityId) { params.push(identityId); where = "WHERE b.email_identity_id = $3"; }
+  let where = "WHERE m.direction = 'IN'";
+  if (identityId) { params.push(identityId); where += ` AND m.email_identity_id = $${params.length}`; }
   const { rows } = await client.query(
-    "SELECT b.email_inbound_id, b.email_identity_id, b.from_address, b.to_address, b.subject, " +
-      "b.body_preview, b.entity_ref, b.is_read, b.received_at, i.purpose " +
-      "FROM email_inbound b LEFT JOIN email_identity i ON i.email_identity_id = b.email_identity_id " +
-      where + " ORDER BY b.received_at DESC LIMIT $1 OFFSET $2",
+    "SELECT m.email_message_id AS email_inbound_id, m.email_identity_id, m.from_address, " +
+      "array_to_string(m.to_address::text[], ', ') AS to_address, m.subject, m.body_preview, " +
+      "t.entity_ref, EXISTS (SELECT 1 FROM email_message_state s " +
+      "  WHERE s.email_message_id = m.email_message_id AND s.is_read) AS is_read, " +
+      "m.received_at, i.purpose " +
+      "FROM email_message m " +
+      "JOIN email_thread t ON t.email_thread_id = m.email_thread_id " +
+      "LEFT JOIN email_identity i ON i.email_identity_id = m.email_identity_id " +
+      where + " ORDER BY m.received_at DESC LIMIT $1 OFFSET $2",
     params,
   );
   return rows;
@@ -202,53 +215,21 @@ async function claimConnectionIfUnowned(client, id, ownerUserId) {
   );
 }
 
-// ── Engine: inbound / thread store (email_inbound, enriched by 0481) ──
-/** Insert a normalized message, deduped on (connection, external_message_id).
- *  Returns the new row, or null when it was a duplicate. */
-async function insertInbound(client, row) {
-  const { rows } = await client.query(
-    "INSERT INTO email_inbound " +
-      "(email_connection_id, email_identity_id, external_message_id, thread_key, direction, " +
-      " from_address, to_address, subject, body_preview, body_html, body_text, in_reply_to, is_read, received_at) " +
-      "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) " +
-      "ON CONFLICT (email_connection_id, external_message_id) WHERE external_message_id IS NOT NULL DO NOTHING " +
-      "RETURNING email_inbound_id, thread_key",
-    [
-      row.email_connection_id, row.email_identity_id || null, row.external_message_id, row.thread_key, row.direction || "IN",
-      row.from_address || "unknown@unknown", row.to_address || null, row.subject || null,
-      String(row.body_text || row.body_preview || "").slice(0, 500), row.body_html || null, row.body_text || null,
-      row.in_reply_to || null, row.is_read === true, row.received_at || new Date(),
-    ],
-  );
-  return rows[0] || null;
-}
-
-async function listInboundByConnection(client, { connectionId = null, limit = 50, before = null } = {}) {
-  const params = [Math.min(Math.max(Number(limit) || 50, 1), 200)];
-  let where = "1=1";
-  if (connectionId) { params.push(connectionId); where += ` AND email_connection_id = $${params.length}`; }
-  if (before) { params.push(before); where += ` AND received_at < $${params.length}`; }
-  const { rows } = await client.query(
-    "SELECT email_inbound_id, email_connection_id, external_message_id, thread_key, direction, " +
-      "from_address, to_address, subject, body_preview, is_read, received_at " +
-      `FROM email_inbound WHERE ${where} ORDER BY received_at DESC LIMIT $1`,
-    params,
-  );
-  return rows;
-}
-
-const getInbound = (client, id) => getById(client, "email_inbound", "email_inbound_id", id);
-async function markInboundRead(client, id) {
-  const { rows } = await client.query("UPDATE email_inbound SET is_read = true WHERE email_inbound_id = $1 RETURNING email_inbound_id", [id]);
-  return rows[0] || null;
-}
+// ── Engine: message store ────────────────────────────────────────────────
+// Moved to thread.repo.js by 10731. The single-table store this file used to
+// own could not express per-user read state, which a shared mailbox needs, so
+// the model is now email_thread / email_message / email_message_state and its
+// SQL lives with it. What remains here is connections and identities.
 
 // ── Engine: CRM linking (Phase 3) ──
 /** Match an inbound sender to a client by their recipient email (0475). */
 async function findClientByEmail(client, email) {
   if (!email) return null;
+  // Case-folded for the same reason thread.repo.knownParty is: the address comes
+  // off the wire in whatever case the sender's client used, and a `=` comparison
+  // silently declines to auto-link mail from `Client@Acme.CM`. Indexed by 10736.
   return (await client.query(
-    "SELECT client_id, name FROM client_master WHERE email = $1 ORDER BY created_at LIMIT 1",
+    "SELECT client_id, name FROM client_master WHERE lower(email) = lower($1) ORDER BY created_at LIMIT 1",
     [email],
   )).rows[0] || null;
 }
@@ -260,18 +241,11 @@ async function findDossierByRefs(client, refs) {
   if (!refs || !refs.length) return null;
   return (await client.query("SELECT dossier_id, ref FROM dossier_visible WHERE ref = ANY($1::text[]) LIMIT 1", [refs])).rows[0] || null;
 }
-/** All mail (in + out) tied to an entity_ref, e.g. 'client:<uuid>' — a timeline. */
-async function timelineByEntity(client, entityRef, { limit = 100 } = {}) {
-  return (await client.query(
-    "SELECT email_inbound_id, email_connection_id, thread_key, direction, from_address, to_address, subject, " +
-      "body_preview, is_read, entity_ref, received_at " +
-      "FROM email_inbound WHERE entity_ref = $1 ORDER BY received_at DESC LIMIT $2",
-    [entityRef, Math.min(Math.max(Number(limit) || 100, 1), 500)],
-  )).rows;
-}
-
 // ── Engine: attachments (email_attachment, 0482) ──
 const addAttachment = (client, data) => insertOne(client, "email_attachment", data);
+/** Attachments on one message. `email_inbound_id` still names the column —
+ *  10731 re-pointed its FK at email_message rather than renaming it, so no data
+ *  moved and no other reader had to change. */
 async function listAttachments(client, inboundId) {
   return (await client.query(
     "SELECT email_attachment_id, email_inbound_id, vault_id, filename, content_type, size_bytes, created_at " +
@@ -310,7 +284,7 @@ module.exports = {
   listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity, setBindingsForIdentity,
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
   setDefaultConnection, ensureDefaultConnection, claimConnectionIfUnowned,
-  insertInbound, listInboundByConnection, getInbound, markInboundRead,
-  findClientByEmail, searchRecipients, findDossierByRefs, setEntityRef, timelineByEntity,
+
+  findClientByEmail, searchRecipients, findDossierByRefs,
   addAttachment, listAttachments,
 };

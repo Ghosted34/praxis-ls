@@ -167,6 +167,81 @@ export const reconcileDossier = (dossierId: string) =>
 export const recordCostEntry = (body: CostEntryInput) =>
   tenant<CostEntry>("/cost-tracking", { method: "POST", body });
 
+/* ── §3.4 — master-ledger matrix, bulk entry, advances ─────────────── */
+/** One column of the matrix: derived from the dictionary items that carry
+ *  spend, never a fixed list (the legacy hardcoded 15 in PHP). */
+export type MatrixItem = {
+  dictionary_item_id: string | null;
+  code: string;
+  label: string;
+};
+export type MatrixRow = {
+  dossier_id: string;
+  ref?: string;
+  client_name?: string | null;
+  budget: number;
+  actual: number;
+  advance_received: number;
+  balance: number;
+  over_budget?: boolean;
+  /** dictionary_item_id (or "OTHER") → actual spend for that item. */
+  cells: Record<string, number>;
+  total_spend: number;
+  total_balance: number;
+};
+export const costMatrix = () =>
+  tenant<{ items: MatrixItem[]; rows: MatrixRow[] }>("/cost-tracking/matrix");
+
+export type BulkCostLine = {
+  dictionary_item_id?: string | null;
+  category?: string | null;
+  amount: number;
+  is_disbursement?: boolean;
+};
+/** The whole sheet in one transaction — never 15 round trips. */
+export const bulkRecordCosts = (body: {
+  dossier_id: string;
+  entity_id: string;
+  entry_date: string;
+  source_doc_ref: string;
+  lines: BulkCostLine[];
+}) =>
+  tenant<{ recorded: number }>("/cost-tracking/bulk", {
+    method: "POST",
+    body,
+  });
+
+/** Advances are per FILE (owner-decided); allocation to an item is optional. */
+export type AdvanceAllocation = {
+  advance_allocation_id: string;
+  dictionary_item_id: string;
+  item_code?: string | null;
+  item_label?: string | null;
+  amount: number;
+  note?: string | null;
+};
+export type DossierAdvance = {
+  advance_id: string;
+  amount: number;
+  received_on?: string;
+  applied_amount: number;
+  allocations: AdvanceAllocation[];
+};
+export const dossierAdvances = (dossierId: string) =>
+  tenant<DossierAdvance[]>(`/cost-tracking/dossier/${dossierId}/advances`);
+export const allocateAdvance = (
+  advanceId: string,
+  body: { dictionary_item_id: string; amount: number; note?: string | null },
+) =>
+  tenant<AdvanceAllocation>(`/cost-tracking/advances/${advanceId}/allocations`, {
+    method: "POST",
+    body,
+  });
+export const removeAdvanceAllocation = (allocationId: string) =>
+  tenant<AdvanceAllocation>(`/cost-tracking/allocations/${allocationId}`, {
+    method: "DELETE",
+  });
+
 /* ── Dossier reconciliation(/costing/reconciliations) — §2.1 merged record ── */
 /** One line per costing item: budget vs actual, both HT, débours excluded.
  *  `match_status` is provenance — UNMATCHED means untagged actuals were

@@ -12,10 +12,14 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { ErrorState } from "@/components/ui/states";
+import { ErrorState, EmptyState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { Chips } from "@/components/ui/chips";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { exportCsv } from "@/lib/export-csv";
+import { cn } from "@/lib/cn";
 import { RowActions } from "@/components/ui/row-actions";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -30,7 +34,7 @@ import {
   CashRequestActions,
 } from "./cash-request-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, todayISO } from "@/lib/format";
+import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import type { Entity, DictItem, DictSearchHit } from "@/lib/masterdata-api";
 import {
@@ -992,18 +996,209 @@ function UnlockRequestForm({
 
 /* ═══════════════════ Cost tracking (actuals) ═══════════════════ */
 
+/**
+ * §3.4 — Cost tracking, the legacy's three tabs on OUR data model:
+ * Summary & balance (portfolio + the master-ledger matrix), Actual costs
+ * (per-file entries + fast multi-line entry in one transaction), Advances
+ * received (per FILE — owner-decided — with optional per-item earmarks).
+ */
 export function CostTrackingPage() {
   const { rows: dossiers } = useList<Dossier>("/operations");
+  const [tab, setTab] = React.useState("summary");
   const [dossierId, setDossierId] = React.useState("");
+
+  return (
+    <section className={shell}>
+      <PageHeader
+        eyebrow={<HubCrumb area="Costing" to="/costing" />}
+        title="Cost tracking"
+        description="Actual costs booked against each file, vs the plan — and the advances funding them."
+      />
+      <HubTabs />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Chips
+          label="Cost tracking tabs"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "summary", label: tr("Summary & balance") },
+            { value: "actuals", label: tr("Actual costs") },
+            { value: "advances", label: tr("Advances received") },
+          ]}
+        />
+        {tab !== "summary" && (
+          <Select
+            aria-label="Filter by dossier"
+            value={dossierId}
+            onChange={(e) => setDossierId(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="">Select a dossier…</option>
+            {(dossiers || []).map((d) => (
+              <option key={d.dossier_id} value={d.dossier_id}>
+                {d.ref}
+              </option>
+            ))}
+          </Select>
+        )}
+      </div>
+
+      {tab === "summary" && (
+        <div className="space-y-4">
+          <CostPortfolio />
+          <MatrixPanel />
+        </div>
+      )}
+      {tab === "actuals" &&
+        (dossierId ? (
+          <ActualCostsTab dossierId={dossierId} />
+        ) : (
+          <EmptyState
+            title={tr("Pick an operations file")}
+            hint="Actual costs are recorded against one file at a time."
+          />
+        ))}
+      {tab === "advances" &&
+        (dossierId ? (
+          <AdvancesTab dossierId={dossierId} />
+        ) : (
+          <EmptyState
+            title={tr("Pick an operations file")}
+            hint="A client advances money against the file; earmarking part of it to a cost item is optional."
+          />
+        ))}
+    </section>
+  );
+}
+
+/**
+ * §3.4 — the master-ledger matrix: one row per file, categories as COLUMNS
+ * derived from the dictionary (the legacy hardcoded 15 in PHP and matched by
+ * array index — add a category there and you edit code; here you add a
+ * dictionary item). TOTAL SPEND / TOTAL BALANCE close the row; Export ships
+ * exactly what is on screen.
+ */
+function MatrixPanel() {
+  const m = useResource(() => api.costMatrix(), []);
+  const items = m.data?.items || [];
+  const rows = m.data?.rows || [];
+
+  function exportMatrix() {
+    exportCsv<api.MatrixRow>({
+      filename: "cost-tracking-matrix",
+      columns: [
+        { header: "File", value: (r) => r.ref || r.dossier_id },
+        { header: "Client", value: (r) => r.client_name || "" },
+        ...items.map((it) => ({
+          header: it.code,
+          value: (r: api.MatrixRow) =>
+            r.cells[it.dictionary_item_id ?? "OTHER"] ?? 0,
+        })),
+        { header: "TOTAL SPEND", value: (r) => r.total_spend },
+        { header: "Advance received", value: (r) => r.advance_received },
+        { header: "TOTAL BALANCE", value: (r) => r.total_balance },
+      ],
+      rows,
+    });
+  }
+
+  return (
+    <Panel
+      title={tr("Master ledger")}
+      subtitle="Files × cost items — columns grow with the dictionary, not a fixed list"
+      action={
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={exportMatrix}
+          disabled={!rows.length}
+        >
+          {tr("Export")}
+        </Button>
+      }
+    >
+      {m.error ? (
+        <ErrorState message={m.error} />
+      ) : rows.length === 0 && !m.loading ? (
+        <EmptyState
+          title={tr("Nothing tracked yet")}
+          hint="Record an actual cost against a file and the grid grows."
+        />
+      ) : (
+        <Table sticky maxHeight="480px" density="compact" freezeFirstColumn>
+          <THead>
+            <TR>
+              <TH>File</TH>
+              {items.map((it) => (
+                <TH
+                  key={it.dictionary_item_id ?? "OTHER"}
+                  className="text-right"
+                >
+                  {it.code}
+                </TH>
+              ))}
+              <TH className="text-right">TOTAL SPEND</TH>
+              <TH className="text-right">Advance</TH>
+              <TH className="text-right">TOTAL BALANCE</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((r) => (
+              <TR key={r.dossier_id}>
+                <TD>
+                  <span className="font-medium text-foreground">
+                    {r.ref || r.dossier_id.slice(0, 8)}
+                  </span>
+                  {r.client_name ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {r.client_name}
+                    </span>
+                  ) : null}
+                </TD>
+                {items.map((it) => {
+                  const v = r.cells[it.dictionary_item_id ?? "OTHER"];
+                  return (
+                    <TD
+                      key={it.dictionary_item_id ?? "OTHER"}
+                      className="num text-right"
+                    >
+                      {v ? money0(v) : "—"}
+                    </TD>
+                  );
+                })}
+                <TD className="num text-right font-semibold">
+                  {money0(r.total_spend)}
+                </TD>
+                <TD className="num text-right">{money0(r.advance_received)}</TD>
+                <TD
+                  className={cn(
+                    "num text-right font-semibold",
+                    r.total_balance > 0 && "text-[rgb(var(--warn))]",
+                  )}
+                >
+                  {money0(r.total_balance)}
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Panel>
+  );
+}
+
+/** §3.4 — per-file actuals + the fast multi-line sheet (one transaction). */
+function ActualCostsTab({ dossierId }: { dossierId: string }) {
   const entries = useResource(
-    () =>
-      dossierId ? api.costEntriesByDossier(dossierId) : Promise.resolve([]),
+    () => api.costEntriesByDossier(dossierId),
     [dossierId],
   );
   const recon = useResource<Record<string, unknown>>(
-    () => (dossierId ? api.reconcileDossier(dossierId) : Promise.resolve({})),
+    () => api.reconcileDossier(dossierId),
     [dossierId],
   );
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const rc = (recon.data || {}) as Record<string, number>;
 
   const cols: Column<api.CostEntry>[] = [
     {
@@ -1020,74 +1215,446 @@ export function CostTrackingPage() {
       render: (r) => money(r.amount),
     },
   ];
-  const rc = (recon.data || {}) as Record<string, number>;
 
   return (
-    <section className={shell}>
-      <PageHeader
-        eyebrow={<HubCrumb area="Costing" to="/costing" />}
-        title="Cost tracking"
-        description="Actual costs booked against a dossier, vs the plan."
-      />
-      <HubTabs />
-      <div className="mb-4 flex items-center gap-3">
-        <span className="micro">{tr("Dossier")}</span>
-        <Select
-          aria-label="Filter by dossier"
-          value={dossierId}
-          onChange={(e) => setDossierId(e.target.value)}
-          className="max-w-xs"
-        >
-          <option value="">Select a dossier…</option>
-          {(dossiers || []).map((d) => (
-            <option key={d.dossier_id} value={d.dossier_id}>
-              {d.ref}
-            </option>
-          ))}
-        </Select>
+    <>
+      <KpiRow>
+        {/* `budget`, not `planned_cost` — reconcile() returns
+            { budget, actual, variance, variance_percent, over_budget }
+            and this tile read two keys that have never existed, so it
+            rendered empty for every dossier ever selected. */}
+        <KpiTile label={tr("Budget")} value={money(rc.budget)} />
+        <KpiTile label={tr("Actual")} value={money(rc.actual)} />
+        <KpiTile
+          label={tr("Variance")}
+          value={money(rc.variance)}
+          tone={rc.over_budget ? "bad" : "ok"}
+        />
+        <KpiTile
+          label={tr("Advance received")}
+          value={money(rc.advance_received)}
+        />
+        <KpiTile
+          label={tr("Coverage")}
+          value={
+            rc.coverage_percent == null ? "—" : `${num(rc.coverage_percent)}%`
+          }
+        />
+      </KpiRow>
+      <div className="mb-3 flex justify-end">
+        <Button onClick={() => setSheetOpen(true)}>
+          {tr("Record costs (sheet)")}
+        </Button>
       </div>
-      {!dossierId && <CostPortfolio />}
-      {dossierId && (
-        <>
-          <KpiRow>
-            {/* `budget`, not `planned_cost` — reconcile() returns
-                { budget, actual, variance, variance_percent, over_budget }
-                and this tile read two keys that have never existed, so it
-                rendered empty for every dossier ever selected. */}
-            <KpiTile label={tr("Budget")} value={money(rc.budget)} />
-            <KpiTile label={tr("Actual")} value={money(rc.actual)} />
-            <KpiTile
-              label={tr("Variance")}
-              value={money(rc.variance)}
-              tone={rc.over_budget ? "bad" : "ok"}
-            />
-            <KpiTile
-              label={tr("Advance received")}
-              value={money(rc.advance_received)}
-            />
-            <KpiTile
-              label={tr("Coverage")}
-              value={
-                rc.coverage_percent == null
-                  ? "—"
-                  : `${num(rc.coverage_percent)}%`
-              }
-            />
-          </KpiRow>
-          <DataList
-            columns={cols}
-            rows={entries.data}
-            error={entries.error}
-            loading={entries.loading}
-            rowKey={(r, i) => r.cost_entry_id || String(i)}
-            empty={{
-              title: "No cost entries",
-              hint: "No actuals booked to this dossier yet.",
-            }}
-          />
-        </>
+      <DataList
+        columns={cols}
+        rows={entries.data}
+        error={entries.error}
+        loading={entries.loading}
+        rowKey={(r, i) => r.cost_entry_id || String(i)}
+        empty={{
+          title: "No cost entries",
+          hint: "No actuals booked to this dossier yet.",
+          action: (
+            <Button onClick={() => setSheetOpen(true)}>
+              {tr("Record costs (sheet)")}
+            </Button>
+          ),
+        }}
+      />
+      {sheetOpen && (
+        <BulkCostSheet
+          dossierId={dossierId}
+          onClose={() => setSheetOpen(false)}
+          onSaved={() => {
+            entries.reload();
+            recon.reload();
+          }}
+        />
       )}
-    </section>
+    </>
+  );
+}
+
+/**
+ * §3.4 — fast multi-line entry. The legacy saved every category in one
+ * transaction; making a user issue 15 round trips (and explain 7 half-saved
+ * lines when the 8th fails) is the defect this closes: the whole sheet posts
+ * atomically via POST /cost-tracking/bulk.
+ */
+function BulkCostSheet({
+  dossierId,
+  onClose,
+  onSaved,
+}: {
+  dossierId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { rows: entities } = useList<Entity>("/entities");
+  const [entityId, setEntityId] = React.useState("");
+  const [entryDate, setEntryDate] = React.useState(todayISO());
+  const [docRef, setDocRef] = React.useState("");
+  type SheetLine = {
+    dictionary_item_id: string | null;
+    label: string;
+    amount: string;
+    is_disbursement: boolean;
+  };
+  const BLANK: SheetLine = {
+    dictionary_item_id: null,
+    label: "",
+    amount: "",
+    is_disbursement: false,
+  };
+  const [rows, setRows] = React.useState<SheetLine[]>([{ ...BLANK }]);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const setRow = (i: number, p: Partial<SheetLine>) =>
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+
+  const total = rows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const valid = rows.filter(
+    (r) => Number(r.amount) > 0 && (r.dictionary_item_id || r.label.trim()),
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.bulkRecordCosts({
+        dossier_id: dossierId,
+        entity_id: entityId,
+        entry_date: entryDate,
+        source_doc_ref: docRef,
+        lines: valid.map((r) => ({
+          dictionary_item_id: r.dictionary_item_id || undefined,
+          category: r.label.trim() || undefined,
+          amount: Number(r.amount),
+          is_disbursement: r.is_disbursement,
+        })),
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Record costs — sheet")}
+      description="Every line posts to the ledger in ONE transaction — all or nothing, like the legacy sheet."
+      size="lg"
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label={tr("Entity")} required>
+            <Select
+              value={entityId}
+              onChange={(e) => setEntityId(e.target.value)}
+            >
+              <option value="">—</option>
+              {(entities || []).map((en) => (
+                <option key={en.entity_id} value={en.entity_id}>
+                  {en.legal_name || en.code}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={tr("Date")} required>
+            <Input
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Source doc ref")} required>
+            <Input value={docRef} onChange={(e) => setDocRef(e.target.value)} />
+          </Field>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="micro">{tr("Lines")}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setRows((rs) => [...rs, { ...BLANK }])}
+            >
+              + {tr("Add line")}
+            </Button>
+          </div>
+          {rows.map((r, i) => (
+            <div
+              key={i}
+              className="grid items-end gap-2 sm:grid-cols-[minmax(10rem,1fr)_8rem_auto_auto]"
+            >
+              <DictionaryFinder
+                id={`bulk-line-${i}`}
+                value={r.dictionary_item_id}
+                valueLabel={r.label || null}
+                onPick={(id, label) =>
+                  setRow(i, { dictionary_item_id: id, label })
+                }
+                label={tr("Cost item")}
+              />
+              <Field label={tr("Amount")}>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="num text-right"
+                  value={r.amount}
+                  onChange={(e) => setRow(i, { amount: e.target.value })}
+                />
+              </Field>
+              <label className="flex h-9 items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={r.is_disbursement}
+                  onChange={(e) =>
+                    setRow(i, { is_disbursement: e.target.checked })
+                  }
+                />
+                {tr("Débours")}
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={tr("Remove line")}
+                onClick={() =>
+                  setRows((rs) =>
+                    rs.length > 1 ? rs.filter((_, j) => j !== i) : rs,
+                  )
+                }
+              >
+                ✕
+              </Button>
+            </div>
+          ))}
+        </div>
+        <p className="num text-right text-sm font-semibold">
+          {tr("Sheet total")}: {money(total)}
+        </p>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={!entityId || !docRef || valid.length === 0 || busy}
+          onCancel={onClose}
+          saveLabel={tr("Post sheet")}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+/** §3.4 — advances per FILE, with the optional per-item earmark the owner
+ *  asked for ("this money is for demurrage"). */
+function AdvancesTab({ dossierId }: { dossierId: string }) {
+  const adv = useResource(() => api.dossierAdvances(dossierId), [dossierId]);
+  const [allocFor, setAllocFor] = React.useState<api.DossierAdvance | null>(
+    null,
+  );
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function removeAlloc(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.removeAdvanceAllocation(id);
+      adv.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const list = adv.data || [];
+  const received = list.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const earmarked = list.reduce(
+    (a, r) =>
+      a + r.allocations.reduce((x, al) => x + Number(al.amount || 0), 0),
+    0,
+  );
+
+  return (
+    <div className="space-y-4">
+      <KpiRow>
+        <KpiTile label={tr("Advances received")} value={money(received)} />
+        <KpiTile
+          label={tr("Earmarked to items")}
+          value={money(earmarked)}
+          hint="Optional — an advance funds the file either way"
+        />
+        <KpiTile
+          label={tr("Unallocated")}
+          value={money(received - earmarked)}
+        />
+      </KpiRow>
+      {error && <ErrorState message={error} />}
+      {adv.error ? (
+        <ErrorState message={adv.error} />
+      ) : list.length === 0 && !adv.loading ? (
+        <EmptyState
+          title={tr("No advances on this file")}
+          hint="Client advances are recorded in Finance; they appear here against the file."
+        />
+      ) : (
+        <div className="space-y-2">
+          {list.map((a) => (
+            <div key={a.advance_id} className="lux-card space-y-2 p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="num text-sm font-semibold">
+                  {money(a.amount)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {tr("received")} {dateFmt(a.received_on)} ·{" "}
+                  {tr("applied to invoices")} {money(a.applied_amount)}
+                </span>
+                <span className="ml-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAllocFor(a)}
+                  >
+                    {tr("Earmark to item")}
+                  </Button>
+                </span>
+              </div>
+              {a.allocations.length > 0 && (
+                <ul className="space-y-1">
+                  {a.allocations.map((al) => (
+                    <li
+                      key={al.advance_allocation_id}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <Pill tone="blue">{al.item_code || "—"}</Pill>
+                      <span className="num">{money(al.amount)}</span>
+                      {al.note && (
+                        <span className="text-xs text-muted-foreground">
+                          {al.note}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto"
+                        loading={busyId === al.advance_allocation_id}
+                        onClick={() =>
+                          void removeAlloc(al.advance_allocation_id)
+                        }
+                      >
+                        {tr("Remove")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {allocFor && (
+        <AllocateModal
+          advance={allocFor}
+          onClose={() => setAllocFor(null)}
+          onSaved={() => adv.reload()}
+        />
+      )}
+    </div>
+  );
+}
+
+function AllocateModal({
+  advance,
+  onClose,
+  onSaved,
+}: {
+  advance: api.DossierAdvance;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [itemId, setItemId] = React.useState<string | null>(null);
+  const [itemLabel, setItemLabel] = React.useState<string | null>(null);
+  const [amount, setAmount] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const already = advance.allocations.reduce(
+    (a, al) => a + Number(al.amount || 0),
+    0,
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!itemId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.allocateAdvance(advance.advance_id, {
+        dictionary_item_id: itemId,
+        amount: Number(amount),
+        note: note.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Earmark advance to a cost item")}
+      description={`${money(advance.amount)} received — ${money(already)} already earmarked. The advance itself stays on the file; this only records what the client said the money is for.`}
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <DictionaryFinder
+          value={itemId}
+          valueLabel={itemLabel}
+          onPick={(id, label) => {
+            setItemId(id);
+            setItemLabel(label);
+          }}
+          label={tr("Cost item")}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Amount")} required>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="num text-right"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Note")}>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={!itemId || !(Number(amount) > 0) || busy}
+          onCancel={onClose}
+          saveLabel={tr("Earmark")}
+        />
+      </form>
+    </Modal>
   );
 }
 

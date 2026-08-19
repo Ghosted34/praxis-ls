@@ -644,12 +644,33 @@ export const SPECS: ScreenSpec[] = [
     area: "Costing",
     title: "Cost tracking",
     purpose:
-      "Actuals vs the costing sheet — record real costs and reconcile budget variance per dossier.",
+      "The legacy's three tabs on OUR data model (§3.4): Summary & balance (portfolio + master-ledger matrix, columns derived from the dictionary, Export), Actual costs (per-file entries + one-transaction multi-line sheet), Advances received (per FILE — owner-decided — with optional per-item earmarks).",
     module: "MOD-47",
     status: "ready",
-    columns: ["Dossier", "Budget", "Actual", "Variance", "Variance %"],
-    actions: ["Record cost"],
+    tabs: [
+      {
+        label: "Summary & balance",
+        columns: ["File", "…item columns…", "TOTAL SPEND", "Advance", "TOTAL BALANCE"],
+        actions: ["Export"],
+      },
+      {
+        label: "Actual costs",
+        columns: ["Item", "Category", "Date", "Amount"],
+        actions: ["Record costs (sheet)"],
+      },
+      {
+        label: "Advances received",
+        columns: ["Amount", "Received", "Applied", "Earmarks"],
+        actions: ["Earmark to item"],
+      },
+    ],
     ai: [
+      {
+        label: "Master-ledger matrix",
+        kind: "read",
+        describe:
+          "Files × cost items with TOTAL SPEND / TOTAL BALANCE — 'which file is bleeding on Demurrage' at a glance.",
+      },
       {
         label: "Reconcile dossier",
         kind: "assist",

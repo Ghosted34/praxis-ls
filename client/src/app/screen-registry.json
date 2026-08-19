@@ -981,6 +981,8 @@
         "reconcile_dossier",
         "cost_tracking_portfolio",
         "cost_tracking_kpis",
+        "cost_tracking_matrix",
+        "cost_tracking_advances",
         "record_cost"
       ]
     },

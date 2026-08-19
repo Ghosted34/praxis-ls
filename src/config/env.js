@@ -552,6 +552,11 @@ const Schema = z.object({
   // Mail engine (doc/EMAIL_ENGINE_PLAN.md): how often the scheduler fans an IMAP
   // sync job per LIVE tenant to pull inbound mail. 0 disables the poll.
   MAIL_SYNC_INTERVAL_MS: int(60000),
+  // How often the send queue is drained. 5s, because it is the floor on how long
+  // a message waits AFTER its undo window expires — a 60s tick would turn a 20s
+  // undo into "somewhere between 20 and 80 seconds", which reads as unreliable.
+  // The tick is cheap: one indexed query per tenant that usually returns nothing.
+  MAIL_SEND_FLUSH_INTERVAL_MS: int(5000),
 
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h

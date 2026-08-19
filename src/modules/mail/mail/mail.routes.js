@@ -180,7 +180,33 @@ router.get("/thread/:id/attachments", requirePermission(M, "view"), c.attachment
 router.get("/client/:id/timeline", requirePermission(M, "view"), c.clientTimeline);
 router.post("/thread/:id/link", requirePermission(M, "create"), v.threadLink, c.linkThread);
 router.post("/thread/:id/read", requirePermission(M, "edit"), c.markRead);
+/* ── PR-1B: composing ─────────────────────────────────────────────────────
+ *
+ * Action mapping:
+ *
+ *   create  sending, and saving a draft. A draft is correspondence in progress
+ *           and becomes correspondence; someone who may not send should not be
+ *           able to compose either, or the button is a trap.
+ *   view    reading your own drafts and your own outbox.
+ *   edit    cancelling a send and discarding a draft — they change something
+ *           that already exists rather than producing new correspondence.
+ *
+ * Every one of these is scoped to the CALLER inside the service, not to the
+ * mailbox. Holding a grant on billing@ is authority to send from it; it is not
+ * authority to read what a colleague is still deciding whether to say. */
+
+router.get("/drafts", requirePermission(M, "view"), c.listDrafts);
+router.post("/drafts", requirePermission(M, "create"), v.draft, c.saveDraft);
+router.get("/drafts/:id", requirePermission(M, "view"), c.getDraft);
+router.delete("/drafts/:id", requirePermission(M, "edit"), c.discardDraft);
+
+router.get("/outbox", requirePermission(M, "view"), c.outbox);
+
+// Queues; it does not send. The response says when the message will actually go.
 router.post("/send", requirePermission(M, "create"), v.send, c.send);
+// Undo. Succeeds only while the row is still HELD — the database decides the
+// race against the flusher, so this is a 409 rather than a lie once it has gone.
+router.post("/send/:id/cancel", requirePermission(M, "edit"), c.cancelSend);
 router.post("/thread/:id/reply", requirePermission(M, "create"), v.reply, c.reply);
 
 module.exports = { basePath: "/mail", feature: null, router };

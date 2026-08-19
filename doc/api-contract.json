@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1297,
+  "route_count": 1303,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1191
+    "gated": 1197
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -292,6 +292,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/locations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/drafts/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2115,6 +2121,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/drafts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/drafts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/folders": {
       "auth": true,
       "rbac": true,
@@ -2182,6 +2200,12 @@
       "tier": "public"
     },
     "GET /api/tenant/mail/oauth/microsoft/start": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/outbox": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6021,6 +6045,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/drafts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/labels": {
       "auth": true,
       "rbac": true,
@@ -6052,6 +6082,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/send": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/send/:id/cancel": {
       "auth": true,
       "rbac": true,
       "validated": false,

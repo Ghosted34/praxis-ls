@@ -42,8 +42,10 @@ function lineDoc(opts) {
   return (data, cfg, entity, verify) => {
     const ccy = data.currency || "XAF";
     const words = opts.words && cfg.show && cfg.show.words !== false && has(data.amount_in_words)
-      ? k.wordsBlock(data.amount_in_words, ccy, cfg)
+      ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals)
       : "";
+    const signers = opts.signers ? opts.signers(data) : null;
+    const sig = signers && signers.length ? k.signerBlock(signers, cfg) : k.signatureBlock(cfg);
     const body = [
       k.head(entity, opts.title, data.number, opts.meta(data), cfg),
       k.parties([
@@ -56,7 +58,7 @@ function lineDoc(opts) {
       cfg.show && cfg.show.notes && data.notes ? k.section({ fr: "Notes", en: "Notes" }, `<div class="box">${k.esc(data.notes).replace(/\n/g, "<br>")}</div>`, cfg) : "",
       cfg.show && cfg.show.bank ? k.bankBlock(entity, cfg) : "",
       k.termsBlock(cfg),
-      k.signatureBlock(cfg),
+      sig,
       k.footer(entity, cfg, verify),
     ].join("");
     return k.shell(k.t(opts.title, cfg.language) + " " + (data.number || ""), body, cfg);
@@ -236,10 +238,13 @@ const TEMPLATES = {
           has(data.adv_paid) && data.adv_paid > 0 ? [{ fr: "Acompte versé", en: "Advance paid" }, "- " + k.money(data.adv_paid, ccy)] : null,
           has(data.totals.net_payable) ? [{ fr: "Net à payer", en: "Net payable" }, k.money(data.totals.net_payable, ccy), { grand: true }] : null,
         ], cfg),
-        cfg.show && cfg.show.words !== false && has(data.amount_in_words) ? k.wordsBlock(data.amount_in_words, ccy, cfg) : "",
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words) ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals) : "",
         data.remarks ? k.section({ fr: "Observations", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
         k.termsBlock(cfg),
-        k.signatureBlock(cfg),
+        k.signerBlock([
+          { label: { fr: "Émis par", en: "Issued by" }, name: data.issuer_name, title: data.issuer_title },
+          { label: { fr: "Approuvé par", en: "Approved by" }, name: data.approver_name, title: data.approver_title },
+        ], cfg),
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("PO " + (data.number || ""), body, cfg);
@@ -259,6 +264,7 @@ const TEMPLATES = {
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
       ],
       words: true,
+      signers: (d) => [{ label: { fr: "Comptabilisé par", en: "Posted by" }, name: d.posted_by_name, title: d.posted_by_title }],
     })(data, { ...cfg, watermark: cfg.watermark || "COPY" }, entity, verify),
     sampleData: { number: "FF-2026-0088", date: "2026-07-27", due: "2026-08-26", supplier_ref: "INV-9921", po_ref: "BC-2026-0031", party: { name: "SDV Cameroun", lines: ["Douala", "NIU M042116033580Q"] }, lines: sampleLines.slice(0, 2), totals: { service_ht: 1080000, vat_total: 207900, wht_total: 54000, total_ttc: 1233900 }, amount_in_words: 1233900, currency: "XAF" },
   },
@@ -269,6 +275,7 @@ const TEMPLATES = {
       title: { fr: "Demande d'achat", en: "Purchase request" }, partyLabel: { fr: "Demandeur", en: "Requested by" },
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Service", en: "Department" }, d.department]],
       totalsRows: (d, ccy) => [[{ fr: "Total estimé", en: "Estimated total" }, k.money(d.totals.total_ttc, ccy), { grand: true }]],
+      signers: (d) => [{ label: { fr: "Demandé par", en: "Requested by" }, name: d.requester_name, title: d.requester_title }],
     }),
     sampleData: { number: "DA-2026-0014", date: "2026-07-27", department: "Opérations", party: { name: "Jean Mballa", lines: ["Chef de quai"] }, lines: sampleLines.slice(0, 2), totals: { total_ttc: 1080000 }, currency: "XAF" },
   },
@@ -616,12 +623,16 @@ const TEMPLATES = {
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
         context,
         data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
-        k.signatureBlock(cfg),
+        k.signerBlock([
+          { label: { fr: "Validé par (Finance)", en: "Validated by (Finance)" }, name: data.validated_by_name, title: data.validated_by_title },
+          { label: { fr: "Approuvé par (Direction)", en: "Approved by (Management)" }, name: data.approved_by_name, title: data.approved_by_title },
+          { label: { fr: "Reçu par", en: "Received by" }, name: data.received_by_name },
+        ], cfg),
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Cash request " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 500000, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
+    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 500000, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", validated_by_name: "Alice Ngo", validated_by_title: "Directrice Financière", approved_by_name: "Paul Biya", approved_by_title: "Directeur Général", received_by_name: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
   },
 
   REGIE_ADVANCE: {
@@ -750,12 +761,14 @@ const TEMPLATES = {
         k.parties([{ label: { fr: "Fournisseur", en: "Supplier" }, name: d.supplier, lines: (d.supplier_lines || []).filter(Boolean) }], cfg),
         k.lineTable(col, d.lines || [], cfg),
         d.note ? k.section({ fr: "Note", en: "Note" }, `<div class="box">${k.esc(d.note)}</div>`, cfg) : "",
-        k.signatureBlock(cfg),
+        k.signerBlock([
+          { label: { fr: "Reçu par", en: "Received by" }, name: d.received_by_name, title: d.received_by_title },
+        ], cfg),
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("GRN " + (d.number || ""), body, cfg);
     },
-    sampleData: { number: "SLAS-GRN-2026-0044", date: "2026-07-27", po_ref: "BC-2026-0031", supplier_invoice_ref: "INV-9921", supplier: "Établissements TENOR", supplier_lines: ["Douala, Cameroun", "NIU M042116033580Q"], lines: [{ item: "Ciment 50kg", ordered: "500", received: "500", condition: "Bon" }, { item: "Palettes bois", ordered: "24", received: "22", condition: "2 endommagées" }], note: "Réception partielle — 2 palettes manquantes à réclamer.", currency: "XAF" },
+    sampleData: { number: "SLAS-GRN-2026-0044", date: "2026-07-27", po_ref: "BC-2026-0031", supplier_invoice_ref: "INV-9921", supplier: "Établissements TENOR", supplier_lines: ["Douala, Cameroun", "NIU M042116033580Q"], lines: [{ item: "Ciment 50kg", ordered: "500", received: "500", condition: "Bon" }, { item: "Palettes bois", ordered: "24", received: "22", condition: "2 endommagées" }], note: "Réception partielle — 2 palettes manquantes à réclamer.", received_by_name: "Jean Mballa", received_by_title: "Chef de quai", currency: "XAF" },
   },
 
   TRIP_SHEET: {

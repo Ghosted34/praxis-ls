@@ -61,11 +61,21 @@ function wordsInt(n, lang) {
     }
     return tens[ten] + "-" + ones[o];
   };
-  const under1000 = (x) => {
+  const under1000 = (x, hundredPlural) => {
     const h = Math.floor(x / 100);
     const rest = x % 100;
     let out = "";
-    if (h > 0) out += (lang === "fr" && h === 1 ? "CENT" : ones[h] + " HUNDRED");
+    if (h > 0) {
+      if (lang === "fr") {
+        // "cent" takes the plural s only when it ends the whole numeral —
+        // "deux cents" (200), "deux cent trois" (203, a number follows in the
+        // group), "deux cent mille" (200 000, a higher group follows). The
+        // `hundredPlural` flag carries whether this group is the final one.
+        out += (h === 1 ? "CENT" : ones[h] + " CENT") + (hundredPlural && rest === 0 && h > 1 ? "S" : "");
+      } else {
+        out += ones[h] + " HUNDRED";
+      }
+    }
     if (rest > 0) out += join + under100(rest);
     return out.trim();
   };
@@ -76,31 +86,43 @@ function wordsInt(n, lang) {
   for (let i = groups.length - 1; i >= 0; i -= 1) {
     const g = groups[i];
     if (g === 0) continue;
-    const gWords = i === 0 ? under1000(g) : (lang === "fr" && g === 1 && i === 1 ? "MILLE" : under1000(g) + " " + scale[i]);
+    const gWords = i === 0
+      ? under1000(g, true)
+      : (lang === "fr" && g === 1 && i === 1 ? "MILLE" : under1000(g, false) + " " + scale[i]);
     parts.push(gWords);
   }
   return parts.join(join);
 }
 
 /**
- * Amount in words: "… AND 00/100" (en) / "… et 00/100" (fr), cents always two
- * digits so no amount can be misread between languages.
+ * Amount in words: "… AND 00/100" (en) / "… et 00/100" (fr). `decimals` is the
+ * currency's minor-unit count (currency.decimals, MOD-08); for a zero-decimal
+ * currency (XAF) the fractional "/100" suffix is omitted entirely — "UN MILLION
+ * DE FRANCS CFA", never "… ET 00/100 XAF" — because the currency has no
+ * subdivision to express. The legacy (print-po.php) always appended "AND 00
+ * CENTS" regardless, which is wrong for XAF; this honours the tenant's own
+ * currency settings instead.
  */
-function words(amount, lang = "en") {
+function words(amount, lang = "en", decimals = 2) {
+  const dec = Number.isInteger(decimals) && decimals >= 0 ? decimals : 2;
   const n = Number(amount || 0);
   const neg = n < 0;
-  const abs = Math.abs(Math.round(n * 100) / 100);
+  const scale = 10 ** dec;
+  const abs = Math.abs(Math.round(n * scale) / scale);
   const whole = Math.floor(abs);
-  const cents = Math.round((abs - whole) * 100);
-  const pad = String(cents).padStart(2, "0");
-  const body = `${wordsInt(whole, lang)}${lang === "fr" ? " ET" : " AND"} ${pad}/100`;
+  const frac = Math.round((abs - whole) * scale);
+  let body = wordsInt(whole, lang);
+  if (dec > 0) {
+    const pad = String(frac).padStart(dec, "0");
+    body += `${lang === "fr" ? " ET" : " AND"} ${pad}/1${"0".repeat(dec)}`;
+  }
   return neg ? "MOINS " + body : body;
 }
 
 /** Section block rendering the amount in words, e.g. "ARRÊTÉE … À LA SOMME DE". */
-function wordsBlock(amount, ccy, cfg = {}) {
+function wordsBlock(amount, ccy, cfg = {}, decimals = 2) {
   const lang = cfg.language || "bilingual";
-  const text = `${words(amount, lang === "fr" ? "fr" : "en")} ${ccy || "XAF"}`;
+  const text = `${words(amount, lang === "fr" ? "fr" : "en", decimals)} ${ccy || "XAF"}`;
   return section(
     { fr: "Arrêtée la présente à la somme de :", en: "Amount in words" },
     `<div class="box"><strong>${esc(text)}</strong></div>`,
@@ -188,6 +210,7 @@ function shell(title, bodyHtml, cfg = {}) {
     .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid ${c.line}; font-size: 9.5px; color: ${c.muted}; }
     .sig { display: flex; gap: 40px; margin-top: 30px; }
     .sig .b { flex: 1; }
+    .sig .sig-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: ${c.muted}; }
     .sig .ln { border-top: 1px solid ${c.ink}; margin-top: 34px; padding-top: 3px; font-size: 10px; }
     .wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
     .wm span { font-size: 96px; font-weight: 800; color: ${c.accent}; opacity: 0.08; transform: rotate(-24deg); letter-spacing: 0.1em; }
@@ -255,6 +278,29 @@ function signatureBlock(cfg = {}) {
   return `<div class="sig"><div class="b"><div class="ln">${t({ fr: "Pour le client", en: "For the client" }, cfg.language)}</div></div><div class="b"><div class="ln">${who || t({ fr: "Pour la société", en: "For the company" }, cfg.language)}</div></div></div>`;
 }
 
+/**
+ * Labelled multi-signatory block — the named-actor replacement for the static
+ * `signatureBlock`. Each entry is a sign-off slot: an uppercase label (WHO is
+ * signing), the space to sign, then the printed name + title of the actual
+ * actor, resolved from the document's own columns (issuer/approver/received_by/
+ * validated_by) rather than one `cfg.signature` name shared by every document.
+ *
+ * `signers` = [{ label: {fr,en}|string, name, title }]. An entry with no name
+ * still renders its line, so a not-yet-recorded sign-off (e.g. the "received by"
+ * of an unreceived cash request) prints as a ruled line to be filled by hand —
+ * the same reason the delivery-note manifest pads to ruled lines.
+ */
+function signerBlock(signers = [], cfg = {}) {
+  if (!cfg.show || !cfg.show.signature) return "";
+  const list = (Array.isArray(signers) ? signers : []).filter((s) => s && (s.label || s.name || s.title));
+  if (!list.length) return "";
+  return `<div class="sig">${list.map((s) => {
+    const lbl = s.label ? t(typeof s.label === "string" ? { fr: s.label, en: s.label } : s.label, cfg.language) : "";
+    const name = [s.name, s.title].filter(Boolean).map(esc).join(" · ");
+    return `<div class="b">${lbl ? `<div class="sig-lbl">${lbl}</div>` : ""}<div class="ln">${name}</div></div>`;
+  }).join("")}</div>`;
+}
+
 function watermark(text) {
   return `<div class="wm"><span>${esc(text)}</span></div>`;
 }
@@ -282,5 +328,5 @@ function footer(entity = {}, cfg = {}, verify) {
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
-  bankBlock, termsBlock, signatureBlock, watermark, watermarkFor, footer,
+  bankBlock, termsBlock, signatureBlock, signerBlock, watermark, watermarkFor, footer,
 };

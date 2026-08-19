@@ -467,10 +467,17 @@ async function loadRecord(client, docType, recordId) {
   if (docType === "SUPPLIER_INVOICE") {
     const { rows } = await client.query(
       `SELECT si.*, sm.name AS supplier_name, sm.niu AS supplier_niu, sm.address AS supplier_address, sm.city AS supplier_city,
-              po.doc_number AS po_doc_number
+              po.doc_number AS po_doc_number,
+              COALESCE(e_p.signatory_name, au_p.full_name) AS posted_by_name,
+              e_p.job_title AS posted_by_title,
+              c.decimals AS currency_decimals
          FROM supplier_invoice si
          LEFT JOIN supplier_master sm ON sm.supplier_id = si.supplier_id
          LEFT JOIN purchase_order po ON po.po_id = si.po_id
+         LEFT JOIN journal_entry je ON je.entry_id = si.entry_id
+         LEFT JOIN app_user au_p ON au_p.user_id = je.created_by
+         LEFT JOIN employee e_p ON e_p.employee_id = au_p.employee_id
+         LEFT JOIN currency c ON c.code = si.currency
         WHERE si.supplier_invoice_id = $1`,
       [recordId],
     );
@@ -488,6 +495,9 @@ async function loadRecord(client, docType, recordId) {
         totals: { service_ht: Number(si.amount_ht), vat_total: Number(si.vat_total), wht_total: Number(si.wht_total), total_ttc: ttc },
         amount_in_words: ttc,
         currency: si.currency || "XAF",
+        posted_by_name: si.posted_by_name || null,
+        posted_by_title: si.posted_by_title || null,
+        currency_decimals: si.currency_decimals !== null && si.currency_decimals !== undefined ? Number(si.currency_decimals) : undefined,
       },
     };
   }
@@ -498,9 +508,19 @@ async function loadRecord(client, docType, recordId) {
               COALESCE(po.supplier_name, sm.name) AS supplier_name,
               COALESCE(po.supplier_niu, sm.niu) AS supplier_niu,
               COALESCE(po.supplier_address, sm.address) AS supplier_address,
-              COALESCE(po.supplier_city, sm.city) AS supplier_city
+              COALESCE(po.supplier_city, sm.city) AS supplier_city,
+              COALESCE(e_i.signatory_name, au_i.full_name) AS issuer_name,
+              e_i.job_title AS issuer_title,
+              COALESCE(e_a.signatory_name, au_a.full_name) AS approver_name,
+              e_a.job_title AS approver_title,
+              c.decimals AS currency_decimals
          FROM purchase_order po
          LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+         LEFT JOIN app_user au_i ON au_i.user_id = po.issuer_id
+         LEFT JOIN employee e_i ON e_i.employee_id = au_i.employee_id
+         LEFT JOIN app_user au_a ON au_a.user_id = po.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = au_a.employee_id
+         LEFT JOIN currency c ON c.code = po.currency
         WHERE po.po_id = $1`,
       [recordId],
     );
@@ -532,13 +552,24 @@ async function loadRecord(client, docType, recordId) {
         lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.vat_rate !== null && l.vat_rate !== undefined ? String(l.vat_rate) : "", amount: Number(l.qty) * Number(l.unit_price) })),
         totals: { service_ht: ht, vat_total: vat, total_ttc: ttc, withholding, net_payable: net },
         amount_in_words: net,
+        issuer_name: po.issuer_name || null,
+        issuer_title: po.issuer_title || null,
+        approver_name: po.approver_name || null,
+        approver_title: po.approver_title || null,
+        currency_decimals: po.currency_decimals !== null && po.currency_decimals !== undefined ? Number(po.currency_decimals) : undefined,
       },
     };
   }
 
   if (docType === "PURCHASE_REQUEST") {
     const { rows } = await client.query(
-      "SELECT pr.*, u.full_name AS requester FROM purchase_request pr LEFT JOIN app_user u ON u.user_id = pr.requested_by WHERE pr.pr_id = $1",
+      `SELECT pr.*, u.full_name AS requester,
+              COALESCE(e.signatory_name, u.full_name) AS requester_name,
+              e.job_title AS requester_title
+         FROM purchase_request pr
+         LEFT JOIN app_user u ON u.user_id = pr.requested_by
+         LEFT JOIN employee e ON e.employee_id = u.employee_id
+        WHERE pr.pr_id = $1`,
       [recordId],
     );
     const pr = rows[0];
@@ -552,16 +583,26 @@ async function loadRecord(client, docType, recordId) {
         number: pr.doc_number || String(pr.pr_id).slice(0, 8), date: pr.created_at, status: pr.status, department: pr.department,
         party: { name: pr.requester || pr.department || "—", lines: [pr.department].filter(Boolean) },
         reason: pr.justification || undefined, lines, totals: { total_ttc: total }, currency: "XAF",
+        requester_name: pr.requester_name || null,
+        requester_title: pr.requester_title || null,
       },
     };
   }
 
   if (docType === "CASH_REQUEST") {
     const { rows } = await client.query(
-      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref
+      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref,
+              COALESCE(e_v.signatory_name, au_v.full_name) AS validated_by_name,
+              e_v.job_title AS validated_by_title,
+              COALESCE(e_a.signatory_name, au_a.full_name) AS approved_by_name,
+              e_a.job_title AS approved_by_title
          FROM cash_request cr
          LEFT JOIN app_user u ON u.user_id = cr.requested_by
          LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN app_user au_v ON au_v.user_id = cr.validated_by
+         LEFT JOIN employee e_v ON e_v.employee_id = au_v.employee_id
+         LEFT JOIN app_user au_a ON au_a.user_id = cr.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = au_a.employee_id
         WHERE cr.cash_request_id = $1`,
       [recordId],
     );
@@ -577,6 +618,11 @@ async function loadRecord(client, docType, recordId) {
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
+        validated_by_name: cr.validated_by_name || null,
+        validated_by_title: cr.validated_by_title || null,
+        approved_by_name: cr.approved_by_name || null,
+        approved_by_title: cr.approved_by_title || null,
+        received_by_name: cr.beneficiary || null,
         currency: "XAF",
       },
     };
@@ -695,10 +741,14 @@ async function loadRecord(client, docType, recordId) {
   if (docType === "GOODS_RECEIVED") {
     const { rows } = await client.query(
       `SELECT grn.*, po.doc_number AS po_doc_number, po.currency AS po_currency,
-              sm.name AS supplier_name, sm.address AS supplier_address, sm.city AS supplier_city, sm.niu AS supplier_niu
+              sm.name AS supplier_name, sm.address AS supplier_address, sm.city AS supplier_city, sm.niu AS supplier_niu,
+              COALESCE(e_r.signatory_name, au_r.full_name) AS received_by_name,
+              e_r.job_title AS received_by_title
          FROM goods_received_note grn
          LEFT JOIN purchase_order po ON po.po_id = grn.po_id
          LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+         LEFT JOIN app_user au_r ON au_r.user_id = grn.received_by
+         LEFT JOIN employee e_r ON e_r.employee_id = au_r.employee_id
         WHERE grn.grn_id = $1`,
       [recordId],
     );
@@ -715,6 +765,8 @@ async function loadRecord(client, docType, recordId) {
         supplier: g.supplier_name || "—",
         supplier_lines: [g.supplier_address, g.supplier_city, g.supplier_niu && `NIU ${g.supplier_niu}`].filter(Boolean),
         note: g.note,
+        received_by_name: g.received_by_name || null,
+        received_by_title: g.received_by_title || null,
         lines: lr.rows.map((l) => ({ item: l.label, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })),
         currency: g.po_currency || "XAF",
       },

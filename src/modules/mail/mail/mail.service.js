@@ -34,6 +34,10 @@ const { autodiscover } = require("./autodiscover");
 const access = require("./access");
 const mailbox = require("./mailbox.service");
 const origin = require("./origin");
+const threading = require("./threading");
+const folders = require("./folders");
+const stream = require("./stream");
+const threadRepo = require("./thread.repo");
 
 const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
 const OAUTH_STATE_TTL = "10m";
@@ -251,78 +255,210 @@ async function testConnection(client, id) {
 
 /** Pull new inbound for one connection: fetch → dedup-insert → attachments → emit
  *  → advance cursor. `ctx.slug` namespaces vault storage keys (tenant slug). */
+/**
+ * Discover the folders a mailbox has, and record which ones we will sync.
+ *
+ * Runs on every sync rather than only on connect, because a folder can be
+ * created at any time and a Sent folder that appears next month should start
+ * syncing without anyone reconnecting the mailbox.
+ */
+async function discoverFolders(client, conn, adapter, ctx = {}) {
+  if (!adapter.listFolders) {
+    // An adapter with no folder support still has an inbox. Guarantee the row so
+    // the rest of the loop has something to iterate.
+    return [await threadRepo.upsertFolder(client, conn.email_connection_id, {
+      canonical: "INBOX", provider_path: "INBOX", display_name: "Inbox", is_syncable: true,
+    })];
+  }
+  const limit = Number((await mailbox.tenantLimits(client)).folder_sync_limit) || 25;
+  const listed = await adapter.listFolders();
+  const mapped = folders.mapFolders(listed, { limit });
+  const rows = [];
+  for (const f of mapped) {
+    const before = await threadRepo.upsertFolder(client, conn.email_connection_id, f);
+    rows.push(before);
+    if (f.is_syncable && !before.last_sync_at) {
+      await emitEvent(client, {
+        eventTypeKey: "email.folder.discovered", moduleKey: events.MODULE,
+        entityRef: events.ref(conn.email_connection_id), actorUserId: null,
+        payload: { folder: f.canonical || f.provider_path, mailbox: conn.email_address },
+      }).catch(() => { /* @silent:storage the folder row is the outcome */ });
+    }
+  }
+  return threadRepo.syncableFolders(client, conn.email_connection_id);
+}
+
+/**
+ * Ingest one normalized message into the thread model.
+ *
+ * Returns the inserted message row, or null when it was already stored — the
+ * dedup index is what makes a re-scan after a UIDVALIDITY change cheap instead of
+ * duplicating a mailbox.
+ */
+async function ingestMessage(client, conn, m, { folder = "INBOX", providerPath = null, rules = [], ctx = {} }) {
+  const direction = m.direction === "OUT" ? "OUT" : "IN";
+  const originFields = origin.originFieldsFor({
+    direction, headers: m.headers, messageIdHeader: m.messageIdHeader || m.externalMessageId || null,
+  });
+
+  // The conversation this belongs to. Provider thread ids are trusted only when
+  // the adapter says it really has them.
+  const capabilities = typeof conn.capabilities === "function" ? conn.capabilities() : {};
+  const threadKey = threading.threadKeyFor(
+    { ...m, messageIdHeader: originFields.message_id_header }, capabilities,
+  ) || m.externalMessageId;
+
+  // Classify once, on the first message of a conversation. A known party always
+  // wins — see stream.js. Only inbound mail is classified: something we sent is
+  // by definition human.
+  const existing = await threadRepo.upsertThread(client, {
+    email_connection_id: conn.email_connection_id,
+    thread_key: threadKey,
+    ...threading.foldIntoThread(null, m),
+    message_count: 0,
+  });
+
+  let streamFields = {};
+  if (existing.message_count === 0 && direction === "IN") {
+    const party = await threadRepo.knownParty(client, m.from);
+    const verdict = stream.classify({
+      headers: m.headers, fromAddress: m.from, subject: m.subject, knownParty: party, rules,
+    });
+    streamFields = { stream: verdict.stream, stream_reason: verdict.reason, is_vip: Boolean(party && party.is_vip) };
+  }
+
+  const row = await threadRepo.insertMessage(client, {
+    email_thread_id: existing.email_thread_id,
+    email_connection_id: conn.email_connection_id,
+    email_identity_id: conn.email_identity_id,
+    external_message_id: m.externalMessageId,
+    message_id_header: originFields.message_id_header,
+    direction,
+    folder,
+    provider_folder: providerPath,
+    from_address: m.from || "unknown@unknown",
+    from_name: m.fromName || null,
+    to_address: m.to || [],
+    cc_address: m.cc || [],
+    subject: m.subject,
+    body_html: cleanHtml(m.bodyHtml),
+    body_text: m.bodyText,
+    in_reply_to: m.inReplyTo,
+    references_header: threading.normaliseReferences(m.references),
+    size_bytes: m.sizeBytes || null,
+    has_attachment: Boolean((m.attachments || []).length),
+    sent_via: originFields.sent_via,
+    origin_user_id: originFields.origin_user_id,
+    origin_send_point: originFields.origin_send_point,
+    received_at: m.receivedAt,
+  });
+  if (!row) return null;
+
+  // Fold the message into its thread, then recount from the messages so the
+  // summary is derived and cannot drift out of step with what is actually there.
+  await threadRepo.updateThread(client, existing.email_thread_id, {
+    ...threading.foldIntoThread(existing, m),
+    ...streamFields,
+  });
+  await threadRepo.refreshThreadCounts(client, existing.email_thread_id);
+  await threadRepo.seedStateForMembers(client, row.email_message_id, conn.email_connection_id);
+  // The sender already read what they sent; only inbound arrives unread.
+  if (direction === "OUT" && originFields.origin_user_id) {
+    await threadRepo.setThreadRead(client, originFields.origin_user_id, existing.email_thread_id, true).catch(() => {
+      /* @silent:storage read state is a convenience here, not the record */
+    });
+  }
+  return { ...row, thread_id: existing.email_thread_id, is_new_thread: existing.message_count === 0 };
+}
+
+/** Pull new mail for one connection, folder by folder. */
 async function syncConnection(client, id, ctx = {}) {
   const conn = await repo.getConnection(client, id);
   if (!conn) return { skipped: true };
+  let adapter;
   try {
-    const adapter = await resolveAdapter(client, conn);
-    const { messages, nextCursor } = await adapter.fetchSince(conn.sync_cursor);
-    let inserted = 0;
-    let attachments = 0;
-    for (const m of messages) {
-      // PR-0 echo. A message the adapter hands back may be one WE sent — the Sent
-      // folder is synced like any other — so direction is read off the message
-      // rather than assumed, and an outbound one is classified by its stamp.
-      // Anything outbound without our header was sent from another device, which
-      // is precisely the correspondence that would otherwise never reach the
-      // record.
-      const direction = m.direction === "OUT" ? "OUT" : "IN";
-      const originFields = origin.originFieldsFor({
-        direction, headers: m.headers, messageIdHeader: m.messageIdHeader || m.externalMessageId || null,
-      });
-      const row = await repo.insertInbound(client, {
-        email_connection_id: conn.email_connection_id,
-        email_identity_id: conn.email_identity_id,
-        external_message_id: m.externalMessageId,
-        thread_key: m.threadKey,
-        direction,
-        from_address: m.from,
-        to_address: (m.to || []).join(", "),
-        subject: m.subject,
-        body_preview: m.bodyText,
-        body_html: cleanHtml(m.bodyHtml),
-        body_text: m.bodyText,
-        in_reply_to: m.inReplyTo,
-        is_read: m.isRead,
-        received_at: m.receivedAt,
-        ...originFields,
-      });
-      if (row) {
-        inserted += 1;
-        attachments += await persistAttachments(client, row.email_inbound_id, m.attachments, ctx);
-        await autoLink(client, row.email_inbound_id, m.from, m.subject);
-        await emitEvent(client, {
-          eventTypeKey: events.RECEIVED,
-          moduleKey: events.MODULE,
-          entityRef: events.msgRef(row.email_inbound_id),
-          actorUserId: null,
-          payload: { from: m.from, subject: m.subject, connection: conn.email_connection_id, attachments: (m.attachments || []).length },
-        });
-      }
-    }
-    await repo.setCursor(client, conn.email_connection_id, nextCursor);
-    // Health inputs: a run that got this far reached the server. Clearing the
-    // failure count here is what makes the indicator recover on its own instead
-    // of staying red until somebody presses Test.
-    await mailbox.markSyncSuccess(client, conn.email_connection_id);
-    // Live-notify the tenant's Mail view (worker → Redis bus → web socket).
-    if (inserted > 0 && ctx.slug) publishMailEvent(ctx.slug, { connection: conn.email_connection_id, inserted });
-    return { connection: conn.email_connection_id, fetched: messages.length, inserted, attachments };
+    adapter = await resolveAdapter(client, conn);
   } catch (err) {
     await repo.setError(client, conn.email_connection_id, err.message);
-    // Count it. Three in a row is what turns a wobble into a DOWN indicator and
-    // an event the team can be told about, rather than a red dot nobody sees.
-    const h = await mailbox.markSyncFailure(client, conn.email_connection_id, err.message);
+    await mailbox.markSyncFailure(client, conn.email_connection_id, err.message);
+    return { connection: conn.email_connection_id, error: err.message };
+  }
+
+  let syncFolders;
+  try {
+    syncFolders = await discoverFolders(client, conn, adapter, ctx);
+  } catch (err) {
+    await repo.setError(client, conn.email_connection_id, err.message);
+    await mailbox.markSyncFailure(client, conn.email_connection_id, err.message);
+    return { connection: conn.email_connection_id, error: err.message };
+  }
+
+  const rules = await threadRepo.streamRules(client);
+  let inserted = 0;
+  let fetched = 0;
+  let attachments = 0;
+  const perFolder = [];
+  let anyFolderSucceeded = false;
+  let lastError = null;
+
+  for (const folder of syncFolders) {
+    try {
+      // Per-folder cursor. UIDVALIDITY is a per-mailbox value in IMAP, so one
+      // cursor shared across folders makes a renumber in Spam look like a
+      // renumber in Inbox — see folders.js and migration 10732.
+      const { messages, nextCursor } = await adapter.fetchSince(folder.sync_cursor, folder.provider_path);
+      fetched += messages.length;
+      for (const m of messages) {
+        const row = await ingestMessage(client, conn, m, {
+          folder: folder.canonical || "ARCHIVE",
+          providerPath: folder.provider_path,
+          rules, ctx,
+        });
+        if (!row) continue;
+        inserted += 1;
+        attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        await autoLink(client, row.thread_id, m.from, m.subject);
+        await emitEvent(client, {
+          eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
+          moduleKey: events.MODULE,
+          entityRef: events.msgRef(row.email_message_id),
+          actorUserId: null,
+          payload: {
+            from: m.from, subject: m.subject, folder: folder.canonical,
+            connection: conn.email_connection_id, attachments: (m.attachments || []).length,
+          },
+        });
+      }
+      await threadRepo.setFolderCursor(client, folder.email_folder_id, nextCursor);
+      perFolder.push({ folder: folder.canonical || folder.provider_path, fetched: messages.length });
+      anyFolderSucceeded = true;
+    } catch (err) {
+      // One bad folder must never abort its siblings — the same per-connection
+      // discipline the engine already had, one level down.
+      lastError = err.message;
+      await threadRepo.setFolderError(client, folder.email_folder_id, err.message);
+      perFolder.push({ folder: folder.canonical || folder.provider_path, error: err.message });
+    }
+  }
+
+  if (anyFolderSucceeded) {
+    await mailbox.markSyncSuccess(client, conn.email_connection_id);
+  } else if (lastError) {
+    await repo.setError(client, conn.email_connection_id, lastError);
+    const h = await mailbox.markSyncFailure(client, conn.email_connection_id, lastError);
     if (h && h.consecutive_failures === 3) {
       await emitEvent(client, {
         eventTypeKey: "mailbox.health.failed", moduleKey: events.MODULE,
         entityRef: events.ref(conn.email_connection_id), actorUserId: null,
-        payload: { address: conn.email_address, error: err.message, failures: h.consecutive_failures },
+        payload: { address: conn.email_address, error: lastError, failures: h.consecutive_failures },
       }).catch(() => { /* @silent:storage the sync error is already recorded on the row */ });
     }
-    return { connection: conn.email_connection_id, error: err.message };
   }
+
+  if (inserted > 0 && ctx.slug) publishMailEvent(ctx.slug, { connection: conn.email_connection_id, inserted });
+  return { connection: conn.email_connection_id, fetched, inserted, attachments, folders: perFolder };
 }
+
 
 /** Store each attachment's bytes in the vault and link it to the message. One bad
  *  attachment (too large / storage error) is skipped, never aborting the sync. */
@@ -337,7 +473,7 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
       const dataUrl = `data:${contentType};base64,${a.content.toString("base64")}`;
        
       const doc = await documentVault.createDocument(client, {
-        dataUrl, slug, entityRef: `email_inbound:${inboundId}`, docType: null, actor: { user_id: null },
+        dataUrl, slug, entityRef: `email_message:${inboundId}`, docType: null, actor: { user_id: null },
       });
        
       await repo.addAttachment(client, {
@@ -463,7 +599,7 @@ async function reply(client, input = {}) {
   const { connectionId, inboundId, html, text, actor = {}, sendPoint = null, slug = null } = input;
   const conn = await repo.getConnection(client, connectionId);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
-  const original = await repo.getInbound(client, inboundId);
+  const original = await threadRepo.getMessage(client, actor.user_id || null, inboundId);
   if (!original) throw new AppError("NOT_FOUND", "message not found", 404);
   const subject = /^re:/i.test(original.subject || "") ? original.subject : `Re: ${original.subject || ""}`.trim();
   const prep = await prepareSend(client, conn, { actor, sendPoint, slug, to: original.from_address, subject });
@@ -472,7 +608,8 @@ async function reply(client, input = {}) {
   try {
     res = await adapter.createReply(original.external_message_id, {
       to: original.from_address, subject, bodyHtml: html, bodyText: text,
-      references: original.thread_key ? [original.thread_key] : [],
+      references: original.references_header || [],
+      inReplyTo: original.message_id_header || original.external_message_id,
       messageId: prep.messageId, headers: prep.headers,
     });
   } catch (err) {
@@ -493,28 +630,53 @@ async function reply(client, input = {}) {
 }
 
 async function recordOutbound(client, conn, m) {
-  await repo.insertInbound(client, {
+  // A sent message is a message like any other: it joins (or starts) a thread and
+  // lands in SENT. Recording it here rather than waiting for the Sent-folder sync
+  // means it appears immediately, and the dedup index absorbs the copy the sync
+  // brings back a minute later.
+  const to = Array.isArray(m.to) ? m.to : String(m.to || "").split(/[,;]\s*/).filter(Boolean);
+  const threadKey = threading.threadKeyFor({
+    references: m.references, inReplyTo: m.inReplyTo,
+    messageIdHeader: m.messageIdHeader || m.externalMessageId,
+  }) || m.threadKey || m.externalMessageId;
+
+  const thread = await threadRepo.upsertThread(client, {
+    email_connection_id: conn.email_connection_id,
+    thread_key: threadKey,
+    subject: threading.baseSubject(m.subject),
+    participants: [conn.email_address, ...to].filter(Boolean).map((a) => String(a).toLowerCase()),
+    first_message_at: new Date(), last_message_at: new Date(),
+    message_count: 0,
+  });
+
+  const row = await threadRepo.insertMessage(client, {
+    email_thread_id: thread.email_thread_id,
     email_connection_id: conn.email_connection_id,
     email_identity_id: conn.email_identity_id,
     external_message_id: m.externalMessageId,
-    thread_key: m.threadKey,
+    message_id_header: m.messageIdHeader || null,
     direction: "OUT",
+    folder: "SENT",
     from_address: conn.email_address,
-    to_address: Array.isArray(m.to) ? m.to.join(", ") : m.to,
+    to_address: to,
     subject: m.subject,
-    body_preview: m.text,
     body_html: m.html,
     body_text: m.text,
-    is_read: true,
-    // PR-0 origin. Recorded on the way out as well as read on the way in: the
-    // Sent-folder copy will carry the same stamp, and the dedup index means
-    // whichever arrives first wins — so both paths must agree on the answer.
-    message_id_header: m.messageIdHeader || null,
     sent_via: m.sentVia || null,
     origin_user_id: m.originUserId || null,
     origin_send_point: m.originSendPoint || null,
     received_at: new Date(),
   });
+  if (row) {
+    await threadRepo.refreshThreadCounts(client, thread.email_thread_id);
+    await threadRepo.seedStateForMembers(client, row.email_message_id, conn.email_connection_id);
+    if (m.originUserId) {
+      await threadRepo.setThreadRead(client, m.originUserId, thread.email_thread_id, true).catch(() => {
+        /* @silent:storage the sender having "read" their own send is a nicety */
+      });
+    }
+  }
+  return row;
 }
 
 // ── OAuth providers (Microsoft 365 + Google Gmail) ──
@@ -665,25 +827,27 @@ async function handleGraphNotification(client, body, ctx = {}) {
 /** Best-effort CRM link on ingest: a dossier ref in the subject wins (most
  *  specific), else the sender's client. Tags entity_ref so the message shows on
  *  the dossier / client timeline. Never throws into the sync loop. */
-async function autoLink(client, inboundId, fromAddress, subject) {
+async function autoLink(client, threadId, fromAddress, subject) {
   try {
     const refs = String(subject || "").match(/[A-Za-z0-9]{2,}-\d{4}-\d{2,}/g) || [];
     if (refs.length) {
       const d = await repo.findDossierByRefs(client, refs);
-      if (d) { await repo.setEntityRef(client, inboundId, `dossier:${d.dossier_id}`); return; }
+      if (d) { await threadRepo.updateThread(client, threadId, { entity_ref: `dossier:${d.dossier_id}` }); return; }
     }
     const cl = await repo.findClientByEmail(client, fromAddress);
-    if (cl) await repo.setEntityRef(client, inboundId, `client:${cl.client_id}`);
+    if (cl) await threadRepo.updateThread(client, threadId, { entity_ref: `client:${cl.client_id}` });
   } catch { /* linking is best-effort */ }
 }
 
-const listThread = (client, q = {}) => repo.listInboundByConnection(client, { connectionId: q.connection_id, limit: q.limit, before: q.before });
-const getMessage = (client, id) => repo.getInbound(client, id);
+/** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
+const listThread = (client, q = {}) =>
+  threadRepo.listThreads(client, q.user_id || null, { connectionId: q.connection_id, limit: q.limit, before: q.before });
+const getMessage = (client, id, userId = null) => threadRepo.getMessage(client, userId, id);
 /** Mark a message read locally AND propagate to the mail server (G-3). The
  *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
  *  but a transient provider failure must never block the local read flip. */
-async function markRead(client, id) {
-  const msg = await repo.getInbound(client, id);
+async function markRead(client, id, actorUserId = null) {
+  const msg = await threadRepo.getMessage(client, null, id);
   if (!msg) throw new AppError("NOT_FOUND", "message not found", 404);
   if (msg.email_connection_id && msg.external_message_id) {
     try {
@@ -700,18 +864,23 @@ async function markRead(client, id) {
       } catch { /* noop */ }
     }
   }
-  return repo.markInboundRead(client, id);
+  return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));
 }
 const listAttachments = (client, id) => repo.listAttachments(client, id);
 /** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
 const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>
-  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
+  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
 
 /** Manually attach a message to any entity (e.g. 'dossier:<id>' or 'client:<id>'). */
 async function linkEntity(client, { inboundId, entity_ref }) {
   if (!inboundId || !entity_ref) throw new AppError("VALIDATION_ERROR", "inboundId and entity_ref are required", 422);
-  await repo.setEntityRef(client, inboundId, entity_ref);
-  return { email_inbound_id: inboundId, entity_ref };
+  // Bind the CONVERSATION, not the single message: a dossier reference in one
+  // reply is about the whole exchange, and binding message-by-message is how half
+  // a thread ends up on a client's timeline.
+  const msg = await threadRepo.getMessage(client, null, inboundId);
+  const threadId = (msg && msg.email_thread_id) || inboundId;
+  await threadRepo.updateThread(client, threadId, { entity_ref });
+  return { email_thread_id: threadId, entity_ref };
 }
 
 module.exports = {

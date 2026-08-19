@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1285 |
+| Routes | 1297 |
 | Modules mounted | 119 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1285 mounted routes, grouped by path prefix.
+All 1297 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1030,7 +1030,11 @@ All 1285 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
 | GET | `/api/tenant/mail/cpanel-preset` | — |
+| GET | `/api/tenant/mail/folders` | — |
 | GET | `/api/tenant/mail/inbox` | — |
+| GET | `/api/tenant/mail/labels` | — |
+| POST | `/api/tenant/mail/labels` | — |
+| DELETE | `/api/tenant/mail/labels/:id` | — |
 | GET | `/api/tenant/mail/mailboxes` | — |
 | GET | `/api/tenant/mail/mailboxes/:id/allowance` | — |
 | POST | `/api/tenant/mail/mailboxes/:id/archive` | — |
@@ -1062,6 +1066,14 @@ All 1285 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/thread/:id/link` | — |
 | POST | `/api/tenant/mail/thread/:id/read` | — |
 | POST | `/api/tenant/mail/thread/:id/reply` | — |
+| GET | `/api/tenant/mail/threads` | — |
+| GET | `/api/tenant/mail/threads/:id` | — |
+| POST | `/api/tenant/mail/threads/:id/label` | — |
+| POST | `/api/tenant/mail/threads/:id/move` | — |
+| POST | `/api/tenant/mail/threads/:id/read` | — |
+| POST | `/api/tenant/mail/threads/:id/star` | — |
+| POST | `/api/tenant/mail/threads/:id/stream` | — |
+| POST | `/api/tenant/mail/threads/bulk` | — |
 | POST | `/api/tenant/mail/webhook/google` | — |
 | POST | `/api/tenant/mail/webhook/microsoft` | — |
 

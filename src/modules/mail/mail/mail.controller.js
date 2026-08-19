@@ -3,6 +3,7 @@ const service = require("./mail.service");
 const mailbox = require("./mailbox.service");
 const access = require("./access");
 const sendPoints = require("./sendpoint.service");
+const threads = require("./thread.service");
 const { cpanelPreset } = require("./autodiscover");
 const { asyncHandler } = require("../../../utils/errors");
 const { config } = require("../../../config/env");
@@ -103,6 +104,23 @@ module.exports = {
       },
     });
   }),
+
+  // ── PR-1A: conversations ──
+  // Every handler passes the ACTOR through, because read state, stars and label
+  // visibility are per user. A thread handler that does not take a user id is a
+  // handler that will show one person another person's unread count.
+  threads: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.list(c, actor(req), req.query)) })),
+  threadGet: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.get(c, actor(req), req.params.id)) })),
+  threadRead: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.markRead(c, actor(req), req.params.id, req.body?.on !== false)) })),
+  threadStar: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.star(c, actor(req), req.params.id, req.body?.on !== false)) })),
+  threadMove: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.move(c, actor(req), req.params.id, req.body.folder)) })),
+  threadStream: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.setStream(c, actor(req), req.params.id, req.body.stream)) })),
+  threadLabel: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.applyLabel(c, actor(req), req.params.id, req.body.label_id, req.body.on !== false)) })),
+  threadBulk: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.bulk(c, actor(req), req.body)) })),
+  mailFolders: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.folders(c, actor(req), req.query.connection_id)) })),
+  mailLabels: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.labels(c, actor(req))) })),
+  createLabel: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => threads.createLabel(c, actor(req), req.body)) })),
+  deleteLabel: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.deleteLabel(c, actor(req), req.params.id)) })),
 
   // ── PR-0: mailbox administration ──
   // Every handler runs on req.identityDb for the same reason the engine does:

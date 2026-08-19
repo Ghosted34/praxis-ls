@@ -10,7 +10,7 @@ const service = require("./mail.service");
 const validator = require("./mail.validator");
 
 module.exports = {
-  entity: "email_inbound",
+  entity: "email_message",
   module_key: "MOD-64",
   screens: [],
   reads: [

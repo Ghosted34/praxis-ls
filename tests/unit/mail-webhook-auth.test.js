@@ -93,13 +93,27 @@ jest.mock("../../src/shared/config/settings", () => ({
 jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
   getConnection: jest.fn(),
   findByAddress: jest.fn(),
-  insertInbound: jest.fn(),
-  setCursor: jest.fn(async () => {}),
   setError: jest.fn(async () => {}),
   addAttachment: jest.fn(async () => ({})),
   findClientByEmail: jest.fn(async () => null),
   findDossierByRefs: jest.fn(async () => null),
-  setEntityRef: jest.fn(async () => {}),
+}));
+// PR-1A: the sync loop the webhooks trigger now walks FOLDERS and writes into
+// the conversation model. Mocked for the same reason mail.repo is — this suite
+// is about webhook authenticity, not about what the sync then stores.
+jest.mock("../../src/modules/mail/mail/thread.repo", () => ({
+  upsertFolder: jest.fn(async () => ({ email_folder_id: "fold-INBOX", canonical: "INBOX", provider_path: "INBOX", is_syncable: true, sync_cursor: null })),
+  syncableFolders: jest.fn(async () => [{ email_folder_id: "fold-INBOX", canonical: "INBOX", provider_path: "INBOX", sync_cursor: null }]),
+  setFolderCursor: jest.fn(async () => ({})),
+  setFolderError: jest.fn(async () => ({})),
+  streamRules: jest.fn(async () => []),
+  knownParty: jest.fn(async () => null),
+  upsertThread: jest.fn(async () => ({ email_thread_id: "thr-1", message_count: 0 })),
+  updateThread: jest.fn(async () => ({})),
+  refreshThreadCounts: jest.fn(async () => ({})),
+  insertMessage: jest.fn(async () => null),
+  seedStateForMembers: jest.fn(async () => 0),
+  setThreadRead: jest.fn(async () => 0),
 }));
 
 const repo = require("../../src/modules/mail/mail/mail.repo");
@@ -121,7 +135,6 @@ beforeEach(() => {
     messages: [],
     nextCursor: { uidvalidity: 1, last_uid: 1 },
   });
-  repo.insertInbound.mockResolvedValue(null);
 });
 
 describe("Microsoft Graph webhook (G-6)", () => {

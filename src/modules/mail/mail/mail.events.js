@@ -5,5 +5,5 @@ module.exports = {
   RECEIVED: "email.received",
   SENT: "email.sent",
   ref: (id) => "email_connection:" + id,
-  msgRef: (id) => "email_inbound:" + id,
+  msgRef: (id) => "email_message:" + id,
 };

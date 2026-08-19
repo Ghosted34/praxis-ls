@@ -507,3 +507,206 @@ export const unbindSendPoint = (key: string, entityId?: string) =>
 /* cPanel preset — the first tenant runs cPanel, so this is the fast path. */
 export const cpanelPreset = (email: string) =>
   tenant<CpanelPreset>(`/mail/cpanel-preset?email=${encodeURIComponent(email)}`);
+
+/* ── PR-1A: conversations ──────────────────────────────────────────────────
+ *
+ * The types above call a stored message a `ThreadMsg` and treat `thread_key` as
+ * a loose grouping hint. Everything below is the real model: a CONVERSATION is a
+ * row, a message belongs to one, and read state and stars belong to a PERSON
+ * rather than to the mailbox. Two people working billing@ see different unread
+ * counts from the same messages — that is the whole point, and it is why every
+ * call here is scoped by the caller's session rather than taking a user id.
+ *
+ * The pre-PR-1A `listThread` / `getMessage` helpers stay until PR-1B replaces
+ * their call sites; they read the same rows through the flat view.
+ */
+
+export type MailFolder =
+  | "INBOX"
+  | "SENT"
+  | "DRAFTS"
+  | "SPAM"
+  | "ARCHIVE"
+  | "TRASH";
+export type MailStream = "HUMAN" | "SYSTEM";
+
+export type Folder = {
+  email_folder_id: string;
+  email_connection_id: string;
+  canonical: MailFolder | null;
+  provider_path: string;
+  display_name?: string | null;
+  is_syncable: boolean;
+  /** {uidvalidity, last_uid} for IMAP. Per folder — never shared. */
+  sync_cursor?: Record<string, unknown> | null;
+  last_sync_at?: string | null;
+  last_error?: string | null;
+  total: number;
+  /** The CALLER's unread count, not the mailbox's. */
+  unread_count: number;
+};
+
+export type Label = {
+  email_label_id: string;
+  owner_user_id: string;
+  name: string;
+  colour?: string | null;
+  thread_count: number;
+};
+
+export type Thread = {
+  email_thread_id: string;
+  email_connection_id: string;
+  thread_key: string;
+  subject?: string | null;
+  participants: string[];
+  message_count: number;
+  has_attachment: boolean;
+  stream: MailStream;
+  /** A sentence explaining the classification. Shown verbatim. */
+  stream_reason?: string | null;
+  is_vip: boolean;
+  entity_ref?: string | null;
+  first_message_at?: string | null;
+  last_message_at?: string | null;
+  mailbox_address?: string | null;
+  mailbox_kind?: MailboxKind | null;
+  unread_count: number;
+  is_starred: boolean;
+  preview?: string | null;
+  last_from?: string | null;
+};
+
+export type Message = {
+  email_message_id: string;
+  email_thread_id: string;
+  email_connection_id: string;
+  external_message_id?: string | null;
+  message_id_header?: string | null;
+  direction: "IN" | "OUT";
+  folder: MailFolder;
+  provider_folder?: string | null;
+  from_address: string;
+  from_name?: string | null;
+  to_address: string[];
+  cc_address: string[];
+  subject?: string | null;
+  body_preview?: string | null;
+  body_html?: string | null;
+  body_text?: string | null;
+  in_reply_to?: string | null;
+  references_header?: string[] | null;
+  size_bytes?: number | null;
+  has_attachment: boolean;
+  /** PR-0 origin tag: PRAXIS, or the device that actually sent it. */
+  sent_via?: string | null;
+  origin_user_id?: string | null;
+  origin_send_point?: string | null;
+  received_at?: string | null;
+  is_read: boolean;
+  is_starred: boolean;
+};
+
+export type ThreadDetail = Thread & { messages: Message[] };
+
+export type BulkOp =
+  | "read"
+  | "unread"
+  | "star"
+  | "unstar"
+  | "move"
+  | "label"
+  | "unlabel";
+export type BulkResult = {
+  op: BulkOp;
+  succeeded: number;
+  failed: { email_thread_id: string; error: string }[];
+};
+
+export type ThreadQuery = {
+  /** The search box, verbatim: `from:maersk has:attachment demurrage`. */
+  q?: string;
+  connection_id?: string;
+  folder?: MailFolder;
+  stream?: MailStream;
+  label?: string;
+  entity_ref?: string;
+  unread?: boolean;
+  starred?: boolean;
+  vip?: boolean;
+  has_attachment?: boolean;
+  /** Cursor: the `last_message_at` of the oldest row you already have. */
+  before?: string;
+  limit?: number;
+};
+
+const qs = (o: Record<string, unknown>) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(o)) {
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s ? `?${s}` : "";
+};
+
+export const listThreads = (q: ThreadQuery = {}) =>
+  tenant<Thread[]>(`/mail/threads${qs(q)}`);
+export const getThread = (id: string) =>
+  tenant<ThreadDetail>(`/mail/threads/${id}`);
+
+export const setThreadRead = (id: string, on = true) =>
+  tenant<{ email_thread_id: string; messages: number; is_read: boolean }>(
+    `/mail/threads/${id}/read`,
+    { method: "POST", body: JSON.stringify({ on }) },
+  );
+export const setThreadStarred = (id: string, on = true) =>
+  tenant<{ email_thread_id: string; messages: number; is_starred: boolean }>(
+    `/mail/threads/${id}/star`,
+    { method: "POST", body: JSON.stringify({ on }) },
+  );
+export const moveThread = (id: string, folder: MailFolder) =>
+  tenant<{ email_thread_id: string; folder: MailFolder; messages: number }>(
+    `/mail/threads/${id}/move`,
+    { method: "POST", body: JSON.stringify({ folder }) },
+  );
+/** Correct the classifier. Recorded as a human decision so no later pass undoes it. */
+export const setThreadStream = (id: string, stream: MailStream) =>
+  tenant<Thread>(`/mail/threads/${id}/stream`, {
+    method: "POST",
+    body: JSON.stringify({ stream }),
+  });
+export const setThreadLabel = (id: string, labelId: string, on = true) =>
+  tenant<{ email_thread_id: string; email_label_id: string; applied: boolean }>(
+    `/mail/threads/${id}/label`,
+    { method: "POST", body: JSON.stringify({ label_id: labelId, on }) },
+  );
+export const bulkThreads = (body: {
+  ids: string[];
+  op: BulkOp;
+  folder?: MailFolder;
+  label_id?: string;
+}) =>
+  tenant<BulkResult>("/mail/threads/bulk", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+/**
+ * The rail, in one call: folders with the CALLER's unread counts, plus the two
+ * stream totals. One request rather than two, because the halves are drawn as
+ * one thing and arriving separately makes the numbers visibly disagree for a
+ * frame.
+ */
+export type FolderRailData = {
+  folders: Folder[];
+  streams: { HUMAN: number; SYSTEM: number };
+};
+export const listFolders = (connectionId?: string) =>
+  tenant<FolderRailData>(`/mail/folders${qs({ connection_id: connectionId })}`);
+export const listLabels = () => tenant<Label[]>("/mail/labels");
+export const createLabel = (body: { name: string; colour?: string }) =>
+  tenant<Label>("/mail/labels", { method: "POST", body: JSON.stringify(body) });
+export const deleteLabel = (id: string) =>
+  tenant<{ email_label_id: string } | null>(`/mail/labels/${id}`, {
+    method: "DELETE",
+  });

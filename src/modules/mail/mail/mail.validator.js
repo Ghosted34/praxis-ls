@@ -166,6 +166,37 @@ const schemas = {
     folder_sync_limit: z.coerce.number().int().min(1).max(500).optional(),
   }),
 
+  /* ── PR-1A: conversations ─────────────────────────────────────────────── */
+
+  // Bulk is one verb over many conversations. The cap is here rather than only in
+  // the service because an unbounded id list is a request-size problem before it
+  // is a business one.
+  threadBulk: z.object({
+    ids: z.array(z.string().uuid()).min(1).max(500),
+    op: z.enum(["read", "unread", "star", "unstar", "move", "label", "unlabel"]),
+    folder: z.enum(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]).optional(),
+    label_id: z.string().uuid().optional(),
+  }).refine((v) => v.op !== "move" || Boolean(v.folder), { message: "move needs a folder" })
+    .refine((v) => !["label", "unlabel"].includes(v.op) || Boolean(v.label_id), { message: "label needs a label_id" }),
+
+  threadMove: z.object({
+    folder: z.enum(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]),
+  }),
+
+  threadFlag: z.object({ on: z.coerce.boolean().default(true) }),
+
+  threadStream: z.object({ stream: z.enum(["HUMAN", "SYSTEM"]) }),
+
+  label: z.object({
+    name: z.string().trim().min(1).max(64),
+    colour: z.string().trim().max(32).nullable().optional(),
+  }),
+
+  labelApply: z.object({
+    label_id: z.string().uuid(),
+    on: z.coerce.boolean().default(true),
+  }),
+
   // Exactly one target. Enforced here as well as in the service so the API says
   // no before a half-formed binding reaches the database.
   sendPointBinding: z.object({
@@ -193,5 +224,7 @@ module.exports = {
   catalogueToggle: mw("catalogueToggle"), memberGrant: mw("memberGrant"),
   handover: mw("handover"), mailboxLimits: mw("mailboxLimits"),
   tenantMailSettings: mw("tenantMailSettings"), sendPointBinding: mw("sendPointBinding"),
+  threadBulk: mw("threadBulk"), threadMove: mw("threadMove"), threadFlag: mw("threadFlag"),
+  threadStream: mw("threadStream"), label: mw("label"), labelApply: mw("labelApply"),
   schemas,
 };

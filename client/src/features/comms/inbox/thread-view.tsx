@@ -1,0 +1,249 @@
+/**
+ * One conversation, opened: every message in order, oldest first.
+ *
+ * ── OLDEST FIRST, AND THE LAST ONE EXPANDED ─────────────────────────────────
+ *
+ * A conversation is read the way it happened. Collapsing everything but the
+ * latest message is the convention every mail client settled on for the same
+ * reason: the thing you came for is almost always the newest thing, and the
+ * history is context you want available rather than in your way.
+ *
+ * ── THE ORIGIN TAG IS SHOWN, NOT HIDDEN ─────────────────────────────────────
+ *
+ * PR-0 stamps every outbound message with where it was sent from, so a reply a
+ * colleague typed on their phone appears here labelled as such. That answers
+ * "did anyone reply to this?" without anyone having to ask in chat — which was
+ * the actual request behind the whole origin-tagging design.
+ *
+ * ── HTML BODIES ARE SANITIZED ON INGEST, NOT HERE ───────────────────────────
+ *
+ * `mail.service.cleanHtml` runs once when the message is stored, so what is in
+ * the database is already safe. Sanitizing again on every render would be
+ * cheaper to argue for and slower to run; the invariant to protect is that
+ * NOTHING reaches `email_message.body_html` without passing the ingest filter.
+ */
+import * as React from "react";
+import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { Pill } from "@/components/ui/pill";
+import { Select } from "@/components/ui/modal";
+import { ErrorState, LoadingRow } from "@/components/ui/states";
+import { dateTimeFmt } from "@/lib/format";
+import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
+
+const MOVE_TO: MailFolder[] = ["INBOX", "ARCHIVE", "SPAM", "TRASH"];
+
+/** PR-0 origin tag → what to actually show a person. */
+function originNote(m: Message): string | null {
+  if (m.direction !== "OUT") return null;
+  const via = String(m.sent_via || "").toUpperCase();
+  if (!via || via === "PRAXIS") return null;
+  return "Sent from another device";
+}
+
+function MessageBlock({
+  message,
+  defaultOpen,
+}: {
+  message: Message;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  const origin = originNote(message);
+  const who =
+    message.direction === "OUT"
+      ? `To ${message.to_address.join(", ") || "—"}`
+      : `From ${message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}`;
+
+  return (
+    <article
+      className={cn(
+        "rounded-lg border border-border",
+        message.is_read ? "bg-card/40" : "bg-card",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{who}</span>
+          {!open && (
+            <span className="block truncate text-xs text-muted-foreground">
+              {message.body_preview || "—"}
+            </span>
+          )}
+        </span>
+        <span className="num shrink-0 text-xs text-muted-foreground">
+          {dateTimeFmt(message.received_at)}
+        </span>
+      </button>
+
+      {open && (
+        <div className="space-y-2 border-t border-border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Pill tone={message.direction === "OUT" ? "blue" : "mute"}>
+              {message.direction === "OUT" ? "Sent" : "Received"}
+            </Pill>
+            <Pill tone="mute">{message.folder}</Pill>
+            {origin && <Pill tone="warn">{origin}</Pill>}
+            {message.has_attachment && <Pill tone="mute">Attachment</Pill>}
+          </div>
+          {message.cc_address.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Cc: <span className="num">{message.cc_address.join(", ")}</span>
+            </p>
+          )}
+          {message.body_html ? (
+            <div
+              className="prose prose-sm max-w-none"
+              // Sanitized on ingest — see the file header.
+              dangerouslySetInnerHTML={{ __html: message.body_html }}
+            />
+          ) : (
+            <div className="whitespace-pre-wrap text-sm">
+              {message.body_text || message.body_preview || "(no content)"}
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function ThreadView({
+  thread,
+  loading,
+  error,
+  labels,
+  onMove,
+  onStream,
+  onLabel,
+  onToggleRead,
+  onClose,
+  busy,
+}: {
+  thread: ThreadDetail | null;
+  loading: boolean;
+  error?: string | null;
+  labels: Label[];
+  onMove: (folder: MailFolder) => void;
+  onStream: (stream: MailStream) => void;
+  onLabel: (labelId: string) => void;
+  onToggleRead: (read: boolean) => void;
+  onClose: () => void;
+  busy: boolean;
+}) {
+  if (error) return <ErrorState message={error} />;
+  if (loading && !thread) return <LoadingRow label="Opening conversation…" />;
+  if (!thread) {
+    return (
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <p className="max-w-reading text-sm text-muted-foreground">
+          Choose a conversation to read it. Everything here is scoped to you —
+          what you have read, what you have starred, and the labels you made.
+        </p>
+      </div>
+    );
+  }
+
+  const messages = thread.messages || [];
+  const lastIndex = messages.length - 1;
+
+  return (
+    <div className="flex min-h-0 flex-col">
+      <header className="space-y-2 border-b border-border px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold">
+            {thread.subject || "(no subject)"}
+          </h2>
+          <Button size="sm" variant="ghost" onClick={onClose} className="lg:hidden">
+            Close
+          </Button>
+        </div>
+        <p className="num text-xs text-muted-foreground">
+          {thread.participants.join(", ")}
+        </p>
+
+        {/* WHY the classifier put this here, in words, next to the control that
+            overrides it. A verdict without a reason is one people learn to
+            distrust; a reason without a way to correct it is worse. */}
+        {thread.stream === "SYSTEM" && thread.stream_reason && (
+          <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+            Filed as a notice: {thread.stream_reason}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onToggleRead(thread.unread_count > 0)}
+          >
+            {thread.unread_count > 0 ? "Mark read" : "Mark unread"}
+          </Button>
+          <Select
+            aria-label="Move to folder"
+            value=""
+            disabled={busy}
+            onChange={(e) => e.target.value && onMove(e.target.value as MailFolder)}
+            className="h-8 w-auto text-xs"
+          >
+            <option value="">Move to…</option>
+            {MOVE_TO.map((f) => (
+              <option key={f} value={f}>
+                {f.charAt(0) + f.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onStream(thread.stream === "SYSTEM" ? "HUMAN" : "SYSTEM")}
+          >
+            {thread.stream === "SYSTEM" ? "This is a person" : "This is a notice"}
+          </Button>
+          {labels.length > 0 && (
+            <Select
+              aria-label="Add a label"
+              value=""
+              disabled={busy}
+              onChange={(e) => e.target.value && onLabel(e.target.value)}
+              className="h-8 w-auto text-xs"
+            >
+              <option value="">Label…</option>
+              {labels.map((l) => (
+                <option key={l.email_label_id} value={l.email_label_id}>
+                  {l.name}
+                </option>
+              ))}
+            </Select>
+          )}
+          {thread.entity_ref && <Pill tone="blue">{thread.entity_ref}</Pill>}
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+        {messages.map((m, i) => (
+          <MessageBlock
+            key={m.email_message_id}
+            message={m}
+            defaultOpen={i === lastIndex}
+          />
+        ))}
+      </div>
+
+      {/* PR-1B replaces this with the composer. Saying so is better than an
+          empty footer that reads as an unfinished screen. */}
+      <footer className="border-t border-border px-4 py-3">
+        <p className="text-xs text-muted-foreground">
+          Replying from here arrives with the composer.
+        </p>
+      </footer>
+    </div>
+  );
+}

@@ -37,6 +37,11 @@ const PROCESSORS = [
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
   { name: "mail-sync-scheduler", concurrency: 1, handler: require("./handlers/mail-sync-scheduler") },
+  // Concurrency 1 per tenant: the rows are claimed with FOR UPDATE SKIP LOCKED
+  // so parallel flushers are safe, but a shared mail host is the bottleneck and
+  // hammering it with concurrent SMTP sessions is how a mailbox gets suspended.
+  { name: "mail-send-flush", concurrency: 1, handler: require("./handlers/mail-send-flush") },
+  { name: "mail-send-flush-scheduler", concurrency: 1, handler: require("./handlers/mail-send-flush-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
@@ -225,6 +230,17 @@ async function scheduleRecurring() {
   } else {
     await enqueue("mail-sync-scheduler", "tick", {}, { repeat: { every: mailEvery }, removeOnComplete: true, removeOnFail: 50 });
     logger.info({ every: mailEvery }, "mail sync scheduler registered");
+  }
+
+  // Mail send queue: drain what is due. This is what actually sends mail —
+  // POST /mail/send only writes a row — so a deployment that runs the API
+  // without a worker will queue messages and never send them. Disabled at 0.
+  const flushEvery = config.MAIL_SEND_FLUSH_INTERVAL_MS;
+  if (!flushEvery || flushEvery <= 0) {
+    logger.warn("mail send-flush scheduler disabled (MAIL_SEND_FLUSH_INTERVAL_MS=0) — queued mail will not be sent");
+  } else {
+    await enqueue("mail-send-flush-scheduler", "tick", {}, { repeat: { every: flushEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: flushEvery }, "mail send-flush scheduler registered");
   }
 
   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.

@@ -301,6 +301,7 @@ export function InboxPage() {
             onToggleRead={(read) =>
               openId && run(() => api.setThreadRead(openId, read))
             }
+            onReplied={reload}
           />
         </SplitPane>
 

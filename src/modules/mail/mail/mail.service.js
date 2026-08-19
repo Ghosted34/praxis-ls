@@ -889,5 +889,8 @@ module.exports = {
   clientTimeline, linkEntity, autodiscover, searchRecipients,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
-  resolveAdapter,
+  // Exported for the send-queue flusher, which injects them rather than
+  // importing this module — outbox.service must stay loadable, and testable,
+  // without dragging in every provider adapter.
+  resolveAdapter, recordOutbound, explainSendError,
 };

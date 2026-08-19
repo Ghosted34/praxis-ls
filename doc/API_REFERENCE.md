@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1297 |
+| Routes | 1309 |
 | Modules mounted | 119 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1297 mounted routes, grouped by path prefix.
+All 1309 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1018,11 +1018,15 @@ All 1297 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/mail/access-log` | — |
+| POST | `/api/tenant/mail/attachments/from-vault` | — |
+| POST | `/api/tenant/mail/attachments/upload` | — |
 | GET | `/api/tenant/mail/autodiscover` | — |
 | GET | `/api/tenant/mail/catalogue` | — |
 | POST | `/api/tenant/mail/catalogue` | — |
 | PATCH | `/api/tenant/mail/catalogue/:key` | — |
 | GET | `/api/tenant/mail/client/:id/timeline` | — |
+| GET | `/api/tenant/mail/commands` | — |
+| POST | `/api/tenant/mail/commands/:key` | — |
 | GET | `/api/tenant/mail/connections` | — |
 | POST | `/api/tenant/mail/connections` | — |
 | PATCH | `/api/tenant/mail/connections/:id` | — |
@@ -1030,6 +1034,12 @@ All 1297 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
 | GET | `/api/tenant/mail/cpanel-preset` | — |
+| GET | `/api/tenant/mail/drafts` | — |
+| POST | `/api/tenant/mail/drafts` | — |
+| DELETE | `/api/tenant/mail/drafts/:id` | — |
+| GET | `/api/tenant/mail/drafts/:id` | — |
+| GET | `/api/tenant/mail/drafts/:id/attachments` | — |
+| DELETE | `/api/tenant/mail/drafts/:id/attachments/:attachmentId` | — |
 | GET | `/api/tenant/mail/folders` | — |
 | GET | `/api/tenant/mail/inbox` | — |
 | GET | `/api/tenant/mail/labels` | — |
@@ -1050,11 +1060,13 @@ All 1297 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/oauth/google/start` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/callback` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/start` | — |
+| GET | `/api/tenant/mail/outbox` | — |
 | GET | `/api/tenant/mail/recipients` | — |
 | POST | `/api/tenant/mail/send` | — |
 | GET | `/api/tenant/mail/send-points` | — |
 | DELETE | `/api/tenant/mail/send-points/:key` | — |
 | PUT | `/api/tenant/mail/send-points/:key` | — |
+| POST | `/api/tenant/mail/send/:id/cancel` | — |
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |
 | PATCH | `/api/tenant/mail/senders/:id` | — |

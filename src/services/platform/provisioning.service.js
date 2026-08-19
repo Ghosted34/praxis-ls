@@ -731,10 +731,12 @@ async function wipeSandbox(input) {
     await m.applyTracked(cli, m.files.tenantSchema(), {
       searchPath: "sandbox,public",
       scope: "sandbox",
+      wrapTransaction: false,
     });
     await m.applyTracked(cli, m.files.tenantSeeds(), {
       searchPath: "sandbox,public",
       scope: "sandbox-seed",
+      wrapTransaction: false,
     });
     // Re-grant. DROP SCHEMA took the app role's USAGE and the default privileges
     // with it, and both are attached to the schema rather than the database — so

@@ -115,6 +115,17 @@ async function appliedSet(cli, scope) {
 async function applyTracked(cli, fileList, opts) {
   const searchPath = opts.searchPath;
   const scope = opts.scope;
+  // When the caller already holds an explicit transaction (wipeSandbox wraps the
+  // whole DROP → CREATE → re-apply in one), the per-file BEGIN/COMMIT must be
+  // SKIPPED. Postgres has no nested transactions: a `BEGIN` issued inside an open
+  // transaction is only a warning, but the first `COMMIT` then commits the
+  // CALLER's transaction too — so the "all-or-nothing" rebuild silently became
+  // "committed through the first file, then each later file on its own". A
+  // failure on file #2+ left the tenant with a partial schema (DROP committed,
+  // re-apply abandoned) while the ledger and the log both claimed the previous
+  // sandbox was preserved. With wrapTransaction=false the caller's COMMIT/ROLLBACK
+  // provides the atomicity across every file and every ledger row.
+  const wrap = opts.wrapTransaction !== false;
   await ensureLedger(cli);
   const done = await appliedSet(cli, scope);
   let applied = 0;
@@ -144,20 +155,24 @@ async function applyTracked(cli, fileList, opts) {
     // The SET search_path is inside the transaction deliberately: it must not
     // leak to the next file, and ROLLBACK reverts it.
     try {
-      await cli.query("BEGIN");
+      if (wrap) await cli.query("BEGIN");
       try {
         await cli.query(prefixed);
         await cli.query(
           "INSERT INTO public.schema_migration(scope, filename, sha256) VALUES ($1,$2,$3)",
           [scope, name, hashFile(f)],
         );
-        await cli.query("COMMIT");
+        if (wrap) await cli.query("COMMIT");
       } catch (err) {
-        // A failed ROLLBACK must never mask the error that caused it.
-        try {
-          await cli.query("ROLLBACK");
-        } catch {
-          /* connection already gone; the original error is the useful one */
+        // A failed ROLLBACK must never mask the error that caused it. When the
+        // caller owns the transaction (wrap=false) there is nothing to roll back
+        // here — the caller's own catch does it, once, for the whole rebuild.
+        if (wrap) {
+          try {
+            await cli.query("ROLLBACK");
+          } catch {
+            /* connection already gone; the original error is the useful one */
+          }
         }
         throw err;
       }

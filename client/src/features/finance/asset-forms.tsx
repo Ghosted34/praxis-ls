@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { SearchSelect } from "@/components/ui/search-select";
 import * as fin from "@/lib/finance-api";
+import { useBaseCurrency } from "@/lib/use-base-currency";
 import type { Asset, AssetDetail, AssetScheduleRow } from "@/lib/finance-api";
 
 export function AssetCreateForm({
@@ -28,6 +29,7 @@ export function AssetCreateForm({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const ccy = useBaseCurrency();
   const [entityId, setEntityId] = React.useState("");
   const [entityLabel, setEntityLabel] = React.useState<string | null>(null);
   const [label, setLabel] = React.useState("");
@@ -125,7 +127,7 @@ export function AssetCreateForm({
               placeholder="Toyota Hilux — Douala fleet"
             />
           </Field>
-          <Field label="Acquisition cost (XAF)" required>
+          <Field label={`Acquisition cost (${ccy})`} required>
             <Input
               type="number"
               min="0"
@@ -136,7 +138,7 @@ export function AssetCreateForm({
             />
           </Field>
           <Field
-            label="Residual value (XAF)"
+            label={`Residual value (${ccy})`}
             hint="Salvage value at end of life. Defaults to 0."
           >
             <Input
@@ -324,6 +326,7 @@ export function AssetDisposeForm({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const ccy = useBaseCurrency();
   const open = !!asset;
   const [disposedOn, setDisposedOn] = React.useState(fin.today());
   const [proceeds, setProceeds] = React.useState("");
@@ -380,7 +383,7 @@ export function AssetDisposeForm({
               onChange={(e) => setDisposedOn(e.target.value)}
             />
           </Field>
-          <Field label="Proceeds (XAF)" hint="Sale proceeds; 0 if scrapped.">
+          <Field label={`Proceeds (${ccy})`} hint="Sale proceeds; 0 if scrapped.">
             <Input
               type="number"
               min="0"

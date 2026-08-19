@@ -69,7 +69,14 @@ const VAT_RATE = 0.1925;
  */
 const DEFAULT_RATES = {
   yardTrigger: 14,
-  fx: { XAF: 1, USD: 615, EUR: 655.957 },
+  // No live FX is hardcoded here. The legacy froze {USD:615, EUR:655.957} in a
+  // JS literal and its "save" button only mutated an in-memory object
+  // (`alert("Saved locally!")`), so those numbers were wrong the day after they
+  // were typed. Real conversion rates come from the currency module
+  // (master/currency — GET /currencies/rate, rateFor); the service resolves
+  // them per request. Only the base anchor XAF→1 is a constant, not a rate.
+  // scripts/check-currency-literals guards against re-introducing a literal.
+  fx: { XAF: 1 },
   demurrage: {
     20: [7092, 12962.4],
     40: [13465.2, 25444.8],

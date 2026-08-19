@@ -43,10 +43,17 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import {
+  errMsg,
+  useList,
+  useRefresh,
+  useResource,
+  type Row,
+} from "@/lib/use-resource";
 import { useDebounced } from "@/lib/use-debounced";
 import { cell, dateFmt, money, money0 } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { listCurrencies } from "@/lib/masterdata-api";
 
 const EXTRA_AI: AiAction[] = [
   {
@@ -71,12 +78,6 @@ const FAMILIES = [
   "Plugging",
   "Detention",
 ] as const;
-
-const CURRENCIES = [
-  { value: "XAF", label: "XAF — CFA franc" },
-  { value: "USD", label: "USD — US dollar" },
-  { value: "EUR", label: "EUR — Euro" },
-];
 
 type ChargeRow = {
   cat: string;
@@ -160,7 +161,19 @@ function Metric({
 
 export function ExtraChargeSimulationsPage() {
   const reload = useRefresh();
-  const { rows: saved, error: listError } = useList("/extra-charge-simulations");
+  const { rows: saved, error: listError } = useList(
+    "/extra-charge-simulations",
+  );
+  // Currencies come from the live currency module (GET /currencies), not a
+  // hardcoded three-item list — when the treasurer adds or deactivates a
+  // currency the dropdown moves with it (SS4).
+  const currencies = useResource(() => listCurrencies(), []);
+  const currencyOptions = (currencies.data || [])
+    .filter((c) => c.is_active !== false)
+    .map((c) => ({
+      value: c.code,
+      label: c.name ? `${c.code} — ${c.name}` : c.code,
+    }));
 
   // Inputs. The legacy's defaults: 11 free days (billing opens on day 12) and a
   // 14-day yard trigger — both editable, because a shipping line's contract can
@@ -192,7 +205,16 @@ export function ExtraChargeSimulationsPage() {
       currency,
       shipping_line: shippingLine.trim() || undefined,
     }),
-    [containers, ata, gateOut, emptyReturn, freeDays, yardTrigger, currency, shippingLine],
+    [
+      containers,
+      ata,
+      gateOut,
+      emptyReturn,
+      freeDays,
+      yardTrigger,
+      currency,
+      shippingLine,
+    ],
   );
 
   // Live preview. The legacy recomputed on every keystroke because the whole
@@ -235,7 +257,10 @@ export function ExtraChargeSimulationsPage() {
     setSaving(true);
     setError(null);
     try {
-      await tenant("/extra-charge-simulations", { method: "POST", body: body() });
+      await tenant("/extra-charge-simulations", {
+        method: "POST",
+        body: body(),
+      });
       setSavedNote("Simulation saved.");
       reload();
       window.setTimeout(() => setSavedNote(null), 4000);
@@ -323,7 +348,8 @@ export function ExtraChargeSimulationsPage() {
       key: "boxes",
       label: "Containers",
       render: (r) => {
-        const list = (r.containers as { q: number; s: number; t: string }[]) || [];
+        const list =
+          (r.containers as { q: number; s: number; t: string }[]) || [];
         if (!Array.isArray(list) || list.length === 0)
           return cell(r.container_variant);
         return (
@@ -472,11 +498,14 @@ export function ExtraChargeSimulationsPage() {
                     onChange={(e) => setYardTrigger(e.target.value)}
                   />
                 </Field>
-                <Field label={tr("Currency")} className="col-span-2 sm:col-span-1">
+                <Field
+                  label={tr("Currency")}
+                  className="col-span-2 sm:col-span-1"
+                >
                   <Select
                     value={currency}
                     onValueChange={setCurrency}
-                    options={CURRENCIES}
+                    options={currencyOptions}
                   />
                 </Field>
               </div>
@@ -562,7 +591,9 @@ export function ExtraChargeSimulationsPage() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {FAMILIES.map((f) => {
                 const v = computed.families[f] ?? 0;
-                const pct = computed.total_ht ? (v / computed.total_ht) * 100 : 0;
+                const pct = computed.total_ht
+                  ? (v / computed.total_ht) * 100
+                  : 0;
                 return (
                   <button
                     key={f}
@@ -660,9 +691,7 @@ export function ExtraChargeSimulationsPage() {
                   {shown.map((r, i) => (
                     <TR key={`${r.cat}-${r.desc}-${i}`}>
                       <TD>
-                        <Pill
-                          tone={r.cat === "Demurrage" ? "orange" : "mute"}
-                        >
+                        <Pill tone={r.cat === "Demurrage" ? "orange" : "mute"}>
                           {r.cat}
                         </Pill>
                       </TD>

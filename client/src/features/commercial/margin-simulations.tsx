@@ -14,14 +14,22 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import {
+  errMsg,
+  useList,
+  useRefresh,
+  useResource,
+  type Row,
+} from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { Stat } from "@/components/ui/stat";
+import { listCurrencies } from "@/lib/masterdata-api";
 
 const MARGIN_AI: AiAction[] = [
   {
@@ -50,6 +58,16 @@ function MarginSimForm({
   onSaved: () => void;
 }) {
   const [currency, setCurrency] = React.useState("XAF");
+  // Currencies come from the live currency module (GET /currencies), not a
+  // free-text box — the column is char(3) REFERENCES currency(code), so a
+  // typo used to surface as a raw FK violation (SS4).
+  const currencies = useResource(() => listCurrencies(), []);
+  const currencyOptions = (currencies.data || [])
+    .filter((c) => c.is_active !== false)
+    .map((c) => ({
+      value: c.code,
+      label: c.name ? `${c.code} — ${c.name}` : c.code,
+    }));
   const [lines, setLines] = React.useState<MLine[]>([
     {
       label: "",
@@ -227,12 +245,12 @@ function MarginSimForm({
           <Button variant="outline" onClick={preview} loading={previewing}>
             Preview
           </Button>
-          <div className="w-24">
-            <Input
+          <div className="w-32">
+            <Select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              maxLength={3}
-              placeholder={tr("XAF")}
+              onValueChange={setCurrency}
+              options={currencyOptions}
+              aria-label={tr("Currency")}
             />
           </div>
         </div>

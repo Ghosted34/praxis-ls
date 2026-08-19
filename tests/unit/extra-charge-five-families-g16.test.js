@@ -376,8 +376,14 @@ describe("G16 — totals, VAT and currency", () => {
   });
 
   it("converts to USD by dividing the XAF total by the rate", () => {
+    // The pure function applies an fx map it is given; the service resolves
+    // that map live from the currency module (SS4 — no 615 literal in src).
     const xaf = simulateCharges(base);
-    const usd = simulateCharges({ ...base, currency: "USD" });
+    const usd = simulateCharges({
+      ...base,
+      currency: "USD",
+      fx: { XAF: 1, USD: 615 },
+    });
     expect(usd.currency).toBe("USD");
     expect(usd.total_ht).toBeCloseTo(xaf.total_ht / 615, 0);
   });

@@ -34,6 +34,10 @@ export type AttendanceRow = {
   /** TRANSIENT, on the clock-in response only: this punch registered a device
    *  nobody has met before, so the clock offers to name it — once. */
   device_new?: boolean;
+  /** What the punch presented, independent of whether a worksite exists. */
+  location_source?: "gps" | "none" | null;
+  /** Decorated: on_site | off_site | no_gps | unfenced */
+  location_status?: "on_site" | "off_site" | "no_gps" | "unfenced";
   is_late?: boolean;
   minutes_late?: number;
   department?: string | null;
@@ -137,6 +141,8 @@ export const clockOut = (
 ) => tenant<AttendanceRow>("/attendance/clock-out", { method: "POST", body });
 export const listAttendance = (params?: {
   date?: string;
+  from?: string;
+  to?: string;
   employee_id?: string;
 }) => tenant<AttendanceRow[]>("/attendance" + qs(params));
 export const absence = (date?: string) =>
@@ -1773,6 +1779,8 @@ export const updateSite = (
   >,
 ) =>
   tenant<WorkSite>(`/attendance/work-sites/${id}`, { method: "PATCH", body });
+
+export { queryGeoPermission, watchGeoPermission, watchGeoFix, geoRecoverySteps } from "./geo-permission";
 
 /** Best-effort device GPS fix (browser Geolocation). Rejects on denial/timeout. */
 export function getFix(): Promise<Fix> {

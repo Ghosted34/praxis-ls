@@ -978,7 +978,7 @@ export const deleteExpenseRate = (id: string) =>
   tenant<{ deleted: boolean }>(`/expense-rates/${id}`, { method: "DELETE" });
 /** Resolve the effective rate for an item at a date, cascading from the most
  *  specific (carrier + container type) down to the item's plain default.
- *  Throws (422 NO_RATE / NO_RATE_MATCH) when nothing is eligible — callers
+ *  Throws (404 NO_RATE / NO_RATE_MATCH) when nothing is eligible — callers
  *  (e.g. costing) should catch this and fall back to a free-typed rate. */
 export const resolveExpenseRate = (opts: {
   dictionary_item_id: string;

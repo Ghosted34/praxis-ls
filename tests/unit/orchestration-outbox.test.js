@@ -90,6 +90,10 @@ function makeOutbox(events, { featuresOn = true } = {}) {
     async query(sql, params = []) {
       this.queries.push(sql);
 
+      // outboxReady probe — the fake schema always has both outbox tables.
+      if (/pg_catalog\.pg_class/.test(sql)) {
+        return { rows: [{ relname: "event_log" }, { relname: "event_dispatch" }] };
+      }
       if (/FROM event_log el/.test(sql)) {
         const [maxAttempts, limit] = params;
         const due = events.filter((e) => {
@@ -316,5 +320,26 @@ describe("orchestration outbox (TC-C8)", () => {
     const db = makeOutbox([ev(1, "costing.approved"), ev(2, "nobody.listens")]);
     const out = await dispatcher.dispatchPending(db);
     expect(out.processed + out.skipped + out.failed).toBe(2);
+  });
+
+  it("skips gracefully when the schema lacks the outbox tables", async () => {
+    // A schema predating migrations 0120/0462 has no event_log/event_dispatch.
+    // The dispatcher must not throw `relation "event_log" does not exist` and
+    // retry — it should report an empty drain instead.
+    const db = {
+      async query(sql) {
+        if (/pg_catalog\.pg_class/.test(sql)) return { rows: [] };
+        throw new Error("relation \"event_log\" does not exist");
+      },
+    };
+    const out = await dispatcher.dispatchPending(db);
+    expect(out.scanned).toBe(0);
+    expect(out.processed).toBe(0);
+    expect(out.failed).toBe(0);
+    expect(out.outbox_missing).toBe(true);
+
+    const dl = await dispatcher.countDeadLetters(db);
+    expect(dl.total).toBe(0);
+    expect(dl.byType).toEqual([]);
   });
 });

@@ -14,4 +14,8 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.validate(c, { id: req.params.id, actor: actor(req) })) })),
   reject: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.reject(c, { id: req.params.id, reason: req.body.reason, actor: actor(req) })) })),
+  confirmSuggestion: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.confirmSuggestion(c, { id: req.params.id, suggestionId: req.params.sid, actor: actor(req) })) })),
+  rejectSuggestion: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.rejectSuggestion(c, { id: req.params.id, suggestionId: req.params.sid, actor: actor(req) })) })),
 };

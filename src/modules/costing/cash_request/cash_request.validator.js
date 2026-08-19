@@ -1,7 +1,9 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), budget_amount: z.number().nonnegative().optional(), spent_amount: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), proof_vault_id: z.string().uuid().optional().nullable() });
+const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), budget_amount: z.number().nonnegative().optional(), spent_amount: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), proof_vault_id: z.string().uuid().optional().nullable(),
+  // §3.5 — legacy per-line VAT % and "Just. Req?" (10746).
+  vat_percent: z.number().min(0).max(100).optional().nullable(), justification_required: z.boolean().optional() });
 const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // The OPS/OVH context fields the legacy screen carried (analysis doc §6.7):
 // beneficiary, category (OPS default), cost centre + justification for OVH,
@@ -13,6 +15,10 @@ const context = {
   cost_center: z.string().optional().nullable(),
   overhead_justification: z.string().optional().nullable(),
   remarks: z.string().optional().nullable(),
+  // §3.5 — how the money leaves (legacy :499); the per-method required fields
+  // (:505-514) are a service rule so every caller hits the same wall.
+  disbursement_method: z.enum(["CASH", "BANK", "CHEQUE", "MOMO"]).optional().nullable(),
+  disbursement_details: z.record(z.string(), z.string()).optional().nullable(),
 };
 const schemas = {
   create: z.object({ dossier_id: z.string().uuid().optional().nullable(), costing_id: z.string().uuid().optional().nullable(), requested_by: z.string().uuid().optional().nullable(), lines: z.array(line).optional(), ...context }),

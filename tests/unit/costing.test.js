@@ -1,5 +1,11 @@
 "use strict";
-/** Costing math (KB §6.7): débours excluded from margin; budget vs actual. */
+/**
+ * Costing math (KB §6.7 + §2.2): HT / VAT / TTC and STOP — no margin, no sell
+ * price. Legacy costing never had a margin concept (api/costing/save.php has
+ * zero margin references; the 54 'margin' hits in view costing-module.php are
+ * CSS); margin belongs to margin_simulation + quotation. Débours are
+ * pass-through: billed at cost, never taxed.
+ */
 const {
   computeCosting,
   reconcile,
@@ -7,25 +13,57 @@ const {
 
 describe("computeCosting", () => {
   const lines = [
-    { qty: 1, unit_cost: 1500000, is_disbursement: false }, // last-mile service
-    { qty: 1, unit_cost: 500000, is_disbursement: false }, // commission service
-    { qty: 1, unit_cost: 8000000, is_disbursement: true }, // customs/port/shipping débours
+    // last-mile service, VAT 19.25 from its own tax code (joined by the repo)
+    {
+      qty: 1,
+      unit_cost: 1500000,
+      is_disbursement: false,
+      tax_rate_percent: 19.25,
+    },
+    // commission service, no tax code → no VAT
+    { qty: 1, unit_cost: 500000, is_disbursement: false },
+    // customs/port/shipping débours — at cost, never taxed (0640 DB rule)
+    { qty: 1, unit_cost: 8000000, is_disbursement: true },
   ];
-  it("splits service vs débours; margin applies to service only (§6.7)", () => {
-    const t = computeCosting(lines, 25);
+
+  it("totals are the legacy footer: Subtotal (HT) / VAT / Total Estimate", () => {
+    const t = computeCosting(lines);
     expect(t.service_cost).toBe(2000000);
     expect(t.disbursement_total).toBe(8000000);
-    expect(t.service_sell_ht).toBe(2500000); // 2,000,000 * 1.25
-    expect(t.margin_amount).toBe(500000);
-    expect(t.sell_ht).toBe(10500000); // service sell + débours pass-through
+    expect(t.total_ht).toBe(10000000);
+    expect(t.vat_total).toBe(288750); // 1,500,000 × 19.25%
+    expect(t.total_ttc).toBe(10288750);
   });
-  it("zero margin = cost", () => {
-    const t = computeCosting(
-      [{ qty: 2, unit_cost: 100000, is_disbursement: false }],
-      0,
-    );
-    expect(t.service_sell_ht).toBe(200000);
-    expect(t.margin_amount).toBe(0);
+
+  it("has NO margin or sell fields (§2.2 — margin is a pricing question)", () => {
+    const t = computeCosting(lines);
+    for (const gone of [
+      "margin_percent",
+      "margin_amount",
+      "sell_ht",
+      "service_sell_ht",
+    ]) {
+      expect(t).not.toHaveProperty(gone);
+    }
+  });
+
+  it("VAT applies per line from the line's own rate — nothing hardcoded", () => {
+    const t = computeCosting([
+      {
+        qty: 2,
+        unit_cost: 100000,
+        is_disbursement: false,
+        tax_rate_percent: 10,
+      },
+      { qty: 1, unit_cost: 50000, is_disbursement: false, tax_rate_percent: 5 },
+    ]);
+    expect(t.vat_total).toBe(22500); // 200,000×10% + 50,000×5%
+    expect(t.total_ttc).toBe(272500);
+  });
+
+  it("keeps total_cost for readers that summed the old shape", () => {
+    const t = computeCosting(lines);
+    expect(t.total_cost).toBe(t.total_ht);
   });
 });
 

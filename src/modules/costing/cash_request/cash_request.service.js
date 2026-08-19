@@ -9,7 +9,7 @@
 
 const repo = require("./cash_request.repo");
 const events = require("./cash_request.events");
-const { assertTransition, sumField, disbursementState } = require("./cash_request.rules");
+const { assertTransition, sumField, computeTotals, assertMethod, disbursementState } = require("./cash_request.rules");
 const regie = require("../regie/regie.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
@@ -38,7 +38,9 @@ async function replaceLines(client, id, lines) {
   const written = [];
   for (const ln of lines) {
     /// eslint-disable-next-line no-await-in-loop
-    const row = await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_disbursement: ln.is_disbursement === true, proof_vault_id: ln.proof_vault_id || null });
+    const row = await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_disbursement: ln.is_disbursement === true, proof_vault_id: ln.proof_vault_id || null,
+      // §3.5 — legacy per-line VAT % and "Just. Req?" (10746).
+      vat_percent: ln.vat_percent ?? null, justification_required: ln.justification_required === true });
     written.push(row);
   }
   return written;
@@ -87,17 +89,25 @@ function assertContext({ category, dossierId, costCenter, overheadJustification 
   throw new AppError("BAD_CATEGORY", "cash request category must be OPS or OVH", 422);
 }
 
-async function createDraft(client, { dossierId = null, costingId = null, requestedBy = null, lines = [], beneficiary = null, category = null, costCenter = null, overheadJustification = null, remarks = null, actor = {} }) {
+async function createDraft(client, { dossierId = null, costingId = null, requestedBy = null, lines = [], beneficiary = null, category = null, costCenter = null, overheadJustification = null, remarks = null, disbursementMethod = null, disbursementDetails = null, actor = {} }) {
   const cat = assertContext({ category, dossierId, costCenter, overheadJustification });
+  // §3.5 — the method may be named at draft time (validated per method) or
+  // left for later; submission requires it (see transition).
+  const method = disbursementMethod ? assertMethod(disbursementMethod, disbursementDetails) : null;
   await client.query("BEGIN");
   try {
     const cr = await repo.insertCR(client, {
       dossier_id: cat === "OPS" ? dossierId : null, costing_id: costingId,
       requested_by: requestedBy || actor.user_id || null, status: "DRAFT",
-      amount: sumField(lines, "budget_amount"), beneficiary, category: cat,
+      // §3.5 — `amount` is the TOTAL PAYABLE (subtotal + per-line VAT): the
+      // cash actually being requested. It was the HT sum, which under-funded
+      // every taxed spend.
+      amount: computeTotals(lines).total_payable, beneficiary, category: cat,
       cost_center: cat === "OVH" ? costCenter : null,
       overhead_justification: cat === "OVH" ? overheadJustification : null,
       remarks,
+      disbursement_method: method ? method.method : null,
+      disbursement_details: JSON.stringify(method ? method.details : {}),
     });
     if (lines.length) await checkProof(client, cr, await replaceLines(client, cr.cash_request_id, lines));
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(cr.cash_request_id), after: cr });
@@ -116,6 +126,21 @@ async function updateDraft(client, { id, lines = null, patch = {}, actor: _actor
     for (const k of ["dossier_id", "costing_id", "beneficiary", "category", "cost_center", "overhead_justification", "remarks"]) {
       if (patch[k] !== undefined) fields[k] = patch[k];
     }
+    // §3.5 — changing the method re-validates its conditional fields and
+    // stores only that method's own fields.
+    if (patch.disbursement_method !== undefined) {
+      if (patch.disbursement_method === null) {
+        fields.disbursement_method = null;
+        fields.disbursement_details = JSON.stringify({});
+      } else {
+        const m = assertMethod(patch.disbursement_method, patch.disbursement_details ?? cr.disbursement_details);
+        fields.disbursement_method = m.method;
+        fields.disbursement_details = JSON.stringify(m.details);
+      }
+    } else if (patch.disbursement_details !== undefined && cr.disbursement_method) {
+      const m = assertMethod(cr.disbursement_method, patch.disbursement_details);
+      fields.disbursement_details = JSON.stringify(m.details);
+    }
     if (fields.category !== undefined || fields.dossier_id !== undefined || fields.cost_center !== undefined || fields.overhead_justification !== undefined) {
       const cat = assertContext({
         category: fields.category !== undefined ? fields.category : cr.category,
@@ -131,7 +156,8 @@ async function updateDraft(client, { id, lines = null, patch = {}, actor: _actor
     }
     if (Array.isArray(lines)) {
       await checkProof(client, cr, await replaceLines(client, id, lines));
-      fields.amount = sumField(lines, "budget_amount");
+      // §3.5 — TOTAL PAYABLE, not the HT sum (see createDraft).
+      fields.amount = computeTotals(lines).total_payable;
     }
     if (Object.keys(fields).length) await repo.update(client, id, fields);
     await client.query("COMMIT");
@@ -166,7 +192,9 @@ async function importCostingLines(client, { id, actor = {} }) {
       is_disbursement: l.is_disbursement === true,
     }));
     await checkProof(client, cr, await replaceLines(client, id, lines));
-    await repo.update(client, id, { amount: sumField(lines, "budget_amount") });
+    // §3.5 — TOTAL PAYABLE (imported costing lines carry no VAT, so this
+    // equals the HT sum today; the one formula keeps it true tomorrow).
+    await repo.update(client, id, { amount: computeTotals(lines).total_payable });
     await audit(client, { actorUserId: actor.user_id || null, action: "cash_request.lines_imported", moduleKey: events.MODULE, entityRef: ref(id), after: { costing_id: cr.costing_id, line_count: lines.length } });
     await client.query("COMMIT");
     return get(client, id);
@@ -177,6 +205,12 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, to);
+  // §3.5 — a request Finance cannot pay out is not ready for Finance: the
+  // disbursement method (and its conditional fields, validated when set) must
+  // be named before submission, exactly as the legacy screen required at save.
+  if (to === "SUBMITTED" && !cr.disbursement_method) {
+    throw new AppError("METHOD_REQUIRED", "Pick how the money is to be disbursed (cash, bank, cheque or MoMo) before submitting", 422);
+  }
   // Approving/rejecting directly while a chain is live would skip it (W4).
   // Before BEGIN so the refusal doesn't open and roll back a transaction.
   if (to === "VALIDATED" || to === "APPROVED" || to === "REJECTED") {
@@ -412,6 +446,8 @@ async function get(client, id) {
   if (!cr) return null;
   cr.lines = await repo.listLines(client, id);
   cr.payments = await repo.listPayments(client, id);
+  // §3.5 — the voucher footer, derived from the lines on every read.
+  cr.totals = computeTotals(cr.lines);
   return cr;
 }
 const list = (client, q) => repo.list(client, q);

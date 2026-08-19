@@ -124,4 +124,83 @@ async function portfolio(client, q = {}) {
   return rows;
 }
 
-module.exports = { insertCostEntry, purchaseRuleAccount, actualTotal, approvedBudgetTotal, advanceTotals, portfolio, listByDossier };
+/**
+ * §3.4 — the master-ledger matrix: one row per file, one column per
+ * DICTIONARY ITEM that has actual spend. The legacy hardcoded 15 categories
+ * as a PHP constant and matched them by array index; here the columns are
+ * DERIVED — record a cost against a new dictionary item and the grid grows a
+ * column, rename an item and history follows the id. Entries with no item
+ * fall into the OTHER bucket rather than vanishing.
+ *
+ * Reads dossier_visible (enumeration — a DRAFT is wizard state, not a file).
+ */
+async function matrixCells(client, q = {}) {
+  const params = [];
+  const wh = [];
+  if (q.dossier_id) { params.push(q.dossier_id); wh.push("d.dossier_id = $" + params.length); }
+  if (q.client_id) { params.push(q.client_id); wh.push("d.client_id = $" + params.length); }
+  const where = wh.length ? " AND " + wh.join(" AND ") : "";
+  const { rows } = await client.query(
+    `SELECT d.dossier_id, ce.dictionary_item_id,
+            di.code AS item_code, COALESCE(di.label_en, di.label_fr) AS item_label,
+            SUM(ce.amount) AS amount
+       FROM cost_entry ce
+       JOIN dossier_visible d ON d.dossier_id = ce.dossier_id
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = ce.dictionary_item_id
+      WHERE true${where}
+      GROUP BY d.dossier_id, ce.dictionary_item_id, di.code, di.label_en, di.label_fr`,
+    params,
+  );
+  return rows;
+}
+
+/** Advances for one file, each with its optional per-item earmarks (§3.4,
+ *  owner-decided: per file, allocation optional). */
+async function advancesForDossier(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT a.advance_id, a.amount, a.received_on, a.applied_amount, a.entry_id, a.created_at
+       FROM advance a WHERE a.dossier_id = $1 ORDER BY a.received_on, a.created_at`,
+    [dossierId],
+  );
+  if (!rows.length) return [];
+  const { rows: allocs } = await client.query(
+    `SELECT al.*, di.code AS item_code, COALESCE(di.label_en, di.label_fr) AS item_label
+       FROM advance_allocation al
+       JOIN advance a ON a.advance_id = al.advance_id
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = al.dictionary_item_id
+      WHERE a.dossier_id = $1
+      ORDER BY al.created_at`,
+    [dossierId],
+  );
+  const byAdvance = new Map();
+  for (const al of allocs) byAdvance.set(al.advance_id, [...(byAdvance.get(al.advance_id) || []), al]);
+  return rows.map((a) => ({ ...a, allocations: byAdvance.get(a.advance_id) || [] }));
+}
+
+async function getAdvance(client, advanceId) {
+  const { rows } = await client.query("SELECT * FROM advance WHERE advance_id = $1", [advanceId]);
+  return rows[0] || null;
+}
+
+async function allocatedTotal(client, advanceId) {
+  const { rows } = await client.query(
+    "SELECT COALESCE(SUM(amount), 0) AS total FROM advance_allocation WHERE advance_id = $1",
+    [advanceId],
+  );
+  return Number(rows[0].total);
+}
+
+const insertAllocation = (client, data) => insertOne(client, "advance_allocation", data);
+
+async function deleteAllocation(client, allocationId) {
+  const { rows } = await client.query(
+    "DELETE FROM advance_allocation WHERE advance_allocation_id = $1 RETURNING *",
+    [allocationId],
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  insertCostEntry, purchaseRuleAccount, actualTotal, approvedBudgetTotal, advanceTotals, portfolio, listByDossier,
+  matrixCells, advancesForDossier, getAdvance, allocatedTotal, insertAllocation, deleteAllocation,
+};

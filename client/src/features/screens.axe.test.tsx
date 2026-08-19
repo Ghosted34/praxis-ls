@@ -93,6 +93,7 @@ import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
+import * as reconciliation from "./costing/reconciliation";
 import { CycleCountsPage } from "./wms/cycle-count";
 import { EquipmentPage } from "./wms/equipment";
 import { InboundPage } from "./wms/inbound";
@@ -696,8 +697,16 @@ const AREAS: Area[] = [
         render: () => <MarginSimulationsPage />,
         routes: {
           "/margin-simulations": [
-            { simulation_id: "ms1", name: "Corridor", margin_percent: 18 },
+            {
+              margin_simulation_id: "ms1",
+              status: "DRAFT",
+              margin_percent: 18,
+              total_price: 1_000_000,
+              total_cost: 820_000,
+              currency: "XAF",
+            },
           ],
+          "/operations": [],
         },
       },
       {
@@ -723,10 +732,16 @@ const AREAS: Area[] = [
         render: () => <PricingVariancePage />,
         routes: {
           "/pricing-variance": [
-            { variance_id: "v1", operation_id: "o1", delta: -120000 },
+            {
+              reconciliation_id: "r1",
+              dossier_id: "o1",
+              quoted_ht: 1_000_000,
+              variance_percent: -12,
+              flag: "RED",
+              reconciliation_status: "VALIDATED",
+            },
           ],
           "/operations": [],
-          "/quotations": [],
         },
       },
     ],
@@ -1427,6 +1442,20 @@ const AREAS: Area[] = [
           ],
           "/operations": [],
         },
+      },
+      {
+        // Pick-first workbench: nothing meaningful is fetched until a person
+        // chooses an operations file, so on arrival there is no request to be
+        // loading or to fail — its "empty" IS its initial state (the same
+        // legitimate narrowing as Signatures above). The route key is the one
+        // the screen calls for its dossier picker.
+        name: "Reconciliation",
+        render: () => <reconciliation.ReconciliationPage />,
+        routes: {
+          "/operations": [],
+        },
+        states: ["empty", "populated"],
+        rendersRows: false,
       },
     ],
   },

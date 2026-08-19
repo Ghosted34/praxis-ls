@@ -78,6 +78,8 @@ async function currencyCatalog(client) {
     for (const r of rows) m[r.code.trim()] = { symbol: r.symbol || r.code.trim(), name: r.name, decimals: Number.isInteger(r.decimals) ? r.decimals : 2 };
     return m;
   } catch {
+    /* @silent:storage — an unreadable currency master must not fail the render;
+       the document falls back to the raw ISO code + 2 decimals. */
     return {};
   }
 }

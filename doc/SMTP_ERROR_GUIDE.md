@@ -37,7 +37,7 @@ plus an always-visible condensed card where admins configure mail.**
 
 ## What each code's guide says (condensed)
 
-- **SMTP_SENDER_REJECTED (550 Sender verify failed):** make the From address a real
+- **SENDER_NOT_AUTHORIZED (550 Sender verify failed):** make the From address a real
   mailbox; fix MX/SPF/DKIM; From must match the authenticated account; cPanel/Exim
   caller-verification setting; verify the domain on relays (SES/SendGrid/Postmark).
 - **SMTP_AUTH_FAILED:** re-enter the password (write-only field); app password for

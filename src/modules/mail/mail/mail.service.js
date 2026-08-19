@@ -495,22 +495,22 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
  *  issue rather than a server/code fault, and the compose UI shows the user why. */
 function explainSendError(err, conn) {
   const raw = String((err && (err.response || err.message)) || "").trim();
-  const code = err && err.responseCode;
   const addr = (conn && conn.email_address) || "this mailbox";
-  const lc = raw.toLowerCase();
-  if (
-    code === 550 || code === 553 || code === 554 ||
-    /sender verif|valid sender|not allowed to send|not authori[sz]ed|relay(ing)? denied|relay access denied|from address|must be authenticated|authentication required/.test(lc)
-  ) {
+  // One classifier: sender-verify is 422 SENDER_NOT_AUTHORIZED everywhere.
+  // Mailbox send then names the connected address so compose can tell the user
+  // which mailbox to Edit — Test / system-email keep the generic wording.
+  const mapped = mapSmtpError(err);
+  if (mapped.code === "SENDER_NOT_AUTHORIZED") {
     return new AppError(
       "SENDER_NOT_AUTHORIZED",
       `Your mailbox ${addr} isn't an authorised sender on its own mail server, so the server refused the message`
         + (raw ? ` (${raw})` : "")
         + `. This is the mailbox's SMTP setup — not Praxis. The "From" address must be a real mailbox on that server and usually has to match the login you connected with. Open Comms → Mailbox → Edit on this mailbox to fix the address, login or password, then Test.`,
       422,
+      mapped.details,
     );
   }
-  if ((err && err.code) === "EAUTH") {
+  if ((err && err.code) === "EAUTH" || mapped.code === "SMTP_AUTH_FAILED") {
     return new AppError("MAILBOX_AUTH_FAILED", `Login to ${addr} was rejected by its mail server${raw ? ` (${raw})` : ""}. Edit this mailbox to correct the username or password, then Test.`, 422);
   }
   return new AppError("MAIL_SEND_FAILED", `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`, 502);

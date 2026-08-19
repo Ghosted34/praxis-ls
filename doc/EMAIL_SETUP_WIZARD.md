@@ -41,6 +41,6 @@ progress bar, and ends on a summary card when all four pass.
 
 `tests/unit/mail-setup.test.js` — 8 hermetic tests: full pass, missing records with
 relay-aware suggestions, SPF on the parent domain, resolver-failure → `ok:null`,
-invalid-domain rejection, and test-send classification (550 → `SMTP_SENDER_REJECTED`,
+invalid-domain rejection, and test-send classification (550 → `SENDER_NOT_AUTHORIZED`,
 success message-id, raw reason preserved for non-SMTP failures). Backend suites,
 client `tsc`/`eslint` and the 69-file vitest suite all pass.

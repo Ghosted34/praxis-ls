@@ -238,6 +238,15 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **SMTP sender-verify is no longer a Praxis 5xx.** Two classifiers survived
+  the same merge: `mapSmtpError` labelled `550 Sender verify failed` as 502
+  `SMTP_SENDER_REJECTED` (Test, system email, platform mail-fallback probe,
+  inbound-intake reply), while mailbox compose used 422 `SENDER_NOT_AUTHORIZED`.
+  The 502 path flooded the server-error monitor with a mailbox-config fault.
+  One map now: 422 `SENDER_NOT_AUTHORIZED` on every path; compose still names
+  the connected mailbox. The UI already has a guide for that code; message
+  sniffing prefers it over the old alias.
+
 - **PDF preview on client / supplier / corporate-entity document uploads showed
   Chrome's "This content is blocked" interstitial.** `FileDrop` previewed a
   picked PDF in a `sandbox=""` iframe pointed at a `data:` URL. Chrome's built-in

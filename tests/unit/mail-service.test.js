@@ -378,16 +378,13 @@ test("a folder listing that fails stops the sync and records it on the connectio
 /*
  * WHY THIS ASSERTS 422 AND NOT THE 502 IT USED TO.
  *
- * Two implementations of this mapping landed within days of each other and both
- * survived the merge: `mapSmtpError` (#160), which called a rejected sender a
- * 502, and `explainSendError`, which calls it a 422. Only the second was ever
- * wired to `send`; the first was dead from the moment it merged, and this test
- * was asserting its contract — so main went red and stayed red.
- *
- * The live behaviour is also the better-argued one. A mail server refusing your
- * FROM address is a verdict on the mailbox's own SMTP setup, not a fault in
- * Praxis, and 4xx is what keeps it out of the server-error monitor where nobody
- * can act on it. The dead function is deleted rather than re-wired.
+ * Two implementations of this mapping landed within days of each other:
+ * `mapSmtpError` (#160) called a rejected sender a 502 SMTP_SENDER_REJECTED,
+ * and `explainSendError` called it a 422 SENDER_NOT_AUTHORIZED. Only the
+ * second was wired to `send`, so this test (which used to assert the 502
+ * contract) went red on main. Both paths now share the 422 classifier —
+ * Test / system-email / platform probe included — because a mail server
+ * refusing your FROM address is a mailbox-config verdict, not a Praxis 5xx.
  */
 test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422 AppError", async () => {
   const smtpErr = Object.assign(

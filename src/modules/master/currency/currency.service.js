@@ -34,6 +34,52 @@ async function convertAmount(client, { amount, base, quote, date }) {
   return { amount: Number(amount), base, quote, rate: Number(row.rate), converted: convert(amount, row), as_of_date: row.as_of_date, source: row.source };
 }
 
+/**
+ * The base→quote rate table as a `{ [code]: rate }` map for a given date,
+ * INCLUDING the base at 1. This is the shape the simulators need (one lookup
+ * per currency), and it is resolved LIVE from fx_rate_daily via rateFor — not
+ * a JS literal — so a treasurer's rate edit moves every quote immediately.
+ *
+ * `extra` are additional codes the caller wants even if they are not active
+ * (e.g. a legacy simulation that quoted a since-deactivated currency). An
+ * unknown/unpriced code is simply omitted; callers fall back to identity for
+ * anything missing rather than crashing a what-if.
+ *
+ * PROPERTY-INJECTION HARDENING (CodeQL js/remote-property-injection). `extra`
+ * can originate in a request body, so a computed property write keyed on it
+ * (`out[code] = …`) is the exact sink the query flags — and the query does
+ * not credit regex guards or null prototypes as sanitisers, so the sink has
+ * to GO, not be fenced. Rates therefore accumulate in a Map (Map.set is not
+ * a property write; "__proto__" is just an ordinary Map key) and become a
+ * plain object once, via Object.fromEntries, at the end. The ISO-4217 shape
+ * filter on extras stays as defence in depth: a non-code never even joins
+ * the lookup set, which is the same "omit and fall back" contract as an
+ * unpriced code.
+ */
+const ISO_CODE = /^[A-Z0-9]{3}$/;
+
+async function rateMap(client, { date, extra = [] } = {}) {
+  const d = date || today();
+  const base = (await repo.getBaseCode(client)) || "XAF";
+  const wanted = (Array.isArray(extra) ? extra : [])
+    .map((c) => String(c || "").toUpperCase().trim())
+    .filter((c) => ISO_CODE.test(c));
+  const codes = new Set((await repo.listActiveCodes(client)).concat(wanted));
+  codes.delete(base);
+  const rates = new Map([[base, 1]]);
+  for (const code of codes) {
+    try {
+      const r = await rateFor(client, { base, quote: code, date: d });
+      rates.set(code, Number(r.rate));
+    } catch {
+      /* @silent:storage — a missing FX pair is an expected what-if state
+         (a currency the tenant has not priced yet), not an error; omit it and
+         let the caller fall back to identity for that code. */
+    }
+  }
+  return Object.fromEntries(rates);
+}
+
 async function setRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, actor = {} }) {
   if (!(Number(rate) > 0)) throw new AppError("BAD_RATE", "rate must be > 0", 422);
   const row = await repo.upsertRate(client, { base, quote, rate, asOfDate: asOfDate || today(), source, isOverride });
@@ -119,6 +165,7 @@ async function removeCurrency(client, code, actor = {}) {
 module.exports = {
   rateFor,
   convertAmount,
+  rateMap,
   setRate,
   syncNow,
   listCurrencies,

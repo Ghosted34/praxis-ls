@@ -57,6 +57,10 @@ const ALLOW_BASE_TABLE = {
     "not apply to exactly the files being created.",
   "modules/finance/final_invoice/final_invoice.repo.js":
     "Decorates an invoice with its file's ref, by the invoice's own dossier_id.",
+  "modules/commercial/extra_charge_simulation/extra_charge_simulation.repo.js":
+    "dossierPrefill(dossierId) — §3.2: the simulator prefills containers/ATA/" +
+    "shipping line from ONE file the pricer just picked from the (view-backed) " +
+    "picker. By dossier_id, never an enumeration.",
   "modules/finance/final_invoice/final_invoice.service.js":
     "Resolves a costing's dossier by costing_id. A costing implies a promoted file.",
   "modules/documents/template/template.service.js":

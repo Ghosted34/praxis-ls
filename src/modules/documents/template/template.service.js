@@ -148,6 +148,7 @@ const SIMPLE = {
   PURCHASE_ORDER: { table: "purchase_order", pk: "po_id", label: "doc_number" },
   PURCHASE_REQUEST: { table: "purchase_request", pk: "pr_id", label: "doc_number" },
   CASH_REQUEST: { table: "cash_request", pk: "cash_request_id", label: "doc_number" },
+  COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
   EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: null },
@@ -638,8 +639,12 @@ async function loadRecord(client, docType, recordId) {
     );
     const cr = rows[0];
     if (!cr) return null;
-    const lr = await client.query("SELECT label, budget_amount FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
+    const lr = await client.query("SELECT label, budget_amount, vat_percent FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
     const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
+    // §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE, same rule the
+    // service applies (lazy require: see the transit-order branch note).
+    const { computeTotals } = require("../../costing/cash_request/cash_request.rules");
+    const totals = computeTotals(lr.rows);
     return {
       entity_id: null,
       data: {
@@ -647,6 +652,10 @@ async function loadRecord(client, docType, recordId) {
         amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
+        method: cr.disbursement_method || null,
+        method_details: cr.disbursement_details || {},
+        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        totals,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
         validated_by_name: cr.validated_by_name || null,
         validated_by_title: cr.validated_by_title || null,
@@ -654,6 +663,48 @@ async function loadRecord(client, docType, recordId) {
         approved_by_title: cr.approved_by_title || null,
         received_by_name: cr.beneficiary || null,
         currency: null,
+      },
+    };
+  }
+
+  /* §3.3 — the costing worksheet, footer Subtotal (HT) / VAT / Total Estimate.
+   * Totals are computed the same way costing.service.get computes them
+   * (per-line VAT from the line's own tax code; no margin — §2.2). */
+  if (docType === "COSTING") {
+    const { rows } = await client.query(
+      `SELECT c.*, d.ref AS dossier_ref, v.full_name AS validator_name
+         FROM costing c
+         LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
+         LEFT JOIN app_user v ON v.user_id = c.validator_id
+        WHERE c.costing_id = $1`,
+      [recordId],
+    );
+    const c = rows[0];
+    if (!c) return null;
+    const lr = await client.query(
+      `SELECT cl.label, cl.qty, cl.unit_cost, cl.is_disbursement, tc.rate_percent AS tax_rate_percent
+         FROM costing_line cl LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
+        WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id`,
+      [recordId],
+    );
+    // Lazy require (pattern of the transit-order branch above): pulling the
+    // costing rules at module load would force every test that mocks this
+    // service's collaborators to know about them.
+    const { computeCosting } = require("../../costing/costing/costing.rules");
+    const totals = computeCosting(lr.rows);
+    return {
+      entity_id: null,
+      data: {
+        number: c.doc_number || String(c.costing_id).slice(0, 8), date: c.created_at, status: c.status,
+        dossier_ref: c.dossier_ref, validator: c.validator_name, remarks: c.remarks,
+        exchange_rate: Number(c.exchange_rate_to_xaf),
+        lines: lr.rows.map((l) => ({
+          label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
+          tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
+          amount: Number(l.qty) * Number(l.unit_cost),
+        })),
+        totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },
+        currency: c.currency,
       },
     };
   }

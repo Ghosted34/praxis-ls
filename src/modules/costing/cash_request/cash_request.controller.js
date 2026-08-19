@@ -5,7 +5,7 @@ const { enqueueDocument } = require("../../../services/documents/generate");
 const actor = (req) => req.user || { user_id: null };
 
 /** Context fields that flow through the PATCH body into the request row. */
-const CTX_KEYS = ["dossier_id", "costing_id", "beneficiary", "category", "cost_center", "overhead_justification", "remarks"];
+const CTX_KEYS = ["dossier_id", "costing_id", "beneficiary", "category", "cost_center", "overhead_justification", "remarks", "disbursement_method", "disbursement_details"];
 const ctxOf = (b) => {
   const out = {};
   for (const k of CTX_KEYS) if (b[k] !== undefined) out[k] = b[k];
@@ -17,7 +17,7 @@ module.exports = {
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Cash request not found", 404); res.json({ data: r }); }),
   create: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.createDraft(c, { dossierId: b.dossier_id, costingId: b.costing_id, requestedBy: b.requested_by, lines: b.lines || [], beneficiary: b.beneficiary, category: b.category, costCenter: b.cost_center, overheadJustification: b.overhead_justification, remarks: b.remarks, actor: actor(req) }));
+    const data = await req.tenantDb((c) => service.createDraft(c, { dossierId: b.dossier_id, costingId: b.costing_id, requestedBy: b.requested_by, lines: b.lines || [], beneficiary: b.beneficiary, category: b.category, costCenter: b.cost_center, overheadJustification: b.overhead_justification, remarks: b.remarks, disbursementMethod: b.disbursement_method, disbursementDetails: b.disbursement_details, actor: actor(req) }));
     res.status(201).json({ data });
   }),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.updateDraft(c, { id: req.params.id, lines: req.body.lines || null, patch: ctxOf(req.body), actor: actor(req) })) })),

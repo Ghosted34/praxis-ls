@@ -1,52 +1,53 @@
 /**
- * Pricing Variance Index (MOD-27). Finance computes the index (it can see actual
- * cost); Sales only ever sees the R/Y/G flag + the quote (salesView strips cost).
+ * Pricing Variance Index (MOD-27) — a DERIVED projection over the dossier
+ * reconciliation (§2.1). No compute endpoint, no stored variance: the flag and
+ * margin % are calculated from the reconciliation's quoted (header) and
+ * budget/actual (line sums) on every read, so they can never drift from the
+ * record they summarise. BUG-4 (caller-supplied actual_cost stored as fact) is
+ * closed by construction — there is nothing to store.
+ *
+ * The Sales/Finance boundary is unchanged: Sales sees margin % + flag + quote,
+ * never a cost figure; the finance view (route-gated on MOD-56) adds
+ * budget/actual and the per-line drill-in.
  * Thresholds are a tenant business rule (settings commercial.pricing_variance).
  * All SQL is in the repo.
  */
 "use strict";
 
 const repo = require("./pricing_variance.repo");
-const events = require("./pricing_variance.events");
-const { computeVariance, flagFor, salesView } = require("./pricing_variance.rules");
+const { projectRow, salesView } = require("./pricing_variance.rules");
 const { getSetting } = require("../../../shared/config/settings");
-const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
-/** Compute + persist the variance for a dossier/quotation. Returns the Sales view. */
-async function compute(client, { dossierId, quotationId = null, costingId = null, marginSimulationId = null, quotedPrice = null, actualCost = null, actor = {} }) {
-  if (!dossierId) throw new AppError("DOSSIER_REQUIRED", "dossier_id is required", 422);
-  const quoted = quotedPrice !== null ? Number(quotedPrice) : (quotationId ? await repo.quotedFor(client, quotationId) : null);
-  if (quoted === null) throw new AppError("NO_QUOTE", "a quoted_price or a quotation_id is required", 422);
-  const actual = actualCost !== null ? Number(actualCost) : await repo.actualCostFor(client, dossierId);
-  const thresholds = (await getSetting(client, "commercial", "pricing_variance", null)) || {};
-  const { margin_percent } = computeVariance({ quotedPrice: quoted, actualCost: actual });
-  const flag = flagFor(margin_percent, thresholds);
+const thresholdsOf = async (client) =>
+  (await getSetting(client, "commercial", "pricing_variance", null)) || {};
 
-  await client.query("BEGIN");
-  try {
-    const row = await repo.insert(client, {
-      dossier_id: dossierId, quotation_id: quotationId, margin_simulation_id: marginSimulationId, costing_id: costingId,
-      quoted_price: quoted, actual_cost: actual, variance_percent: margin_percent, flag,
-    });
-    await emitEvent(client, { eventTypeKey: events.COMPUTED, moduleKey: events.MODULE, entityRef: "pricing_variance:" + row.pricing_variance_id, actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.COMPUTED, moduleKey: events.MODULE, entityRef: "pricing_variance:" + row.pricing_variance_id, after: { flag, variance_percent: margin_percent } });
-    await client.query("COMMIT");
-    return salesView(row);
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+/** Sales list — R/Y/G + quote only, newest first. `flag` filters after the
+ *  projection is computed (the flag is not stored anywhere to filter on). */
+async function listSales(client, q = {}) {
+  const thresholds = await thresholdsOf(client);
+  const rows = await repo.projectionList(client, { dossierId: q.dossier_id, limit: q.limit, offset: q.offset });
+  const projected = rows.map((r) => projectRow(r, thresholds));
+  const filtered = q.flag ? projected.filter((r) => r.flag === q.flag) : projected;
+  return filtered.map(salesView);
 }
 
-const listSales = (client, q) => repo.listSales(client, { dossierId: q.dossier_id, flag: q.flag, limit: q.limit, offset: q.offset });
 async function getSales(client, id) {
-  const row = await repo.getSales(client, id);
+  const row = await repo.projectionGet(client, id);
   if (!row) throw new AppError("NOT_FOUND", "Pricing variance not found", 404);
-  return row;
-}
-/** Finance-only: full row including actual_cost. Gate at the route (finance perm). */
-async function getFinance(client, id) {
-  const row = await repo.getFull(client, id);
-  if (!row) throw new AppError("NOT_FOUND", "Pricing variance not found", 404);
-  return row;
+  return salesView(projectRow(row, await thresholdsOf(client)));
 }
 
-module.exports = { compute, listSales, getSales, getFinance };
+/** Finance-only: the full projection including budget/actual and the per-line
+ *  detail — the drill-in a red flag needs. Gate at the route (MOD-56 view). */
+async function getFinance(client, id) {
+  const row = await repo.projectionGet(client, id);
+  if (!row) throw new AppError("NOT_FOUND", "Pricing variance not found", 404);
+  const [thresholds, lines] = await Promise.all([
+    thresholdsOf(client),
+    repo.projectionLines(client, id),
+  ]);
+  return { ...projectRow(row, thresholds), lines };
+}
+
+module.exports = { listSales, getSales, getFinance };

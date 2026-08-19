@@ -66,6 +66,7 @@ const GATES = [
   { group: "backend", name: "Test (jest)", cmd: ["npx", "jest"] },
   { group: "backend", name: "Migration numbering", cmd: node("scripts/db/check-migration-numbers.js") },
   { group: "backend", name: "Actor FK guard", cmd: node("scripts/check-actor-fk-guard.js") },
+  { group: "backend", name: "No hardcoded FX literals", cmd: node("scripts/check-currency-literals.js") },
   { group: "backend", name: "jest.mock hoisting", cmd: node("scripts/check-jest-mock-hoisting.js") },
   { group: "backend", name: "API docs in sync", cmd: node("scripts/generate-api-docs.js", "--check") },
   { group: "backend", name: "Migration reversibility", cmd: node("scripts/db/check-migration-reversibility.js") },

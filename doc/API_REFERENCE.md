@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1309 |
+| Routes | 1322 |
 | Modules mounted | 119 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1309 mounted routes, grouped by path prefix.
+All 1322 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -542,9 +542,14 @@ All 1309 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | POST | `/api/tenant/cost-tracking/` | — |
+| POST | `/api/tenant/cost-tracking/advances/:advanceId/allocations` | — |
+| DELETE | `/api/tenant/cost-tracking/allocations/:allocationId` | — |
+| POST | `/api/tenant/cost-tracking/bulk` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId` | — |
+| GET | `/api/tenant/cost-tracking/dossier/:dossierId/advances` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId/reconcile` | — |
 | GET | `/api/tenant/cost-tracking/kpis` | — |
+| GET | `/api/tenant/cost-tracking/matrix` | — |
 | GET | `/api/tenant/cost-tracking/portfolio` | — |
 
 ### `tenant/costing`
@@ -556,6 +561,8 @@ All 1309 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/costing/reconciliations/:id` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/reject` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/submit` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/suggestions/:sid/confirm` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/suggestions/:sid/reject` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/validate` | — |
 
 ### `tenant/costings`
@@ -795,8 +802,10 @@ All 1309 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/extra-charge-simulations/` | — |
 | POST | `/api/tenant/extra-charge-simulations/` | — |
 | GET | `/api/tenant/extra-charge-simulations/:id` | — |
+| GET | `/api/tenant/extra-charge-simulations/prefill/:dossierId` | — |
 | POST | `/api/tenant/extra-charge-simulations/preview` | — |
 | GET | `/api/tenant/extra-charge-simulations/rates` | — |
+| PUT | `/api/tenant/extra-charge-simulations/rates` | — |
 
 ### `tenant/field-visibility`
 
@@ -1096,6 +1105,11 @@ All 1309 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/margin-simulations/` | — |
 | POST | `/api/tenant/margin-simulations/` | — |
 | GET | `/api/tenant/margin-simulations/:id` | — |
+| POST | `/api/tenant/margin-simulations/:id/approve` | — |
+| POST | `/api/tenant/margin-simulations/:id/quote` | — |
+| POST | `/api/tenant/margin-simulations/:id/reject` | — |
+| POST | `/api/tenant/margin-simulations/:id/submit` | — |
+| GET | `/api/tenant/margin-simulations/from-costing/:costingId` | — |
 | POST | `/api/tenant/margin-simulations/preview` | — |
 
 ### `tenant/master-config`
@@ -1375,7 +1389,6 @@ All 1309 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/pricing-variance/` | — |
 | GET | `/api/tenant/pricing-variance/:id` | — |
 | GET | `/api/tenant/pricing-variance/:id/finance` | — |
-| POST | `/api/tenant/pricing-variance/compute` | — |
 
 ### `tenant/proformas`
 

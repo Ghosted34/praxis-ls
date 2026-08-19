@@ -43,10 +43,19 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import {
+  errMsg,
+  useList,
+  useRefresh,
+  useResource,
+  type Row,
+} from "@/lib/use-resource";
 import { useDebounced } from "@/lib/use-debounced";
 import { cell, dateFmt, money, money0 } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { listCurrencies } from "@/lib/masterdata-api";
+import { Modal } from "@/components/ui/modal";
+import { SearchSelect } from "@/components/ui/search-select";
 
 const EXTRA_AI: AiAction[] = [
   {
@@ -71,12 +80,6 @@ const FAMILIES = [
   "Plugging",
   "Detention",
 ] as const;
-
-const CURRENCIES = [
-  { value: "XAF", label: "XAF — CFA franc" },
-  { value: "USD", label: "USD — US dollar" },
-  { value: "EUR", label: "EUR — Euro" },
-];
 
 type ChargeRow = {
   cat: string;
@@ -156,11 +159,198 @@ function Metric({
   );
 }
 
+/* ── Rate configuration (§3.2) ────────────────────────────────────────────── */
+
+/**
+ * The Rate Configuration modal, ON the simulator — the owner's strongest
+ * objection was rates living in Settings ("how will user go to settings to
+ * set rate then come back to simulation screen to compute"). The legacy
+ * proves the placement (extra-charges-simulator.php:481 opens #adminModal
+ * from the toolbar and recalculates live) but its save was
+ * alert("Saved locally!") — a mutation of a JS object that a reload undid.
+ * This one PUTs to /extra-charge-simulations/rates (persisted in tenant
+ * settings) and the workbench recomputes immediately. Saving is gated
+ * server-side (MOD-70 edit): a pricer sees the tariff, an admin changes it —
+ * the 403 message says so rather than hiding the button client-side.
+ *
+ * The editor walks the tariff object generically: a number is one input, an
+ * array of numbers is a comma-separated band list. No family list is
+ * hardcoded — a tenant whose tariff grows a key grows a row.
+ */
+type FlatRate = { path: string[]; value: string; isArray: boolean };
+
+function flattenRates(obj: unknown, path: string[] = []): FlatRate[] {
+  const out: FlatRate[] = [];
+  if (obj === null || obj === undefined) return out;
+  if (typeof obj === "number") {
+    out.push({ path, value: String(obj), isArray: false });
+    return out;
+  }
+  if (Array.isArray(obj)) {
+    out.push({ path, value: obj.join(", "), isArray: true });
+    return out;
+  }
+  if (typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (k === "fx") continue; // conversion belongs to the currency module
+      out.push(...flattenRates(v, [...path, k]));
+    }
+  }
+  return out;
+}
+
+function unflattenRates(flat: FlatRate[]): Record<string, unknown> {
+  // Property-injection guard (same class CodeQL flagged server-side): path
+  // segments come from the fetched tariff and pass through editable state, so
+  // never let a prototype-reaching key become a write target.
+  const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
+  const root: Record<string, unknown> = {};
+  for (const f of flat) {
+    if (f.path.some((k) => FORBIDDEN.has(k))) continue;
+    let at = root;
+    for (let i = 0; i < f.path.length - 1; i += 1) {
+      const k = f.path[i];
+      if (typeof at[k] !== "object" || at[k] === null) at[k] = {};
+      at = at[k] as Record<string, unknown>;
+    }
+    const leaf = f.path[f.path.length - 1];
+    at[leaf] = f.isArray
+      ? f.value
+          .split(/[,;]/)
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isFinite(n) && n >= 0)
+      : Number(f.value) || 0;
+  }
+  return root;
+}
+
+function RateConfigModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const info = useResource<{ rates: Record<string, unknown>; source: string }>(
+    () => tenant("/extra-charge-simulations/rates"),
+    [open],
+  );
+  const [flat, setFlat] = React.useState<FlatRate[] | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (open && info.data) setFlat(flattenRates(info.data.rates));
+    if (!open) {
+      setFlat(null);
+      setError(null);
+    }
+  }, [open, info.data]);
+
+  async function save() {
+    if (!flat) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await tenant("/extra-charge-simulations/rates", {
+        method: "PUT",
+        body: { rates: unflattenRates(flat) },
+      });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Group rows by their first path segment so the modal reads as the legacy's
+  // family sections rather than one flat wall of inputs.
+  const groups = React.useMemo(() => {
+    const g = new Map<string, FlatRate[]>();
+    for (const f of flat || []) {
+      const head = f.path[0] || "misc";
+      g.set(head, [...(g.get(head) || []), f]);
+    }
+    return [...g.entries()];
+  }, [flat]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={tr("Rate configuration")}
+      description="The tariff every simulation on this screen uses — persisted for the whole tenant, not this browser. Bands are comma-separated per day range. FX is managed in Master Data → Currencies."
+      size="lg"
+    >
+      {info.error ? (
+        <ErrorState message={info.error} />
+      ) : !flat ? null : (
+        <div className="space-y-4">
+          {groups.map(([family, rows]) => (
+            <div key={family}>
+              <p className="micro mb-2 uppercase">{family}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {rows.map((f) => {
+                  const idx = (flat || []).indexOf(f);
+                  return (
+                    <Field
+                      key={f.path.join(".")}
+                      label={f.path.slice(1).join(" · ") || family}
+                      hint={f.isArray ? "Bands, comma-separated" : undefined}
+                    >
+                      <Input
+                        className="num text-right"
+                        value={f.value}
+                        onChange={(e) =>
+                          setFlat((rs) =>
+                            (rs || []).map((r, i) =>
+                              i === idx ? { ...r, value: e.target.value } : r,
+                            ),
+                          )
+                        }
+                      />
+                    </Field>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {error && <ErrorState message={error} />}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose} disabled={busy}>
+              {tr("Cancel")}
+            </Button>
+            <Button onClick={save} loading={busy}>
+              {tr("Save tariff")}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 /* ── The screen ───────────────────────────────────────────────────────────── */
 
 export function ExtraChargeSimulationsPage() {
   const reload = useRefresh();
-  const { rows: saved, error: listError } = useList("/extra-charge-simulations");
+  const { rows: saved, error: listError } = useList(
+    "/extra-charge-simulations",
+  );
+  // Currencies come from the live currency module (GET /currencies), not a
+  // hardcoded three-item list — when the treasurer adds or deactivates a
+  // currency the dropdown moves with it (SS4).
+  const currencies = useResource(() => listCurrencies(), []);
+  const currencyOptions = (currencies.data || [])
+    .filter((c) => c.is_active !== false)
+    .map((c) => ({
+      value: c.code,
+      label: c.name ? `${c.code} — ${c.name}` : c.code,
+    }));
 
   // Inputs. The legacy's defaults: 11 free days (billing opens on day 12) and a
   // 14-day yard trigger — both editable, because a shipping line's contract can
@@ -174,15 +364,52 @@ export function ExtraChargeSimulationsPage() {
   const [currency, setCurrency] = React.useState("XAF");
   const [shippingLine, setShippingLine] = React.useState("");
 
+  // §3.2 — "The file" now has a file. Picking a dossier pre-fills containers,
+  // ATA and the shipping line from what the system already knows; gate-out and
+  // empty-return stay the operator's (the system does not know them yet).
+  const [dossierId, setDossierId] = React.useState("");
+  const [dossierLabel, setDossierLabel] = React.useState<string | null>(null);
+  const [prefillNote, setPrefillNote] = React.useState<string | null>(null);
+  async function pickDossier(d: { dossier_id?: unknown; ref?: unknown }) {
+    const id = String(d.dossier_id);
+    setDossierId(id);
+    setDossierLabel(cell(d.ref ?? id));
+    try {
+      const p = await tenant<{
+        containers: string | null;
+        ata: string | null;
+        shipping_line: string | null;
+      }>(`/extra-charge-simulations/prefill/${id}`);
+      if (p.containers) setContainers(p.containers);
+      if (p.ata) setAta(String(p.ata).slice(0, 10));
+      if (p.shipping_line) setShippingLine(p.shipping_line);
+      setPrefillNote(
+        p.containers || p.ata || p.shipping_line
+          ? "Pre-filled from the file — edit anything that moved."
+          : "The file has no containers or ATA recorded yet — enter them here.",
+      );
+    } catch (e) {
+      setPrefillNote(errMsg(e));
+    }
+  }
+
+  // §3.2 — bumping this after a tariff save re-runs the live preview with the
+  // NEW persisted rates (the legacy's saveAdminSettings→updateCalc, but real).
+  const [ratesVersion, setRatesVersion] = React.useState(0);
+  const [ratesOpen, setRatesOpen] = React.useState(false);
+
   const [computed, setComputed] = React.useState<Computed | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [computing, setComputing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [savedNote, setSavedNote] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState("all");
+  // §3.2 — saved simulations are reusable, not inert: clicking a row opens it.
+  const [selected, setSelected] = React.useState<Row | null>(null);
 
   const body = React.useCallback(
     (): Record<string, unknown> => ({
+      dossier_id: dossierId || undefined,
       containers: containers.trim(),
       ata: ata || undefined,
       gate_out: gateOut || undefined,
@@ -192,7 +419,17 @@ export function ExtraChargeSimulationsPage() {
       currency,
       shipping_line: shippingLine.trim() || undefined,
     }),
-    [containers, ata, gateOut, emptyReturn, freeDays, yardTrigger, currency, shippingLine],
+    [
+      dossierId,
+      containers,
+      ata,
+      gateOut,
+      emptyReturn,
+      freeDays,
+      yardTrigger,
+      currency,
+      shippingLine,
+    ],
   );
 
   // Live preview. The legacy recomputed on every keystroke because the whole
@@ -229,13 +466,16 @@ export function ExtraChargeSimulationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [signature, ready]);
+  }, [signature, ready, ratesVersion]);
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      await tenant("/extra-charge-simulations", { method: "POST", body: body() });
+      await tenant("/extra-charge-simulations", {
+        method: "POST",
+        body: body(),
+      });
       setSavedNote("Simulation saved.");
       reload();
       window.setTimeout(() => setSavedNote(null), 4000);
@@ -323,7 +563,8 @@ export function ExtraChargeSimulationsPage() {
       key: "boxes",
       label: "Containers",
       render: (r) => {
-        const list = (r.containers as { q: number; s: number; t: string }[]) || [];
+        const list =
+          (r.containers as { q: number; s: number; t: string }[]) || [];
         if (!Array.isArray(list) || list.length === 0)
           return cell(r.container_variant);
         return (
@@ -406,9 +647,38 @@ export function ExtraChargeSimulationsPage() {
           <Panel
             title="The file"
             subtitle="Dates and boxes — the charge follows"
+            action={
+              // §3.2 — the legacy toolbar button (openAdminModal), one click
+              // from the calculation. Everyone can look; saving is admin.
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setRatesOpen(true)}
+              >
+                {tr("Rate configuration")}
+              </Button>
+            }
             className="p-4"
           >
             <div className="space-y-3">
+              <Field
+                label={tr("Operations file")}
+                hint="Pre-fills containers, ATA and the shipping line"
+              >
+                <SearchSelect
+                  path="/operations"
+                  value={dossierLabel}
+                  placeholder={tr("Search files…")}
+                  getLabel={(d) => cell(d.ref ?? d.dossier_id)}
+                  getKey={(d) => String(d.dossier_id)}
+                  onSelect={(d) => void pickDossier(d)}
+                />
+              </Field>
+              {prefillNote && (
+                <p className="micro" role="status">
+                  {prefillNote}
+                </p>
+              )}
               <Field
                 label="Containers"
                 hint="Free text, as on the bill of lading — “2x40HC, 1x20RF”."
@@ -472,11 +742,14 @@ export function ExtraChargeSimulationsPage() {
                     onChange={(e) => setYardTrigger(e.target.value)}
                   />
                 </Field>
-                <Field label={tr("Currency")} className="col-span-2 sm:col-span-1">
+                <Field
+                  label={tr("Currency")}
+                  className="col-span-2 sm:col-span-1"
+                >
                   <Select
                     value={currency}
                     onValueChange={setCurrency}
-                    options={CURRENCIES}
+                    options={currencyOptions}
                   />
                 </Field>
               </div>
@@ -562,7 +835,9 @@ export function ExtraChargeSimulationsPage() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {FAMILIES.map((f) => {
                 const v = computed.families[f] ?? 0;
-                const pct = computed.total_ht ? (v / computed.total_ht) * 100 : 0;
+                const pct = computed.total_ht
+                  ? (v / computed.total_ht) * 100
+                  : 0;
                 return (
                   <button
                     key={f}
@@ -660,9 +935,7 @@ export function ExtraChargeSimulationsPage() {
                   {shown.map((r, i) => (
                     <TR key={`${r.cat}-${r.desc}-${i}`}>
                       <TD>
-                        <Pill
-                          tone={r.cat === "Demurrage" ? "orange" : "mute"}
-                        >
+                        <Pill tone={r.cat === "Demurrage" ? "orange" : "mute"}>
                           {r.cat}
                         </Pill>
                       </TD>
@@ -722,6 +995,7 @@ export function ExtraChargeSimulationsPage() {
             sticky
             maxHeight="420px"
             rowKey={(r, i) => String(r.extra_charge_simulation_id ?? i)}
+            onRowClick={(r) => setSelected(r)}
             empty={{
               title: "No simulations saved yet",
               hint: "Compute one above, then save it to keep the estimate against the file.",
@@ -729,6 +1003,110 @@ export function ExtraChargeSimulationsPage() {
           />
         </Panel>
       </div>
+
+      {/* §3.2 — a saved simulation opens and re-applies: they are saved to be
+          reused, not to sit as inert rows. */}
+      {selected && (
+        <Modal
+          open
+          onClose={() => setSelected(null)}
+          title={tr("Saved simulation")}
+          description="The estimate as computed, with the tariff it was frozen with."
+          size="lg"
+        >
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Metric label="Simulated" value={dateFmt(selected.created_at)} />
+              <Metric
+                label="Shipping line"
+                value={cell(selected.shipping_line)}
+              />
+              <Metric
+                label="Total HT"
+                value={money0(amount(selected.total_ht))}
+              />
+              <Metric
+                label="Total TTC"
+                value={money(selected.total_amount, String(selected.currency || "XAF"))}
+                tone="accent"
+              />
+            </div>
+            {(() => {
+              const cc = selected.computed_charges as
+                | { rows?: ChargeRow[] }
+                | ChargeRow[]
+                | null;
+              const rows = Array.isArray(cc) ? [] : (cc?.rows ?? []);
+              return rows.length ? (
+                <Table sticky maxHeight="320px" density="compact">
+                  <THead>
+                    <TR>
+                      <TH>Family</TH>
+                      <TH>Detail</TH>
+                      <TH className="text-right">Days</TH>
+                      <TH className="text-right">Amount HT</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {rows.map((r, i) => (
+                      <TR key={i}>
+                        <TD>{r.cat}</TD>
+                        <TD className="text-muted-foreground">{r.desc}</TD>
+                        <TD className="num text-right">{r.qty}</TD>
+                        <TD className="num text-right">{money0(r.total)}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              ) : null;
+            })()}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setSelected(null)}>
+                {tr("Close")}
+              </Button>
+              <Button
+                onClick={() => {
+                  // Load the saved inputs back into the workbench — the live
+                  // preview recomputes against TODAY's tariff, which is the
+                  // point of re-applying (compare then vs now).
+                  const list = selected.containers as
+                    | { q: number; s: number; t: string }[]
+                    | null;
+                  if (Array.isArray(list) && list.length) {
+                    setContainers(
+                      list.map((c) => `${c.q}x${c.s}${c.t}`).join(", "),
+                    );
+                  }
+                  if (selected.ata) setAta(String(selected.ata).slice(0, 10));
+                  if (selected.gate_out)
+                    setGateOut(String(selected.gate_out).slice(0, 10));
+                  if (selected.empty_return)
+                    setEmptyReturn(String(selected.empty_return).slice(0, 10));
+                  if (selected.free_days != null)
+                    setFreeDays(String(selected.free_days));
+                  if (selected.shipping_line)
+                    setShippingLine(String(selected.shipping_line));
+                  if (selected.currency)
+                    setCurrency(String(selected.currency));
+                  if (selected.dossier_id) {
+                    setDossierId(String(selected.dossier_id));
+                    setDossierLabel(null);
+                  }
+                  setSelected(null);
+                }}
+              >
+                {tr("Re-apply to workbench")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      <RateConfigModal
+        open={ratesOpen}
+        onClose={() => setRatesOpen(false)}
+        onSaved={() => setRatesVersion((v) => v + 1)}
+      />
 
       <AiActions actions={EXTRA_AI} />
     </PageContainer>

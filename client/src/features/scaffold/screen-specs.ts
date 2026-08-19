@@ -123,24 +123,36 @@ export const SPECS: ScreenSpec[] = [
     area: "Commercial",
     title: "Margin simulation",
     purpose:
-      "What-if margin workbench — margin is computed on services only (débours excluded, KB §6.7).",
+      "Cost the file, then price it: LINK COSTING imports the costing's lines; per-line margin + KPI finds the line that kills the deal; DRAFT → Submit → Approve → quotation (§3.1). Margin on services only (débours excluded, KB §6.7).",
     module: "MOD-27",
     status: "ready",
     columns: [
-      "Ref",
       "Dossier",
-      "Revenue",
-      "Service cost",
-      "Margin",
+      "Status",
       "Margin %",
+      "Price",
+      "Cost",
       "Created",
     ],
-    actions: ["New simulation"],
+    actions: [
+      "New simulation",
+      "Link costing",
+      "Save and submit",
+      "Approve",
+      "Reject",
+      "Create quotation",
+    ],
     ai: [
       {
         label: "List margin simulations",
         kind: "read",
         describe: "List margin simulations.",
+      },
+      {
+        label: "Price from costing",
+        kind: "read",
+        describe:
+          "Import a costing's lines as the cost base for a new simulation.",
       },
       {
         label: "Compute margin simulation",
@@ -155,11 +167,18 @@ export const SPECS: ScreenSpec[] = [
     area: "Commercial",
     title: "Extra-charge simulation",
     purpose:
-      "Tiered demurrage / detention estimator — model the cost of delay before it lands.",
+      "Five-family demurrage/detention workbench per FILE (§3.2): pick the dossier and the containers/ATA/shipping line prefill; Rate Configuration lives ON the screen and persists; saved simulations re-apply.",
     module: "MOD-28",
     status: "ready",
-    columns: ["Ref", "Type", "Free days", "Tiers", "Estimate", "Created"],
-    actions: ["New simulation"],
+    columns: [
+      "Simulated",
+      "Shipping line",
+      "Containers",
+      "ATA → gate-out",
+      "Total HT",
+      "Total TTC",
+    ],
+    actions: ["Save simulation", "Rate configuration", "Re-apply"],
     ai: [
       {
         label: "List extra-charge simulations",
@@ -178,30 +197,24 @@ export const SPECS: ScreenSpec[] = [
     area: "Commercial",
     title: "Pricing variance",
     purpose:
-      "Quote-vs-actual-cost variance with an R/Y/G flag. Sales sees the flag + quote; only Finance sees raw cost.",
+      "Derived projection over each file's reconciliation: quote-vs-actual as an R/Y/G flag. Sales sees the flag + quote; only Finance sees cost and the per-line drill.",
     module: "MOD-56",
     status: "ready",
     columns: [
       "Dossier",
-      "Quote",
-      "Actual cost",
-      "Variance",
-      "Variance %",
+      "Quoted (HT)",
+      "Margin %",
       "Flag",
+      "Reconciliation",
+      "As of",
     ],
-    actions: ["Compute variance"],
+    actions: [],
     ai: [
       {
         label: "List pricing variance",
         kind: "read",
         describe:
-          "Sales pricing-variance list (R/Y/G flag + quote; never raw cost).",
-      },
-      {
-        label: "Compute pricing variance",
-        kind: "assist",
-        describe:
-          "Finance: compute + persist a dossier's pricing variance (quote vs actual cost).",
+          "Sales pricing-variance list derived from dossier reconciliations (R/Y/G flag + quote; never raw cost).",
       },
     ],
   },
@@ -597,13 +610,13 @@ export const SPECS: ScreenSpec[] = [
     area: "Costing",
     title: "Dossier costing",
     purpose:
-      "Job-costing sheet per dossier — budget, expected margin (débours excluded, §6.7).",
+      "Job-costing sheet per dossier — budget, HT / VAT / TTC (débours pass-through, §6.7). No margin: pricing lives in the margin simulator and the quotation (§2.2).",
     module: "MOD-46",
     status: "ready",
     tabs: [
       {
         label: "Costing sheet",
-        columns: ["Dossier", "Budget", "Expected margin", "Status"],
+        columns: ["Dossier", "Budget", "Total (HT/VAT/TTC)", "Status"],
         actions: ["New costing", "Validate", "Approve"],
       },
       {
@@ -631,12 +644,33 @@ export const SPECS: ScreenSpec[] = [
     area: "Costing",
     title: "Cost tracking",
     purpose:
-      "Actuals vs the costing sheet — record real costs and reconcile budget variance per dossier.",
+      "The legacy's three tabs on OUR data model (§3.4): Summary & balance (portfolio + master-ledger matrix, columns derived from the dictionary, Export), Actual costs (per-file entries + one-transaction multi-line sheet), Advances received (per FILE — owner-decided — with optional per-item earmarks).",
     module: "MOD-47",
     status: "ready",
-    columns: ["Dossier", "Budget", "Actual", "Variance", "Variance %"],
-    actions: ["Record cost"],
+    tabs: [
+      {
+        label: "Summary & balance",
+        columns: ["File", "…item columns…", "TOTAL SPEND", "Advance", "TOTAL BALANCE"],
+        actions: ["Export"],
+      },
+      {
+        label: "Actual costs",
+        columns: ["Item", "Category", "Date", "Amount"],
+        actions: ["Record costs (sheet)"],
+      },
+      {
+        label: "Advances received",
+        columns: ["Amount", "Received", "Applied", "Earmarks"],
+        actions: ["Earmark to item"],
+      },
+    ],
     ai: [
+      {
+        label: "Master-ledger matrix",
+        kind: "read",
+        describe:
+          "Files × cost items with TOTAL SPEND / TOTAL BALANCE — 'which file is bleeding on Demurrage' at a glance.",
+      },
       {
         label: "Reconcile dossier",
         kind: "assist",
@@ -651,14 +685,38 @@ export const SPECS: ScreenSpec[] = [
     ],
   },
   {
+    path: "costing/reconciliation",
+    area: "Costing",
+    title: "Reconciliation",
+    purpose:
+      "Quoted vs budget vs actual per file (§2.1 merged record) — three questions in sequence with the offending line visible; débours stay out of the variance.",
+    module: "MOD-47",
+    status: "ready",
+    columns: ["Item", "Budget (HT)", "Actual (HT)", "Variance", "Provenance", "Proof"],
+    actions: ["Draft reconciliation", "Submit", "Validate", "Reject"],
+    ai: [
+      {
+        label: "Get reconciliation",
+        kind: "read",
+        describe:
+          "One reconciliation: quoted/budget/actual, the three variances, per-line detail and pending match proposals.",
+      },
+      {
+        label: "Latest reconciliation",
+        kind: "read",
+        describe: "The latest reconciliation for an operations file.",
+      },
+    ],
+  },
+  {
     path: "costing/cash-requests",
     area: "Costing",
     title: "Cash requests",
     purpose:
-      "Disbursement requests with their own approval + justification cycle (issues a régie advance).",
+      "Disbursement requests with their own approval + justification cycle (issues a régie advance). §3.5: disbursement method (CASH/BANK/CHEQUE/MOMO) with its conditional fields, per-line VAT + Just.-req flag, TOTAL PAYABLE, and the voucher's VALIDATED BY / APPROVED BY / RECEIVED BY signature blocks.",
     module: "MOD-49",
     status: "ready",
-    columns: ["Ref", "Requester", "Amount", "Status", "Date"],
+    columns: ["Ref", "Requester", "Method", "Amount", "Status", "Date"],
     actions: ["New request", "Submit", "Approve", "Disburse", "Justify"],
     ai: [
       {

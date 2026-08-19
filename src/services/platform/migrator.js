@@ -171,7 +171,7 @@ async function applyTracked(cli, fileList, opts) {
           try {
             await cli.query("ROLLBACK");
           } catch {
-            /* connection already gone; the original error is the useful one */
+            /* @silent:teardown — connection already gone; the original error is the useful one */
           }
         }
         throw err;

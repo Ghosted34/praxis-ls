@@ -91,7 +91,7 @@ async function markOnboardingStep(client, clientId, stepKey, actorUserId) {
   const { rows } = await client.query(
     `UPDATE client_onboarding_step
         SET done = NOT done, done_at = CASE WHEN NOT done THEN now() ELSE NULL END,
-            done_by = CASE WHEN NOT done THEN $3 ELSE NULL END
+            done_by = CASE WHEN NOT done THEN $3::uuid ELSE NULL END
       WHERE client_id = $1 AND step_key = $2
       RETURNING *`,
     [clientId, stepKey, actorUserId],

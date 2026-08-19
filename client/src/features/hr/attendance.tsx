@@ -6,7 +6,6 @@
  */
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
-import i18n from "@/lib/i18n";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -505,8 +504,6 @@ function Worksites() {
 }
 
 /* ── Registered devices (0524) ──
- *
- * A queue, not a dir ──
  *
  * A queue, not a directory: PENDING rows sort first because the only reason to
  * open this panel is to decide about them. Approving is what makes a device's

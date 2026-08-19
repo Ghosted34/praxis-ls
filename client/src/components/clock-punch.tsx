@@ -10,10 +10,8 @@ import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
 import {
   geoRecoverySteps,
-  queryGeoPermission,
   watchGeoFix,
   watchGeoPermission,
-  type GeoPermission,
 } from "@/lib/geo-permission";
 import { openInstallUi } from "@/lib/pwa-install";
 import i18n from "@/lib/i18n";
@@ -61,7 +59,6 @@ export function useClockPunch() {
    */
   const [newDevice, setNewDevice] = React.useState<string | null>(null);
   const [needLocation, setNeedLocation] = React.useState(false);
-  const [geoState, setGeoState] = React.useState<GeoPermission>("prompt");
   const [msg, setMsg] = React.useState<{ text: string; bad?: boolean } | null>(
     null,
   );
@@ -84,16 +81,22 @@ export function useClockPunch() {
       live = false;
     };
   }, []);
+  /*
+   * The two ways the recover panel closes itself.
+   *
+   * `watchGeoPermission` catches a grant made in the OS settings panel rather
+   * than through our Retry button — the person followed the steps, came back,
+   * and the panel must not still be sitting there telling them to. `watchGeoFix`
+   * catches the reverse mid-shift: a permission revoked after a clean punch.
+   *
+   * The permission STATE itself is deliberately not kept. Nothing renders it,
+   * and a state nobody reads is a re-render on every OS permission change in
+   * exchange for nothing. What the clock acts on is `needLocation`.
+   */
   React.useEffect(() => {
     let live = true;
-    void queryGeoPermission().then((s) => {
-      if (live) setGeoState(s);
-    });
     const stopPerm = watchGeoPermission((s) => {
-      if (live) {
-        setGeoState(s);
-        if (s === "granted") setNeedLocation(false);
-      }
+      if (live && s === "granted") setNeedLocation(false);
     });
     const stopFix = watchGeoFix(() => {
       if (live) setNeedLocation(true);
@@ -193,7 +196,6 @@ export function useClockPunch() {
     newDevice,
     dismissNewDevice: () => setNewDevice(null),
     needLocation,
-    geoState,
     dismissNeedLocation: () => setNeedLocation(false),
   };
 }

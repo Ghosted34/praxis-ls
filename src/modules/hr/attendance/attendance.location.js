@@ -17,11 +17,23 @@ function locationSourceFromFix(latitude, longitude) {
 }
 
 function locationStatus({ location_source = null, latitude = null, longitude = null, within_geofence = null } = {}) {
-  const hasCoords = latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined;
-  const presented = location_source === "gps" || (location_source == null && hasCoords);
-  const refused = location_source === "none" || (!presented && !hasCoords);
+  const hasCoords =
+    latitude !== null && latitude !== undefined &&
+    longitude !== null && longitude !== undefined;
+  /*
+   * `location_source === null` covers the rows written before 10740, where the
+   * column does not exist to be read — the destructuring default above folds an
+   * absent property into null, so this one test catches both. For those rows
+   * the coordinates ARE the evidence: if a fix landed, the punch presented one.
+   *
+   * A row that says "none" is not merely unpresented, it is a refusal the
+   * client recorded on purpose, and it falls out of `presented` on its own —
+   * so there is no separate "refused" test to make. Every path that is not
+   * `presented` is `no_gps`, whatever the reason.
+   */
+  const presented = location_source === "gps" || (location_source === null && hasCoords);
+  if (!presented) return "no_gps";
 
-  if (refused || !presented) return "no_gps";
   if (within_geofence === false) return "off_site";
   if (within_geofence === true) return "on_site";
   // Coordinates, no worksite. Not a missing fix — saying "No GPS" here is how

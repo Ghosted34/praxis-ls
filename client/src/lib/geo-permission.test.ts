@@ -98,6 +98,33 @@ describe("queryGeoPermission", () => {
     expect(clearWatch).toHaveBeenCalledWith(42);
   });
 
+  it("watchGeoPermission emits prompt when the query is rejected (Safari)", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {} });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => { throw new Error("not supported"); } },
+    });
+    const seen: string[] = [];
+    const stop = watchGeoPermission((s) => seen.push(s));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual(["prompt"]);
+    stop();
+  });
+
+  it("watchGeoPermission stays quiet if it was stopped before the query rejected", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {} });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => { throw new Error("not supported"); } },
+    });
+    const seen: string[] = [];
+    watchGeoPermission((s) => seen.push(s))();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual([]);
+  });
+
   it("treats a rejected query as prompt (Safari)", async () => {
     Object.defineProperty(navigator, "geolocation", { configurable: true, value: {} });
     Object.defineProperty(navigator, "permissions", {

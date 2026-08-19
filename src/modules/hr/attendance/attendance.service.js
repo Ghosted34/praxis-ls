@@ -365,14 +365,22 @@ module.exports = {
      * function" endpoint look identical in the error dashboard until somebody
      * makes the button visible.
      */
-    const hasFix = latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined;
+
+    /*
+     * One source of truth for "did a fix arrive". `locationSourceFromFix` is
+     * what the column stores and what `locationStatus` reads back, so deriving
+     * `hasFix` FROM it — rather than re-testing the coordinates here — keeps the
+     * stored snapshot and the `location` payload from ever disagreeing.
+     */
+    const location_source = locationSourceFromFix(latitude, longitude);
+    const hasFix = location_source === "gps";
     const row = await repo.create(client, {
       employee_id: empId,
       clock_in_at: new Date(),
       latitude, longitude, accuracy_m: accuracy,
       work_site_id: geo.work_site_id, distance_m: geo.distance_m,
       within_geofence: geo.within, geo_label: geo.label,
-      location_source: hasFix ? "gps" : "none",
+      location_source,
       hr_device_id: dev.device ? dev.device.hr_device_id : null,
       device_trusted: dev.trusted,
       location: hasFix ? { lat: latitude, lng: longitude, accuracy } : null,
@@ -455,7 +463,7 @@ module.exports = {
      * that punch alone. Storing it would mean a row that is permanently "new",
      * and every later reader would have to know it meant "was new, then".
      */
-    return { ...row, device_new: dev.isNew === true, location_status: locationStatus({ ...row, location_source }) };
+    return { ...row, device_new: dev.isNew === true, location_status: locationStatus(row) };
   },
 
   /**

@@ -1780,8 +1780,6 @@ export const updateSite = (
 ) =>
   tenant<WorkSite>(`/attendance/work-sites/${id}`, { method: "PATCH", body });
 
-export { queryGeoPermission, watchGeoPermission, watchGeoFix, geoRecoverySteps } from "./geo-permission";
-
 /** Best-effort device GPS fix (browser Geolocation). Rejects on denial/timeout. */
 export function getFix(): Promise<Fix> {
   return new Promise((resolve, reject) => {

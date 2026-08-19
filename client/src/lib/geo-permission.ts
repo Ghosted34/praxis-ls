@@ -47,7 +47,7 @@ export function watchGeoFix(onDenied: () => void): () => void {
     try {
       navigator.geolocation.clearWatch(id);
     } catch {
-      /* ignore */
+      /* @silent:teardown — the watch is already gone; nothing to report */
     }
   };
 }
@@ -71,7 +71,15 @@ export function watchGeoPermission(onChange: (state: GeoPermission) => void): ()
       stop = () => status.removeEventListener("change", emit);
     })
     .catch(() => {
-      /* query unsupported — nothing to watch */
+      /*
+       * Safari and some embedded webviews reject the geolocation query. Not a
+       * silent case: leaving the caller with no state at all is what paints a
+       * working clock as broken. Emit the same answer `queryGeoPermission`
+       * gives on the same rejection — "prompt" — so the one browser that
+       * cannot be watched still starts from a defined state, and the next
+       * getCurrentPosition is what actually asks.
+       */
+      if (!cancelled) onChange("prompt");
     });
   return () => {
     cancelled = true;

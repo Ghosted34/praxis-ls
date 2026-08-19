@@ -713,10 +713,10 @@ export const SPECS: ScreenSpec[] = [
     area: "Costing",
     title: "Cash requests",
     purpose:
-      "Disbursement requests with their own approval + justification cycle (issues a régie advance).",
+      "Disbursement requests with their own approval + justification cycle (issues a régie advance). §3.5: disbursement method (CASH/BANK/CHEQUE/MOMO) with its conditional fields, per-line VAT + Just.-req flag, TOTAL PAYABLE, and the voucher's VALIDATED BY / APPROVED BY / RECEIVED BY signature blocks.",
     module: "MOD-49",
     status: "ready",
-    columns: ["Ref", "Requester", "Amount", "Status", "Date"],
+    columns: ["Ref", "Requester", "Method", "Amount", "Status", "Date"],
     actions: ["New request", "Submit", "Approve", "Disburse", "Justify"],
     ai: [
       {

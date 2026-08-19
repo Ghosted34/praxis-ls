@@ -568,8 +568,12 @@ async function loadRecord(client, docType, recordId) {
     );
     const cr = rows[0];
     if (!cr) return null;
-    const lr = await client.query("SELECT label, budget_amount FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
+    const lr = await client.query("SELECT label, budget_amount, vat_percent FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
     const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
+    // §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE, same rule the
+    // service applies (lazy require: see the transit-order branch note).
+    const { computeTotals } = require("../../costing/cash_request/cash_request.rules");
+    const totals = computeTotals(lr.rows);
     return {
       entity_id: null,
       data: {
@@ -577,6 +581,10 @@ async function loadRecord(client, docType, recordId) {
         amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
+        method: cr.disbursement_method || null,
+        method_details: cr.disbursement_details || {},
+        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent != null ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        totals,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
         currency: "XAF",
       },

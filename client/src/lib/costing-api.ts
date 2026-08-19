@@ -345,7 +345,11 @@ export type CashLine = {
   budget_amount?: number;
   spent_amount?: number;
   is_disbursement?: boolean;
+  /** §3.5 — legacy per-line VAT % and "Just. Req?" (10746). */
+  vat_percent?: number | null;
+  justification_required?: boolean;
 };
+export type DisbursementMethod = "CASH" | "BANK" | "CHEQUE" | "MOMO";
 export type CashRequest = {
   cash_request_id: string;
   ref?: string | null;
@@ -361,6 +365,11 @@ export type CashRequest = {
   cost_center?: string | null;
   overhead_justification?: string | null;
   remarks?: string | null;
+  /** §3.5 — how the money leaves (10746); details are method-specific. */
+  disbursement_method?: DisbursementMethod | null;
+  disbursement_details?: Record<string, string> | null;
+  /** §3.5 — the voucher footer, derived server-side on GET /:id. */
+  totals?: { subtotal: number; vat_total: number; total_payable: number };
   created_at?: string;
 };
 export type CashRequestInput = {
@@ -372,6 +381,8 @@ export type CashRequestInput = {
   cost_center?: string;
   overhead_justification?: string;
   remarks?: string;
+  disbursement_method?: DisbursementMethod;
+  disbursement_details?: Record<string, string>;
   lines?: CashLine[];
 };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");

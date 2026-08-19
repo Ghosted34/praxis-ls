@@ -1798,6 +1798,12 @@ function CashRequestForm({
   const [costCenter, setCostCenter] = React.useState("");
   const [overheadJustification, setOverheadJustification] = React.useState("");
   const [remarks, setRemarks] = React.useState("");
+  // §3.5 — how the money leaves (legacy :499). Each method carries its own
+  // required fields (:505-514); the server refuses submission without one.
+  const [method, setMethod] = React.useState<"" | api.DisbursementMethod>("");
+  const [details, setDetails] = React.useState<Record<string, string>>({});
+  const setDetail = (k: string, v: string) =>
+    setDetails((d) => ({ ...d, [k]: v }));
   const [lines, setLines] = React.useState<api.CashLine[]>([
     { dictionary_item_id: null, label: "", budget_amount: 0 },
   ]);
@@ -1830,12 +1836,19 @@ function CashRequestForm({
         overhead_justification:
           category === "OVH" ? overheadJustification || undefined : undefined,
         remarks: remarks || undefined,
+        disbursement_method: method || undefined,
+        disbursement_details: method ? details : undefined,
         lines: lines
           .filter((l) => l.dictionary_item_id || l.label)
           .map((l) => ({
             dictionary_item_id: l.dictionary_item_id || undefined,
             label: l.label || "Line",
             budget_amount: Number(l.budget_amount) || 0,
+            vat_percent:
+              l.vat_percent === null || l.vat_percent === undefined
+                ? undefined
+                : Number(l.vat_percent),
+            justification_required: l.justification_required === true,
           })),
       });
       onSaved();
@@ -1927,6 +1940,79 @@ function CashRequestForm({
             placeholder="Instructions that print on the request"
           />
         </Field>
+        {/* §3.5 — the disbursement method and its conditional fields (legacy
+            :499, :505-514). The server refuses submission without a method. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={tr("Disbursement method")}
+            hint="Required before the request can be submitted"
+          >
+            <Select
+              value={method}
+              onChange={(e) => {
+                setMethod(e.target.value as "" | api.DisbursementMethod);
+                setDetails({});
+              }}
+            >
+              <option value="">—</option>
+              <option value="CASH">Cash</option>
+              <option value="BANK">Bank transfer</option>
+              <option value="CHEQUE">Cheque</option>
+              <option value="MOMO">Mobile money</option>
+            </Select>
+          </Field>
+          {method === "BANK" && (
+            <>
+              <Field label={tr("Bank name")} required>
+                <Input
+                  value={details.bank_name || ""}
+                  onChange={(e) => setDetail("bank_name", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Account number")} required>
+                <Input
+                  value={details.account_number || ""}
+                  onChange={(e) => setDetail("account_number", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Account name")} required>
+                <Input
+                  value={details.account_name || ""}
+                  onChange={(e) => setDetail("account_name", e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+          {method === "MOMO" && (
+            <>
+              <Field label={tr("MoMo number")} required>
+                <Input
+                  value={details.momo_number || ""}
+                  onChange={(e) => setDetail("momo_number", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Network")} required>
+                <Select
+                  value={details.network || ""}
+                  onChange={(e) => setDetail("network", e.target.value)}
+                >
+                  <option value="">—</option>
+                  <option value="MTN">MTN</option>
+                  <option value="ORANGE">ORANGE</option>
+                </Select>
+              </Field>
+            </>
+          )}
+          {method === "CHEQUE" && (
+            <Field label={tr("Cheque number")} required>
+              <Input
+                value={details.cheque_number || ""}
+                onChange={(e) => setDetail("cheque_number", e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="micro">Budget lines</span>
@@ -1948,7 +2034,7 @@ function CashRequestForm({
             {lines.map((l, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[1fr_140px_auto] items-end gap-2"
+                className="grid items-end gap-2 sm:grid-cols-[1fr_120px_90px_auto_auto]"
               >
                 <Field label="Budget line">
                   <Select
@@ -1978,6 +2064,40 @@ function CashRequestForm({
                     }
                   />
                 </Field>
+                {/* §3.5 — legacy per-line VAT % and "Just. Req?". */}
+                <Field label={tr("VAT %")}>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    className="num text-right"
+                    value={
+                      l.vat_percent === null || l.vat_percent === undefined
+                        ? ""
+                        : String(l.vat_percent)
+                    }
+                    onChange={(e) =>
+                      setLine(i, {
+                        vat_percent:
+                          e.target.value === ""
+                            ? null
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <label className="flex h-9 items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={l.justification_required === true}
+                    onChange={(e) =>
+                      setLine(i, { justification_required: e.target.checked })
+                    }
+                    aria-label={tr("Justification required")}
+                  />
+                  {tr("Just. req?")}
+                </label>
                 <Button
                   type="button"
                   size="sm"
@@ -1991,6 +2111,28 @@ function CashRequestForm({
             ))}
           </div>
         </div>
+        {/* §3.5 — the voucher footer, live: Subtotal / VAT / TOTAL PAYABLE. */}
+        {(() => {
+          const subtotal = lines.reduce(
+            (a, l) => a + (Number(l.budget_amount) || 0),
+            0,
+          );
+          const vat = lines.reduce(
+            (a, l) =>
+              a +
+              ((Number(l.budget_amount) || 0) * (Number(l.vat_percent) || 0)) /
+                100,
+            0,
+          );
+          return (
+            <p className="num text-right text-sm">
+              {tr("Subtotal")} {money(subtotal)} · {tr("VAT")} {money(vat)} ·{" "}
+              <span className="font-semibold">
+                {tr("TOTAL PAYABLE")} {money(subtotal + vat)}
+              </span>
+            </p>
+          );
+        })()}
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}

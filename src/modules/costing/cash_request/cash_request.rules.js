@@ -59,4 +59,60 @@ function sumField(lines, field) {
   return round2((lines || []).reduce((s, l) => s + Number(l[field] || 0), 0));
 }
 
-module.exports = { NEXT, assertTransition, sumField, disbursementState };
+/**
+ * §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE. Each line may
+ * carry its own VAT %% (legacy per-line "VAT %"); the request's `amount` is
+ * the TOTAL PAYABLE, because that is the cash being asked for — a request
+ * whose header ignored line VAT under-funded every taxed spend.
+ */
+function computeTotals(lines) {
+  let subtotal = 0;
+  let vat = 0;
+  for (const l of lines || []) {
+    const amt = Number(l.budget_amount || 0);
+    subtotal += amt;
+    vat += amt * (Number(l.vat_percent || 0) / 100);
+  }
+  return {
+    subtotal: round2(subtotal),
+    vat_total: round2(vat),
+    total_payable: round2(subtotal + vat),
+  };
+}
+
+/**
+ * §3.5 — the disbursement method and its conditional fields, exactly the
+ * legacy's validation (cash-request.php :499, :505-514): BANK needs the bank
+ * name + account number + account name, MOMO needs the number + network
+ * (MTN/ORANGE), CHEQUE needs the cheque number, CASH needs nothing. Enforced
+ * as a rule so every caller — route, AI, import — hits the same wall.
+ */
+const METHOD_FIELDS = {
+  CASH: [],
+  BANK: ["bank_name", "account_number", "account_name"],
+  CHEQUE: ["cheque_number"],
+  MOMO: ["momo_number", "network"],
+};
+
+function assertMethod(method, details = {}) {
+  const m = String(method || "").toUpperCase();
+  const wanted = METHOD_FIELDS[m];
+  if (!wanted) throw new AppError("BAD_METHOD", "disbursement_method must be CASH, BANK, CHEQUE or MOMO", 422);
+  const d = details || {};
+  const missing = wanted.filter((k) => !String(d[k] || "").trim());
+  if (missing.length) {
+    throw new AppError("METHOD_FIELDS_REQUIRED", `${m} disbursement needs: ${missing.join(", ")}`, 422);
+  }
+  if (m === "MOMO") {
+    const net = String(d.network || "").toUpperCase();
+    if (!["MTN", "ORANGE"].includes(net)) throw new AppError("BAD_NETWORK", "MoMo network must be MTN or ORANGE", 422);
+  }
+  // Only the method's own fields are stored — a method flip never leaves a
+  // stale cheque number under a bank transfer.
+  const clean = {};
+  for (const k of wanted) clean[k] = String(d[k]).trim();
+  if (m === "MOMO") clean.network = String(d.network).toUpperCase();
+  return { method: m, details: clean };
+}
+
+module.exports = { NEXT, assertTransition, sumField, computeTotals, assertMethod, disbursementState };

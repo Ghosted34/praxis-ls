@@ -597,31 +597,61 @@ const TEMPLATES = {
    * hard-coded signature image.
    */
   CASH_REQUEST: {
-    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request", fields: ["approval chain", "beneficiary", "requisitioner", "remarks"],
+    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request", fields: ["approval chain", "beneficiary", "requisitioner", "remarks", "disbursement method", "VAT totals", "RECEIVED BY"],
     build: (data, cfg, entity, verify) => {
+      const ccy = data.currency || "XAF";
+      const METHOD_LABEL = { CASH: { fr: "Espèces", en: "Cash" }, BANK: { fr: "Virement bancaire", en: "Bank transfer" }, CHEQUE: { fr: "Chèque", en: "Cheque" }, MOMO: { fr: "Mobile money", en: "Mobile money" } };
       const meta = [
         [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
         [{ fr: "Dossier", en: "File" }, data.dossier_ref],
         [{ fr: "Catégorie", en: "Category" }, data.category],
         [{ fr: "Centre de coût", en: "Cost centre" }, data.cost_center],
         [{ fr: "Bénéficiaire", en: "Beneficiary" }, data.beneficiary],
-      ].filter((m) => m[1]);
+        data.method ? [{ fr: "Mode de paiement", en: "Payment method" }, k.t(METHOD_LABEL[data.method] || { fr: data.method, en: data.method }, cfg.language)] : null,
+      ].filter((m) => m && m[1]);
+      // §3.5 — the method's own fields print on the voucher (the cashier pays
+      // against what is written here, not against a memory of the form).
+      const md = data.method_details || {};
+      const methodLines = Object.entries(md)
+        .map(([key, v]) => `<div>${k.esc(key.replace(/_/g, " "))}: <strong>${k.esc(String(v))}</strong></div>`)
+        .join("");
       const context = data.overhead_justification
         ? k.section({ fr: "Justification (frais généraux)", en: "Justification (overhead)" }, `<div class="box">${k.esc(data.overhead_justification)}</div>`, cfg)
         : "";
+      const lines = Array.isArray(data.lines) && data.lines.length
+        ? k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg)
+        : "";
+      const totals = data.totals
+        ? k.totals([
+            [{ fr: "Sous-total", en: "Subtotal" }, k.money(data.totals.subtotal, ccy)],
+            [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
+            [{ fr: "TOTAL À PAYER", en: "TOTAL PAYABLE" }, k.money(data.totals.total_payable, ccy), { grand: true }],
+          ], cfg)
+        : k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, ccy)}</div>`, cfg);
+      // §3.5 — the legacy voucher's THREE signature blocks (:1976-1990).
+      // RECEIVED BY is the physical acknowledgement of the cash — the owner's
+      // specific question ("how payment is received") is answered by this ink.
+      const threeSignatures =
+        `<div class="sig">` +
+        `<div class="b"><div class="ln">${k.t({ fr: "VALIDÉ PAR (FINANCE)", en: "VALIDATED BY (FINANCE)" }, cfg.language)}</div></div>` +
+        `<div class="b"><div class="ln">${k.t({ fr: "APPROUVÉ PAR (DIRECTION)", en: "APPROVED BY (MANAGEMENT)" }, cfg.language)}</div></div>` +
+        `<div class="b"><div class="ln">${k.t({ fr: "REÇU PAR", en: "RECEIVED BY" }, cfg.language)}</div></div>` +
+        `</div>`;
       const body = [
         k.head(entity, { fr: "Demande de fonds", en: "Cash request" }, data.number, meta, cfg),
         k.parties([{ label: { fr: "Demandeur", en: "Requested by" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
-        k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || "XAF")}</div>`, cfg),
+        methodLines ? k.section({ fr: "Détails du paiement", en: "Payment details" }, `<div class="box">${methodLines}</div>`, cfg) : "",
+        lines,
+        totals,
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
         context,
         data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
-        k.signatureBlock(cfg),
+        threeSignatures,
         k.footer(entity, cfg, verify),
       ].join("");
       return k.shell("Cash request " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 500000, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
+    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 596250, method: "MOMO", method_details: { momo_number: "670000000", network: "MTN" }, lines: [{ label: "Frais de dédouanement", qty: 1, unit: 500000, tax: 19.25, amount: 500000 }], totals: { subtotal: 500000, vat_total: 96250, total_payable: 596250 }, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
   },
 
   /* ── §3.3 — the costing worksheet document ────────────────────────────────

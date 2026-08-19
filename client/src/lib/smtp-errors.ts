@@ -75,6 +75,16 @@ export const SMTP_GUIDES: Record<string, SmtpGuide> = {
       "Check the username matches the mailbox account, then Test.",
     ],
   },
+  RECIPIENT_REJECTED: {
+    title: "A recipient was refused",
+    intro:
+      "The mail server accepted the connection but would not deliver to one of the addresses.",
+    steps: [
+      "Check every To/Cc address for typos — 550 5.1.1 usually means the mailbox does not exist.",
+      "If you are sending to a list, remove the bad address and send again.",
+      "If every address is real, the receiving server may be blocking you; try later or contact the recipient another way.",
+    ],
+  },
   MAIL_SEND_FAILED: {
     title: "The mailbox's server rejected the message",
     intro: "The connection works but the server would not take this message.",

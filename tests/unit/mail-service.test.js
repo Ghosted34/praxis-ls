@@ -410,6 +410,19 @@ test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422
   expect(threads.insertMessage).not.toHaveBeenCalled();
 });
 
+test("send maps 550 user-unknown to RECIPIENT_REJECTED, not sender-auth", async () => {
+  const smtpErr = Object.assign(new Error("550 5.1.1 User unknown"), {
+    responseCode: 550,
+    response: "550 5.1.1 User unknown",
+    code: "EENVELOPE",
+  });
+  mockSendEmail.mockRejectedValueOnce(smtpErr);
+  await expect(
+    service.send({}, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
+  ).rejects.toMatchObject({ name: "AppError", code: "RECIPIENT_REJECTED", status: 422 });
+  expect(threads.insertMessage).not.toHaveBeenCalled();
+});
+
 test("markRead propagates to the server adapter and flips the local row (G-3)", async () => {
   threads.getMessage.mockResolvedValue({
     email_message_id: "msg-1",

@@ -345,6 +345,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 6× | — |
+| `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECON_OPEN` | 409 | 1× | — |
@@ -378,14 +379,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_VALIDATE` | 422 | 1× | — |
-| `SENDER_NOT_AUTHORIZED` | — | 1× | — |
+| `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
 | `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
-| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
-| `SMTP_SEND_FAILED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 2× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |

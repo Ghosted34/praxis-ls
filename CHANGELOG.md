@@ -243,9 +243,10 @@ Dates are ISO-8601, UTC.
   `SMTP_SENDER_REJECTED` (Test, system email, platform mail-fallback probe,
   inbound-intake reply), while mailbox compose used 422 `SENDER_NOT_AUTHORIZED`.
   The 502 path flooded the server-error monitor with a mailbox-config fault.
-  One map now: 422 `SENDER_NOT_AUTHORIZED` on every path; compose still names
-  the connected mailbox. The UI already has a guide for that code; message
-  sniffing prefers it over the old alias.
+  One map now, classified by evidence not SMTP family: sender-verify / relay
+  denied → 422 `SENDER_NOT_AUTHORIZED`; user-unknown → 422 `RECIPIENT_REJECTED`;
+  535 / `EAUTH` → auth; 421/451/452 → transient 502. A bare 550 is no longer
+  called a sender fault. Compose still names the connected mailbox.
 
 - **PDF preview on client / supplier / corporate-entity document uploads showed
   Chrome's "This content is blocked" interstitial.** `FileDrop` previewed a

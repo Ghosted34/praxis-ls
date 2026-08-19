@@ -496,9 +496,11 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
 function explainSendError(err, conn) {
   const raw = String((err && (err.response || err.message)) || "").trim();
   const addr = (conn && conn.email_address) || "this mailbox";
-  // One classifier: sender-verify is 422 SENDER_NOT_AUTHORIZED everywhere.
-  // Mailbox send then names the connected address so compose can tell the user
-  // which mailbox to Edit — Test / system-email keep the generic wording.
+  // Same classifier as Test / system-email / probes. Mailbox send only overlays
+  // the connected address so compose names which mailbox to Edit. Codes and
+  // status (including RECIPIENT_REJECTED 422, which the outbox must not retry)
+  // come from the map — wrapping everything leftover as MAIL_SEND_FAILED would
+  // hide a permanent recipient refusal as a retryable 502.
   const mapped = mapSmtpError(err);
   if (mapped.code === "SENDER_NOT_AUTHORIZED") {
     return new AppError(
@@ -510,10 +512,23 @@ function explainSendError(err, conn) {
       mapped.details,
     );
   }
-  if ((err && err.code) === "EAUTH" || mapped.code === "SMTP_AUTH_FAILED") {
+  if (mapped.code === "SMTP_AUTH_FAILED") {
     return new AppError("MAILBOX_AUTH_FAILED", `Login to ${addr} was rejected by its mail server${raw ? ` (${raw})` : ""}. Edit this mailbox to correct the username or password, then Test.`, 422);
   }
-  return new AppError("MAIL_SEND_FAILED", `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`, 502);
+  if (mapped.code === "RECIPIENT_REJECTED") {
+    return new AppError(
+      "RECIPIENT_REJECTED",
+      `${addr}'s mail server refused a recipient${raw ? ` (${raw})` : ""}. Check the To/Cc addresses.`,
+      422,
+      mapped.details,
+    );
+  }
+  return new AppError(
+    "MAIL_SEND_FAILED",
+    `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`,
+    mapped.status || 502,
+    mapped.details,
+  );
 }
 
 /**

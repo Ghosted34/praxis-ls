@@ -33,6 +33,11 @@ describe("OBS-A6 — DEAD is distinguishable from FAILED", () => {
       queries,
       query: async (sql, params) => {
         queries.push([sql, params]);
+        // outboxReady() probe — the fake schema always has both outbox tables,
+        // so dispatchPending proceeds past the guard.
+        if (/pg_catalog\.pg_class/.test(sql)) {
+          return { rows: [{ relname: "event_log" }, { relname: "event_dispatch" }] };
+        }
         if (/FROM event_log el LEFT JOIN event_dispatch/.test(sql)) {
           return {
             rows: [
@@ -129,6 +134,11 @@ describe("OBS-A6 — the query that never existed", () => {
     let sqlSeen = "";
     const client = {
       query: async (sql) => {
+        // outboxReady() probe — answered before sqlSeen is captured so the
+        // census query below is the one the assertion inspects.
+        if (/pg_catalog\.pg_class/.test(sql)) {
+          return { rows: [{ relname: "event_log" }, { relname: "event_dispatch" }] };
+        }
         sqlSeen = sql;
         return {
           rows: [

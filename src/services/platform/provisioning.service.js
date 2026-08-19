@@ -51,18 +51,25 @@ const tenantRoleName = (slug) => `praxis_${slug}`;
  * therefore the one place that has to prove the string cannot BE syntax.
  *
  * Deliberately narrower than Postgres allows, and the same shape as the check in
- * shared/db/query-helpers.js: lower-case start, then letters, digits and
- * underscores, to Postgres's own 63-character NAMEDATALEN limit. Every schema
+ * shared/db/query-helpers.js: lower-case start, then letters, digits, hyphens
+ * and underscores, to Postgres's own 63-character NAMEDATALEN limit. Every schema
  * and role this system creates fits it — `live`, `sandbox`, `public`, and
- * `praxis_<slug>` where the slug already passed `m.slugOk`. Anything that does
- * not fit is a mistake or an attack, and both should stop here rather than
- * reaching the database as a fragment.
+ * `praxis_<slug>` where the slug already passed `m.slugOk`.
+ *
+ * The hyphen is allowed BECAUSE of the superuser name: `TENANT_DB_SUPERUSER` is
+ * operator configuration (default `postgres`), and a real deployment names it
+ * e.g. `praxis-admin`. The old pattern rejected the hyphen, so `grantSchemaToRole`
+ * threw `refusing to build SQL from an invalid superuser name` mid-wipe — after
+ * the sandbox rebuild had already committed — leaving a freshly rebuilt schema
+ * with no grants for the app role. A hyphen cannot escape a double-quoted
+ * identifier, so it is safe here; the thing this check exists to reject is a
+ * double quote.
  *
  * Quoting alone would NOT be enough: a name containing a double quote would
  * close the quoted identifier and escape. The pattern check is what closes that,
  * and the two are done together so neither can be applied without the other.
  */
-const SQL_IDENT = /^[a-z_][a-z0-9_]{0,62}$/;
+const SQL_IDENT = /^[a-z_][a-z0-9_-]{0,62}$/;
 function quoteIdent(name, what) {
   if (typeof name !== "string" || !SQL_IDENT.test(name)) {
     throw new Error(`refusing to build SQL from an invalid ${what}: "${String(name).slice(0, 40)}"`);
@@ -731,10 +738,12 @@ async function wipeSandbox(input) {
     await m.applyTracked(cli, m.files.tenantSchema(), {
       searchPath: "sandbox,public",
       scope: "sandbox",
+      wrapTransaction: false,
     });
     await m.applyTracked(cli, m.files.tenantSeeds(), {
       searchPath: "sandbox,public",
       scope: "sandbox-seed",
+      wrapTransaction: false,
     });
     // Re-grant. DROP SCHEMA took the app role's USAGE and the default privileges
     // with it, and both are attached to the schema rather than the database — so

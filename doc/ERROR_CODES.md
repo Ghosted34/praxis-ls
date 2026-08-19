@@ -291,8 +291,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_PERIOD` | 404, 422 | 2× | — |
 | `NO_POSTING_RULE` | 422 | 1× | — |
 | `NO_QUOTE` | 422 | 1× | — |
-| `NO_RATE` | 422 | 2× | — |
-| `NO_RATE_MATCH` | 422 | 1× | — |
+| `NO_RATE` | 404, 422 | 2× | — |
+| `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_RECIPIENT` | 422 | 2× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |

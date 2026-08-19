@@ -34,6 +34,36 @@ async function featureEnabled(client, key) {
   }
 }
 
+/**
+ * Whether the caller's schema has the outbox tables (event_log + event_dispatch).
+ *
+ * They are created by tenant migrations 0120 (event_log) and 0462
+ * (event_dispatch). A schema that predates them — or a sandbox rebuilt against
+ * an older codebase — genuinely lacks the tables, and the dispatcher's first
+ * query then fails with `relation "event_log" does not exist`, retries, and
+ * re-raises the same error on every sweep. Probing up front turns "no outbox
+ * here" into an empty drain instead of a recurring fault, while the warn log
+ * keeps the un-migrated schema visible.
+ */
+async function outboxReady(client) {
+  try {
+    const { rows } = await client.query(
+      `SELECT c.relname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = ANY (current_schemas(false))
+          AND c.relname IN ('event_log', 'event_dispatch')`,
+    );
+    const present = new Set(rows.map((r) => r.relname));
+    return present.has("event_log") && present.has("event_dispatch");
+  } catch (err) {
+    // If even the probe fails (e.g. permissions), don't block orchestration —
+    // but also don't claim the outbox is ready.
+    logger.warn({ err }, "[orchestration] outbox schema probe failed");
+    return false;
+  }
+}
+
 async function markDone(client, eventId) {
   await client.query(
     "INSERT INTO event_dispatch (event_id, status, attempts) VALUES ($1,'DONE',0) " +
@@ -62,6 +92,10 @@ async function markFailed(client, eventId, attempts, maxAttempts, err) {
  * @returns {Promise<{total:number, byType:Array<{event_type_key:string,count:number,oldest:string,last_error:string}>}>}
  */
 async function countDeadLetters(client, { limit = 20 } = {}) {
+  if (!(await outboxReady(client))) {
+    logger.warn("[orchestration] outbox tables absent — dead-letter census skipped");
+    return { total: 0, byType: [] };
+  }
   const { rows } = await client.query(
     `SELECT el.event_type_key,
             COUNT(*)::int      AS count,
@@ -91,6 +125,10 @@ async function countDeadLetters(client, { limit = 20 } = {}) {
  * @returns {Promise<{scanned:number, processed:number, failed:number, dead:number, skipped:number}>}
  */
 async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS } = {}) {
+  if (!(await outboxReady(client))) {
+    logger.warn("[orchestration] outbox tables absent — drain skipped (run tenant migrations)");
+    return { scanned: 0, processed: 0, failed: 0, dead: 0, skipped: 0, outbox_missing: true };
+  }
   const { rows } = await client.query(
     "SELECT el.event_id, el.event_type_key, el.entity_ref, el.payload, COALESCE(ed.attempts,0) AS attempts " +
       "FROM event_log el LEFT JOIN event_dispatch ed ON ed.event_id = el.event_id " +

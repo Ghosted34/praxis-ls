@@ -73,7 +73,12 @@ module.exports = async function regieAgingScheduler() {
         "age",
         { tenantMeta: meta, env: "live", entityId: e.entity_id },
         {
-          jobId: `regieaging:${meta.db_name}:live:${e.entity_id}`,
+          // A BullMQ custom job id may contain `:` only when it splits into
+          // exactly three segments (a backwards-compat allowance for old
+          // repeatable-job ids). Four segments throws `Custom Id cannot contain :`.
+          // `live-<entity_id>` keeps the env marker without a fourth colon —
+          // entity_id is a uuid, so it never itself contains a colon.
+          jobId: `regieaging:${meta.db_name}:live-${e.entity_id}`,
           attempts: 2,
           removeOnComplete: true,
           removeOnFail: true,

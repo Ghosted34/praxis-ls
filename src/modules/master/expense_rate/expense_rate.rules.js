@@ -22,11 +22,16 @@ function within(row, date) {
  */
 function pickRate(rows, { date, rateProviderId = null, containerTypeRefId = null }) {
   const eff = rows.filter((r) => within(r, date));
-  if (eff.length === 0) throw new AppError("NO_RATE", "no expense rate effective at " + date, 422);
+  // "No rate on file" is a not-found condition, not bad input: the caller
+  // (costing) catches it and falls back to a free-typed rate. A 422 here would
+  // route through the validation reporter and surface as
+  // `ValidationError: NO_RATE: unknown` in the error centre — noise for a
+  // condition the product treats as normal.
+  if (eff.length === 0) throw new AppError("NO_RATE", "no expense rate effective at " + date, 404);
   const eligible = eff.filter((r) =>
     (!r.rate_provider_id || r.rate_provider_id === rateProviderId) &&
     (!r.container_type_ref_id || r.container_type_ref_id === containerTypeRefId));
-  if (eligible.length === 0) throw new AppError("NO_RATE_MATCH", "no expense rate matches the given provider/container type", 422);
+  if (eligible.length === 0) throw new AppError("NO_RATE_MATCH", "no expense rate matches the given provider/container type", 404);
   const score = (r) => (r.rate_provider_id ? 2 : 0) + (r.container_type_ref_id ? 1 : 0);
   eligible.sort((a, b) => score(b) - score(a) || Date.parse(b.effective_from) - Date.parse(a.effective_from));
   return eligible[0];

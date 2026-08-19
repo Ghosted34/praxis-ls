@@ -7,6 +7,7 @@ const UUID = z.string().uuid();
 const schemas = {
   create: z.object({ dossier_id: UUID }),
   idParam: z.object({ id: UUID }),
+  suggestionParam: z.object({ id: UUID, sid: UUID }),
   reject: z.object({
     id: UUID,
     reason: z.string().trim().min(3).max(2000),
@@ -27,5 +28,7 @@ const mw = (k, fromParams = false) => (req, _res, next) => {
 module.exports = {
   create: mw("create"),
   idParam: mw("idParam", true),
+  suggestionParam: mw("suggestionParam", true),
   reject: mw("reject"),
+  schemas,
 };

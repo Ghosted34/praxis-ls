@@ -5,8 +5,12 @@ const { AppError } = require("../../../utils/errors");
 // Nullish, not optional-only: the form clears it when the item stops varying by
 // equipment, and an unlisted field is stripped here before the service sees it.
 const line = z.object({ dictionary_item_id: z.string().uuid().optional(), label: z.string().optional(), qty: z.number().positive().optional(), unit_cost: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), tax_code_id: z.string().uuid().optional(), container_type_ref_id: z.string().uuid().nullish() });
-const create = z.object({ dossier_id: z.string().uuid(), currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
-const update = z.object({ currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
+// §2.2: margin_percent is gone from both schemas — costing has no margin
+// (an old client still sending it is silently stripped, not errored).
+// §3.3: remarks (legacy save.php:29) + validator_id (save.php:6 — the person
+// the sheet is submitted TO; the service stamps validator_assigned_at).
+const create = z.object({ dossier_id: z.string().uuid(), currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), remarks: z.string().max(4000).optional().nullable(), validator_id: z.string().uuid().optional().nullable(), lines: z.array(line).optional() });
+const update = z.object({ currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), remarks: z.string().max(4000).optional().nullable(), validator_id: z.string().uuid().optional().nullable(), lines: z.array(line).optional() });
 const setStatus = z.object({ to: z.enum(["SUBMIT_VALIDATION", "SUBMIT_APPROVAL", "APPROVE", "REJECT"]) });
 // The unlock loop (10718). Kept OFF `setStatus` deliberately: `to` on that
 // schema names an ordinary transition and is what the RBAC middleware keys on,

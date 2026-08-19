@@ -18,19 +18,26 @@ function cents(v, label) {
 }
 
 /**
- * computeMargin(lines) where each line is
- *   { qty, unit_cost, unit_price, is_disbursement? }
+ * computeMargin(lines, opts) where each line is
+ *   { qty, unit_cost, unit_price, is_disbursement?, vat_applicable? }
  * Returns totals in major units plus the service-only margin.
+ *
+ * VAT (§3.1, legacy per-line toggle): lines flagged vat_applicable add VAT at
+ * `opts.vatRatePercent` (the tenant rate from settings finance.vat — never a
+ * literal) on their PRICE. Débours are pass-through and never taxed, matching
+ * the ledger rule (0640 assert_line_valid).
  */
-function computeMargin(lines) {
+function computeMargin(lines, opts = {}) {
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new AppError("NO_LINES", "at least one line is required", 422);
   }
+  const vatRate = Number(opts.vatRatePercent || 0);
   let costC = 0;
   let priceC = 0;
   let svcCostC = 0;
   let svcPriceC = 0;
   let disbursementC = 0;
+  let vatC = 0;
   lines.forEach((ln, i) => {
     const at = `line ${i + 1}`;
     const qty = Number(ln.qty);
@@ -44,6 +51,7 @@ function computeMargin(lines) {
     } else {
       svcCostC += lineCost;
       svcPriceC += linePrice;
+      if (ln.vat_applicable === true) vatC += Math.round(linePrice * (vatRate / 100));
     }
   });
   const marginC = svcPriceC - svcCostC;
@@ -58,7 +66,32 @@ function computeMargin(lines) {
     margin_amount: round2(marginC / 100),
     margin_percent: marginPercent,
     markup_percent: markupPercent,
+    vat_total: round2(vatC / 100),
+    total_ttc: round2((priceC + vatC) / 100),
   };
+}
+
+/**
+ * Per-line economics + KPI (§3.1). The legacy screen shows MARGIN and a KPI
+ * (`POOR (0%)`) on every line — that is how a pricer finds WHICH line kills
+ * the deal, so it is not cosmetic. Bands come from the same tenant thresholds
+ * as the pricing-variance flag (settings commercial.pricing_variance):
+ * margin ≥ green_min → GOOD, ≥ yellow_min → FAIR, below → POOR. Débours have
+ * no margin by definition — pass-through.
+ */
+function lineEconomics(ln, thresholds = {}) {
+  const qty = Number(ln.qty || 1);
+  const cost = round2(Number(ln.unit_cost || 0) * qty);
+  const price = round2(Number(ln.unit_price || 0) * qty);
+  if (ln.is_disbursement === true) {
+    return { cost, price, margin_amount: 0, margin_percent: null, kpi: "PASS-THROUGH" };
+  }
+  const margin = round2(price - cost);
+  const marginPercent = price > 0 ? round2((margin / price) * 100) : (cost > 0 ? -100 : 0);
+  const green = Number(thresholds.green_min ?? 20);
+  const yellow = Number(thresholds.yellow_min ?? 10);
+  const kpi = marginPercent >= green ? "GOOD" : marginPercent >= yellow ? "FAIR" : "POOR";
+  return { cost, price, margin_amount: margin, margin_percent: marginPercent, kpi };
 }
 
 /**
@@ -73,4 +106,4 @@ function priceForMargin(cost, marginPercent) {
   return round2(c / (1 - m / 100));
 }
 
-module.exports = { computeMargin, priceForMargin };
+module.exports = { computeMargin, priceForMargin, lineEconomics };

@@ -7,6 +7,7 @@ import {
   CashRequestsPage,
   RegiePage,
 } from "./pages";
+import { ReconciliationPage } from "./reconciliation";
 
 export function CostingHub() {
   return (
@@ -16,6 +17,7 @@ export function CostingHub() {
       tabs={hubTabs("/costing", {
         costing: CostingPage,
         "cost-tracking": CostTrackingPage,
+        reconciliation: ReconciliationPage,
         "cash-requests": CashRequestsPage,
         regie: RegiePage,
       })}

@@ -624,6 +624,42 @@ const TEMPLATES = {
     sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 500000, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
   },
 
+  /* ── §3.3 — the costing worksheet document ────────────────────────────────
+   * The legacy costing screen prints an estimate whose footer is exactly
+   * Subtotal (HT) / VAT / Total Estimate — no margin, no sell price (§2.2).
+   * This renders the sheet for the validator's signature and the file.
+   */
+  COSTING: {
+    docType: "COSTING", title: { fr: "Fiche de cotation", en: "Costing sheet" }, module: "costing/costing", fields: ["remarks", "validator", "HT/VAT/TTC footer"],
+    build: (data, cfg, entity, verify) => {
+      const ccy = data.currency || "XAF";
+      const meta = [
+        [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+        [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        [{ fr: "Statut", en: "Status" }, data.status],
+        data.exchange_rate && Number(data.exchange_rate) !== 1 ? [{ fr: "Taux (XAF)", en: "Rate (XAF)" }, String(data.exchange_rate)] : null,
+        data.validator ? [{ fr: "Validateur", en: "Validator" }, data.validator] : null,
+      ].filter((m) => m && m[1]);
+      const body = [
+        k.head(entity, { fr: "Fiche de cotation", en: "Costing sheet" }, data.number, meta, cfg),
+        k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
+        k.totals([
+          [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(data.totals.total_ht, ccy)],
+          [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
+          [{ fr: "Total estimé (TTC)", en: "Total estimate (TTC)" }, k.money(data.totals.total_ttc, ccy), { grand: true }],
+          has(data.totals.disbursement_total) && data.totals.disbursement_total > 0
+            ? [{ fr: "dont débours (au coût)", en: "of which débours (at cost)" }, k.money(data.totals.disbursement_total, ccy)]
+            : null,
+        ], cfg),
+        data.remarks ? k.section({ fr: "Remarques", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
+        k.signatureBlock(cfg),
+        k.footer(entity, cfg, verify),
+      ].join("");
+      return k.shell("Costing " + (data.number || ""), body, cfg);
+    },
+    sampleData: { number: "CST-2026-0012", date: "2026-07-27", dossier_ref: "SBX-2026-0001", status: "SUBMITTED_FOR_VALIDATION", validator: "Jean Mballa", lines: sampleLines, totals: { total_ht: 1400000, vat_total: 207900, total_ttc: 1607900, disbursement_total: 320000 }, currency: "XAF", remarks: "Taux carrier confirmé le 25/07 — valable 14 jours." },
+  },
+
   REGIE_ADVANCE: {
     docType: "REGIE_ADVANCE", title: { fr: "Régie d'avances", en: "Cash advance (régie)" }, module: "costing/regie", fields: ["float ledger"],
     build: (data, cfg, entity, verify) => {

@@ -160,7 +160,14 @@ async function createDraft(client, { data, actor = {} }) {
   try {
     const costing = await repo.insert(client, {
       dossier_id: data.dossier_id, currency: data.currency || "XAF",
-      exchange_rate_to_xaf: data.exchange_rate_to_xaf || 1, margin_percent: data.margin_percent || 0, status: "DRAFT",
+      // §2.2: margin_percent is deprecated and never written — costing stops
+      // at HT/VAT/TTC; margin belongs to margin_simulation + quotation.
+      exchange_rate_to_xaf: data.exchange_rate_to_xaf || 1, status: "DRAFT",
+      // §3.3: remarks + the named validator (legacy save.php:29,:6,:33). The
+      // assignment moment is recorded so a stalled validation is visible.
+      remarks: data.remarks || null,
+      validator_id: data.validator_id || null,
+      validator_assigned_at: data.validator_id ? new Date() : null,
     });
     if (Array.isArray(data.lines) && data.lines.length) await replaceLines(client, costing.costing_id, data.lines);
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "costing:" + costing.costing_id, after: costing });
@@ -176,7 +183,13 @@ async function updateDraft(client, { id, patch = {}, lines = null, actor = {} })
   await client.query("BEGIN");
   try {
     const fields = {};
-    for (const k of ["currency", "exchange_rate_to_xaf", "margin_percent"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    // §2.2: margin_percent removed from the patchable set — deprecated column.
+    for (const k of ["currency", "exchange_rate_to_xaf", "remarks"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    // §3.3: naming (or changing) the validator stamps when it happened.
+    if (patch.validator_id !== undefined) {
+      fields.validator_id = patch.validator_id;
+      fields.validator_assigned_at = patch.validator_id ? new Date() : null;
+    }
     if (Object.keys(fields).length) await repo.update(client, id, fields);
     if (Array.isArray(lines)) await replaceLines(client, id, lines);
     await client.query("COMMIT");
@@ -191,6 +204,13 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   const flow = { SUBMIT_VALIDATION: "SUBMITTED_FOR_VALIDATION", SUBMIT_APPROVAL: "SUBMITTED_FOR_APPROVAL", APPROVE: "APPROVED_LOCKED", REJECT: "REJECTED" };
   const status = flow[to];
   if (!status) throw new AppError("BAD_ACTION", "unknown transition", 422);
+  // §3.3: legacy save.php names validator_employee_id at submit time. Ours
+  // silently allowed a costing to sit SUBMITTED_FOR_VALIDATION with nobody
+  // named to validate it — a queue with no owner. Submitting for validation
+  // now requires the validator to be picked first.
+  if (to === "SUBMIT_VALIDATION" && !before.validator_id) {
+    throw new AppError("NO_VALIDATOR", "Pick a validator before submitting for validation — a submission with nobody named goes to no one's queue", 422);
+  }
   // Approving/rejecting directly while a chain is live would skip it (W4).
   if (to === "APPROVE" || to === "REJECT") {
     await assertNoPendingChain(client, "costing:" + id, { viaChain, what: "costing" });
@@ -201,8 +221,11 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   // No workflow bound → autoApproved and the manual APPROVE path stays available;
   // see the note on W8 in purchase_order.service.js for why nothing auto-advances.
   if (status === "SUBMITTED_FOR_APPROVAL") {
-    const totals = computeCosting(await repo.listLines(client, id), before.margin_percent);
-    await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals && totals.service_base ? totals.service_base : null });
+    const totals = computeCosting(await repo.listLines(client, id));
+    // `totals.total_ht` — the money the sheet commits us to. (The old code read
+    // `totals.service_base`, a key computeCosting never returned, so the
+    // approval chain's amount threshold always saw null.)
+    await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals ? totals.total_ht : null });
   }
   if (status === "APPROVED_LOCKED") {
     await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
@@ -230,7 +253,7 @@ async function get(client, id) {
   if (!costing) return null;
   const lines = await repo.listLines(client, id);
   costing.lines = lines;
-  costing.totals = computeCosting(lines, costing.margin_percent);
+  costing.totals = computeCosting(lines);
   return costing;
 }
 const list = (client, q) => repo.list(client, q);

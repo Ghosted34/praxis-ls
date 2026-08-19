@@ -925,6 +925,7 @@
       "actions": [
         "list_margin_simulations",
         "get_margin_simulation",
+        "margin_simulation_from_costing",
         "create_margin_simulation"
       ]
     },
@@ -950,8 +951,7 @@
       "purpose": "Quoted vs realised price variance.",
       "actions": [
         "list_pricing_variance",
-        "get_pricing_variance",
-        "compute_pricing_variance"
+        "get_pricing_variance"
       ]
     },
     {
@@ -960,7 +960,7 @@
       "route": "/costing/costing",
       "area": "costing",
       "module_key": "MOD-46",
-      "purpose": "Planned cost sheets and margin per dossier.",
+      "purpose": "Planned cost sheets per dossier \u2014 HT / VAT / TTC; margin lives in the margin simulator and the quotation.",
       "actions": [
         "list_costings",
         "get_costing",
@@ -982,6 +982,18 @@
         "cost_tracking_portfolio",
         "cost_tracking_kpis",
         "record_cost"
+      ]
+    },
+    {
+      "id": "costing_reconciliation",
+      "title": "Reconciliation",
+      "route": "/costing/reconciliation",
+      "area": "costing",
+      "module_key": "MOD-47",
+      "purpose": "Quoted vs budget vs actual per file (the merged reconciliation) \u2014 the controlled document that closes a dossier financially; d\u00e9bours stay out of the variance.",
+      "actions": [
+        "get_dossier_reconciliation",
+        "latest_dossier_reconciliation"
       ]
     },
     {

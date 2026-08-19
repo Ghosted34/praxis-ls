@@ -118,6 +118,7 @@ const SIMPLE = {
   PURCHASE_ORDER: { table: "purchase_order", pk: "po_id", label: "doc_number" },
   PURCHASE_REQUEST: { table: "purchase_request", pk: "pr_id", label: "doc_number" },
   CASH_REQUEST: { table: "cash_request", pk: "cash_request_id", label: "doc_number" },
+  COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
   EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: null },
@@ -578,6 +579,48 @@ async function loadRecord(client, docType, recordId) {
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
         currency: "XAF",
+      },
+    };
+  }
+
+  /* §3.3 — the costing worksheet, footer Subtotal (HT) / VAT / Total Estimate.
+   * Totals are computed the same way costing.service.get computes them
+   * (per-line VAT from the line's own tax code; no margin — §2.2). */
+  if (docType === "COSTING") {
+    const { rows } = await client.query(
+      `SELECT c.*, d.ref AS dossier_ref, v.full_name AS validator_name
+         FROM costing c
+         LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
+         LEFT JOIN app_user v ON v.user_id = c.validator_id
+        WHERE c.costing_id = $1`,
+      [recordId],
+    );
+    const c = rows[0];
+    if (!c) return null;
+    const lr = await client.query(
+      `SELECT cl.label, cl.qty, cl.unit_cost, cl.is_disbursement, tc.rate_percent AS tax_rate_percent
+         FROM costing_line cl LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
+        WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id`,
+      [recordId],
+    );
+    // Lazy require (pattern of the transit-order branch above): pulling the
+    // costing rules at module load would force every test that mocks this
+    // service's collaborators to know about them.
+    const { computeCosting } = require("../../costing/costing/costing.rules");
+    const totals = computeCosting(lr.rows);
+    return {
+      entity_id: null,
+      data: {
+        number: c.doc_number || String(c.costing_id).slice(0, 8), date: c.created_at, status: c.status,
+        dossier_ref: c.dossier_ref, validator: c.validator_name, remarks: c.remarks,
+        exchange_rate: Number(c.exchange_rate_to_xaf),
+        lines: lr.rows.map((l) => ({
+          label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
+          tax: l.is_disbursement ? null : (l.tax_rate_percent != null ? Number(l.tax_rate_percent) : null),
+          amount: Number(l.qty) * Number(l.unit_cost),
+        })),
+        totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },
+        currency: c.currency,
       },
     };
   }

@@ -31,13 +31,27 @@ const schemas = {
     currency: z.string().length(3).optional(),
     tiers: z.array(tier).optional(),
   }),
+  // §3.2 — the persisted Rate Configuration. FX is refused in the service
+  // (currency module owns conversion); this validates the tariff families.
+  saveRates: z.object({
+    rates: z.object({
+      yardTrigger: z.number().int().positive().optional(),
+      demurrage: z.record(z.string(), z.array(z.number().nonnegative())).optional(),
+      storage: z.record(z.string(), z.array(z.number().nonnegative())).optional(),
+      yard: z.record(z.string(), z.number().nonnegative()).optional(),
+      detention: z.record(z.string(), z.record(z.string(), z.number().nonnegative())).optional(),
+      plug: z.record(z.string(), z.number().nonnegative()).optional(),
+    }).strict(),
+  }),
+  dossierParam: z.object({ dossierId: z.string().uuid() }),
 };
 
-const mw = (k) => (req, _res, next) => {
-  const p = schemas[k].safeParse(req.body);
+const mw = (k, fromParams = false) => (req, _res, next) => {
+  const p = schemas[k].safeParse(fromParams ? req.params : req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
-  req.body = p.data;
+  if (fromParams) req.params = p.data;
+  else req.body = p.data;
   return next();
 };
 
-module.exports = { compute: mw("compute"), schemas };
+module.exports = { compute: mw("compute"), saveRates: mw("saveRates"), dossierParam: mw("dossierParam", true), schemas };

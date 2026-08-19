@@ -33,7 +33,11 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import type { Entity, DictItem, DictSearchHit } from "@/lib/masterdata-api";
-import { resolveExpenseRate } from "@/lib/masterdata-api";
+import {
+  resolveExpenseRate,
+  listCurrencies,
+  listSalesTaxCodes,
+} from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import type { EquipmentPick } from "@/components/equipment-step";
 import type { Dossier } from "@/lib/operations-api";
@@ -80,6 +84,9 @@ type CostingLineDraft = {
   label: string;
   qty: number;
   unit_cost: number;
+  /** §3.3 — legacy per-line toggles (save.php:84 vat_applicable; débours). */
+  is_disbursement?: boolean;
+  tax_code_id?: string;
   variesByEquipment?: boolean;
   containerTypeRefId?: string;
   /** Display snapshot of the container type, so the line reads correctly without
@@ -97,6 +104,7 @@ const BLANK_LINE: CostingLineDraft = {
 function CostingLineRow({
   line,
   dossierId,
+  vatCodes,
   onChange,
   onPickMulti,
   onRemove,
@@ -104,6 +112,8 @@ function CostingLineRow({
 }: {
   line: CostingLineDraft;
   dossierId?: string;
+  /** Sales-applicable VAT codes for the per-line toggle (§3.3). */
+  vatCodes: { tax_code_id: string; code: string; rate_percent?: number | null }[];
   onChange: (patch: Partial<CostingLineDraft>) => void;
   /** One pick, several container types → several lines. The form owns line
    *  creation; the picker only says what was chosen. */
@@ -184,6 +194,44 @@ function CostingLineRow({
             }
           />
         </Field>
+        {/* §3.3 — the legacy sheet's per-line VAT toggle (save.php:84). A
+            débours line never carries VAT (0640 ledger rule), so the select
+            disables itself when the line is flagged pass-through. */}
+        <Field label={tr("VAT")}>
+          <Select
+            value={line.tax_code_id || ""}
+            onChange={(e) =>
+              onChange({ tax_code_id: e.target.value || undefined })
+            }
+            disabled={line.is_disbursement}
+            aria-label={tr("VAT code")}
+          >
+            <option value="">{tr("No VAT")}</option>
+            {vatCodes.map((tc) => (
+              <option key={tc.tax_code_id} value={tc.tax_code_id}>
+                {tc.code}
+                {tc.rate_percent != null ? ` (${tc.rate_percent}%)` : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={tr("Débours")}>
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={line.is_disbursement === true}
+              onChange={(e) =>
+                onChange({
+                  is_disbursement: e.target.checked,
+                  // pass-through is never taxed — clear the code with the flag
+                  tax_code_id: e.target.checked ? undefined : line.tax_code_id,
+                })
+              }
+              aria-label={tr("Débours (pass-through)")}
+            />
+            {tr("Pass-through")}
+          </label>
+        </Field>
       </div>
       {line.dictionary_item_id && (
         <p className="mt-1 micro">
@@ -211,10 +259,49 @@ function CostingForm({
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
-  const [margin, setMargin] = React.useState("");
+  // §3.3 — the legacy header controls: Curr + Rate (conversion where you
+  // work), remarks for the validator, and the validator picker (a submission
+  // with nobody named goes to no one's queue — the server now refuses it).
+  const [currency, setCurrency] = React.useState("XAF");
+  const [rate, setRate] = React.useState("1");
+  const [remarks, setRemarks] = React.useState("");
+  const [validatorId, setValidatorId] = React.useState("");
+  const currencies = useResource(() => listCurrencies(), []);
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
+  // Sales-applicable VAT codes for the per-line toggle. `degraded` is surfaced
+  // — silently offering zero codes is indistinguishable from "no tax set up".
+  const vat = useResource(() => listSalesTaxCodes(), []);
+  const vatCodes = vat.data?.codes || [];
   const [lines, setLines] = React.useState<CostingLineDraft[]>([
     { ...BLANK_LINE },
   ]);
+  // Live footer — the same arithmetic the server's computeCosting does
+  // (per-line VAT from the picked code's rate; débours never taxed).
+  const liveTotals = React.useMemo(() => {
+    let ht = 0;
+    let vatTotal = 0;
+    for (const l of lines) {
+      const amt = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+      ht += amt;
+      if (!l.is_disbursement && l.tax_code_id) {
+        const rate = Number(
+          vatCodes.find((tc) => tc.tax_code_id === l.tax_code_id)
+            ?.rate_percent || 0,
+        );
+        vatTotal += (amt * rate) / 100;
+      }
+    }
+    const r = (n: number) => Math.round(n * 100) / 100;
+    return {
+      total_ht: r(ht),
+      vat_total: r(vatTotal),
+      total_ttc: r(ht + vatTotal),
+    };
+  }, [lines, vatCodes]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const setLine = (i: number, p: Partial<CostingLineDraft>) =>
@@ -291,7 +378,11 @@ function CostingForm({
     try {
       await api.createCosting({
         dossier_id: dossierId,
-        margin_percent: margin === "" ? undefined : Number(margin),
+        currency: currency || "XAF",
+        exchange_rate_to_xaf:
+          currency !== "XAF" && Number(rate) > 0 ? Number(rate) : undefined,
+        remarks: remarks.trim() || undefined,
+        validator_id: validatorId || undefined,
         lines: lines
           .filter((l) => l.label || l.dictionary_item_id)
           .map((l) => ({
@@ -299,6 +390,9 @@ function CostingForm({
             label: l.label,
             qty: Number(l.qty) || 1,
             unit_cost: Number(l.unit_cost) || 0,
+            is_disbursement: l.is_disbursement === true,
+            // §3.3: the per-line VAT toggle persists as the line's tax code.
+            tax_code_id: l.tax_code_id || undefined,
             // 0663: the equipment dimension the form used to resolve a rate with
             // and then throw away.
             container_type_ref_id: l.containerTypeRefId || null,
@@ -319,7 +413,7 @@ function CostingForm({
       onClose={onClose}
       size="lg"
       title="New costing sheet"
-      description="Planned cost + margin for a dossier."
+      description="Planned cost for a dossier — what the file will cost us, HT / VAT / TTC. Pricing (margin) lives in the margin simulator and the quotation."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -343,15 +437,52 @@ function CostingForm({
               </p>
             )}
           </Field>
-          <Field label={tr("Margin %")}>
-            <Input
-              type="number"
-              step="0.01"
-              className="num text-right"
-              value={margin}
-              onChange={(e) => setMargin(e.target.value)}
-            />
+          {/* §2.2: the Margin % field is gone. Costing answers "what will this
+              cost us?" and stops — the legacy sheet never had margin either. */}
+          <Field label={tr("Validator")} hint="Who this sheet is submitted to">
+            <Select
+              value={validatorId}
+              onChange={(e) => setValidatorId(e.target.value)}
+            >
+              <option value="">—</option>
+              {(users || []).map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.full_name || u.email || u.user_id.slice(0, 8)}
+                </option>
+              ))}
+            </Select>
           </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Currency")}>
+            <Select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              {(currencies.data || [])
+                .filter((c) => c.is_active !== false)
+                .map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name ? `${c.code} — ${c.name}` : c.code}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          {currency !== "XAF" && (
+            <Field
+              label={tr("Rate to XAF")}
+              hint="The conversion the sheet was priced at"
+            >
+              <Input
+                type="number"
+                min="0"
+                step="0.0001"
+                className="num text-right"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -371,6 +502,7 @@ function CostingForm({
                 key={i}
                 line={l}
                 dossierId={dossierId}
+                vatCodes={vatCodes}
                 onPickMulti={pickMulti(i)}
                 removable={lines.length > 1}
                 onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
@@ -386,7 +518,39 @@ function CostingForm({
               />
             ))}
           </div>
+          {vat.data?.degraded && (
+            <p className="mt-1 micro">
+              {tr(
+                "Some jurisdictions failed to list their VAT codes — the VAT picker may be incomplete.",
+              )}
+            </p>
+          )}
         </div>
+
+        {/* §3.3 — the legacy footer, live: Subtotal (HT) / VAT / Total Estimate. */}
+        <div className="grid grid-cols-3 gap-3">
+          <KpiTile
+            label={tr("Subtotal (HT)")}
+            value={money(liveTotals.total_ht, currency)}
+          />
+          <KpiTile label="VAT" value={money(liveTotals.vat_total, currency)} />
+          <KpiTile
+            label={tr("Total estimate")}
+            value={money(liveTotals.total_ttc, currency)}
+          />
+        </div>
+
+        <Field
+          label={tr("Remarks")}
+          hint="Context for the validator — prints on the costing sheet"
+        >
+          <Textarea
+            rows={2}
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+          />
+        </Field>
+
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}
@@ -399,11 +563,180 @@ function CostingForm({
   );
 }
 
+/**
+ * §3.3 — the costing worksheet, opened by clicking a row (the list used to be
+ * inert). Lines with their VAT, the legacy footer (Subtotal HT / VAT / Total
+ * Estimate), remarks, the named validator, and Print via the document studio
+ * (docType COSTING).
+ */
+function CostingDetail({
+  id,
+  dref,
+  onClose,
+}: {
+  id: string;
+  dref: Record<string, string>;
+  onClose: () => void;
+}) {
+  const costing = useResource(() => api.getCosting(id), [id]);
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
+  const c = costing.data;
+  const ccy = c?.currency || "XAF";
+  const validatorName = React.useMemo(() => {
+    if (!c?.validator_id) return null;
+    const u = (users || []).find((x) => x.user_id === c.validator_id);
+    return u ? u.full_name || u.email || c.validator_id.slice(0, 8) : c.validator_id.slice(0, 8);
+  }, [users, c]);
+
+  const lineColumns: Column<api.CostingLine>[] = [
+    {
+      key: "label",
+      label: "Charge",
+      render: (l) => (
+        <span className="font-medium text-foreground">
+          {l.label || "—"}
+          {l.container_type_code ? (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {l.container_type_code}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: "qty",
+      label: "Qty",
+      className: "num text-right",
+      render: (l) => String(l.qty ?? 1),
+    },
+    {
+      key: "unit_cost",
+      label: "Unit cost",
+      className: "num text-right",
+      render: (l) => money(l.unit_cost, ccy),
+    },
+    {
+      key: "vat",
+      label: "VAT",
+      render: (l) =>
+        l.is_disbursement
+          ? "—"
+          : l.tax_rate_percent != null
+            ? `${l.tax_rate_percent}%`
+            : "—",
+    },
+    {
+      key: "kind",
+      label: "Kind",
+      render: (l) =>
+        l.is_disbursement ? (
+          <Pill tone="mute">{tr("Débours")}</Pill>
+        ) : (
+          <Pill tone="blue">{tr("Service")}</Pill>
+        ),
+    },
+    {
+      key: "amount",
+      label: "Amount (HT)",
+      className: "num text-right",
+      render: (l) => money((Number(l.qty) || 1) * (Number(l.unit_cost) || 0), ccy),
+    },
+  ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={c?.doc_number || tr("Costing sheet")}
+      description="What this file will cost us — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
+      size="wide"
+    >
+      {costing.error ? (
+        <ErrorState message={costing.error} />
+      ) : !c ? null : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill tone={tone(c.status)}>{c.status}</Pill>
+            <span className="text-sm text-muted-foreground">
+              {c.dossier_id ? (dref[c.dossier_id] ?? "") : ""}
+            </span>
+            {c.currency && c.currency !== "XAF" && (
+              <Pill tone="orange">
+                {c.currency} @ {String(c.exchange_rate_to_xaf ?? 1)}
+              </Pill>
+            )}
+            {validatorName && (
+              <span className="text-xs text-muted-foreground">
+                {tr("Validator")}: {validatorName}
+                {c.validator_assigned_at
+                  ? ` (${dateFmt(c.validator_assigned_at)})`
+                  : ""}
+              </span>
+            )}
+            <span className="ml-auto">
+              {/* Print / Preview — the legacy sheet's output, via the document
+                  studio (settings section document_template, docType COSTING). */}
+              <DocButton
+                docType="COSTING"
+                id={c.costing_id}
+                title={c.doc_number || "Costing sheet"}
+                label={tr("Print / preview")}
+              />
+            </span>
+          </div>
+
+          <DataList
+            columns={lineColumns}
+            rows={c.lines || []}
+            error={null}
+            loading={false}
+            rowKey={(l, i) => String(l.costing_line_id ?? i)}
+            empty={{ title: tr("No lines") }}
+          />
+
+          {/* The legacy footer: Subtotal (HT) / VAT / Total Estimate. */}
+          <div className="grid grid-cols-3 gap-3">
+            <KpiTile
+              label={tr("Subtotal (HT)")}
+              value={money(c.totals?.total_ht, ccy)}
+              hint={
+                c.totals && c.totals.disbursement_total > 0
+                  ? `of which débours ${money(c.totals.disbursement_total, ccy)}`
+                  : undefined
+              }
+            />
+            <KpiTile label="VAT" value={money(c.totals?.vat_total, ccy)} />
+            <KpiTile
+              label={tr("Total estimate")}
+              value={money(c.totals?.total_ttc, ccy)}
+            />
+          </div>
+
+          {c.remarks && (
+            <div>
+              <p className="micro mb-1">{tr("Remarks")}</p>
+              <p className="rounded-lg border bg-card p-3 text-sm">
+                {c.remarks}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function CostingPage() {
   const { rows, error, loading, reload } = useList<api.Costing>("/costings");
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  // §3.3 — rows are clickable; the worksheet opens as a detail view.
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const dref = refOf(dossiers);
   const list = rows || [];
 
@@ -462,11 +795,8 @@ export function CostingPage() {
       label: "Dossier",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
-    {
-      key: "margin_percent",
-      label: "Margin",
-      render: (r) => (r.margin_percent != null ? `${r.margin_percent}%` : "—"),
-    },
+    // §2.2: the Margin column is gone — costing carries no margin. Pricing
+    // lives in the margin simulator and the quotation.
     {
       key: "total",
       label: "Total",
@@ -545,7 +875,7 @@ export function CostingPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title={tr("Costing")}
-        description="Planned cost sheets and margin per dossier."
+        description="Planned cost sheets per dossier — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
         action={<Button onClick={() => setOpen(true)}>New costing</Button>}
       />
       <HubTabs />
@@ -567,12 +897,23 @@ export function CostingPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.costing_id}
+        onRowClick={(r) => setSelectedId(r.costing_id)}
         empty={{
           title: "No costings yet",
           hint: "Build a costing sheet for a dossier.",
+          action: (
+            <Button onClick={() => setOpen(true)}>New costing</Button>
+          ),
         }}
       />
       {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
+      {selectedId && (
+        <CostingDetail
+          id={selectedId}
+          dref={dref}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
       {unlockFor && (
         <UnlockRequestForm
           costing={unlockFor}

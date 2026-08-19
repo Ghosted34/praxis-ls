@@ -99,8 +99,8 @@ describe("the fan-out", () => {
 
     const ids = mockEnqueue.mock.calls.map((c) => c[3].jobId);
     expect(ids).toEqual([
-      "regieaging:tenant_a:live:e1",
-      "regieaging:tenant_a:live:e2",
+      "regieaging:tenant_a:live-e1",
+      "regieaging:tenant_a:live-e2",
     ]);
     expect(new Set(ids).size).toBe(ids.length);
   });

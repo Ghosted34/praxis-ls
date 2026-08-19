@@ -89,11 +89,17 @@ function errorHandler(err, req, res, _next) {
     }
     else {
       logger.warn({ request_id, code: err.code, status }, err.message);
-      // The 90 module validators throw AppError("VALIDATION_ERROR", …, 422),
-      // not ZodError, so capturing only the branch below would miss almost all
-      // of them.
-      if (status === 422 || err.code === "VALIDATION_ERROR") {
-        reportValidation(req, err.details, err.code || "VALIDATION_ERROR");
+      // Only VALIDATION_ERROR is a "bad input" failure worth grouping into the
+      // error centre. A 422 whose code is a business rule — APPROVAL_PENDING,
+      // NO_ITEMS, NO_RATE_MATCH, and the dozens of other `NO_*` state checks —
+      // is a normal client state, not invalid input. Routing those through
+      // reportValidation synthesised `ValidationError: <code>: unknown` (their
+      // `details` is null, so the field list collapsed to "unknown"), which read
+      // as a fault and polluted the feed. The 90 module validators all throw
+      // AppError("VALIDATION_ERROR", …, 422), so keying on the code (rather than
+      // the status) captures exactly the right class.
+      if (err.code === "VALIDATION_ERROR") {
+        reportValidation(req, err.details, err.code);
       }
     }
     return res.status(status).json({

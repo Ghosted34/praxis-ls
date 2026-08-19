@@ -20,6 +20,8 @@ const events = require("./extra_charge_simulation.events");
 const { computeDemurrage, daysBetween, simulateCharges, parseContainers } = require("./extra_charge_simulation.rules");
 const { getSetting } = require("../../../shared/config/settings");
 const { audit, resolveActorId } = require("../../../shared/events/emit");
+const { AppError } = require("../../../utils/errors");
+const currencySvc = require("../../master/currency/currency.service");
 
 const ref = (id) => "extra_charge_simulation:" + id;
 
@@ -47,8 +49,38 @@ function occupiedDaysFrom({ occupiedDays, outOfPortOn, asOf }) {
 const isFiveFamily = (body) =>
   Boolean(body.containers) && (Array.isArray(body.containers) ? body.containers.length > 0 : String(body.containers).trim() !== "");
 
+/**
+ * Resolve the FX map for a simulation.
+ *
+ * The legacy froze {XAF:1, USD:615, EUR:655.957} in a JS literal and never
+ * persisted an edit (SS4). Conversion now uses the live currency module
+ * (rateMap → fx_rate_daily). A caller may still pass an explicit `fx` for a
+ * what-if, but it is layered over the live map rather than replacing it, so an
+ * unlisted currency still converts at today's rate.
+ */
+async function resolveFx(client, body, currency) {
+  const live = await currencySvc.rateMap(client, { extra: currency ? [currency] : [] });
+  return { ...live, ...(body.fx || {}) };
+}
+
+/** Validate the requested currency exists in the catalogue (SS4) — the
+ *  extra_charge_simulation.currency column is char(3) REFERENCES currency(code),
+ *  so an unknown code would otherwise surface as a raw 23503. XAF is the base
+ *  anchor and always accepted. */
+async function assertCurrency(client, code) {
+  const want = String(code || "XAF").toUpperCase().trim();
+  if (want === "XAF") return want;
+  const { rows } = await client.query("SELECT 1 FROM currency WHERE code = $1", [want]);
+  if (!rows.length) {
+    throw new AppError("UNKNOWN_CURRENCY", `Currency "${want}" is not in the currency catalogue — add it in Master Data → Currencies first`, 422);
+  }
+  return want;
+}
+
 async function fiveFamily(client, body) {
   const rates = body.rates || (await getSetting(client, "commercial", "extra_charge_rates", null)) || null;
+  const currency = await assertCurrency(client, body.currency || "XAF");
+  const fx = await resolveFx(client, body, currency);
   return simulateCharges({
     containers: body.containers,
     ata: body.ata || null,
@@ -57,8 +89,8 @@ async function fiveFamily(client, body) {
     freeDays: body.free_days ?? LEGACY_FREE_DAYS,
     yardTrigger: body.yard_trigger ?? null,
     rates,
-    fx: body.fx || null,
-    currency: body.currency || "XAF",
+    fx,
+    currency,
   });
 }
 
@@ -85,13 +117,16 @@ async function preview(client, body) {
  */
 async function create(client, body, actor = {}) {
   const five = isFiveFamily(body);
+  // fiveFamily already validates the currency; the generic tier stores a
+  // currency but has no conversion to touch it, so validate it here (SS4).
+  const ccy = five ? null : await assertCurrency(client, body.currency || "XAF");
   const computed = five ? await fiveFamily(client, body) : await preview(client, body);
 
   const common = {
     dossier_id: body.dossier_id || null,
     shipping_line: body.shipping_line || null,
     container_variant: body.container_variant || null,
-    currency: computed.currency || body.currency || "XAF",
+    currency: computed.currency || ccy || "XAF",
     created_by: await resolveActorId(client, actor.user_id),
   };
 

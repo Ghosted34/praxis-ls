@@ -1,6 +1,6 @@
 "use strict";
 const { z } = require("zod");
-const { AppError } = require("../../utils/errors");
+const { AppError } = require("../../../utils/errors");
 
 const schemas = {
   // SEC H3 guard. The two provider webhooks passed req.body straight into the
@@ -102,6 +102,80 @@ const schemas = {
     html: z.string().optional(),
     text: z.string().optional(),
   }),
+
+  /* ── PR-0 foundation ──────────────────────────────────────────────────── */
+
+  // Creating a shared mailbox is the same transport form as a personal one plus
+  // the two things that make it a TEAM address: which catalogue slot it fills and
+  // which operating company it belongs to.
+  sharedMailbox: z.object({
+    catalogue_key: z.string().trim().min(1).max(64).nullable().optional(),
+    email_address: z.string().email(),
+    display_name: z.string().trim().max(200).optional(),
+    department: z.string().trim().max(120).nullable().optional(),
+    entity_id: z.string().uuid().nullable().optional(),
+    imap_host: z.string().trim().max(255).optional(),
+    imap_port: z.coerce.number().int().min(1).max(65535).optional(),
+    imap_secure: z.coerce.boolean().optional(),
+    smtp_host: z.string().trim().max(255).optional(),
+    smtp_port: z.coerce.number().int().min(1).max(65535).optional(),
+    smtp_secure: z.coerce.boolean().optional(),
+    auth_user: z.string().trim().max(320).optional(),
+    password: z.string().max(1024).optional(),
+  }),
+
+  catalogueEntry: z.object({
+    catalogue_key: z.string().trim().min(1).max(64),
+    label_en: z.string().trim().min(1).max(200),
+    label_fr: z.string().trim().min(1).max(200).optional(),
+    suggested_local_part: z.string().trim().max(64).optional(),
+    description_en: z.string().trim().max(1000).nullable().optional(),
+    description_fr: z.string().trim().max(1000).nullable().optional(),
+    department: z.string().trim().max(120).nullable().optional(),
+    sort_order: z.coerce.number().int().min(0).max(9999).optional(),
+  }),
+
+  catalogueToggle: z.object({ is_enabled: z.coerce.boolean() }),
+
+  // A grant names a person and a level. `role` is a closed set because a typo
+  // that silently produced a weaker or stronger grant than intended is exactly
+  // the kind of access bug nobody notices until an audit.
+  memberGrant: z.object({
+    user_id: z.string().uuid(),
+    member_role: z.enum(["VIEWER", "AGENT", "MANAGER"]).default("AGENT"),
+  }),
+
+  handover: z.object({
+    catalogue_key: z.string().trim().min(1).max(64).nullable().optional(),
+    department: z.string().trim().max(120).nullable().optional(),
+  }),
+
+  // NULL is meaningful: it clears the per-mailbox override so the tenant default
+  // applies again. `.nullable()` rather than `.optional()` is the whole point.
+  mailboxLimits: z.object({
+    send_limit_hourly: z.coerce.number().int().min(1).max(100000).nullable().optional(),
+    send_limit_daily: z.coerce.number().int().min(1).max(1000000).nullable().optional(),
+    sync_depth_days: z.coerce.number().int().min(0).max(3650).nullable().optional(),
+  }),
+
+  tenantMailSettings: z.object({
+    send_limit_hourly: z.coerce.number().int().min(1).max(100000).optional(),
+    send_limit_daily: z.coerce.number().int().min(1).max(1000000).optional(),
+    sync_depth_days: z.coerce.number().int().min(0).max(3650).optional(),
+    attachment_max_bytes: z.coerce.number().int().min(1024).max(104857600).optional(),
+    folder_sync_limit: z.coerce.number().int().min(1).max(500).optional(),
+  }),
+
+  // Exactly one target. Enforced here as well as in the service so the API says
+  // no before a half-formed binding reaches the database.
+  sendPointBinding: z.object({
+    entity_id: z.string().uuid().nullable().optional(),
+    email_identity_id: z.string().uuid().nullable().optional(),
+    email_connection_id: z.string().uuid().nullable().optional(),
+  }).refine(
+    (v) => Boolean(v.email_identity_id) !== Boolean(v.email_connection_id),
+    { message: "Choose either a sender identity or a mailbox to send from — one, not both." },
+  ),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -115,5 +189,9 @@ module.exports = {
   connect: mw("connect"), connectPatch: mw("connectPatch"), send: mw("send"), reply: mw("reply"),
   sender: mw("sender"), senderPatch: mw("senderPatch"), threadLink: mw("threadLink"),
   msWebhook: mw("msWebhook"), ggWebhook: mw("ggWebhook"),
+  sharedMailbox: mw("sharedMailbox"), catalogueEntry: mw("catalogueEntry"),
+  catalogueToggle: mw("catalogueToggle"), memberGrant: mw("memberGrant"),
+  handover: mw("handover"), mailboxLimits: mw("mailboxLimits"),
+  tenantMailSettings: mw("tenantMailSettings"), sendPointBinding: mw("sendPointBinding"),
   schemas,
 };

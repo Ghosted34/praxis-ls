@@ -8,8 +8,8 @@
 "use strict";
 
 const registry = require("../../services/tenant/registry.service");
-const mail = require("../../modules/mail/mail.service");
-const repo = require("../../modules/mail/mail.repo");
+const mail = require("../../modules/mail/mail/mail.service");
+const repo = require("../../modules/mail/mail/mail.repo");
 
 module.exports = async function mailSync(job) {
   const { tenantMeta, env = "live" } = job.data || {};

@@ -1,11 +1,13 @@
 {
   "_note": "Committed allow-list for scripts/check-response-contract.js. Add a field with a one-line reason in _reasons; remove it when the underlying source of truth is fixed.",
   "_reasons": {
-    "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime \u2014 no literal key exists to find. Sibling of the already-listed estimated_count.",
-    "committed_count": "Same computed key as actual_count. Emitted, but only ever as a template literal.",
+    "actual_count": "financial_dictionary.rules spendSeries builds `row[`${lens}_count`]` from SPEND_LENSES at runtime — no literal key exists to find. Sibling of the already-listed estimated_count.",
     "client_scoped": "DOCUMENT_TYPE config stored inside a dictionary_item jsonb blob, so it is not a column and never will be. Sibling of the already-listed client_visible.",
+    "committed_count": "Same computed key as actual_count. Emitted, but only ever as a template literal.",
     "exclude_id": "Input, not output: read as req.body.exclude_id by master/_shared/actions.js. DedupeInput is a request shape.",
-    "field_type": "Custom-field definitions live inside a `setting` jsonb blob (security/setting/setting.rules.js), so no column backs them."
+    "field_type": "Custom-field definitions live inside a `setting` jsonb blob (security/setting/setting.rules.js), so no column backs them.",
+    "identity_from": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent.",
+    "identity_name": "sendpoint.repo.listWithBindings emits this inside a json_build_object() aggregate so the admin screen gets a send point and its bindings in one query rather than N+1 over 22 rows. The scanner only recognises `SELECT ... AS alias`, so a key built by json_build_object is invisible to it. The field IS sent."
   },
   "tables": [
     "ageing",
@@ -49,6 +51,8 @@
     "hard_blocked_at",
     "header_note_fr",
     "holiday_date",
+    "identity_from",
+    "identity_name",
     "in_force",
     "in_use",
     "include_completed",

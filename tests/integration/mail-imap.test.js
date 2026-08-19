@@ -16,7 +16,7 @@
 
 const {
   ImapSmtpProvider,
-} = require("../../src/modules/mail/providers/imapSmtp.provider");
+} = require("../../src/modules/mail/mail/providers/imapSmtp.provider");
 
 const HAVE_CREDS = Boolean(
   process.env.MAIL_TEST_EMAIL &&

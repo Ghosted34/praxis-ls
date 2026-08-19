@@ -6,7 +6,7 @@
 "use strict";
 
 const registry = require("../../services/tenant/registry.service");
-const mail = require("../../modules/mail/mail.service");
+const mail = require("../../modules/mail/mail/mail.service");
 
 module.exports = async function mailWebhookRenew(job) {
   const { tenantMeta, env = "live" } = job.data || {};

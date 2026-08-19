@@ -46,47 +46,47 @@
       "line": 784
     },
     {
-      "file": "src/modules/mail/autodiscover.js",
-      "line": 34
+      "file": "src/modules/mail/mail/autodiscover.js",
+      "line": 61
     },
     {
-      "file": "src/modules/mail/autodiscover.js",
-      "line": 56
+      "file": "src/modules/mail/mail/autodiscover.js",
+      "line": 83
     },
     {
-      "file": "src/modules/mail/dns-check.js",
+      "file": "src/modules/mail/mail/dns-check.js",
       "line": 110
     },
     {
-      "file": "src/modules/mail/mail.service.js",
-      "line": 272
+      "file": "src/modules/mail/mail/mail.service.js",
+      "line": 348
     },
     {
-      "file": "src/modules/mail/mail.service.js",
-      "line": 509
+      "file": "src/modules/mail/mail/mail.service.js",
+      "line": 657
     },
     {
-      "file": "src/modules/mail/mail.service.js",
-      "line": 529
+      "file": "src/modules/mail/mail/mail.service.js",
+      "line": 677
     },
     {
-      "file": "src/modules/mail/mail.service.js",
-      "line": 552
+      "file": "src/modules/mail/mail/mail.service.js",
+      "line": 700
     },
     {
-      "file": "src/modules/mail/providers/gmail.provider.js",
+      "file": "src/modules/mail/mail/providers/gmail.provider.js",
       "line": 156
     },
     {
-      "file": "src/modules/mail/providers/imapSmtp.provider.js",
+      "file": "src/modules/mail/mail/providers/imapSmtp.provider.js",
       "line": 114
     },
     {
-      "file": "src/modules/mail/providers/imapSmtp.provider.js",
-      "line": 157
+      "file": "src/modules/mail/mail/providers/imapSmtp.provider.js",
+      "line": 163
     },
     {
-      "file": "src/modules/mail/providers/imapSmtp.provider.js",
+      "file": "src/modules/mail/mail/providers/imapSmtp.provider.js",
       "line": 160
     },
     {

@@ -268,3 +268,242 @@ export const replyMail = (
     method: "POST",
     body,
   });
+
+/* ── PR-0 foundation: mailboxes as organisational objects ──────────────────
+ *
+ * The types above describe mail as TRANSPORT — who sent what, and whether it
+ * arrived. Everything below describes mail as ORGANISATION: whose mailbox this
+ * is, which team address it fulfils, who may work it, and which part of the
+ * product sends from it. Two different questions, kept visibly apart, because
+ * conflating them is how "connection" came to mean four things.
+ */
+
+export type MailboxKind = "PERSONAL" | "SHARED" | "DELEGATED";
+export type MemberRole = "VIEWER" | "AGENT" | "MANAGER";
+export type HealthLevel = "OK" | "WARN" | "DOWN" | "PENDING" | "OFF" | "ARCHIVED";
+
+export type MailboxHealth = {
+  level: HealthLevel;
+  reason: string;
+  failures?: number;
+  stale_hours?: number;
+};
+
+export type MailCapabilities = {
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_administer: boolean;
+  is_ceo: boolean;
+};
+
+export type Mailbox = {
+  email_connection_id: string;
+  email_address: string;
+  display_name?: string | null;
+  provider: Provider;
+  kind: MailboxKind;
+  visibility?: string | null;
+  status: string;
+  catalogue_key?: string | null;
+  catalogue_label?: string | null;
+  department?: string | null;
+  entity_id?: string | null;
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  is_default?: boolean;
+  member_count?: number;
+  last_sync_at?: string | null;
+  last_success_at?: string | null;
+  last_error?: string | null;
+  consecutive_failures?: number;
+  archived_at?: string | null;
+  send_limit_hourly?: number | null;
+  send_limit_daily?: number | null;
+  sync_depth_days?: number | null;
+  history_imported_at?: string | null;
+  access_role?: MemberRole | "OWNER" | null;
+  health: MailboxHealth;
+  effective_limits?: {
+    send_limit_hourly: number;
+    send_limit_daily: number;
+    sync_depth_days: number;
+  };
+};
+
+export type CatalogueEntry = {
+  catalogue_key: string;
+  label_en: string;
+  label_fr: string;
+  description_en?: string | null;
+  description_fr?: string | null;
+  suggested_local_part: string;
+  department?: string | null;
+  feeds: string[];
+  sort_order: number;
+  is_system: boolean;
+  is_enabled: boolean;
+  /** True once a live mailbox fulfils this slot. */
+  configured: boolean;
+  email_connection_id?: string | null;
+  email_address?: string | null;
+  connection_status?: string | null;
+};
+
+export type MailboxMember = {
+  email_connection_member_id: string;
+  user_id: string;
+  member_role: MemberRole;
+  full_name?: string | null;
+  email?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  granted_at?: string | null;
+  revoked_at?: string | null;
+};
+
+export type SendPointBinding = {
+  mail_send_point_binding_id: string;
+  entity_id?: string | null;
+  entity_name?: string | null;
+  email_identity_id?: string | null;
+  identity_from?: string | null;
+  identity_name?: string | null;
+  email_connection_id?: string | null;
+  connection_address?: string | null;
+  connection_status?: string | null;
+};
+
+export type SendPoint = {
+  send_point_key: string;
+  module_key?: string | null;
+  group_key: string;
+  label_en: string;
+  label_fr: string;
+  description_en?: string | null;
+  description_fr?: string | null;
+  legacy_purpose?: string | null;
+  default_catalogue_key?: string | null;
+  /** False means nothing in the product sends through this yet — say so. */
+  is_wired: boolean;
+  sort_order: number;
+  bindings: SendPointBinding[];
+  resolved: {
+    source:
+      | "ENTITY_BINDING"
+      | "TENANT_BINDING"
+      | "LEGACY_SECTION"
+      | "LEGACY_PURPOSE"
+      | "FALLBACK";
+    /** A sentence the screen shows verbatim. */
+    why: string;
+    from_address?: string | null;
+    from_name?: string | null;
+  };
+};
+
+export type SendAllowance = {
+  allowed: boolean;
+  reason?: string | null;
+  limit?: number;
+  used?: number | { hourly: number; daily: number };
+  retryAt?: string | null;
+  remaining_hour?: number;
+  remaining_day?: number;
+  limits?: { send_limit_hourly: number; send_limit_daily: number; sync_depth_days: number };
+};
+
+export type AccessAuditRow = {
+  email_access_audit_id: string;
+  email_connection_id?: string | null;
+  action: string;
+  subject_user_id?: string | null;
+  subject_name?: string | null;
+  actor_user_id?: string | null;
+  actor_name?: string | null;
+  detail?: Record<string, unknown>;
+  created_at: string;
+};
+
+export type CpanelPreset = {
+  email: string;
+  domain: string;
+  source: string;
+  imap_host: string;
+  imap_port: number;
+  imap_secure: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_secure: boolean;
+  auth_user: string;
+  note: string;
+};
+
+/* Capabilities + inventory */
+export const mailCapabilities = () => tenant<MailCapabilities>("/mail/me");
+export const myMailboxes = () => tenant<Mailbox[]>("/mail/mailboxes/mine");
+export const allMailboxes = (q: { kind?: MailboxKind; include_archived?: boolean } = {}) => {
+  const p = new URLSearchParams();
+  if (q.kind) p.set("kind", q.kind);
+  if (q.include_archived) p.set("include_archived", "true");
+  const qs = p.toString();
+  return tenant<Mailbox[]>(`/mail/mailboxes${qs ? `?${qs}` : ""}`);
+};
+
+/* Catalogue */
+export const listCatalogue = (includeDisabled = false) =>
+  tenant<CatalogueEntry[]>(`/mail/catalogue${includeDisabled ? "?include_disabled=true" : ""}`);
+export const addCatalogueEntry = (body: Record<string, unknown>) =>
+  tenant<CatalogueEntry>("/mail/catalogue", { method: "POST", body: JSON.stringify(body) });
+export const toggleCatalogueEntry = (key: string, isEnabled: boolean) =>
+  tenant<CatalogueEntry>(`/mail/catalogue/${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_enabled: isEnabled }),
+  });
+
+/* Mailbox lifecycle */
+export const createSharedMailbox = (body: Record<string, unknown>) =>
+  tenant<Mailbox>("/mail/mailboxes/shared", { method: "POST", body: JSON.stringify(body) });
+export const archiveMailbox = (id: string) =>
+  tenant<Mailbox>(`/mail/mailboxes/${id}/archive`, { method: "POST" });
+export const handoverMailbox = (id: string, body: { catalogue_key?: string | null; department?: string | null }) =>
+  tenant<Mailbox>(`/mail/mailboxes/${id}/handover`, { method: "POST", body: JSON.stringify(body) });
+export const setMailboxLimits = (
+  id: string,
+  body: { send_limit_hourly?: number | null; send_limit_daily?: number | null; sync_depth_days?: number | null },
+) => tenant<Mailbox>(`/mail/mailboxes/${id}/limits`, { method: "PATCH", body: JSON.stringify(body) });
+export const sendAllowance = (id: string, count = 1) =>
+  tenant<SendAllowance>(`/mail/mailboxes/${id}/allowance?count=${count}`);
+
+/* Access grants */
+export const listMembers = (id: string, includeRevoked = false) =>
+  tenant<MailboxMember[]>(`/mail/mailboxes/${id}/members${includeRevoked ? "?include_revoked=true" : ""}`);
+export const grantMember = (id: string, userId: string, role: MemberRole) =>
+  tenant<MailboxMember>(`/mail/mailboxes/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, member_role: role }),
+  });
+export const revokeMember = (id: string, userId: string) =>
+  tenant<{ revoked: boolean }>(`/mail/mailboxes/${id}/members/${userId}`, { method: "DELETE" });
+export const accessLog = (connectionId?: string) =>
+  tenant<AccessAuditRow[]>(`/mail/access-log${connectionId ? `?connection_id=${connectionId}` : ""}`);
+
+/* Send-point routing */
+export const listSendPoints = (entityId?: string) =>
+  tenant<SendPoint[]>(`/mail/send-points${entityId ? `?entity_id=${entityId}` : ""}`);
+export const bindSendPoint = (
+  key: string,
+  body: { entity_id?: string | null; email_identity_id?: string | null; email_connection_id?: string | null },
+) => tenant<SendPointBinding>(`/mail/send-points/${encodeURIComponent(key)}`, {
+  method: "PUT",
+  body: JSON.stringify(body),
+});
+export const unbindSendPoint = (key: string, entityId?: string) =>
+  tenant<{ removed: boolean }>(
+    `/mail/send-points/${encodeURIComponent(key)}${entityId ? `?entity_id=${entityId}` : ""}`,
+    { method: "DELETE" },
+  );
+
+/* cPanel preset — the first tenant runs cPanel, so this is the fast path. */
+export const cpanelPreset = (email: string) =>
+  tenant<CpanelPreset>(`/mail/cpanel-preset?email=${encodeURIComponent(email)}`);

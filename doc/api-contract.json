@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1266,
+  "route_count": 1285,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1160
+    "gated": 1179
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -292,6 +292,18 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/locations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/mailboxes/:id/members/:userId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/send-points/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2061,7 +2073,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/access-log": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/autodiscover": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/catalogue": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2079,7 +2103,43 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/cpanel-preset": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/inbox": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/mailboxes": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/mailboxes/:id/allowance": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/mailboxes/:id/members": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/mailboxes/mine": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/me": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2110,6 +2170,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/mail/recipients": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/send-points": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4125,7 +4191,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/mail/catalogue/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/mail/connections/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/mail/mailboxes/:id/limits": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5883,6 +5961,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/catalogue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/connections": {
       "auth": true,
       "rbac": true,
@@ -5902,6 +5986,30 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/connections/:id/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/mailboxes/:id/archive": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/mailboxes/:id/handover": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/mailboxes/:id/members": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/mailboxes/shared": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7492,6 +7600,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/entities/:id/working-calendar": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/mail/send-points/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -30,7 +30,9 @@ const { config } = require("../config/env");
 const { getSetting } = require("../shared/config/settings");
 const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
-const { mapSmtpError, isSmtpError } = require("../modules/mail/smtp-error.map");
+const { mapSmtpError, isSmtpError } = require("../modules/mail/mail/smtp-error.map");
+const sendPoints = require("../modules/mail/mail/sendpoint.service");
+const origin = require("../modules/mail/mail/origin");
 const mailFallback = require("./platform/mail-fallback.service");
 const registry = require("./tenant/registry.service");
 const entitlement = require("./platform/entitlement.service");
@@ -38,16 +40,31 @@ const entitlement = require("./platform/entitlement.service");
 const fmtFrom = (id) => (id.from_name ? `"${id.from_name}" <${id.from_address}>` : id.from_address);
 
 /** Resolve From, SMTP transport and reply-to for a purpose. */
-async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null } = {}) {
+async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null, sendPoint = null, entityId = null } = {}) {
   let identity = null;
   let settings = {};
   let encPass = null;
+  let sendPointWhy = null;
+  let sendPointSource = null;
   if (client) {
+    // PR-0: a SEND POINT is the most specific answer there is — it names the
+    // exact thing being sent ("invoice.issued") rather than a broad purpose, and
+    // it can differ per corporate entity so a group sends each company's invoices
+    // from that company's address. Asked first; everything below is unchanged and
+    // still answers when no binding exists.
+    if (sendPoint) {
+      const r = await sendPoints.resolve(client, { sendPointKey: sendPoint, entityId });
+      sendPointWhy = r.why;
+      sendPointSource = r.source;
+      if (r.identity) identity = r.identity;
+    }
     // WS-E3: a sender BOUND to this section wins; else the legacy purpose-label
     // match (a sender whose own `purpose` equals the key). Then the fallback chain.
-    identity = purpose
-      ? (await emailRepo.identityForSection(client, purpose)) || (await emailRepo.identityFor(client, purpose))
-      : null;
+    if (!identity) {
+      identity = purpose
+        ? (await emailRepo.identityForSection(client, purpose)) || (await emailRepo.identityFor(client, purpose))
+        : null;
+    }
     settings = (await getSetting(client, "email", "default", {})) || {};
     // SMTP password now lives ENCRYPTED in the integration_secret vault; the
     // legacy plaintext settings.smtp_pass is kept only as a back-compat fallback.
@@ -84,6 +101,12 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
     module_key: moduleKey,
     // Metadata for logging/UI: which sender path won, and the fallback's detail.
     sender_source: ownHost ? (identity ? "identity" : "settings") : fb ? "fallback" : "env",
+    // PR-0: which tier chose the sender, and a sentence saying so. "Why did that
+    // go out from the wrong address?" is the most-asked email question; this is
+    // what lets the admin screen answer it without anyone reading code.
+    send_point: sendPoint || null,
+    send_point_source: sendPointSource,
+    send_point_why: sendPointWhy,
     fallback: fb ? { from: fbFrom || fb.from, domain: fb.fallback_domain, source: fb.source } : null,
   };
 }
@@ -109,7 +132,7 @@ function transportFrom(cfg) {
  * message-id on success, FAILED with the error on failure. When `client` is null
  * (injectable-transport test path) no log is written.
  */
-async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null }, tx = null) {
+async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null, sendPoint = null, entityId = null, actorUserId = null, tenantSlug = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
 
   // G2 — sandbox must not send real client emails (PRD §5.5 [RULE]). The env
@@ -135,7 +158,7 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
     return { suppressed: true, env: connEnv, to, subject: subject || null };
   }
 
-  const cfg = await resolveMail(client, { purpose, moduleKey });
+  const cfg = await resolveMail(client, { purpose, moduleKey, sendPoint, entityId });
   if (!tx && !cfg.smtp_host) throw new Error("email: no sender configured (add an email_identity or SMTP settings)");
   const mailer = tx || transportFrom(cfg);
   // G-4: honour a caller-supplied `from` override ONLY when the tenant resolved
@@ -143,8 +166,17 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
   // the deploy relay, so sending a tenant-domain From would fail SPF/DKIM/DMARC —
   // the fallback sender wins there (same deliverability rule as resolveMail).
   const useOverride = from && (cfg.sender_source === "identity" || cfg.sender_source === "settings");
+  // PR-0 origin stamp. Invisible to the recipient, and the only thing that later
+  // lets a message be recognised as ours when we read it back off a mail server —
+  // matching on subject and timestamp is guesswork. Also carries WHICH part of
+  // the product sent it, so "why did the client get this?" is answerable.
+  const originHeaders = origin.buildOriginHeaders({
+    tenantSlug, userId: actorUserId, sendPoint: sendPoint || purpose || null,
+  });
   const payload = {
     from: useOverride ? from : cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text,
+    messageId: origin.generateMessageId(useOverride ? from : cfg.from),
+    headers: originHeaders,
     ...(attachments && attachments.length ? { attachments } : {}),
   };
   const logBase = {

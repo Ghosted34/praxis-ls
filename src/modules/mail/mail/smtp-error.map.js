@@ -14,7 +14,7 @@
  * is rendered from the code alone, so the two UIs cannot drift apart.
  */
 "use strict";
-const { AppError } = require("../../utils/errors");
+const { AppError } = require("../../../utils/errors");
 
 /**
  * Turn a raw nodemailer/SMTP rejection into a clean, actionable AppError.

@@ -9,7 +9,7 @@ jest.mock("axios");
 const axios = require("axios");
 const {
   GmailProvider,
-} = require("../../src/modules/mail/providers/gmail.provider");
+} = require("../../src/modules/mail/mail/providers/gmail.provider");
 
 const provider = () =>
   new GmailProvider({

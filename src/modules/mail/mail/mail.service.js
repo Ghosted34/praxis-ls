@@ -11,23 +11,29 @@
 "use strict";
 const repo = require("./mail.repo");
 const events = require("./mail.events");
-const settings = require("../security/setting/setting.service");
+const settings = require("../../security/setting/setting.service");
 const jwt = require("jsonwebtoken");
-const { emitEvent } = require("../../shared/events/emit");
-const { AppError } = require("../../utils/errors");
+const { emitEvent } = require("../../../shared/events/emit");
+const { AppError } = require("../../../utils/errors");
 // Shared SMTP-error classifier — the connection-test path and the system-email
 // paths (email.service, platform probes) share one map so the UI's fix guides
 // key off the same codes everywhere. See smtp-error.map.js.
 const { mapSmtpError, isSmtpError } = require("./smtp-error.map");
-const { config } = require("../../config/env");
+const { config } = require("../../../config/env");
 const { ImapSmtpProvider } = require("./providers/imapSmtp.provider");
 const { MicrosoftGraphProvider } = require("./providers/microsoftGraph.provider");
 const { GmailProvider } = require("./providers/gmail.provider");
 const msOAuth = require("./providers/microsoftOAuth");
 const googleOAuth = require("./providers/googleOAuth");
-const documentVault = require("../vault/document_vault/document_vault.service");
-const { publishMailEvent } = require("../../realtime/mail-bus");
+const documentVault = require("../../vault/document_vault/document_vault.service");
+const { publishMailEvent } = require("../../../realtime/mail-bus");
 const { autodiscover } = require("./autodiscover");
+// PR-0 foundation. The engine now asks three questions before it sends: may this
+// person send as this mailbox (access), is the mailbox within its host's rate
+// limit (mailbox.checkSendAllowance), and what stamp goes on the wire (origin).
+const access = require("./access");
+const mailbox = require("./mailbox.service");
+const origin = require("./origin");
 
 const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
 const OAUTH_STATE_TTL = "10m";
@@ -123,9 +129,43 @@ const setDefaultMailbox = (client, id, ownerUserId) => repo.setDefaultConnection
 const searchRecipients = (client, q) => repo.searchRecipients(client, q);
 
 /** Connect a mailbox: persist the connection + secret, then live-test it. */
+/**
+ * Which providers a tenant may actually connect right now.
+ *
+ * The Microsoft Graph and Gmail adapters are built, tested and working, and their
+ * tests keep running in CI so they do not rot. They are simply not part of this
+ * programme: the decision was to do ONE provider properly first, and the one the
+ * first tenant runs is cPanel IMAP/SMTP. Gating here rather than deleting the
+ * adapters means re-enabling them is a feature flag, not a rewrite — and it means
+ * hiding the buttons in the UI is not the only thing standing between a curious
+ * caller and a half-supported provider.
+ */
+const OAUTH_PROVIDERS = new Set(["microsoft_graph", "google_gmail"]);
+
+async function assertProviderEnabled(client, provider) {
+  if (!OAUTH_PROVIDERS.has(provider)) return;
+  const { rows } = await client.query(
+    "SELECT state FROM feature_state WHERE feature_key = $1",
+    ["mail.provider.oauth"],
+  );
+  if (!rows[0] || rows[0].state !== "on") {
+    throw new AppError(
+      "PROVIDER_NOT_ENABLED",
+      "Microsoft 365 and Google mailboxes are not enabled yet. Connect your mailbox with its IMAP/SMTP settings — if your company uses cPanel, the setup wizard fills these in for you.",
+      403,
+    );
+  }
+}
+
 async function connect(client, input = {}) {
   const { email_address, provider = "imap_smtp", display_name, password, actor = {} } = input;
   if (!email_address) throw new AppError("VALIDATION_ERROR", "email_address is required", 422);
+  await assertProviderEnabled(client, provider);
+  // One personal mailbox per person (PR-0 Q1). The partial unique index in 10723
+  // is the enforcement; this turns a 23505 into a sentence naming the mailbox
+  // they already have and what to do instead.
+  const kind = input.kind === "SHARED" ? "SHARED" : "PERSONAL";
+  if (kind === "PERSONAL" && actor.user_id) await mailbox.assertNoPersonalMailbox(client, actor.user_id);
   const conn = await repo.insertConnection(client, {
     email_address, provider, display_name: display_name || null,
     imap_host: input.imap_host || null, imap_port: input.imap_port || null,
@@ -147,8 +187,19 @@ async function connect(client, input = {}) {
   }
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
   const test = await testConnection(client, conn.email_connection_id);
-  await repo.ensureDefaultConnection(client, actor.user_id);
-  return { ...conn, secret_key, status: test.ok ? "CONNECTED" : "ERROR", test };
+  // Stamp WHAT this mailbox is (personal vs a team address, which entity it
+  // belongs to, who may work it). The transport row above knows how to reach the
+  // server; this is the part administration cares about.
+  await mailbox.classify(client, conn.email_connection_id, {
+    kind,
+    catalogueKey: kind === "SHARED" ? input.catalogue_key || null : null,
+    entityId: input.entity_id || null,
+    department: input.department || null,
+    actor,
+  });
+  if (kind === "PERSONAL") await repo.ensureDefaultConnection(client, actor.user_id);
+  const created = await repo.getConnection(client, conn.email_connection_id);
+  return { ...created, secret_key, status: test.ok ? "CONNECTED" : "ERROR", test };
 }
 
 /** Edit an IMAP/SMTP connection's transport/credentials, then re-test. OAuth
@@ -209,12 +260,22 @@ async function syncConnection(client, id, ctx = {}) {
     let inserted = 0;
     let attachments = 0;
     for (const m of messages) {
+      // PR-0 echo. A message the adapter hands back may be one WE sent — the Sent
+      // folder is synced like any other — so direction is read off the message
+      // rather than assumed, and an outbound one is classified by its stamp.
+      // Anything outbound without our header was sent from another device, which
+      // is precisely the correspondence that would otherwise never reach the
+      // record.
+      const direction = m.direction === "OUT" ? "OUT" : "IN";
+      const originFields = origin.originFieldsFor({
+        direction, headers: m.headers, messageIdHeader: m.messageIdHeader || m.externalMessageId || null,
+      });
       const row = await repo.insertInbound(client, {
         email_connection_id: conn.email_connection_id,
         email_identity_id: conn.email_identity_id,
         external_message_id: m.externalMessageId,
         thread_key: m.threadKey,
-        direction: "IN",
+        direction,
         from_address: m.from,
         to_address: (m.to || []).join(", "),
         subject: m.subject,
@@ -224,6 +285,7 @@ async function syncConnection(client, id, ctx = {}) {
         in_reply_to: m.inReplyTo,
         is_read: m.isRead,
         received_at: m.receivedAt,
+        ...originFields,
       });
       if (row) {
         inserted += 1;
@@ -239,11 +301,25 @@ async function syncConnection(client, id, ctx = {}) {
       }
     }
     await repo.setCursor(client, conn.email_connection_id, nextCursor);
+    // Health inputs: a run that got this far reached the server. Clearing the
+    // failure count here is what makes the indicator recover on its own instead
+    // of staying red until somebody presses Test.
+    await mailbox.markSyncSuccess(client, conn.email_connection_id);
     // Live-notify the tenant's Mail view (worker → Redis bus → web socket).
     if (inserted > 0 && ctx.slug) publishMailEvent(ctx.slug, { connection: conn.email_connection_id, inserted });
     return { connection: conn.email_connection_id, fetched: messages.length, inserted, attachments };
   } catch (err) {
     await repo.setError(client, conn.email_connection_id, err.message);
+    // Count it. Three in a row is what turns a wobble into a DOWN indicator and
+    // an event the team can be told about, rather than a red dot nobody sees.
+    const h = await mailbox.markSyncFailure(client, conn.email_connection_id, err.message);
+    if (h && h.consecutive_failures === 3) {
+      await emitEvent(client, {
+        eventTypeKey: "mailbox.health.failed", moduleKey: events.MODULE,
+        entityRef: events.ref(conn.email_connection_id), actorUserId: null,
+        payload: { address: conn.email_address, error: err.message, failures: h.consecutive_failures },
+      }).catch(() => { /* @silent:storage the sync error is already recorded on the row */ });
+    }
     return { connection: conn.email_connection_id, error: err.message };
   }
 }
@@ -304,18 +380,76 @@ function explainSendError(err, conn) {
   return new AppError("MAIL_SEND_FAILED", `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`, 502);
 }
 
+/**
+ * The three checks every outbound message passes, in this order.
+ *
+ * ACCESS first, because refusing early is the cheapest refusal and because
+ * "you may not send as billing@" should not depend on the rate limiter's mood.
+ * THROTTLE second: a mailbox over its host's hourly cap gets its message HELD
+ * for the next window rather than refused — crossing a cPanel cap suspends the
+ * mailbox, and failing the send instead just teaches people to use Outlook.
+ * STAMP last, so the headers describe the send that is actually happening.
+ */
+async function prepareSend(client, conn, { actor = {}, sendPoint = null, slug = null, to = null, subject = null }) {
+  if (actor.user_id) await access.assertCanSend(client, conn.email_connection_id, actor.user_id);
+
+  const allowance = await mailbox.checkSendAllowance(client, conn.email_connection_id, 1);
+  if (!allowance.allowed) {
+    await emitEvent(client, {
+      eventTypeKey: "mail.send.throttled", moduleKey: events.MODULE,
+      entityRef: events.ref(conn.email_connection_id), actorUserId: actor.user_id || null,
+      payload: { reason: allowance.reason, limit: allowance.limit, retry_at: allowance.retryAt },
+    }).catch(() => { /* @silent:storage the throttle verdict is what matters, not its event */ });
+    throw new AppError(
+      "SEND_RATE_LIMIT",
+      allowance.reason === "DAILY_LIMIT"
+        ? `${conn.email_address} has reached its daily send limit of ${allowance.limit}. Sending resumes after midnight UTC. Raise the limit in Comms → Setup → Defaults and limits if the mail host allows more.`
+        : `${conn.email_address} has reached its hourly send limit of ${allowance.limit}. Sending resumes at ${new Date(allowance.retryAt).toISOString().slice(11, 16)} UTC. This limit exists because most shared hosts suspend a mailbox that exceeds theirs.`,
+      429,
+      { retry_at: allowance.retryAt, limit: allowance.limit, reason: allowance.reason },
+    );
+  }
+
+  const messageId = origin.generateMessageId(conn.email_address);
+  const headers = origin.buildOriginHeaders({
+    tenantSlug: slug, userId: actor.user_id || null,
+    sendPoint: sendPoint || "user.compose", connectionId: conn.email_connection_id,
+  });
+  return { messageId, headers, actor, sendPoint, to, subject };
+}
+
+/** Book-keeping every successful send does, whatever path produced it. */
+async function afterSend(client, conn, prep) {
+  await mailbox.recordSent(client, conn.email_connection_id, 1);
+  if (conn.kind === "SHARED" || conn.kind === "DELEGATED") {
+    await access.recordSentAs(client, {
+      connectionId: conn.email_connection_id, actor: prep.actor,
+      to: prep.to, subject: prep.subject, sendPoint: prep.sendPoint,
+    });
+  }
+}
+
 async function send(client, input = {}) {
-  const { connectionId, to, cc, subject, html, text, actor = {} } = input;
+  const { connectionId, to, cc, subject, html, text, actor = {}, sendPoint = null, slug = null } = input;
   const conn = await repo.getConnection(client, connectionId);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
+  const prep = await prepareSend(client, conn, { actor, sendPoint, slug, to, subject });
   const adapter = await resolveAdapter(client, conn);
   let res;
   try {
-    res = await adapter.sendEmail({ to, cc, subject, bodyHtml: html, bodyText: text });
+    res = await adapter.sendEmail({
+      to, cc, subject, bodyHtml: html, bodyText: text,
+      messageId: prep.messageId, headers: prep.headers,
+    });
   } catch (err) {
     throw explainSendError(err, conn);
   }
-  await recordOutbound(client, conn, { ...res, to, subject, html, text });
+  await afterSend(client, conn, prep);
+  await recordOutbound(client, conn, {
+    ...res, to, subject, html, text,
+    messageIdHeader: prep.messageId, sentVia: origin.SENT_VIA.PRAXIS,
+    originUserId: actor.user_id || null, originSendPoint: prep.sendPoint || "user.compose",
+  });
   await emitEvent(client, {
     eventTypeKey: events.SENT, moduleKey: events.MODULE,
     entityRef: events.ref(conn.email_connection_id), actorUserId: actor.user_id || null,
@@ -326,23 +460,30 @@ async function send(client, input = {}) {
 
 /** Reply to a stored inbound message, keeping it in-thread. */
 async function reply(client, input = {}) {
-  const { connectionId, inboundId, html, text, actor = {} } = input;
+  const { connectionId, inboundId, html, text, actor = {}, sendPoint = null, slug = null } = input;
   const conn = await repo.getConnection(client, connectionId);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
   const original = await repo.getInbound(client, inboundId);
   if (!original) throw new AppError("NOT_FOUND", "message not found", 404);
-  const adapter = await resolveAdapter(client, conn);
   const subject = /^re:/i.test(original.subject || "") ? original.subject : `Re: ${original.subject || ""}`.trim();
+  const prep = await prepareSend(client, conn, { actor, sendPoint, slug, to: original.from_address, subject });
+  const adapter = await resolveAdapter(client, conn);
   let res;
   try {
     res = await adapter.createReply(original.external_message_id, {
       to: original.from_address, subject, bodyHtml: html, bodyText: text,
       references: original.thread_key ? [original.thread_key] : [],
+      messageId: prep.messageId, headers: prep.headers,
     });
   } catch (err) {
     throw explainSendError(err, conn);
   }
-  await recordOutbound(client, conn, { ...res, to: original.from_address, subject, html, text });
+  await afterSend(client, conn, prep);
+  await recordOutbound(client, conn, {
+    ...res, to: original.from_address, subject, html, text,
+    messageIdHeader: prep.messageId, sentVia: origin.SENT_VIA.PRAXIS,
+    originUserId: actor.user_id || null, originSendPoint: prep.sendPoint || "user.compose",
+  });
   await emitEvent(client, {
     eventTypeKey: events.SENT, moduleKey: events.MODULE,
     entityRef: events.msgRef(inboundId), actorUserId: actor.user_id || null,
@@ -365,6 +506,13 @@ async function recordOutbound(client, conn, m) {
     body_html: m.html,
     body_text: m.text,
     is_read: true,
+    // PR-0 origin. Recorded on the way out as well as read on the way in: the
+    // Sent-folder copy will carry the same stamp, and the dedup index means
+    // whichever arrives first wins — so both paths must agree on the answer.
+    message_id_header: m.messageIdHeader || null,
+    sent_via: m.sentVia || null,
+    origin_user_id: m.originUserId || null,
+    origin_send_point: m.originSendPoint || null,
     received_at: new Date(),
   });
 }
@@ -547,7 +695,7 @@ async function markRead(client, id) {
     } catch (err) {
       // server mark is best-effort; still record the local read state
       try {
-        const { logger } = require("../../config/logger");
+        const { logger } = require("../../../config/logger");
         logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
       } catch { /* noop */ }
     }

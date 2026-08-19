@@ -11,7 +11,7 @@
 
 const axios = require("axios");
 const qs = require("querystring");
-const { config } = require("../../../config/env");
+const { config } = require("../../../../config/env");
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";

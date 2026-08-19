@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (406)
+## All codes (414)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -42,6 +42,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_CONVERTED` | 422 | 1× | — |
 | `ALREADY_DECIDED` | 422 | 2× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
+| `ALREADY_EXISTS` | 409 | 1× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
 | `ALREADY_MERGED` | 409 | 2× | — |
@@ -110,6 +111,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BREACHED_PASSWORD` | 422 | 1× | — |
 | `CAMPAIGN_ENDED` | 422 | 1× | — |
 | `CAPABILITY_REQUIRED` | 403 | 1× | — |
+| `CATALOGUE_TAKEN` | 409 | 1× | — |
 | `CATEGORY_INACTIVE` | 422 | 1× | — |
 | `CLASS_MISMATCH` | 422 | 1× | — |
 | `CLIENT_REQUIRED` | 422 | 12× | — |
@@ -215,6 +217,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOCKED` | 422 | 31× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
+| `MAILBOX_FORBIDDEN` | 403 | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MANDATORY_ITEMS_OUTSTANDING` | 422 | 1× | — |
@@ -239,11 +242,12 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 450× | — |
+| `NOT_FOUND` | 404 | 459× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_PENDING` | 422 | 1× | — |
+| `NOT_PERSONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_QUERIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -316,6 +320,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 6× | — |
+| `PERSONAL_MAILBOX` | — | 1× | — |
+| `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
 | `PLACE_NAME_TAKEN` | 409 | 1× | — |
 | `PLACE_NOT_STORED` | 409 | 1× | — |
@@ -333,6 +339,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROOF_REQUIRED` | 422 | 1× | — |
 | `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
+| `PROVIDER_NOT_ENABLED` | — | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 6× | — |
@@ -370,6 +377,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_VALIDATE` | 422 | 1× | — |
 | `SENDER_NOT_AUTHORIZED` | — | 1× | — |
+| `SEND_RATE_LIMIT` | — | 1× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
@@ -424,7 +432,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 176× | — |
+| `VALIDATION_ERROR` | 422 | 181× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

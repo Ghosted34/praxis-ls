@@ -8,7 +8,7 @@
 
 const axios = require("axios");
 const qs = require("querystring");
-const { config } = require("../../../config/env");
+const { config } = require("../../../../config/env");
 
 const authBase = () => `https://login.microsoftonline.com/${config.MS_GRAPH_TENANT || "common"}/oauth2/v2.0`;
 

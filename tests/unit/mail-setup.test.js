@@ -34,7 +34,7 @@ jest.mock("../../src/services/email.service", () => ({
 }));
 
 const email = require("../../src/services/email.service");
-const { checkDomain } = require("../../src/modules/mail/dns-check");
+const { checkDomain } = require("../../src/modules/mail/mail/dns-check");
 const cfg = require("../../src/modules/smartcomm/smartcomm.config.service");
 
 const noRecord = () => {

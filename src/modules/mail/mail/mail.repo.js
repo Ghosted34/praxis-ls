@@ -2,7 +2,7 @@
  *  (read-only view), PLUS the provider-agnostic engine's connections and the
  *  enriched inbound/thread store (0480/0481). All SQL lives here. */
 "use strict";
-const { insertOne, updateOne, getById, page } = require("../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
 
 async function listIdentities(client) {
   const { rows } = await client.query(

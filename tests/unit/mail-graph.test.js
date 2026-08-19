@@ -9,7 +9,7 @@ jest.mock("axios");
 const axios = require("axios");
 const {
   MicrosoftGraphProvider,
-} = require("../../src/modules/mail/providers/microsoftGraph.provider");
+} = require("../../src/modules/mail/mail/providers/microsoftGraph.provider");
 
 const provider = () =>
   new MicrosoftGraphProvider({ getAccessToken: async () => "access-tok" });

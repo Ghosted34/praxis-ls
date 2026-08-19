@@ -121,7 +121,10 @@ class ImapSmtpProvider {
   async sendEmail(msg) {
     const c = this.conn;
     const messageId = msg.messageId || `<${crypto.randomUUID()}@${(c.email_address || "praxisls").split("@").pop()}>`;
-    const headers = {};
+    // PR-0: caller-supplied headers ride along — this is how the origin stamp
+    // (X-Praxis-*) reaches the wire. Threading headers are set after, so a caller
+    // cannot accidentally break threading by passing its own In-Reply-To.
+    const headers = { ...(msg.headers || {}) };
     if (msg.inReplyTo) headers["In-Reply-To"] = msg.inReplyTo;
     if (msg.references && msg.references.length) headers.References = msg.references.join(" ");
 
@@ -259,6 +262,11 @@ class ImapSmtpProvider {
       references,
       receivedAt: parsed.date || (item && item.internalDate) || new Date(),
       isRead: item && item.flags ? item.flags.has("\\Seen") : false,
+      // PR-0: mailparser hands back a Map of every header. Passing it through is
+      // what lets the sync tell a message we sent from one the user sent on their
+      // phone — the X-Praxis-Origin stamp is only readable here.
+      headers: parsed.headers || null,
+      messageIdHeader: parsed.messageId || null,
       provider: "imap_smtp",
     };
   }

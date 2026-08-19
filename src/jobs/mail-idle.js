@@ -20,7 +20,7 @@
 const { ImapFlow } = require("imapflow");
 const registry = require("../services/tenant/registry.service");
 const settings = require("../modules/security/setting/setting.service");
-const mailRepo = require("../modules/mail/mail.repo");
+const mailRepo = require("../modules/mail/mail/mail.repo");
 const { enqueue } = require("./queue-producer");
 const { initRedis, closeRedis } = require("../config/redis");
 const { logger } = require("../config/logger");

@@ -89,7 +89,7 @@ const testEmail = (client, opts = {}) => email.verifyTransport(client, opts);
  * (relay presets, include: for the SMTP domain). Public-DNS read only.
  */
 async function dnsCheck(client, { domain }) {
-  const { checkDomain } = require("../mail/dns-check");
+  const { checkDomain } = require("../mail/mail/dns-check");
   let smtpHost = null;
   try {
     smtpHost = (await email.resolveMail(client, { purpose: "NOTIFICATIONS" })).smtp_host || null;
@@ -105,7 +105,7 @@ async function dnsCheck(client, { domain }) {
  * guide; never throws.
  */
 async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
-  const { mapSmtpError, isSmtpError } = require("../mail/smtp-error.map");
+  const { mapSmtpError, isSmtpError } = require("../mail/mail/smtp-error.map");
   try {
     const info = await email.send(client, {
       to,

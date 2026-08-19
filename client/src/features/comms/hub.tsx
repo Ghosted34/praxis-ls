@@ -3,7 +3,11 @@
  *   /comms        → unified inbox / team chat (individual + group channels)
  *   /comms/mail   → the mailbox (email_connection): connect + work any mailbox
  *                   (Microsoft 365 / Google / IMAP-SMTP), inbound + outbound
- *   /comms/setup  → system-email senders, shared SMTP + channels
+ *   /comms/setup  → everything about how email is configured, in sub-tabs:
+ *                   My mailbox (everyone) · Mailboxes, Send points and
+ *                   Senders & channels (administrators). PR-0 moved tenant mail
+ *                   configuration here rather than into Settings: it used to be
+ *                   spread across three surfaces and nobody could find it.
  *
  * The hub draws its own Chat / Mailbox / Setup tab bar: `areas.ts` defines no
  * sections for Comms (so the ribbon's second row carries nothing here), and the
@@ -14,7 +18,7 @@ import { useParams, NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { TeamChatPage } from "./team-chat";
 import { MailPage } from "./mail";
-import { SetupPage } from "./setup";
+import { CommsSetupPage } from "./setup/index";
 
 const TABS = [
   { to: "/comms", label: "Chat", end: true },
@@ -26,7 +30,7 @@ export function CommsHub() {
   const { section } = useParams();
   const page =
     section === "setup" ? (
-      <SetupPage />
+      <CommsSetupPage />
     ) : section === "mail" ? (
       <MailPage />
     ) : (

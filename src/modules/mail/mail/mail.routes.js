@@ -23,8 +23,8 @@
  *  redirects the company's mail. */
 "use strict";
 const express = require("express");
-const { authMiddleware } = require("../../middleware/auth");
-const { requirePermission } = require("../../middleware/rbac");
+const { authMiddleware } = require("../../../middleware/auth");
+const { requirePermission } = require("../../../middleware/rbac");
 const c = require("./mail.controller");
 const v = require("./mail.validator");
 
@@ -75,6 +75,59 @@ router.post("/connections/:id/test", requirePermission(M, "edit"), c.testConnect
 router.post("/connections/:id/sync", requirePermission(M, "edit"), c.syncNow);
 router.post("/connections/:id/default", requirePermission(M, "edit"), c.setDefaultMailbox);
 router.get("/recipients", requirePermission(M, "view"), c.recipients);
+
+/* ── PR-0 foundation ──────────────────────────────────────────────────────
+ *
+ * Action mapping, stated so the permission matrix tells the truth (the same
+ * discipline the header above sets out for the engine routes):
+ *
+ *   view    listing mailboxes, the catalogue, send points, members, the access
+ *           log, and the cPanel preset. All reads.
+ *   create  standing up a NEW shared mailbox — it holds credentials and becomes
+ *           an address the company sends from.
+ *   edit    everything else that changes configuration: granting and revoking
+ *           access, binding a send point, archiving, handover, limits. These are
+ *           writes to shared state even when they touch one row.
+ *
+ * `/mailboxes/mine` is the one route deliberately gated only on `view`: it
+ * returns the caller's OWN mailbox and the ones they have been granted, so it
+ * can never disclose anything their grants do not already allow.
+ *
+ * Access to an individual SHARED mailbox is a second check on top of RBAC —
+ * MOD-72 decides whether you may touch mail at all, access.js decides which
+ * mailboxes. Both apply; the route gate runs first. */
+
+// What the caller may do — drives which Setup sub-tabs the client draws.
+router.get("/me", requirePermission(M, "view"), c.me);
+
+// Mailbox inventory
+router.get("/mailboxes/mine", requirePermission(M, "view"), c.myMailboxes);
+router.get("/mailboxes", requirePermission(M, "view"), c.allMailboxes);
+router.post("/mailboxes/shared", requirePermission(M, "create"), v.sharedMailbox, c.createShared);
+router.post("/mailboxes/:id/archive", requirePermission(M, "edit"), c.archiveMailbox);
+router.post("/mailboxes/:id/handover", requirePermission(M, "edit"), v.handover, c.handoverMailbox);
+router.patch("/mailboxes/:id/limits", requirePermission(M, "edit"), v.mailboxLimits, c.setMailboxLimits);
+router.get("/mailboxes/:id/allowance", requirePermission(M, "view"), c.sendAllowance);
+
+// Shared-mailbox catalogue
+router.get("/catalogue", requirePermission(M, "view"), c.catalogue);
+router.post("/catalogue", requirePermission(M, "create"), v.catalogueEntry, c.addCatalogueEntry);
+router.patch("/catalogue/:key", requirePermission(M, "edit"), v.catalogueToggle, c.toggleCatalogueEntry);
+
+// Access grants
+router.get("/mailboxes/:id/members", requirePermission(M, "view"), c.members);
+router.post("/mailboxes/:id/members", requirePermission(M, "edit"), v.memberGrant, c.grantMember);
+router.delete("/mailboxes/:id/members/:userId", requirePermission(M, "edit"), c.revokeMember);
+router.get("/access-log", requirePermission(M, "view"), c.accessAudit);
+
+// Send-point routing
+router.get("/send-points", requirePermission(M, "view"), c.sendPoints);
+router.put("/send-points/:key", requirePermission(M, "edit"), v.sendPointBinding, c.bindSendPoint);
+router.delete("/send-points/:key", requirePermission(M, "edit"), c.unbindSendPoint);
+
+// cPanel preset — a read that touches nothing; the first tenant runs cPanel and
+// this turns a five-field form into a two-field one.
+router.get("/cpanel-preset", requirePermission(M, "view"), c.cpanel);
 
 // Engine: messages
 router.get("/thread", requirePermission(M, "view"), c.thread);

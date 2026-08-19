@@ -1477,6 +1477,15 @@
       ]
     },
     {
+      "id": "comms_setup",
+      "title": "Email Setup",
+      "route": "/comms/setup",
+      "area": "comms",
+      "module_key": "MOD-72",
+      "purpose": "How this company's email is configured: personal and shared mailboxes, who may work each one, and which sender every part of the product mails from.",
+      "actions": []
+    },
+    {
       "id": "support",
       "title": "Support & feedback",
       "route": "/support",

@@ -41,7 +41,7 @@ jest.mock("imapflow", () => {
 const { ImapFlow } = require("imapflow");
 const {
   ImapSmtpProvider,
-} = require("../../src/modules/mail/providers/imapSmtp.provider");
+} = require("../../src/modules/mail/mail/providers/imapSmtp.provider");
 
 const msg = (uid, overrides = {}) => ({
   uid,

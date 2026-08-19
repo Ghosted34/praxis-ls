@@ -54,7 +54,7 @@ async function smtp(cfg) {
   } catch (err) {
     // Classify the SMTP verdict (550 sender verify, 535 auth, …) so the
     // platform console can render the same fix guide the tenant console does.
-    const { mapSmtpError, isSmtpError } = require("../../modules/mail/smtp-error.map");
+    const { mapSmtpError, isSmtpError } = require("../../modules/mail/mail/smtp-error.map");
     if (isSmtpError(err)) {
       const mapped = mapSmtpError(err);
       const wrapped = new Error(mapped.message);

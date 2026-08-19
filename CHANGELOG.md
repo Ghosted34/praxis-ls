@@ -24,6 +24,23 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Attendance now follows the entity's working calendar, and says what it
+  actually knows about a punch's location.** Expected working days resolve
+  employee override → the entity's working calendar (its own, or the inherited
+  tenant default) → the tenant weekend, so a Mon–Sat yard is no longer marked
+  absent every Saturday and charged for a day nobody asked it to work; the
+  reconciler and the daily-rate arithmetic use that one resolver, so the day
+  and the settlement cannot disagree. The attendance log and provisional
+  absence now select punches by a **local-zone window** instead of the UTC
+  date, so a 00:30 Douala punch stops landing on the previous day. Punches
+  also record **what the device presented** (`location_source`, migration
+  10740) separately from whether a worksite existed to judge it: "we never got
+  a fix" and "GPS arrived, but this tenant has drawn no geofence" were both
+  painted "No fix", which taught people to ignore the one signal that matters.
+  HR Today now shows No GPS / Off-site / On-site / No worksite as four
+  different things. The clock still punches when GPS is refused — the tenant
+  policy decides whether that is acceptable, not the browser — and then offers
+  a recovery panel with the OS steps, a Retry and an install prompt.
 - **Treasury accounts can be corrected in place.** Master data → Treasury →
   any account now has an **Edit** button next to Verify/Deactivate, opening the
   same category-driven form the account was created with, pre-filled. A typo'd

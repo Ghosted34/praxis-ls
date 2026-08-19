@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (415)
+## All codes (417)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -48,9 +48,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_MERGED` | 409 | 2× | — |
 | `ALREADY_RESTORED` | 409 | 1× | — |
 | `ALREADY_REVERSED` | 409 | 1× | — |
-| `ALREADY_SENT` | 409 | 1× | — |
+| `ALREADY_SENT` | 409 | 2× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
+| `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
 | `AUTH_REQUIRED` | 401 | 14× | — |
 | `AWAITING_DECISION` | — | 1× | — |
@@ -66,7 +67,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_CUSTOM_FIELD` | 422 | 5× | — |
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
-| `BAD_FILE` | 400, 422 | 10× | — |
+| `BAD_FILE` | 400, 422 | 11× | — |
 | `BAD_FILE_TYPE` | 422 | 6× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
@@ -151,7 +152,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 3× | — |
-| `EMPTY_FILE` | 422 | 1× | — |
+| `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `EMPTY_RECON` | 422 | 1× | — |
@@ -216,6 +217,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 31× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
@@ -241,8 +243,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_DONE` | 422 | 1× | — |
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
-| `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 464× | — |
+| `NOT_ENABLED` | 400 | 3× | — |
+| `NOT_FOUND` | 404, 422 | 474× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -319,7 +321,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 6× | — |
+| `PERMISSION_DENIED` | 403 | 7× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
@@ -343,6 +345,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 6× | — |
+| `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECON_OPEN` | 409 | 1× | — |
@@ -376,14 +379,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_VALIDATE` | 422 | 1× | — |
-| `SENDER_NOT_AUTHORIZED` | — | 1× | — |
-| `SEND_RATE_LIMIT` | — | 1× | — |
+| `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
+| `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
-| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
-| `SMTP_SEND_FAILED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 2× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
@@ -433,7 +435,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 186× | — |
+| `VALIDATION_ERROR` | 422 | 192× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

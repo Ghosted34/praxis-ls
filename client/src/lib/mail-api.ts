@@ -710,3 +710,163 @@ export const deleteLabel = (id: string) =>
   tenant<{ email_label_id: string } | null>(`/mail/labels/${id}`, {
     method: "DELETE",
   });
+
+/* ── PR-1B: composing ──────────────────────────────────────────────────────
+ *
+ * Sending is a QUEUE, and the API says so. `sendMessage` returns a queue id and
+ * a release time rather than a sent message, because at that moment nothing has
+ * been sent — that gap is what makes undo possible, and a client that pretends
+ * otherwise will show a confirmation for a message it can still recall.
+ */
+
+/** TipTap's document shape. Structural only — the server's serializer is the authority. */
+export type EditorDoc = {
+  type?: string;
+  content?: unknown[];
+  [k: string]: unknown;
+};
+
+export type Draft = {
+  email_draft_id: string;
+  user_id: string;
+  email_connection_id?: string | null;
+  email_thread_id?: string | null;
+  reply_to_message_id?: string | null;
+  kind: "NEW" | "REPLY" | "REPLY_ALL" | "FORWARD";
+  to_address: string[];
+  cc_address: string[];
+  bcc_address: string[];
+  subject?: string | null;
+  body_json?: EditorDoc | null;
+  /** What WOULD be sent, produced by the server. Never fed back into the editor. */
+  body_html?: string | null;
+  body_text?: string | null;
+  send_point_key?: string | null;
+  updated_at?: string | null;
+  /** Oversized message, image with no description — worth showing while there is still time. */
+  warnings?: string[];
+};
+
+export type MailAttachment = {
+  email_attachment_id: string;
+  email_draft_id?: string | null;
+  email_message_id?: string | null;
+  vault_id?: string | null;
+  filename?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  direction: "IN" | "OUT";
+  disposition: "attachment" | "inline";
+  content_id?: string | null;
+};
+
+export type AttachmentTray = {
+  attachments: MailAttachment[];
+  total_bytes: number;
+  limit_bytes: number;
+  /** Past 10 MB the composer offers a secure link instead — PR-5 wires it. */
+  offer_secure_link: boolean;
+};
+
+export type QueuedSend = {
+  email_send_queue_id: string;
+  release_at: string;
+  undo_seconds: number;
+  status: "HELD" | "QUEUED" | "SENDING" | "SENT" | "FAILED" | "CANCELLED";
+  warnings?: string[];
+};
+
+export type OutboxEntry = {
+  email_send_queue_id: string;
+  status: QueuedSend["status"];
+  release_at: string;
+  attempts: number;
+  last_error?: string | null;
+  error_code?: string | null;
+  payload: { to?: string[]; subject?: string | null };
+  created_at: string;
+};
+
+export type CommandDescriptor = {
+  key: string;
+  label: string;
+  description: string;
+  params: string[];
+  module_key: string | null;
+  /** /document names a file to attach; everything else inserts data. */
+  attaches: boolean;
+  available: boolean;
+  /** Why not, in the user's words. A greyed command with no reason is worse than none. */
+  unavailable_reason: string | null;
+};
+
+export type CommandResult = {
+  key: string;
+  node: EditorDoc;
+  attach: { vault_id: string | null } | null;
+};
+
+/* Drafts */
+export const listDrafts = (threadId?: string) =>
+  tenant<Draft[]>(`/mail/drafts${qs({ thread_id: threadId })}`);
+export const getDraft = (id: string) => tenant<Draft>(`/mail/drafts/${id}`);
+export const saveDraft = (body: Partial<Draft> & { email_draft_id?: string }) =>
+  tenant<Draft>("/mail/drafts", { method: "POST", body: JSON.stringify(body) });
+export const discardDraft = (id: string) =>
+  tenant<{ discarded: boolean }>(`/mail/drafts/${id}`, { method: "DELETE" });
+
+/* Attachments */
+export const draftAttachments = (draftId: string) =>
+  tenant<AttachmentTray>(`/mail/drafts/${draftId}/attachments`);
+export const uploadAttachment = (body: {
+  email_draft_id: string;
+  filename: string;
+  data_url: string;
+  disposition?: "attachment" | "inline";
+  content_id?: string;
+}) => tenant<MailAttachment & { total_bytes: number; offer_secure_link: boolean }>(
+  "/mail/attachments/upload", { method: "POST", body: JSON.stringify(body) },
+);
+export const attachFromVault = (body: {
+  email_draft_id: string;
+  vault_id: string;
+  filename?: string;
+  disposition?: "attachment" | "inline";
+}) => tenant<MailAttachment>("/mail/attachments/from-vault", { method: "POST", body: JSON.stringify(body) });
+export const removeAttachment = (draftId: string, attachmentId: string) =>
+  tenant<{ removed: boolean }>(`/mail/drafts/${draftId}/attachments/${attachmentId}`, { method: "DELETE" });
+
+/* Sending */
+export const sendMessage = (body: {
+  connectionId: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string | null;
+  body_json?: EditorDoc | null;
+  email_draft_id?: string | null;
+  email_thread_id?: string | null;
+  reply_to_message_id?: string | null;
+  in_reply_to?: string | null;
+  references?: string[];
+  quoted_html?: string | null;
+  quoted_text?: string | null;
+  undo_seconds?: number;
+  idempotency_key?: string;
+}) => tenant<QueuedSend>("/mail/send", { method: "POST", body: JSON.stringify(body) });
+
+export const cancelSend = (queueId: string) =>
+  tenant<{ status: "CANCELLED" }>(`/mail/send/${queueId}/cancel`, { method: "POST" });
+export const listOutbox = () => tenant<OutboxEntry[]>("/mail/outbox");
+
+/* Slash commands */
+export const listCommands = (lang?: string) =>
+  tenant<CommandDescriptor[]>(`/mail/commands${qs({ lang })}`);
+export const runCommand = (key: string, body: {
+  params?: Record<string, string | number>;
+  lang?: string;
+  entity_ref?: string | null;
+  email_thread_id?: string | null;
+}) => tenant<CommandResult>(`/mail/commands/${encodeURIComponent(key)}`, {
+  method: "POST", body: JSON.stringify(body),
+});

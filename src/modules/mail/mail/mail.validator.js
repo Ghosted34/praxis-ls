@@ -82,14 +82,10 @@ const schemas = {
     auth_user: z.string().optional(),
     password: z.string().min(1).max(4000).optional(),
   }),
-  send: z.object({
-    connectionId: z.string().uuid(),
-    to: z.union([z.string().email(), z.array(z.string().email()).min(1)]),
-    cc: z.array(z.string().email()).optional(),
-    subject: z.string().optional(),
-    html: z.string().optional(),
-    text: z.string().optional(),
-  }),
+  // The old inline `send` schema is gone: POST /mail/send now queues rather than
+  // talking to SMTP, and its schema lives with the other PR-1B ones below. Two
+  // `send` keys in this object would have silently kept the last one, which is
+  // the kind of thing that passes review and then rejects a real request.
   reply: z.object({
     connectionId: z.string().uuid(),
     html: z.string().optional(),
@@ -197,6 +193,99 @@ const schemas = {
     on: z.coerce.boolean().default(true),
   }),
 
+  /* ── PR-1B: composing ─────────────────────────────────────────────────── */
+
+  /**
+   * A TipTap document, checked only for its SHAPE.
+   *
+   * Validating the node tree strictly here would be a second, competing
+   * definition of what the editor may produce, and it would start rejecting real
+   * documents the first time TipTap adds a node type. The serializer is the
+   * authority: it renders what it recognises, escapes everything, and passes
+   * unknown nodes' children through. So what this enforces is that the thing is
+   * a document at all, plus a size ceiling — a 20 MB JSON body is a
+   * request-size problem before it is a mail problem.
+   */
+  bodyJson: z.object({
+    type: z.literal("doc").optional(),
+    content: z.array(z.object({}).passthrough()).max(5000),
+  }).passthrough(),
+
+  draft: z.object({
+    email_draft_id: z.string().uuid().optional(),
+    email_connection_id: z.string().uuid().nullable().optional(),
+    email_thread_id: z.string().uuid().nullable().optional(),
+    reply_to_message_id: z.string().uuid().nullable().optional(),
+    kind: z.enum(["NEW", "REPLY", "REPLY_ALL", "FORWARD"]).optional(),
+    to_address: z.array(z.string().trim().max(320)).max(100).optional(),
+    cc_address: z.array(z.string().trim().max(320)).max(100).optional(),
+    bcc_address: z.array(z.string().trim().max(320)).max(100).optional(),
+    subject: z.string().max(998).nullable().optional(),   // RFC 5322 line limit
+    body_json: z.object({}).passthrough().nullable().optional(),
+    send_point_key: z.string().trim().max(64).nullable().optional(),
+  }).strict(),
+
+  /**
+   * Recipients are validated as ADDRESSES here, unlike on a draft.
+   *
+   * A draft is a work in progress and half-typed addresses in it are normal; a
+   * send is a commitment. Catching `client@acme` at the API boundary gives the
+   * user an error next to the field, rather than a bounce twenty minutes later
+   * from a mail server, phrased by the mail server.
+   */
+  send: z.object({
+    connectionId: z.string().uuid(),
+    email_draft_id: z.string().uuid().nullable().optional(),
+    email_thread_id: z.string().uuid().nullable().optional(),
+    reply_to_message_id: z.string().uuid().nullable().optional(),
+    to: z.union([z.string().email(), z.array(z.string().email()).min(1).max(100)]),
+    cc: z.array(z.string().email()).max(100).optional(),
+    bcc: z.array(z.string().email()).max(100).optional(),
+    subject: z.string().max(998).nullable().optional(),
+    body_json: z.object({}).passthrough().nullable().optional(),
+    html: z.string().max(2_000_000).nullable().optional(),
+    text: z.string().max(2_000_000).nullable().optional(),
+    quoted_html: z.string().max(2_000_000).nullable().optional(),
+    quoted_text: z.string().max(2_000_000).nullable().optional(),
+    in_reply_to: z.string().max(998).nullable().optional(),
+    references: z.array(z.string().max(998)).max(200).optional(),
+    sendPoint: z.string().trim().max(64).nullable().optional(),
+    // Only the four offered values. A typo that produced a 200-second hold would
+    // look exactly like sending being broken.
+    undo_seconds: z.coerce.number().refine((n) => [0, 10, 20, 30].includes(n), {
+      message: "undo_seconds must be 0, 10, 20 or 30",
+    }).optional(),
+    idempotency_key: z.string().trim().max(200).nullable().optional(),
+  }).strict(),
+
+  attachmentUpload: z.object({
+    email_draft_id: z.string().uuid(),
+    filename: z.string().trim().min(1).max(255),
+    // A base64 data URL. The 34 MB ceiling is base64's ~33% inflation over the
+    // 25 MB limit plus headroom; the real limit is enforced on decoded bytes.
+    data_url: z.string().min(8).max(34_000_000),
+    disposition: z.enum(["attachment", "inline"]).optional(),
+    content_id: z.string().trim().max(128).nullable().optional(),
+  }).strict(),
+
+  runCommand: z.object({
+    // The parameters a command declares. Loose on purpose — each command reads
+    // the one or two keys it named in its manifest, and a strict schema here
+    // would be a second definition of every command's signature, kept in a
+    // different file from the command.
+    params: z.record(z.union([z.string().max(200), z.number()])).optional(),
+    lang: z.enum(["en", "fr"]).optional(),
+    entity_ref: z.string().trim().max(128).regex(/^[a-z_]+:[A-Za-z0-9-]+$/).nullable().optional(),
+    email_thread_id: z.string().uuid().nullable().optional(),
+  }).strict(),
+
+  attachmentFromVault: z.object({
+    email_draft_id: z.string().uuid(),
+    vault_id: z.string().uuid(),
+    filename: z.string().trim().max(255).nullable().optional(),
+    disposition: z.enum(["attachment", "inline"]).optional(),
+  }).strict(),
+
   // Exactly one target. Enforced here as well as in the service so the API says
   // no before a half-formed binding reaches the database.
   sendPointBinding: z.object({
@@ -217,7 +306,7 @@ const mw = (k) => (req, _res, next) => {
 };
 
 module.exports = {
-  connect: mw("connect"), connectPatch: mw("connectPatch"), send: mw("send"), reply: mw("reply"),
+  connect: mw("connect"), connectPatch: mw("connectPatch"), reply: mw("reply"),
   sender: mw("sender"), senderPatch: mw("senderPatch"), threadLink: mw("threadLink"),
   msWebhook: mw("msWebhook"), ggWebhook: mw("ggWebhook"),
   sharedMailbox: mw("sharedMailbox"), catalogueEntry: mw("catalogueEntry"),
@@ -226,5 +315,8 @@ module.exports = {
   tenantMailSettings: mw("tenantMailSettings"), sendPointBinding: mw("sendPointBinding"),
   threadBulk: mw("threadBulk"), threadMove: mw("threadMove"), threadFlag: mw("threadFlag"),
   threadStream: mw("threadStream"), label: mw("label"), labelApply: mw("labelApply"),
+  draft: mw("draft"), send: mw("send"),
+  attachmentUpload: mw("attachmentUpload"), attachmentFromVault: mw("attachmentFromVault"),
+  runCommand: mw("runCommand"),
   schemas,
 };

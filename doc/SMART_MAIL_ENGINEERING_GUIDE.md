@@ -620,6 +620,68 @@ provisioned tenant surfaced:
 - **The old flat surfaces are still mounted**: `GET /mail/thread` and the "Message log" tab. PR-1B
   deletes both once nothing calls them.
 
+### 5.0.2 What PR-1B shipped, and what changed from this specification
+
+Migrations `10737`–`10739`. Six things were built differently from §5.2/§5.5/§5.6, each for a reason
+found during the build:
+
+- **`erpBlock` carries NODES, not an `attrs.html` string.** §5.6.4 has a slash command render HTML at
+  insert time and the serializer emit it. That is an HTML injection straight through: a TipTap
+  document arrives in a request body, so anyone who can POST a draft could put anything in that
+  string and have it sent as the company. Putting a sanitizer in front of it would be filtering a
+  hole we dug ourselves. A command now returns a subtree, rendered by the same escaped path as
+  everything the user typed. *General rule for PR-2 to PR-5: nothing you add to a document may be
+  emitted as markup. If your feature needs rich output, emit nodes.*
+- **Outbound sanitisation narrowed to the quoted history.** §5.6.2 sanitises the whole output. After
+  the erpBlock change, everything the serializer builds is escaped by construction and the only
+  fragment that came from outside is the other party's stored `body_html`. Sanitising our own shell
+  on every send is a parse we do not need.
+- **`email_attachment.email_inbound_id` renamed to `email_message_id`.** It stopped meaning what it
+  says when PR-1A re-pointed its FK. Renamed with six call sites rather than sixty.
+- **An attachment belongs to a draft OR a message, enforced by a CHECK.** §5.2's
+  `email_draft.attachment_ids uuid[]` would have been a second, unconstrained record of the same
+  relationship — and an array column cannot express "exactly one owner" or cascade correctly.
+- **The queue re-checks the send throttle at flush**, not only at enqueue. A burst can be individually
+  under the cap and collectively over it, and only the flusher can see that.
+- **A permanent refusal is not retried at all.** §5.5.5 says "retry with backoff up to 3". Trying a
+  rejected sender address three times does not make it work; it delays telling someone something only
+  they can fix and burns three more entries in the mail host's abuse log. Transient failures back off
+  30s / 2min / 8min; a 422/413 or a `SENDER_NOT_AUTHORIZED`-class code goes straight to FAILED.
+
+**The guide's suggested module keys for the slash commands were five-sixths wrong.** §5.6.4 lists
+MOD-46 for invoice, MOD-45 for proforma, MOD-27 for quotation, MOD-40 for costing, MOD-55 for
+purchase order. Checked against `platform.module_catalogue`: MOD-46 is Project Costing, MOD-45 is
+Incident & Claim Management, MOD-40 is Compliance & Periodic Expenses, MOD-55 is OHADA Journal
+Entries. The real keys are **MOD-51** Final Invoice, **MOD-50** Proforma, **MOD-27** Quotation,
+**MOD-46** Costing, **MOD-60** Purchase Orders, **MOD-29** Operations File, MOD-64 vault, MOD-09
+treasury. A key absent from the catalogue has grants for nobody and 403s every non-CEO user, and it
+presents as a permissions problem rather than a typo — so `commands.service.validateManifest()` now
+checks, and a test fails on one. *Verify a module key against the catalogue before using it anywhere.*
+
+**Two silent data-loss bugs the database found.** The unit tests mock the repo, so a smoke that runs
+every query against a real tenant was the only thing that could catch these:
+
+1. A **partial autosave wiped the fields it did not send**. The composer saves the field that changed;
+   an UPDATE writing every column cleared the recipients and the mailbox every time someone edited
+   the subject, invisibly until a message was addressed to nobody. The SET clause is now built from
+   the keys present — `undefined` means "not provided", `null` and `[]` mean "clear it".
+2. `saveDraft` **nulled the body** on every subject-only save, for the same reason one level up.
+
+**Two accessibility findings, both from the gates.** `aria-activedescendant` on the slash menu's
+listbox announces nothing — it is only honoured on the element that has focus, which is the editor;
+it is written onto the editor's DOM node instead. And `aria-expanded` is invalid on `role="textbox"`
+(axe caught it): only `combobox` may carry it, and re-roling a rich-text editor to buy one attribute
+is the wrong trade. `aria-controls` is global and stays.
+
+**TipTap is kept out of the vendor chunk.** `isEditorPackage` in `client/vite.config.ts` excludes
+`@tiptap/*` and `prosemirror-*` so Rollup attaches them to the dynamic import that pulls them — the
+composer is behind `React.lazy`, and ~150 kB gzipped of editor on the login screen for people who
+never compose an email is not a trade worth making. Verified from `dist/`: the editor chunk is
+reached only by an `import()` from the mail chunk and never from the HTML entry.
+
+**Extension slots exist and are the only way PR-2 to PR-5 should add composer UI:**
+`composer.toolbar.right`, `composer.footer.left`, `composer.footer.right`, `composer.presend`.
+
 ### 5.1 Scope
 
 **In.** Task 0 restructure · thread/message model with backfill · six canonical folders + multi-folder

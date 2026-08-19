@@ -44,13 +44,31 @@ async function convertAmount(client, { amount, base, quote, date }) {
  * (e.g. a legacy simulation that quoted a since-deactivated currency). An
  * unknown/unpriced code is simply omitted; callers fall back to identity for
  * anything missing rather than crashing a what-if.
+ *
+ * PROPERTY-INJECTION HARDENING (CodeQL js/remote-property-injection). `extra`
+ * can originate in a request body, and `out[code] = …` is a write to a
+ * caller-influenced property name. Upstream zod (`length(3)`) and the
+ * currency-catalogue check make `__proto__`/`constructor` unreachable today,
+ * but a sink should not depend on every caller's validation staying intact:
+ *   1. the map is built with a NULL PROTOTYPE, so no key can reach
+ *      Object.prototype at all; and
+ *   2. extras must look like an ISO-4217 code (3 chars A–Z/0–9 after
+ *      uppercasing) before they join the lookup set — anything else is
+ *      dropped, which is the same "omit and fall back" contract as an
+ *      unpriced code.
  */
+const ISO_CODE = /^[A-Z0-9]{3}$/;
+
 async function rateMap(client, { date, extra = [] } = {}) {
   const d = date || today();
   const base = (await repo.getBaseCode(client)) || "XAF";
-  const codes = new Set((await repo.listActiveCodes(client)).concat(extra.filter(Boolean)));
+  const wanted = (Array.isArray(extra) ? extra : [])
+    .map((c) => String(c || "").toUpperCase().trim())
+    .filter((c) => ISO_CODE.test(c));
+  const codes = new Set((await repo.listActiveCodes(client)).concat(wanted));
   codes.delete(base);
-  const out = { [base]: 1 };
+  const out = Object.create(null);
+  out[base] = 1;
   for (const code of codes) {
     try {
       const r = await rateFor(client, { base, quote: code, date: d });
@@ -61,7 +79,9 @@ async function rateMap(client, { date, extra = [] } = {}) {
          let the caller fall back to identity for that code. */
     }
   }
-  return out;
+  // Hand back a plain object: the null prototype did its job during the
+  // writes; callers (spread, JSON) expect an ordinary record.
+  return { ...out };
 }
 
 async function setRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, actor = {} }) {

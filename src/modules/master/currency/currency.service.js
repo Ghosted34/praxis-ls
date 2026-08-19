@@ -46,16 +46,15 @@ async function convertAmount(client, { amount, base, quote, date }) {
  * anything missing rather than crashing a what-if.
  *
  * PROPERTY-INJECTION HARDENING (CodeQL js/remote-property-injection). `extra`
- * can originate in a request body, and `out[code] = …` is a write to a
- * caller-influenced property name. Upstream zod (`length(3)`) and the
- * currency-catalogue check make `__proto__`/`constructor` unreachable today,
- * but a sink should not depend on every caller's validation staying intact:
- *   1. the map is built with a NULL PROTOTYPE, so no key can reach
- *      Object.prototype at all; and
- *   2. extras must look like an ISO-4217 code (3 chars A–Z/0–9 after
- *      uppercasing) before they join the lookup set — anything else is
- *      dropped, which is the same "omit and fall back" contract as an
- *      unpriced code.
+ * can originate in a request body, so a computed property write keyed on it
+ * (`out[code] = …`) is the exact sink the query flags — and the query does
+ * not credit regex guards or null prototypes as sanitisers, so the sink has
+ * to GO, not be fenced. Rates therefore accumulate in a Map (Map.set is not
+ * a property write; "__proto__" is just an ordinary Map key) and become a
+ * plain object once, via Object.fromEntries, at the end. The ISO-4217 shape
+ * filter on extras stays as defence in depth: a non-code never even joins
+ * the lookup set, which is the same "omit and fall back" contract as an
+ * unpriced code.
  */
 const ISO_CODE = /^[A-Z0-9]{3}$/;
 
@@ -67,21 +66,18 @@ async function rateMap(client, { date, extra = [] } = {}) {
     .filter((c) => ISO_CODE.test(c));
   const codes = new Set((await repo.listActiveCodes(client)).concat(wanted));
   codes.delete(base);
-  const out = Object.create(null);
-  out[base] = 1;
+  const rates = new Map([[base, 1]]);
   for (const code of codes) {
     try {
       const r = await rateFor(client, { base, quote: code, date: d });
-      out[code] = Number(r.rate);
+      rates.set(code, Number(r.rate));
     } catch {
       /* @silent:storage — a missing FX pair is an expected what-if state
          (a currency the tenant has not priced yet), not an error; omit it and
          let the caller fall back to identity for that code. */
     }
   }
-  // Hand back a plain object: the null prototype did its job during the
-  // writes; callers (spread, JSON) expect an ordinary record.
-  return { ...out };
+  return Object.fromEntries(rates);
 }
 
 async function setRate(client, { base, quote, rate, asOfDate, source = "manual", isOverride = true, actor = {} }) {

@@ -200,8 +200,13 @@ function flattenRates(obj: unknown, path: string[] = []): FlatRate[] {
 }
 
 function unflattenRates(flat: FlatRate[]): Record<string, unknown> {
+  // Property-injection guard (same class CodeQL flagged server-side): path
+  // segments come from the fetched tariff and pass through editable state, so
+  // never let a prototype-reaching key become a write target.
+  const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
   const root: Record<string, unknown> = {};
   for (const f of flat) {
+    if (f.path.some((k) => FORBIDDEN.has(k))) continue;
     let at = root;
     for (let i = 0; i < f.path.length - 1; i += 1) {
       const k = f.path[i];

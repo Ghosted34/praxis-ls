@@ -278,8 +278,11 @@ function CostingForm({
   }>("/users");
   // Sales-applicable VAT codes for the per-line toggle. `degraded` is surfaced
   // — silently offering zero codes is indistinguishable from "no tax set up".
+  // Memoised because `?.codes || []` would mint a fresh [] on every render
+  // while the fetch is pending, re-running the liveTotals memo below each time
+  // (react-hooks/exhaustive-deps).
   const vat = useResource(() => listSalesTaxCodes(), []);
-  const vatCodes = vat.data?.codes || [];
+  const vatCodes = React.useMemo(() => vat.data?.codes || [], [vat.data]);
   const [lines, setLines] = React.useState<CostingLineDraft[]>([
     { ...BLANK_LINE },
   ]);

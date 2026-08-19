@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1303,
+  "route_count": 1309,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1197
+    "gated": 1203
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -298,6 +298,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/mail/drafts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/drafts/:id/attachments/:attachmentId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2109,6 +2115,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/commands": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/connections": {
       "auth": true,
       "rbac": true,
@@ -2128,6 +2140,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/mail/drafts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/drafts/:id/attachments": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6015,7 +6033,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/attachments/from-vault": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/attachments/upload": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/catalogue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/commands/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,

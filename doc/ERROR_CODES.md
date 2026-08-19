@@ -67,7 +67,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_CUSTOM_FIELD` | 422 | 5× | — |
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
-| `BAD_FILE` | 400, 422 | 10× | — |
+| `BAD_FILE` | 400, 422 | 11× | — |
 | `BAD_FILE_TYPE` | 422 | 6× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
@@ -152,7 +152,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 3× | — |
-| `EMPTY_FILE` | 422 | 1× | — |
+| `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `EMPTY_RECON` | 422 | 1× | — |
@@ -243,8 +243,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_DONE` | 422 | 1× | — |
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
-| `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404, 422 | 468× | — |
+| `NOT_ENABLED` | 400 | 3× | — |
+| `NOT_FOUND` | 404, 422 | 474× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -321,7 +321,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 6× | — |
+| `PERMISSION_DENIED` | 403 | 7× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
@@ -435,7 +435,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 191× | — |
+| `VALIDATION_ERROR` | 422 | 192× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

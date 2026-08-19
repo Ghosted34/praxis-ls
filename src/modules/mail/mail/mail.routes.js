@@ -207,6 +207,24 @@ router.post("/send", requirePermission(M, "create"), v.send, c.send);
 // Undo. Succeeds only while the row is still HELD — the database decides the
 // race against the flusher, so this is a 409 rather than a lie once it has gone.
 router.post("/send/:id/cancel", requirePermission(M, "edit"), c.cancelSend);
+
+// Attachments live under their draft, because that is what owns them and what
+// authorises them: the service checks the draft is the caller's before it will
+// list, add or remove anything.
+router.get("/drafts/:id/attachments", requirePermission(M, "view"), c.draftAttachments);
+router.post("/attachments/upload", requirePermission(M, "create"), v.attachmentUpload, c.uploadAttachment);
+router.post("/attachments/from-vault", requirePermission(M, "create"), v.attachmentFromVault, c.attachFromVault);
+router.delete("/drafts/:id/attachments/:attachmentId", requirePermission(M, "edit"), c.removeAttachment);
+
+/* Slash commands.
+ *
+ * Gated on MOD-72 like everything else here — that decides whether you may use
+ * the composer at all. WHICH commands you may run is a second question, answered
+ * per command against the module that owns the data, inside the service. A
+ * clerk who may compose mail but not open Treasury gets the composer and not
+ * `/bank`. */
+router.get("/commands", requirePermission(M, "view"), c.commands);
+router.post("/commands/:key", requirePermission(M, "view"), v.runCommand, c.runCommand);
 router.post("/thread/:id/reply", requirePermission(M, "create"), v.reply, c.reply);
 
 module.exports = { basePath: "/mail", feature: null, router };

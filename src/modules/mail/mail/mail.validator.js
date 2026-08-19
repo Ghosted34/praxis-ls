@@ -268,6 +268,17 @@ const schemas = {
     content_id: z.string().trim().max(128).nullable().optional(),
   }).strict(),
 
+  runCommand: z.object({
+    // The parameters a command declares. Loose on purpose — each command reads
+    // the one or two keys it named in its manifest, and a strict schema here
+    // would be a second definition of every command's signature, kept in a
+    // different file from the command.
+    params: z.record(z.union([z.string().max(200), z.number()])).optional(),
+    lang: z.enum(["en", "fr"]).optional(),
+    entity_ref: z.string().trim().max(128).regex(/^[a-z_]+:[A-Za-z0-9-]+$/).nullable().optional(),
+    email_thread_id: z.string().uuid().nullable().optional(),
+  }).strict(),
+
   attachmentFromVault: z.object({
     email_draft_id: z.string().uuid(),
     vault_id: z.string().uuid(),
@@ -306,5 +317,6 @@ module.exports = {
   threadStream: mw("threadStream"), label: mw("label"), labelApply: mw("labelApply"),
   draft: mw("draft"), send: mw("send"),
   attachmentUpload: mw("attachmentUpload"), attachmentFromVault: mw("attachmentFromVault"),
+  runCommand: mw("runCommand"),
   schemas,
 };

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1303 |
+| Routes | 1309 |
 | Modules mounted | 119 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1303 mounted routes, grouped by path prefix.
+All 1309 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1018,11 +1018,15 @@ All 1303 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/mail/access-log` | — |
+| POST | `/api/tenant/mail/attachments/from-vault` | — |
+| POST | `/api/tenant/mail/attachments/upload` | — |
 | GET | `/api/tenant/mail/autodiscover` | — |
 | GET | `/api/tenant/mail/catalogue` | — |
 | POST | `/api/tenant/mail/catalogue` | — |
 | PATCH | `/api/tenant/mail/catalogue/:key` | — |
 | GET | `/api/tenant/mail/client/:id/timeline` | — |
+| GET | `/api/tenant/mail/commands` | — |
+| POST | `/api/tenant/mail/commands/:key` | — |
 | GET | `/api/tenant/mail/connections` | — |
 | POST | `/api/tenant/mail/connections` | — |
 | PATCH | `/api/tenant/mail/connections/:id` | — |
@@ -1034,6 +1038,8 @@ All 1303 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/drafts` | — |
 | DELETE | `/api/tenant/mail/drafts/:id` | — |
 | GET | `/api/tenant/mail/drafts/:id` | — |
+| GET | `/api/tenant/mail/drafts/:id/attachments` | — |
+| DELETE | `/api/tenant/mail/drafts/:id/attachments/:attachmentId` | — |
 | GET | `/api/tenant/mail/folders` | — |
 | GET | `/api/tenant/mail/inbox` | — |
 | GET | `/api/tenant/mail/labels` | — |

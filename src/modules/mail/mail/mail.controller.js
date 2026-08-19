@@ -5,6 +5,8 @@ const access = require("./access");
 const sendPoints = require("./sendpoint.service");
 const threads = require("./thread.service");
 const outbox = require("./outbox.service");
+const attachments = require("./attachment.service");
+const commands = require("./commands.service");
 const { cpanelPreset } = require("./autodiscover");
 const { asyncHandler } = require("../../../utils/errors");
 const { config } = require("../../../config/env");
@@ -99,6 +101,33 @@ module.exports = {
     return res.json({ data: d });
   }),
   discardDraft: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.discardDraft(c, actor(req), req.params.id)) })),
+
+  // ── PR-1B: attachments on a draft ──
+  draftAttachments: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => attachments.list(c, actor(req), req.params.id)) })),
+  uploadAttachment: asyncHandler(async (req, res) => res.status(201).json({
+    data: await req.identityDb((c) => attachments.upload(c, actor(req), { ...req.body, slug: req.tenant && req.tenant.slug })),
+  })),
+  attachFromVault: asyncHandler(async (req, res) => res.status(201).json({
+    data: await req.identityDb((c) => attachments.fromVault(c, actor(req), req.body || {})),
+  })),
+  removeAttachment: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => attachments.remove(c, actor(req), req.params.id, req.params.attachmentId)),
+  })),
+
+  // ── PR-1B: slash commands ──
+  // The list is filtered per user and the run is checked again: the menu decides
+  // what is offered, the check decides what happens, and a client can call run
+  // directly whatever the menu showed it.
+  commands: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => commands.list(c, actor(req), { lang: req.query.lang })),
+  })),
+  runCommand: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => commands.run(c, actor(req), req.params.key, req.body?.params || {}, {
+      lang: req.body?.lang || req.query.lang,
+      boundEntityRef: req.body?.entity_ref || null,
+      thread: req.body?.email_thread_id || null,
+    })),
+  })),
   reply: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.reply(c, { ...req.body, connectionId: req.body.connectionId, inboundId: req.params.id, actor: actor(req) })) })),
 
   /**

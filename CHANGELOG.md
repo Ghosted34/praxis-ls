@@ -238,6 +238,14 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **Silent-catch ratchet after #228.** Adding lines to `explainSendError` moved
+  three grandfathered empty catches in `mail.service.js` off
+  `doc/silent-catch-baseline.json` (`file:line`), so `build-test` failed on
+  `main` with three “NEW” sites. Classified the leftover swallows in place —
+  Graph `getConnection` / `autoLink` / attachment skip / optional `setupPush`
+  as `@silent:storage`, `markRead` logger require as `@silent:teardown` —
+  instead of re-blessing the baseline.
+
 - **SMTP sender-verify is no longer a Praxis 5xx.** Two classifiers survived
   the same merge: `mapSmtpError` labelled `550 Sender verify failed` as 502
   `SMTP_SENDER_REJECTED` (Test, system email, platform mail-fallback probe,

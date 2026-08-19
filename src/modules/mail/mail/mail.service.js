@@ -482,7 +482,7 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
       });
       saved += 1;
     } catch {
-      /* skip this attachment; bytes may exceed the vault limit or storage failed */
+      /* @silent:storage skip this attachment; bytes may exceed the vault limit or storage failed */
     }
   }
   return saved;
@@ -752,7 +752,7 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
   await repo.ensureDefaultConnection(client, claims.user_id);
-  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* push optional; polling covers it */ });
+  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
   return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
 }
 
@@ -831,7 +831,7 @@ async function handleGraphNotification(client, body, ctx = {}) {
       // work. The per-tenant DB scopes the lookup, so this also proves the
       // connection belongs here. Best-effort: a bad id never aborts the batch.
       let conn = null;
-      try { conn = await repo.getConnection(client, id); } catch { /* skip */ }
+      try { conn = await repo.getConnection(client, id); } catch { /* @silent:storage forged/stale clientState */ }
       if (!conn || conn.status !== "CONNECTED") continue;
       results.push(await syncConnection(client, conn.email_connection_id, ctx));
     }
@@ -851,7 +851,7 @@ async function autoLink(client, threadId, fromAddress, subject) {
     }
     const cl = await repo.findClientByEmail(client, fromAddress);
     if (cl) await threadRepo.updateThread(client, threadId, { entity_ref: `client:${cl.client_id}` });
-  } catch { /* linking is best-effort */ }
+  } catch { /* @silent:storage must not abort sync */ }
 }
 
 /** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
@@ -876,7 +876,7 @@ async function markRead(client, id, actorUserId = null) {
       try {
         const { logger } = require("../../../config/logger");
         logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
-      } catch { /* noop */ }
+      } catch { /* @silent:teardown logger require must not block the local read flip */ }
     }
   }
   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));

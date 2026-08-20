@@ -51,16 +51,21 @@ describe("every registered worker has a producer", () => {
   const names = [...workers.matchAll(/name:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
 
   /**
-   * `scheduled-report` is driven from OUTSIDE the app.
+   * EMPTY, and that is the finding.
    *
-   * Its handler's own header says so: "the periodic trigger (an app
-   * scheduled-task or external cron) enqueues one job per live tenant, or
-   * POST /reports/scheduled/run-due drives a single tenant directly." Both of
-   * those are real — the route exists — so this is a deployment decision rather
-   * than a missing call. It is the only periodic job not registered in
-   * `scheduleRecurring()`, which is worth knowing about it.
+   * `scheduled-report` sat here for one commit, on the strength of its own
+   * header — "the periodic trigger (an app scheduled-task or external cron)
+   * enqueues one job per live tenant". That was a deployment dependency nobody
+   * had written down anywhere else, on a fleet where every other periodic job
+   * is registered in `scheduleRecurring()`. A tenant who scheduled a weekly
+   * report got a row, a `next_run_at` that arrived and stayed in the past, and
+   * no email.
+   *
+   * It now has `scheduled-report-scheduler`, like every other one, so the list
+   * is empty again. Keep it that way: an entry here is a claim that something
+   * outside this repo runs a job, and the last such claim was not true.
    */
-  const EXTERNALLY_DRIVEN = new Set(["scheduled-report"]);
+  const EXTERNALLY_DRIVEN = new Set([]);
 
   test("the registry is readable and has the workers this gate thinks it does", () => {
     expect(names.length).toBeGreaterThan(20);
@@ -85,6 +90,19 @@ describe("every registered worker has a producer", () => {
       expect(new RegExp(`enqueue\\(\\s*\\n?\\s*"${n}"`).test(allSrc)).toBe(false);
       expect(names).toContain(n);
     }
+  });
+
+  test("every periodic worker is registered in scheduleRecurring, not assumed", () => {
+    const workersSrc = fs.readFileSync(path.join(SRC, "jobs/workers.js"), "utf8");
+    const recurring = workersSrc.slice(workersSrc.indexOf("async function scheduleRecurring"));
+    const schedulers = names.filter((n) => n.endsWith("-scheduler"));
+    // A `-scheduler` handler exists to be ticked. One that `scheduleRecurring`
+    // does not enqueue is a cron nobody runs, which is how `scheduled-report`
+    // spent its whole life waiting for a deployment step that was never
+    // written down.
+    const unticked = schedulers.filter((n) => !recurring.includes(`"${n}"`));
+    expect(unticked).toEqual([]);
+    expect(schedulers).toContain("scheduled-report-scheduler");
   });
 });
 

@@ -560,10 +560,33 @@ Removed rather than left with an escape hatch. The capability is not gone: `serv
 has three live callers — company-profile refresh, CV scoring, and mail's attachment extraction
 (§8.6), which is doc-vision delivered somewhere a person can actually reach it.
 
-`scheduled-report` is also enqueued by nothing in-app, and that one is *by design*: its handler's
-header names an external cron or `POST /reports/scheduled/run-due`, and both exist. It is listed in
-the new sweep as externally driven, with a size ceiling on the list. Worth a decision from the lead —
-it is the only periodic job not in `scheduleRecurring()`.
+### 14.3b `scheduled-report` was waiting for a deployment step nobody had written down
+
+Raised as a question and then answered: it is not by design.
+
+`scheduled-report` was registered from the day reports shipped and enqueued by nothing. Its header
+deferred the trigger to "an app scheduled-task or external cron" — a dependency recorded in a comment
+in one handler and nowhere else, on a fleet where every other periodic job is registered in
+`scheduleRecurring()`. A tenant who scheduled a weekly receivables report got a `scheduled_report`
+row, watched `next_run_at` arrive and then sit in the past, and received nothing, unless somebody
+remembered to POST `/reports/scheduled/run-due` by hand.
+
+This is the same defect `regie-aging-scheduler` was written to fix, in the same directory, for the
+same reason — and its file header says so explicitly: "`regie-aging` has been a registered worker
+since the régie module shipped and NOTHING EVER ENQUEUED IT". That fix was made once and the pattern
+was not swept for. It has been now.
+
+`scheduled-report-scheduler` fans out one job per live tenant, hourly. **Hourly, not daily, because
+the tick interval is the resolution of the whole feature**: `next_run_at` is a timestamp and the due
+query asks `next_run_at <= now()`, so a daily tick makes every cadence a tenant can choose mean
+"whenever the fleet cron fires". At five past the hour, clear of the pile every other scheduler puts
+on the hour. Live only — a Test run would generate the report, have its mail suppressed by
+`email.service`'s sandbox guard, and still consume `next_run_at`, which is a rehearsal that spends
+the schedule without rehearsing anything.
+
+The sweep's externally-driven allowance is now **empty**, and a new test asserts that every
+`-scheduler` worker is actually ticked by `scheduleRecurring` — a cron handler nobody enqueues being
+exactly how this one spent its life.
 
 ### 14.4 Two classes came back clean
 
@@ -588,4 +611,4 @@ being routed around.
 
 ### 14.6 Verification
 
-5,091 backend tests across 332 suites, 0 lint errors, column, idempotency and citext gates OK.
+5,104 backend tests across 333 suites, 0 lint errors, column, idempotency and citext gates OK.

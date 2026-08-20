@@ -361,6 +361,14 @@ const Schema = z.object({
   // than mid-afternoon while someone is looking at the same advance. Empty
   // disables it; POST /regie/age-due still ages on demand.
   REGIE_AGING_CRON: z.string().default("0 6 * * *"),
+  // Scheduled reports (1.3): the tick that fans `scheduled-report` out per live
+  // tenant. HOURLY, at five past — `next_run_at` is a timestamp and the due
+  // query asks `next_run_at <= now()`, so this interval is the resolution of
+  // the whole feature: tick daily and every cadence becomes "whenever the cron
+  // happened to fire". Five past the hour keeps it clear of the pile of jobs
+  // every other scheduler puts on the hour. Empty disables it;
+  // POST /reports/scheduled/run-due still runs a tenant's due reports on demand.
+  SCHEDULED_REPORT_CRON: z.string().default("5 * * * *"),
   // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
   // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
   // working day and clear of the 01:00 fleet backup.

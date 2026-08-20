@@ -43,6 +43,11 @@ const PROCESSORS = [
   // person can actually reach it. Restoring the chat flow means building its
   // route first, at which point this handler is a `git show` away.
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
+  // The half that was missing. `scheduled-report` was registered from the day
+  // reports shipped and enqueued by nothing — its own header deferred the
+  // trigger to "an app scheduled-task or external cron", which was never part
+  // of the repo, so a scheduled report only ran if somebody POSTed the route.
+  { name: "scheduled-report-scheduler", concurrency: 1, handler: require("./handlers/scheduled-report-scheduler") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
@@ -451,6 +456,22 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" }, "regie aging scheduler registered");
+  }
+
+  // Scheduled reports (1.3). Hourly rather than daily: `next_run_at` is a
+  // timestamp, so the tick interval is the resolution of every cadence a tenant
+  // can choose. Live only — a Test run would generate the report, have its mail
+  // suppressed by the sandbox guard, and still consume `next_run_at`.
+  const reportCron = config.SCHEDULED_REPORT_CRON;
+  if (!reportCron) {
+    logger.info("scheduled-report scheduler disabled (SCHEDULED_REPORT_CRON empty)");
+  } else {
+    await enqueue("scheduled-report-scheduler", "tick", {}, {
+      repeat: { pattern: reportCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: reportCron }, "scheduled-report scheduler registered");
   }
 
   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every

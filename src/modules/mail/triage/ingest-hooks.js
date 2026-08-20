@@ -34,6 +34,25 @@ const archive = require("./archive-chain");
 const bounce = require("./bounce-parse");
 const { logger } = require("../../../config/logger");
 
+/**
+ * Is a flag on for this tenant, memoised for the run.
+ *
+ * Same reasoning as the party corpus: a flag is read per message otherwise, and
+ * a first sync at the 90-day default depth would ask `feature_state` the same
+ * question thousands of times. Fails CLOSED, matching `requireFeature` — a
+ * tenant with no row gets no verdicts rather than ungoverned ones.
+ */
+async function flagOn(client, key, ctx = {}) {
+  const memo = ctx.__mailFlags || (ctx && typeof ctx === "object" ? (ctx.__mailFlags = {}) : {});
+  if (Object.prototype.hasOwnProperty.call(memo, key)) return memo[key];
+  const on = await client.query(
+    `SELECT state FROM feature_state WHERE feature_key = $1`,
+    [key],
+  ).then((r) => Boolean(r.rows[0] && r.rows[0].state === "on")).catch(() => false);
+  memo[key] = on;
+  return on;
+}
+
 /* ── Anti-spoofing (§9.7) ─────────────────────────────────────────────────── */
 
 /**
@@ -76,7 +95,33 @@ async function observeDomain(client, entityRef, fromAddress) {
   );
 }
 
-async function stampVerdict(client, { messageId, threadId, message }) {
+/**
+ * The tenant's known domains and party names, read once and memoised on `ctx`.
+ *
+ * `ctx` is the per-sync-run object the mail engine already threads through
+ * `syncConnection`, so the memo lives exactly as long as one run and cannot go
+ * stale across runs. With no ctx (a single ingest, a test) it degrades to
+ * reading them, which is correct and costs two queries.
+ */
+async function worldFor(client, ctx = {}) {
+  if (ctx.__antispoofWorld) return ctx.__antispoofWorld;
+
+  const [known, parties] = await Promise.all([
+    client.query(
+      `SELECT DISTINCT domain::text AS domain FROM party_verified_domain WHERE source = 'ADMIN_VERIFIED'`,
+    ).then((r) => r.rows.map((x) => x.domain)).catch(() => []),
+    client.query(
+      `SELECT name FROM client_master WHERE is_active
+        UNION ALL SELECT name FROM supplier_master WHERE is_active`,
+    ).then((r) => r.rows).catch(() => []),
+  ]);
+
+  const world = { knownDomains: known, parties };
+  if (ctx && typeof ctx === "object") ctx.__antispoofWorld = world;
+  return world;
+}
+
+async function stampVerdict(client, { messageId, threadId, message, ctx = {} }) {
   const { rows } = await client.query(
     `SELECT entity_ref FROM email_thread WHERE email_thread_id = $1`,
     [threadId],
@@ -84,20 +129,19 @@ async function stampVerdict(client, { messageId, threadId, message }) {
   const entityRef = rows[0] && rows[0].entity_ref;
   const verifiedDomains = await verifiedDomainsFor(client, entityRef);
 
-  // Lookalike detection needs the whole corpus of party domains, not just this
-  // thread's — the attack is a domain that resembles a party we know, and the
-  // thread it arrives on is typically bound to nothing at all.
-  const { rows: allKnown } = await client.query(
-    `SELECT DISTINCT domain::text AS domain FROM party_verified_domain WHERE source = 'ADMIN_VERIFIED'`,
-  );
-  const { rows: parties } = await client.query(
-    `SELECT name FROM client_master WHERE is_active
-      UNION ALL SELECT name FROM supplier_master WHERE is_active`,
-  ).catch(() => ({ rows: [] }));
+  // Lookalike detection needs the whole corpus of party domains and names, not
+  // just this thread's — the attack is a domain that RESEMBLES a party we know,
+  // and the thread it arrives on is typically bound to nothing at all.
+  //
+  // Both are per-tenant and change on a human timescale, so they are read ONCE
+  // per sync run and handed down. Read per message they would be two extra
+  // queries × every message, which on a first sync at the 90-day default depth
+  // is thousands of scans of `client_master` to answer the same question.
+  const corpus = await worldFor(client, ctx);
 
   const { verdict, detail } = antispoof.evaluate(message, {
-    parties,
-    verifiedDomains: verifiedDomains.length ? verifiedDomains : allKnown.map((r) => r.domain),
+    parties: corpus.parties,
+    verifiedDomains: verifiedDomains.length ? verifiedDomains : corpus.knownDomains,
   });
 
   await client.query(
@@ -204,7 +248,7 @@ async function recordBounce(client, { message }) {
  * @param {object} row      the inserted email_message row (+ thread_id)
  * @param {object} opts.raw the provider message, for headers the row does not keep
  */
-async function onMessageIngested(client, row, { raw = {}, attachmentHashes = [] } = {}) {
+async function onMessageIngested(client, row, { raw = {}, attachmentHashes = [], ctx = {} } = {}) {
   const message = {
     from_address: row.from_address,
     from_name: row.from_name,
@@ -233,10 +277,21 @@ async function onMessageIngested(client, row, { raw = {}, attachmentHashes = [] 
       logger.warn({ err, id: row.email_message_id }, "[mail] DSN parse skipped");
     }
     try {
-      const v = await stampVerdict(client, {
-        messageId: row.email_message_id, threadId: row.thread_id, message,
-      });
-      out.verdict = v.verdict;
+      // §3.3: every new surface ships behind its flag, and `mail.antispoof` is
+      // the one for verdicts. Checked here rather than at a route because
+      // nothing about this runs on a request — it runs on ingest, where the
+      // only thing that could gate it is the code itself.
+      //
+      // Note what is NOT gated: the archive above and the DSN parse below.
+      // Those two are records rather than surfaces, and a tenant who turns a
+      // flag off and back on would otherwise be left with a hole in a hash
+      // chain that says it has none.
+      if (await flagOn(client, "mail.antispoof", ctx)) {
+        const v = await stampVerdict(client, {
+          messageId: row.email_message_id, threadId: row.thread_id, message, ctx,
+        });
+        out.verdict = v.verdict;
+      }
     } catch (err) {
       logger.warn({ err, id: row.email_message_id }, "[mail] anti-spoof verdict skipped");
     }
@@ -255,4 +310,5 @@ async function onMessageSent(client, row, { attachmentHashes = [] } = {}) {
 module.exports = {
   onMessageIngested, onMessageSent,
   appendToArchive, stampVerdict, recordBounce, verifiedDomainsFor, observeDomain,
+  flagOn, worldFor,
 };

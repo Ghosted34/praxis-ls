@@ -288,3 +288,75 @@ Recorded rather than silently coded around:
    but the checklist count joins through `dictionary_ref.code`, and anything else reading these
    columns must too. `npm run db:check:columns` catches a query written to the guide's shape; it
    caught this one.
+
+---
+
+## 12. Second sweep
+
+The first pass answered "what did a migration create that nothing reads?" for the three biggest
+cases. Running the same question over every table, column, export, event key and feature flag in the
+programme — including the code the first pass had just written — turned up six more. One of them is
+the most consequential single finding of either pass.
+
+### 12.1 `mail.core` and `mail.composer` gated nothing
+
+Seeded by `10730`, listed in §3.2's flag index, projected by the Platform Console, and referenced by
+**no line of routing code**. `mail.routes.js` carried 71 routes, `feature: null`, and not one
+`requireFeature`. Q5 says every mail surface is "all on for Smart Logistics, **off for every other
+tenant**" — so every tenant on the deployment had the mailbox, the composer, attachments, slash
+commands and the send queue live, whatever their `feature_state` said.
+
+A flag that is projected to an operator, believed by them, and checked by nothing is worse than no
+flag: it is a control someone will rely on. Both are now applied per section, deliberately leaving
+PR-0's setup surface ungated — otherwise an admin cannot configure mail for the tenant they are about
+to enable it for, and the first thing the feature does is lock them out of turning it on.
+
+`mail.antispoof` was inert for a different reason: verdicts are computed on ingest, where there is no
+route to gate. It is now checked in the hook, memoised per sync run, failing closed like
+`requireFeature`. The archive and the DSN parse are deliberately **not** gated — those are records
+rather than surfaces, and a tenant toggling a flag must not end up with a hole in a hash chain that
+reports itself intact.
+
+### 12.2 The archive did not cover attachments
+
+`email_attachment.checksum_sha256` was written on the outbound path and left null on ingest. §9.6
+defines the content hash as SHA-256 over "headers + body + **attachment hashes**", so with no
+attachment hashes the chain sealed the covering letter and not the invoice: an attached PDF could be
+replaced in the vault and `/mail/archive/verify` would still report the chain intact — the one thing
+an auditor is relying on it not to do. Attachments are now hashed as they are stored, before the
+archive hook runs, and the hashes go into the seal.
+
+### 12.3 Mail access outlived the account
+
+`mailbox.service.offboardUser` archives a departing user's personal mailbox and revokes every
+shared-mailbox grant they hold, writing an `email_access_audit` row for each. It was written,
+exported, made idempotent and audited — and called by nothing. Suspending or locking an account left
+their grants on `billing@`, `operations@` and the rest open indefinitely; the only thing stopping
+them was the login. Now driven by an orchestration handler on `app_user.updated`, so mail never
+becomes a hard dependency of the security module — locking a compromised account must not be
+blockable by a mailbox archive failing for its own reasons.
+
+### 12.4 Three smaller ones
+
+| Gap | Consequence | Fix |
+| --- | --- | --- |
+| `signature.repo.deleteCachedForIdentity` had no caller | `invalidateForEntity` dropped staff renders but not the SYSTEM corporate blocks, which are keyed by `identity_key`. `signature_render` has no TTL, so a company that changed office kept printing its old address on every OTP and invoice mail indefinitely. | `invalidateForEntity` now drops identity renders too |
+| `mailbox.repo.sweepSendWindows` had no caller | Throttle counters accumulated a row per mailbox per window, forever, in a table whose only readers ask about the last hour and the last day. | Runs in the daily per-tenant `deliverability-check`, before its own failure is re-thrown |
+| The first pass's `stampVerdict` read the party corpus per message | Two extra scans of `client_master` and `party_verified_domain` for **every message** — thousands of them on a first sync at the 90-day default depth, all answering the same unchanging question. | Memoised on the per-run `ctx` the engine already threads through. Per-thread verified domains are deliberately still read per message — memoising those would apply one thread's trusted domains to another's, which is the worse mistake. |
+
+### 12.5 The gate that stops the class recurring
+
+`tests/security/mail-orphan-sweep.test.js` now enumerates every table the programme's migrations
+create and fails if one is referenced by no line of `src/`. Five are listed in a `KNOWN_UNBUILT`
+escape hatch — they belong to chapters genuinely not built (§11.3) — and a companion test fails if
+one of those is quietly built without being removed from the list, plus a third that fails if the
+hatch grows. `tests/security/mail-feature-gating.test.js` does the same for flags: every seeded flag
+must gate something, and every route in the conversation and composer sections must carry its gate.
+
+This is the generalisation FN-1 asked for and did not get. A comment records what happened here; a
+gate records what must not happen anywhere.
+
+### 12.6 Unchanged
+
+§11.3's list stands. Nothing in this sweep touched PR-4's engine, PR-3's remaining tabs and cards,
+PR-5's missing endpoints, or the frontend.

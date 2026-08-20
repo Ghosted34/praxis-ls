@@ -418,12 +418,18 @@ async function syncConnection(client, id, ctx = {}) {
         });
         if (!row) continue;
         inserted += 1;
-        attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        // Attachments BEFORE the archive hook, and their hashes go into it:
+        // the chain's content hash covers headers + body + attachment hashes
+        // (§9.6), so archiving first would seal a message with its attachments
+        // left out of the seal.
+        const att = await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        attachments += att.saved;
         // PR-5 §9.6/§9.7/§9.8 — archive, verdict, DSN. One call site, so the
         // wiring test has one thing to assert on and a later edit to this loop
         // has one thing to preserve. Archive failures propagate to the
         // per-folder catch below; the other two are advisory (see the file).
-        await triageHooks.onMessageIngested(client, row, { raw: m });
+        // `ctx` carries the per-run memo the anti-spoof corpus is read into.
+        await triageHooks.onMessageIngested(client, row, { raw: m, attachmentHashes: att.hashes, ctx });
         await autoLink(client, {
           threadId: row.thread_id, messageId: row.email_message_id,
           fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
@@ -484,32 +490,55 @@ async function syncConnection(client, id, ctx = {}) {
 }
 
 
-/** Store each attachment's bytes in the vault and link it to the message. One bad
- *  attachment (too large / storage error) is skipped, never aborting the sync. */
+/**
+ * Store each attachment's bytes in the vault and link it to the message. One bad
+ * attachment (too large / storage error) is skipped, never aborting the sync.
+ *
+ * ── EVERY ATTACHMENT IS HASHED, AND THE HASHES ARE RETURNED ─────────────────
+ *
+ * `checksum_sha256` was written on the OUTBOUND path (outbox.repo) and left
+ * null on ingest, which quietly hollowed out the archive: §9.6 defines the
+ * content hash as SHA-256 over canonicalised "headers + body + attachment
+ * hashes", so with no attachment hashes the chain covered the covering letter
+ * and not the invoice. Someone could replace an attached PDF in the vault and
+ * `/mail/archive/verify` would still report the chain intact — which is the one
+ * thing an auditor is relying on it not to do.
+ *
+ * Computed here rather than in the archive hook because this is the only place
+ * that holds the BYTES; by the time the hook runs there is a vault reference and
+ * nothing to hash.
+ *
+ * @returns {{saved:number, hashes:string[]}} hashes in attachment order.
+ */
 async function persistAttachments(client, inboundId, list, ctx = {}) {
-  if (!list || !list.length) return 0;
+  if (!list || !list.length) return { saved: 0, hashes: [] };
   const slug = ctx.slug || "unknown";
+  const crypto = require("crypto");
   let saved = 0;
+  const hashes = [];
   for (const a of list) {
     if (!a || !a.content || !a.content.length || a.content.length > ATTACH_MAX_BYTES) continue;
     try {
       const contentType = a.content_type || "application/octet-stream";
+      const checksum = crypto.createHash("sha256").update(a.content).digest("hex");
       const dataUrl = `data:${contentType};base64,${a.content.toString("base64")}`;
-       
+
       const doc = await documentVault.createDocument(client, {
         dataUrl, slug, entityRef: `email_message:${inboundId}`, docType: null, actor: { user_id: null },
       });
-       
+
       await repo.addAttachment(client, {
         email_inbound_id: inboundId, vault_id: doc.doc_id,
         filename: a.filename || null, content_type: contentType, size_bytes: a.content.length,
+        checksum_sha256: checksum,
       });
+      hashes.push(checksum);
       saved += 1;
     } catch {
       /* @silent:storage skip this attachment; bytes may exceed the vault limit or storage failed */
     }
   }
-  return saved;
+  return { saved, hashes };
 }
 
 /** Send from a connected mailbox; records the OUT copy for the thread view. */

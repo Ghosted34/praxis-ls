@@ -25,11 +25,37 @@
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
+const { requireFeature } = require("../../../middleware/feature-gate");
 const c = require("./mail.controller");
 const v = require("./mail.validator");
 
 const M = "MOD-72";
 const router = express.Router();
+
+/**
+ * ── THE TWO FLAGS THAT GATE PR-1 ────────────────────────────────────────────
+ *
+ * `mail.core` and `mail.composer` are seeded by `10730_mail_defaults_and_flags`
+ * and, until this line, gated nothing: 71 routes in this file, `feature: null`
+ * at the bottom, and not one `requireFeature` anywhere. Q5 is explicit that
+ * every mail surface is "all on for Smart Logistics, off for every other
+ * tenant" — so a flag nobody checks meant every tenant on the deployment had
+ * the mailbox, the composer and the send queue live regardless of what their
+ * `feature_state` said. The Platform Console projected OFF and the API answered
+ * anyway, which is the worst kind of gate: visible, trusted and inert.
+ *
+ * Applied per SECTION rather than to the whole router, because this file also
+ * carries PR-0's setup surface — connections, mailboxes, catalogue, send points
+ * — and that MUST stay reachable while the flags are off. Otherwise an admin
+ * cannot configure mail for the tenant they are about to enable it for, and the
+ * first thing the feature does is lock them out of turning it on.
+ *
+ * `requireFeature` fails CLOSED on a missing row, which is the right direction:
+ * a tenant provisioned before the flag existed gets no mailbox rather than an
+ * ungoverned one.
+ */
+const core = requireFeature("mail.core");
+const composer = requireFeature("mail.composer");
 
 // Pre-auth: Microsoft calls these directly (browser redirect after consent; Graph
 // change-notification webhook). The tenant is resolved from the subdomain host by
@@ -60,8 +86,8 @@ router.get("/oauth/google/start", requirePermission(M, "edit"), c.ggOAuthStart);
 
 // Read-only view (original)
 router.get("/senders", requirePermission(M, "view"), c.senders);
-router.get("/sent", requirePermission(M, "view"), c.sent);
-router.get("/inbox", requirePermission(M, "view"), c.inbox);
+router.get("/sent", core, requirePermission(M, "view"), c.sent);
+router.get("/inbox", core, requirePermission(M, "view"), c.inbox);
 router.patch("/senders/:id", requirePermission(M, "edit"), v.senderPatch, c.updateSender);
 router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender);
 router.post("/senders/:id/archive", requirePermission(M, "edit"), c.archiveSender);
@@ -153,19 +179,19 @@ router.get("/cpanel-preset", requirePermission(M, "view"), c.cpanel);
  * box is two inboxes to maintain. */
 
 // Static paths BEFORE `/threads/:id`, or Express matches "folders" as an id.
-router.get("/folders", requirePermission(M, "view"), c.mailFolders);
-router.get("/labels", requirePermission(M, "view"), c.mailLabels);
-router.post("/labels", requirePermission(M, "create"), v.label, c.createLabel);
-router.delete("/labels/:id", requirePermission(M, "edit"), c.deleteLabel);
+router.get("/folders", core, requirePermission(M, "view"), c.mailFolders);
+router.get("/labels", core, requirePermission(M, "view"), c.mailLabels);
+router.post("/labels", core, requirePermission(M, "create"), v.label, c.createLabel);
+router.delete("/labels/:id", core, requirePermission(M, "edit"), c.deleteLabel);
 
-router.get("/threads", requirePermission(M, "view"), c.threads);
-router.post("/threads/bulk", requirePermission(M, "edit"), v.threadBulk, c.threadBulk);
-router.get("/threads/:id", requirePermission(M, "view"), c.threadGet);
-router.post("/threads/:id/read", requirePermission(M, "edit"), v.threadFlag, c.threadRead);
-router.post("/threads/:id/star", requirePermission(M, "edit"), v.threadFlag, c.threadStar);
-router.post("/threads/:id/move", requirePermission(M, "edit"), v.threadMove, c.threadMove);
-router.post("/threads/:id/stream", requirePermission(M, "edit"), v.threadStream, c.threadStream);
-router.post("/threads/:id/label", requirePermission(M, "edit"), v.labelApply, c.threadLabel);
+router.get("/threads", core, requirePermission(M, "view"), c.threads);
+router.post("/threads/bulk", core, requirePermission(M, "edit"), v.threadBulk, c.threadBulk);
+router.get("/threads/:id", core, requirePermission(M, "view"), c.threadGet);
+router.post("/threads/:id/read", core, requirePermission(M, "edit"), v.threadFlag, c.threadRead);
+router.post("/threads/:id/star", core, requirePermission(M, "edit"), v.threadFlag, c.threadStar);
+router.post("/threads/:id/move", core, requirePermission(M, "edit"), v.threadMove, c.threadMove);
+router.post("/threads/:id/stream", core, requirePermission(M, "edit"), v.threadStream, c.threadStream);
+router.post("/threads/:id/label", core, requirePermission(M, "edit"), v.labelApply, c.threadLabel);
 
 /* ── Engine: messages (pre-PR-1A) ─────────────────────────────────────────
  *
@@ -174,12 +200,12 @@ router.post("/threads/:id/label", requirePermission(M, "edit"), v.labelApply, c.
  * (plural) above is the conversation model. They are deliberately different
  * paths rather than one path with a mode flag, so the old one can be deleted in
  * one commit when nothing calls it. */
-router.get("/thread", requirePermission(M, "view"), c.thread);
-router.get("/thread/:id", requirePermission(M, "view"), c.message);
-router.get("/thread/:id/attachments", requirePermission(M, "view"), c.attachments);
-router.get("/client/:id/timeline", requirePermission(M, "view"), c.clientTimeline);
-router.post("/thread/:id/link", requirePermission(M, "create"), v.threadLink, c.linkThread);
-router.post("/thread/:id/read", requirePermission(M, "edit"), c.markRead);
+router.get("/thread", core, requirePermission(M, "view"), c.thread);
+router.get("/thread/:id", core, requirePermission(M, "view"), c.message);
+router.get("/thread/:id/attachments", core, requirePermission(M, "view"), c.attachments);
+router.get("/client/:id/timeline", core, requirePermission(M, "view"), c.clientTimeline);
+router.post("/thread/:id/link", core, requirePermission(M, "create"), v.threadLink, c.linkThread);
+router.post("/thread/:id/read", core, requirePermission(M, "edit"), c.markRead);
 /* ── PR-1B: composing ─────────────────────────────────────────────────────
  *
  * Action mapping:
@@ -195,26 +221,26 @@ router.post("/thread/:id/read", requirePermission(M, "edit"), c.markRead);
  * mailbox. Holding a grant on billing@ is authority to send from it; it is not
  * authority to read what a colleague is still deciding whether to say. */
 
-router.get("/drafts", requirePermission(M, "view"), c.listDrafts);
-router.post("/drafts", requirePermission(M, "create"), v.draft, c.saveDraft);
-router.get("/drafts/:id", requirePermission(M, "view"), c.getDraft);
-router.delete("/drafts/:id", requirePermission(M, "edit"), c.discardDraft);
+router.get("/drafts", composer, requirePermission(M, "view"), c.listDrafts);
+router.post("/drafts", composer, requirePermission(M, "create"), v.draft, c.saveDraft);
+router.get("/drafts/:id", composer, requirePermission(M, "view"), c.getDraft);
+router.delete("/drafts/:id", composer, requirePermission(M, "edit"), c.discardDraft);
 
-router.get("/outbox", requirePermission(M, "view"), c.outbox);
+router.get("/outbox", composer, requirePermission(M, "view"), c.outbox);
 
 // Queues; it does not send. The response says when the message will actually go.
-router.post("/send", requirePermission(M, "create"), v.send, c.send);
+router.post("/send", composer, requirePermission(M, "create"), v.send, c.send);
 // Undo. Succeeds only while the row is still HELD — the database decides the
 // race against the flusher, so this is a 409 rather than a lie once it has gone.
-router.post("/send/:id/cancel", requirePermission(M, "edit"), c.cancelSend);
+router.post("/send/:id/cancel", composer, requirePermission(M, "edit"), c.cancelSend);
 
 // Attachments live under their draft, because that is what owns them and what
 // authorises them: the service checks the draft is the caller's before it will
 // list, add or remove anything.
-router.get("/drafts/:id/attachments", requirePermission(M, "view"), c.draftAttachments);
-router.post("/attachments/upload", requirePermission(M, "create"), v.attachmentUpload, c.uploadAttachment);
-router.post("/attachments/from-vault", requirePermission(M, "create"), v.attachmentFromVault, c.attachFromVault);
-router.delete("/drafts/:id/attachments/:attachmentId", requirePermission(M, "edit"), c.removeAttachment);
+router.get("/drafts/:id/attachments", composer, requirePermission(M, "view"), c.draftAttachments);
+router.post("/attachments/upload", composer, requirePermission(M, "create"), v.attachmentUpload, c.uploadAttachment);
+router.post("/attachments/from-vault", composer, requirePermission(M, "create"), v.attachmentFromVault, c.attachFromVault);
+router.delete("/drafts/:id/attachments/:attachmentId", composer, requirePermission(M, "edit"), c.removeAttachment);
 
 /* Slash commands.
  *
@@ -223,8 +249,8 @@ router.delete("/drafts/:id/attachments/:attachmentId", requirePermission(M, "edi
  * per command against the module that owns the data, inside the service. A
  * clerk who may compose mail but not open Treasury gets the composer and not
  * `/bank`. */
-router.get("/commands", requirePermission(M, "view"), c.commands);
-router.post("/commands/:key", requirePermission(M, "view"), v.runCommand, c.runCommand);
-router.post("/thread/:id/reply", requirePermission(M, "create"), v.reply, c.reply);
+router.get("/commands", composer, requirePermission(M, "view"), c.commands);
+router.post("/commands/:key", composer, requirePermission(M, "view"), v.runCommand, c.runCommand);
+router.post("/thread/:id/reply", composer, requirePermission(M, "create"), v.reply, c.reply);
 
 module.exports = { basePath: "/mail", feature: null, router };

@@ -226,15 +226,32 @@ async function invalidateForUser(client, userId) {
   return { user_id: userId, invalidated: true };
 }
 
+/**
+ * Everything derived from the company: staff renders AND the system blocks.
+ *
+ * The staff half was here. The SYSTEM half was not, and on an entity change it
+ * is the half that matters most: the corporate block on an OTP, a notification
+ * or an invoice mail is derived entirely from `corporate_entity` — legal name,
+ * address, P.O. Box, RCCM, NIU, share capital. Those renders are keyed by
+ * `identity_key` rather than by a user, so `deleteCachedForUser` never reached
+ * them; `signature_render` has no TTL; and a company that changed office would
+ * have gone on printing its old address on system mail indefinitely.
+ * `deleteCachedForIdentity` existed for exactly this and had no caller.
+ *
+ * Every identity is dropped rather than a computed subset: they all render the
+ * same corporate block from the same entity, so there is no identity that an
+ * entity change leaves correct, and the cost is one re-render on next send.
+ */
 async function invalidateForEntity(client, entityId) {
   const users = await repo.usersForEntity(client, entityId);
   for (const id of users) await repo.deleteCachedForUser(client, id);
+  const identities = await repo.deleteAllIdentityCached(client);
   await emitEvent(client, {
     eventTypeKey: events.CACHE_INVALIDATED, moduleKey: events.MODULE,
     entityRef: `corporate_entity:${entityId}`,
-    payload: { reason: "entity.updated", users: users.length },
+    payload: { reason: "entity.updated", users: users.length, identities },
   }).catch(() => { /* @silent:storage */ });
-  return { entity_id: entityId, users: users.length };
+  return { entity_id: entityId, users: users.length, identities };
 }
 
 /**

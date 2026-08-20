@@ -26,14 +26,24 @@ const SRC = path.resolve(__dirname, "../../src");
  * Matching on the SQL rather than call order keeps the test readable when the
  * hook reorders its reads.
  */
+/**
+ * `mail.antispoof` answers "on" unless a test says otherwise.
+ *
+ * The verdict is flag-gated (§3.3), so a fixture that cannot answer
+ * `feature_state` would report every verdict path as correctly skipped and
+ * assert nothing — the mock-shaped-differently-from-the-runtime problem again.
+ */
+const FLAG_ON = { match: /FROM feature_state/, rows: [{ state: "on" }] };
+
 function fakeClient(answers = []) {
   const calls = [];
+  const table = [...answers, FLAG_ON];
   return {
     calls,
     written: (re) => calls.filter((c) => re.test(c.text)),
     query: async (text, params) => {
       calls.push({ text, params });
-      const hit = answers.find((a) => a.match.test(text));
+      const hit = table.find((a) => a.match.test(text));
       return { rows: hit ? hit.rows : [] };
     },
   };

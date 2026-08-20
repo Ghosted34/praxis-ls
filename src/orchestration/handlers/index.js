@@ -51,6 +51,12 @@ register({
   run: invalidateSignaturesOnEntity.run,
 });
 
+// ── Mail access follows the account (PR-0 P1/P3) ──
+// Suspending or locking a user archives their personal mailbox and revokes
+// every shared-mailbox grant they hold. `offboardUser` existed and had no
+// caller, so those grants outlived the account.
+register(require("./user-deactivated-offboard-mail"));
+
 // ── Mail dossier drawer (PR-3 §7.5) ──
 // The four events the guide names as making a cached drawer wrong. Registered
 // from one list so the cache module and the handlers cannot drift: add an event

@@ -489,3 +489,103 @@ missing code: `mail.ocr` and `mail_ai` default OFF and need switching on per ten
 requires `ai.vectorization`, without which threads are never embedded; and the vision and chat
 vendors need credentials in the platform vendor store before either AI path does more than degrade
 politely.
+
+---
+
+## 14. Third sweep — the classes the gates could not see
+
+§13 closed the four tracks and its own §13.4 recorded a worker that was registered and enqueued by
+nothing. That finding suggested the question this sweep asks: the orphan-table gate catches one KIND
+of declaration going unread. What are the others?
+
+Four kinds, swept: workers, event types, send points, columns. Two were clean. Two were not, and one
+of them is the largest single finding of the whole programme.
+
+### 14.1 The send-point binding layer was completely inert
+
+`mail_send_point` carries twenty-two rows. `sendpoint.service.resolve` implements the full tiered
+lookup — a binding for this send point AND this corporate entity, then tenant-wide, then the legacy
+section, then the purpose identity. `email.service.resolveMail` accepts a `sendPoint` and asks the
+registry first. The console lets a tenant bind an identity to every row, and the client API to do it
+exists.
+
+**No caller in `src/` ever passed one.** A repo-wide scan for a literal `sendPoint:` value outside
+the mail composer's own `"user.compose"` default returned nothing. Every system-email caller passed
+`purpose: "NOTIFICATIONS"` and stopped, so tiers 1 and 2 — the two the feature exists for — were
+unreachable.
+
+Nine rows declared `is_wired = true`, above a comment reading *"the eight true rows below were read
+off the code, not guessed"*, naming the exact files. Two were checked directly: `app_user.service`
+(auth.password_reset) and `template.service` (document.share). Neither did it.
+
+This is worse than an orphan table. A table nobody reads is invisible; this actively invited the
+configuration, recorded the tenant's choice, and ignored it. Somebody routing "Sign-in code" to
+`security@` and "Document sent to a party" to `documents@` got neither, with no symptom — mail still
+went out, from a plausible address.
+
+Eight send points are now passed at their call sites, `email-send.js` carries the key through Redis
+so campaign and scheduled-report sends resolve it in the worker, and `document.share` passes
+`entityId` so a group sends each company's paperwork from that company's address.
+
+The change is safe to ship live: tiers 3 and 4 are byte-for-byte what `email.service` already did, so
+a tenant who has bound nothing sends from precisely the address they sent from yesterday. Passing a
+key can only ever ADD an answer above the existing ones.
+
+The ninth, `auth.otp`, is a different problem: it claims a sender that does not exist. Two-factor
+sign-in is TOTP through an authenticator app, and every other "one-time" in that module is a one-time
+*link*. Migration 10773 flips it to `is_wired = false` rather than deleting the row — the row is
+still where the binding belongs the day an emailed code exists, and deleting it would silently drop
+any binding a tenant has already made.
+
+### 14.2 Four event types were seeded, described, and emitted by nothing
+
+Each ships with an English and a French description that appears in the tenant's event catalogue and
+in the notification-rule builder. A key an administrator can select that never fires is a rule that
+silently never runs.
+
+| Key | Was | Now |
+| --- | --- | --- |
+| `email.thread.replied` | The ingest ternary emitted `email.thread.created` on one branch and the pre-thread engine's `email.received` on the other. Two keys for one moment, and the one in the rule builder was the one that never fired. | Symmetric, both on the thread grain. `categoryFor` keys on the domain, so notification routing is unchanged. |
+| `email.attachment.filed` | Filing emitted only `document.captured`. | Both. They are different statements: one says a document exists on a record (what the vault listens to), the other says an inbound attachment was classified and a human confirmed it — the mail provenance a compliance officer wants. |
+| `email.draft.saved` | Nothing. | Once per draft, on creation — which is what 10739's own description promises. Per-save would bury the log under one conversation's typing. |
+| `document.share` | Matched the sweep's pattern but is a send point, not an event. | Covered by §14.1. |
+
+### 14.3 `ai-vision` was a worker for a screen that was never built
+
+Registered in `workers.js`, enqueued by nothing. It fed a document-scan turn to the assistant — and
+the assistant has no image entry point: no route, no validator, no upload control. No job could ever
+have reached it.
+
+Removed rather than left with an escape hatch. The capability is not gone: `services/ai/vision.service`
+has three live callers — company-profile refresh, CV scoring, and mail's attachment extraction
+(§8.6), which is doc-vision delivered somewhere a person can actually reach it.
+
+`scheduled-report` is also enqueued by nothing in-app, and that one is *by design*: its handler's
+header names an external cron or `POST /reports/scheduled/run-due`, and both exist. It is listed in
+the new sweep as externally driven, with a size ceiling on the list. Worth a decision from the lead —
+it is the only periodic job not in `scheduleRecurring()`.
+
+### 14.4 Two classes came back clean
+
+Every one of the 141 columns added by the mail-programme migrations is read. (A first pass flagged
+`checksum_sha256`; the regex had truncated it at the digits.)
+
+And §12.4's signature-cache fix did land — via `repo.deleteAllIdentityCached` rather than the
+narrower `deleteCachedForIdentity` the audit named. The behaviour is correct; only the unused helper
+remains, along with `mail.repo.findClientByEmail` / `findDossierByRefs`, superseded by `binding/`.
+
+### 14.5 The sweep is now a gate
+
+`tests/security/orphan-wiring-sweep.test.js` asks the general question rather than the table-shaped
+one: every registered worker must have a producer, and every event type the programme seeds must be
+emitted. `tests/security/mail-send-point-wiring.test.js` holds the registry to its own `is_wired`
+claim, and refuses a bare mention of a key as evidence — the gate guards itself with a row that is
+named in prose and sent by nothing.
+
+Four sweeps now stand, one per kind of declaration: tables, workers + events, send points, feature
+flags. Each carries a named, size-capped allowance list, because an allowance that grows is the gate
+being routed around.
+
+### 14.6 Verification
+
+5,091 backend tests across 332 suites, 0 lint errors, column, idempotency and citext gates OK.

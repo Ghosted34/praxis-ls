@@ -151,6 +151,11 @@ async function sendInviteEmail(client, { to, name, token, origin, purpose, tenan
     text,
     purpose: "NOTIFICATIONS",
     moduleKey: MODULE,
+    // One send point for both halves: the registry has `portal.invite`, and a
+    // portal password reset goes to the same audience from the same address.
+    // Splitting them would mean a registry row a tenant could bind and we would
+    // then have to keep two bindings in step for one conversation.
+    sendPoint: "portal.invite",
   });
 }
 

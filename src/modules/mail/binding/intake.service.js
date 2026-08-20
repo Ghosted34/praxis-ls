@@ -202,6 +202,25 @@ async function accept(client, classificationId, { docTypeCode = null, entityRef 
     actorUserId: actor.user_id || null,
     payload: { doc_id: k.vault_id, doc_type_code: code, from: "MAIL" },
   }).catch(() => { /* @silent:storage the vault row is the outcome */ });
+
+  // The MAIL-side event, which is a different statement from the vault one.
+  //
+  // `document.captured` says a document now exists on a record — it is what the
+  // vault and Client 360 listen to, and it is emitted the same way by every
+  // other capture path in the product. `email.attachment.filed` (10749) says
+  // something only true here: an INBOUND ATTACHMENT was classified and a human
+  // confirmed it. Seeded, described, and emitted by nothing, so a rule watching
+  // for mail-originated filings — the audit trail a compliance officer actually
+  // wants — had nothing to watch.
+  //
+  // Both, not one: collapsing them would either lose the mail provenance or
+  // make the vault's listener fire on a key it does not know.
+  await emitEvent(client, {
+    eventTypeKey: "email.attachment.filed", moduleKey: M,
+    entityRef: `email_attachment:${k.email_attachment_id}`,
+    actorUserId: actor.user_id || null,
+    payload: { doc_id: k.vault_id, doc_type_code: code, entity_ref: ref || null },
+  }).catch(() => { /* @silent:storage */ });
   await audit(client, {
     actorUserId: actor.user_id || null, action: "mail.document.filed",
     moduleKey: M, entityRef: ref || `document_vault:${k.vault_id}`,

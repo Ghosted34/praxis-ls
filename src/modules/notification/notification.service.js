@@ -68,6 +68,11 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body 
       text: body ? `${title}\n\n${body}` : title,
       purpose: "NOTIFICATIONS",
       moduleKey: events.MODULE,
+      // Security notices are a different send point from ordinary alerts,
+      // because they are the ones a tenant most often wants coming from an
+      // address people recognise — and they are also the ones nobody can
+      // silence, so the From matters more, not less.
+      sendPoint: isSecurity ? "notification.security" : "notification.alert",
     });
   } catch (err) {
     logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
@@ -162,6 +167,7 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
         text: body ? `${title}\n\n${body}` : title,
         purpose: "NOTIFICATIONS",
         moduleKey: events.MODULE,
+        sendPoint: isSecurity ? "notification.security" : "notification.alert",
       });
     } catch (err) {
       logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");

@@ -199,6 +199,10 @@ async function respond(client, { id, body, subject = null, actor = {} }) {
       purpose: MAIL_PURPOSE,
       moduleKey: events.MODULE,
       entityRef: ref(id),
+      // §3.5. A reply to a website enquiry is the first thing a prospect ever
+      // receives from us, and it is the send point a tenant most reliably wants
+      // on a sales address rather than the generic notifications one.
+      sendPoint: "intake.reply",
     });
   } catch (err) {
     await repo.settleResponse(client, attempt.contact_enquiry_response_id, {

@@ -1035,6 +1035,11 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
 
   await emailSvc.send(client, {
     to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70",
+    // §3.5 — every generated document emailed from its record. This is the send
+    // point a group most wants bound PER CORPORATE ENTITY, so each company's
+    // paperwork leaves from that company's address; `entityId` is what lets
+    // `sendpoint.service` answer at that tier rather than tenant-wide.
+    sendPoint: "document.share", entityId: entityId || null,
     // Record the source document on the send-log row (e.g. `invoice:<id>`).
     entityRef: entityId || recordId ? `${String(docType).toLowerCase()}:${entityId || recordId}` : null,
   });

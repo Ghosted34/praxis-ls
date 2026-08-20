@@ -478,7 +478,16 @@ async function syncConnection(client, id, ctx = {}) {
         // being down must not be what stops a mailbox syncing.
         await semantic.onThreadUpdated(client, row.thread_id);
         await emitEvent(client, {
-          eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
+          // Symmetric, on the THREAD grain, matching the family 10735 seeds.
+          //
+          // The else branch used to emit `email.received` — the pre-thread
+          // engine's message-grain key — which left `email.thread.replied`
+          // seeded, described as "a new message joined an existing
+          // conversation", and emitted by nothing. The two are synonyms for the
+          // same moment and only one of them can be the answer, so a rule on
+          // "somebody replied" could never fire. `categoryFor` keys on the
+          // domain (`email`), so notification routing is unchanged by this.
+          eventTypeKey: row.is_new_thread ? "email.thread.created" : "email.thread.replied",
           moduleKey: events.MODULE,
           entityRef: events.msgRef(row.email_message_id),
           actorUserId: null,

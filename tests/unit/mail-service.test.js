@@ -231,7 +231,7 @@ test("a message that starts a conversation is announced as a new thread", async 
   );
 });
 
-test("a reply into an existing conversation is announced as received, not as a new thread", async () => {
+test("a reply into an existing conversation is announced as a REPLY, not as a new thread", async () => {
   mockFetchSince.mockResolvedValue({
     messages: [inbound({ externalMessageId: "<r>", inReplyTo: "<a>", references: ["<a>"] })],
     nextCursor: null,
@@ -241,7 +241,20 @@ test("a reply into an existing conversation is announced as received, not as a n
   await service.syncConnection(DB, "conn-1", {});
 
   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
-  expect(kinds).toContain("email.received");
+  /**
+   * This asserted `email.received` until the third sweep.
+   *
+   * The branch emitted the pre-thread engine's message-grain key while the
+   * other half of the same ternary emitted `email.thread.created` — so
+   * `email.thread.replied`, seeded by 10735 and described as "a new message
+   * joined an existing conversation", was emitted by nothing. Two keys for one
+   * moment, and the one an administrator can pick in the rule builder was the
+   * one that never fired.
+   *
+   * Now symmetric, both on the thread grain. `categoryFor` keys on the domain
+   * (`email`), so notification routing and preferences are unchanged.
+   */
+  expect(kinds).toContain("email.thread.replied");
   expect(kinds).not.toContain("email.thread.created");
   // Threaded onto the conversation the References header names, not onto itself.
   expect(threads.upsertThread).toHaveBeenCalledWith(DB, expect.objectContaining({ thread_key: "<a>" }));

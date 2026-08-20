@@ -107,6 +107,25 @@ async function saveDraft(client, actor, input = {}) {
   }
 
   const row = await repo.upsertDraft(client, actor.user_id, { ...input, ...rendered });
+
+  // ONCE PER DRAFT, not per keystroke — which is what 10739's own description
+  // promises and what makes the event usable at all. The composer autosaves
+  // every few seconds; an event per save would bury the log under one
+  // conversation's typing.
+  //
+  // "New" is the absence of an incoming id: the composer sends none on the
+  // first save and echoes it back on every save after. Nothing else in the
+  // response distinguishes them, and asking the repo would be a second query
+  // to learn something the caller already knew.
+  if (!input.email_draft_id && row && row.email_draft_id) {
+    await emitEvent(client, {
+      eventTypeKey: "email.draft.saved", moduleKey: MODULE,
+      entityRef: `email_draft:${row.email_draft_id}`,
+      actorUserId: actor.user_id || null,
+      payload: { thread_id: row.email_thread_id || null, kind: row.kind || null },
+    }).catch(() => { /* @silent:storage the draft row is the outcome, not its event */ });
+  }
+
   return { ...row, warnings };
 }
 

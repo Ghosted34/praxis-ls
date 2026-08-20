@@ -31,7 +31,17 @@ const PROCESSORS = [
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
   { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
-  { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
+  // `ai-vision` was registered here and enqueued by nothing. It fed a
+  // document-scan turn to the assistant — but the assistant has no image entry
+  // point: no route, no validator, no upload control, nothing. It was a worker
+  // for a surface that was never built, and the general orphan sweep
+  // (tests/security/orphan-wiring-sweep.test.js) is what finally said so.
+  //
+  // The CAPABILITY is not gone. `services/ai/vision.service` is alive and has
+  // three real callers — company-profile refresh, CV scoring, and mail's
+  // attachment extraction (§8.6), which is doc-vision delivered somewhere a
+  // person can actually reach it. Restoring the chat flow means building its
+  // route first, at which point this handler is a `git show` away.
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },

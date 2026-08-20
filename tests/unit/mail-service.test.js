@@ -81,6 +81,10 @@ jest.mock("../../src/modules/mail/mail/mailbox.repo", () => ({
 jest.mock("../../src/shared/config/settings", () => ({
   getSetting: jest.fn(async () => ({})),
 }));
+const mockSuggest = jest.fn(async () => []);
+jest.mock("../../src/modules/mail/binding/binding.service", () => ({
+  suggestOnIngest: (...a) => mockSuggest(...a),
+}));
 jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
   getConnection: jest.fn(),
   setError: jest.fn(async () => {}),
@@ -297,35 +301,22 @@ test("persists attachments to the vault and links them to the MESSAGE", async ()
   );
 });
 
-test("links a conversation to a client when the sender matches (CRM)", async () => {
+test("ingest writes a binding SUGGESTION, never entity_ref (Q18)", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [inbound({ externalMessageId: "<d>", from: "client@acme.cm", subject: "D" })],
+    messages: [inbound({ externalMessageId: "<d>", from: "client@acme.cm", subject: "Re: SLAS-2026-0001 shipment" })],
     nextCursor: null,
   });
   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-d" });
-  repo.findClientByEmail.mockResolvedValueOnce({ client_id: "cli-1", name: "Acme" });
 
   await service.syncConnection({}, "conn-1", {});
 
-  expect(repo.findClientByEmail).toHaveBeenCalledWith({}, "client@acme.cm");
-  // The THREAD carries the link, not the single message — a dossier reference in
-  // one reply is about the whole exchange.
-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-1", { entity_ref: "client:cli-1" });
-});
-
-test("auto-links to a dossier when its ref appears in the subject (wins over client)", async () => {
-  mockFetchSince.mockResolvedValue({
-    messages: [inbound({ externalMessageId: "<f>", from: "client@acme.cm", subject: "Re: SLAS-2026-0001 shipment" })],
-    nextCursor: null,
-  });
-  threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-f" });
-  repo.findDossierByRefs.mockResolvedValueOnce({ dossier_id: "dos-1", ref: "SLAS-2026-0001" });
-
-  await service.syncConnection({}, "conn-1", {});
-
-  expect(repo.findDossierByRefs).toHaveBeenCalledWith({}, expect.arrayContaining(["SLAS-2026-0001"]));
-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-1", { entity_ref: "dossier:dos-1" });
-  expect(repo.findClientByEmail).not.toHaveBeenCalled(); // dossier match short-circuits
+  expect(mockSuggest).toHaveBeenCalledWith({}, expect.objectContaining({
+    fromAddress: "client@acme.cm",
+    subject: "Re: SLAS-2026-0001 shipment",
+  }));
+  expect(threads.updateThread).not.toHaveBeenCalledWith(
+    {}, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
+  );
 });
 
 test("sanitizes the inbound HTML body before storing (stored-XSS guard)", async () => {
@@ -378,16 +369,13 @@ test("a folder listing that fails stops the sync and records it on the connectio
 /*
  * WHY THIS ASSERTS 422 AND NOT THE 502 IT USED TO.
  *
- * Two implementations of this mapping landed within days of each other and both
- * survived the merge: `mapSmtpError` (#160), which called a rejected sender a
- * 502, and `explainSendError`, which calls it a 422. Only the second was ever
- * wired to `send`; the first was dead from the moment it merged, and this test
- * was asserting its contract — so main went red and stayed red.
- *
- * The live behaviour is also the better-argued one. A mail server refusing your
- * FROM address is a verdict on the mailbox's own SMTP setup, not a fault in
- * Praxis, and 4xx is what keeps it out of the server-error monitor where nobody
- * can act on it. The dead function is deleted rather than re-wired.
+ * Two implementations of this mapping landed within days of each other:
+ * `mapSmtpError` (#160) called a rejected sender a 502 SMTP_SENDER_REJECTED,
+ * and `explainSendError` called it a 422 SENDER_NOT_AUTHORIZED. Only the
+ * second was wired to `send`, so this test (which used to assert the 502
+ * contract) went red on main. Both paths now share the 422 classifier —
+ * Test / system-email / platform probe included — because a mail server
+ * refusing your FROM address is a mailbox-config verdict, not a Praxis 5xx.
  */
 test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422 AppError", async () => {
   const smtpErr = Object.assign(
@@ -410,6 +398,19 @@ test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422
     status: 422,
   });
   // The failed send must not be recorded as an outbound thread copy.
+  expect(threads.insertMessage).not.toHaveBeenCalled();
+});
+
+test("send maps 550 user-unknown to RECIPIENT_REJECTED, not sender-auth", async () => {
+  const smtpErr = Object.assign(new Error("550 5.1.1 User unknown"), {
+    responseCode: 550,
+    response: "550 5.1.1 User unknown",
+    code: "EENVELOPE",
+  });
+  mockSendEmail.mockRejectedValueOnce(smtpErr);
+  await expect(
+    service.send({}, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
+  ).rejects.toMatchObject({ name: "AppError", code: "RECIPIENT_REJECTED", status: 422 });
   expect(threads.insertMessage).not.toHaveBeenCalled();
 });
 

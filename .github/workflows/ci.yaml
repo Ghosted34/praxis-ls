@@ -423,6 +423,22 @@ jobs:
         # (R1/R2/R3) is enforced by the ESLint rules.
         run: node scripts/check-silent-catch.js
 
+      - name: citext[] reads are cast to text[]
+        # node-postgres has no parser for citext[] — it comes from an extension,
+        # so its array type has no fixed OID — and hands back the raw literal
+        # "{a@b.cm,c@d.cm}" as a STRING where every reader expects an array.
+        #
+        # This is not hypothetical. Two shipped: one closed the whole Mailbox
+        # screen behind an error boundary on `.filter is not a function`, and one
+        # broke mail INGESTION silently, throwing on every message after the
+        # first in a conversation inside a worker where nobody was watching.
+        #
+        # Both passed every existing gate. Unit tests mock the repo and hand the
+        # service hand-made JS arrays; component tests hand the renderer
+        # hand-made JS arrays. Neither layer can produce the string the database
+        # actually returns, so the defect lived exactly in the gap between them.
+        run: node scripts/check-citext-arrays.js
+
   # ---------------------------------------------------------------------------
   # TC-CI6 — migrations are never executed in CI; the first run is production.
   #

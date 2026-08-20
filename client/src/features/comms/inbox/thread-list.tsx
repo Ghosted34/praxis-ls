@@ -64,8 +64,14 @@ function Star({
  */
 function counterparties(t: Thread): string {
   const mine = String(t.mailbox_address || "").toLowerCase();
-  const others = (t.participants || []).filter((p) => p !== mine);
-  const list = others.length ? others : t.participants || [];
+  // `Array.isArray`, not `|| []`. A non-array truthy value — which is exactly
+  // what an uncast citext[] column sent — passes `|| []` and then throws on
+  // `.filter`, and that one throw took down the whole Mailbox screen. The API
+  // layer normalises this now; the guard stays because a row renderer should
+  // never be the thing that costs somebody their workspace.
+  const all = Array.isArray(t.participants) ? t.participants : [];
+  const others = all.filter((p) => p !== mine);
+  const list = others.length ? others : all;
   if (!list.length) return t.last_from || "—";
   const names = list.map((a) => a.split("@")[0]);
   return names.length <= 2

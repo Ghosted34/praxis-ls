@@ -30,6 +30,9 @@ import { Select } from "@/components/ui/modal";
 import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { dateTimeFmt } from "@/lib/format";
 import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
+import { SignatureSlot } from "./composer/signature-slot";
+
+const Composer = React.lazy(() => import("./composer"));
 
 const MOVE_TO: MailFolder[] = ["INBOX", "ARCHIVE", "SPAM", "TRASH"];
 
@@ -50,9 +53,13 @@ function MessageBlock({
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const origin = originNote(message);
+  // Same reasoning as counterparties() in thread-list: guard the shape rather
+  // than trust it, because the cost of being wrong here is the whole screen.
+  const to = Array.isArray(message.to_address) ? message.to_address : [];
+  const cc = Array.isArray(message.cc_address) ? message.cc_address : [];
   const who =
     message.direction === "OUT"
-      ? `To ${message.to_address.join(", ") || "—"}`
+      ? `To ${to.join(", ") || "—"}`
       : `From ${message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}`;
 
   return (
@@ -91,9 +98,9 @@ function MessageBlock({
             {origin && <Pill tone="warn">{origin}</Pill>}
             {message.has_attachment && <Pill tone="mute">Attachment</Pill>}
           </div>
-          {message.cc_address.length > 0 && (
+          {cc.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Cc: <span className="num">{message.cc_address.join(", ")}</span>
+              Cc: <span className="num">{cc.join(", ")}</span>
             </p>
           )}
           {message.body_html ? (
@@ -123,6 +130,7 @@ export function ThreadView({
   onLabel,
   onToggleRead,
   onClose,
+  onReplied,
   busy,
 }: {
   thread: ThreadDetail | null;
@@ -134,8 +142,14 @@ export function ThreadView({
   onLabel: (labelId: string) => void;
   onToggleRead: (read: boolean) => void;
   onClose: () => void;
+  /** Called once a reply is accepted into the send queue, so the list refreshes. */
+  onReplied?: () => void;
   busy: boolean;
 }) {
+  // Declared before the early returns below, because hooks cannot be conditional.
+  const [replying, setReplying] = React.useState(false);
+  React.useEffect(() => { setReplying(false); }, [thread?.email_thread_id]);
+
   if (error) return <ErrorState message={error} />;
   if (loading && !thread) return <LoadingRow label="Opening conversation…" />;
   if (!thread) {
@@ -152,6 +166,11 @@ export function ThreadView({
   const messages = thread.messages || [];
   const lastIndex = messages.length - 1;
 
+  // Who a reply goes to: the last INBOUND sender, not simply the last message.
+  // Replying to your own last message would address the mail to yourself.
+  const lastInbound = [...messages].reverse().find((m) => m.direction === "IN");
+  const replyTo = lastInbound ? [lastInbound.from_address] : (messages[lastIndex]?.to_address || []);
+
   return (
     <div className="flex min-h-0 flex-col">
       <header className="space-y-2 border-b border-border px-4 py-3">
@@ -164,7 +183,7 @@ export function ThreadView({
           </Button>
         </div>
         <p className="num text-xs text-muted-foreground">
-          {thread.participants.join(", ")}
+          {(Array.isArray(thread.participants) ? thread.participants : []).join(", ")}
         </p>
 
         {/* WHY the classifier put this here, in words, next to the control that
@@ -237,12 +256,30 @@ export function ThreadView({
         ))}
       </div>
 
-      {/* PR-1B replaces this with the composer. Saying so is better than an
-          empty footer that reads as an unfinished screen. */}
+      {/* The composer, when the reader opens it. Lazily: TipTap and ProseMirror
+          are ~150 kB gzipped and most of the time somebody is reading, not
+          writing — see the isEditorPackage note in vite.config.ts. */}
       <footer className="border-t border-border px-4 py-3">
-        <p className="text-xs text-muted-foreground">
-          Replying from here arrives with the composer.
-        </p>
+        {replying ? (
+          <React.Suspense fallback={<LoadingRow label="Opening the composer…" />}>
+            <Composer
+              connectionId={thread.email_connection_id}
+              threadId={thread.email_thread_id}
+              replyToMessageId={messages[lastIndex]?.email_message_id || null}
+              kind="REPLY"
+              initialTo={replyTo}
+              initialSubject={/^re:/i.test(thread.subject || "") ? thread.subject : `Re: ${thread.subject || ""}`.trim()}
+              quotedHtml={messages[lastIndex]?.body_html || null}
+              quotedText={messages[lastIndex]?.body_text || null}
+              entityRef={thread.entity_ref || null}
+              onClose={() => setReplying(false)}
+              onSent={onReplied}
+              slots={{ "composer.footer.left": <SignatureSlot /> }}
+            />
+          </React.Suspense>
+        ) : (
+          <Button size="sm" onClick={() => setReplying(true)}>Reply</Button>
+        )}
       </footer>
     </div>
   );

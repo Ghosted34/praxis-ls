@@ -5,6 +5,25 @@
  * always had. This file owns conversations, messages, per-user state, folders and
  * labels — the things 10731 and 10732 introduced.
  *
+ * ── EVERY citext[] READ IS CAST TO text[] — THIS IS NOT OPTIONAL ────────────
+ *
+ * `participants`, `to_address` and `cc_address` are `citext[]`, which buys
+ * case-insensitive comparison on addresses. The cost is that node-postgres has
+ * no type parser for it: `citext` comes from an extension, so its array OID is
+ * not one of the built-ins pg knows how to decode, and it hands back the RAW
+ * POSTGRES LITERAL as a string — `"{a@b.cm,c@d.cm}"` — instead of an array.
+ *
+ * Nothing complains. The row looks fine in a log. Then the first `.filter` or
+ * `.join` on it throws, and because these feed the inbox list, one uncast
+ * SELECT takes down the entire Mailbox screen behind an error boundary. That is
+ * exactly what happened after PR-1A shipped.
+ *
+ * So: `::text[]` on every read of one of these columns, including inside
+ * `SELECT t.*`, where the cast is appended as a same-named column because
+ * Postgres allows the duplicate and node-postgres keeps the LAST one. Writes
+ * need no cast — pg sends a JS array as `text[]` and Postgres coerces it going
+ * in. `scripts/check-citext-arrays.js` fails the build on a read that forgets.
+ *
  * ── ONE PLACE DECIDES WHAT A USER MAY SEE ───────────────────────────────────
  *
  * `accessibleConnections` is the single predicate for "which mailboxes is this
@@ -105,7 +124,8 @@ async function listThreads(client, userId, q = {}) {
 
   const limit = add(Math.min(Math.max(Number(q.limit) || 50, 1), 200));
   const { rows } = await client.query(
-    `SELECT t.email_thread_id, t.email_connection_id, t.thread_key, t.subject, t.participants,
+    `SELECT t.email_thread_id, t.email_connection_id, t.thread_key, t.subject,
+            t.participants::text[] AS participants,
             t.message_count, t.has_attachment, t.stream, t.stream_reason, t.is_vip, t.entity_ref,
             t.first_message_at, t.last_message_at,
             c.email_address AS mailbox_address, c.kind AS mailbox_kind,
@@ -133,7 +153,8 @@ async function listThreads(client, userId, q = {}) {
 /** One conversation with every message on it, in order. */
 async function getThread(client, userId, threadId) {
   const { rows: head } = await client.query(
-    `SELECT t.*, c.email_address AS mailbox_address, c.kind AS mailbox_kind
+    `SELECT t.*, t.participants::text[] AS participants,
+            c.email_address AS mailbox_address, c.kind AS mailbox_kind
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
       WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}`,
@@ -142,7 +163,8 @@ async function getThread(client, userId, threadId) {
   if (!head[0]) return null;
   const { rows: messages } = await client.query(
     `SELECT m.email_message_id, m.direction, m.folder, m.from_address, m.from_name,
-            m.to_address, m.cc_address, m.subject, m.body_html, m.body_text, m.body_preview,
+            m.to_address::text[] AS to_address, m.cc_address::text[] AS cc_address,
+            m.subject, m.body_html, m.body_text, m.body_preview,
             m.received_at, m.has_attachment, m.sent_via, m.origin_send_point,
             u.full_name AS origin_user_name,
             COALESCE(s.is_read, false) AS is_read, COALESCE(s.is_starred, false) AS is_starred
@@ -168,7 +190,22 @@ const upsertThread = (client, row) =>
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT (email_connection_id, thread_key) DO UPDATE
         SET subject          = COALESCE(email_thread.subject, EXCLUDED.subject),
-            participants     = EXCLUDED.participants,
+            -- UNIONED, not overwritten. Every other field on this clause is
+            -- written defensively — COALESCE, OR, LEAST, GREATEST — because a
+            -- later message must not clobber what the conversation already
+            -- knows. Participants was the one exception, and it is the field
+            -- that most obviously has to accumulate: the upsert runs with only
+            -- THIS message's addresses, so an assignment dropped everyone who
+            -- had written earlier. A thread would end up listing whoever spoke
+            -- last, which is exactly the "who is in this?" question the column
+            -- exists to answer.
+            --
+            -- DISTINCT over citext folds case, so Client@Maersk.CM and
+            -- client@maersk.cm collapse to one — the reason the column is
+            -- citext in the first place. Sorted for a stable order.
+            participants     = ARRAY(
+              SELECT DISTINCT p FROM unnest(email_thread.participants || EXCLUDED.participants) AS p
+               ORDER BY p),
             has_attachment   = email_thread.has_attachment OR EXCLUDED.has_attachment,
             first_message_at = LEAST(email_thread.first_message_at, EXCLUDED.first_message_at),
             last_message_at  = GREATEST(email_thread.last_message_at, EXCLUDED.last_message_at),
@@ -176,7 +213,7 @@ const upsertThread = (client, row) =>
             -- later message must not silently re-file a conversation somebody
             -- has already bound or corrected.
             entity_ref       = COALESCE(email_thread.entity_ref, EXCLUDED.entity_ref)
-      RETURNING *`,
+      RETURNING *, participants::text[] AS participants`,
     [row.email_connection_id, row.thread_key, row.subject || null, row.participants || [],
      row.message_count || 0, row.has_attachment === true, row.stream || "HUMAN",
      row.stream_reason || null, row.is_vip === true, row.entity_ref || null,
@@ -227,7 +264,9 @@ const insertMessage = (client, row) =>
 
 const getMessage = (client, userId, id) =>
   client.query(
-    `SELECT m.*, COALESCE(s.is_read,false) AS is_read, COALESCE(s.is_starred,false) AS is_starred
+    `SELECT m.*, m.to_address::text[] AS to_address, m.cc_address::text[] AS cc_address,
+            m.bcc_address::text[] AS bcc_address,
+            COALESCE(s.is_read,false) AS is_read, COALESCE(s.is_starred,false) AS is_starred
        FROM email_message m
        LEFT JOIN email_message_state s ON s.email_message_id = m.email_message_id AND s.user_id = $1
       WHERE m.email_message_id = $2 AND m.email_connection_id IN ${accessible(1)}`,

@@ -16,6 +16,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { AttendanceDaysView } from "./attendance-days";
+import { SitePill } from "./attendance-site-pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -24,14 +25,6 @@ import { reportActionError } from "@/lib/action-error";
 const shell = pageShell.wide;
 const today = () => new Date().toISOString().slice(0, 10);
 
-function SitePill({ within }: { within?: boolean | null }) {
-  if (within == null) return <Pill tone="mute">No fix</Pill>;
-  return within ? (
-    <Pill tone="ok">On-site</Pill>
-  ) : (
-    <Pill tone="bad">Off-site</Pill>
-  );
-}
 const metres = (v: unknown) =>
   v == null ? null : `${Math.round(Number(v))} m`;
 
@@ -75,7 +68,7 @@ function AttendanceLog({ date }: { date: string }) {
     {
       key: "site",
       label: "On-site",
-      render: (r) => <SitePill within={r.within_geofence} />,
+      render: (r) => <SitePill within={r.within_geofence} status={r.location_status} />,
     },
     {
       key: "device",

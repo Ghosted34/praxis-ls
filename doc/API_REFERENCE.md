@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1303 |
-| Modules mounted | 119 |
+| Routes | 1364 |
+| Modules mounted | 125 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1303 mounted routes, grouped by path prefix.
+All 1364 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -542,9 +542,14 @@ All 1303 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | POST | `/api/tenant/cost-tracking/` | — |
+| POST | `/api/tenant/cost-tracking/advances/:advanceId/allocations` | — |
+| DELETE | `/api/tenant/cost-tracking/allocations/:allocationId` | — |
+| POST | `/api/tenant/cost-tracking/bulk` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId` | — |
+| GET | `/api/tenant/cost-tracking/dossier/:dossierId/advances` | — |
 | GET | `/api/tenant/cost-tracking/dossier/:dossierId/reconcile` | — |
 | GET | `/api/tenant/cost-tracking/kpis` | — |
+| GET | `/api/tenant/cost-tracking/matrix` | — |
 | GET | `/api/tenant/cost-tracking/portfolio` | — |
 
 ### `tenant/costing`
@@ -556,6 +561,8 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/costing/reconciliations/:id` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/reject` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/submit` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/suggestions/:sid/confirm` | — |
+| POST | `/api/tenant/costing/reconciliations/:id/suggestions/:sid/reject` | — |
 | POST | `/api/tenant/costing/reconciliations/:id/validate` | — |
 
 ### `tenant/costings`
@@ -795,8 +802,10 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/extra-charge-simulations/` | — |
 | POST | `/api/tenant/extra-charge-simulations/` | — |
 | GET | `/api/tenant/extra-charge-simulations/:id` | — |
+| GET | `/api/tenant/extra-charge-simulations/prefill/:dossierId` | — |
 | POST | `/api/tenant/extra-charge-simulations/preview` | — |
 | GET | `/api/tenant/extra-charge-simulations/rates` | — |
+| PUT | `/api/tenant/extra-charge-simulations/rates` | — |
 
 ### `tenant/field-visibility`
 
@@ -1018,18 +1027,37 @@ All 1303 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/mail/access-log` | — |
+| GET | `/api/tenant/mail/archive/verify` | — |
+| POST | `/api/tenant/mail/assist/compose` | — |
+| POST | `/api/tenant/mail/assist/draft` | — |
+| POST | `/api/tenant/mail/assist/guardrails` | — |
+| POST | `/api/tenant/mail/attachments/from-vault` | — |
+| POST | `/api/tenant/mail/attachments/upload` | — |
 | GET | `/api/tenant/mail/autodiscover` | — |
 | GET | `/api/tenant/mail/catalogue` | — |
 | POST | `/api/tenant/mail/catalogue` | — |
 | PATCH | `/api/tenant/mail/catalogue/:key` | — |
 | GET | `/api/tenant/mail/client/:id/timeline` | — |
+| GET | `/api/tenant/mail/commands` | — |
+| POST | `/api/tenant/mail/commands/:key` | — |
 | GET | `/api/tenant/mail/connections` | — |
 | POST | `/api/tenant/mail/connections` | — |
 | PATCH | `/api/tenant/mail/connections/:id` | — |
 | POST | `/api/tenant/mail/connections/:id/default` | — |
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
+| GET | `/api/tenant/mail/context` | — |
+| GET | `/api/tenant/mail/context/:tab` | — |
 | GET | `/api/tenant/mail/cpanel-preset` | — |
+| GET | `/api/tenant/mail/deliverability` | — |
+| GET | `/api/tenant/mail/deliverability/:domain/history` | — |
+| POST | `/api/tenant/mail/deliverability/check` | — |
+| GET | `/api/tenant/mail/drafts` | — |
+| POST | `/api/tenant/mail/drafts` | — |
+| DELETE | `/api/tenant/mail/drafts/:id` | — |
+| GET | `/api/tenant/mail/drafts/:id` | — |
+| GET | `/api/tenant/mail/drafts/:id/attachments` | — |
+| DELETE | `/api/tenant/mail/drafts/:id/attachments/:attachmentId` | — |
 | GET | `/api/tenant/mail/folders` | — |
 | GET | `/api/tenant/mail/inbox` | — |
 | GET | `/api/tenant/mail/labels` | — |
@@ -1050,16 +1078,28 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/oauth/google/start` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/callback` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/start` | — |
+| GET | `/api/tenant/mail/outbox` | — |
 | GET | `/api/tenant/mail/recipients` | — |
+| POST | `/api/tenant/mail/secure-links` | — |
+| POST | `/api/tenant/mail/secure-links/:id/revoke` | — |
 | POST | `/api/tenant/mail/send` | — |
 | GET | `/api/tenant/mail/send-points` | — |
 | DELETE | `/api/tenant/mail/send-points/:key` | — |
 | PUT | `/api/tenant/mail/send-points/:key` | — |
+| POST | `/api/tenant/mail/send/:id/cancel` | — |
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |
 | PATCH | `/api/tenant/mail/senders/:id` | — |
 | POST | `/api/tenant/mail/senders/:id/archive` | — |
 | GET | `/api/tenant/mail/sent` | — |
+| GET | `/api/tenant/mail/signature` | — |
+| PUT | `/api/tenant/mail/signature` | — |
+| GET | `/api/tenant/mail/signature/png` | — |
+| POST | `/api/tenant/mail/signature/png` | — |
+| GET | `/api/tenant/mail/signature/preview` | — |
+| GET | `/api/tenant/mail/signature/templates` | — |
+| PATCH | `/api/tenant/mail/signature/templates/:id` | — |
+| POST | `/api/tenant/mail/suggestions/accept-batch` | — |
 | GET | `/api/tenant/mail/thread` | — |
 | GET | `/api/tenant/mail/thread/:id` | — |
 | GET | `/api/tenant/mail/thread/:id/attachments` | — |
@@ -1068,11 +1108,27 @@ All 1303 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/thread/:id/reply` | — |
 | GET | `/api/tenant/mail/threads` | — |
 | GET | `/api/tenant/mail/threads/:id` | — |
+| POST | `/api/tenant/mail/threads/:id/assign` | — |
+| DELETE | `/api/tenant/mail/threads/:id/bind` | — |
+| POST | `/api/tenant/mail/threads/:id/bind` | — |
+| POST | `/api/tenant/mail/threads/:id/breakglass` | — |
+| GET | `/api/tenant/mail/threads/:id/cards/:card/readiness` | — |
+| POST | `/api/tenant/mail/threads/:id/claim` | — |
+| POST | `/api/tenant/mail/threads/:id/convert` | — |
+| POST | `/api/tenant/mail/threads/:id/followup` | — |
 | POST | `/api/tenant/mail/threads/:id/label` | — |
 | POST | `/api/tenant/mail/threads/:id/move` | — |
+| GET | `/api/tenant/mail/threads/:id/notes` | — |
+| POST | `/api/tenant/mail/threads/:id/notes` | — |
 | POST | `/api/tenant/mail/threads/:id/read` | — |
+| POST | `/api/tenant/mail/threads/:id/snooze` | — |
 | POST | `/api/tenant/mail/threads/:id/star` | — |
+| POST | `/api/tenant/mail/threads/:id/status` | — |
 | POST | `/api/tenant/mail/threads/:id/stream` | — |
+| GET | `/api/tenant/mail/threads/:id/suggestions` | — |
+| POST | `/api/tenant/mail/threads/:id/suggestions/:sid/accept` | — |
+| POST | `/api/tenant/mail/threads/:id/suggestions/:sid/reject` | — |
+| PATCH | `/api/tenant/mail/threads/:id/visibility` | — |
 | POST | `/api/tenant/mail/threads/bulk` | — |
 | POST | `/api/tenant/mail/webhook/google` | — |
 | POST | `/api/tenant/mail/webhook/microsoft` | — |
@@ -1084,6 +1140,11 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/margin-simulations/` | — |
 | POST | `/api/tenant/margin-simulations/` | — |
 | GET | `/api/tenant/margin-simulations/:id` | — |
+| POST | `/api/tenant/margin-simulations/:id/approve` | — |
+| POST | `/api/tenant/margin-simulations/:id/quote` | — |
+| POST | `/api/tenant/margin-simulations/:id/reject` | — |
+| POST | `/api/tenant/margin-simulations/:id/submit` | — |
+| GET | `/api/tenant/margin-simulations/from-costing/:costingId` | — |
 | POST | `/api/tenant/margin-simulations/preview` | — |
 
 ### `tenant/master-config`
@@ -1363,7 +1424,6 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/pricing-variance/` | — |
 | GET | `/api/tenant/pricing-variance/:id` | — |
 | GET | `/api/tenant/pricing-variance/:id/finance` | — |
-| POST | `/api/tenant/pricing-variance/compute` | — |
 
 ### `tenant/proformas`
 
@@ -1400,6 +1460,7 @@ All 1303 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/public/portfolio/media/:id` | — |
 | GET | `/api/tenant/public/proposals/:token` | — |
 | GET | `/api/tenant/public/proposals/:token/pdf` | — |
+| GET | `/api/tenant/public/secure/:token` | — |
 | GET | `/api/tenant/public/tracking/:reference` | — |
 
 ### `tenant/purchase-orders`

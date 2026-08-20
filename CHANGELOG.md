@@ -24,6 +24,23 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Attendance now follows the entity's working calendar, and says what it
+  actually knows about a punch's location.** Expected working days resolve
+  employee override → the entity's working calendar (its own, or the inherited
+  tenant default) → the tenant weekend, so a Mon–Sat yard is no longer marked
+  absent every Saturday and charged for a day nobody asked it to work; the
+  reconciler and the daily-rate arithmetic use that one resolver, so the day
+  and the settlement cannot disagree. The attendance log and provisional
+  absence now select punches by a **local-zone window** instead of the UTC
+  date, so a 00:30 Douala punch stops landing on the previous day. Punches
+  also record **what the device presented** (`location_source`, migration
+  10740) separately from whether a worksite existed to judge it: "we never got
+  a fix" and "GPS arrived, but this tenant has drawn no geofence" were both
+  painted "No fix", which taught people to ignore the one signal that matters.
+  HR Today now shows No GPS / Off-site / On-site / No worksite as four
+  different things. The clock still punches when GPS is refused — the tenant
+  policy decides whether that is acceptable, not the browser — and then offers
+  a recovery panel with the OS steps, a Retry and an install prompt.
 - **Treasury accounts can be corrected in place.** Master data → Treasury →
   any account now has an **Edit** button next to Verify/Deactivate, opening the
   same category-driven form the account was created with, pre-filled. A typo'd
@@ -237,6 +254,24 @@ Dates are ISO-8601, UTC.
   ordered by completion time (`TC-D8`).
 
 ### Fixed
+
+- **Silent-catch ratchet after #228.** Adding lines to `explainSendError` moved
+  three grandfathered empty catches in `mail.service.js` off
+  `doc/silent-catch-baseline.json` (`file:line`), so `build-test` failed on
+  `main` with three “NEW” sites. Classified the leftover swallows in place —
+  Graph `getConnection` / `autoLink` / attachment skip / optional `setupPush`
+  as `@silent:storage`, `markRead` logger require as `@silent:teardown` —
+  instead of re-blessing the baseline.
+
+- **SMTP sender-verify is no longer a Praxis 5xx.** Two classifiers survived
+  the same merge: `mapSmtpError` labelled `550 Sender verify failed` as 502
+  `SMTP_SENDER_REJECTED` (Test, system email, platform mail-fallback probe,
+  inbound-intake reply), while mailbox compose used 422 `SENDER_NOT_AUTHORIZED`.
+  The 502 path flooded the server-error monitor with a mailbox-config fault.
+  One map now, classified by evidence not SMTP family: sender-verify / relay
+  denied → 422 `SENDER_NOT_AUTHORIZED`; user-unknown → 422 `RECIPIENT_REJECTED`;
+  535 / `EAUTH` → auth; 421/451/452 → transient 502. A bare 550 is no longer
+  called a sender fault. Compose still names the connected mailbox.
 
 - **PDF preview on client / supplier / corporate-entity document uploads showed
   Chrome's "This content is blocked" interstitial.** `FileDrop` previewed a

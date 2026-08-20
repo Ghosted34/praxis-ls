@@ -23,6 +23,7 @@ const employeeService = require("../../master/employees/employees.service");
 const geoapify = require("../../../services/geoapify.service");
 const rules = require("./attendance.rules");
 const reconcile = require("./attendance.reconcile");
+const { locationStatus, locationSourceFromFix } = require("./attendance.location");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "attendance", events });
 
@@ -244,11 +245,15 @@ module.exports = {
   ...base,
   resolveGeo,
 
-  /** Attendance log decorated with lateness (manager view). */
+  /** Attendance log decorated with lateness + location_status (manager view). */
   async list(client, q = {}) {
-    const rows = await repo.list(client, q);
     const policy = await attendancePolicy(client);
-    return rows.map((r) => ({ ...r, ...lateness(r.clock_in_at, policy) }));
+    const rows = await repo.list(client, { ...q, timeZone: policy.timeZone });
+    return rows.map((r) => ({
+      ...r,
+      ...lateness(r.clock_in_at, policy),
+      location_status: locationStatus(r),
+    }));
   },
 
   /**
@@ -288,20 +293,21 @@ module.exports = {
     const { rows: any } = await client.query("SELECT 1 FROM attendance_day WHERE work_date = $1 LIMIT 1", [day]);
     if (any[0]) return { date: day, reconciled: true, count: rows.length, absent: rows };
 
+    const tz = (await attendancePolicy(client)).timeZone;
     const { rows: provisional } = await client.query(
       `SELECT e.employee_id, e.full_name, e.department
          FROM employee e
         WHERE e.is_active = true
           AND NOT EXISTS (SELECT 1 FROM attendance_log al
                            WHERE al.employee_id = e.employee_id
-                             AND al.clock_in_at >= ($1::date)::timestamptz
-                             AND al.clock_in_at <  ($1::date + 1)::timestamptz)
+                             AND al.clock_in_at >= ($1::timestamp AT TIME ZONE $2)
+                             AND al.clock_in_at <  (($1::date + 1)::timestamp AT TIME ZONE $2))
           AND NOT EXISTS (SELECT 1 FROM leave_request lr
                            WHERE lr.employee_id = e.employee_id
                              AND lr.status IN ('APPROVED','TAKEN')
                              AND lr.starts_on <= $1::date AND lr.ends_on >= $1::date)
         ORDER BY e.full_name`,
-      [day],
+      [day, tz],
     );
     return { date: day, reconciled: false, count: provisional.length, absent: provisional };
   },
@@ -359,15 +365,25 @@ module.exports = {
      * function" endpoint look identical in the error dashboard until somebody
      * makes the button visible.
      */
+
+    /*
+     * One source of truth for "did a fix arrive". `locationSourceFromFix` is
+     * what the column stores and what `locationStatus` reads back, so deriving
+     * `hasFix` FROM it — rather than re-testing the coordinates here — keeps the
+     * stored snapshot and the `location` payload from ever disagreeing.
+     */
+    const location_source = locationSourceFromFix(latitude, longitude);
+    const hasFix = location_source === "gps";
     const row = await repo.create(client, {
       employee_id: empId,
       clock_in_at: new Date(),
       latitude, longitude, accuracy_m: accuracy,
       work_site_id: geo.work_site_id, distance_m: geo.distance_m,
       within_geofence: geo.within, geo_label: geo.label,
+      location_source,
       hr_device_id: dev.device ? dev.device.hr_device_id : null,
       device_trusted: dev.trusted,
-      location: latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined ? { lat: latitude, lng: longitude, accuracy } : null,
+      location: hasFix ? { lat: latitude, lng: longitude, accuracy } : null,
     });
     const entityRef = `attendance:${row.attendance_id}`;
     await emitEvent(client, { eventTypeKey: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null, payload: { within_geofence: geo.within, work_site_id: geo.work_site_id } });
@@ -447,7 +463,7 @@ module.exports = {
      * that punch alone. Storing it would mean a row that is permanently "new",
      * and every later reader would have to know it meant "was new, then".
      */
-    return { ...row, device_new: dev.isNew === true };
+    return { ...row, device_new: dev.isNew === true, location_status: locationStatus(row) };
   },
 
   /**

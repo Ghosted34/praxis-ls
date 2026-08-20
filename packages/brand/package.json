@@ -1,0 +1,15 @@
+{
+  "name": "@praxis/brand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Praxis LS brand constants — the colours, type and mark rules that belong to Praxis and are never tenant-overridable. One definition, imported by the API, the client, the platform console and the marketing site.",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "tokens.css"
+  ]
+}

@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 119,
-  "route_count": 1303,
+  "modules_mounted": 125,
+  "route_count": 1364,
   "tiers": {
-    "public": 32,
-    "self-scoped": 74,
-    "gated": 1197
+    "public": 33,
+    "self-scoped": 79,
+    "gated": 1252
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -136,6 +136,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/contracts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/cost-tracking/allocations/:allocationId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -297,6 +303,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/mail/drafts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/drafts/:id/attachments/:attachmentId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/mail/labels/:id": {
       "auth": true,
       "rbac": true,
@@ -310,6 +328,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/mail/send-points/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/threads/:id/bind": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1323,6 +1347,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/cost-tracking/dossier/:dossierId/advances": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/cost-tracking/dossier/:dossierId/reconcile": {
       "auth": true,
       "rbac": true,
@@ -1330,6 +1360,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/cost-tracking/kpis": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/cost-tracking/matrix": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1743,6 +1779,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/extra-charge-simulations/prefill/:dossierId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/extra-charge-simulations/rates": {
       "auth": true,
       "rbac": true,
@@ -2085,6 +2127,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/archive/verify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/autodiscover": {
       "auth": true,
       "rbac": true,
@@ -2103,13 +2151,61 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/commands": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/connections": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/context": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/context/:tab": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/cpanel-preset": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/deliverability": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/deliverability/:domain/history": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/drafts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/drafts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/drafts/:id/attachments": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2187,6 +2283,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/outbox": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/mail/recipients": {
       "auth": true,
       "rbac": true,
@@ -2206,6 +2308,30 @@
       "tier": "gated"
     },
     "GET /api/tenant/mail/sent": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/signature": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/mail/signature/png": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/mail/signature/preview": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/mail/signature/templates": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2241,6 +2367,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/mail/threads/:id/cards/:card/readiness": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/threads/:id/notes": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/threads/:id/suggestions": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/margin-simulations/": {
       "auth": true,
       "rbac": true,
@@ -2248,6 +2392,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/margin-simulations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/margin-simulations/from-costing/:costingId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2854,6 +3004,12 @@
       "tier": "public"
     },
     "GET /api/tenant/public/proposals/:token/pdf": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/secure/:token": {
       "auth": false,
       "rbac": false,
       "validated": false,
@@ -4275,6 +4431,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/mail/signature/templates/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/mail/threads/:id/visibility": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/meetings/:id": {
       "auth": true,
       "rbac": true,
@@ -5421,6 +5589,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/cost-tracking/advances/:advanceId/allocations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/cost-tracking/bulk": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/costing/reconciliations/": {
       "auth": true,
       "rbac": true,
@@ -5434,6 +5614,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/costing/reconciliations/:id/submit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:id/suggestions/:sid/confirm": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/costing/reconciliations/:id/suggestions/:sid/reject": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6021,7 +6213,43 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/assist/compose": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/assist/draft": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/assist/guardrails": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/attachments/from-vault": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/attachments/upload": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/catalogue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/commands/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6046,6 +6274,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/connections/:id/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/deliverability/check": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/drafts": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6081,7 +6321,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/secure-links": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/secure-links/:id/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/send": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/send/:id/cancel": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6094,6 +6352,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/senders/:id/archive": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/signature/png": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/mail/suggestions/accept-batch": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6117,6 +6387,42 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/threads/:id/assign": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/bind": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/breakglass": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/claim": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/convert": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/followup": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/threads/:id/label": {
       "auth": true,
       "rbac": true,
@@ -6129,7 +6435,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/threads/:id/notes": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/threads/:id/read": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/snooze": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6141,7 +6459,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/mail/threads/:id/status": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/mail/threads/:id/stream": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/suggestions/:sid/accept": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/threads/:id/suggestions/:sid/reject": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6166,6 +6502,30 @@
       "tier": "public"
     },
     "POST /api/tenant/margin-simulations/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/margin-simulations/:id/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/margin-simulations/:id/quote": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/margin-simulations/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/margin-simulations/:id/submit": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6550,12 +6910,6 @@
       "tier": "gated"
     },
     "POST /api/tenant/portals/access/:id/revoke": {
-      "auth": true,
-      "rbac": true,
-      "validated": false,
-      "tier": "gated"
-    },
-    "POST /api/tenant/pricing-variance/compute": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7713,11 +8067,23 @@
       "validated": false,
       "tier": "gated"
     },
+    "PUT /api/tenant/extra-charge-simulations/rates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PUT /api/tenant/mail/send-points/:key": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "PUT /api/tenant/mail/signature": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/master-config/:appliesTo": {
       "auth": true,

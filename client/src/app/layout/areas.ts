@@ -197,6 +197,7 @@ export const AREAS: Area[] = [
     sections: [
       { key: "costing", label: "Costing" },
       { key: "cost-tracking", label: "Cost tracking" },
+      { key: "reconciliation", label: "Reconciliation" },
       { key: "cash-requests", label: "Cash requests" },
       { key: "regie", label: "Régie" },
     ],

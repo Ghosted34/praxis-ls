@@ -9,11 +9,16 @@ import { tenant } from "./api-client";
  *  NULL for anything with no equipment dimension, which is most of the
  *  catalogue; the joined `container_type_*` fields are read-only display. */
 export type CostingLine = {
+  costing_line_id?: string;
   dictionary_item_id?: string;
   label?: string;
   qty?: number;
   unit_cost?: number;
   is_disbursement?: boolean;
+  /** §3.3 — the per-line VAT toggle the legacy sheet had (save.php:84). */
+  tax_code_id?: string | null;
+  /** Joined by the repo for totals — the line's own VAT rate. */
+  tax_rate_percent?: number | null;
   container_type_ref_id?: string | null;
   container_type_code?: string | null;
   container_type_en?: string | null;
@@ -25,11 +30,27 @@ export type Costing = {
   doc_number?: string | null;
   dossier_id?: string | null;
   currency?: string;
+  /** DEPRECATED (§2.2): still present on historical rows; never written. */
   margin_percent?: number | null;
   total_cost?: number | null;
   total?: number | null;
+  /** HT / VAT / TTC — the whole footer (§2.2). Present on GET /costings/:id. */
+  totals?: {
+    service_cost: number;
+    disbursement_total: number;
+    total_ht: number;
+    vat_total: number;
+    total_ttc: number;
+    total_cost: number;
+  };
   status: string;
   created_at?: string;
+  exchange_rate_to_xaf?: number | string | null;
+  /** §3.3 — worksheet notes + the named validator (legacy save.php parity). */
+  remarks?: string | null;
+  validator_id?: string | null;
+  validator_assigned_at?: string | null;
+  lines?: CostingLine[];
   /** Unlock audit trail (10718). Present once a reopening has been asked for. */
   unlock_reason?: string | null;
   unlock_requested_at?: string | null;
@@ -39,10 +60,12 @@ export type CostingInput = {
   dossier_id: string;
   currency?: string;
   exchange_rate_to_xaf?: number;
-  margin_percent?: number;
+  remarks?: string | null;
+  validator_id?: string | null;
   lines?: CostingLine[];
 };
 export const listCostings = () => tenant<Costing[]>("/costings");
+export const getCosting = (id: string) => tenant<Costing>(`/costings/${id}`);
 export const createCosting = (body: CostingInput) =>
   tenant<Costing>("/costings", { method: "POST", body });
 // The backend expects an ACTION verb under `to` (not a status under `status`):
@@ -144,6 +167,177 @@ export const reconcileDossier = (dossierId: string) =>
 export const recordCostEntry = (body: CostEntryInput) =>
   tenant<CostEntry>("/cost-tracking", { method: "POST", body });
 
+/* ── §3.4 — master-ledger matrix, bulk entry, advances ─────────────── */
+/** One column of the matrix: derived from the dictionary items that carry
+ *  spend, never a fixed list (the legacy hardcoded 15 in PHP). */
+export type MatrixItem = {
+  dictionary_item_id: string | null;
+  code: string;
+  label: string;
+};
+export type MatrixRow = {
+  dossier_id: string;
+  ref?: string;
+  client_name?: string | null;
+  budget: number;
+  actual: number;
+  advance_received: number;
+  balance: number;
+  over_budget?: boolean;
+  /** dictionary_item_id (or "OTHER") → actual spend for that item. */
+  cells: Record<string, number>;
+  total_spend: number;
+  total_balance: number;
+};
+export const costMatrix = () =>
+  tenant<{ items: MatrixItem[]; rows: MatrixRow[] }>("/cost-tracking/matrix");
+
+export type BulkCostLine = {
+  dictionary_item_id?: string | null;
+  category?: string | null;
+  amount: number;
+  is_disbursement?: boolean;
+};
+/** The whole sheet in one transaction — never 15 round trips. */
+export const bulkRecordCosts = (body: {
+  dossier_id: string;
+  entity_id: string;
+  entry_date: string;
+  source_doc_ref: string;
+  lines: BulkCostLine[];
+}) =>
+  tenant<{ recorded: number }>("/cost-tracking/bulk", {
+    method: "POST",
+    body,
+  });
+
+/** Advances are per FILE (owner-decided); allocation to an item is optional. */
+export type AdvanceAllocation = {
+  advance_allocation_id: string;
+  dictionary_item_id: string;
+  item_code?: string | null;
+  item_label?: string | null;
+  amount: number;
+  note?: string | null;
+};
+export type DossierAdvance = {
+  advance_id: string;
+  amount: number;
+  received_on?: string;
+  applied_amount: number;
+  allocations: AdvanceAllocation[];
+};
+export const dossierAdvances = (dossierId: string) =>
+  tenant<DossierAdvance[]>(`/cost-tracking/dossier/${dossierId}/advances`);
+export const allocateAdvance = (
+  advanceId: string,
+  body: { dictionary_item_id: string; amount: number; note?: string | null },
+) =>
+  tenant<AdvanceAllocation>(`/cost-tracking/advances/${advanceId}/allocations`, {
+    method: "POST",
+    body,
+  });
+export const removeAdvanceAllocation = (allocationId: string) =>
+  tenant<AdvanceAllocation>(`/cost-tracking/allocations/${allocationId}`, {
+    method: "DELETE",
+  });
+
+/* ── Dossier reconciliation(/costing/reconciliations) — §2.1 merged record ── */
+/** One line per costing item: budget vs actual, both HT, débours excluded.
+ *  `match_status` is provenance — UNMATCHED means untagged actuals were
+ *  bucketed here and the assistant's mapping proposals await a human. */
+export type ReconLine = {
+  line_id: string;
+  dictionary_item_id?: string | null;
+  item_code?: string | null;
+  item_label?: string | null;
+  budget_ht: number;
+  actual_ht: number;
+  match_status: "MATCHED" | "UNMATCHED";
+  doc_ref?: string | null;
+  doc_required?: boolean;
+};
+/** An assistant-proposed mapping of an untagged cost entry onto a dictionary
+ *  item. PROPOSED until a person confirms or rejects — never auto-applied. */
+export type ReconSuggestion = {
+  suggestion_id: string;
+  cost_entry_id: string;
+  suggested_dictionary_item_id: string;
+  suggested_item_code?: string | null;
+  suggested_item_label?: string | null;
+  entry_category?: string | null;
+  entry_amount?: number;
+  confidence?: number | null;
+  reason?: string | null;
+  status: "PROPOSED" | "CONFIRMED" | "REJECTED";
+};
+/** The three questions, derived server-side: quote right / execute to plan /
+ *  make money. Null quote answers only the execution question. */
+export type ReconVariance = {
+  quoted_ht: number | null;
+  budget_ht: number;
+  actual_ht: number;
+  quote_vs_budget: number | null;
+  budget_vs_actual: number;
+  quote_vs_actual: number | null;
+  margin_percent: number | null;
+  flag: "GREEN" | "YELLOW" | "RED" | null;
+};
+export type Reconciliation = {
+  reconciliation_id: string;
+  dossier_id: string;
+  status: "DRAFT" | "SUBMITTED" | "VALIDATED" | "REJECTED";
+  quotation_id?: string | null;
+  quoted_ht?: number | null;
+  submitted_by?: string | null;
+  submitted_at?: string | null;
+  validated_by?: string | null;
+  validated_at?: string | null;
+  reject_reason?: string | null;
+  ocr_amount?: number | null;
+  created_at?: string;
+  lines?: ReconLine[];
+  suggestions?: ReconSuggestion[];
+  variance?: ReconVariance;
+  service_budget_ht?: number;
+  service_actual_ht?: number;
+  disbursement_budget_ht?: number;
+  disbursement_actual_ht?: number;
+  total_actual_ht?: number;
+};
+export const latestReconciliation = (dossierId: string) =>
+  tenant<Reconciliation | null>(
+    `/costing/reconciliations?dossier_id=${encodeURIComponent(dossierId)}`,
+  );
+export const getReconciliation = (id: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}`);
+export const draftReconciliation = (dossierId: string) =>
+  tenant<Reconciliation>("/costing/reconciliations", {
+    method: "POST",
+    body: { dossier_id: dossierId },
+  });
+export const submitReconciliation = (id: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}/submit`, {
+    method: "POST",
+  });
+export const validateReconciliation = (id: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}/validate`, {
+    method: "POST",
+  });
+export const rejectReconciliation = (id: string, reason: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}/reject`, {
+    method: "POST",
+    body: { reason },
+  });
+export const confirmReconSuggestion = (id: string, sid: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}/suggestions/${sid}/confirm`, {
+    method: "POST",
+  });
+export const rejectReconSuggestion = (id: string, sid: string) =>
+  tenant<Reconciliation>(`/costing/reconciliations/${id}/suggestions/${sid}/reject`, {
+    method: "POST",
+  });
+
 /* ── Cash requests(/cash-requests) ── */
 export type CashLine = {
   dictionary_item_id?: string | null;
@@ -151,7 +345,11 @@ export type CashLine = {
   budget_amount?: number;
   spent_amount?: number;
   is_disbursement?: boolean;
+  /** §3.5 — legacy per-line VAT % and "Just. Req?" (10746). */
+  vat_percent?: number | null;
+  justification_required?: boolean;
 };
+export type DisbursementMethod = "CASH" | "BANK" | "CHEQUE" | "MOMO";
 export type CashRequest = {
   cash_request_id: string;
   ref?: string | null;
@@ -167,6 +365,11 @@ export type CashRequest = {
   cost_center?: string | null;
   overhead_justification?: string | null;
   remarks?: string | null;
+  /** §3.5 — how the money leaves (10746); details are method-specific. */
+  disbursement_method?: DisbursementMethod | null;
+  disbursement_details?: Record<string, string> | null;
+  /** §3.5 — the voucher footer, derived server-side on GET /:id. */
+  totals?: { subtotal: number; vat_total: number; total_payable: number };
   created_at?: string;
 };
 export type CashRequestInput = {
@@ -178,6 +381,8 @@ export type CashRequestInput = {
   cost_center?: string;
   overhead_justification?: string;
   remarks?: string;
+  disbursement_method?: DisbursementMethod;
+  disbursement_details?: Record<string, string>;
   lines?: CashLine[];
 };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");

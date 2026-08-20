@@ -19,13 +19,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | Alias | Prefer | Raised |
 |---|---|---|
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 14× |
-| `BAD_STATE` | `BAD_STATUS` | 34× |
+| `BAD_STATE` | `BAD_STATUS` | 38× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
 | `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (427)
+## All codes (441)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -37,6 +37,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_ANSWERED` | 409 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 2× | — |
+| `ALREADY_CLAIMED` | 409 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 3× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |
@@ -46,12 +47,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_GRANTED` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
 | `ALREADY_MERGED` | 409 | 2× | — |
+| `ALREADY_QUOTED` | 409 | 1× | — |
 | `ALREADY_RESTORED` | 409 | 1× | — |
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `ALREADY_REVOKED` | 409 | 2× | — |
-| `ALREADY_SENT` | 409 | 1× | — |
+| `ALREADY_SENT` | 409 | 2× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
+| `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
 | `AUTH_REQUIRED` | 401 | 14× | — |
 | `AWAITING_DECISION` | — | 1× | — |
@@ -67,7 +70,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_CUSTOM_FIELD` | 422 | 5× | — |
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
-| `BAD_FILE` | 400, 422 | 10× | — |
+| `BAD_FILE` | 400, 422 | 11× | — |
 | `BAD_FILE_TYPE` | 422 | 6× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
@@ -76,8 +79,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_KIND` | 422 | 3× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
 | `BAD_LEGACY_KIND` | — | 1× | — |
+| `BAD_METHOD` | — | 1× | — |
 | `BAD_MIRROR` | 422 | 1× | — |
 | `BAD_MONTH` | 422 | 1× | — |
+| `BAD_NETWORK` | 422 | 1× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
 | `BAD_PARENT` | 422, 500 | 3× | — |
 | `BAD_PARTY_KIND` | 422 | 9× | — |
@@ -96,7 +101,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 2× | — |
-| `BAD_STATE` | 400, 409, 422 | 34× | `BAD_STATUS` |
+| `BAD_STATE` | 400, 409, 422 | 38× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 1× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
@@ -139,7 +144,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DOC_NOT_VERIFIED` | 422 | 1× | — |
 | `DOC_TYPE_NOT_SIGNABLE` | 422 | 1× | — |
 | `DOSSIERS_REQUIRED` | 422 | 1× | — |
-| `DOSSIER_REQUIRED` | 422 | 3× | — |
+| `DOSSIER_REQUIRED` | 422 | 2× | — |
 | `DUPLICATE` | 409 | 3× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
 | `DUPLICATE_CONTAINER` | 422 | 2× | — |
@@ -154,7 +159,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 3× | — |
-| `EMPTY_FILE` | 422 | 1× | — |
+| `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `EMPTY_RECON` | 422 | 1× | — |
@@ -166,12 +171,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `EXISTS` | 409 | 3× | — |
-| `FEATURE_DISABLED` | 403 | 1× | — |
+| `FEATURE_DISABLED` | 403 | 2× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
 | `FULLY_DISBURSED` | 422 | 1× | — |
 | `FULLY_PAID` | 422 | 2× | — |
+| `FX_NOT_HERE` | — | 1× | — |
 | `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
@@ -220,13 +226,16 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 31× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 1× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MANDATORY_ITEMS_OUTSTANDING` | 422 | 1× | — |
 | `MERGE_SAME_RECORD` | 422 | 1× | — |
+| `METHOD_FIELDS_REQUIRED` | — | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
+| `METHOD_REQUIRED` | — | 1× | — |
 | `MILESTONE_MISMATCH` | 422 | 1× | — |
 | `MISSING_FIELDS` | 422 | 1× | — |
 | `MISSING_REQUIRED_FIELDS` | — | 1× | — |
@@ -245,8 +254,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_DONE` | 422 | 1× | — |
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
-| `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 466× | — |
+| `NOT_ENABLED` | 400 | 3× | — |
+| `NOT_FOUND` | 404, 422 | 493× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -287,7 +296,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
-| `NO_LINES` | 422 | 7× | — |
+| `NO_LINES` | 422 | 8× | — |
 | `NO_MODULE` | 422 | 2× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
@@ -295,7 +304,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_PARENT` | 422 | 1× | — |
 | `NO_PERIOD` | 404, 422 | 2× | — |
 | `NO_POSTING_RULE` | 422 | 1× | — |
-| `NO_QUOTE` | 422 | 1× | — |
 | `NO_RATE` | 404, 422 | 2× | — |
 | `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_REASON` | 422 | 1× | — |
@@ -309,6 +317,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 5× | — |
 | `NO_TREASURY_ACCOUNT` | 422 | 1× | — |
+| `NO_USER_ACCOUNT` | — | 1× | — |
+| `NO_VALIDATOR` | 422 | 1× | — |
 | `NO_VAT_ACCOUNT` | 422 | 2× | — |
 | `NO_WORKING_DAYS` | 422 | 1× | — |
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
@@ -322,12 +332,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVERHEAD_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `OVERRIDE_REASON_REQUIRED` | 422 | 1× | — |
 | `OVERRIDE_REQUIRED` | 422 | 1× | — |
+| `OVER_ALLOCATED` | 422 | 1× | — |
 | `OVER_DISBURSED` | 422 | 1× | — |
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 6× | — |
+| `PERMISSION_DENIED` | 403 | 7× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
 | `PERSONAL_MAILBOX_EXISTS` | — | 1× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
@@ -351,7 +362,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
-| `REASON_REQUIRED` | 422 | 6× | — |
+| `REASON_REQUIRED` | 422 | 7× | — |
+| `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
 | `RECON_OPEN` | 409 | 1× | — |
@@ -381,19 +393,19 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SCOPE_CYCLE` | 422 | 2× | — |
 | `SCORING_UNAVAILABLE` | 502 | 1× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |
+| `SELF_APPROVE` | 422 | 1× | — |
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SELF_VALIDATE` | 422 | 1× | — |
-| `SENDER_NOT_AUTHORIZED` | — | 1× | — |
-| `SEND_RATE_LIMIT` | — | 1× | — |
+| `SENDER_NOT_AUTHORIZED` | 422 | 2× | — |
+| `SEND_RATE_LIMIT` | — | 2× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
-| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
-| `SMTP_SEND_FAILED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 2× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
@@ -406,6 +418,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
 | `SYSTEM_RECORD` | 422 | 1× | — |
 | `SYSTEM_ROLE` | 409 | 1× | — |
+| `SYSTEM_TEMPLATE` | 422 | 1× | — |
 | `SYSTEM_TYPE` | 422 | 2× | — |
 | `TARIFF_GAP` | 422 | 1× | — |
 | `TEMPLATE_NOT_PUBLISHED` | 409 | 1× | — |
@@ -424,6 +437,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_CLIENT_TYPE` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
+| `UNKNOWN_CURRENCY` | 422 | 2× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |
 | `UNKNOWN_DOC_TYPE` | 422 | 2× | — |
@@ -445,7 +459,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 187× | — |
+| `VALIDATION_ERROR` | 422 | 198× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

@@ -8,6 +8,13 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
+import {
+  geoRecoverySteps,
+  watchGeoFix,
+  watchGeoPermission,
+} from "@/lib/geo-permission";
+import { openInstallUi } from "@/lib/pwa-install";
+import i18n from "@/lib/i18n";
 
 const ClockIcon = (p: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -51,6 +58,7 @@ export function useClockPunch() {
    * offer beside a completed punch, never a gate in front of one.
    */
   const [newDevice, setNewDevice] = React.useState<string | null>(null);
+  const [needLocation, setNeedLocation] = React.useState(false);
   const [msg, setMsg] = React.useState<{ text: string; bad?: boolean } | null>(
     null,
   );
@@ -71,6 +79,32 @@ export function useClockPunch() {
       }); // not linked to an employee
     return () => {
       live = false;
+    };
+  }, []);
+  /*
+   * The two ways the recover panel closes itself.
+   *
+   * `watchGeoPermission` catches a grant made in the OS settings panel rather
+   * than through our Retry button — the person followed the steps, came back,
+   * and the panel must not still be sitting there telling them to. `watchGeoFix`
+   * catches the reverse mid-shift: a permission revoked after a clean punch.
+   *
+   * The permission STATE itself is deliberately not kept. Nothing renders it,
+   * and a state nobody reads is a re-render on every OS permission change in
+   * exchange for nothing. What the clock acts on is `needLocation`.
+   */
+  React.useEffect(() => {
+    let live = true;
+    const stopPerm = watchGeoPermission((s) => {
+      if (live && s === "granted") setNeedLocation(false);
+    });
+    const stopFix = watchGeoFix(() => {
+      if (live) setNeedLocation(true);
+    });
+    return () => {
+      live = false;
+      stopPerm();
+      stopFix();
     };
   }, []);
 
@@ -107,8 +141,9 @@ export function useClockPunch() {
           fix ? { latitude: fix.latitude, longitude: fix.longitude } : {},
         );
         setPunch(null);
+        if (fixFailed) setNeedLocation(true);
         setMsg({
-          text: fixFailed ? "Clocked out · no location" : "Clocked out",
+          text: fixFailed ? i18n.t("hr.clockedOutNoLocation") : i18n.t("hr.clockedOut"),
           bad: fixFailed,
         });
       } else {
@@ -126,14 +161,18 @@ export function useClockPunch() {
         // Offered only on the punch that created the row — `device_new` is
         // transient and true exactly once, so this cannot become a nag.
         if (row.device_new && row.hr_device_id) setNewDevice(row.hr_device_id);
-        const noLoc = fixFailed || row.within_geofence === null;
-        const offSite = row.within_geofence === false;
+        // Unfenced (GPS, no worksite) is NOT a missing fix. Using
+        // `within_geofence === null` here would nag every tenant that has not
+        // placed a fence yet.
+        const noLoc = fixFailed || row.location_status === "no_gps" || row.location_source === "none";
+        const offSite = row.within_geofence === false || row.location_status === "off_site";
+        if (noLoc) setNeedLocation(true);
         setMsg({
           text: offSite
-            ? "Clocked in · off-site"
+            ? i18n.t("hr.clockedInOffSite")
             : noLoc
-              ? "Clocked in · no location"
-              : "Clocked in",
+              ? i18n.t("hr.clockedInNoLocation")
+              : i18n.t("hr.clockedIn"),
           bad: offSite || noLoc,
         });
       }
@@ -156,6 +195,8 @@ export function useClockPunch() {
     label, action, clockedIn, canPunch, busy, toggle, msg, timeStr,
     newDevice,
     dismissNewDevice: () => setNewDevice(null),
+    needLocation,
+    dismissNeedLocation: () => setNeedLocation(false),
   };
 }
 
@@ -174,6 +215,69 @@ export function useClockPunch() {
  * front of a time clock would be dismissed by everyone in a hurry, which is
  * everyone. Skipping leaves the generated label, which the manager can still fix.
  */
+/**
+ * Recover location — offered AFTER a punch that already succeeded without a
+ * fix. Not a gate: they are at work. The punch is flagged no-GPS until they
+ * restore permission and the next punch carries coordinates.
+ */
+function RecoverLocationOffer({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const steps = React.useMemo(() => geoRecoverySteps(), []);
+
+  async function retry() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.getFix();
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Location is still blocked.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="w-80 rounded-lg border bg-popover p-3 shadow-[var(--shadow-l)]">
+      <p className="text-sm font-medium text-foreground">{i18n.t("hr.locationOff")}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {i18n.t("hr.locationOffHint")}
+      </p>
+      <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-xs text-muted-foreground">
+        {steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      {error && <p className="mt-1 text-xs text-[rgb(var(--bad))]">{error}</p>}
+      <div className="mt-2 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={onDone}
+          className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {i18n.t("hr.restoreLater")}
+        </button>
+        <button
+          type="button"
+          onClick={() => openInstallUi()}
+          className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {i18n.t("hr.installTheApp")}
+        </button>
+        <button
+          type="button"
+          onClick={() => void retry()}
+          disabled={busy}
+          className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {busy ? i18n.t("hr.checkingLocation") : i18n.t("hr.retryLocation")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NameDeviceOffer({ deviceId, onDone }: { deviceId: string; onDone: () => void }) {
   const [value, setValue] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -265,7 +369,7 @@ function NameDeviceOffer({ deviceId, onDone }: { deviceId: string; onDone: () =>
  * the dot and the icon still carry on-shift/off-shift at every width.
  */
 export function ClockPunchChip() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice } =
+  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice, needLocation, dismissNeedLocation } =
     useClockPunch();
 
   return (
@@ -321,12 +425,17 @@ export function ClockPunchChip() {
         <NameDeviceOffer deviceId={newDevice} onDone={dismissNewDevice} />
       </div>
     )}
+    {needLocation && !newDevice && (
+      <div className="absolute right-0 top-full z-50 mt-2">
+        <RecoverLocationOffer onDone={dismissNeedLocation} />
+      </div>
+    )}
     </span>
   );
 }
 
 export function ClockPunch() {
-  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice } =
+  const { label, action, clockedIn, canPunch, busy, toggle, msg, newDevice, dismissNewDevice, needLocation, dismissNeedLocation } =
     useClockPunch();
 
   return (
@@ -337,6 +446,11 @@ export function ClockPunch() {
       {newDevice && (
         <div className="absolute bottom-full right-0 z-50 mb-2">
           <NameDeviceOffer deviceId={newDevice} onDone={dismissNewDevice} />
+        </div>
+      )}
+      {needLocation && !newDevice && (
+        <div className="absolute bottom-full right-0 z-50 mb-2">
+          <RecoverLocationOffer onDone={dismissNeedLocation} />
         </div>
       )}
       <span

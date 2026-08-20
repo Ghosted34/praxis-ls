@@ -66,6 +66,7 @@ const GATES = [
   { group: "backend", name: "Test (jest)", cmd: ["npx", "jest"] },
   { group: "backend", name: "Migration numbering", cmd: node("scripts/db/check-migration-numbers.js") },
   { group: "backend", name: "Actor FK guard", cmd: node("scripts/check-actor-fk-guard.js") },
+  { group: "backend", name: "No hardcoded FX literals", cmd: node("scripts/check-currency-literals.js") },
   { group: "backend", name: "jest.mock hoisting", cmd: node("scripts/check-jest-mock-hoisting.js") },
   { group: "backend", name: "API docs in sync", cmd: node("scripts/generate-api-docs.js", "--check") },
   { group: "backend", name: "Migration reversibility", cmd: node("scripts/db/check-migration-reversibility.js") },
@@ -77,6 +78,7 @@ const GATES = [
   { group: "backend", name: "API contract", cmd: node("scripts/check-api-contract.js") },
   { group: "backend", name: "Response-contract drift", cmd: node("scripts/check-response-contract.js") },
   { group: "backend", name: "No new silent catches", cmd: node("scripts/check-silent-catch.js") },
+  { group: "backend", name: "citext[] reads are cast", cmd: node("scripts/check-citext-arrays.js") },
 
   // ── Frontend job ────────────────────────────────────────────────────────
   { group: "frontend", name: "Lint (client)", cmd: npm("run", "lint", "--prefix", "client") },

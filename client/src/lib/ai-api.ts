@@ -339,12 +339,12 @@ export const confirmAiBatch = (batchId: string) =>
 /**
  * Export an answer's tables as one Excel workbook — one sheet per table.
  *
- * SERVER-SIDE ON PURPOSE. The platform already owns an ExcelJS toolkit
- * (`src/services/excel/workbook.js`) with the house header style, frozen header
- * rows, zebra striping and autofilter, so a client-built file would be a second,
- * worse-looking implementation of something that exists. The alternative also
- * means shipping a spreadsheet writer to every browser that loads the app — for
- * one button, into a bundle this repo actively polices (`check:bundle`).
+ * SERVER-SIDE ON PURPOSE. The platform already owns one branded ExcelJS
+ * builder (`src/services/spreadsheet`), so a client-built file would be a
+ * second, worse-looking implementation of something that exists. The
+ * alternative also means shipping a spreadsheet writer to every browser that
+ * loads the app — for one button, into a bundle this repo actively polices
+ * (`check:bundle`).
  *
  * Rows go up as strings because that is what they are: cells lifted out of a
  * markdown table in an answer. The server coerces the numeric-looking ones so

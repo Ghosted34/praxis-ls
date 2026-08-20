@@ -552,6 +552,20 @@ const Schema = z.object({
   // Mail engine (doc/EMAIL_ENGINE_PLAN.md): how often the scheduler fans an IMAP
   // sync job per LIVE tenant to pull inbound mail. 0 disables the poll.
   MAIL_SYNC_INTERVAL_MS: int(60000),
+  // How often the send queue is drained. 5s, because it is the floor on how long
+  // a message waits AFTER its undo window expires — a 60s tick would turn a 20s
+  // undo into "somewhere between 20 and 80 seconds", which reads as unreliable.
+  // The tick is cheap: one indexed query per tenant that usually returns nothing.
+  MAIL_SEND_FLUSH_INTERVAL_MS: int(5000),
+  // Daily domain-health re-check (PR-2). 0 disables the schedule; POST
+  // /mail/deliverability/check still runs on demand.
+  MAIL_DELIVERABILITY_INTERVAL_MS: int(86400000),
+  // Public RBLs for the sending IP. Comma-separated. A paid feed later is a
+  // value change, not a code change (Q35).
+  MAIL_RBL_HOSTS: z.string().default("zen.spamhaus.org,bl.spamcop.net,b.barracudacentral.org"),
+  MAIL_SECURE_LINK_DAYS: int(7),
+  MAIL_SLA_SWEEP_INTERVAL_MS: int(300000),
+  MAIL_AI_MONTHLY_CAP_XAF: int(0),
 
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h

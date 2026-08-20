@@ -10,6 +10,10 @@ module.exports = {
     res.json({ data: row });
   }),
   rates: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.rates(c)) })),
+  saveRates: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.saveRates(c, { rates: req.body.rates, actor: actor(req) })) })),
+  prefill: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.prefill(c, req.params.dossierId)) })),
   preview: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.preview(c, req.body)) })),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, req.body, actor(req))) })),
 };

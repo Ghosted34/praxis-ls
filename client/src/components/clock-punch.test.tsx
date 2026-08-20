@@ -87,6 +87,35 @@ describe("ClockPunchChip", () => {
     );
   });
 
+  it("does NOT offer location recovery for an unfenced GPS punch", async () => {
+    // GPS arrived; the tenant has no worksite. That is not a missing fix.
+    mocked.clockIn.mockResolvedValue({
+      attendance_id: "a1",
+      within_geofence: null,
+      location_source: "gps",
+      location_status: "unfenced",
+    } as never);
+    render(<ClockPunchChip />);
+    await waitFor(() => expect(mocked.openPunch).toHaveBeenCalled());
+    await userEvent.click(chip());
+    await waitFor(() => expect(mocked.clockIn).toHaveBeenCalled());
+    expect(screen.queryByText(/Location is off/i)).toBeNull();
+    expect(screen.queryByTitle(/no location/i)).toBeNull();
+  });
+
+  it("offers to restore location AFTER a punch that had no fix", async () => {
+    mocked.getFix.mockRejectedValue(new Error("Location permission denied"));
+    render(<ClockPunchChip />);
+    await waitFor(() => expect(mocked.openPunch).toHaveBeenCalled());
+    await userEvent.click(chip());
+    await waitFor(() => expect(mocked.clockIn).toHaveBeenCalled());
+    expect(await screen.findByText(/Location is off/i)).toBeInTheDocument();
+    // The punch is not gated — they can dismiss and stay on the clock.
+    await userEvent.click(screen.getByRole("button", { name: /restore later/i }));
+    expect(screen.queryByText(/Location is off/i)).toBeNull();
+    expect(await screen.findByRole("button", { name: /Clock out\./ })).toBeInTheDocument();
+  });
+
   it("STILL PUNCHES when the fix fails, and says the location is missing", async () => {
     // The server owns the geofence policy. A client that refuses to send makes
     // that call itself — and under `warn` the punch was simply lost.

@@ -63,6 +63,27 @@ async function brandingLogoRef(client) {
   } catch { return null; }
 }
 
+/**
+ * The tenant's active-currency catalogue (code → { symbol, decimals, name }),
+ * used to render the currency SYMBOL (e.g. "FCFA") and the right fraction
+ * digits instead of a hardcoded "XAF" + 2 decimals. Falls back to an empty map
+ * so a tenant whose currency master is empty still renders the raw code.
+ */
+async function currencyCatalog(client) {
+  try {
+    const { rows } = await client.query(
+      "SELECT code, symbol, name, decimals FROM currency WHERE is_active = true",
+    );
+    const m = {};
+    for (const r of rows) m[r.code.trim()] = { symbol: r.symbol || r.code.trim(), name: r.name, decimals: Number.isInteger(r.decimals) ? r.decimals : 2 };
+    return m;
+  } catch {
+    /* @silent:storage — an unreadable currency master must not fail the render;
+       the document falls back to the raw ISO code + 2 decimals. */
+    return {};
+  }
+}
+
 async function resolveEntity(client, entityId) {
   const q = entityId
     ? await client.query("SELECT * FROM corporate_entity WHERE entity_id = $1", [entityId])
@@ -83,6 +104,15 @@ async function resolveCfg(client, docType, entityId, override) {
   const { entity, brand } = await resolveEntity(client, entityId);
   const saved = await savedConfig(client, docType, entityId);
   const cfg = kit.mergeCfg(brand, { ...saved, ...(override || {}) });
+  // Currency catalogue + the entity's default currency, so templates render the
+  // symbol ("FCFA") and correct decimals, and fall back to the entity's base
+  // currency (not a hardcoded XAF) when a document has no currency column.
+  const currencies = await currencyCatalog(client);
+  cfg.currencies = currencies;
+  const base = (entity.default_currency || "").trim() || "XAF";
+  cfg.base_currency = base;
+  const b = currencies[base];
+  entity.default_currency_decimals = b ? b.decimals : 2;
   return { cfg, entity };
 }
 
@@ -118,6 +148,7 @@ const SIMPLE = {
   PURCHASE_ORDER: { table: "purchase_order", pk: "po_id", label: "doc_number" },
   PURCHASE_REQUEST: { table: "purchase_request", pk: "pr_id", label: "doc_number" },
   CASH_REQUEST: { table: "cash_request", pk: "cash_request_id", label: "doc_number" },
+  COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
   EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: null },
@@ -256,7 +287,7 @@ async function deliveryNoteData(client, recordId) {
       received_by_name: dn.received_by_name || null,
       received_at: dn.received_at || null,
       issued_by_name: dn.issued_by_name || null,
-      currency: "XAF",
+      currency: null,
     },
   };
 }
@@ -422,7 +453,7 @@ async function loadRecord(client, docType, recordId) {
         amount: Number(r.amount), party: { name: r.client_name || "—", lines: [] },
         allocations, invoice_ref: allocations.map((a) => a.label).join(", ") || null,
         lines: allocations.length ? allocations.map((a) => ({ label: a.label, amount: a.amount })) : undefined,
-        currency: "XAF",
+        currency: null,
       },
     };
   }
@@ -440,7 +471,7 @@ async function loadRecord(client, docType, recordId) {
         party: { name: a.client_name || "—", lines: [] },
         lines: [{ label: "Acompte / Advance payment", qty: 1, unit: amount, amount }],
         totals: { service_ht: amount, vat_total: 0, total_ttc: amount },
-        applied, currency: "XAF",
+        applied, currency: null,
       },
     };
   }
@@ -459,7 +490,7 @@ async function loadRecord(client, docType, recordId) {
       data: {
         number: p.doc_number || String(p.proposal_id).slice(0, 8), date: p.created_at, status: p.status, headline: p.title,
         party: { name: p.client_name || "—", lines: [] }, sections, lines,
-        totals: ht ? { service_ht: ht, total_ttc: ht } : undefined, currency: "XAF",
+        totals: ht ? { service_ht: ht, total_ttc: ht } : undefined, currency: null,
       },
     };
   }
@@ -467,10 +498,17 @@ async function loadRecord(client, docType, recordId) {
   if (docType === "SUPPLIER_INVOICE") {
     const { rows } = await client.query(
       `SELECT si.*, sm.name AS supplier_name, sm.niu AS supplier_niu, sm.address AS supplier_address, sm.city AS supplier_city,
-              po.doc_number AS po_doc_number
+              po.doc_number AS po_doc_number,
+              COALESCE(e_p.signatory_name, au_p.full_name) AS posted_by_name,
+              e_p.job_title AS posted_by_title,
+              c.decimals AS currency_decimals
          FROM supplier_invoice si
          LEFT JOIN supplier_master sm ON sm.supplier_id = si.supplier_id
          LEFT JOIN purchase_order po ON po.po_id = si.po_id
+         LEFT JOIN journal_entry je ON je.entry_id = si.entry_id
+         LEFT JOIN app_user au_p ON au_p.user_id = je.created_by
+         LEFT JOIN employee e_p ON e_p.employee_id = au_p.employee_id
+         LEFT JOIN currency c ON c.code = si.currency
         WHERE si.supplier_invoice_id = $1`,
       [recordId],
     );
@@ -488,6 +526,9 @@ async function loadRecord(client, docType, recordId) {
         totals: { service_ht: Number(si.amount_ht), vat_total: Number(si.vat_total), wht_total: Number(si.wht_total), total_ttc: ttc },
         amount_in_words: ttc,
         currency: si.currency || "XAF",
+        posted_by_name: si.posted_by_name || null,
+        posted_by_title: si.posted_by_title || null,
+        currency_decimals: si.currency_decimals !== null && si.currency_decimals !== undefined ? Number(si.currency_decimals) : undefined,
       },
     };
   }
@@ -498,9 +539,19 @@ async function loadRecord(client, docType, recordId) {
               COALESCE(po.supplier_name, sm.name) AS supplier_name,
               COALESCE(po.supplier_niu, sm.niu) AS supplier_niu,
               COALESCE(po.supplier_address, sm.address) AS supplier_address,
-              COALESCE(po.supplier_city, sm.city) AS supplier_city
+              COALESCE(po.supplier_city, sm.city) AS supplier_city,
+              COALESCE(e_i.signatory_name, au_i.full_name) AS issuer_name,
+              e_i.job_title AS issuer_title,
+              COALESCE(e_a.signatory_name, au_a.full_name) AS approver_name,
+              e_a.job_title AS approver_title,
+              c.decimals AS currency_decimals
          FROM purchase_order po
          LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+         LEFT JOIN app_user au_i ON au_i.user_id = po.issuer_id
+         LEFT JOIN employee e_i ON e_i.employee_id = au_i.employee_id
+         LEFT JOIN app_user au_a ON au_a.user_id = po.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = au_a.employee_id
+         LEFT JOIN currency c ON c.code = po.currency
         WHERE po.po_id = $1`,
       [recordId],
     );
@@ -532,13 +583,24 @@ async function loadRecord(client, docType, recordId) {
         lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.vat_rate !== null && l.vat_rate !== undefined ? String(l.vat_rate) : "", amount: Number(l.qty) * Number(l.unit_price) })),
         totals: { service_ht: ht, vat_total: vat, total_ttc: ttc, withholding, net_payable: net },
         amount_in_words: net,
+        issuer_name: po.issuer_name || null,
+        issuer_title: po.issuer_title || null,
+        approver_name: po.approver_name || null,
+        approver_title: po.approver_title || null,
+        currency_decimals: po.currency_decimals !== null && po.currency_decimals !== undefined ? Number(po.currency_decimals) : undefined,
       },
     };
   }
 
   if (docType === "PURCHASE_REQUEST") {
     const { rows } = await client.query(
-      "SELECT pr.*, u.full_name AS requester FROM purchase_request pr LEFT JOIN app_user u ON u.user_id = pr.requested_by WHERE pr.pr_id = $1",
+      `SELECT pr.*, u.full_name AS requester,
+              COALESCE(e.signatory_name, u.full_name) AS requester_name,
+              e.job_title AS requester_title
+         FROM purchase_request pr
+         LEFT JOIN app_user u ON u.user_id = pr.requested_by
+         LEFT JOIN employee e ON e.employee_id = u.employee_id
+        WHERE pr.pr_id = $1`,
       [recordId],
     );
     const pr = rows[0];
@@ -551,24 +613,38 @@ async function loadRecord(client, docType, recordId) {
       data: {
         number: pr.doc_number || String(pr.pr_id).slice(0, 8), date: pr.created_at, status: pr.status, department: pr.department,
         party: { name: pr.requester || pr.department || "—", lines: [pr.department].filter(Boolean) },
-        reason: pr.justification || undefined, lines, totals: { total_ttc: total }, currency: "XAF",
+        reason: pr.justification || undefined, lines, totals: { total_ttc: total }, currency: null,
+        requester_name: pr.requester_name || null,
+        requester_title: pr.requester_title || null,
       },
     };
   }
 
   if (docType === "CASH_REQUEST") {
     const { rows } = await client.query(
-      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref
+      `SELECT cr.*, u.full_name AS requester_name, u.email AS requester_email, d.ref AS dossier_ref,
+              COALESCE(e_v.signatory_name, au_v.full_name) AS validated_by_name,
+              e_v.job_title AS validated_by_title,
+              COALESCE(e_a.signatory_name, au_a.full_name) AS approved_by_name,
+              e_a.job_title AS approved_by_title
          FROM cash_request cr
          LEFT JOIN app_user u ON u.user_id = cr.requested_by
          LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN app_user au_v ON au_v.user_id = cr.validated_by
+         LEFT JOIN employee e_v ON e_v.employee_id = au_v.employee_id
+         LEFT JOIN app_user au_a ON au_a.user_id = cr.approver_id
+         LEFT JOIN employee e_a ON e_a.employee_id = au_a.employee_id
         WHERE cr.cash_request_id = $1`,
       [recordId],
     );
     const cr = rows[0];
     if (!cr) return null;
-    const lr = await client.query("SELECT label, budget_amount FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
+    const lr = await client.query("SELECT label, budget_amount, vat_percent FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [recordId]);
     const purpose = lr.rows.map((l) => l.label).filter(Boolean).join(", ");
+    // §3.5 — the voucher footer: Subtotal / VAT / TOTAL PAYABLE, same rule the
+    // service applies (lazy require: see the transit-order branch note).
+    const { computeTotals } = require("../../costing/cash_request/cash_request.rules");
+    const totals = computeTotals(lr.rows);
     return {
       entity_id: null,
       data: {
@@ -576,8 +652,59 @@ async function loadRecord(client, docType, recordId) {
         amount: Number(cr.amount), purpose, dossier_ref: cr.dossier_ref,
         beneficiary: cr.beneficiary, category: cr.category, cost_center: cr.cost_center,
         overhead_justification: cr.overhead_justification, remarks: cr.remarks,
+        method: cr.disbursement_method || null,
+        method_details: cr.disbursement_details || {},
+        lines: lr.rows.map((l) => ({ label: l.label, qty: 1, unit: Number(l.budget_amount), tax: l.vat_percent !== null && l.vat_percent !== undefined ? Number(l.vat_percent) : null, amount: Number(l.budget_amount) })),
+        totals,
         party: { name: cr.requester_name || "—", lines: [cr.requester_email].filter(Boolean) },
-        currency: "XAF",
+        validated_by_name: cr.validated_by_name || null,
+        validated_by_title: cr.validated_by_title || null,
+        approved_by_name: cr.approved_by_name || null,
+        approved_by_title: cr.approved_by_title || null,
+        received_by_name: cr.beneficiary || null,
+        currency: null,
+      },
+    };
+  }
+
+  /* §3.3 — the costing worksheet, footer Subtotal (HT) / VAT / Total Estimate.
+   * Totals are computed the same way costing.service.get computes them
+   * (per-line VAT from the line's own tax code; no margin — §2.2). */
+  if (docType === "COSTING") {
+    const { rows } = await client.query(
+      `SELECT c.*, d.ref AS dossier_ref, v.full_name AS validator_name
+         FROM costing c
+         LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
+         LEFT JOIN app_user v ON v.user_id = c.validator_id
+        WHERE c.costing_id = $1`,
+      [recordId],
+    );
+    const c = rows[0];
+    if (!c) return null;
+    const lr = await client.query(
+      `SELECT cl.label, cl.qty, cl.unit_cost, cl.is_disbursement, tc.rate_percent AS tax_rate_percent
+         FROM costing_line cl LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
+        WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id`,
+      [recordId],
+    );
+    // Lazy require (pattern of the transit-order branch above): pulling the
+    // costing rules at module load would force every test that mocks this
+    // service's collaborators to know about them.
+    const { computeCosting } = require("../../costing/costing/costing.rules");
+    const totals = computeCosting(lr.rows);
+    return {
+      entity_id: null,
+      data: {
+        number: c.doc_number || String(c.costing_id).slice(0, 8), date: c.created_at, status: c.status,
+        dossier_ref: c.dossier_ref, validator: c.validator_name, remarks: c.remarks,
+        exchange_rate: Number(c.exchange_rate_to_xaf),
+        lines: lr.rows.map((l) => ({
+          label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
+          tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
+          amount: Number(l.qty) * Number(l.unit_cost),
+        })),
+        totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },
+        currency: c.currency,
       },
     };
   }
@@ -586,7 +713,7 @@ async function loadRecord(client, docType, recordId) {
     const { rows } = await client.query("SELECT * FROM regie_advance WHERE regie_advance_id = $1", [recordId]);
     const ra = rows[0];
     if (!ra) return null;
-    return { entity_id: null, data: { number: String(ra.regie_advance_id).slice(0, 8), date: ra.issued_on || ra.created_at, status: ra.state, amount: Number(ra.amount), party: { name: "—", lines: [] }, currency: "XAF" } };
+    return { entity_id: null, data: { number: String(ra.regie_advance_id).slice(0, 8), date: ra.issued_on || ra.created_at, status: ra.state, amount: Number(ra.amount), party: { name: "—", lines: [] }, currency: null } };
   }
 
   if (docType === "WORK_ORDER") {
@@ -599,7 +726,7 @@ async function loadRecord(client, docType, recordId) {
     const lr = await client.query("SELECT * FROM work_order_part WHERE work_order_id = $1 ORDER BY work_order_part_id", [recordId]);
     const parts = lr.rows.map((p) => ({ label: p.label, qty: Number(p.qty), unit_cost: Number(p.unit_cost) }));
     const cost = wo.cost !== null && wo.cost !== undefined ? Number(wo.cost) : parts.reduce((s2, p) => s2 + p.qty * p.unit_cost, 0);
-    return { entity_id: null, data: { number: String(wo.work_order_id).slice(0, 8), date: wo.opened_on || wo.created_at, status: wo.status, vehicle: wo.registration || "—", description: wo.description, parts, cost, currency: "XAF" } };
+    return { entity_id: null, data: { number: String(wo.work_order_id).slice(0, 8), date: wo.opened_on || wo.created_at, status: wo.status, vehicle: wo.registration || "—", description: wo.description, parts, cost, currency: null } };
   }
 
   if (docType === "SOP_DOCUMENT") {
@@ -626,7 +753,7 @@ async function loadRecord(client, docType, recordId) {
         effective_on: d.effective_on,
         review_on: d.review_on,
         sections: contractArticles(d.body_md),
-        currency: "XAF",
+        currency: null,
       },
     };
   }
@@ -689,16 +816,20 @@ async function loadRecord(client, docType, recordId) {
     const g = rows[0];
     if (!g) return null;
     const lr = await client.query("SELECT item, ordered, received, condition FROM grn_line WHERE grn_inbound_id = $1 ORDER BY grn_line_id", [recordId]);
-    return { entity_id: null, data: { number: String(g.grn_inbound_id).slice(0, 8), date: g.created_at, po_ref: g.dossier_id ? String(g.dossier_id).slice(0, 8) : null, qa_status: g.qa_status, supplier: "—", lines: lr.rows.map((l) => ({ item: l.item, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })), currency: "XAF" } };
+    return { entity_id: null, data: { number: String(g.grn_inbound_id).slice(0, 8), date: g.created_at, po_ref: g.dossier_id ? String(g.dossier_id).slice(0, 8) : null, qa_status: g.qa_status, supplier: "—", lines: lr.rows.map((l) => ({ item: l.item, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })), currency: null } };
   }
 
   if (docType === "GOODS_RECEIVED") {
     const { rows } = await client.query(
       `SELECT grn.*, po.doc_number AS po_doc_number, po.currency AS po_currency,
-              sm.name AS supplier_name, sm.address AS supplier_address, sm.city AS supplier_city, sm.niu AS supplier_niu
+              sm.name AS supplier_name, sm.address AS supplier_address, sm.city AS supplier_city, sm.niu AS supplier_niu,
+              COALESCE(e_r.signatory_name, au_r.full_name) AS received_by_name,
+              e_r.job_title AS received_by_title
          FROM goods_received_note grn
          LEFT JOIN purchase_order po ON po.po_id = grn.po_id
          LEFT JOIN supplier_master sm ON sm.supplier_id = po.supplier_id
+         LEFT JOIN app_user au_r ON au_r.user_id = grn.received_by
+         LEFT JOIN employee e_r ON e_r.employee_id = au_r.employee_id
         WHERE grn.grn_id = $1`,
       [recordId],
     );
@@ -715,6 +846,8 @@ async function loadRecord(client, docType, recordId) {
         supplier: g.supplier_name || "—",
         supplier_lines: [g.supplier_address, g.supplier_city, g.supplier_niu && `NIU ${g.supplier_niu}`].filter(Boolean),
         note: g.note,
+        received_by_name: g.received_by_name || null,
+        received_by_title: g.received_by_title || null,
         lines: lr.rows.map((l) => ({ item: l.label, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })),
         currency: g.po_currency || "XAF",
       },
@@ -741,7 +874,7 @@ async function loadRecord(client, docType, recordId) {
     }));
     const locRow = cc.location_id ? await client.query("SELECT zone FROM warehouse_location WHERE location_id = $1", [cc.location_id]).then((x) => x.rows[0]).catch(() => null) : null;
     const location = (locRow && locRow.zone) || (cc.location_id ? String(cc.location_id).slice(0, 8) : "—");
-    return { entity_id: null, data: { number: String(cc.cycle_count_id).slice(0, 8), date: cc.created_at, location, lines, currency: "XAF" } };
+    return { entity_id: null, data: { number: String(cc.cycle_count_id).slice(0, 8), date: cc.created_at, location, lines, currency: null } };
   }
 
   if (docType === "TRIP_SHEET") {
@@ -752,7 +885,7 @@ async function loadRecord(client, docType, recordId) {
     const d = rows[0];
     if (!d) return null;
     const dist = d.odometer_out !== null && d.odometer_in !== null && d.odometer_out !== undefined && d.odometer_in !== undefined ? Number(d.odometer_in) - Number(d.odometer_out) : null;
-    return { entity_id: null, data: { number: String(d.fleet_dispatch_id).slice(0, 8), date: d.check_out_at || d.created_at, vehicle: d.registration || "—", driver: d.driver_name || "—", origin: "", destination: "", odometer_out: d.odometer_out, odometer_in: d.odometer_in, distance: dist, currency: "XAF" } };
+    return { entity_id: null, data: { number: String(d.fleet_dispatch_id).slice(0, 8), date: d.check_out_at || d.created_at, vehicle: d.registration || "—", driver: d.driver_name || "—", origin: "", destination: "", odometer_out: d.odometer_out, odometer_in: d.odometer_in, distance: dist, currency: null } };
   }
 
   if (docType === "PAYSLIP") {
@@ -780,7 +913,7 @@ async function loadRecord(client, docType, recordId) {
       data: {
         number: String(it.payroll_run_item_id).slice(0, 8), period: it.period_code, staff_no: null,
         employee_name: it.full_name || "—", job_title: it.job_title, cnps_number: it.cnps_number,
-        earnings, deductions, gross: Number(it.gross), total_deductions: totalDed, net: Number(it.net_pay), currency: "XAF",
+        earnings, deductions, gross: Number(it.gross), total_deductions: totalDed, net: Number(it.net_pay), currency: null,
       },
     };
   }

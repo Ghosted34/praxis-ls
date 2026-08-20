@@ -417,7 +417,18 @@ async function syncConnection(client, id, ctx = {}) {
         if (!row) continue;
         inserted += 1;
         attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
-        await autoLink(client, row.thread_id, m.from, m.subject);
+        await autoLink(client, {
+          threadId: row.thread_id, messageId: row.email_message_id,
+          fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
+          filenames: (m.attachments || []).map((a) => a.filename).filter(Boolean),
+        });
+        if (m.direction !== "OUT" && client && typeof client.query === "function") {
+          await client.query(
+            `UPDATE email_followup SET status='CANCELLED'
+              WHERE email_thread_id = $1 AND status='PENDING' AND cancel_on_reply = true AND kind='NO_REPLY'`,
+            [row.thread_id],
+          ).catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
+        }
         await emitEvent(client, {
           eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
           moduleKey: events.MODULE,
@@ -482,7 +493,7 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
       });
       saved += 1;
     } catch {
-      /* skip this attachment; bytes may exceed the vault limit or storage failed */
+      /* @silent:storage skip this attachment; bytes may exceed the vault limit or storage failed */
     }
   }
   return saved;
@@ -495,25 +506,40 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
  *  issue rather than a server/code fault, and the compose UI shows the user why. */
 function explainSendError(err, conn) {
   const raw = String((err && (err.response || err.message)) || "").trim();
-  const code = err && err.responseCode;
   const addr = (conn && conn.email_address) || "this mailbox";
-  const lc = raw.toLowerCase();
-  if (
-    code === 550 || code === 553 || code === 554 ||
-    /sender verif|valid sender|not allowed to send|not authori[sz]ed|relay(ing)? denied|relay access denied|from address|must be authenticated|authentication required/.test(lc)
-  ) {
+  // Same classifier as Test / system-email / probes. Mailbox send only overlays
+  // the connected address so compose names which mailbox to Edit. Codes and
+  // status (including RECIPIENT_REJECTED 422, which the outbox must not retry)
+  // come from the map — wrapping everything leftover as MAIL_SEND_FAILED would
+  // hide a permanent recipient refusal as a retryable 502.
+  const mapped = mapSmtpError(err);
+  if (mapped.code === "SENDER_NOT_AUTHORIZED") {
     return new AppError(
       "SENDER_NOT_AUTHORIZED",
       `Your mailbox ${addr} isn't an authorised sender on its own mail server, so the server refused the message`
         + (raw ? ` (${raw})` : "")
         + `. This is the mailbox's SMTP setup — not Praxis. The "From" address must be a real mailbox on that server and usually has to match the login you connected with. Open Comms → Mailbox → Edit on this mailbox to fix the address, login or password, then Test.`,
       422,
+      mapped.details,
     );
   }
-  if ((err && err.code) === "EAUTH") {
+  if (mapped.code === "SMTP_AUTH_FAILED") {
     return new AppError("MAILBOX_AUTH_FAILED", `Login to ${addr} was rejected by its mail server${raw ? ` (${raw})` : ""}. Edit this mailbox to correct the username or password, then Test.`, 422);
   }
-  return new AppError("MAIL_SEND_FAILED", `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`, 502);
+  if (mapped.code === "RECIPIENT_REJECTED") {
+    return new AppError(
+      "RECIPIENT_REJECTED",
+      `${addr}'s mail server refused a recipient${raw ? ` (${raw})` : ""}. Check the To/Cc addresses.`,
+      422,
+      mapped.details,
+    );
+  }
+  return new AppError(
+    "MAIL_SEND_FAILED",
+    `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`,
+    mapped.status || 502,
+    mapped.details,
+  );
 }
 
 /**
@@ -737,7 +763,7 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
   await repo.ensureDefaultConnection(client, claims.user_id);
-  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* push optional; polling covers it */ });
+  await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* @silent:storage push optional; polling covers it */ });
   return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
 }
 
@@ -816,7 +842,7 @@ async function handleGraphNotification(client, body, ctx = {}) {
       // work. The per-tenant DB scopes the lookup, so this also proves the
       // connection belongs here. Best-effort: a bad id never aborts the batch.
       let conn = null;
-      try { conn = await repo.getConnection(client, id); } catch { /* skip */ }
+      try { conn = await repo.getConnection(client, id); } catch { /* @silent:storage — a stale/forged connection id in a batch is skipped, not fatal */ }
       if (!conn || conn.status !== "CONNECTED") continue;
       results.push(await syncConnection(client, conn.email_connection_id, ctx));
     }
@@ -827,16 +853,11 @@ async function handleGraphNotification(client, body, ctx = {}) {
 /** Best-effort CRM link on ingest: a dossier ref in the subject wins (most
  *  specific), else the sender's client. Tags entity_ref so the message shows on
  *  the dossier / client timeline. Never throws into the sync loop. */
-async function autoLink(client, threadId, fromAddress, subject) {
+async function autoLink(client, args) {
   try {
-    const refs = String(subject || "").match(/[A-Za-z0-9]{2,}-\d{4}-\d{2,}/g) || [];
-    if (refs.length) {
-      const d = await repo.findDossierByRefs(client, refs);
-      if (d) { await threadRepo.updateThread(client, threadId, { entity_ref: `dossier:${d.dossier_id}` }); return; }
-    }
-    const cl = await repo.findClientByEmail(client, fromAddress);
-    if (cl) await threadRepo.updateThread(client, threadId, { entity_ref: `client:${cl.client_id}` });
-  } catch { /* linking is best-effort */ }
+    const binding = require("../binding/binding.service");
+    await binding.suggestOnIngest(client, args);
+  } catch { /* @silent:teardown — a failed suggestion never aborts the sync loop */ }
 }
 
 /** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
@@ -861,7 +882,7 @@ async function markRead(client, id, actorUserId = null) {
       try {
         const { logger } = require("../../../config/logger");
         logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
-      } catch { /* noop */ }
+      } catch { /* @silent:teardown — logging a warn must never mask the original error */ }
     }
   }
   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));
@@ -889,5 +910,8 @@ module.exports = {
   clientTimeline, linkEntity, autodiscover, searchRecipients,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
-  resolveAdapter,
+  // Exported for the send-queue flusher, which injects them rather than
+  // importing this module — outbox.service must stay loadable, and testable,
+  // without dragging in every provider adapter.
+  resolveAdapter, recordOutbound, explainSendError,
 };

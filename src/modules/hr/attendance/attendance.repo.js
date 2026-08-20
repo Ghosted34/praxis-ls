@@ -130,7 +130,23 @@ module.exports = {
     const wh = [];
     if (q.employee_id) { params.push(q.employee_id); wh.push("al.employee_id = $" + params.length); }
     if (q.open === "true" || q.open === true) wh.push("al.clock_out_at IS NULL");
-    if (q.date) { params.push(q.date); wh.push("al.clock_in_at::date = $" + params.length); }
+    // Local-zone window, never `clock_in_at::date`. That is the UTC date, so a
+    // 00:30 Douala punch lands on the previous day and disappears from Today.
+    const tz = typeof q.timeZone === "string" && q.timeZone.trim() ? q.timeZone.trim() : "Africa/Douala";
+    if (q.date) {
+      params.push(q.date, tz);
+      wh.push("al.clock_in_at >= ($" + (params.length - 1) + "::timestamp AT TIME ZONE $" + params.length + ")");
+      wh.push("al.clock_in_at <  (($" + (params.length - 1) + "::date + 1)::timestamp AT TIME ZONE $" + params.length + ")");
+    } else if (q.from || q.to) {
+      if (q.from) {
+        params.push(q.from, tz);
+        wh.push("al.clock_in_at >= ($" + (params.length - 1) + "::timestamp AT TIME ZONE $" + params.length + ")");
+      }
+      if (q.to) {
+        params.push(q.to, tz);
+        wh.push("al.clock_in_at <  (($" + (params.length - 1) + "::date + 1)::timestamp AT TIME ZONE $" + params.length + ")");
+      }
+    }
     const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
     const { rows } = await client.query(
       `SELECT al.*, e.full_name AS employee_name

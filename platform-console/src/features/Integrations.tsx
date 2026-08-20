@@ -44,7 +44,7 @@ export function Integrations() {
 function MailTestHelp({ code, error }: { code?: string | unknown; error?: string | unknown }) {
   const c = String(code || "").toUpperCase();
   const text = String(error || "").toLowerCase();
-  const kind = c === "SMTP_SENDER_REJECTED" || text.includes("sender verify")
+  const kind = c === "SMTP_SENDER_REJECTED" || c === "SENDER_NOT_AUTHORIZED" || text.includes("sender verify")
     ? "sender"
     : c === "SMTP_AUTH_FAILED" || text.includes("535") || text.includes("eauth")
       ? "auth"

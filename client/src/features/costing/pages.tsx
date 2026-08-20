@@ -12,10 +12,14 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { ErrorState } from "@/components/ui/states";
+import { ErrorState, EmptyState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { Chips } from "@/components/ui/chips";
+import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { exportCsv } from "@/lib/export-csv";
+import { cn } from "@/lib/cn";
 import { RowActions } from "@/components/ui/row-actions";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -30,10 +34,14 @@ import {
   CashRequestActions,
 } from "./cash-request-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, todayISO } from "@/lib/format";
+import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import type { Entity, DictItem, DictSearchHit } from "@/lib/masterdata-api";
-import { resolveExpenseRate } from "@/lib/masterdata-api";
+import {
+  resolveExpenseRate,
+  listCurrencies,
+  listSalesTaxCodes,
+} from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import type { EquipmentPick } from "@/components/equipment-step";
 import type { Dossier } from "@/lib/operations-api";
@@ -80,6 +88,9 @@ type CostingLineDraft = {
   label: string;
   qty: number;
   unit_cost: number;
+  /** §3.3 — legacy per-line toggles (save.php:84 vat_applicable; débours). */
+  is_disbursement?: boolean;
+  tax_code_id?: string;
   variesByEquipment?: boolean;
   containerTypeRefId?: string;
   /** Display snapshot of the container type, so the line reads correctly without
@@ -97,6 +108,7 @@ const BLANK_LINE: CostingLineDraft = {
 function CostingLineRow({
   line,
   dossierId,
+  vatCodes,
   onChange,
   onPickMulti,
   onRemove,
@@ -104,6 +116,8 @@ function CostingLineRow({
 }: {
   line: CostingLineDraft;
   dossierId?: string;
+  /** Sales-applicable VAT codes for the per-line toggle (§3.3). */
+  vatCodes: { tax_code_id: string; code: string; rate_percent?: number | null }[];
   onChange: (patch: Partial<CostingLineDraft>) => void;
   /** One pick, several container types → several lines. The form owns line
    *  creation; the picker only says what was chosen. */
@@ -184,6 +198,44 @@ function CostingLineRow({
             }
           />
         </Field>
+        {/* §3.3 — the legacy sheet's per-line VAT toggle (save.php:84). A
+            débours line never carries VAT (0640 ledger rule), so the select
+            disables itself when the line is flagged pass-through. */}
+        <Field label={tr("VAT")}>
+          <Select
+            value={line.tax_code_id || ""}
+            onChange={(e) =>
+              onChange({ tax_code_id: e.target.value || undefined })
+            }
+            disabled={line.is_disbursement}
+            aria-label={tr("VAT code")}
+          >
+            <option value="">{tr("No VAT")}</option>
+            {vatCodes.map((tc) => (
+              <option key={tc.tax_code_id} value={tc.tax_code_id}>
+                {tc.code}
+                {tc.rate_percent != null ? ` (${tc.rate_percent}%)` : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={tr("Débours")}>
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={line.is_disbursement === true}
+              onChange={(e) =>
+                onChange({
+                  is_disbursement: e.target.checked,
+                  // pass-through is never taxed — clear the code with the flag
+                  tax_code_id: e.target.checked ? undefined : line.tax_code_id,
+                })
+              }
+              aria-label={tr("Débours (pass-through)")}
+            />
+            {tr("Pass-through")}
+          </label>
+        </Field>
       </div>
       {line.dictionary_item_id && (
         <p className="mt-1 micro">
@@ -211,10 +263,52 @@ function CostingForm({
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
-  const [margin, setMargin] = React.useState("");
+  // §3.3 — the legacy header controls: Curr + Rate (conversion where you
+  // work), remarks for the validator, and the validator picker (a submission
+  // with nobody named goes to no one's queue — the server now refuses it).
+  const [currency, setCurrency] = React.useState("XAF");
+  const [rate, setRate] = React.useState("1");
+  const [remarks, setRemarks] = React.useState("");
+  const [validatorId, setValidatorId] = React.useState("");
+  const currencies = useResource(() => listCurrencies(), []);
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
+  // Sales-applicable VAT codes for the per-line toggle. `degraded` is surfaced
+  // — silently offering zero codes is indistinguishable from "no tax set up".
+  // Memoised because `?.codes || []` would mint a fresh [] on every render
+  // while the fetch is pending, re-running the liveTotals memo below each time
+  // (react-hooks/exhaustive-deps).
+  const vat = useResource(() => listSalesTaxCodes(), []);
+  const vatCodes = React.useMemo(() => vat.data?.codes || [], [vat.data]);
   const [lines, setLines] = React.useState<CostingLineDraft[]>([
     { ...BLANK_LINE },
   ]);
+  // Live footer — the same arithmetic the server's computeCosting does
+  // (per-line VAT from the picked code's rate; débours never taxed).
+  const liveTotals = React.useMemo(() => {
+    let ht = 0;
+    let vatTotal = 0;
+    for (const l of lines) {
+      const amt = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+      ht += amt;
+      if (!l.is_disbursement && l.tax_code_id) {
+        const rate = Number(
+          vatCodes.find((tc) => tc.tax_code_id === l.tax_code_id)
+            ?.rate_percent || 0,
+        );
+        vatTotal += (amt * rate) / 100;
+      }
+    }
+    const r = (n: number) => Math.round(n * 100) / 100;
+    return {
+      total_ht: r(ht),
+      vat_total: r(vatTotal),
+      total_ttc: r(ht + vatTotal),
+    };
+  }, [lines, vatCodes]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const setLine = (i: number, p: Partial<CostingLineDraft>) =>
@@ -291,7 +385,11 @@ function CostingForm({
     try {
       await api.createCosting({
         dossier_id: dossierId,
-        margin_percent: margin === "" ? undefined : Number(margin),
+        currency: currency || "XAF",
+        exchange_rate_to_xaf:
+          currency !== "XAF" && Number(rate) > 0 ? Number(rate) : undefined,
+        remarks: remarks.trim() || undefined,
+        validator_id: validatorId || undefined,
         lines: lines
           .filter((l) => l.label || l.dictionary_item_id)
           .map((l) => ({
@@ -299,6 +397,9 @@ function CostingForm({
             label: l.label,
             qty: Number(l.qty) || 1,
             unit_cost: Number(l.unit_cost) || 0,
+            is_disbursement: l.is_disbursement === true,
+            // §3.3: the per-line VAT toggle persists as the line's tax code.
+            tax_code_id: l.tax_code_id || undefined,
             // 0663: the equipment dimension the form used to resolve a rate with
             // and then throw away.
             container_type_ref_id: l.containerTypeRefId || null,
@@ -319,7 +420,7 @@ function CostingForm({
       onClose={onClose}
       size="lg"
       title="New costing sheet"
-      description="Planned cost + margin for a dossier."
+      description="Planned cost for a dossier — what the file will cost us, HT / VAT / TTC. Pricing (margin) lives in the margin simulator and the quotation."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -343,15 +444,52 @@ function CostingForm({
               </p>
             )}
           </Field>
-          <Field label={tr("Margin %")}>
-            <Input
-              type="number"
-              step="0.01"
-              className="num text-right"
-              value={margin}
-              onChange={(e) => setMargin(e.target.value)}
-            />
+          {/* §2.2: the Margin % field is gone. Costing answers "what will this
+              cost us?" and stops — the legacy sheet never had margin either. */}
+          <Field label={tr("Validator")} hint="Who this sheet is submitted to">
+            <Select
+              value={validatorId}
+              onChange={(e) => setValidatorId(e.target.value)}
+            >
+              <option value="">—</option>
+              {(users || []).map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.full_name || u.email || u.user_id.slice(0, 8)}
+                </option>
+              ))}
+            </Select>
           </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Currency")}>
+            <Select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              {(currencies.data || [])
+                .filter((c) => c.is_active !== false)
+                .map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name ? `${c.code} — ${c.name}` : c.code}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          {currency !== "XAF" && (
+            <Field
+              label={tr("Rate to XAF")}
+              hint="The conversion the sheet was priced at"
+            >
+              <Input
+                type="number"
+                min="0"
+                step="0.0001"
+                className="num text-right"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -371,6 +509,7 @@ function CostingForm({
                 key={i}
                 line={l}
                 dossierId={dossierId}
+                vatCodes={vatCodes}
                 onPickMulti={pickMulti(i)}
                 removable={lines.length > 1}
                 onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
@@ -386,7 +525,39 @@ function CostingForm({
               />
             ))}
           </div>
+          {vat.data?.degraded && (
+            <p className="mt-1 micro">
+              {tr(
+                "Some jurisdictions failed to list their VAT codes — the VAT picker may be incomplete.",
+              )}
+            </p>
+          )}
         </div>
+
+        {/* §3.3 — the legacy footer, live: Subtotal (HT) / VAT / Total Estimate. */}
+        <div className="grid grid-cols-3 gap-3">
+          <KpiTile
+            label={tr("Subtotal (HT)")}
+            value={money(liveTotals.total_ht, currency)}
+          />
+          <KpiTile label="VAT" value={money(liveTotals.vat_total, currency)} />
+          <KpiTile
+            label={tr("Total estimate")}
+            value={money(liveTotals.total_ttc, currency)}
+          />
+        </div>
+
+        <Field
+          label={tr("Remarks")}
+          hint="Context for the validator — prints on the costing sheet"
+        >
+          <Textarea
+            rows={2}
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+          />
+        </Field>
+
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}
@@ -399,11 +570,180 @@ function CostingForm({
   );
 }
 
+/**
+ * §3.3 — the costing worksheet, opened by clicking a row (the list used to be
+ * inert). Lines with their VAT, the legacy footer (Subtotal HT / VAT / Total
+ * Estimate), remarks, the named validator, and Print via the document studio
+ * (docType COSTING).
+ */
+function CostingDetail({
+  id,
+  dref,
+  onClose,
+}: {
+  id: string;
+  dref: Record<string, string>;
+  onClose: () => void;
+}) {
+  const costing = useResource(() => api.getCosting(id), [id]);
+  const { rows: users } = useList<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string;
+  }>("/users");
+  const c = costing.data;
+  const ccy = c?.currency || "XAF";
+  const validatorName = React.useMemo(() => {
+    if (!c?.validator_id) return null;
+    const u = (users || []).find((x) => x.user_id === c.validator_id);
+    return u ? u.full_name || u.email || c.validator_id.slice(0, 8) : c.validator_id.slice(0, 8);
+  }, [users, c]);
+
+  const lineColumns: Column<api.CostingLine>[] = [
+    {
+      key: "label",
+      label: "Charge",
+      render: (l) => (
+        <span className="font-medium text-foreground">
+          {l.label || "—"}
+          {l.container_type_code ? (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {l.container_type_code}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: "qty",
+      label: "Qty",
+      className: "num text-right",
+      render: (l) => String(l.qty ?? 1),
+    },
+    {
+      key: "unit_cost",
+      label: "Unit cost",
+      className: "num text-right",
+      render: (l) => money(l.unit_cost, ccy),
+    },
+    {
+      key: "vat",
+      label: "VAT",
+      render: (l) =>
+        l.is_disbursement
+          ? "—"
+          : l.tax_rate_percent != null
+            ? `${l.tax_rate_percent}%`
+            : "—",
+    },
+    {
+      key: "kind",
+      label: "Kind",
+      render: (l) =>
+        l.is_disbursement ? (
+          <Pill tone="mute">{tr("Débours")}</Pill>
+        ) : (
+          <Pill tone="blue">{tr("Service")}</Pill>
+        ),
+    },
+    {
+      key: "amount",
+      label: "Amount (HT)",
+      className: "num text-right",
+      render: (l) => money((Number(l.qty) || 1) * (Number(l.unit_cost) || 0), ccy),
+    },
+  ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={c?.doc_number || tr("Costing sheet")}
+      description="What this file will cost us — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
+      size="wide"
+    >
+      {costing.error ? (
+        <ErrorState message={costing.error} />
+      ) : !c ? null : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill tone={tone(c.status)}>{c.status}</Pill>
+            <span className="text-sm text-muted-foreground">
+              {c.dossier_id ? (dref[c.dossier_id] ?? "") : ""}
+            </span>
+            {c.currency && c.currency !== "XAF" && (
+              <Pill tone="orange">
+                {c.currency} @ {String(c.exchange_rate_to_xaf ?? 1)}
+              </Pill>
+            )}
+            {validatorName && (
+              <span className="text-xs text-muted-foreground">
+                {tr("Validator")}: {validatorName}
+                {c.validator_assigned_at
+                  ? ` (${dateFmt(c.validator_assigned_at)})`
+                  : ""}
+              </span>
+            )}
+            <span className="ml-auto">
+              {/* Print / Preview — the legacy sheet's output, via the document
+                  studio (settings section document_template, docType COSTING). */}
+              <DocButton
+                docType="COSTING"
+                id={c.costing_id}
+                title={c.doc_number || "Costing sheet"}
+                label={tr("Print / preview")}
+              />
+            </span>
+          </div>
+
+          <DataList
+            columns={lineColumns}
+            rows={c.lines || []}
+            error={null}
+            loading={false}
+            rowKey={(l, i) => String(l.costing_line_id ?? i)}
+            empty={{ title: tr("No lines") }}
+          />
+
+          {/* The legacy footer: Subtotal (HT) / VAT / Total Estimate. */}
+          <div className="grid grid-cols-3 gap-3">
+            <KpiTile
+              label={tr("Subtotal (HT)")}
+              value={money(c.totals?.total_ht, ccy)}
+              hint={
+                c.totals && c.totals.disbursement_total > 0
+                  ? `of which débours ${money(c.totals.disbursement_total, ccy)}`
+                  : undefined
+              }
+            />
+            <KpiTile label="VAT" value={money(c.totals?.vat_total, ccy)} />
+            <KpiTile
+              label={tr("Total estimate")}
+              value={money(c.totals?.total_ttc, ccy)}
+            />
+          </div>
+
+          {c.remarks && (
+            <div>
+              <p className="micro mb-1">{tr("Remarks")}</p>
+              <p className="rounded-lg border bg-card p-3 text-sm">
+                {c.remarks}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function CostingPage() {
   const { rows, error, loading, reload } = useList<api.Costing>("/costings");
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  // §3.3 — rows are clickable; the worksheet opens as a detail view.
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const dref = refOf(dossiers);
   const list = rows || [];
 
@@ -462,11 +802,8 @@ export function CostingPage() {
       label: "Dossier",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
-    {
-      key: "margin_percent",
-      label: "Margin",
-      render: (r) => (r.margin_percent != null ? `${r.margin_percent}%` : "—"),
-    },
+    // §2.2: the Margin column is gone — costing carries no margin. Pricing
+    // lives in the margin simulator and the quotation.
     {
       key: "total",
       label: "Total",
@@ -545,7 +882,7 @@ export function CostingPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title={tr("Costing")}
-        description="Planned cost sheets and margin per dossier."
+        description="Planned cost sheets per dossier — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
         action={<Button onClick={() => setOpen(true)}>New costing</Button>}
       />
       <HubTabs />
@@ -567,12 +904,23 @@ export function CostingPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.costing_id}
+        onRowClick={(r) => setSelectedId(r.costing_id)}
         empty={{
           title: "No costings yet",
           hint: "Build a costing sheet for a dossier.",
+          action: (
+            <Button onClick={() => setOpen(true)}>New costing</Button>
+          ),
         }}
       />
       {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
+      {selectedId && (
+        <CostingDetail
+          id={selectedId}
+          dref={dref}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
       {unlockFor && (
         <UnlockRequestForm
           costing={unlockFor}
@@ -651,18 +999,209 @@ function UnlockRequestForm({
 
 /* ═══════════════════ Cost tracking (actuals) ═══════════════════ */
 
+/**
+ * §3.4 — Cost tracking, the legacy's three tabs on OUR data model:
+ * Summary & balance (portfolio + the master-ledger matrix), Actual costs
+ * (per-file entries + fast multi-line entry in one transaction), Advances
+ * received (per FILE — owner-decided — with optional per-item earmarks).
+ */
 export function CostTrackingPage() {
   const { rows: dossiers } = useList<Dossier>("/operations");
+  const [tab, setTab] = React.useState("summary");
   const [dossierId, setDossierId] = React.useState("");
+
+  return (
+    <section className={shell}>
+      <PageHeader
+        eyebrow={<HubCrumb area="Costing" to="/costing" />}
+        title="Cost tracking"
+        description="Actual costs booked against each file, vs the plan — and the advances funding them."
+      />
+      <HubTabs />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Chips
+          label="Cost tracking tabs"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "summary", label: tr("Summary & balance") },
+            { value: "actuals", label: tr("Actual costs") },
+            { value: "advances", label: tr("Advances received") },
+          ]}
+        />
+        {tab !== "summary" && (
+          <Select
+            aria-label="Filter by dossier"
+            value={dossierId}
+            onChange={(e) => setDossierId(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="">Select a dossier…</option>
+            {(dossiers || []).map((d) => (
+              <option key={d.dossier_id} value={d.dossier_id}>
+                {d.ref}
+              </option>
+            ))}
+          </Select>
+        )}
+      </div>
+
+      {tab === "summary" && (
+        <div className="space-y-4">
+          <CostPortfolio />
+          <MatrixPanel />
+        </div>
+      )}
+      {tab === "actuals" &&
+        (dossierId ? (
+          <ActualCostsTab dossierId={dossierId} />
+        ) : (
+          <EmptyState
+            title={tr("Pick an operations file")}
+            hint="Actual costs are recorded against one file at a time."
+          />
+        ))}
+      {tab === "advances" &&
+        (dossierId ? (
+          <AdvancesTab dossierId={dossierId} />
+        ) : (
+          <EmptyState
+            title={tr("Pick an operations file")}
+            hint="A client advances money against the file; earmarking part of it to a cost item is optional."
+          />
+        ))}
+    </section>
+  );
+}
+
+/**
+ * §3.4 — the master-ledger matrix: one row per file, categories as COLUMNS
+ * derived from the dictionary (the legacy hardcoded 15 in PHP and matched by
+ * array index — add a category there and you edit code; here you add a
+ * dictionary item). TOTAL SPEND / TOTAL BALANCE close the row; Export ships
+ * exactly what is on screen.
+ */
+function MatrixPanel() {
+  const m = useResource(() => api.costMatrix(), []);
+  const items = m.data?.items || [];
+  const rows = m.data?.rows || [];
+
+  function exportMatrix() {
+    exportCsv<api.MatrixRow>({
+      filename: "cost-tracking-matrix",
+      columns: [
+        { header: "File", value: (r) => r.ref || r.dossier_id },
+        { header: "Client", value: (r) => r.client_name || "" },
+        ...items.map((it) => ({
+          header: it.code,
+          value: (r: api.MatrixRow) =>
+            r.cells[it.dictionary_item_id ?? "OTHER"] ?? 0,
+        })),
+        { header: "TOTAL SPEND", value: (r) => r.total_spend },
+        { header: "Advance received", value: (r) => r.advance_received },
+        { header: "TOTAL BALANCE", value: (r) => r.total_balance },
+      ],
+      rows,
+    });
+  }
+
+  return (
+    <Panel
+      title={tr("Master ledger")}
+      subtitle="Files × cost items — columns grow with the dictionary, not a fixed list"
+      action={
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={exportMatrix}
+          disabled={!rows.length}
+        >
+          {tr("Export")}
+        </Button>
+      }
+    >
+      {m.error ? (
+        <ErrorState message={m.error} />
+      ) : rows.length === 0 && !m.loading ? (
+        <EmptyState
+          title={tr("Nothing tracked yet")}
+          hint="Record an actual cost against a file and the grid grows."
+        />
+      ) : (
+        <Table sticky maxHeight="480px" density="compact" freezeFirstColumn>
+          <THead>
+            <TR>
+              <TH>File</TH>
+              {items.map((it) => (
+                <TH
+                  key={it.dictionary_item_id ?? "OTHER"}
+                  className="text-right"
+                >
+                  {it.code}
+                </TH>
+              ))}
+              <TH className="text-right">TOTAL SPEND</TH>
+              <TH className="text-right">Advance</TH>
+              <TH className="text-right">TOTAL BALANCE</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((r) => (
+              <TR key={r.dossier_id}>
+                <TD>
+                  <span className="font-medium text-foreground">
+                    {r.ref || r.dossier_id.slice(0, 8)}
+                  </span>
+                  {r.client_name ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {r.client_name}
+                    </span>
+                  ) : null}
+                </TD>
+                {items.map((it) => {
+                  const v = r.cells[it.dictionary_item_id ?? "OTHER"];
+                  return (
+                    <TD
+                      key={it.dictionary_item_id ?? "OTHER"}
+                      className="num text-right"
+                    >
+                      {v ? money0(v) : "—"}
+                    </TD>
+                  );
+                })}
+                <TD className="num text-right font-semibold">
+                  {money0(r.total_spend)}
+                </TD>
+                <TD className="num text-right">{money0(r.advance_received)}</TD>
+                <TD
+                  className={cn(
+                    "num text-right font-semibold",
+                    r.total_balance > 0 && "text-[rgb(var(--warn))]",
+                  )}
+                >
+                  {money0(r.total_balance)}
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+    </Panel>
+  );
+}
+
+/** §3.4 — per-file actuals + the fast multi-line sheet (one transaction). */
+function ActualCostsTab({ dossierId }: { dossierId: string }) {
   const entries = useResource(
-    () =>
-      dossierId ? api.costEntriesByDossier(dossierId) : Promise.resolve([]),
+    () => api.costEntriesByDossier(dossierId),
     [dossierId],
   );
   const recon = useResource<Record<string, unknown>>(
-    () => (dossierId ? api.reconcileDossier(dossierId) : Promise.resolve({})),
+    () => api.reconcileDossier(dossierId),
     [dossierId],
   );
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const rc = (recon.data || {}) as Record<string, number>;
 
   const cols: Column<api.CostEntry>[] = [
     {
@@ -679,74 +1218,446 @@ export function CostTrackingPage() {
       render: (r) => money(r.amount),
     },
   ];
-  const rc = (recon.data || {}) as Record<string, number>;
 
   return (
-    <section className={shell}>
-      <PageHeader
-        eyebrow={<HubCrumb area="Costing" to="/costing" />}
-        title="Cost tracking"
-        description="Actual costs booked against a dossier, vs the plan."
-      />
-      <HubTabs />
-      <div className="mb-4 flex items-center gap-3">
-        <span className="micro">{tr("Dossier")}</span>
-        <Select
-          aria-label="Filter by dossier"
-          value={dossierId}
-          onChange={(e) => setDossierId(e.target.value)}
-          className="max-w-xs"
-        >
-          <option value="">Select a dossier…</option>
-          {(dossiers || []).map((d) => (
-            <option key={d.dossier_id} value={d.dossier_id}>
-              {d.ref}
-            </option>
-          ))}
-        </Select>
+    <>
+      <KpiRow>
+        {/* `budget`, not `planned_cost` — reconcile() returns
+            { budget, actual, variance, variance_percent, over_budget }
+            and this tile read two keys that have never existed, so it
+            rendered empty for every dossier ever selected. */}
+        <KpiTile label={tr("Budget")} value={money(rc.budget)} />
+        <KpiTile label={tr("Actual")} value={money(rc.actual)} />
+        <KpiTile
+          label={tr("Variance")}
+          value={money(rc.variance)}
+          tone={rc.over_budget ? "bad" : "ok"}
+        />
+        <KpiTile
+          label={tr("Advance received")}
+          value={money(rc.advance_received)}
+        />
+        <KpiTile
+          label={tr("Coverage")}
+          value={
+            rc.coverage_percent == null ? "—" : `${num(rc.coverage_percent)}%`
+          }
+        />
+      </KpiRow>
+      <div className="mb-3 flex justify-end">
+        <Button onClick={() => setSheetOpen(true)}>
+          {tr("Record costs (sheet)")}
+        </Button>
       </div>
-      {!dossierId && <CostPortfolio />}
-      {dossierId && (
-        <>
-          <KpiRow>
-            {/* `budget`, not `planned_cost` — reconcile() returns
-                { budget, actual, variance, variance_percent, over_budget }
-                and this tile read two keys that have never existed, so it
-                rendered empty for every dossier ever selected. */}
-            <KpiTile label={tr("Budget")} value={money(rc.budget)} />
-            <KpiTile label={tr("Actual")} value={money(rc.actual)} />
-            <KpiTile
-              label={tr("Variance")}
-              value={money(rc.variance)}
-              tone={rc.over_budget ? "bad" : "ok"}
-            />
-            <KpiTile
-              label={tr("Advance received")}
-              value={money(rc.advance_received)}
-            />
-            <KpiTile
-              label={tr("Coverage")}
-              value={
-                rc.coverage_percent == null
-                  ? "—"
-                  : `${num(rc.coverage_percent)}%`
-              }
-            />
-          </KpiRow>
-          <DataList
-            columns={cols}
-            rows={entries.data}
-            error={entries.error}
-            loading={entries.loading}
-            rowKey={(r, i) => r.cost_entry_id || String(i)}
-            empty={{
-              title: "No cost entries",
-              hint: "No actuals booked to this dossier yet.",
-            }}
-          />
-        </>
+      <DataList
+        columns={cols}
+        rows={entries.data}
+        error={entries.error}
+        loading={entries.loading}
+        rowKey={(r, i) => r.cost_entry_id || String(i)}
+        empty={{
+          title: "No cost entries",
+          hint: "No actuals booked to this dossier yet.",
+          action: (
+            <Button onClick={() => setSheetOpen(true)}>
+              {tr("Record costs (sheet)")}
+            </Button>
+          ),
+        }}
+      />
+      {sheetOpen && (
+        <BulkCostSheet
+          dossierId={dossierId}
+          onClose={() => setSheetOpen(false)}
+          onSaved={() => {
+            entries.reload();
+            recon.reload();
+          }}
+        />
       )}
-    </section>
+    </>
+  );
+}
+
+/**
+ * §3.4 — fast multi-line entry. The legacy saved every category in one
+ * transaction; making a user issue 15 round trips (and explain 7 half-saved
+ * lines when the 8th fails) is the defect this closes: the whole sheet posts
+ * atomically via POST /cost-tracking/bulk.
+ */
+function BulkCostSheet({
+  dossierId,
+  onClose,
+  onSaved,
+}: {
+  dossierId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { rows: entities } = useList<Entity>("/entities");
+  const [entityId, setEntityId] = React.useState("");
+  const [entryDate, setEntryDate] = React.useState(todayISO());
+  const [docRef, setDocRef] = React.useState("");
+  type SheetLine = {
+    dictionary_item_id: string | null;
+    label: string;
+    amount: string;
+    is_disbursement: boolean;
+  };
+  const BLANK: SheetLine = {
+    dictionary_item_id: null,
+    label: "",
+    amount: "",
+    is_disbursement: false,
+  };
+  const [rows, setRows] = React.useState<SheetLine[]>([{ ...BLANK }]);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const setRow = (i: number, p: Partial<SheetLine>) =>
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
+
+  const total = rows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const valid = rows.filter(
+    (r) => Number(r.amount) > 0 && (r.dictionary_item_id || r.label.trim()),
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.bulkRecordCosts({
+        dossier_id: dossierId,
+        entity_id: entityId,
+        entry_date: entryDate,
+        source_doc_ref: docRef,
+        lines: valid.map((r) => ({
+          dictionary_item_id: r.dictionary_item_id || undefined,
+          category: r.label.trim() || undefined,
+          amount: Number(r.amount),
+          is_disbursement: r.is_disbursement,
+        })),
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Record costs — sheet")}
+      description="Every line posts to the ledger in ONE transaction — all or nothing, like the legacy sheet."
+      size="lg"
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label={tr("Entity")} required>
+            <Select
+              value={entityId}
+              onChange={(e) => setEntityId(e.target.value)}
+            >
+              <option value="">—</option>
+              {(entities || []).map((en) => (
+                <option key={en.entity_id} value={en.entity_id}>
+                  {en.legal_name || en.code}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={tr("Date")} required>
+            <Input
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Source doc ref")} required>
+            <Input value={docRef} onChange={(e) => setDocRef(e.target.value)} />
+          </Field>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="micro">{tr("Lines")}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setRows((rs) => [...rs, { ...BLANK }])}
+            >
+              + {tr("Add line")}
+            </Button>
+          </div>
+          {rows.map((r, i) => (
+            <div
+              key={i}
+              className="grid items-end gap-2 sm:grid-cols-[minmax(10rem,1fr)_8rem_auto_auto]"
+            >
+              <DictionaryFinder
+                id={`bulk-line-${i}`}
+                value={r.dictionary_item_id}
+                valueLabel={r.label || null}
+                onPick={(id, label) =>
+                  setRow(i, { dictionary_item_id: id, label })
+                }
+                label={tr("Cost item")}
+              />
+              <Field label={tr("Amount")}>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="num text-right"
+                  value={r.amount}
+                  onChange={(e) => setRow(i, { amount: e.target.value })}
+                />
+              </Field>
+              <label className="flex h-9 items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={r.is_disbursement}
+                  onChange={(e) =>
+                    setRow(i, { is_disbursement: e.target.checked })
+                  }
+                />
+                {tr("Débours")}
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={tr("Remove line")}
+                onClick={() =>
+                  setRows((rs) =>
+                    rs.length > 1 ? rs.filter((_, j) => j !== i) : rs,
+                  )
+                }
+              >
+                ✕
+              </Button>
+            </div>
+          ))}
+        </div>
+        <p className="num text-right text-sm font-semibold">
+          {tr("Sheet total")}: {money(total)}
+        </p>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={!entityId || !docRef || valid.length === 0 || busy}
+          onCancel={onClose}
+          saveLabel={tr("Post sheet")}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+/** §3.4 — advances per FILE, with the optional per-item earmark the owner
+ *  asked for ("this money is for demurrage"). */
+function AdvancesTab({ dossierId }: { dossierId: string }) {
+  const adv = useResource(() => api.dossierAdvances(dossierId), [dossierId]);
+  const [allocFor, setAllocFor] = React.useState<api.DossierAdvance | null>(
+    null,
+  );
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function removeAlloc(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.removeAdvanceAllocation(id);
+      adv.reload();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const list = adv.data || [];
+  const received = list.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const earmarked = list.reduce(
+    (a, r) =>
+      a + r.allocations.reduce((x, al) => x + Number(al.amount || 0), 0),
+    0,
+  );
+
+  return (
+    <div className="space-y-4">
+      <KpiRow>
+        <KpiTile label={tr("Advances received")} value={money(received)} />
+        <KpiTile
+          label={tr("Earmarked to items")}
+          value={money(earmarked)}
+          hint="Optional — an advance funds the file either way"
+        />
+        <KpiTile
+          label={tr("Unallocated")}
+          value={money(received - earmarked)}
+        />
+      </KpiRow>
+      {error && <ErrorState message={error} />}
+      {adv.error ? (
+        <ErrorState message={adv.error} />
+      ) : list.length === 0 && !adv.loading ? (
+        <EmptyState
+          title={tr("No advances on this file")}
+          hint="Client advances are recorded in Finance; they appear here against the file."
+        />
+      ) : (
+        <div className="space-y-2">
+          {list.map((a) => (
+            <div key={a.advance_id} className="lux-card space-y-2 p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="num text-sm font-semibold">
+                  {money(a.amount)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {tr("received")} {dateFmt(a.received_on)} ·{" "}
+                  {tr("applied to invoices")} {money(a.applied_amount)}
+                </span>
+                <span className="ml-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAllocFor(a)}
+                  >
+                    {tr("Earmark to item")}
+                  </Button>
+                </span>
+              </div>
+              {a.allocations.length > 0 && (
+                <ul className="space-y-1">
+                  {a.allocations.map((al) => (
+                    <li
+                      key={al.advance_allocation_id}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <Pill tone="blue">{al.item_code || "—"}</Pill>
+                      <span className="num">{money(al.amount)}</span>
+                      {al.note && (
+                        <span className="text-xs text-muted-foreground">
+                          {al.note}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto"
+                        loading={busyId === al.advance_allocation_id}
+                        onClick={() =>
+                          void removeAlloc(al.advance_allocation_id)
+                        }
+                      >
+                        {tr("Remove")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {allocFor && (
+        <AllocateModal
+          advance={allocFor}
+          onClose={() => setAllocFor(null)}
+          onSaved={() => adv.reload()}
+        />
+      )}
+    </div>
+  );
+}
+
+function AllocateModal({
+  advance,
+  onClose,
+  onSaved,
+}: {
+  advance: api.DossierAdvance;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [itemId, setItemId] = React.useState<string | null>(null);
+  const [itemLabel, setItemLabel] = React.useState<string | null>(null);
+  const [amount, setAmount] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const already = advance.allocations.reduce(
+    (a, al) => a + Number(al.amount || 0),
+    0,
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!itemId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.allocateAdvance(advance.advance_id, {
+        dictionary_item_id: itemId,
+        amount: Number(amount),
+        note: note.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Earmark advance to a cost item")}
+      description={`${money(advance.amount)} received — ${money(already)} already earmarked. The advance itself stays on the file; this only records what the client said the money is for.`}
+    >
+      <form className="space-y-4" onSubmit={submit}>
+        <DictionaryFinder
+          value={itemId}
+          valueLabel={itemLabel}
+          onPick={(id, label) => {
+            setItemId(id);
+            setItemLabel(label);
+          }}
+          label={tr("Cost item")}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr("Amount")} required>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              className="num text-right"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+          <Field label={tr("Note")}>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <FormButtons
+          busy={busy}
+          disabled={!itemId || !(Number(amount) > 0) || busy}
+          onCancel={onClose}
+          saveLabel={tr("Earmark")}
+        />
+      </form>
+    </Modal>
   );
 }
 
@@ -890,6 +1801,12 @@ function CashRequestForm({
   const [costCenter, setCostCenter] = React.useState("");
   const [overheadJustification, setOverheadJustification] = React.useState("");
   const [remarks, setRemarks] = React.useState("");
+  // §3.5 — how the money leaves (legacy :499). Each method carries its own
+  // required fields (:505-514); the server refuses submission without one.
+  const [method, setMethod] = React.useState<"" | api.DisbursementMethod>("");
+  const [details, setDetails] = React.useState<Record<string, string>>({});
+  const setDetail = (k: string, v: string) =>
+    setDetails((d) => ({ ...d, [k]: v }));
   const [lines, setLines] = React.useState<api.CashLine[]>([
     { dictionary_item_id: null, label: "", budget_amount: 0 },
   ]);
@@ -922,12 +1839,19 @@ function CashRequestForm({
         overhead_justification:
           category === "OVH" ? overheadJustification || undefined : undefined,
         remarks: remarks || undefined,
+        disbursement_method: method || undefined,
+        disbursement_details: method ? details : undefined,
         lines: lines
           .filter((l) => l.dictionary_item_id || l.label)
           .map((l) => ({
             dictionary_item_id: l.dictionary_item_id || undefined,
             label: l.label || "Line",
             budget_amount: Number(l.budget_amount) || 0,
+            vat_percent:
+              l.vat_percent === null || l.vat_percent === undefined
+                ? undefined
+                : Number(l.vat_percent),
+            justification_required: l.justification_required === true,
           })),
       });
       onSaved();
@@ -1019,6 +1943,79 @@ function CashRequestForm({
             placeholder="Instructions that print on the request"
           />
         </Field>
+        {/* §3.5 — the disbursement method and its conditional fields (legacy
+            :499, :505-514). The server refuses submission without a method. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={tr("Disbursement method")}
+            hint="Required before the request can be submitted"
+          >
+            <Select
+              value={method}
+              onChange={(e) => {
+                setMethod(e.target.value as "" | api.DisbursementMethod);
+                setDetails({});
+              }}
+            >
+              <option value="">—</option>
+              <option value="CASH">Cash</option>
+              <option value="BANK">Bank transfer</option>
+              <option value="CHEQUE">Cheque</option>
+              <option value="MOMO">Mobile money</option>
+            </Select>
+          </Field>
+          {method === "BANK" && (
+            <>
+              <Field label={tr("Bank name")} required>
+                <Input
+                  value={details.bank_name || ""}
+                  onChange={(e) => setDetail("bank_name", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Account number")} required>
+                <Input
+                  value={details.account_number || ""}
+                  onChange={(e) => setDetail("account_number", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Account name")} required>
+                <Input
+                  value={details.account_name || ""}
+                  onChange={(e) => setDetail("account_name", e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+          {method === "MOMO" && (
+            <>
+              <Field label={tr("MoMo number")} required>
+                <Input
+                  value={details.momo_number || ""}
+                  onChange={(e) => setDetail("momo_number", e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Network")} required>
+                <Select
+                  value={details.network || ""}
+                  onChange={(e) => setDetail("network", e.target.value)}
+                >
+                  <option value="">—</option>
+                  <option value="MTN">MTN</option>
+                  <option value="ORANGE">ORANGE</option>
+                </Select>
+              </Field>
+            </>
+          )}
+          {method === "CHEQUE" && (
+            <Field label={tr("Cheque number")} required>
+              <Input
+                value={details.cheque_number || ""}
+                onChange={(e) => setDetail("cheque_number", e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="micro">Budget lines</span>
@@ -1040,7 +2037,7 @@ function CashRequestForm({
             {lines.map((l, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[1fr_140px_auto] items-end gap-2"
+                className="grid items-end gap-2 sm:grid-cols-[1fr_120px_90px_auto_auto]"
               >
                 <Field label="Budget line">
                   <Select
@@ -1070,6 +2067,40 @@ function CashRequestForm({
                     }
                   />
                 </Field>
+                {/* §3.5 — legacy per-line VAT % and "Just. Req?". */}
+                <Field label={tr("VAT %")}>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    className="num text-right"
+                    value={
+                      l.vat_percent === null || l.vat_percent === undefined
+                        ? ""
+                        : String(l.vat_percent)
+                    }
+                    onChange={(e) =>
+                      setLine(i, {
+                        vat_percent:
+                          e.target.value === ""
+                            ? null
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <label className="flex h-9 items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={l.justification_required === true}
+                    onChange={(e) =>
+                      setLine(i, { justification_required: e.target.checked })
+                    }
+                    aria-label={tr("Justification required")}
+                  />
+                  {tr("Just. req?")}
+                </label>
                 <Button
                   type="button"
                   size="sm"
@@ -1083,6 +2114,28 @@ function CashRequestForm({
             ))}
           </div>
         </div>
+        {/* §3.5 — the voucher footer, live: Subtotal / VAT / TOTAL PAYABLE. */}
+        {(() => {
+          const subtotal = lines.reduce(
+            (a, l) => a + (Number(l.budget_amount) || 0),
+            0,
+          );
+          const vat = lines.reduce(
+            (a, l) =>
+              a +
+              ((Number(l.budget_amount) || 0) * (Number(l.vat_percent) || 0)) /
+                100,
+            0,
+          );
+          return (
+            <p className="num text-right text-sm">
+              {tr("Subtotal")} {money(subtotal)} · {tr("VAT")} {money(vat)} ·{" "}
+              <span className="font-semibold">
+                {tr("TOTAL PAYABLE")} {money(subtotal + vat)}
+              </span>
+            </p>
+          );
+        })()}
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}

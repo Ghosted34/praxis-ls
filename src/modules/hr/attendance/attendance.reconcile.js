@@ -42,6 +42,7 @@ const { audit, resolveActorId } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 // 0704: the shared query writer. The punch raises it; this adopts it.
 const hrQuery = require("./attendance.query");
+const calendar = require("./attendance.calendar");
 
 const MODULE = "MOD-14";
 
@@ -49,23 +50,6 @@ const MODULE = "MOD-14";
 async function timezoneOf(client) {
   const v = await getSetting(client, "hr", "timezone", "Africa/Douala");
   return typeof v === "string" && v.trim() ? v.trim() : "Africa/Douala";
-}
-
-/** Tenant-wide shift defaults; per-employee columns override them. */
-async function policyOf(client) {
-  const v = (await getSetting(client, "hr", "attendance_policy", null)) || {};
-  return {
-    start: typeof v.work_start === "string" ? v.work_start : "08:00",
-    grace: Number.isFinite(Number(v.grace_minutes)) ? Number(v.grace_minutes) : 10,
-  };
-}
-
-/** Which days the tenant does not work. Shared with leave (0696). */
-async function weekendOf(client) {
-  const v = await getSetting(client, "hr", "weekend_days", null);
-  const list = Array.isArray(v) ? v : v && Array.isArray(v.days) ? v.days : null;
-  const clean = (list || []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
-  return clean.length ? clean : leaveRules.DEFAULT_WEEKEND;
 }
 
 /** The active rule of a kind, or null. First by code, so the choice is stable. */
@@ -77,17 +61,17 @@ async function activeRule(client, kind) {
   return rows[0] || null;
 }
 
-/** Working days in a calendar month, for the daily rate. */
-function workingDaysInMonth(year, month, { weekendDays, workDays, holidays }) {
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  let n = 0;
-  for (let d = 1; d <= last; d += 1) {
-    const at = new Date(Date.UTC(year, month - 1, d));
-    if (!rules.isWorkingDay(at.getUTCDay(), { work_days: workDays, weekendDays })) continue;
-    if (leaveRules.isNonWorkingDay(at, { weekendDays: [], holidays })) continue;
-    n += 1;
-  }
-  return n;
+/** Working days in a calendar month, for the daily rate.
+ *  Delegates to `attendance.calendar` so a Mon–Sat entity is not charged as if
+ *  Saturday were a weekend — the same resolver the day itself uses. */
+function workingDaysInMonth(year, month, decide) {
+  if (typeof decide === "function") return calendar.workingDaysInMonth(year, month, decide);
+  // Legacy shape (weekendDays / workDays / holidays) — kept so a caller that
+  // has not moved onto the resolver still gets an answer, not a throw.
+  const { weekendDays = [0, 6], workDays = null, holidays = [] } = decide || {};
+  return calendar.workingDaysInMonth(year, month, (iso) => calendar.decideExpected({
+    isoDate: iso, workDays, publicHolidays: holidays, weekendDays,
+  }));
 }
 
 /**
@@ -100,28 +84,28 @@ function workingDaysInMonth(year, month, { weekendDays, workDays, holidays }) {
 async function reconcileDate(client, { date = null, actor = {} } = {}) {
   const timeZone = await timezoneOf(client);
   const day = date || defaultDate(timeZone);
-  const [policy, weekendDays, latenessRule, absenceRule] = await Promise.all([
-    policyOf(client),
-    weekendOf(client),
+  const [latenessRule, absenceRule] = await Promise.all([
     activeRule(client, "LATENESS"),
     activeRule(client, "ABSENCE"),
   ]);
 
-  const { rows: holidays } = await client.query("SELECT holiday_on, is_recurring FROM public_holiday WHERE is_active");
   const parsed = leaveRules.parseDate(day);
   if (!parsed) throw new Error(`reconcileDate: unusable date ${day}`);
-  const asDate = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
-  const isHoliday = leaveRules.isNonWorkingDay(asDate, { weekendDays: [], holidays });
 
   const { rows: roster } = await client.query(
-    `SELECT employee_id, full_name, base_salary, expected_start_time, grace_minutes, work_days
+    `SELECT employee_id, full_name, base_salary, expected_start_time, grace_minutes, work_days, entity_id
        FROM employee WHERE is_active ORDER BY employee_id`,
   );
 
-  // One query each rather than per employee: a 300-person roster would
-  // otherwise be 900 round trips for one night's reconciliation.
+  const ctx = await calendar.loadContext(client, {
+    entityIds: roster.map((e) => e.entity_id),
+  });
+
+  // ALL punches in the window, not DISTINCT ON employee. The earliest punch in
+  // a ±1 day window is often YESTERDAY's — filtering to today's local date
+  // afterwards then looked like the person never arrived.
   const { rows: punches } = await client.query(
-    `SELECT DISTINCT ON (employee_id) employee_id, attendance_id, clock_in_at, clock_out_at
+    `SELECT employee_id, attendance_id, clock_in_at, clock_out_at
        FROM attendance_log
       WHERE clock_in_at >= ($1::date)::timestamptz - interval '1 day'
         AND clock_in_at <  ($1::date)::timestamptz + interval '2 days'
@@ -137,12 +121,9 @@ async function reconcileDate(client, { date = null, actor = {} } = {}) {
     [day],
   );
   const leaveBy = Object.fromEntries(leaves.map((l) => [l.employee_id, l]));
-  // A punch is matched to the day it fell on IN THE WORKPLACE ZONE. Matching on
-  // `clock_in_at::date` would be the UTC date, which puts a 00:30 Douala punch
-  // on the previous day and a 23:30 one on the next.
-  const punchBy = {};
+  const punchesByEmp = {};
   for (const p of punches) {
-    if (rules.localDate(p.clock_in_at, timeZone) === day) punchBy[p.employee_id] = p;
+    (punchesByEmp[p.employee_id] || (punchesByEmp[p.employee_id] = [])).push(p);
   }
 
   const actorId = await resolveActorId(client, actor.user_id);
@@ -150,26 +131,25 @@ async function reconcileDate(client, { date = null, actor = {} } = {}) {
   let written = 0;
 
   for (const emp of roster) {
-    const workDays = emp.work_days && emp.work_days.length ? emp.work_days.map(Number) : null;
-    const isWorking = rules.isWorkingDay(asDate.getUTCDay(), { work_days: workDays, weekendDays });
-    const punch = punchBy[emp.employee_id] || null;
+    const expected = calendar.forEmployee(ctx, emp, day);
+    const punch = (punchesByEmp[emp.employee_id] || []).find(
+      (p) => rules.localDate(p.clock_in_at, expected.timezone) === day,
+    ) || null;
     const leave = leaveBy[emp.employee_id] || null;
 
-    const monthDays = workingDaysInMonth(parsed.y, parsed.m, { weekendDays, workDays, holidays });
+    const monthDays = workingDaysInMonth(parsed.y, parsed.m, (iso) => calendar.forEmployee(ctx, emp, iso));
     const dailyRate = rules.dailyRate(emp.base_salary, monthDays);
-    const expectedStart = emp.expected_start_time || policy.start;
-    const grace = emp.grace_minutes === null || emp.grace_minutes === undefined ? policy.grace : Number(emp.grace_minutes);
 
     const decided = rules.reconcileDay({
       clock_in_at: punch ? punch.clock_in_at : null,
       clock_out_at: punch ? punch.clock_out_at : null,
       on_leave: !!leave,
       leave_is_paid: leave ? leave.is_paid : true,
-      is_holiday: isHoliday,
-      is_working_day: isWorking,
-      expected_start_time: expectedStart,
-      grace_minutes: grace,
-      timeZone,
+      is_holiday: expected.isHoliday,
+      is_working_day: expected.isWorkingDay,
+      expected_start_time: expected.expectedStart,
+      grace_minutes: expected.graceMinutes,
+      timeZone: expected.timezone,
       daily_rate: dailyRate,
       latenessRule,
       absenceRule,
@@ -179,8 +159,8 @@ async function reconcileDate(client, { date = null, actor = {} } = {}) {
       employee_id: emp.employee_id,
       work_date: day,
       status: decided.status,
-      expected_start_time: expectedStart,
-      grace_minutes: grace,
+      expected_start_time: expected.expectedStart,
+      grace_minutes: expected.graceMinutes,
       first_clock_in_at: punch ? punch.clock_in_at : null,
       last_clock_out_at: punch ? punch.clock_out_at : null,
       minutes_late: decided.minutes_late,

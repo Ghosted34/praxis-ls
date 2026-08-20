@@ -925,6 +925,7 @@
       "actions": [
         "list_margin_simulations",
         "get_margin_simulation",
+        "margin_simulation_from_costing",
         "create_margin_simulation"
       ]
     },
@@ -950,8 +951,7 @@
       "purpose": "Quoted vs realised price variance.",
       "actions": [
         "list_pricing_variance",
-        "get_pricing_variance",
-        "compute_pricing_variance"
+        "get_pricing_variance"
       ]
     },
     {
@@ -960,7 +960,7 @@
       "route": "/costing/costing",
       "area": "costing",
       "module_key": "MOD-46",
-      "purpose": "Planned cost sheets and margin per dossier.",
+      "purpose": "Planned cost sheets per dossier \u2014 HT / VAT / TTC; margin lives in the margin simulator and the quotation.",
       "actions": [
         "list_costings",
         "get_costing",
@@ -981,7 +981,21 @@
         "reconcile_dossier",
         "cost_tracking_portfolio",
         "cost_tracking_kpis",
+        "cost_tracking_matrix",
+        "cost_tracking_advances",
         "record_cost"
+      ]
+    },
+    {
+      "id": "costing_reconciliation",
+      "title": "Reconciliation",
+      "route": "/costing/reconciliation",
+      "area": "costing",
+      "module_key": "MOD-47",
+      "purpose": "Quoted vs budget vs actual per file (the merged reconciliation) \u2014 the controlled document that closes a dossier financially; d\u00e9bours stay out of the variance.",
+      "actions": [
+        "get_dossier_reconciliation",
+        "latest_dossier_reconciliation"
       ]
     },
     {
@@ -1484,6 +1498,24 @@
       "area": "comms",
       "module_key": "MOD-72",
       "purpose": "How this company's email is configured: personal and shared mailboxes, who may work each one, and which sender every part of the product mails from.",
+      "actions": []
+    },
+    {
+      "id": "settings_email_signatures",
+      "title": "Email signatures",
+      "route": "/settings/email-signatures",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Own signature profile (typed phones, pronouns) plus admin template list. Derived fields come from HR and update on the next send.",
+      "actions": []
+    },
+    {
+      "id": "settings_deliverability",
+      "title": "Deliverability",
+      "route": "/settings/deliverability",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Outbound domain health: SPF, DKIM, DMARC, MX, PTR and public RBL checks with scheduled re-checks and regression alerts.",
       "actions": []
     },
     {

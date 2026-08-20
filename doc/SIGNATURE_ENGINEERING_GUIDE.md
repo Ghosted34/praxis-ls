@@ -533,15 +533,22 @@ credential. They are rate-limited instead (§5.2, §6.2).
 
 ### 3.9 Migrations
 
-`main` is at `10739` (`10739_mail_compose_events.sql`). This programme takes **`10740`–`10756`**.
+**Re-planned after the first merge from `main`.** The original block (`10740`–`10756`) was taken by
+the mail and costing programmes while PR-1 was in flight, and `check-migration-numbers.js` caught the
+collision on merge — it is a **hard** gate, not a warning. `main`'s high-water mark is now `10770`
+(plus one outlier at `11740`), so this programme takes **`10771`–`10787`**.
 
 | Range | PR |
 | --- | --- |
-| `10740`–`10743` | PR-1 — core schema, presets, policy seed, events |
-| `10744`–`10745` | PR-2 — scan log, portal events |
-| `10746`–`10749` | PR-3 — requests, parties, OTP, certificate doc type |
-| `10750`–`10752` | PR-4 — QES envelopes, usage ledger |
-| `10753`–`10756` | PR-5 — print jobs, ingestion queue, compliance rule |
+| `10771`–`10774` | PR-1 — core schema, presets, policy seed, events ✅ |
+| `10775`–`10776` | PR-2 — scan log, portal events |
+| `10777`–`10780` | PR-3 — requests, parties, OTP, certificate doc type |
+| `10781`–`10783` | PR-4 — QES envelopes, usage ledger |
+| `10784`–`10787` | PR-5 — print jobs, ingestion queue, compliance rule |
+
+> **Re-check the high-water mark immediately before writing a migration**, not when planning the PR.
+> Two programmes running concurrently will collide again otherwise, and the collision only surfaces
+> at merge time.
 
 House rules that apply (`doc/BUILD_CONVENTIONS.md`): every file idempotent and re-runnable, additive
 where possible, `-- VERIFY` block at the foot with the queries a deployer runs to confirm the
@@ -912,10 +919,16 @@ the existing settings mechanism (`shared/config/settings.js`, section `signature
 key = docType). Seed conservatively: `STAMP` and `DRAWN` on for every signable type;
 `CERTIFIED` and `PRINT_SIGN` **off** until their PRs ship and their flags are enabled.
 
-**`10743_signature_events.sql`** — event-type rows so `emitEvent` resolves a category and the
-notification fan-out works:
-`signature.signed`, `signature.revoked`, `signature.amended`, `signature.stale_detected`.
-None is `is_security_critical` — they are business events, not RBAC changes.
+**`10774_document_signature_events.sql`** — event-type rows so `emitEvent` resolves a category and
+the notification fan-out works: `document_signature.signed`, `.revoked`, `.amended`,
+`.stale_detected`. None is `is_security_critical` — they are business events, not RBAC changes.
+
+> **Namespaced `document_signature.*`, not `signature.*`.** The mail programme owns
+> `signature.template.changed` / `.profile.changed` / `.cache.invalidated` (migration `10768`) for
+> **email** signatures — the sign-off block on an outgoing message. Ours are about somebody
+> attesting to an invoice. The keys do not literally collide, but two unrelated concepts under one
+> prefix make the event log unreadable to whoever comes next. Same reason the settings card is
+> "Document Signatures" and not "Signatures": it sits directly below "Email Signatures".
 
 ### 4.3 Backend layout
 
@@ -2015,23 +2028,23 @@ flags per run, so reconciling a document clears its flag on the next scan with n
 
 | File | PR | Adds |
 | --- | --- | --- |
-| `10740_signature_core.sql` | 1 | `document_signature` (replaces the `0410` stub) |
-| `10741_signature_presets.sql` | 1 | `signature_preset` + the four seeded cards, `signature_reason` |
-| `10742_signature_policy_seed.sql` | 1 | `signature_policy` settings seed per doc type |
-| `10743_signature_events.sql` | 1 | `signature.signed / revoked / amended / stale_detected` |
-| `10744_signature_scan.sql` | 2 | `signature_scan` |
-| `10745_signature_portal_events.sql` | 2 | `signature.scanned_new_ip / scan_anomaly` |
-| `10746_signature_request.sql` | 3 | `signature_request` + FK from `document_signature` |
-| `10747_signature_party.sql` | 3 | `signature_party` + the one-override index |
-| `10748_signature_otp.sql` | 3 | `signature_otp` |
-| `10749_signature_certificate_doctype.sql` | 3 | `SIGNATURE_CERTIFICATE` doc type + events |
-| `10750_qes_envelope.sql` | 4 | `qes_envelope` |
-| `10751_signature_usage_ledger.sql` | 4 | `signature_usage_ledger` |
-| `10752_qes_events.sql` | 4 | `qes.*` events |
-| `10753_signature_print_job.sql` | 5 | `signature_print_job` |
-| `10754_signature_ingest.sql` | 5 | `signature_ingest` |
-| `10755_signature_wet_events.sql` | 5 | `signature.printed / scanned_returned / reconciled / reconcile_review` |
-| `10756_signature_unreconciled_rule.sql` | 5 | the compliance rule row |
+| `10771_signature_core.sql` | 1 ✅ | `document_signature` reshaped from the `0410` stub |
+| `10772_signature_presets.sql` | 1 ✅ | `signature_preset` + the four seeded cards, `signature_reason` |
+| `10773_signature_policy_seed.sql` | 1 ✅ | `signature_policy` settings seed per doc type |
+| `10774_document_signature_events.sql` | 1 ✅ | `document_signature.signed / revoked / amended / stale_detected` |
+| `10775_signature_scan.sql` | 2 | `signature_scan` |
+| `10776_signature_portal_events.sql` | 2 | `document_signature.scanned_new_ip / scan_anomaly` |
+| `10777_signature_request.sql` | 3 | `signature_request` + FK from `document_signature` |
+| `10778_signature_party.sql` | 3 | `signature_party` + the one-override index |
+| `10779_signature_otp.sql` | 3 | `signature_otp` |
+| `10780_signature_certificate_doctype.sql` | 3 | `SIGNATURE_CERTIFICATE` doc type + events |
+| `10781_qes_envelope.sql` | 4 | `qes_envelope` |
+| `10782_signature_usage_ledger.sql` | 4 | `signature_usage_ledger` |
+| `10783_qes_events.sql` | 4 | `qes.*` events |
+| `10784_signature_print_job.sql` | 5 | `signature_print_job` |
+| `10785_signature_ingest.sql` | 5 | `signature_ingest` |
+| `10786_signature_wet_events.sql` | 5 | `document_signature.printed / scanned_returned / reconciled / reconcile_review` |
+| `10787_signature_unreconciled_rule.sql` | 5 | the compliance rule row |
 
 ### 9.2 Endpoints
 

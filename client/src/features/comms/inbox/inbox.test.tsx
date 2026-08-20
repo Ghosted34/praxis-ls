@@ -141,6 +141,28 @@ describe("the conversation list", () => {
     expect(screen.getByText("This folder is empty.")).toBeInTheDocument();
   });
 
+  it("A ROW WITH A MALFORMED FIELD DOES NOT TAKE DOWN THE SCREEN", () => {
+    // The production incident, as a test. `participants` arrived as the raw
+    // Postgres literal instead of an array — node-postgres has no parser for
+    // citext[] — and `(t.participants || []).filter` threw. Because the throw
+    // was inside a row renderer, the error boundary took the entire Mailbox
+    // screen: folder rail, list, reading pane, all of it, for one bad field.
+    //
+    // The server is fixed and a CI gate keeps it fixed. This asserts the second
+    // line: the worst case is now one odd-looking row, not a screen nobody can
+    // open.
+    const malformed = { ...thread(), participants: "{client@maersk.cm,billing@co.cm}" as never };
+    expect(() => render(<ListHarness threads={[malformed, thread({ email_thread_id: "t2", subject: "Healthy" })]} />))
+      .not.toThrow();
+    // And the healthy row beside it still renders.
+    expect(screen.getByText("Healthy")).toBeInTheDocument();
+  });
+
+  it.each([null, undefined, "", 42, {}])("survives participants = %p", (participants) => {
+    expect(() => render(<ListHarness threads={[{ ...thread(), participants: participants as never }]} />))
+      .not.toThrow();
+  });
+
   it("has no accessibility violations", async () => {
     const { container } = render(<ListHarness threads={[thread()]} />);
     expect(await axe(container)).toHaveNoViolations();
@@ -250,6 +272,17 @@ describe("the conversation view", () => {
   it("invites a choice rather than showing an empty pane", () => {
     render(<ThreadView thread={null} {...props} />);
     expect(screen.getByText(/Choose a conversation/)).toBeInTheDocument();
+  });
+
+  it("SURVIVES MALFORMED ADDRESS FIELDS on a message", () => {
+    // Same incident, the reading pane's half of it: `to_address.join` and
+    // `cc_address.length` on a string would throw the same way.
+    const d = detail();
+    d.messages[0].to_address = "{ops@co.cm}" as never;
+    d.messages[1].cc_address = null as never;
+    d.participants = "{a@b.cm}" as never;
+    expect(() => render(<ThreadView thread={d} {...props} />)).not.toThrow();
+    expect(screen.getByText("The latest reply.")).toBeInTheDocument();
   });
 
   it("has no accessibility violations", async () => {

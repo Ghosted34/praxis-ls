@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./expense_rate.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { exportFilename } = require("../../../services/spreadsheet");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
@@ -33,7 +34,7 @@ module.exports = {
   importTemplate: asyncHandler(async (req, res) => {
     const buffer = await req.tenantDb((c) => service.importTemplate(c));
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="expense-rate-template-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename({ base: "expense-rate-template", env: req.env, extension: "xlsx" })}"`);
     res.send(Buffer.from(buffer));
   }),
   importValidate: asyncHandler(async (req, res) =>

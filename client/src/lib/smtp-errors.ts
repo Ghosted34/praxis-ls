@@ -1,8 +1,9 @@
 /**
  * SMTP fix-guide registry — the machine-code → operator-steps mapping shared
  * by the guide components. Codes come from the backend classifier
- * (src/modules/mail/smtp-error.map.js): SMTP_SENDER_REJECTED,
- * SMTP_AUTH_FAILED, SMTP_SEND_REJECTED, SMTP_SEND_FAILED.
+ * (src/modules/mail/mail/smtp-error.map.js): SENDER_NOT_AUTHORIZED
+ * (legacy alias SMTP_SENDER_REJECTED), SMTP_AUTH_FAILED, SMTP_SEND_REJECTED,
+ * SMTP_SEND_FAILED.
  */
 import { ApiError } from "./api-client";
 
@@ -74,6 +75,16 @@ export const SMTP_GUIDES: Record<string, SmtpGuide> = {
       "Check the username matches the mailbox account, then Test.",
     ],
   },
+  RECIPIENT_REJECTED: {
+    title: "A recipient was refused",
+    intro:
+      "The mail server accepted the connection but would not deliver to one of the addresses.",
+    steps: [
+      "Check every To/Cc address for typos — 550 5.1.1 usually means the mailbox does not exist.",
+      "If you are sending to a list, remove the bad address and send again.",
+      "If every address is real, the receiving server may be blocking you; try later or contact the recipient another way.",
+    ],
+  },
   MAIL_SEND_FAILED: {
     title: "The mailbox's server rejected the message",
     intro: "The connection works but the server would not take this message.",
@@ -100,14 +111,14 @@ export function smtpCodeFor(err: unknown, message?: unknown): string | null {
   ]
     .join(" ")
     .toLowerCase();
-  if (text.includes("sender verify")) return "SMTP_SENDER_REJECTED";
-  if (text.includes("535") || text.includes("eauth")) return "SMTP_AUTH_FAILED";
   if (
+    text.includes("sender verify") ||
     text.includes("authori") ||
     text.includes("not allowed to send") ||
     text.includes("not author")
   )
     return "SENDER_NOT_AUTHORIZED";
+  if (text.includes("535") || text.includes("eauth")) return "SMTP_AUTH_FAILED";
   if (text.includes("login")) return "MAILBOX_AUTH_FAILED";
   if (
     /\b5\d\d\b/.test(text) ||

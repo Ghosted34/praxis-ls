@@ -37,6 +37,17 @@ async function getByCode(client, code) {
   return rows[0] || null;
 }
 
+/**
+ * The tenant's first-created entity — the stand-in identity for contexts that
+ * are not entity-scoped (spreadsheet exports, document renders). Most tenants
+ * are single-entity, where this IS the entity; a multi-entity tenant passes
+ * its own entity_id and never lands here.
+ */
+async function first(client) {
+  const { rows } = await client.query("SELECT * FROM corporate_entity ORDER BY created_at LIMIT 1");
+  return rows[0] || null;
+}
+
 async function update(client, id, fields, { allow = WRITABLE } = {}) {
   // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
   // identifier validation and allow-list in query-helpers.
@@ -321,7 +332,7 @@ async function treasuryAccounts(client, id) {
 
 module.exports = {
   WRITABLE, LETTERHEAD_WRITABLE,
-  insert, get, getByCode, update, updateInternal, list,
+  insert, get, getByCode, first, update, updateInternal, list,
   parentMap, children, ancestors, collections, usage, treasuryAccounts,
   documentsAndTax, taxObligations, getLetterhead, upsertLetterhead,
 };

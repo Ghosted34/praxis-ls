@@ -3,6 +3,7 @@ const repo = require("./financial_dictionary.repo");
 const events = require("./financial_dictionary.events");
 const rules = require("./financial_dictionary.rules");
 const importer = require("./financial_dictionary.import");
+const { resolveContext } = require("../../../services/spreadsheet");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 
 // The only columns a caller may write on dictionary_item. `code`, ids and the
@@ -320,10 +321,14 @@ async function importContext(c) {
   };
 }
 
-/** The .xlsx a user downloads: enum dropdowns + this tenant's real references. */
+/** The .xlsx a user downloads: enum dropdowns + this tenant's real references.
+ *  Branded via resolveContext on the caller's connection. */
 async function importTemplate(c) {
-  const ctx = await importContext(c);
-  return importer.buildTemplate({ accounts: ctx.accounts, taxCodes: ctx.taxCodes, serviceTypes: ctx.serviceTypes, refs: ctx.refs });
+  const [ctx, context] = await Promise.all([
+    importContext(c),
+    resolveContext(c, { title: "Financial dictionary — import template" }),
+  ]);
+  return importer.buildTemplate({ accounts: ctx.accounts, taxCodes: ctx.taxCodes, serviceTypes: ctx.serviceTypes, refs: ctx.refs, context });
 }
 
 /**
@@ -390,8 +395,12 @@ async function importCommit(c, { rows = [], actor }) {
   return { created, rejected, summary };
 }
 
-/** The rejected rows as an .xlsx the user fixes and re-uploads. */
-const importErrorFile = (rejected) => importer.buildErrorFile(rejected);
+/** The rejected rows as an .xlsx the user fixes and re-uploads. Branded like
+ *  the template it answers, so the fix-and-reupload loop stays one product. */
+async function importErrorFile(c, rejected) {
+  const context = await resolveContext(c, { title: "Financial dictionary — rejected rows" });
+  return importer.buildErrorFile(rejected, context);
+}
 
 /* ── dictionary_ref registry (dropdown values, gear-modal editable) ─────────── */
 const listRefs = (c, kind, includeInactive) => repo.listRefs(c, kind, includeInactive);

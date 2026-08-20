@@ -1,0 +1,111 @@
+/* @praxis/brand — Praxis-owned design tokens.
+ *
+ * Import this on any surface that is PRAXIS's rather than a tenant's: the
+ * marketing site, the platform console, the status page, docs, the splash
+ * screen, transactional mail shells. It defines --brand-* only, so it can sit
+ * alongside client/src/index.css without touching a single tenant token.
+ *
+ * THE RULE, IN ONE LINE: --brand-* is ours and is never overridden at runtime;
+ * --primary and friends are the tenant's and are overridden on every paint by
+ * client/src/lib/theme.ts. If you find yourself wanting to write
+ * `--brand-orange: var(--primary)`, you are on a tenant surface and should not
+ * be importing this file.
+ *
+ * Light is the default block; dark is applied by `.dark` (matching the tenant
+ * app's convention) OR by prefers-color-scheme for standalone pages that have
+ * no theme controller of their own. On praxisls.com dark is the DEFAULT and the
+ * light block is the override — see doc/BRAND_GUIDELINES.md §Theme.
+ */
+
+:root {
+  /* ── Immutable brand ─────────────────────────────────────────────────────
+     The three colours from the brand sheet, exactly. Never tinted, never
+     substituted, never interpolated toward a tenant's palette. */
+  --brand-orange: #ff5a00;
+  --brand-slate: #7e8286;
+  --brand-carbon: #0a0a0a;
+
+  /* Text that sits ON an orange fill. Carbon, not white: white on #FF5A00 is
+     3.13:1 and fails AA at body sizes. Carbon is 6.33:1. */
+  --brand-on-orange: #0a0a0a;
+
+  /* ── Neutral ramp, derived from --brand-slate ────────────────────────────── */
+  --brand-slate-100: #edeeee;
+  --brand-slate-200: #dbdcdd;
+  --brand-slate-300: #bfc1c3;
+  --brand-slate-400: #9ea1a4;
+  --brand-slate-500: #7e8286;
+  --brand-slate-600: #626569;
+  --brand-slate-700: #494b4e;
+  --brand-slate-800: #303133;
+  --brand-slate-900: #191a1b;
+
+  /* ── Type ────────────────────────────────────────────────────────────────
+     Three faces, all from client/src/lib/fonts.ts, all self-hosted. Stack
+     strings are byte-identical to variableStack() there — check-fonts.mjs
+     fails the build on any family named outside that library. */
+  --brand-font-display: "IBM Plex Sans Variable", "IBM Plex Sans", sans-serif;
+  --brand-font-body: "Inter Variable", "Inter", sans-serif;
+  --brand-font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+
+  /* Wide tracking is the wordmark's signature; display headings echo it at a
+     fraction of the strength. Never set the wordmark tighter than 0.14em. */
+  --brand-tracking-wordmark: 0.14em;
+  --brand-tracking-display: -0.015em;
+  --brand-tracking-eyebrow: 0.12em;
+
+  /* ── Light theme (the secondary expression) ─────────────────────────────── */
+  --brand-bg: #ffffff;
+  --brand-surface: #f7f8f8;
+  --brand-line: rgb(10 10 10 / 0.1);
+  --brand-ink: #191a1b; /* body text — 17.43:1 */
+  --brand-ink-muted: #626569; /* secondary text — 5.86:1 */
+  --brand-ink-orange: #c74600; /* orange AS TEXT — 4.88:1 (#FF5A00 is 3.13:1) */
+  --brand-ink-slate: #6e7175; /* slate AS TEXT — 4.90:1 */
+
+  --brand-ok: #1f7a47;
+  --brand-warn: #8a5a00;
+  --brand-danger: #b3241b;
+  --brand-info: #0b5e86;
+}
+
+/* ── Dark theme (the PRIMARY expression) ───────────────────────────────────
+   Note the asymmetry, which is a property of the colour and not an oversight:
+   on dark grounds --brand-orange already clears AA as text (6.33:1 on carbon),
+   so --brand-ink-orange resolves to the brand colour itself. On light it does
+   not, which is why the light block above has to step it down to #C74600. */
+.dark,
+[data-theme="dark"] {
+  --brand-bg: #0a0a0a;
+  --brand-surface: #12161e;
+  --brand-line: rgb(237 238 238 / 0.12);
+  --brand-ink: #edeeee; /* 17.03:1 on carbon */
+  --brand-ink-muted: #bfc1c3; /* 10.97:1 on carbon */
+  --brand-ink-orange: #ff5a00; /*  6.33:1 on carbon — no step-down needed */
+  --brand-ink-slate: #7e8286; /*  5.11:1 on carbon */
+
+  --brand-ok: #4fcb86;
+  --brand-warn: #f0b34a;
+  --brand-danger: #f0837b;
+  --brand-info: #5cbde8;
+}
+
+/* Standalone pages with no theme controller (status page, an emailed report
+   preview) still honour the reader's OS setting — but only when nothing has
+   explicitly asked for light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) {
+    --brand-bg: #0a0a0a;
+    --brand-surface: #12161e;
+    --brand-line: rgb(237 238 238 / 0.12);
+    --brand-ink: #edeeee;
+    --brand-ink-muted: #bfc1c3;
+    --brand-ink-orange: #ff5a00;
+    --brand-ink-slate: #7e8286;
+
+    --brand-ok: #4fcb86;
+    --brand-warn: #f0b34a;
+    --brand-danger: #f0837b;
+    --brand-info: #5cbde8;
+  }
+}

@@ -4,6 +4,9 @@ const mailbox = require("./mailbox.service");
 const access = require("./access");
 const sendPoints = require("./sendpoint.service");
 const threads = require("./thread.service");
+const outbox = require("./outbox.service");
+const attachments = require("./attachment.service");
+const commands = require("./commands.service");
 const { cpanelPreset } = require("./autodiscover");
 const { asyncHandler } = require("../../../utils/errors");
 const { config } = require("../../../config/env");
@@ -73,7 +76,58 @@ module.exports = {
   clientTimeline: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.clientTimeline(c, { client_id: req.params.id, limit: req.query.limit })) })),
   linkThread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.linkEntity(c, { inboundId: req.params.id, entity_ref: req.body && req.body.entity_ref })) })),
   markRead: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.markRead(c, req.params.id)) })),
-  send: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.send(c, { ...req.body, actor: actor(req) })) })),
+  /**
+   * Queue a message. 202, not 201 — nothing has been sent yet, and the response
+   * says when it will be. A 201 would claim a message exists at the recipient,
+   * which is exactly the thing the undo window means is not true.
+   */
+  send: asyncHandler(async (req, res) => res.status(202).json({
+    data: await req.identityDb((c) => outbox.send(c, actor(req), {
+      ...req.body, slug: req.tenant && req.tenant.slug,
+      idempotency_key: req.get("Idempotency-Key") || req.body.idempotency_key || null,
+    })),
+  })),
+  cancelSend: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.cancel(c, actor(req), req.params.id)) })),
+  outbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.listQueued(c, actor(req), req.query)) })),
+
+  // ── PR-1B: drafts ──
+  // Scoped to the AUTHOR, never to the mailbox. Access to a shared mailbox is
+  // not authority to read a colleague's unsent words.
+  saveDraft: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.saveDraft(c, actor(req), req.body || {})) })),
+  listDrafts: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.listDrafts(c, actor(req), req.query)) })),
+  getDraft: asyncHandler(async (req, res) => {
+    const d = await req.identityDb((c) => outbox.getDraft(c, actor(req), req.params.id));
+    if (!d) return res.status(404).json({ error: { code: "NOT_FOUND", message: "draft not found" } });
+    return res.json({ data: d });
+  }),
+  discardDraft: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => outbox.discardDraft(c, actor(req), req.params.id)) })),
+
+  // ── PR-1B: attachments on a draft ──
+  draftAttachments: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => attachments.list(c, actor(req), req.params.id)) })),
+  uploadAttachment: asyncHandler(async (req, res) => res.status(201).json({
+    data: await req.identityDb((c) => attachments.upload(c, actor(req), { ...req.body, slug: req.tenant && req.tenant.slug })),
+  })),
+  attachFromVault: asyncHandler(async (req, res) => res.status(201).json({
+    data: await req.identityDb((c) => attachments.fromVault(c, actor(req), req.body || {})),
+  })),
+  removeAttachment: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => attachments.remove(c, actor(req), req.params.id, req.params.attachmentId)),
+  })),
+
+  // ── PR-1B: slash commands ──
+  // The list is filtered per user and the run is checked again: the menu decides
+  // what is offered, the check decides what happens, and a client can call run
+  // directly whatever the menu showed it.
+  commands: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => commands.list(c, actor(req), { lang: req.query.lang })),
+  })),
+  runCommand: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => commands.run(c, actor(req), req.params.key, req.body?.params || {}, {
+      lang: req.body?.lang || req.query.lang,
+      boundEntityRef: req.body?.entity_ref || null,
+      thread: req.body?.email_thread_id || null,
+    })),
+  })),
   reply: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.reply(c, { ...req.body, connectionId: req.body.connectionId, inboundId: req.params.id, actor: actor(req) })) })),
 
   /**

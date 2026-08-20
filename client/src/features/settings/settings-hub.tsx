@@ -153,8 +153,18 @@ const SECTIONS: Section[] = [
         icon: "comms",
       },
       {
+        to: "/settings/deliverability",
+        label: "Deliverability",
+        desc: "SPF, DKIM, DMARC, MX, reverse DNS and public blocklists",
+        icon: "comms",
+      },
+      {
+        // "Document Signatures", not "Signatures": the card above this one is
+        // "Email Signatures" (the sign-off block on an outgoing message), and
+        // this one is about how an invoice or a waybill gets signed. Two
+        // adjacent cards called "Signatures" would be a coin toss.
         to: "/settings/signatures",
-        label: "Signatures",
+        label: "Document Signatures",
         desc: "How each document may be signed",
         icon: "comms",
       },

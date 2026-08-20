@@ -1500,6 +1500,24 @@
       "actions": []
     },
     {
+      "id": "settings_email_signatures",
+      "title": "Email signatures",
+      "route": "/settings/email-signatures",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Own signature profile (typed phones, pronouns) plus admin template list. Derived fields come from HR and update on the next send.",
+      "actions": []
+    },
+    {
+      "id": "settings_deliverability",
+      "title": "Deliverability",
+      "route": "/settings/deliverability",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Outbound domain health: SPF, DKIM, DMARC, MX, PTR and public RBL checks with scheduled re-checks and regression alerts.",
+      "actions": []
+    },
+    {
       "id": "support",
       "title": "Support & feedback",
       "route": "/support",

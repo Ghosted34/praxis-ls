@@ -417,7 +417,18 @@ async function syncConnection(client, id, ctx = {}) {
         if (!row) continue;
         inserted += 1;
         attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
-        await autoLink(client, row.thread_id, m.from, m.subject);
+        await autoLink(client, {
+          threadId: row.thread_id, messageId: row.email_message_id,
+          fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
+          filenames: (m.attachments || []).map((a) => a.filename).filter(Boolean),
+        });
+        if (m.direction !== "OUT" && client && typeof client.query === "function") {
+          await client.query(
+            `UPDATE email_followup SET status='CANCELLED'
+              WHERE email_thread_id = $1 AND status='PENDING' AND cancel_on_reply = true AND kind='NO_REPLY'`,
+            [row.thread_id],
+          ).catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
+        }
         await emitEvent(client, {
           eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
           moduleKey: events.MODULE,
@@ -842,16 +853,11 @@ async function handleGraphNotification(client, body, ctx = {}) {
 /** Best-effort CRM link on ingest: a dossier ref in the subject wins (most
  *  specific), else the sender's client. Tags entity_ref so the message shows on
  *  the dossier / client timeline. Never throws into the sync loop. */
-async function autoLink(client, threadId, fromAddress, subject) {
+async function autoLink(client, args) {
   try {
-    const refs = String(subject || "").match(/[A-Za-z0-9]{2,}-\d{4}-\d{2,}/g) || [];
-    if (refs.length) {
-      const d = await repo.findDossierByRefs(client, refs);
-      if (d) { await threadRepo.updateThread(client, threadId, { entity_ref: `dossier:${d.dossier_id}` }); return; }
-    }
-    const cl = await repo.findClientByEmail(client, fromAddress);
-    if (cl) await threadRepo.updateThread(client, threadId, { entity_ref: `client:${cl.client_id}` });
-  } catch { /* @silent:teardown — CRM auto-link is best-effort; a failed link never aborts the sync loop */ }
+    const binding = require("../binding/binding.service");
+    await binding.suggestOnIngest(client, args);
+  } catch { /* @silent:teardown — a failed suggestion never aborts the sync loop */ }
 }
 
 /** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */

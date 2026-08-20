@@ -132,7 +132,7 @@ function transportFrom(cfg) {
  * message-id on success, FAILED with the error on failure. When `client` is null
  * (injectable-transport test path) no log is written.
  */
-async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null, sendPoint = null, entityId = null, actorUserId = null, tenantSlug = null }, tx = null) {
+async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null, sendPoint = null, entityId = null, actorUserId = null, tenantSlug = null, signature = "auto", language = null, partyLanguage = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
 
   // G2 — sandbox must not send real client emails (PRD §5.5 [RULE]). The env
@@ -173,6 +173,18 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
   const originHeaders = origin.buildOriginHeaders({
     tenantSlug, userId: actorUserId, sendPoint: sendPoint || purpose || null,
   });
+  // Signatures are a BODY concern. They must not touch resolveMail: when the
+  // tenant has no SMTP of their own, the Praxis fallback sender is used and
+  // the From falls back with the transport (G-4).
+  if (client && signature !== "none") {
+    try {
+      const baked = await attachSystemSignature(client, {
+        html, text, purpose, actorUserId, signature, language, partyLanguage, entityId,
+      });
+      html = baked.html;
+      text = baked.text;
+    } catch { /* @silent:storage a missing signature must not fail an OTP */ }
+  }
   const payload = {
     from: useOverride ? from : cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text,
     messageId: origin.generateMessageId(useOverride ? from : cfg.from),
@@ -274,4 +286,26 @@ async function verifyTransport(client, { purpose = "NOTIFICATIONS" } = {}) {
  * and the auth shape are deliverability-critical, and two copies drift silently
  * — the first symptom being mail that sends in one path and bounces in the other.
  */
+/**
+ * Machine mail (OTP, password reset, notification fan-out) → corporate block,
+ * no person. Document mail sent by a named user (invoice, BL) → that user's
+ * personal signature over the tenant's BILLING/DOCUMENTS identity.
+ *
+ * Q17's documented exception: the client has a human to reply to.
+ */
+async function attachSystemSignature(client, { html, text, purpose, actorUserId, signature, language, partyLanguage, entityId }) {
+  const named = signature && signature !== "auto" && signature !== "none"
+    ? signature
+    : (actorUserId && ["DOCUMENTS", "BILLING"].includes(String(purpose || "").toUpperCase()) ? actorUserId : null);
+  const signatures = require("../modules/mail/signature/signature.service");
+  const resolved = await signatures.resolveFor(client, {
+    userId: named,
+    system: !named,
+    identity: { purpose, entity_id: entityId },
+    language,
+    partyLanguage,
+  });
+  return signatures.bake(html, text, resolved);
+}
+
 module.exports = { send, resolveMail, verifyTransport, transportFrom };

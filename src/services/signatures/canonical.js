@@ -100,19 +100,28 @@ const totals = (t = {}) => ({
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * ⚠ NULL-PROTOTYPE ON PURPOSE (CodeQL js/unvalidated-dynamic-method-call).
+ * ⚠ LOOKED UP THROUGH A Map, NEVER BY PROPERTY ACCESS
+ *   (CodeQL js/unvalidated-dynamic-method-call, High).
  *
- * `docType` arrives from a request body. A plain object literal inherits from
- * Object.prototype, so BUILDERS["constructor"] resolves to `Object` — truthy,
- * and callable. The guard below reads `if (!builder) throw`, so it PASSED, and
- * `hash("constructor", {})` returned a real-looking sha256 for a document type
- * that does not exist. Verified before the fix; there is a test for it now.
+ * `docType` arrives from a request body. When this was a plain object literal,
+ * BUILDERS["constructor"] resolved to `Object` — truthy AND callable — so the
+ * `if (!builder) throw` guard passed and `hash("constructor", {})` returned a
+ * real-looking sha256 for a document type that does not exist. Verified broken;
+ * there are tests for it now.
  *
- * A null prototype removes the whole class rather than the two names someone
- * happened to think of. The hasOwnProperty guard in canonical() is the second
- * belt: either alone would do, and a signature payload is worth both.
+ * The first fix added a null prototype and a hasOwnProperty guard. Both are
+ * correct at runtime, and CodeQL still flagged it — rightly. The guard lives
+ * inside a helper function, so dataflow cannot see through it, and what remains
+ * at the call site is still literally `BUILDERS[userInput](...)`: the pattern
+ * the rule is about. A guard that a reader (or a scanner) has to chase into
+ * another function to verify is a guard that a later edit can quietly remove.
+ *
+ * A Map is not property access. There is no prototype chain to walk, `get`
+ * returns undefined for anything not explicitly registered, and the unsafe
+ * shape is gone rather than defended against. The literal below stays as the
+ * readable source of truth; the Map is the lookup.
  */
-const BUILDERS = Object.assign(Object.create(null), {
+const BUILDER_SOURCE = Object.assign(Object.create(null), {
   /** Money owed, and for what. The fiscal ladder is the whole point. */
   FINAL_INVOICE: (d) => ({
     v: 1,
@@ -238,12 +247,13 @@ const BUILDERS = Object.assign(Object.create(null), {
   }),
 });
 
-/** Doc types that can be signed at all. */
-const SIGNABLE = Object.freeze(Object.keys(BUILDERS));
+/** The only thing anything looks a builder up in. Insertion order preserved. */
+const BUILDERS = new Map(Object.entries(BUILDER_SOURCE));
 
-/** Own-property check. The ONLY safe way to ask whether a builder exists. */
-const isSignable = (docType) =>
-  typeof docType === "string" && Object.prototype.hasOwnProperty.call(BUILDERS, docType);
+/** Doc types that can be signed at all. */
+const SIGNABLE = Object.freeze([...BUILDERS.keys()]);
+
+const isSignable = (docType) => typeof docType === "string" && BUILDERS.has(docType);
 
 /**
  * Build the canonical payload for a doc type.
@@ -254,8 +264,9 @@ const isSignable = (docType) =>
  * check is what makes adding v2 a local change instead of an audit.
  */
 function canonical(docType, doc, version = 1) {
-  // hasOwnProperty rather than a truthiness check: see the BUILDERS docblock.
-  const builder = isSignable(docType) ? BUILDERS[docType] : null;
+  // Map.get, inline — not a property read, and not behind a helper. See the
+  // BUILDER_SOURCE docblock for why both of those matter.
+  const builder = typeof docType === "string" ? BUILDERS.get(docType) : undefined;
   if (typeof builder !== "function") {
     throw new AppError(
       "NO_CANONICAL_PAYLOAD",

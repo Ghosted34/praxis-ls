@@ -160,7 +160,16 @@ function headerText(column, spec) {
  *  neutral default sets no name at all rather than a face we do not ship. */
 function firstFamily(stack) {
   if (!stack) return null;
-  const name = String(stack).split(",")[0].replace(/^["']+|["']+$/g, "").trim();
+  // Single-alternative anchored trims, not `/^["']+|["']+$/`: the two-arm form
+  // is the ambiguous shape CodeQL flags (js/polynomial-regex), and the stack is
+  // tenant-configured text (font_display) with no schema length cap. The
+  // split(",") already bounds the work to the first family; these two are each
+  // one path, linear, and say what they do.
+  const name = String(stack)
+    .split(",")[0]
+    .replace(/^["']+/, "")
+    .replace(/["']+$/, "")
+    .trim();
   return name || null;
 }
 

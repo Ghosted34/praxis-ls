@@ -332,6 +332,39 @@ describe("safety — injection lock, sheet names, sandbox stamp", () => {
       "trial-balance-2026-08-20.xlsx",
     );
   });
+
+  it("exportFilename: bounds and trims adversarial names (CodeQL js/polynomial-regex)", () => {
+    // A scheduled-report name is user-chosen with no validator length cap, so
+    // it is the realistic hostile input for this function.
+    // 1 MB of dashes: sliced to 80 BEFORE any regex, collapses to nothing, and
+    // the fallback name kicks in — no matter how long the original was.
+    expect(exportFilename({ base: "-".repeat(500000) + "a" + "-".repeat(500000), env: "live", extension: "csv", date: new Date("2026-08-20T00:00:00Z") })).toBe(
+      "export-2026-08-20.csv",
+    );
+    // Separators and whitespace normalise, leading/trailing -. trimmed.
+    expect(exportFilename({ base: "  ..--Trial  Balance--..  ", env: "live", extension: "csv", date: new Date("2026-08-20T00:00:00Z") })).toBe(
+      "Trial-Balance-2026-08-20.csv",
+    );
+    // Long real names cap at 80 chars of base (plus the stamp/extension).
+    const long = exportFilename({ base: "q".repeat(200), env: "live", extension: "csv", date: new Date("2026-08-20T00:00:00Z") });
+    expect(long.startsWith("q".repeat(80))).toBe(true);
+    expect(long).toBe(`${"q".repeat(80)}-2026-08-20.csv`);
+  });
+
+  it("names the cover title in the tenant's configured display face (quotes stripped)", async () => {
+    const branded = fixtureContext({
+      tenant: { ...fixtureContext().tenant, fontDisplay: '"Plus Jakarta Sans", sans-serif' },
+    });
+    const buf = await buildWorkbook({
+      sheets: [{ name: "T", columns: [{ header: "A", key: "a" }], rows: [] }],
+      context: branded,
+      cover: true,
+    });
+    const wb = await load(buf);
+    // The stack's FIRST family, quote marks dropped — the most Excel can
+    // honestly do is NAME a library face (it cannot embed one).
+    expect(wb.worksheets[0].getCell("A1").font.name).toBe("Plus Jakarta Sans");
+  });
 });
 
 /* ── Language ─────────────────────────────────────────────────────────────── */

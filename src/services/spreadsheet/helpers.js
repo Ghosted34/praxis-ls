@@ -228,12 +228,24 @@ function formatInstant(value, timezone) {
  * kit.watermarkFor's forced "TEST SANDBOX" for PDFs).
  */
 function exportFilename({ base, env, extension, date = new Date() }) {
-  const safe = String(base || "export")
+  // BOUND BEFORE ANY REGEX WORK (CodeQL js/polynomial-regex). `base` can be a
+  // user-chosen scheduled-report name whose validator sets no max length, and
+  // this chain used to normalise the FULL string before slicing to 80 —
+  // quadratic-shaped regex work on unbounded input to keep 80 characters.
+  // Sliced first, every pattern below runs over at most 80 chars.
+  const bounded = String(base || "export").slice(0, 80);
+  const safe = bounded
     .replace(/[\\/:*?"<>|\r\n]+/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "")
-    .slice(0, 80) || "export";
+    // Trim the ends as two SINGLE-alternative anchored patterns. The old
+    // `/^[-.]+|[-.]+$/` — one alternation, two overlapping greedy quantifiers —
+    // is exactly the ambiguous shape CodeQL flags as polynomial on adversarial
+    // input; each of these has one path and is linear. House precedent is that
+    // the flagged sink GOES rather than being fenced (see the rateMap rewrite
+    // in currency.service.js).
+    .replace(/^[.-]+/, "")
+    .replace(/[.-]+$/, "") || "export";
   const stamp = date instanceof Date ? date.toISOString().slice(0, 10) : String(date);
   return env === "sandbox" ? `${safe}-SANDBOX-${stamp}.${extension}` : `${safe}-${stamp}.${extension}`;
 }

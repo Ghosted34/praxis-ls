@@ -67,7 +67,12 @@ for (const name of LIBRARY) {
 
 // Surfaces we control. doc/reference is vendored third-party sample code and
 // node_modules is not ours; the legacy PHP codebase under doc/ is dead.
-const SEARCH_DIRS = ["client/src", "src", "platform-console/src", "scripts", "migrations"];
+//
+// `packages` joined the list when @praxis/brand landed. That package DECLARES
+// the three font stacks every Praxis-owned surface renders with, which made it
+// the one place a family could be named entirely outside this gate — the exact
+// blind spot the gate exists to close, reopened one directory over.
+const SEARCH_DIRS = ["client/src", "src", "platform-console/src", "packages", "scripts", "migrations"];
 
 const files = execSync(
   `git ls-files ${SEARCH_DIRS.join(" ")} | grep -E '\\.(css|ts|tsx|js|jsx|mjs|html|json|sql)$'`,

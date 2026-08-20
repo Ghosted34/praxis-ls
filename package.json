@@ -19,6 +19,7 @@
     "lint": "eslint . --max-warnings 136",
     "lint:fix": "eslint . --fix",
     "check:fonts": "node scripts/check-fonts.mjs",
+    "marketing:capture": "node scripts/marketing/capture-screens.mjs",
     "format": "prettier --write .",
     "test": "jest",
     "test:coverage": "jest --coverage",

@@ -1,8 +1,8 @@
 "use strict";
 const service = require("./financial_dictionary.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { exportFilename } = require("../../../services/spreadsheet");
 const actor = (req) => req.user || { user_id: null };
-const stamp = () => new Date().toISOString().slice(0, 10);
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /**
@@ -94,7 +94,7 @@ module.exports = {
   importTemplate: asyncHandler(async (req, res) => {
     const buffer = await req.tenantDb((c) => service.importTemplate(c));
     res.setHeader("Content-Type", XLSX_MIME);
-    res.setHeader("Content-Disposition", `attachment; filename="financial-dictionary-template-${stamp()}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename({ base: "financial-dictionary-template", env: req.env, extension: "xlsx" })}"`);
     res.send(buffer);
   }),
   importValidate: asyncHandler(async (req, res) => {
@@ -106,9 +106,11 @@ module.exports = {
     res.status(201).json({ data: r });
   }),
   importErrors: asyncHandler(async (req, res) => {
-    const buffer = await service.importErrorFile(req.body.rows);
+    // req.tenantDb, not a bare call: the error file is branded like the template
+    // it answers, which needs the tenant context resolved on the connection.
+    const buffer = await req.tenantDb((c) => service.importErrorFile(c, req.body.rows));
     res.setHeader("Content-Type", XLSX_MIME);
-    res.setHeader("Content-Disposition", `attachment; filename="financial-dictionary-rejected-${stamp()}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename({ base: "financial-dictionary-rejected", env: req.env, extension: "xlsx" })}"`);
     res.send(buffer);
   }),
 

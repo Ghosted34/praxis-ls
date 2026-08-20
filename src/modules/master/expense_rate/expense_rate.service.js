@@ -13,6 +13,7 @@ const providerRepo = require("../rate_provider/rate_provider.repo");
 const events = require("./expense_rate.events");
 const rules = require("./expense_rate.rules");
 const importer = require("./expense_rate.import");
+const { resolveContext } = require("../../../services/spreadsheet");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -85,10 +86,15 @@ async function importContext(client) {
   return { dictionaryItems, rateProviders, containerTypes };
 }
 
-/** The .xlsx a user downloads: the column contract + this tenant's real values. */
+/** The .xlsx a user downloads: the column contract + this tenant's real values.
+ *  Branded via resolveContext on the caller's connection — the template is the
+ *  artefact a customer sees first, so it wears the tenant's colours. */
 async function importTemplate(client) {
-  const ctx = await importContext(client);
-  return importer.buildTemplate(ctx);
+  const [ctx, context] = await Promise.all([
+    importContext(client),
+    resolveContext(client, { title: "Expense rates — import template" }),
+  ]);
+  return importer.buildTemplate({ ...ctx, context });
 }
 
 /** Parse + validate an upload. Writes NOTHING — staging first, like the dict

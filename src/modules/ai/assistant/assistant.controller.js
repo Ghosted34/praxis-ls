@@ -2,20 +2,29 @@
 const service = require("./assistant.service");
 const { asyncHandler } = require("../../../utils/errors");
 const { buildTablesWorkbook } = require("./assistant.export");
+const { resolveContext, exportFilename } = require("../../../services/spreadsheet");
 const user = (req) => req.user || { user_id: null };
 
 /**
  * Answer tables → one .xlsx, one sheet per table.
  *
- * No `req.tenantDb`: this reads nothing. The rows arrive in the body because
- * they were already rendered to this caller, under their own permissions, in an
- * answer the orchestrator produced. The endpoint formats what they can see.
+ * The ANSWER's rows arrive in the body because they were already rendered to
+ * this caller, under their own permissions — the endpoint still runs no query
+ * for them. The one read it makes is the tenant's branding/currency context,
+ * so the workbook this returns is branded like every other export (tenant
+ * colours, cover, sandbox stamp) rather than a neutral orphan: configuration
+ * only, never user data, so the no-widening property is unchanged.
  */
 const exportTables = asyncHandler(async (req, res) => {
-  const buf = await buildTablesWorkbook(req.body.tables);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const buf = await req.tenantDb(async (client) => {
+    const context = await resolveContext(client, {
+      title: req.user && req.user.full_name ? `AI — ${req.user.full_name}` : "AI export",
+      actor: user(req),
+    });
+    return buildTablesWorkbook(req.body.tables, context);
+  });
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="praxis-ai-${stamp}.xlsx"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${exportFilename({ base: "praxis-ai", env: req.env, extension: "xlsx" })}"`);
   res.setHeader("Content-Length", buf.length);
   res.send(buf);
 });

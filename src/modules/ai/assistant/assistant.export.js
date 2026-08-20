@@ -9,33 +9,28 @@
  * one analysis and comparing them across three separate downloads is not
  * comparing them.
  *
- * WHY THE SERVER BUILDS IT. The platform already owns a workbook builder —
- * `services/spreadsheet.service.buildWorkbook`, the one the Vault report export
- * uses — so a browser-built file would be a second implementation of something
- * that exists, and it would mean shipping a spreadsheet writer to every client
- * that loads the app, for one button, into a bundle the frontend gates on size.
+ * WHY THE SERVER BUILDS IT. The platform already owns one branded spreadsheet
+ * builder — `services/spreadsheet.buildWorkbook` — so a browser-built file
+ * would be a second implementation of something that exists, and it would
+ * mean shipping a spreadsheet writer to every client that loads the app, for
+ * one button, into a bundle the frontend gates on size.
  *
- * NOTE for whoever looks for the other one: `services/excel/workbook.js` is a
- * richer-looking toolkit and it is DEAD. It requires `../../utils/dates`, which
- * does not exist in this repo (`src/utils/` holds only `errors.js`), so it
- * cannot even be loaded; nothing imports it; and its house style is another
- * product's — "Pixie Girl Hub", Maroon Noir, ₦ number formats. It was reached
- * for first here and failed on the first call. `spreadsheet.service` is the live
- * one.
- *
- * NOTHING IS READ FROM THE DATABASE HERE, and that is the security property
- * worth stating: the rows arrive in the request because they were already on the
- * caller's screen, in an answer produced under their own permissions. This
- * endpoint formats what they can already see. It has no query, so it has no way
- * to widen what they can see — which is why it needs no RBAC check beyond the
- * auth and AI-feature gate the router already applies.
+ * NOTHING IS READ FROM THE DATABASE FOR THE ANSWER, and that is the security
+ * property worth stating: the rows arrive in the request because they were
+ * already on the caller's screen, in an answer produced under their own
+ * permissions. This endpoint formats what they can already see. The ONE read
+ * it now makes is the tenant's own branding/currency context (resolveContext,
+ * driven by the controller inside req.tenantDb) so the file is branded like
+ * every other export — that touches tenant configuration, never user data,
+ * so it still has no way to widen what the caller can see, which is why it
+ * needs no RBAC check beyond the auth and AI-feature gate the router applies.
  *
  * The bound on the payload is therefore about resource use rather than access:
  * a request cannot ask the server to build an arbitrarily large workbook.
  */
 "use strict";
 
-const { buildWorkbook } = require("../../../services/spreadsheet.service");
+const { buildWorkbook, sheetName: safeSheetName } = require("../../../services/spreadsheet");
 
 /** Payload ceilings. Generous for an answer, far below a denial-of-service. */
 const MAX_SHEETS = 25;
@@ -80,13 +75,12 @@ function coerce(raw) {
   return negative ? -n : n;
 }
 
-/** Excel forbids some characters in sheet names and caps them at 31 chars. */
+/**
+ * Excel-safe sheet title: the ONE shared sanitizer (illegal characters
+ * stripped, ≤31 chars) with this module's positional fallback.
+ */
 function sheetName(title, index) {
-  const clean = String(title || "")
-    .replace(/[[\]:*?/\\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return (clean || `Table ${index + 1}`).slice(0, 31);
+  return safeSheetName(title, { fallback: `Table ${index + 1}` });
 }
 
 /**
@@ -100,19 +94,18 @@ function sheetName(title, index) {
  * Column keys are POSITIONAL (`c0`, `c1`). A markdown header can repeat, be
  * blank, or be an emoji, and none of those make a usable object key — the
  * visible header text is carried separately in `header`.
+ *
+ * `context` is the tenant WorkbookContext (the controller resolves it inside
+ * req.tenantDb). With it the workbook is branded — tenant header colours,
+ * cover sheet with entity identity and the Powered-by-Praxis-LS link; without
+ * it (unit tests) the neutral default renders.
  */
-async function buildTablesWorkbook(tables) {
-  const used = new Set();
+async function buildTablesWorkbook(tables, context = null) {
+  const taken = new Set();
   const sheets = tables.slice(0, MAX_SHEETS).map((t, i) => {
-    // Sheet names must be unique within a workbook, or ExcelJS throws.
-    let name = sheetName(t.title, i);
-    let n = 2;
-    while (used.has(name.toLowerCase())) {
-      const suffix = ` (${n})`;
-      name = `${sheetName(t.title, i).slice(0, 31 - suffix.length)}${suffix}`;
-      n += 1;
-    }
-    used.add(name.toLowerCase());
+    // Sheet names must be unique within a workbook; the shared sanitizer
+    // appends " (2)", " (3)"… and records each choice in `taken`.
+    const unique = safeSheetName(t.title, { fallback: `Table ${i + 1}`, taken });
 
     const header = (t.header || []).slice(0, MAX_COLS);
     const columns = header.map((label, c) => ({
@@ -130,10 +123,10 @@ async function buildTablesWorkbook(tables) {
       return o;
     });
 
-    return { name, columns, rows };
+    return { name: unique, title: t.title, columns, rows };
   });
 
-  return buildWorkbook({ sheets });
+  return buildWorkbook({ sheets, context, cover: !!context });
 }
 
 module.exports = { buildTablesWorkbook, coerce, sheetName, MAX_SHEETS, MAX_ROWS, MAX_COLS };

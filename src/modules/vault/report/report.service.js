@@ -11,6 +11,7 @@
 const repo = require("./report.repo");
 const events = require("./report.events");
 const reportExport = require("./report-export");
+const { resolveContext, exportFilename } = require("../../../services/spreadsheet");
 const statements = require("../../finance/financial_statement/financial_statement.service");
 const receivables = require("../../finance/smart_receivables/smart_receivables.service");
 const dossier = require("../../operations/operations_file/operations_file.service");
@@ -192,22 +193,28 @@ async function deleteSchedule(client, { id, actor = {} }) {
  */
 async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = {}) {
   const due = await repo.listDueScheduled(client);
+  // One context for the whole batch: brand/entity/currency cannot change
+  // between two due reports in the same run, and each attachment then spreads
+  // its own title over the shared facts.
+  const baseContext = await resolveContext(client, { actor });
   const results = [];
   for (const sr of due) {
     let ok = true;
     try {
-       
+      
       const out = await run(client, { reportKey: sr.report_key, params: sr.params || {} });
       const html = "<h1>" + sr.name + "</h1><pre>" + JSON.stringify(out.data, null, 2) + "</pre>";
       // Render each requested spreadsheet format and attach it (base64, so the job
       // stays JSON-serialisable through Redis). pdf keeps the inline HTML body —
-      // its vaulting path is separate (POST /run/:key/pdf).
+      // its vaulting path is separate (POST /run/:key/pdf). Scheduled files go
+      // through the SAME branded context as an interactive export: an emailed
+      // attachment is the copy most likely to be forwarded outside the app.
       const attachments = [];
       for (const fmt of Array.isArray(sr.formats) ? sr.formats : []) {
         if (fmt !== "csv" && fmt !== "xlsx") continue;
          
-        const file = await reportExport.toExport(sr.report_key, out.data, fmt);
-        attachments.push({ filename: `${sr.name}.${file.extension}`, content: file.buffer.toString("base64"), encoding: "base64", contentType: file.contentType });
+        const file = await reportExport.toExport(sr.report_key, out.data, fmt, { ...baseContext, title: sr.name });
+        attachments.push({ filename: exportFilename({ base: sr.name, env: baseContext.env, extension: file.extension }), content: file.buffer.toString("base64"), encoding: "base64", contentType: file.contentType });
       }
       if (tenantMeta && Array.isArray(sr.recipients)) {
         for (const to of sr.recipients) {

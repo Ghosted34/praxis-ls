@@ -328,11 +328,10 @@ function TableView({ tables }: { tables: AiTable[] }) {
   /**
    * All tables as one workbook, one sheet each.
    *
-   * SERVER-SIDE, because the platform already owns an ExcelJS toolkit
-   * (`src/services/excel/workbook.js`) with the house header style, frozen rows,
-   * zebra striping and autofilter — and because the alternative is shipping a
-   * spreadsheet writer to every browser that loads the app, for one button, into
-   * a bundle this repo actively polices (`check:bundle`).
+   * SERVER-SIDE, because the platform already owns one branded ExcelJS
+   * builder (`src/services/spreadsheet`) — and because the alternative is
+   * shipping a spreadsheet writer to every browser that loads the app, for
+   * one button, into a bundle this repo actively polices (`check:bundle`).
    */
   async function exportWorkbook() {
     setBusy(true);

@@ -1,7 +1,7 @@
 /**
  * Spreadsheet statement parser (.xlsx / .xlsm), on ExcelJS.
  *
- * Separate from src/services/spreadsheet.service.js on purpose. That one reads
+ * Separate from src/services/spreadsheet on purpose. That one reads
  * a workbook WE generated, where row 1 is the header by construction. This one
  * reads a workbook a bank generated, where the header is somewhere in the first
  * twenty rows, under a logo, beside a merged title cell, and the sheet we want
@@ -17,6 +17,12 @@
 
 const ExcelJS = require("exceljs");
 const { findHeaderRow } = require("./csv");
+// Shared with the catalogue importer's parser (services/spreadsheet) so an
+// ExcelJS rich-text/formula/hyperlink cell flattens ONE way across the
+// product. The shared unwrapper returns null for blanks and keeps Dates
+// typed; this parser's blank sentinel is "" — hence the adapter, which is the
+// entire difference between the two parsers on purpose (see header).
+const { cellRawValue } = require("../spreadsheet/helpers");
 
 const MAX_ROWS = 20000;
 
@@ -26,17 +32,8 @@ const MAX_ROWS = 20000;
  * collapses to its runs.
  */
 function cellValue(v) {
-  if ((v === null || v === undefined)) return "";
-  if (v instanceof Date) return v;
-  if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") return v;
-  if (typeof v === "object") {
-    if (v.richText) return v.richText.map((t) => t.text).join("");
-    if ((v.text !== null && v.text !== undefined)) return v.text;                      // hyperlink
-    if (v.result !== undefined) return v.result;            // formula
-    if (v.error) return "";
-    if (v.hyperlink) return v.hyperlink;
-  }
-  return String(v);
+  const out = cellRawValue(v);
+  return out === null ? "" : out;
 }
 
 /**

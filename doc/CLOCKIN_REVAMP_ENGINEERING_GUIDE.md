@@ -197,7 +197,7 @@ Window: **up to 366 days**. Pagination server-side for the interactive table; ex
 
 - `attendance.calendar.js` — resolve expected day / hours / timezone (thin wrapper over `corporate_entity.calendar` + employee columns). **Pure decisions in `attendance.rules` stay pure;** I/O lives here.
 - `attendance.analytics.js` — summarize days + punches (pure, unit-tested).
-- `attendance.export.js` — exceljs via `src/services/excel/workbook.js`.
+- `attendance.export.js` — CSV + Excel via `src/services/spreadsheet` (`resolveContext` + `buildWorkbook` / `buildCsv`): branded, currency-aware, injection-safe. Never a private ExcelJS writer.
 - `attendance.weekly.js` — compose + upsert weekly query.
 
 **API additions (all behind existing MOD-14 grants except `/mine`):**
@@ -323,7 +323,7 @@ Each PR is independently reviewable, migrates forward-only, and must be **green*
 7. **Export is a report, not an unbounded page.** Cap rows; 366-day window.
 8. **No spoofed GPS.** Flag `no_gps` instead.
 9. **i18n:** new copy through existing `tr` / dict patterns used on HR screens.
-10. **Reuse** `KpiRow`, `excel/workbook.js`, `corporate_entity.calendar`, `useClockPunch`, `composeQuery` style (pure text functions).
+10. **Reuse** `KpiRow`, `src/services/spreadsheet` (`resolveContext` + `buildWorkbook`), `corporate_entity.calendar`, `useClockPunch`, `composeQuery` style (pure text functions).
 
 ---
 

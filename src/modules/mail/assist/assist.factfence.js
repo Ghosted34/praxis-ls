@@ -7,7 +7,7 @@
 
 const REF = /[A-Za-z0-9]{2,}-\d{4}-\d{2,}/g;
 const MONEY = /\b\d{1,3}(?:[ \u00a0.,]\d{3})+(?:[.,]\d+)?\b|\b\d+[.,]\d{2}\b/g;
-const DATE = /\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|janv|févr|avr|mai|juin|juil|août|sept|oct|nov|déc)[a-zéû.]*\s+\d{2,4}\b/gi;
+const DATE = /\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|janv|févr|avr|mai|juin|juil|août|sept|oct|nov|déc)[a-zéû.]*\s+\d{2,4}\b/gi;
 const PCT = /\b\d+(?:[.,]\d+)?\s*%/g;
 
 function tokens(text) {

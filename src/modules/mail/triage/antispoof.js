@@ -21,7 +21,6 @@ function levenshtein(a, b) {
   return dp[s.length][t.length];
 }
 
-const HOMO = { "0": "o", "1": "l", rn: "m", vv: "w" };
 function fold(d) {
   let s = String(d || "").toLowerCase();
   s = s.replace(/[\u0430]/g, "a").replace(/[\u043e]/g, "o");

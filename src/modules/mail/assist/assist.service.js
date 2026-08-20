@@ -25,7 +25,7 @@ async function compose(client, input = {}) {
   return { prompt, language: lang, mode: input.mode || "compose", facts: [] };
 }
 
-async function draft(client, { threadId, facts = [], tone, language }) {
+async function draft(client, { threadId: _threadId, facts = [], tone, language }) {
   await assertAiOn(client);
   if (grounding.isDenied("costing") !== true) {
     /* the deny list is the point */

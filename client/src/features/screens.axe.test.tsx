@@ -1370,7 +1370,35 @@ const AREAS: Area[] = [
       {
         name: "Email signatures",
         render: () => <EmailSignaturesPage />,
-        routes: { "/settings": [] },
+        routes: {
+          "/mail/signature": {
+            person: {
+              user_full_name: "Amina Ndoumbe",
+              job_title: "Directrice Générale",
+            },
+            profile: { phone_desk: "+237 233 42 00 00", pronouns: "she/her" },
+            preview: {
+              html: "<p>Amina Ndoumbe</p>",
+              text: "Amina Ndoumbe",
+              language: "en",
+            },
+          },
+          "/mail/signature/templates": [
+            {
+              signature_template_id: "st1",
+              key: "classic",
+              name: "Classic",
+              layout: {},
+              copy_en: {},
+              copy_fr: {},
+              scope_kind: "TENANT",
+              is_default: true,
+              is_system: true,
+              is_active: true,
+            },
+          ],
+        },
+        populatedProof: /Amina Ndoumbe/,
       },
       {
         name: "Business policies",

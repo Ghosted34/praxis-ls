@@ -12,7 +12,6 @@ const CURRENCIES = ["XAF", "EUR", "USD", "GBP", "XOF"];
 function extraFrom(text) {
   const t = String(text || "");
   const refs = t.match(/[A-Za-z0-9]{2,}-\d{4}-\d{2,}/g) || [];
-  const hs = t.match(/\b\d{4,10}\b/g) || [];
   const compte = t.match(/compte\s+\d{3,}/gi) || [];
   return [...refs, ...compte];
 }

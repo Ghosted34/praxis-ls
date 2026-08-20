@@ -56,7 +56,7 @@ async function create(client, { threadId, body, mentions = [], actor = {} }) {
   await emitEvent(client, {
     eventTypeKey: "email.note.created", moduleKey: "MOD-72",
     entityRef: `email_thread:${threadId}`, actorUserId: actor.user_id,
-  }).catch(() => {});
+  }).catch(() => { /* @silent:storage the note row is the outcome */ });
   return note;
 }
 

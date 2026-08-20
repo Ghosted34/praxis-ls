@@ -20,7 +20,7 @@ function clause(userParam) {
   return SQL.replace(/\$USER/g, userParam);
 }
 
-function canSee(thread, { userId, isOwner, isMember, isShared, isGodMode }) {
+function canSee(thread, { userId: _userId, isOwner, isMember, isShared, isGodMode }) {
   if (isGodMode) return { ok: true, breakglass: thread.visibility === "PRIVATE" && !isOwner && !isShared };
   if (thread.visibility === "COMPANY") return { ok: true };
   if (thread.visibility === "TEAM") return { ok: Boolean(isMember) };

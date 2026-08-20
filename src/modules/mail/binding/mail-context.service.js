@@ -41,7 +41,9 @@ async function clientOverview(client, id) {
     overview: {
       outstanding_xaf: c.outstanding_xaf, overdue_xaf: c.overdue_xaf,
       credit_limit: c.credit_limit,
-      credit_headroom: c.credit_limit != null ? Number(c.credit_limit) - Number(c.outstanding_xaf || 0) : null,
+      credit_headroom: c.credit_limit !== null && c.credit_limit !== undefined
+        ? Number(c.credit_limit) - Number(c.outstanding_xaf || 0)
+        : null,
       payment_terms_days: c.payment_terms_days,
       open_dossiers: Number(extra.open_dossiers || 0),
       open_quotes: Number(extra.open_quotes || 0),

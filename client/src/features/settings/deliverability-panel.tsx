@@ -13,8 +13,8 @@ import { useTranslation } from "react-i18next";
 import * as api from "@/lib/mail-api";
 import { reportActionError } from "@/lib/action-error";
 
-const TONE: Record<string, "ok" | "warn" | "danger" | "mute"> = {
-  PASS: "ok", FAIL: "danger", UNKNOWN: "warn",
+const TONE: Record<string, "ok" | "warn" | "bad" | "mute"> = {
+  PASS: "ok", FAIL: "bad", UNKNOWN: "warn",
 };
 
 export function DeliverabilityPage() {
@@ -48,7 +48,7 @@ export function DeliverabilityPage() {
   }
 
   function copy(text: string) {
-    navigator.clipboard?.writeText(text).catch(() => { /* clipboard may be denied */ });
+    navigator.clipboard?.writeText(text).catch(() => { /* @silent:teardown clipboard may be denied */ });
   }
 
   return (

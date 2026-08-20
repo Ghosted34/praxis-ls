@@ -107,12 +107,12 @@ async function accept(client, { threadId, suggestionId, entityRef, actor = {}, a
       eventTypeKey: "email.thread.bound", moduleKey: "MOD-72",
       entityRef: `email_thread:${threadId}`, actorUserId: actor.user_id || null,
       payload: { bound: entityRef, signal: row && row.signal },
-    }).catch(() => {});
+    }).catch(() => { /* @silent:storage the bound row is the outcome */ });
     await audit(client, {
       actorUserId: actor.user_id || null, action: "email.thread.bound",
       moduleKey: "MOD-72", entityRef: `email_thread:${threadId}`,
       after: { entity_ref: entityRef },
-    }).catch(() => {});
+    }).catch(() => { /* @silent:storage the bound row is the outcome */ });
   }
   return { email_thread_id: threadId, entity_ref: entityRef };
 }
@@ -129,7 +129,7 @@ async function reject(client, { threadId, suggestionId, actor = {} }) {
     actorUserId: actor.user_id || null, action: "email.thread.suggestion.rejected",
     moduleKey: "MOD-72", entityRef: `email_thread:${threadId}`,
     after: { suggestion: suggestionId },
-  }).catch(() => {});
+  }).catch(() => { /* @silent:storage the REJECTED row is the outcome */ });
   return rows[0];
 }
 
@@ -145,12 +145,12 @@ async function unbind(client, { threadId, actor = {} }) {
     eventTypeKey: "email.thread.unbound", moduleKey: "MOD-72",
     entityRef: `email_thread:${threadId}`, actorUserId: actor.user_id || null,
     payload: { was: before.rows[0] && before.rows[0].entity_ref },
-  }).catch(() => {});
+  }).catch(() => { /* @silent:storage the unbound row is the outcome */ });
   await audit(client, {
     actorUserId: actor.user_id || null, action: "email.thread.unbound",
     moduleKey: "MOD-72", entityRef: `email_thread:${threadId}`,
     before: before.rows[0], after: { entity_ref: null },
-  }).catch(() => {});
+  }).catch(() => { /* @silent:storage the unbound row is the outcome */ });
   return { email_thread_id: threadId, entity_ref: null };
 }
 

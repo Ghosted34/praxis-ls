@@ -7,12 +7,6 @@
  */
 "use strict";
 
-function at(day, h, m, tzDate) {
-  const d = new Date(tzDate);
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
 function isHoliday(date, holidays = []) {
   const key = date.toISOString().slice(0, 10);
   return holidays.some((h) => String(h.holiday_on).slice(0, 10) === key);

@@ -18,7 +18,7 @@
 const SUPPORTED = new Set(["en", "fr"]);
 
 function asLang(v) {
-  if (v == null) return null;
+  if (v === null || v === undefined) return null;
   const s = String(v).trim().toLowerCase().slice(0, 2);
   return SUPPORTED.has(s) ? s : null;
 }

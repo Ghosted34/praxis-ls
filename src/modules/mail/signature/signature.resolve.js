@@ -16,7 +16,7 @@
 const crypto = require("crypto");
 
 const join = (parts, sep = " · ") =>
-  parts.map((p) => (p == null ? "" : String(p).trim())).filter(Boolean).join(sep);
+  parts.map((p) => (p === null || p === undefined ? "" : String(p).trim())).filter(Boolean).join(sep);
 
 const pick = (lang, fr, en) => (lang === "fr" ? fr || en : en || fr) || "";
 
@@ -189,7 +189,7 @@ function departmentLabel(purpose, lang) {
  */
 function sourceHash(parts) {
   const h = crypto.createHash("sha256");
-  h.update(JSON.stringify(parts == null ? {} : parts));
+  h.update(JSON.stringify(parts === null || parts === undefined ? {} : parts));
   return h.digest("hex");
 }
 
@@ -213,7 +213,7 @@ function textContent(model) {
     co.legal_line,
     co.motto,
     co.confidentiality,
-  ].map((x) => (x == null ? "" : String(x).trim())).filter(Boolean).join("\n");
+  ].map((x) => (x === null || x === undefined ? "" : String(x).trim())).filter(Boolean).join("\n");
 }
 
 module.exports = {

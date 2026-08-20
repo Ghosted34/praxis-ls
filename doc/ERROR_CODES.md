@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (426)
+## All codes (429)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -37,6 +37,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_ANSWERED` | 409 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 2× | — |
+| `ALREADY_CLAIMED` | 409 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 3× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |
@@ -166,7 +167,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `EXISTS` | 409 | 3× | — |
-| `FEATURE_DISABLED` | 403 | 1× | — |
+| `FEATURE_DISABLED` | 403 | 2× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
@@ -250,7 +251,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 482× | — |
+| `NOT_FOUND` | 404, 422 | 491× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -308,6 +309,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 5× | — |
 | `NO_TREASURY_ACCOUNT` | 422 | 1× | — |
+| `NO_USER_ACCOUNT` | — | 1× | — |
 | `NO_VALIDATOR` | 422 | 1× | — |
 | `NO_VAT_ACCOUNT` | 422 | 2× | — |
 | `NO_WORKING_DAYS` | 422 | 1× | — |
@@ -406,6 +408,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
 | `SYSTEM_RECORD` | 422 | 1× | — |
 | `SYSTEM_ROLE` | 409 | 1× | — |
+| `SYSTEM_TEMPLATE` | 422 | 1× | — |
 | `SYSTEM_TYPE` | 422 | 2× | — |
 | `TARIFF_GAP` | 422 | 1× | — |
 | `TEMPLATE_NOT_PUBLISHED` | 409 | 1× | — |
@@ -444,7 +447,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 192× | — |
+| `VALIDATION_ERROR` | 422 | 197× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

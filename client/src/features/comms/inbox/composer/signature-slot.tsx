@@ -1,5 +1,4 @@
 /** Composer slot `composer.footer.left` — PR-2. Does not edit composer.tsx. */
-import * as React from "react";
 import { useTranslation } from "react-i18next";
 
 export function SignatureSlot() {

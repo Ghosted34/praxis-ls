@@ -28,7 +28,7 @@ function readinessFrom(facts, cardKey) {
   const missing = [];
   for (const f of rule.fields) {
     const v = facts[f.field];
-    if (v == null || v === "") missing.push({ field: f.field, label: f.label, why: `${f.label} is not stated in this thread` });
+    if (v === null || v === undefined || v === "") missing.push({ field: f.field, label: f.label, why: `${f.label} is not stated in this thread` });
     else prefill[f.field] = v;
   }
   return { ready: missing.length === 0, target: rule.target, prefill, missing };

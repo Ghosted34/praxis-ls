@@ -181,10 +181,26 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
   return inserted.length;
 }
 
-async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+const DEDUPE_MS = 60_000;
+const recentDedupe = new Map();
+
+function shouldDedupe(key) {
+  if (!key) return false;
+  const now = Date.now();
+  const prev = recentDedupe.get(key);
+  if (prev && now - prev < DEDUPE_MS) return true;
+  recentDedupe.set(key, now);
+  if (recentDedupe.size > 5000) recentDedupe.delete(recentDedupe.keys().next().value);
+  return false;
+}
+
+async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, dedupeKey = null }) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
   const isSecurity = isSecurityCategory(cat);
+  if (dedupeKey && shouldDedupe(dedupeKey)) {
+    return null;
+  }
 
   let inApp = null;
   if (isSecurity || (await repo.isChannelEnabled(client, userId, "IN_APP", cat))) {
@@ -240,6 +256,7 @@ async function unsubscribePush(client, actor, { endpoint }) {
 }
 
 module.exports = {
+  DEDUPE_MS, shouldDedupe, recentDedupe,
   notifyMany,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
   pushPublicKey, subscribePush, unsubscribePush,

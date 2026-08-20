@@ -277,6 +277,10 @@ const EmailSignaturesPage = lazyNamed(
   () => import("@/features/settings/email-signatures"),
   "EmailSignaturesPage",
 );
+const DeliverabilityPage = lazyNamed(
+  () => import("@/features/settings/deliverability-panel"),
+  "DeliverabilityPage",
+);
 const BusinessPoliciesPage = lazyNamed(
   () => import("@/features/settings/business-policies"),
   "BusinessPoliciesPage",
@@ -653,6 +657,10 @@ export function App() {
               <Route
                 path="settings/email-signatures"
                 element={<EmailSignaturesPage />}
+              />
+              <Route
+                path="settings/deliverability"
+                element={<DeliverabilityPage />}
               />
               {/* No BE yet — scaffolded like factory-languages. The Settings hub still
             links here (settings-hub.tsx), so without this route the card dead-ends

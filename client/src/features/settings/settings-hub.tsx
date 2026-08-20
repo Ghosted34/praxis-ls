@@ -153,6 +153,12 @@ const SECTIONS: Section[] = [
         icon: "comms",
       },
       {
+        to: "/settings/deliverability",
+        label: "Deliverability",
+        desc: "SPF, DKIM, DMARC, MX, reverse DNS and public blocklists",
+        icon: "comms",
+      },
+      {
         to: "/notifications",
         label: "Notifications",
         desc: "Your channel & category preferences",

@@ -30,6 +30,7 @@ import { Select } from "@/components/ui/modal";
 import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { dateTimeFmt } from "@/lib/format";
 import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
+import { SignatureSlot } from "./composer/signature-slot";
 
 const Composer = React.lazy(() => import("./composer"));
 
@@ -273,6 +274,7 @@ export function ThreadView({
               entityRef={thread.entity_ref || null}
               onClose={() => setReplying(false)}
               onSent={onReplied}
+              slots={{ "composer.footer.left": <SignatureSlot /> }}
             />
           </React.Suspense>
         ) : (

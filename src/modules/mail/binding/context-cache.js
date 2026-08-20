@@ -90,11 +90,11 @@ async function invalidate(entityRef) {
   let removed = 0;
   try {
     do {
-      // eslint-disable-next-line no-await-in-loop
+       
       const [next, keys] = await r.scan(cursor, "MATCH", pattern, "COUNT", 200);
       cursor = next;
       if (keys.length) {
-        // eslint-disable-next-line no-await-in-loop
+         
         await r.del(...keys);
         removed += keys.length;
       }

@@ -40,6 +40,9 @@ const stream = require("./stream");
 const threadRepo = require("./thread.repo");
 const triageHooks = require("../triage/ingest-hooks");
 const followupService = require("../triage/followup.service");
+const intake = require("../binding/intake.service");
+const semantic = require("../assist/semantic.service");
+const ocrQueue = require("../assist/ocr.enqueue");
 
 const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
 const OAUTH_STATE_TTL = "10m";
@@ -430,6 +433,25 @@ async function syncConnection(client, id, ctx = {}) {
         // per-folder catch below; the other two are advisory (see the file).
         // `ctx` carries the per-run memo the anti-spoof corpus is read into.
         await triageHooks.onMessageIngested(client, row, { raw: m, attachmentHashes: att.hashes, ctx });
+        // PR-3 §7.6 — propose a filing for each attachment. SUGGESTIONS only:
+        // "never file silently, at any confidence, in this programme." Advisory,
+        // so a classification failure never costs the message.
+        if (att.saved) {
+          await intake.suggestForMessage(client, {
+            messageId: row.email_message_id, threadId: row.thread_id, subject: m.subject,
+          }).catch(() => { /* @silent:storage the attachment row is the outcome */ });
+          // PR-4 §8.6 — queue field extraction for anything that already looks
+          // like a supplier invoice, receipt, PO, proof of payment or cheque.
+          // NOT during a backfill: `last_sync_at` is null exactly once per
+          // folder, and that pass can be 90 days deep. See ocr.enqueue.js — the
+          // narrowing there is the difference between a feature and a bill.
+          await ocrQueue.forMessage(client, {
+            messageId: row.email_message_id,
+            subject: m.subject,
+            ctx,
+            isFirstSync: !folder.last_sync_at,
+          }).catch(() => { /* @silent:storage extraction is an enrichment */ });
+        }
         await autoLink(client, {
           threadId: row.thread_id, messageId: row.email_message_id,
           fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
@@ -448,6 +470,13 @@ async function syncConnection(client, id, ctx = {}) {
           await followupService.cancelOnReply(client, row.thread_id)
             .catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
         }
+        // PR-4 §8.9 — re-embed the thread so "search by meaning" can find it.
+        // Gated inside on the tenant's `ai.vectorization` flag, so a tenant that
+        // has not opted into embedding never has its correspondence vectorised
+        // — which for the most sensitive corpus in the product is the whole
+        // point of the flag. Best-effort by construction: an embedding vendor
+        // being down must not be what stops a mailbox syncing.
+        await semantic.onThreadUpdated(client, row.thread_id);
         await emitEvent(client, {
           eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
           moduleKey: events.MODULE,
@@ -528,7 +557,10 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
       });
 
       await repo.addAttachment(client, {
-        email_inbound_id: inboundId, vault_id: doc.doc_id,
+        // `email_message_id`, not `email_inbound_id` — 10737 renamed it. The
+        // old name failed this INSERT inside the @silent catch below, so every
+        // inbound attachment was stored in the vault and then orphaned.
+        email_message_id: inboundId, direction: "IN", vault_id: doc.doc_id,
         filename: a.filename || null, content_type: contentType, size_bytes: a.content.length,
         checksum_sha256: checksum,
       });

@@ -212,8 +212,16 @@ describe("it does not become party-360 (§3.6 MUST NOT)", () => {
   });
 
   test("a tab that is declared but not built says so, instead of looking empty", async () => {
+    // A supplier has no commercial tab. Returning an empty list would be a
+    // claim about the SUPPLIER; `not_built` is a claim about the software.
     const c = recorder([]);
-    const out = await context.tab(c, "client:c-1", "compliance", { userId: "u-1" });
+    const out = await context.tab(c, "supplier:s-1", "commercial", { userId: "u-1" });
     expect(out.not_built).toBe(true);
+  });
+
+  test("and the overview only advertises tabs it can actually fill", async () => {
+    const c = recorder([{ match: /FROM supplier_master/, rows: [{ supplier_id: "s-1", name: "Maersk", ref: "SUP-1" }] }]);
+    const out = await context.overview(c, "supplier:s-1", { userId: "u-1" });
+    expect(out.tabs_available).not.toContain("commercial");
   });
 });

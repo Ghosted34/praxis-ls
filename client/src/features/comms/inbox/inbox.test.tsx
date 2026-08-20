@@ -19,7 +19,28 @@ import { axe } from "jest-axe";
 import { ThreadList } from "./thread-list";
 import { ThreadView } from "./thread-view";
 import { FolderRail, type RailSelection } from "./folder-rail";
+import { renderScreen } from "@/test/screen-harness";
 import type { Folder, Mailbox, Thread, ThreadDetail } from "@/lib/mail-api";
+
+/**
+ * The reading pane now carries the WORK RAIL (PR-3 → PR-5) — binding, the
+ * record drawer, action cards, notes, triage. That is a deliberate change of
+ * shape: the rail is part of the conversation view, not a sibling of it, and a
+ * ThreadView that renders without it would be the version this programme spent
+ * a whole QC pass removing.
+ *
+ * The cost lands here: the rail reaches the network through `useResource`
+ * (TanStack Query) and deep-links through `react-router`, so the pane can no
+ * longer be rendered bare. `renderScreen` supplies exactly the providers
+ * `main.tsx` does, and `apiClientMock` answers the rail's calls — so these
+ * tests still exercise the REAL component tree rather than a stubbed one.
+ */
+vi.mock("@/lib/api-client", async () => {
+  // Imported INSIDE the factory: `vi.mock` is hoisted above the imports, so a
+  // top-level binding is not initialised yet when it runs.
+  const { apiClientMock } = await import("@/test/screen-harness");
+  return apiClientMock();
+});
 
 const thread = (over: Partial<Thread> = {}): Thread => ({
   email_thread_id: "t1",
@@ -212,6 +233,18 @@ const detail = (over: Partial<ThreadDetail> = {}): ThreadDetail => ({
 });
 
 describe("the conversation view", () => {
+  /** The rail's endpoints, answered with nothing — these tests are about the
+   *  correspondence, and an empty rail is a valid rail. */
+  const railFixtures = {
+    routes: {
+      "/mail/threads/t1/suggestions": [],
+      "/mail/threads/t1/notes": [],
+      "/mail/threads/t1/intake": [],
+      "/mail/threads/t1/cards": { thread_id: "t1", cards: [] },
+    },
+  };
+  const renderView = (ui: React.ReactElement) => renderScreen(ui, railFixtures);
+
   const props = {
     loading: false,
     labels: [],
@@ -224,30 +257,39 @@ describe("the conversation view", () => {
   };
 
   it("opens the newest message and leaves the history collapsed", () => {
-    render(<ThreadView thread={detail()} {...props} />);
+    renderView(<ThreadView thread={detail()} {...props} />);
     expect(screen.getByText("The latest reply.")).toBeInTheDocument();
     // The first message's body is not rendered — only its preview, inside the
     // collapsed header.
-    const first = screen.getByRole("button", { expanded: false });
+    //
+    // Scoped to the message ARTICLE rather than the document: the work rail's
+    // accordion sections are also collapsed buttons, and a bare
+    // `getByRole("button", { expanded: false })` now matches several. Scoping
+    // is the fix rather than a `getAllBy`[0] — this test is about the first
+    // MESSAGE, and an index into a flat list would silently start asserting
+    // about a rail section the day the order changes.
+    const first = within(screen.getAllByRole("article")[0]).getByRole("button", {
+      expanded: false,
+    });
     expect(within(first).getByText("The first message.")).toBeInTheDocument();
   });
 
   it("SAYS WHERE A REPLY WAS ACTUALLY SENT FROM", () => {
     // PR-0's origin tag, surfaced. "Did anyone answer this?" should be
     // answerable from the thread rather than by asking in chat.
-    render(<ThreadView thread={detail()} {...props} />);
+    renderView(<ThreadView thread={detail()} {...props} />);
     expect(screen.getByText("Sent from another device")).toBeInTheDocument();
   });
 
   it("does not label a message the product itself sent", () => {
     const d = detail();
     d.messages[1].sent_via = "PRAXIS";
-    render(<ThreadView thread={d} {...props} />);
+    renderView(<ThreadView thread={d} {...props} />);
     expect(screen.queryByText("Sent from another device")).not.toBeInTheDocument();
   });
 
   it("GIVES THE CLASSIFIER'S REASON NEXT TO THE CONTROL THAT OVERRIDES IT", async () => {
-    render(
+    renderView(
       <ThreadView
         thread={detail({
           stream: "SYSTEM",
@@ -262,15 +304,15 @@ describe("the conversation view", () => {
   });
 
   it("offers the read toggle in the direction that matches the state", () => {
-    const { unmount } = render(<ThreadView thread={detail({ unread_count: 2 })} {...props} />);
+    const { unmount } = renderView(<ThreadView thread={detail({ unread_count: 2 })} {...props} />);
     expect(screen.getByRole("button", { name: "Mark read" })).toBeInTheDocument();
     unmount();
-    render(<ThreadView thread={detail({ unread_count: 0 })} {...props} />);
+    renderView(<ThreadView thread={detail({ unread_count: 0 })} {...props} />);
     expect(screen.getByRole("button", { name: "Mark unread" })).toBeInTheDocument();
   });
 
   it("invites a choice rather than showing an empty pane", () => {
-    render(<ThreadView thread={null} {...props} />);
+    renderView(<ThreadView thread={null} {...props} />);
     expect(screen.getByText(/Choose a conversation/)).toBeInTheDocument();
   });
 
@@ -281,12 +323,12 @@ describe("the conversation view", () => {
     d.messages[0].to_address = "{ops@co.cm}" as never;
     d.messages[1].cc_address = null as never;
     d.participants = "{a@b.cm}" as never;
-    expect(() => render(<ThreadView thread={d} {...props} />)).not.toThrow();
+    expect(() => renderView(<ThreadView thread={d} {...props} />)).not.toThrow();
     expect(screen.getByText("The latest reply.")).toBeInTheDocument();
   });
 
   it("has no accessibility violations", async () => {
-    const { container } = render(<ThreadView thread={detail()} {...props} />);
+    const { container } = renderView(<ThreadView thread={detail()} {...props} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

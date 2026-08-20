@@ -230,11 +230,17 @@ describe("no mail-programme table is created and then never read", () => {
    * deleting its line, which is the right amount of friction.
    */
   const KNOWN_UNBUILT = new Set([
-    "attachment_extraction",              // PR-4 §8.6 — OCR not built
-    "email_thread_summary",               // PR-4 §8.5 — summaries not built
-    "email_attachment_classification",    // PR-3 §7.6 — inbound intake not built
-    "email_thread_lock",                  // PR-5 §9.2 — soft locks not built
-    "secure_link_view",                   // PR-5 §9.4 — links do not serve yet
+    // EMPTY, and that is the finding.
+    //
+    // Every entry this set has ever held has been deleted by the commit that
+    // built the thing it described: `email_thread_lock` and `secure_link_view`
+    // in PR-5's pass, then `attachment_extraction` (§8.6, the OCR staging
+    // table) and `email_thread_summary` (§8.5) in PR-4's. Each deletion was
+    // forced — the "nothing in KNOWN_UNBUILT has quietly been built" test below
+    // fails the build while a stale claim sits here.
+    //
+    // Leave it empty. An entry added later is a scope statement someone has to
+    // defend in review, which is the only reason the hatch exists.
   ]);
 
   const RANGES = /^(107[2-9]\d|1076\d|1077\d)_/;

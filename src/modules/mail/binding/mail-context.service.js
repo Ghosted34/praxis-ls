@@ -27,6 +27,7 @@
 const { AppError } = require("../../../utils/errors");
 const cache = require("./context-cache");
 const visibility = require("../triage/visibility");
+const { tabQuery } = require("./context-tabs");
 
 function parseRef(entityRef) {
   const m = String(entityRef || "").match(/^([a-z_]+):([A-Za-z0-9-]+)$/);
@@ -138,7 +139,10 @@ async function supplierOverview(client, id) {
     kind: "SUPPLIER",
     header: { name: s.name, ref: s.ref },
     overview: {},
-    tabs_available: ["money", "operations"],
+    // Only the tabs actually implemented for a supplier. Advertising one that
+    // answers `not_built` puts the honesty in the wrong place — the drawer
+    // should not offer a tab it cannot fill.
+    tabs_available: ["money", "interactions", "compliance"],
   };
 }
 
@@ -150,38 +154,6 @@ async function tab(client, entityRef, tabName, opts = {}) {
   const data = await tabQuery(client, kind, id, tabName, userId);
   await cache.set(entityRef, tabName, userId, data);
   return { ...data, cached: false };
-}
-
-async function tabQuery(client, kind, id, tabName, userId) {
-  if (tabName === "money" && kind === "client") {
-    const { rows } = await client.query(
-      `SELECT invoice_id, doc_number, due_on, total_ttc, status
-         FROM invoice WHERE client_id = $1 AND status NOT IN ('PAID','VOID')
-         ORDER BY due_on NULLS LAST LIMIT 50`,
-      [id],
-    ).catch(() => ({ rows: [] }));
-    return { tab: "money", invoices: rows };
-  }
-
-  // Interactions is the other correspondence-derived tab, so it is scoped the
-  // same way and returns nothing rather than everything for an unknown caller.
-  if (tabName === "interactions") {
-    if (!userId) return { tab: "interactions", rows: [] };
-    const { rows } = await client.query(
-      `SELECT m.email_message_id, m.direction, m.from_address, m.subject, m.received_at
-         FROM email_message m
-         JOIN email_thread t ON t.email_thread_id = m.email_thread_id
-         JOIN email_connection c ON c.email_connection_id = t.email_connection_id
-        WHERE t.entity_ref = $2 AND ${visibility.clause("$1")}
-        ORDER BY m.received_at DESC LIMIT 10`,
-      [userId, `${kind}:${id}`],
-    ).catch(() => ({ rows: [] }));
-    return { tab: "interactions", rows };
-  }
-
-  // The remaining tabs are declared and not yet built. Saying so is not the
-  // same as returning an empty list that reads as "this client has none".
-  return { tab: tabName, kind, id, rows: [], not_built: true };
 }
 
 module.exports = { overview, tab, tabQuery, parseRef, invalidate: cache.invalidate };

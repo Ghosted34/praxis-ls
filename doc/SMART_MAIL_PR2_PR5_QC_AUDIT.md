@@ -360,3 +360,132 @@ gate records what must not happen anywhere.
 
 §11.3's list stands. Nothing in this sweep touched PR-4's engine, PR-3's remaining tabs and cards,
 PR-5's missing endpoints, or the frontend.
+
+---
+
+## 13. Closing the tracks — PR-3 substance, PR-5 endpoints, PR-4's engine, and the frontend
+
+§12.6 said "nothing in this sweep touched PR-4's engine, PR-3's remaining tabs and cards, PR-5's
+missing endpoints, or the frontend." All four are now built. This section records what was done, and
+— more usefully — the three defects the work itself introduced or uncovered, because those are the
+ones nobody was looking for.
+
+### 13.1 PR-5 · the endpoints, secure-link serving, and scheduled send
+
+`workflow.service.js` was built out to carry everything §9 had specified and left unreachable: soft
+locks (never steals a live one), SLA policy CRUD that resets computed due dates so the next sweep
+re-applies them, the business calendar, thread shares, verified domains (`ADMIN_VERIFIED` only — an
+`OBSERVED` row confers nothing), bounces, and follow-up cancellation. Roughly twenty routes.
+
+`secure-link.service.js` and `public_secure.routes.js` make a link actually serve a document. Two
+details are load-bearing: the view is recorded **before** the bytes are fetched, so a download that
+fails still leaves evidence someone opened it; and expired, revoked and never-existed all answer the
+identical 404, from one shared constructor, so the endpoint cannot be used to enumerate tokens.
+
+`mail/schedule.js` resolves §9.3's two shapes and refuses to invent a third. No timezone on file
+throws `NO_RECIPIENT_TIMEZONE` rather than guessing — a guess means a message meant for a Douala
+morning arriving at 3am and nobody finding out. Scheduling and undo-send are the same mechanism, so
+exactly one of them decides `release_at`; a scheduled message reports `undo_seconds: 0`.
+
+### 13.2 PR-3 · the substance behind the shell
+
+Five of the six dossier tabs returned `{ rows: [] }`. Each is now one query — the drawer's 300 ms
+budget is a property of how many tabs run at once, not of any one of them — and the unimplemented
+supplier combinations return `not_built`, which the client renders as its own sentence. An empty
+Commercial tab on a supplier reads as "this supplier has no quotations", which is a claim about the
+supplier rather than about us.
+
+Cards became one file per card behind a directory-read registry, so adding a card is adding a file.
+Conversion now previews against Master Data's shared duplicate detector rather than exact-string
+email equality, and writes `converted_entity_ref` / `converted_by` — the columns migration 10748
+added and nothing wrote. Document intake classifies on ingest and files **only** through an explicit
+call with an actor's name on it.
+
+### 13.3 PR-4 · the chapter that was a facade
+
+`assist.service.js` was replaced. The old one resolved a prompt string and returned it; `draft()`
+returned the `facts` array it was handed, and the route never passed one, so every request took the
+"this thread is not bound to a record" branch — correct code that could not be reached from any
+other state. Five steps now run in a fixed order on every generating path: gate (two-level, through
+`ai/governance`), ground (`assist.grounding.collect`, RBAC-checked per source against the caller),
+generate (`llm.service.chat`), fence (on the **real** generated text), meter (`ai_usage_ledger`,
+`feature_key = 'mail_ai'`, on success and on failure).
+
+Added alongside it: thread summaries with §8.5's five-message trigger and its cache, translation and
+rewriting that finally exercise the glossary's byte-for-byte guarantee on real output, a voice
+endpoint that takes the transcript rather than duplicating the product's speech-to-text, semantic
+search over threads with a per-thread §9.5 re-filter, and attachment extraction into
+`attachment_extraction`.
+
+Two design notes worth keeping. The whitelist reports **withheld** sources rather than dropping
+them, because a silently thinner draft for some users than others is the version nobody can debug.
+And a fenced draft is still returned, with the unsupported values named — a blank composer teaches
+people to stop using the feature; a marked one teaches them what the assistant does not know.
+
+### 13.4 The three defects the work uncovered
+
+**A registered worker is only half a wiring.** `jobs/handlers/mail-ocr-extract.js` was written,
+registered in `workers.js`, and enqueued by nothing — the same orphan defect as the eleven tables, in
+a shape the orphan sweep could not see, introduced by the commit that removed the last of them.
+`workers.js` is where you go to check whether a job exists, which is exactly why registration alone
+reads as finished. `tests/unit/mail-ocr-enqueue.test.js` now asserts that something enqueues it, and
+the four narrowings that keep it from becoming a bill: not during a first sync (`last_sync_at` is
+null exactly once per folder, and that pass is 90 days deep), not for files that do not already look
+financial, not without `mail.ocr`, and never twice.
+
+**`mail.ocr` is its own flag.** Drafting sends a thread's text to a language model; extraction sends
+a scanned supplier invoice — bank details and all — to a vision vendor. A tenant is entitled to want
+the first and refuse the second, and one flag for both removes that choice. Checked on the routes
+*and* in the service, because the queue path never passes through Express.
+
+**The entire PR-3/4/5 client API was dead on arrival.** Thirty-three writes in `mail-api.ts` were
+written as `body: JSON.stringify(payload)`, and `api-client.ts` already stringifies. The server
+received a JSON *string literal*; Express's parser runs `strict: true` and rejects a non-object top
+level, so every one of them 400'd before reaching a route — starring a thread, moving it, saving a
+draft, **sending a message**, and the whole of PR-3/4/5. The older half of the file had always used
+`body: payload`; the two conventions sat side by side and the broken one was written by someone
+holding `fetch`'s signature in their head. `src/lib/mail-api-encoding.test.ts` fails the build on a
+reintroduction, because the symptom — a 400 with no server-side log line, on every write in one
+feature area — reads as "the backend is broken" and sends whoever hits it to the wrong half of the
+stack.
+
+### 13.5 The frontend
+
+`mail-api-work.ts` carries the PR-3/4/5 surface with real types. The reading pane gained a work rail
+— binding chip with each suggestion's *signal* and confidence band, the record drawer with lazy
+tabs, action cards, document intake, team notes, triage and visibility — as one accordion with a
+single section open, because §3.6's budget is about how many panels run at once. The composer gained
+the assist toolbar, the guardrail bar and the schedule picker. Anti-spoof verdicts render on inbound
+messages; an absent verdict renders nothing rather than a green tick, because "we did not check" is
+not "this is fine".
+
+`work.test.tsx` pins the four rules that are only visible on screen: an unready action card offers
+the **same, enabled** button plus a reason (there is no `disabled` in that file and there should
+never be one); nothing is filed silently at any confidence and the machine's guess is correctable; a
+fenced draft still arrives with its violations named and its sources stated; and the override field
+says the reason is permanent **before** the person types.
+
+### 13.6 Gates now standing
+
+| Gate | Fails when |
+| --- | --- |
+| `mail-orphan-sweep` | a programme table is referenced by no line of `src/` — the escape hatch is now **empty** |
+| `mail-feature-gating` | a seeded `mail.*` flag gates nothing, or a core route loses its gate |
+| `mail-ocr-enqueue` | the OCR worker is registered and nothing enqueues it |
+| `mail-ai-draft` | the assistant stops calling a model, grounding stops executing, the fence stops seeing generated text, or metering is dropped |
+| `mail-ai-routes` | a route stops passing the caller into the service (which silently produces an ungrounded draft) |
+| `mail-presend-guardrail` | the §8.8 block leaves the send path, or an override stops reaching the ledger |
+| `mail-api-encoding` | the client double-encodes a request body again |
+
+### 13.7 Verification
+
+5,068 backend tests across 330 suites, 0 lint errors, `db:check:columns` OK, `db:check:idempotency`
+OK, citext gate OK. Client: typecheck clean, 1,630 vitest tests passing.
+
+### 13.8 What remains
+
+Nothing from §11.3 or §12.6 is outstanding. The honest remaining items are operational rather than
+missing code: `mail.ocr` and `mail_ai` default OFF and need switching on per tenant; semantic search
+requires `ai.vectorization`, without which threads are never embedded; and the vision and chat
+vendors need credentials in the platform vendor store before either AI path does more than degrade
+politely.

@@ -193,6 +193,11 @@ describe("the flag index and the code agree", () => {
     "mail.deliverability", "mail.binding", "mail.notes", "mail.doc_intake",
     "mail.ai", "mail.followup", "mail.secure_links", "mail.archive",
     "mail.antispoof", "mail.provider.oauth",
+    // PR-4 §8.6. Deliberately separate from `mail.ai`: drafting sends a
+    // thread's TEXT to a language model, extraction sends a scanned supplier
+    // invoice — bank details and all — to a vision vendor. One flag for both
+    // would remove a choice a tenant is entitled to make.
+    "mail.ocr",
   ];
 
   const seeded = fs.readdirSync(MIGRATIONS)
@@ -213,12 +218,14 @@ describe("the flag index and the code agree", () => {
   });
 
   /**
-   * `mail.doc_intake` is the one exception, and it is a scope statement rather
-   * than a hole: PR-3's inbound document intake is not built (§11.3 of the
-   * audit), so there is nothing for it to gate yet. Building it means deleting
-   * this line — which is the right amount of friction.
+   * Empty, and it should stay that way.
+   *
+   * `mail.doc_intake` was here while PR-3's inbound intake was unbuilt. Building
+   * it made the gate below fail, which is the design: the set is a claim about
+   * scope, and a claim that stops being true has to be deleted rather than
+   * quietly outlived.
    */
-  const UNBUILT = new Set(["mail.doc_intake"]);
+  const UNBUILT = new Set([]);
 
   test("every seeded flag actually gates something", () => {
     const inert = GUIDE_FLAGS

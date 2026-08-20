@@ -308,10 +308,20 @@ test("persists attachments to the vault and links them to the MESSAGE", async ()
     DB,
     expect.objectContaining({ slug: "smartls", entityRef: "email_message:msg-c" }),
   );
+  // `email_message_id`, not `email_inbound_id`. 10737 renamed the column and
+  // the call sites were not updated, so this INSERT failed against the real
+  // schema — inside the @silent:storage catch, which meant every inbound
+  // attachment was written to the vault and then orphaned, in silence. This
+  // assertion said `email_inbound_id`, so it agreed with the bug rather than
+  // with the database, and `npm run db:check:columns` is what found it.
   expect(repo.addAttachment).toHaveBeenCalledWith(
     DB,
-    expect.objectContaining({ email_inbound_id: "msg-c", vault_id: "vault-1", filename: "f.pdf" }),
+    expect.objectContaining({
+      email_message_id: "msg-c", direction: "IN", vault_id: "vault-1", filename: "f.pdf",
+    }),
   );
+  // And the sha256 that lets the archive chain seal the attachment (§9.6).
+  expect(repo.addAttachment.mock.calls[0][1].checksum_sha256).toMatch(/^[a-f0-9]{64}$/);
 });
 
 test("ingest writes a binding SUGGESTION, never entity_ref (Q18)", async () => {

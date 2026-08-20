@@ -55,6 +55,11 @@ const PROCESSORS = [
   { name: "mail-followup-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-followup-sweep-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
+  // PR-4 §8.6. One attachment per job, so the unit of retry is the unit of
+  // cost. Concurrency 2, matching ai-vision: these are vendor calls billed per
+  // page, and a wide fan-out is how a first sync at the 90-day default depth
+  // turns into a bill nobody authorised.
+  { name: "mail-ocr-extract", concurrency: 2, handler: require("./handlers/mail-ocr-extract") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
   { name: "error-maintenance", concurrency: 1, handler: require("./handlers/error-maintenance") },
   // Milestone SLA scan (MOD-31): re-baselines open chains and emits at-risk /

@@ -37,6 +37,7 @@ import * as api from "@/lib/mail-api";
 import { FolderRail, type RailSelection } from "./folder-rail";
 import { ThreadList } from "./thread-list";
 import { ThreadView } from "./thread-view";
+import { SemanticResults } from "./work/semantic-search";
 
 const PAGE = 50;
 
@@ -55,6 +56,9 @@ export function InboxPage() {
   const [sel, setSel] = React.useState<RailSelection>({ folder: "INBOX", stream: "HUMAN" });
   const [query, setQuery] = React.useState("");
   const [applied, setApplied] = React.useState("");
+  /* §8.9. A second ANSWER to the same box, not a second screen — results open
+   * the same thread view the keyword list does. */
+  const [meaning, setMeaning] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
@@ -231,6 +235,7 @@ export function InboxPage() {
           onSubmit={(e) => {
             e.preventDefault();
             setApplied(query);
+            setMeaning("");
           }}
           className="flex gap-2"
         >
@@ -243,6 +248,16 @@ export function InboxPage() {
           <Button type="submit" variant="outline" size="sm">
             Search
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={query.trim().length < 2}
+            onClick={() => { setMeaning(query); setApplied(""); }}
+            title="Find conversations that read like this, even if they do not use these words"
+          >
+            By meaning
+          </Button>
           {applied && (
             <Button
               type="button"
@@ -251,12 +266,21 @@ export function InboxPage() {
               onClick={() => {
                 setQuery("");
                 setApplied("");
+                setMeaning("");
               }}
             >
               Clear
             </Button>
           )}
         </form>
+
+        {meaning && (
+          <SemanticResults
+            query={meaning}
+            onOpen={(id) => { setMeaning(""); open(id); }}
+            onClear={() => setMeaning("")}
+          />
+        )}
 
         <SplitPane
           storageKey="comms.inbox"
@@ -302,6 +326,7 @@ export function InboxPage() {
               openId && run(() => api.setThreadRead(openId, read))
             }
             onReplied={reload}
+            onWorkChanged={reload}
           />
         </SplitPane>
 

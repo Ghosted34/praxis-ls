@@ -43,6 +43,9 @@ import { ComposerToolbar, FontNote } from "./toolbar";
 import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
 import { UndoSendToast } from "./undo-toast";
+import { AssistToolbar } from "../work/assist";
+import { GuardrailBar, useGuardrails } from "../work/guardrails";
+import { SchedulePicker, schedulePayload, type ScheduleChoice } from "../work/schedule";
 import { newIdempotencyKey, rememberSend, forgetSend } from "./offline-queue";
 
 /** PR-2..PR-5 register into these rather than editing the markup. */
@@ -111,6 +114,19 @@ export function Composer({
   const [undoState, setUndoState] = React.useState<"held" | "cancelling" | "cancelled" | "gone">("held");
   const [undoError, setUndoError] = React.useState<string | null>(null);
 
+  /* ── PR-4 §8.8 and PR-5 §9.3 ──────────────────────────────────────────────
+   *
+   * `override` is the reason typed into the guardrail bar when the send is
+   * blocked. It is sent as `guardrail_override_reason` and the SERVER decides
+   * whether it releases the block — this component cannot let anything through
+   * on its own, which is the correct amount of authority for a client.
+   *
+   * `schedule` and undo-send are the same mechanism with different delays, so
+   * exactly one of them decides the release time. A scheduled message comes
+   * back with `undo_seconds: 0` and must not draw a countdown toast. */
+  const [override, setOverride] = React.useState("");
+  const [schedule, setSchedule] = React.useState<ScheduleChoice>({ kind: "NOW" });
+
   const [slash, setSlash] = React.useState<{ open: boolean; query: string }>({ open: false, query: "" });
   const commands = useResource(() => api.listCommands(), []);
 
@@ -126,6 +142,35 @@ export function Composer({
       dirtyRef.current.body_json = doc;
       touch();
     },
+  });
+
+  /* ── The body, for the assist toolbar and the guardrail check ─────────────
+   *
+   * Read and written THROUGH the editor rather than mirrored into state. Two
+   * copies of a draft drift the moment anyone types into either one, and the
+   * one that loses is always the one the user was looking at. */
+  const getBodyText = React.useCallback(() => editor?.getText() || "", [editor]);
+  const setBodyText = React.useCallback(
+    (text: string) => {
+      if (!editor) return;
+      editor.commands.setContent(
+        text.split(/\n{2,}/).map((p) => ({ type: "paragraph", content: p ? [{ type: "text", text: p }] : [] })),
+      );
+      editor.commands.focus("end");
+    },
+    [editor],
+  );
+
+  /* Advisory only. The authoritative run is inside the send path
+   * (`mail/presend.js`), which is what makes §8.8's block a block rather than a
+   * suggestion a client may decline to request. This exists so the operator
+   * sees it BEFORE pressing send. */
+  const guardrails = useGuardrails({
+    enabled: true,
+    html: editor?.getHTML() || "",
+    subject,
+    to: splitAddresses(to),
+    attachments: (tray?.attachments || []).map((a) => ({ filename: a.filename || undefined })),
   });
 
   /* ── Autosave ───────────────────────────────────────────────────────────── */
@@ -280,6 +325,13 @@ export function Composer({
       quoted_html: quotedHtml,
       quoted_text: quotedText,
       idempotency_key: key,
+      // Exactly one of `send_at` / `send_in_recipient_morning`, or neither.
+      // See `work/schedule.tsx` — there is deliberately no "best time to send".
+      ...schedulePayload(schedule),
+      // Empty unless the guardrail bar is showing a block and the operator has
+      // typed a reason. The server refuses the send without one, and writes it
+      // to the immutable ledger with their name on it when there is.
+      guardrail_override_reason: override.trim() || undefined,
     };
 
     try {
@@ -396,6 +448,12 @@ export function Composer({
       </div>
       <FontNote />
 
+      {/* §8. Everything it produces lands in THIS editor. Nothing is sent, and
+          nothing is written to a record. */}
+      <div className="px-3 pt-2">
+        <AssistToolbar threadId={threadId} getText={getBodyText} setText={setBodyText} />
+      </div>
+
       <AttachmentTray tray={tray} onRemove={detach} busy={busy} />
 
       {/* Warnings from the SERVER's serializer — the same code that will produce
@@ -405,12 +463,27 @@ export function Composer({
           {warnings.map((w) => <p key={w}>{w}</p>)}
         </div>
       )}
+      {/* §8.8. Warnings ride along and refuse nothing; the one hard block asks
+          for a reason that goes to the permanent ledger. */}
+      {(guardrails?.warnings.length || guardrails?.blocks.length) ? (
+        <div className="border-t border-border px-3 py-2">
+          <GuardrailBar
+            result={guardrails}
+            overrideReason={override}
+            onOverrideChange={setOverride}
+          />
+        </div>
+      ) : null}
+
       {error && <div className="px-3 pt-2"><ErrorState message={error} /></div>}
       {slots["composer.presend"]}
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-        <Button size="sm" onClick={send} disabled={!canSend} loading={busy}>Send</Button>
+        <Button size="sm" onClick={send} disabled={!canSend} loading={busy}>
+          {schedule.kind === "NOW" ? "Send" : "Schedule"}
+        </Button>
         <AttachButton onFiles={attach} disabled={busy} />
+        <SchedulePicker value={schedule} onChange={setSchedule} />
         {slots["composer.footer.left"]}
         <span className="ml-auto flex items-center gap-2">
           {slots["composer.footer.right"]}
@@ -419,7 +492,11 @@ export function Composer({
         </span>
       </footer>
 
-      {queued && (
+      {/* A SCHEDULED message has no undo window — it has a whole schedule to be
+          cancelled within — and the server reports `undo_seconds: 0` for one.
+          Drawing a countdown for a message going out on Tuesday would be a
+          toast that expires while the message sits in the queue for six days. */}
+      {queued && queued.undo_seconds !== 0 && (
         <div className="border-t border-border p-2">
           <UndoSendToast
             releaseAt={queued.release_at}
@@ -428,6 +505,13 @@ export function Composer({
             onUndo={undo}
             onDismiss={() => { setQueued(null); onClose?.(); }}
           />
+        </div>
+      )}
+
+      {queued && queued.undo_seconds === 0 && (
+        <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground" role="status">
+          Scheduled for {new Date(queued.release_at).toLocaleString()}. You can
+          cancel it from the outbox until then.
         </div>
       )}
     </section>

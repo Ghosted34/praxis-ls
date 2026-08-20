@@ -40,6 +40,8 @@ const mailbox = require("./mailbox.service");
 const access = require("./access");
 const compose = require("./compose");
 const origin = require("./origin");
+const schedule = require("./schedule");
+const presend = require("./presend");
 const events = require("./mail.events");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent } = require("../../../shared/events/emit");
@@ -216,6 +218,15 @@ async function send(client, actor, input = {}) {
   const attachments = draftId ? await repo.listDraftAttachments(client, draftId) : [];
   if (attachments.length) await assertRoomFor(client, draftId, 0);
 
+  // §8.8's one hard block, on the path every send takes. Deliberately AFTER the
+  // signature and the attachment list, so the check sees the message as it will
+  // actually leave — a bank detail introduced by a signature template is inside
+  // the check, not appended after it. Throws GUARDRAIL_BLOCKED (422) when a
+  // block stands with no typed override reason; writes the reason to the
+  // immutable ledger when one is given.
+  const guard = await presend.check(client, actor, input, { html, text, attachments });
+  warnings = warnings.concat(guard.warnings || []);
+
   const messageId = origin.generateMessageId(conn.email_address);
   const headers = origin.buildOriginHeaders({
     tenantSlug: input.slug || null,
@@ -224,10 +235,16 @@ async function send(client, actor, input = {}) {
     connectionId: conn.email_connection_id,
   });
 
+  // Scheduling (§9.3) and undo-send are the same mechanism with different
+  // delays, so exactly ONE of them decides `release_at`. If both computed it, a
+  // message scheduled for Tuesday would also be "undoable" for twenty seconds
+  // and then not for six days — which is neither feature.
+  const scheduled = await schedule.resolveReleaseAt(client, input, { to });
+
   const seconds = input.undo_seconds !== undefined && UNDO_CHOICES.includes(Number(input.undo_seconds))
     ? Number(input.undo_seconds)
     : await undoSeconds(client);
-  const releaseAt = new Date(Date.now() + seconds * 1000);
+  const releaseAt = scheduled ? scheduled.releaseAt : new Date(Date.now() + seconds * 1000);
 
   const row = await repo.enqueue(client, {
     email_connection_id: conn.email_connection_id,
@@ -264,9 +281,22 @@ async function send(client, actor, input = {}) {
   return {
     email_send_queue_id: row.email_send_queue_id,
     release_at: row.release_at,
-    undo_seconds: seconds,
+    // A scheduled message has no undo window — it has a whole schedule to
+    // cancel within, and reporting 20 here would have the composer show a
+    // countdown toast for a message going out on Tuesday.
+    undo_seconds: scheduled ? 0 : seconds,
+    scheduled: scheduled
+      ? { reason: scheduled.reason, timezone: scheduled.timezone || null, note: scheduled.note }
+      : null,
     status: row.status,
     warnings,
+    // Surfaced so the composer can say "sent, and the ledger has your reason"
+    // rather than leaving the operator unsure whether the override took.
+    guardrail: {
+      auth_verdict: guard.verdict,
+      overridden: guard.overridden,
+      blocks: guard.blocks.map((b) => b.code),
+    },
   };
 }
 

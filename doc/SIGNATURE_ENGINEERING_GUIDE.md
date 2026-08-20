@@ -45,7 +45,7 @@ should reject a PR over. Anything marked _(v2)_ is explicitly out of scope.
 | 7 | OTP address source | **B** — on-file by default; **at most one** manually-entered override per request, attributed to the tenant user. **C forbidden.** | Forces the request/party model. Enforced by a partial unique index. §6.3 |
 | 8 | OTP lifetime | **B** — 10 min, 5 attempts, 3 resends then 30-min cooldown, `sha256` at rest, constant-time compare | §6.4 |
 | 9 | Internal signer identity | **A + C** — session-resolved always; step-up OTP above a per-tenant value threshold, default off | §6.5 |
-| 10 | QR payload | **C** — `https://{host}/public/verify/{token}` + a printed human-readable short code | §3.7 |
+| 10 | QR payload | **C** — `https://{host}/v/{code}`, and the same code printed beneath for manual entry | One credential, two renderings. §3.7 |
 | 11 | Token at rest | **Round 2: B** — split. The **signing** token is peppered (it grants action); the **verify** token is plaintext, unique-indexed (it grants a public read) | Restores phone-readable codes, admin visibility and reprints. §3.7 |
 | 12 | Portal disclosure | **Round 2: B** — the portal shows the document **as signed**, from the stored canonical payload, plus the amendment verdict. No live query. | Adds `content_payload jsonb`. Removes the stale-copy-reveals-current-state leak. §5.4 |
 | 13 | Scan logging | **C** — log every scan, notify the owner on a first scan from a new IP, surface an anomaly signal | `signature_scan` + `immutable_ledger`. Privacy notice + retention setting. §5.5 |
@@ -449,14 +449,36 @@ An unregistered type throws `422 NO_CANONICAL_PAYLOAD` at signing time — never
 
 ### 3.7 Tokens and codes (Q10 = C, Q11 = B after Round 2)
 
-Three credentials, stored according to **what each one grants** — not uniformly. This is the Round 2
-correction (§1.5(c)).
+**Two** credentials, stored according to **what each one grants** — not uniformly. This is the Round 2
+correction (§1.5(c)); the count dropped from three to two when the seal was redesigned (§3.12).
 
 | Credential | Form | Where it appears | Grants | Stored as |
 | --- | --- | --- | --- | --- |
-| `verify_token` | 32 random bytes → base64url | The QR's URL: `https://{host}/public/verify/{token}` | Read of a public summary | **plaintext**, unique-indexed |
-| `verify_code` | 12 chars Crockford base32 (no I/L/O/U), shown `XXXX-XXXX-XXXX` | Printed under the QR, for manual entry | Same | **plaintext**, unique-indexed |
+| `verify_code` | 12 chars Crockford base32 (no I/L/O/U), shown `XXXX-XXXX-XXXX` | **Both** the QR (`https://{host}/v/{code}`) and the printed line under it | Read of a public summary | **plaintext**, unique-indexed |
 | `sign_token` | 32 random bytes → base64url | The signing link emailed to a party | **The ability to sign as that party** | `HMAC-SHA256(pepper, …)` |
+
+**Why one public credential and not two.** The first draft minted a 43-character base64url
+`verify_token` for the QR *and* a 12-character code for typing. Since Round 2 both are plaintext and
+both grant exactly the same thing, so the second was pure duplication — two columns, two indexes,
+two mint calls, two things that can disagree.
+
+Collapsing them is also what makes the QR *work*. **Measured**, at error-correction level Q, in the
+22 mm the seal allocates:
+
+| QR payload | Length | Modules | mm per module |
+| --- | --- | --- | --- |
+| Long token, `/public/verify/` path | 83 | 45 | **0.49** |
+| Short code, `/public/verify/` path | 52 | 37 | 0.59 |
+| **Short code, `/v/` path** | **40** | **33** | **0.67** |
+| Short code, dedicated `verify.` host | 38 | 33 | 0.67 |
+
+A phone camera wants ≥ 0.5 mm per module at arm's length; 300 dpi print needs ≥ 0.34 mm (four dots).
+The original design sat at **0.49 mm — right on the phone threshold**, before a photocopier touched
+it. The short code plus the short path clears it by a third.
+
+Two findings worth keeping: the `/v/` path is where the gain is (the long path costs a whole QR
+version), and a dedicated short *host* buys nothing further — 38 and 40 characters land in the same
+version — so **there is no need to provision a `verify.` domain**.
 
 **Why the split.** A verify token resolves to a page the tenant has already chosen to publish; a
 sign token lets its holder act as the counterparty. Peppering both cost real capability — an
@@ -471,11 +493,12 @@ SIGNATURE_TOKEN_PEPPER_PREVIOUS   optional, dual-read window during rotation
 ```
 
 **Consequences to hold on to:**
-- Verify tokens and codes are recoverable, so `GET /signatures/:id` may show them to a holder of
-  MOD-64 `view`, and an operator can read a code to a caller. Reprints still stream the vaulted
-  artifact, for the artifact-hash reason in §1.3(e), not a token reason.
-- **Never reuse one credential as the other.** Separate columns, separate mint calls, separate
-  lifetimes: a verify token is permanent, a sign token expires with the request.
+- The verify code is recoverable, so `GET /signatures/:id` may show it to a holder of MOD-64 `view`,
+  and an operator can read it down the phone. Reprints still stream the vaulted artifact, for the
+  artifact-hash reason in §1.3(e), not a token reason.
+- **Never reuse the verify code as a sign token.** Separate columns, separate mint calls, separate
+  lifetimes: a verify code is permanent and public, a sign token expires with the request and grants
+  action.
 - **Pepper rotation** now only affects sign tokens — in-flight signing links, not printed QRs. That
   makes it a far smaller operation than the first draft implied: set
   `SIGNATURE_TOKEN_PEPPER_PREVIOUS`, deploy, let open requests drain, clear it. Printed documents are
@@ -505,7 +528,7 @@ programme adds **no new permission names** — it maps onto the existing five.
 > document for signature and attesting to it are different authorities — the same reasoning
 > `0110_rbac.sql` applies to `can_create` vs `can_approve` everywhere else.
 
-Public routes (`/public/sign`, `/public/verify`) carry **no** permission check: the token is the
+Public routes (`/public/sign`, `/v`) carry **no** permission check: the token is the
 credential. They are rate-limited instead (§5.2, §6.2).
 
 ### 3.9 Migrations
@@ -568,67 +591,86 @@ Four panels:
 The company seal (§3.12) is **not** configured here — it derives from branding and entity data that
 already exist. That is the point of it: nobody retypes what the system already knows.
 
-### 3.12 The visual seal (`visual_mark = 'STAMP'`)
+### 3.12 The visual seal (`visual_mark = 'STAMP'` and `'DRAWN'`)
 
-The seal is what most people will ever see of this system, so it is specified rather than left to
-the renderer. It derives entirely from data already held — tenant branding, `corporate_entity`, the
-signature row — and has **no editable copy**, which is what stops forty tenants inventing forty
-different legal-looking blocks.
+The seal is what most people will ever see of this system. It derives entirely from data already
+held — branding, `corporate_entity`, the signature row — and has **no editable copy**, which is what
+stops forty tenants inventing forty different legal-looking blocks.
 
-**Layout.** A single bordered block, `identity | verification` on one row:
+#### What it has to do
+
+1. Tell a human, at a glance, **who attested to what, in what capacity, and when**.
+2. Let them **check it independently** without asking us.
+3. Survive a photocopier, a fax, a truck cab and a border post.
+4. Fit **88 × 34 mm** — the height budget Bureau LPC proved a signature block can occupy without
+   pushing a one-page document onto a second (questionnaire §0.1).
+
+#### The layout
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ {TENANT} · ELECTRONIC SEAL                                   │  ← 8pt mono, brand colour
-├──────────────────────────────────────────────────────────────┤
-│  Jean Mbarga                                    ┌──────────┐ │  ← 11pt bold
-│  Commercial Director                            │    QR    │ │  ← 8pt
-│                                                 │          │ │
-│  Reason   Approved for dispatch                 └──────────┘ │  ← 7pt
-│  Ref      WAYBILL-8842-A                        A4B7-K92M-… │  ← short code, 6pt mono
-│  Signed   2026-08-20 14:35:12 WAT                            │
-│  Method   Verified by email code                             │
-│  Content  e3b0c44298fc1c14                                   │  ← 16-hex prefix, labelled
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│ FOR SMART LOGISTICS SARL                              1 of 2   │  6pt caps, accent │ 6pt mono
+│ ══════════════════════════════════════════════════             │  0.4mm accent rule
+│ Approved for dispatch                              ┌─────────┐ │  9pt semibold  ← the attestation
+│ Jean Mbarga · Commercial Director                  │   QR    │ │  7.5pt
+│                                                    │  20mm   │ │
+│ 20 Aug 2026 14:35 WAT · Verified by email code     └─────────┘ │  6pt mono, muted
+│ WAYBILL-8842-A · content e3b0c44298fc1c14        A4B7-K92M-XQ1P│  6pt mono, muted
+└────────────────────────────────────────────────────────────────┘
 ```
 
-**Hard rules.**
+It reads as a sentence: *For Smart Logistics, approved for dispatch, by Jean Mbarga, Commercial
+Director, on 20 August 2026, verified by email code.* Everything below that sentence is a footnote,
+and is typeset like one.
+
+**`DRAWN` variant** — same frame, same evidence rows; the drawn PNG occupies the attestation slot at
+`max-height: 10mm`, with the name beneath it and the reason moved down one line.
+
+#### Five things it does that the first mockup did not
+
+| | Why it matters |
+| --- | --- |
+| **`FOR {PARTY}`** as the first line | A countersigned document carries two seals, and each must declare **which side it speaks for**. Bureau LPC printed "POUR LA PETITE COUR" for exactly this reason. Without it, two seals on one page are indistinguishable. |
+| **`n of m`** position in the chain | Tells a reader whether they are holding a fully-executed document or a half-signed one — the single most common question about a countersigned waybill. |
+| **The attestation is the headline** | `Reason: Approved for dispatch` in 7 pt buries the only part a human actually needs. It is promoted to 9 pt semibold and everything else demoted around it. |
+| **Monochrome-first** | Designed in greys, with brand colour as one accent rule. The original depended on green to read as approved — and on a photocopy green becomes a grey blob. Inverting the default removes the failure mode instead of testing for it. |
+| **One credential in the QR** | See §3.7 — the short code makes the QR modules ~50% larger in the same footprint. |
+
+#### Hard rules
 
 | Rule | Why |
 | --- | --- |
-| **MUST NOT print "VALID", a tick, or any verdict** | A static PDF cannot know it is valid. Validity depends on amendment and revocation, both of which happen *after* printing. A revoked signature would carry a green VALID badge on every copy in existence, forever — which contradicts §4.5's whole revocation model and is the first thing an opponent would point at. The seal states what it **is**; the portal states what it **evaluates to**. |
+| **MUST NOT print a verdict** — no "VALID", no tick, no green badge | A static PDF cannot know it is valid. Validity depends on amendment and revocation, both of which happen *after* printing. A revoked signature would carry a green VALID badge on every copy in existence, forever — contradicting §4.5's revocation model, and the first thing an opponent would point at. The seal states what it **is**; the portal states what it **evaluates to**. |
 | **MUST NOT print an IP address** | §3.13. |
-| **MUST NOT print "Praxis"** or any vendor mark | The product is white-label. The tenant's client sees the tenant. |
-| **MUST NOT print engineering vocabulary** | `Method` reads "Verified by email code" / "Vérifié par code e-mail" — never `AES_OTP`. Nobody outside this repo knows what that means, and a document a court reads should not need a glossary. |
-| **MUST** label the hash and truncate it consistently | Post-Q2 there are two hashes. Print the **content** hash, first **16** hex characters, labelled `Content`. An unlabelled 34-character fragment invites a reader to think it is the whole digest. |
-| **MUST** carry the QR and short code inside the seal border | The seal is the part people photograph and crop. A verification code outside it gets cropped off. |
-| **MUST** derive colour from tenant branding | Border and header take the branding accent already resolved in `cfg`; no hardcoded blue. |
-| **MUST** survive monochrome | Logistics documents get photocopied and faxed. Nothing may depend on colour to be readable: metadata at ≥7pt in a grey no lighter than `#4b5563`, and the border at ≥1pt. |
+| **MUST NOT print a vendor mark** | The product is white-label. The tenant's client sees the tenant. |
+| **MUST NOT print engineering vocabulary** | "Verified by email code" / "Vérifié par code e-mail" — never `AES_OTP`. A document a court reads should not need a glossary. |
+| **MUST** label the hash and truncate consistently | Two hashes exist post-Q2. Print the **content** hash, first **16** hex, labelled. An unlabelled 34-character fragment invites a reader to think it is the whole digest. |
+| **MUST** keep QR and code inside the border | The seal is the part people photograph and crop; verification has to travel with it. |
+| **MUST** take colour from tenant branding | Accent rule and header from the resolved `cfg`; no hardcoded blue. |
+| **MUST** survive monochrome | Nothing depends on colour. Metadata ≥ 6 pt in no lighter than `#4b5563`; border ≥ 0.25 mm. |
 
-**Print size.** 88 mm × 34 mm. The 34 mm is not arbitrary — it is the height budget Bureau LPC
-proved a signature block can occupy without pushing a one-page document onto a second page
-(questionnaire §0.1), and the same test applies here.
+#### `Reason` — adopted, as a controlled vocabulary
 
-**Bilingual.** Field labels follow the party's resolved language (§3.14).
+Signing intent was the mockup's best idea and it is kept. But it is a **fixed list**, never free
+text: free text on a legal seal is a liability field, and someone will eventually type something
+that contradicts the document it sits on. Seeded bilingual: *Approved for dispatch · Approved for
+payment · Goods received · Reviewed and accepted · Acknowledged*. Stored as
+`document_signature.sign_reason`; tenant-editable at `/settings/signatures`; the signer picks and
+cannot type.
 
-**`Reason`** is a genuinely good addition and is adopted, with one constraint: it is a **controlled
-vocabulary**, not free text. Free text on a legal seal is a liability field — someone will eventually
-type something that contradicts the document. Seeded: *Approved for dispatch · Approved for payment ·
-Goods received · Reviewed and accepted · Acknowledged*. Stored on the signature row as `sign_reason`.
-A tenant may edit the list at `/settings/signatures`; a signer picks from it and cannot type.
-
-**Provenance of every field** — nothing here is retyped, which is the §3.11 promise:
+#### Provenance — nothing here is retyped
 
 | Field | Source |
 | --- | --- |
-| Tenant name, colour | branding + `corporate_entity` |
-| Name, role | `app_user` for `SESSION`; the signing form for `DECLARED` |
+| `FOR {party}` | `corporate_entity.legal_name` for `INTERNAL`; the counterparty's name for `EXTERNAL` |
+| `n of m` | the party's `sequence_no` over the request's party count; omitted for a lone signature |
 | Reason | the signer's pick from the controlled list |
-| Ref | the document's own number |
-| Signed | `document_signature.signed_at`, rendered in the tenant timezone with the zone named |
+| Name, role | `app_user` when `identity_source = 'SESSION'`; the signing form when `'DECLARED'` |
+| Signed | `signed_at`, in the tenant timezone with the zone named |
 | Method | `assurance_level`, translated to plain language |
+| Ref | the document's own number |
 | Content | `content_hash`, first 16 |
-| QR, code | `verify_token`, `verify_code` |
+| QR, code | `verify_code` — one credential, two renderings |
 
 ### 3.13 IP addresses — handling directive
 
@@ -656,13 +698,53 @@ the safer default).
 
 ---
 
-## 4. PR-1 — Signature core
+## 4. PR-1 — Signature core · **BACKEND DELIVERED**
 
 **Ships:** the schema that replaces the `0410` stub, the canonical-payload registry, the two-axis
-tier model with its preset catalogue, the eligibility funnel, internal signing, token minting, and
-staleness detection. No public surface, no OTP, no QR yet.
+tier model with its preset catalogue, the eligibility funnel, internal signing, code minting, the
+visual seal, and staleness detection. No public surface, no OTP.
 
 **Merges alone.** Everything else builds on this schema.
+
+### 4.0 What actually shipped, and what changed from this specification
+
+| Item | Status |
+| --- | --- |
+| `10740`–`10743` migrations | ✅ Delivered — **as ALTER, not DROP + CREATE**, see below |
+| `services/signatures/{canonical,tokens,presets,mask,qr}.js` | ✅ Delivered |
+| `kit.sealBlock()` + the seal CSS | ✅ Delivered — §3.12 |
+| `document_signature.*` — all seven files rewritten | ✅ Delivered |
+| `document_vault.types.js` ceiling | ✅ Delivered — `SIGNATURE_CEILING` |
+| Tests: canonical (18), tokens/mask (15), presets (15), seal (18) | ✅ 66 passing |
+| `scripts/dev/render-seal.js` | ✅ Added — not in the original plan; see below |
+| `signatures.tsx` rewrite, `/settings/signatures` page | ⬜ **Remaining PR-1 work** |
+
+**Four things the spec got wrong, corrected in the build:**
+
+1. **The migration reshapes the table; it does not replace it.** §4.2 specified `DROP TABLE` +
+   `CREATE TABLE`. That trips `scripts/db/check-schema-drift.js`: two `CREATE TABLE` statements for
+   one table means the earlier file wins under `IF NOT EXISTS` and the later one is a silent no-op.
+   `0410` is frozen in the idempotency baseline and cannot be edited, so the correct resolution —
+   and the one that checker documents — is `ALTER TABLE … ADD COLUMN` in place, guarded by an
+   empty-table assertion that refuses to run rather than destroy rows.
+
+2. **The seal overflowed its own border, and only a render showed it.** Two bugs, both invisible in
+   the HTML: `max-height` does not clip, so a long name pushed the evidence rows outside the frame;
+   and at 6 pt a monospace character is ~1.27 mm, so the 45-character date+method line needed ~58 mm
+   against a 58.5 mm column and wrapped, orphaning its last word. Fixed at 5.5 pt with
+   `overflow: hidden` as a backstop, and locked by geometry tests.
+   **`scripts/dev/render-seal.js` exists because of this** — run it after any change to the seal.
+
+3. **The QR figures in §3.7 were estimated and wrong.** Measured, corrected in place, and the
+   conclusion held: the short code plus the `/v/` path is what keeps the symbol at 33 modules.
+
+4. **One public credential, not two.** `verify_token` is gone; `verify_code` serves both the QR and
+   the printed line. See §3.7.
+
+**A deliberate breaking change:** `POST /api/tenant/signatures/` is **removed**, not deprecated. Its
+entire contract was `signer_name` supplied in the request body — the precise thing this PR exists to
+forbid — so a deprecation window would keep the vulnerability alive for its duration.
+`doc/api-contract.json` is updated accordingly.
 
 ### 4.1 Scope
 
@@ -735,8 +817,8 @@ CREATE TABLE document_signature (
   -- the mark itself
   mark_image_b64    text,            -- DRAWN only. NULL for STAMP / PROVIDER / INK.
 
-  -- verification credentials (§3.7). PLAINTEXT — these grant a public read, not an action.
-  verify_token      text NOT NULL,
+  -- verification credential (§3.7). ONE code, plaintext: it grants a public read,
+  -- not an action, and the QR and the printed line are two renderings of it.
   verify_code       text NOT NULL,
 
   -- evidence, captured at OTP VERIFICATION (§3.13), never at page load
@@ -753,8 +835,7 @@ CREATE TABLE document_signature (
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_sig_token ON document_signature(verify_token);
-CREATE UNIQUE INDEX uq_sig_code  ON document_signature(verify_code);
+CREATE UNIQUE INDEX uq_sig_code ON document_signature(verify_code);
 CREATE INDEX ix_sig_entity ON document_signature(entity_ref, signed_at DESC);
 CREATE INDEX ix_sig_doc    ON document_signature(document_vault_id);
 CREATE INDEX ix_sig_signer ON document_signature(signer_user_id);
@@ -937,7 +1018,7 @@ the signer's name from a form field.
 6. An unregistered doc type returns `422 NO_CANONICAL_PAYLOAD`.
 6a. The rendered seal contains no verdict word, no IP, no vendor name, and no `AES_OTP`-style token;
    it fits 88 × 34 mm; and it stays legible converted to greyscale (§3.12).
-7. `verify_token` and `verify_code` are unique and readable back through `GET /signatures/:id`;
+7. `verify_code` is unique and readable back through `GET /signatures/:id`;
    `sign_token_hmac` (PR-3) is **not** readable back anywhere. The reviewer checks the asymmetry by
    eye — it is the whole of §3.7.
 8. `npm run ci` green.
@@ -977,6 +1058,10 @@ stops a well-meaning "let's add a green tick" from reaching a printed document.
 10. Tests per §4.8.
 11. Delete nothing else yet — `document_verification` is PR-2's to replace.
 
+**Remaining after the backend delivery:** steps 8 and 9 only. The current `signatures.tsx` still
+posts to the removed `POST /signatures/` and takes a signer name from a form field, so it is broken
+until rewritten — that is the next commit, not a follow-up ticket.
+
 ---
 
 ## 5. PR-2 — Verification portal
@@ -990,7 +1075,7 @@ closes both structural defects from the questionnaire.
 | In | Out |
 | --- | --- |
 | QR + short code rendered into the PDF, server-side | External signing (PR-3) |
-| `/public/verify/:token` and `/public/verify/code/:code` | The Certificate of Completion (PR-3) |
+| `/v/:code` (the QR target) and `/verify` (manual entry) | The Certificate of Completion (PR-3) |
 | Per-doc-type summary resolvers (Q12 = C) | The wet-signature DataMatrix (PR-5) — different code, different payload |
 | `signature_scan` + notification + anomaly signal | |
 | Deleting `praxis://` and the prefix-match finding | |
@@ -998,7 +1083,7 @@ closes both structural defects from the questionnaire.
 ### 5.2 The two defects, closed
 
 **Defect 1 — the hash could not be printed on the document it described.** Solved by PR-1: the QR
-now carries `verify_token`, minted **before** rendering, and the portal resolves the signature row
+now carries `verify_code`, minted **before** rendering, and the portal resolves the signature row
 and recomputes the canonical hash from live data. `artifact_hash` is written back after rendering
 (`pdf.service.renderAndStore` already computes it) and is reported as a second, separate verdict.
 
@@ -1042,7 +1127,8 @@ CREATE INDEX ix_scan_window ON signature_scan(signature_id, scanned_at);
 
 ### 5.4 The portal (Q12 = C)
 
-`basePath: "/public/verify"`, `feature: "signatures.portal"`, no auth, rate-limited, and — following
+`basePath: "/v"` (plus `/verify` for manual entry), `feature: "signatures.portal"`, no auth,
+rate-limited, and — following
 `proposal_public.routes.js` — **pinned to live**: `req.tenantDbIn("live", …)`. A visitor must not be
 able to send `X-Praxis-Env: sandbox` and read sandbox rows.
 
@@ -1133,16 +1219,16 @@ OTP path shows up as a metric before it shows up as a support ticket.
 
 ### 5.7 Frontend
 
-- `client/src/features/public/verify-page.tsx` — **new**, mounted at `/public/verify/:token` and
-  `/public/verify` (manual code entry). Follows `app.tsx`'s existing `/public/*` grouping, which
-  mirrors the API namespace.
+- `client/src/features/public/verify-page.tsx` — **new**, mounted at `/v/:code` and `/verify`
+  (manual code entry). Deliberately NOT under `/public/*`: this path is printed on paper and read
+  aloud, so every character costs.
 - `client/src/features/vault/verification.tsx` — **deleted** (addition i). Its "paste a hash" flow
   describes a mechanism this programme removes. The internal view it half-served becomes a tab on
   the signature detail: who scanned this, when, from how many distinct addresses.
 
 ### 5.8 Acceptance criteria
 
-1. A rendered invoice PDF contains a **scannable** QR resolving to `https://…/public/verify/{token}`,
+1. A rendered invoice PDF contains a **scannable** QR resolving to `https://…/v/{code}`,
    with the short code printed beneath it.
 2. `grep -r "praxis://" src/` returns nothing.
 3. An unknown token returns `404` with an identical body for malformed and never-existed inputs.
@@ -1159,7 +1245,7 @@ OTP path shows up as a metric before it shows up as a support ticket.
 1. `10744`, `10745`.
 2. Add `qrcode`; `kit.verifyBlock()`; delete the footer verify string.
 3. Thread the resolved URL + code + QR SVG through `template.service.js`.
-4. Rewrite `document_verification.*` → `basePath: "/public/verify"`, exact HMAC lookup, limiter,
+4. Rewrite `document_verification.*` → `basePath: "/v"`, exact code lookup, limiter,
    `tenantDbIn("live")`.
 5. Summary resolver registry + the six V1 resolvers.
 6. `signature_scan` write path, notification, anomaly job.
@@ -1961,8 +2047,7 @@ GET    /document-verification/scans       MOD-66 view
 **Public** (no auth; token is the credential; rate-limited; `tenantDbIn("live")`):
 
 ```
-GET    /public/verify/:token
-GET    /public/verify/code/:code
+GET    /v/:code                            (the QR target and the typed code)
 GET    /public/sign/:token
 POST   /public/sign/:token/otp
 POST   /public/sign/:token/verify

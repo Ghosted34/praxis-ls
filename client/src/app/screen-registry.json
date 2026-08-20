@@ -1394,6 +1394,7 @@
       "purpose": "Signature blocks used on documents.",
       "actions": [
         "list_signatures",
+        "signature_menu",
         "sign_document"
       ]
     },

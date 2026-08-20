@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 119,
-  "route_count": 1297,
+  "route_count": 1301,
   "tiers": {
     "public": 32,
     "self-scoped": 74,
-    "gated": 1191
+    "gated": 1195
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3226,6 +3226,24 @@
       "tier": "gated"
     },
     "GET /api/tenant/signatures/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/menu": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/stats": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6921,7 +6939,13 @@
       "validated": false,
       "tier": "gated"
     },
-    "POST /api/tenant/signatures/": {
+    "POST /api/tenant/signatures/:id/revoke": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/internal": {
       "auth": true,
       "rbac": true,
       "validated": false,

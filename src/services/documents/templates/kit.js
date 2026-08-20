@@ -192,6 +192,49 @@ function shell(title, bodyHtml, cfg = {}) {
     .wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
     .wm span { font-size: 96px; font-weight: 800; color: ${c.accent}; opacity: 0.08; transform: rotate(-24deg); letter-spacing: 0.1em; }
     .qr { margin-top: 8px; font-size: 9px; color: ${c.muted}; }
+
+    /* ── The electronic seal (SIGNATURE_ENGINEERING_GUIDE §3.12) ────────────
+       Sized in millimetres, not pixels: this block has a hard 34mm height
+       budget on a one-page document, and px would leave that at the mercy of
+       the renderer's DPI assumptions.
+
+       MONOCHROME-FIRST. Every value below is a grey except the 0.4mm accent
+       rule, which is decoration. A logistics document is photocopied and faxed,
+       so nothing may DEPEND on colour to be readable — the original mockup
+       leaned on green to read as approved, and green photocopies to a grey
+       blob. Designing in grey removes the failure mode instead of testing for
+       it afterwards. */
+    /* overflow:hidden is a BACKSTOP, not the layout. The sizes below are chosen
+       so nothing overflows in the first place — but a signer with an unusually
+       long name must never push the evidence rows outside the border, which is
+       what an unclipped max-height does. Caught by rendering it, not by reading it. */
+    .seal { width: 88mm; max-height: 34mm; overflow: hidden;
+            border: 0.25mm solid #9aa0a6; padding: 2.5mm; box-sizing: border-box;
+            display: flex; gap: 2.5mm; page-break-inside: avoid; break-inside: avoid; }
+    .seal .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .seal .for { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase;
+                 font-weight: 700; color: ${c.accent}; display: flex; justify-content: space-between; gap: 2mm; }
+    .seal .pos { font-family: ${c.monoFont}; color: #4b5563; font-weight: 400; letter-spacing: 0.04em; white-space: nowrap; }
+    .seal .rule { border-top: 0.4mm solid ${c.accent}; margin: 0.9mm 0 1.4mm; }
+    .seal .reason { font-size: 9pt; font-weight: 600; color: #111827; line-height: 1.15; }
+    .seal .who { font-size: 7.5pt; color: #1f2937; margin-top: 0.6mm; line-height: 1.2; }
+    /* DRAWN: the image IS the headline, so the name stays at body size. Promoting
+       it to 9pt semibold (the first attempt) made "Aïssatou Njoya · Procurement
+       Manager" wrap to two lines and pushed the whole block past 34mm. */
+    .seal .who-drawn { font-size: 7.5pt; font-weight: 600; color: #111827; line-height: 1.2; }
+    .seal .reason-sub { font-size: 7pt; color: #374151; line-height: 1.2; margin-top: 0.3mm; }
+    .seal .drawn { max-height: 8mm; max-width: 44mm; display: block; margin-bottom: 0.4mm; }
+    /* Footnotes to the sentence above, and set as such.
+       5.5pt, NOT 6pt: at 6pt a monospace character is ~1.27mm, so the 45-character
+       date+method line needs ~58mm and the text column is 58.5mm — it wrapped, and
+       orphaned the last word onto its own line. 5.5pt gives ~50 characters of room.
+       #4b5563 is the lightest grey that survives a second-generation photocopy. */
+    .seal .ev { margin-top: auto; padding-top: 1mm; font-family: ${c.monoFont};
+                font-size: 5.5pt; color: #4b5563; line-height: 1.45; }
+    .seal .vfy { width: 22mm; text-align: center; flex: none; }
+    .seal .vfy svg { display: block; width: 22mm; height: 22mm; }
+    .seal .vfy .code { font-family: ${c.monoFont}; font-size: 5.5pt; letter-spacing: 0.02em;
+                       color: #4b5563; margin-top: 0.8mm; white-space: nowrap; }
     @media print { .wm span { opacity: 0.08; } }`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="doc">${cfg.watermark ? watermark(cfg.watermark) : ""}${bodyHtml}</div></body></html>`;
 }
@@ -255,6 +298,98 @@ function signatureBlock(cfg = {}) {
   return `<div class="sig"><div class="b"><div class="ln">${t({ fr: "Pour le client", en: "For the client" }, cfg.language)}</div></div><div class="b"><div class="ln">${who || t({ fr: "Pour la société", en: "For the company" }, cfg.language)}</div></div></div>`;
 }
 
+/**
+ * The electronic seal — the visual mark of one signature
+ * (doc/SIGNATURE_ENGINEERING_GUIDE.md §3.12).
+ *
+ * It reads as a sentence, not a form: "For Smart Logistics, approved for
+ * dispatch, by Jean Mbarga, Commercial Director, on 20 August 2026, verified by
+ * email code." Everything below that sentence is a footnote and is typeset as
+ * one. An earlier design laid the same facts out as label:value rows of equal
+ * weight, which buried the only part a human actually needs.
+ *
+ * ── What this function deliberately CANNOT do ──────────────────────────────
+ * There is no parameter for a verdict, and none for an IP address. Those are
+ * not omissions to be validated against later; the function has no way to
+ * render them:
+ *
+ *   NO VERDICT. A static PDF cannot know it is valid. Validity depends on
+ *   amendment and revocation, both of which happen AFTER printing — so a
+ *   revoked signature would carry a green "VALID" badge on every copy in
+ *   existence, forever, contradicting the revocation model outright. The seal
+ *   states what it IS; the portal behind the QR states what it EVALUATES TO.
+ *
+ *   NO IP. §3.13 — it is PII, and this page travels through a warehouse, a
+ *   border post and a customer's filing cabinet.
+ *
+ * Nor is there a vendor name (the product is white-label, so the tenant's
+ * client sees the tenant), and `method` must arrive already translated into
+ * plain language — never "AES_OTP". A document a court reads should not need a
+ * glossary.
+ *
+ * @param {object} sig
+ * @param {string} sig.forParty     whose side this seal speaks for
+ * @param {object} [sig.position]   { n, of } — omitted for a lone signature
+ * @param {string} [sig.reason]     the attestation, from the controlled list
+ * @param {string} sig.signerName
+ * @param {string} [sig.signerRole]
+ * @param {string} sig.signedAt     already formatted, with the zone named
+ * @param {string} sig.method       plain language, already translated
+ * @param {string} [sig.docRef]
+ * @param {string} [sig.contentHash] full digest; truncated to 16 here
+ * @param {string} sig.code         verify_code, unformatted
+ * @param {string} sig.qrSvg        inline SVG from services/signatures/qr.js
+ * @param {string} [sig.markImageB64] data URL, DRAWN only
+ */
+function sealBlock(sig = {}, cfg = {}) {
+  const c = { ...defaults(), ...cfg };
+  const lang = c.language;
+
+  const pos = sig.position && sig.position.of > 1
+    ? `<span class="pos">${esc(sig.position.n)} ${t({ fr: "sur", en: "of" }, lang)} ${esc(sig.position.of)}</span>`
+    : "";
+
+  // A drawn mark takes the attestation slot and the reason moves below the name,
+  // so the block keeps one shape and one height whichever card was chosen.
+  //
+  // The name is NOT enlarged in the drawn variant: the image already carries the
+  // hierarchy, and promoting the name to the reason's 9pt made a real-length
+  // "Aïssatou Njoya · Procurement Manager" wrap and overflow the 34mm budget.
+  const isDrawn = Boolean(sig.markImageB64);
+  const drawn = isDrawn ? `<img class="drawn" src="${esc(sig.markImageB64)}" alt="">` : "";
+  const reason = sig.reason
+    ? `<div class="${isDrawn ? "reason-sub" : "reason"}">${esc(sig.reason)}</div>`
+    : "";
+  const who = `<div class="${isDrawn ? "who-drawn" : "who"}">${esc(sig.signerName)}${
+    sig.signerRole ? ` · ${esc(sig.signerRole)}` : ""
+  }</div>`;
+
+  const hashFragment = sig.contentHash
+    ? ` · ${t({ fr: "contenu", en: "content" }, lang)} ${esc(String(sig.contentHash).slice(0, 16))}`
+    : "";
+
+  // Order matters: drawn mark (if any), then the attestation, then who. For a
+  // stamp the reason leads because it is the claim; for a drawn mark the image
+  // leads because that is what the eye goes to first.
+  const identity = isDrawn ? `${drawn}${who}${reason}` : `${reason}${who}`;
+
+  return `<div class="seal">
+  <div class="body">
+    <div class="for"><span>${t({ fr: "Pour", en: "For" }, lang)} ${esc(sig.forParty)}</span>${pos}</div>
+    <div class="rule"></div>
+    ${identity}
+    <div class="ev">${esc(sig.signedAt)} · ${esc(sig.method)}<br>${esc(sig.docRef || "")}${hashFragment}</div>
+  </div>
+  <div class="vfy">${sig.qrSvg || ""}<div class="code">${esc(formatVerifyCode(sig.code))}</div></div>
+</div>`;
+}
+
+/** `A4B7K92MXQ1P` → `A4B7-K92M-XQ1P`. Duplicated from services/signatures/tokens
+ *  so the kit stays free of service dependencies, per this file's contract. */
+function formatVerifyCode(code) {
+  return String(code || "").toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/(.{4})(?=.)/g, "$1-");
+}
+
 function watermark(text) {
   return `<div class="wm"><span>${esc(text)}</span></div>`;
 }
@@ -282,5 +417,5 @@ function footer(entity = {}, cfg = {}, verify) {
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
-  bankBlock, termsBlock, signatureBlock, watermark, watermarkFor, footer,
+  bankBlock, termsBlock, signatureBlock, sealBlock, formatVerifyCode, watermark, watermarkFor, footer,
 };

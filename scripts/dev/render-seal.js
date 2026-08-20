@@ -46,7 +46,7 @@ const fs = require("fs");
   const css = k.shell("x", "", {}).match(/<style>([\s\S]*?)<\/style>/)[1];
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     ${css}
-    body { background:#fff; margin:0; padding:8mm; font-family: Helvetica, Arial, sans-serif; }
+    body { background:#fff; margin:0; padding:8mm; font-family: sans-serif; }
     .cap { font-size: 7.5pt; color:#6b7280; margin: 0 0 2mm; letter-spacing:.04em; text-transform:uppercase; }
     .row { margin-bottom: 9mm; }
     .ruler { width:88mm; border-top:0.2mm dashed #c00; margin-top:1mm; font-size:6pt; color:#c00; }

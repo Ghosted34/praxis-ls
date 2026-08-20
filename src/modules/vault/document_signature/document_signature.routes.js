@@ -27,6 +27,8 @@ router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
 router.get("/menu", requirePermission(MODULE, "view"), validator.menuQuery, controller.menu);
 router.get("/stats", requirePermission(MODULE, "view"), controller.stats);
+router.get("/reasons", requirePermission(MODULE, "view"), controller.reasons);
+router.get("/presets", requirePermission(MODULE, "view"), controller.presets);
 // After /menu and /stats: an :id route declared first would swallow both.
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 

@@ -153,6 +153,12 @@ const SECTIONS: Section[] = [
         icon: "comms",
       },
       {
+        to: "/settings/signatures",
+        label: "Signatures",
+        desc: "How each document may be signed",
+        icon: "comms",
+      },
+      {
         to: "/notifications",
         label: "Notifications",
         desc: "Your channel & category preferences",

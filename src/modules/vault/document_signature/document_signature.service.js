@@ -178,6 +178,12 @@ async function get(client, id, { language = "fr", full = false } = {}) {
   return present(sig, status, { language, full });
 }
 
+/** The full card catalogue, for the settings screen. */
+const presetCatalogue = (client) => presets.catalogue(client, { activeOnly: false });
+
+/** The controlled signing-reason vocabulary (§3.12). Never free text. */
+const reasons = (client) => presets.reasons(client);
+
 /** The resolved card menu for a document (funnel levels 1–2). */
 async function menu(client, { docType, language = "fr" }) {
   return presets.resolveMenu(client, { docType, language });
@@ -314,6 +320,7 @@ async function stepUpRequired(client, { totalXaf }) {
 }
 
 module.exports = {
-  listByRef, get, menu, signInternal, revoke, setArtifact, stats,
+  listByRef, get, menu, reasons, signInternal, revoke, setArtifact, stats,
+  presets: presetCatalogue,
   statusOf, present, methodWords, stepUpRequired, loadDoc,
 };

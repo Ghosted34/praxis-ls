@@ -698,7 +698,7 @@ the safer default).
 
 ---
 
-## 4. PR-1 — Signature core · **BACKEND DELIVERED**
+## 4. PR-1 — Signature core · **DELIVERED** (PR #239)
 
 **Ships:** the schema that replaces the `0410` stub, the canonical-payload registry, the two-axis
 tier model with its preset catalogue, the eligibility funnel, internal signing, code minting, the
@@ -717,7 +717,9 @@ visual seal, and staleness detection. No public surface, no OTP.
 | `document_vault.types.js` ceiling | ✅ Delivered — `SIGNATURE_CEILING` |
 | Tests: canonical (18), tokens/mask (15), presets (15), seal (18) | ✅ 66 passing |
 | `scripts/dev/render-seal.js` | ✅ Added — not in the original plan; see below |
-| `signatures.tsx` rewrite, `/settings/signatures` page | ⬜ **Remaining PR-1 work** |
+| `signatures.tsx` rewritten; `signature-cards.tsx`, `signature-vocab.ts` | ✅ Delivered |
+| `/settings/signatures` + its hub card and route | ✅ Delivered |
+| Gates | ✅ `npm run ci` **30/30**; 4125 backend + 1551 frontend tests |
 
 **Four things the spec got wrong, corrected in the build:**
 
@@ -1058,9 +1060,20 @@ stops a well-meaning "let's add a green tick" from reaching a printed document.
 10. Tests per §4.8.
 11. Delete nothing else yet — `document_verification` is PR-2's to replace.
 
-**Remaining after the backend delivery:** steps 8 and 9 only. The current `signatures.tsx` still
-posts to the removed `POST /signatures/` and takes a signer name from a form field, so it is broken
-until rewritten — that is the next commit, not a follow-up ticket.
+**Delivered.** Three endpoints not in the original §4.4 table were needed by the screens and are
+now part of the contract: `GET /signatures/reasons` (the controlled vocabulary), `GET
+/signatures/presets` (the full catalogue, for Settings), and the existing `GET /signatures/menu`.
+
+The frontend is **three files, not one**, because the card grid is shared by three audiences —
+the sender here, the signer on PR-3's public page, and the administrator in Settings:
+
+- `features/vault/signature-cards.tsx` — the card and grid components
+- `features/vault/signature-vocab.ts` — the enum→English strings all three surfaces need, split out
+  so the component file exports components only (React Fast Refresh breaks otherwise)
+- `features/settings/signatures-page.tsx` — funnel level 2, plus the identity and verification panels
+
+**PR-3 MUST reuse `signature-cards.tsx` on the public signing page.** Rebuilding the grid there is
+how the sender and the signer end up seeing different names for the same method.
 
 ---
 

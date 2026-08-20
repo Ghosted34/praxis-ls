@@ -44,6 +44,14 @@ module.exports = {
     res.json({ data });
   }),
 
+  presets: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.presets(c)) });
+  }),
+
+  reasons: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.reasons(c)) });
+  }),
+
   stats: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.stats(c)) });
   }),

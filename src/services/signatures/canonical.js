@@ -99,7 +99,20 @@ const totals = (t = {}) => ({
 // literals so the order is fixed by the source, not by a runtime sort.
 // ───────────────────────────────────────────────────────────────────────────
 
-const BUILDERS = {
+/**
+ * ⚠ NULL-PROTOTYPE ON PURPOSE (CodeQL js/unvalidated-dynamic-method-call).
+ *
+ * `docType` arrives from a request body. A plain object literal inherits from
+ * Object.prototype, so BUILDERS["constructor"] resolves to `Object` — truthy,
+ * and callable. The guard below reads `if (!builder) throw`, so it PASSED, and
+ * `hash("constructor", {})` returned a real-looking sha256 for a document type
+ * that does not exist. Verified before the fix; there is a test for it now.
+ *
+ * A null prototype removes the whole class rather than the two names someone
+ * happened to think of. The hasOwnProperty guard in canonical() is the second
+ * belt: either alone would do, and a signature payload is worth both.
+ */
+const BUILDERS = Object.assign(Object.create(null), {
   /** Money owed, and for what. The fiscal ladder is the whole point. */
   FINAL_INVOICE: (d) => ({
     v: 1,
@@ -223,12 +236,14 @@ const BUILDERS = {
     trial_period_months: Number.isFinite(Number(d.trial_period_months)) ? Number(d.trial_period_months) : 0,
     clauses: (Array.isArray(d.clauses) ? d.clauses : []).map((c) => str(c && c.heading ? c.heading : c)),
   }),
-};
+});
 
 /** Doc types that can be signed at all. */
 const SIGNABLE = Object.freeze(Object.keys(BUILDERS));
 
-const isSignable = (docType) => Object.prototype.hasOwnProperty.call(BUILDERS, docType);
+/** Own-property check. The ONLY safe way to ask whether a builder exists. */
+const isSignable = (docType) =>
+  typeof docType === "string" && Object.prototype.hasOwnProperty.call(BUILDERS, docType);
 
 /**
  * Build the canonical payload for a doc type.
@@ -239,8 +254,9 @@ const isSignable = (docType) => Object.prototype.hasOwnProperty.call(BUILDERS, d
  * check is what makes adding v2 a local change instead of an audit.
  */
 function canonical(docType, doc, version = 1) {
-  const builder = BUILDERS[docType];
-  if (!builder) {
+  // hasOwnProperty rather than a truthiness check: see the BUILDERS docblock.
+  const builder = isSignable(docType) ? BUILDERS[docType] : null;
+  if (typeof builder !== "function") {
     throw new AppError(
       "NO_CANONICAL_PAYLOAD",
       `'${docType}' has no canonical signature payload. Register one in services/signatures/canonical.js — see doc/SIGNATURE_ENGINEERING_GUIDE.md §3.6.`,

@@ -24,6 +24,18 @@ const canonical = require("../../src/services/signatures/canonical");
 const fixtures = require("../fixtures/signature-canonical.fixtures");
 const { signableDocTypes } = require("../../src/modules/vault/document_vault/document_vault.types");
 
+/** The AppError code a call throws, or null if it did not throw. Asserting on
+ *  the code rather than the message keeps these tests from breaking when the
+ *  human-facing wording is improved. */
+function codeOf(fn) {
+  try {
+    fn();
+    return null;
+  } catch (err) {
+    return err.code || err.message;
+  }
+}
+
 const GOLDEN = {
   FINAL_INVOICE: "b84eb88ad6321b2f8e6cbed5d623a9ca9e56d4e0fba6bf4d55520f20b4ff4c80",
   PROFORMA_ADVANCE: "b3dcbd312d3fae46786af8df8490a307d91231b70863864213e29b53b1f5f23a",
@@ -95,6 +107,30 @@ describe("canonical payload — the hashed contract", () => {
 
   test("an unregistered doc type throws rather than hashing nothing", () => {
     expect(() => canonical.hash("PAYSLIP", {})).toThrow(/NO_CANONICAL_PAYLOAD|canonical signature payload/);
+  });
+
+  /**
+   * REGRESSION — CodeQL js/unvalidated-dynamic-method-call, High.
+   *
+   * `docType` arrives from a request body, and BUILDERS was a plain object
+   * literal. BUILDERS["constructor"] resolved to `Object` — truthy AND callable
+   * — so the `if (!builder) throw` guard passed and hash("constructor", {})
+   * returned a real-looking sha256 for a document type that does not exist.
+   * Verified broken before the fix.
+   */
+  test.each([
+    "constructor", "toString", "valueOf", "hasOwnProperty", "__proto__",
+    "isPrototypeOf", "propertyIsEnumerable", "toLocaleString",
+  ])("Object.prototype member %s is not a doc type", (probe) => {
+    expect(canonical.isSignable(probe)).toBe(false);
+    expect(codeOf(() => canonical.canonical(probe, {}))).toBe("NO_CANONICAL_PAYLOAD");
+    expect(codeOf(() => canonical.hash(probe, {}))).toBe("NO_CANONICAL_PAYLOAD");
+  });
+
+  test("a non-string doc type throws rather than coercing", () => {
+    for (const bad of [null, undefined, 42, {}, [], true]) {
+      expect(codeOf(() => canonical.hash(bad, {}))).toBe("NO_CANONICAL_PAYLOAD");
+    }
   });
 
   test("an unimplemented payload version throws rather than silently using v1", () => {

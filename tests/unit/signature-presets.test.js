@@ -118,6 +118,23 @@ describe("the doc-type ceiling", () => {
     expect(signaturePolicyFor("SOMETHING_NEW")).toEqual({ signable: false, allowsQes: false, allowsWet: false });
   });
 
+  /**
+   * REGRESSION, same class as the canonical.js CodeQL finding. The ceiling was
+   * `SIGNATURE_CEILING[docType] || NOT_SIGNABLE`, and for an Object.prototype
+   * name the left side was `Object` — truthy — so the fallback never fired and
+   * this returned a FUNCTION where its contract promises an object. Nothing
+   * broke downstream, because every property read off it came back undefined
+   * and read as "not allowed". That is luck, and luck is not a control.
+   */
+  test.each(["constructor", "toString", "valueOf", "__proto__", "hasOwnProperty"])(
+    "Object.prototype member %s gets the not-signable ceiling, not a function",
+    (probe) => {
+      const ceiling = signaturePolicyFor(probe);
+      expect(typeof ceiling).toBe("object");
+      expect(ceiling).toEqual({ signable: false, allowsQes: false, allowsWet: false });
+    },
+  );
+
   test("the employment contract is the one type that may not be wet-signed", () => {
     expect(signaturePolicyFor("EMPLOYMENT_CONTRACT").allowsWet).toBe(false);
     expect(signaturePolicyFor("DELIVERY_NOTE").allowsWet).toBe(true);

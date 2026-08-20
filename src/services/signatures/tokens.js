@@ -42,19 +42,42 @@ const crypto = require("crypto");
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CODE_LENGTH = 12; // 32^12 = 2^60. Safe ONLY with the portal rate limiter.
 
-/** Crockford's canonical read-side substitutions, applied before lookup. */
-const NORMALISE = { I: "1", L: "1", O: "0", U: "V" };
+/**
+ * Crockford's canonical read-side substitutions, applied before lookup.
+ * Null-prototype for the same reason as the maps in canonical.js and
+ * presets.js: the input is already filtered to [0-9A-Z] below, so a prototype
+ * member cannot reach it today — but that safety lives in a regex three
+ * functions away, and this costs nothing to make local.
+ */
+const NORMALISE = Object.assign(Object.create(null), { I: "1", L: "1", O: "0", U: "V" });
 
 /**
- * Generate a verify code. Rejection sampling on whole bytes so every character
- * is uniform — `% 32` on a 0..255 byte is already uniform here (256 is a
- * multiple of 32), but the mask is written explicitly so the property survives
- * someone changing the alphabet length later.
+ * Generate a verify code, uniformly.
+ *
+ * ⚠ REJECTION SAMPLING, not `byte % 32` (CodeQL js/biased-cryptographic-random).
+ *
+ * With today's 32-character alphabet `%` happens to be unbiased, because 256 is
+ * an exact multiple of 32 — an earlier version of this function said so in a
+ * comment and left the modulo in place. That comment was describing a property
+ * of the CONSTANT, not of the code: add or remove one character from ALPHABET
+ * and the low-numbered characters silently become likelier than the rest, in a
+ * credential nobody would think to re-audit.
+ *
+ * Drawing only from the largest whole multiple of the alphabet length that fits
+ * in a byte, and discarding the remainder, is uniform for ANY length. Rejected
+ * bytes cost a little entropy, never correctness: at 32 characters the reject
+ * rate is zero, and it stays under 25% for every length up to 256.
  */
 function mintVerifyCode() {
-  const bytes = crypto.randomBytes(CODE_LENGTH);
+  const n = ALPHABET.length;
+  const limit = Math.floor(256 / n) * n;
   let out = "";
-  for (let i = 0; i < CODE_LENGTH; i += 1) out += ALPHABET[bytes[i] % ALPHABET.length];
+  while (out.length < CODE_LENGTH) {
+    const bytes = crypto.randomBytes(CODE_LENGTH);
+    for (let i = 0; i < bytes.length && out.length < CODE_LENGTH; i += 1) {
+      if (bytes[i] < limit) out += ALPHABET[bytes[i] % n];
+    }
+  }
   return out;
 }
 

@@ -14,6 +14,34 @@ describe("verify code — the public credential", () => {
     }
   });
 
+  /**
+   * REGRESSION — CodeQL js/biased-cryptographic-random, High.
+   *
+   * This was `randomBytes(n)[i] % ALPHABET.length`. With 32 characters that is
+   * unbiased by arithmetic accident (256 is an exact multiple of 32), and the
+   * code carried a comment saying so — a claim about the CONSTANT, not the
+   * code. Change the alphabet by one character and the low-numbered characters
+   * silently become likelier, in a credential nobody would re-audit.
+   *
+   * A chi-square would be the textbook check; a deviation bound is what fails
+   * loudly and reads clearly in CI. At 400k draws over 32 symbols, true uniform
+   * output sits far inside 6% — biased-by-one-character output would land near
+   * 100%.
+   */
+  test("draws uniformly across the whole alphabet", () => {
+    const counts = new Map();
+    const draws = 34000; // 34k codes x 12 chars = 408k symbols
+    for (let i = 0; i < draws; i += 1) {
+      for (const ch of tokens.mintVerifyCode()) counts.set(ch, (counts.get(ch) || 0) + 1);
+    }
+    expect(counts.size).toBe(tokens.ALPHABET.length);
+    const expected = (draws * tokens.CODE_LENGTH) / tokens.ALPHABET.length;
+    for (const [ch, n] of counts) {
+      const deviation = Math.abs(n - expected) / expected;
+      expect({ ch, deviation: deviation < 0.06 }).toEqual({ ch, deviation: true });
+    }
+  });
+
   test("does not repeat across a large sample", () => {
     const seen = new Set();
     for (let i = 0; i < 5000; i += 1) seen.add(tokens.mintVerifyCode());

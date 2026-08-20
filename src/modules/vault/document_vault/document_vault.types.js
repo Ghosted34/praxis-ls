@@ -153,7 +153,15 @@ const DOC_TYPES = {
  * doc type appearing in a signing menu because somebody forgot to think about
  * it is the failure this table exists to prevent.
  */
-const SIGNATURE_CEILING = {
+/*
+ * Null-prototype: docType reaches this map from a request body, and a plain
+ * literal would resolve SIGNATURE_CEILING["constructor"] to `Object` — truthy,
+ * so the `|| NOT_SIGNABLE` fallback never fired and this function returned a
+ * FUNCTION where its contract promises an object. Nothing broke, because every
+ * property read off it came back undefined and read as "not allowed", but that
+ * is luck rather than design. Same class as the canonical.js CodeQL finding.
+ */
+const SIGNATURE_CEILING = Object.assign(Object.create(null), {
   FINAL_INVOICE:       { signable: true, allowsQes: true,  allowsWet: true },
   PROFORMA_ADVANCE:    { signable: true, allowsQes: false, allowsWet: true },
   QUOTATION:           { signable: true, allowsQes: true,  allowsWet: true },
@@ -169,12 +177,15 @@ const SIGNATURE_CEILING = {
    * is worth its cost.
    */
   EMPLOYMENT_CONTRACT: { signable: true, allowsQes: true,  allowsWet: false },
-};
+});
 
 const NOT_SIGNABLE = Object.freeze({ signable: false, allowsQes: false, allowsWet: false });
 
 /** The ceiling for a doc type. Unregistered types are not signable. */
-const signaturePolicyFor = (docType) => SIGNATURE_CEILING[docType] || NOT_SIGNABLE;
+const signaturePolicyFor = (docType) =>
+  (typeof docType === "string" && Object.prototype.hasOwnProperty.call(SIGNATURE_CEILING, docType)
+    ? SIGNATURE_CEILING[docType]
+    : NOT_SIGNABLE);
 
 /** Doc types that can carry a signature at all. */
 const signableDocTypes = () => Object.keys(SIGNATURE_CEILING);
@@ -185,7 +196,7 @@ const signableDocTypes = () => Object.keys(SIGNATURE_CEILING);
  * conservatively rather than left open.
  */
 const moduleKeyForDocType = (docType) =>
-  (DOC_TYPES[docType] && DOC_TYPES[docType].moduleKey) || "MOD-70";
+  (isDocType(docType) && DOC_TYPES[docType].moduleKey) || "MOD-70";
 
 const isDocType = (docType) => Object.prototype.hasOwnProperty.call(DOC_TYPES, docType);
 

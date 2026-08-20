@@ -34,11 +34,22 @@
 const { AppError } = require("../../utils/errors");
 const { getSetting } = require("../../shared/config/settings");
 
-/** Feature flags that gate individual cards, beyond the tenant menu. */
-const CARD_FLAG = { CERTIFIED: "signatures.qes", PRINT_SIGN: "signatures.wet" };
+/**
+ * Feature flags that gate individual cards, beyond the tenant menu.
+ * Null-prototype: these are indexed by preset_code from the database, and an
+ * inherited Object.prototype member would return a FUNCTION rather than the
+ * undefined the code expects. Same class as the canonical.js BUILDERS finding.
+ */
+const CARD_FLAG = Object.assign(Object.create(null), {
+  CERTIFIED: "signatures.qes",
+  PRINT_SIGN: "signatures.wet",
+});
 
 /** Cards a tenant may never enable for a doc type whose ceiling forbids them. */
-const CEILING_CARD = { CERTIFIED: "allowsQes", PRINT_SIGN: "allowsWet" };
+const CEILING_CARD = Object.assign(Object.create(null), {
+  CERTIFIED: "allowsQes",
+  PRINT_SIGN: "allowsWet",
+});
 
 async function catalogue(client, { activeOnly = true } = {}) {
   const { rows } = await client.query(

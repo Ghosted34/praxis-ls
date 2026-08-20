@@ -13,7 +13,7 @@
 
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
-import { ASSURANCE_WORDS, BLOCKED_REASON } from "./signature-vocab";
+import { ASSURANCE_WORDS, BLOCKED_REASON, look } from "./signature-vocab";
 
 export type PresetCard = {
   preset_code: string;
@@ -79,7 +79,7 @@ export function SignatureCard({
       <span className="text-xs text-muted-foreground">
         {disabled
           ? (disabledReason ?? "Not available")
-          : (ASSURANCE_WORDS[card.assurance_level] ?? card.assurance_level)}
+          : look(ASSURANCE_WORDS, card.assurance_level, card.assurance_level)}
       </span>
     </button>
   );
@@ -133,7 +133,7 @@ export function SignatureCardGrid({
                   assurance_level: "",
                 }}
                 disabled
-                disabledReason={BLOCKED_REASON[b.reason] ?? "Not available"}
+                disabledReason={look(BLOCKED_REASON, b.reason, "Not available")}
               />
             ))}
         </div>

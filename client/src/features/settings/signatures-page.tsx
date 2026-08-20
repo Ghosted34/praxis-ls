@@ -29,7 +29,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { errMsg, type Row } from "@/lib/use-resource";
-import { BLOCKED_REASON, ASSURANCE_WORDS } from "@/features/vault/signature-vocab";
+import { BLOCKED_REASON, ASSURANCE_WORDS, look } from "@/features/vault/signature-vocab";
 
 type Preset = {
   preset_code: string;
@@ -129,7 +129,7 @@ function DocTypeRow({
               <span>
                 <span className="block font-medium">{p.label_en}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {ASSURANCE_WORDS[p.assurance_level] ?? p.assurance_level}
+                  {look(ASSURANCE_WORDS, p.assurance_level, p.assurance_level)}
                 </span>
               </span>
             </label>

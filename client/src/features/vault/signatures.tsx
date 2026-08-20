@@ -34,7 +34,7 @@ import { cell, dateFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { isGated } from "./shared";
 import { SignatureCardGrid, type SignatureMenu } from "./signature-cards";
-import { STATUS_TONE, STATUS_WORDS } from "./signature-vocab";
+import { STATUS_WORDS, statusTone, look } from "./signature-vocab";
 
 /**
  * Sign as the current user.
@@ -375,8 +375,8 @@ export function SignaturesPage() {
                     </TD>
                     <TD className="text-sm">
                       <StatusPill
-                        status={STATUS_WORDS[String(r.status)] ?? String(r.status)}
-                        tone={STATUS_TONE[String(r.status)] ?? "mute"}
+                        status={look(STATUS_WORDS, r.status, String(r.status))}
+                        tone={statusTone(r.status)}
                       />
                       {r.revoke_reason ? (
                         <span className="block text-xs text-muted-foreground">

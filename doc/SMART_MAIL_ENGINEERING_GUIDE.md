@@ -13,6 +13,12 @@ acceptance criteria, tests, rollout, ordered task list.
 
 ---
 
+> **Field notes live separately.** What actually broke after each PR merged, and
+> what now stops it recurring, is in `doc/SMART_MAIL_FIELD_NOTES.md`. This
+> document stays the plan of record and reads as the plan; that one is the defect
+> log. Read this to know what we are building, that to know what the building
+> taught us.
+
 ## 0. How to use this document
 
 - **§1** is the decision log. It is binding. If the code disagrees with §1, the code is wrong.

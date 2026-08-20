@@ -640,6 +640,45 @@ export type ThreadQuery = {
   limit?: number;
 };
 
+/**
+ * Coerce an address list into an array, whatever the server sent.
+ *
+ * The server is supposed to send arrays and now does — `citext[]` is cast to
+ * `text[]` at every read, and a CI gate keeps it that way. This is the second
+ * line, and it exists because of what the first failure cost: a single column
+ * arriving as the Postgres literal `"{a@b.cm,c@d.cm}"` instead of an array made
+ * `.filter` throw inside a row renderer, and the error boundary took the ENTIRE
+ * Mailbox screen — folder rail, list, reading pane, all of it — for one bad
+ * field on one conversation.
+ *
+ * A workspace should not be that brittle. Parsing the literal here means the
+ * worst case degrades to one row looking odd, which someone can report, instead
+ * of a screen nobody can open.
+ */
+const toAddressList = (v: unknown): string[] => {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v !== "string" || v === "") return [];
+  // A Postgres array literal: {a@b.cm,"quoted, value"}
+  if (v.startsWith("{") && v.endsWith("}")) {
+    return (v.slice(1, -1).match(/"(?:[^"\\]|\\.)*"|[^,]+/g) || [])
+      .map((x) => x.trim().replace(/^"|"$/g, "").replace(/\\"/g, '"'))
+      .filter(Boolean);
+  }
+  return [v];
+};
+
+/** Normalise the array-shaped fields on a conversation as it comes off the wire. */
+const normaliseThread = (t: Thread): Thread => ({
+  ...t,
+  participants: toAddressList(t.participants),
+});
+
+const normaliseMessage = (m: Message): Message => ({
+  ...m,
+  to_address: toAddressList(m.to_address),
+  cc_address: toAddressList(m.cc_address),
+});
+
 const qs = (o: Record<string, unknown>) => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(o)) {
@@ -650,9 +689,12 @@ const qs = (o: Record<string, unknown>) => {
 };
 
 export const listThreads = (q: ThreadQuery = {}) =>
-  tenant<Thread[]>(`/mail/threads${qs(q)}`);
+  tenant<Thread[]>(`/mail/threads${qs(q)}`).then((rows) => (rows || []).map(normaliseThread));
 export const getThread = (id: string) =>
-  tenant<ThreadDetail>(`/mail/threads/${id}`);
+  tenant<ThreadDetail>(`/mail/threads/${id}`).then((t) => ({
+    ...normaliseThread(t),
+    messages: (t.messages || []).map(normaliseMessage),
+  }));
 
 export const setThreadRead = (id: string, on = true) =>
   tenant<{ email_thread_id: string; messages: number; is_read: boolean }>(

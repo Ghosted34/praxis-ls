@@ -52,9 +52,13 @@ function MessageBlock({
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const origin = originNote(message);
+  // Same reasoning as counterparties() in thread-list: guard the shape rather
+  // than trust it, because the cost of being wrong here is the whole screen.
+  const to = Array.isArray(message.to_address) ? message.to_address : [];
+  const cc = Array.isArray(message.cc_address) ? message.cc_address : [];
   const who =
     message.direction === "OUT"
-      ? `To ${message.to_address.join(", ") || "—"}`
+      ? `To ${to.join(", ") || "—"}`
       : `From ${message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}`;
 
   return (
@@ -93,9 +97,9 @@ function MessageBlock({
             {origin && <Pill tone="warn">{origin}</Pill>}
             {message.has_attachment && <Pill tone="mute">Attachment</Pill>}
           </div>
-          {message.cc_address.length > 0 && (
+          {cc.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Cc: <span className="num">{message.cc_address.join(", ")}</span>
+              Cc: <span className="num">{cc.join(", ")}</span>
             </p>
           )}
           {message.body_html ? (
@@ -178,7 +182,7 @@ export function ThreadView({
           </Button>
         </div>
         <p className="num text-xs text-muted-foreground">
-          {thread.participants.join(", ")}
+          {(Array.isArray(thread.participants) ? thread.participants : []).join(", ")}
         </p>
 
         {/* WHY the classifier put this here, in words, next to the control that

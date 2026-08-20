@@ -320,7 +320,10 @@ async function recentPatterns(client) {
 async function recentNegativeFeedback(client) {
   try {
     const { rows } = await client.query(
-      `SELECT answer_text, comment, action_keys
+      // action_keys is citext[], which node-postgres cannot parse — without the
+      // cast this arrives as the string "{a,b}" and `actions` becomes a string
+      // where every consumer expects a list. Caught by check-citext-arrays.js.
+      `SELECT answer_text, comment, action_keys::text[] AS action_keys
          FROM ai_answer_feedback
         WHERE vote = 'down'
           AND comment IS NOT NULL

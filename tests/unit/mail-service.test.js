@@ -81,6 +81,10 @@ jest.mock("../../src/modules/mail/mail/mailbox.repo", () => ({
 jest.mock("../../src/shared/config/settings", () => ({
   getSetting: jest.fn(async () => ({})),
 }));
+const mockSuggest = jest.fn(async () => []);
+jest.mock("../../src/modules/mail/binding/binding.service", () => ({
+  suggestOnIngest: (...a) => mockSuggest(...a),
+}));
 jest.mock("../../src/modules/mail/mail/mail.repo", () => ({
   getConnection: jest.fn(),
   setError: jest.fn(async () => {}),
@@ -297,35 +301,22 @@ test("persists attachments to the vault and links them to the MESSAGE", async ()
   );
 });
 
-test("links a conversation to a client when the sender matches (CRM)", async () => {
+test("ingest writes a binding SUGGESTION, never entity_ref (Q18)", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [inbound({ externalMessageId: "<d>", from: "client@acme.cm", subject: "D" })],
+    messages: [inbound({ externalMessageId: "<d>", from: "client@acme.cm", subject: "Re: SLAS-2026-0001 shipment" })],
     nextCursor: null,
   });
   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-d" });
-  repo.findClientByEmail.mockResolvedValueOnce({ client_id: "cli-1", name: "Acme" });
 
   await service.syncConnection({}, "conn-1", {});
 
-  expect(repo.findClientByEmail).toHaveBeenCalledWith({}, "client@acme.cm");
-  // The THREAD carries the link, not the single message — a dossier reference in
-  // one reply is about the whole exchange.
-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-1", { entity_ref: "client:cli-1" });
-});
-
-test("auto-links to a dossier when its ref appears in the subject (wins over client)", async () => {
-  mockFetchSince.mockResolvedValue({
-    messages: [inbound({ externalMessageId: "<f>", from: "client@acme.cm", subject: "Re: SLAS-2026-0001 shipment" })],
-    nextCursor: null,
-  });
-  threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-f" });
-  repo.findDossierByRefs.mockResolvedValueOnce({ dossier_id: "dos-1", ref: "SLAS-2026-0001" });
-
-  await service.syncConnection({}, "conn-1", {});
-
-  expect(repo.findDossierByRefs).toHaveBeenCalledWith({}, expect.arrayContaining(["SLAS-2026-0001"]));
-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-1", { entity_ref: "dossier:dos-1" });
-  expect(repo.findClientByEmail).not.toHaveBeenCalled(); // dossier match short-circuits
+  expect(mockSuggest).toHaveBeenCalledWith({}, expect.objectContaining({
+    fromAddress: "client@acme.cm",
+    subject: "Re: SLAS-2026-0001 shipment",
+  }));
+  expect(threads.updateThread).not.toHaveBeenCalledWith(
+    {}, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
+  );
 });
 
 test("sanitizes the inbound HTML body before storing (stored-XSS guard)", async () => {

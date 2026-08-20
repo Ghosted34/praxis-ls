@@ -42,6 +42,8 @@ const PROCESSORS = [
   // hammering it with concurrent SMTP sessions is how a mailbox gets suspended.
   { name: "mail-send-flush", concurrency: 1, handler: require("./handlers/mail-send-flush") },
   { name: "mail-send-flush-scheduler", concurrency: 1, handler: require("./handlers/mail-send-flush-scheduler") },
+  { name: "deliverability-check", concurrency: 1, handler: require("./handlers/deliverability-check") },
+  { name: "deliverability-check-scheduler", concurrency: 1, handler: require("./handlers/deliverability-check-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.

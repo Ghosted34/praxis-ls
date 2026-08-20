@@ -912,3 +912,158 @@ export const runCommand = (key: string, body: {
 }) => tenant<CommandResult>(`/mail/commands/${encodeURIComponent(key)}`, {
   method: "POST", body: JSON.stringify(body),
 });
+
+/* ── PR-2: signatures & deliverability ──────────────────────────────────── */
+
+export type SignatureTemplate = {
+  signature_template_id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  layout: Record<string, unknown>;
+  copy_en: Record<string, unknown>;
+  copy_fr: Record<string, unknown>;
+  scope_kind: "TENANT" | "DEPARTMENT" | "ENTITY";
+  scope_value?: string | null;
+  is_default: boolean;
+  is_system: boolean;
+  is_active: boolean;
+};
+
+export type SignatureProfile = {
+  person: {
+    user_id?: string;
+    user_full_name?: string | null;
+    employee_full_name?: string | null;
+    job_title?: string | null;
+    department?: string | null;
+  } | null;
+  profile: {
+    phone_desk?: string | null;
+    phone_mobile?: string | null;
+    whatsapp?: string | null;
+    pronouns?: string | null;
+    credentials?: string | null;
+    booking_url?: string | null;
+    language?: "en" | "fr" | null;
+    is_enabled?: boolean;
+    signature_template_id?: string | null;
+  } | null;
+  preview: { html?: string; text?: string; language?: string } | null;
+};
+
+export const getSignatureProfile = () => tenant<SignatureProfile>("/mail/signature");
+export const saveSignatureProfile = (body: Record<string, unknown>) =>
+  tenant("/mail/signature", { method: "PUT", body: JSON.stringify(body) });
+export const previewSignature = (lang?: string) =>
+  tenant<{ html: string; text: string }>(`/mail/signature/preview${lang ? `?lang=${lang}` : ""}`);
+export const listSignatureTemplates = () => tenant<SignatureTemplate[]>("/mail/signature/templates");
+
+export async function downloadSignaturePng(opts: { language?: string; scale?: 1 | 2 | 3 } = {}) {
+  const q = new URLSearchParams();
+  if (opts.language) q.set("lang", opts.language);
+  if (opts.scale) q.set("scale", String(opts.scale));
+  const { tenantDownload } = await import("./api-client");
+  await tenantDownload(`/mail/signature/png?${q.toString()}`, `signature-${opts.scale || 1}x.png`);
+}
+
+export type DomainHealthRow = {
+  domain_health_check_id: string;
+  domain: string;
+  record: "MX" | "SPF" | "DKIM" | "DMARC" | "PTR" | "RBL";
+  selector?: string | null;
+  verdict: "PASS" | "FAIL" | "UNKNOWN";
+  value?: string | null;
+  suggestion?: string | null;
+  checked_at: string;
+};
+
+export const listDeliverability = () => tenant<DomainHealthRow[]>("/mail/deliverability");
+export const checkDeliverability = (domain?: string) =>
+  tenant("/mail/deliverability/check", {
+    method: "POST",
+    body: JSON.stringify(domain ? { domain } : {}),
+  });
+export const deliverabilityHistory = (domain: string) =>
+  tenant<DomainHealthRow[]>(`/mail/deliverability/${encodeURIComponent(domain)}/history`);
+
+/* ── PR-3: binding, notes, context ──────────────────────────────────────── */
+
+export type BindingSuggestion = {
+  email_binding_suggestion_id: string;
+  entity_ref: string;
+  entity_label?: string | null;
+  signal: string;
+  matched_text?: string | null;
+  confidence: number;
+  status: "SUGGESTED" | "ACCEPTED" | "REJECTED" | "SUPERSEDED";
+};
+
+export const listSuggestions = (threadId: string) =>
+  tenant<BindingSuggestion[]>(`/mail/threads/${threadId}/suggestions`);
+export const acceptSuggestion = (threadId: string, sid: string) =>
+  tenant(`/mail/threads/${threadId}/suggestions/${sid}/accept`, { method: "POST" });
+export const rejectSuggestion = (threadId: string, sid: string) =>
+  tenant(`/mail/threads/${threadId}/suggestions/${sid}/reject`, { method: "POST" });
+export const bindThread = (threadId: string, entity_ref: string) =>
+  tenant(`/mail/threads/${threadId}/bind`, { method: "POST", body: JSON.stringify({ entity_ref }) });
+export const unbindThread = (threadId: string) =>
+  tenant(`/mail/threads/${threadId}/bind`, { method: "DELETE" });
+
+export type MailContext = {
+  kind: string;
+  header: Record<string, unknown>;
+  overview: Record<string, unknown>;
+  tabs_available: string[];
+};
+export const mailContext = (entityRef: string) =>
+  tenant<MailContext>(`/mail/context?entity_ref=${encodeURIComponent(entityRef)}`);
+export const mailContextTab = (entityRef: string, tab: string) =>
+  tenant(`/mail/context/${encodeURIComponent(tab)}?entity_ref=${encodeURIComponent(entityRef)}`);
+
+export type ThreadNote = {
+  email_thread_note_id: string;
+  author_user_id: string;
+  author_name?: string | null;
+  body: string;
+  created_at: string;
+  deleted_at?: string | null;
+};
+export const listNotes = (threadId: string) =>
+  tenant<ThreadNote[]>(`/mail/threads/${threadId}/notes`);
+export const addNote = (threadId: string, body: { body: string; mentions?: string[] }) =>
+  tenant(`/mail/threads/${threadId}/notes`, { method: "POST", body: JSON.stringify(body) });
+
+/* ── PR-4: AI assist ────────────────────────────────────────────────────── */
+
+export const assistCompose = (body: Record<string, unknown>) =>
+  tenant("/mail/assist/compose", { method: "POST", body: JSON.stringify(body) });
+export const assistDraft = (body: { thread_id: string }) =>
+  tenant("/mail/assist/draft", { method: "POST", body: JSON.stringify(body) });
+export const assistSummary = (threadId: string) =>
+  tenant(`/mail/assist/summary?thread_id=${encodeURIComponent(threadId)}`);
+export const assistGuardrails = (body: Record<string, unknown>) =>
+  tenant("/mail/assist/guardrails", { method: "POST", body: JSON.stringify(body) });
+
+/* ── PR-5: workflow / security ──────────────────────────────────────────── */
+
+export const claimThread = (threadId: string) =>
+  tenant(`/mail/threads/${threadId}/claim`, { method: "POST" });
+export const assignThread = (threadId: string, userId: string) =>
+  tenant(`/mail/threads/${threadId}/assign`, { method: "POST", body: JSON.stringify({ user_id: userId }) });
+export const setWorkStatus = (threadId: string, status: "OPEN" | "PENDING" | "RESOLVED") =>
+  tenant(`/mail/threads/${threadId}/status`, { method: "POST", body: JSON.stringify({ status }) });
+export const snoozeThread = (threadId: string, dueAt: string, note?: string) =>
+  tenant(`/mail/threads/${threadId}/snooze`, { method: "POST", body: JSON.stringify({ due_at: dueAt, note }) });
+export const createFollowup = (threadId: string, body: Record<string, unknown>) =>
+  tenant(`/mail/threads/${threadId}/followup`, { method: "POST", body: JSON.stringify(body) });
+export const createSecureLink = (body: Record<string, unknown>) =>
+  tenant("/mail/secure-links", { method: "POST", body: JSON.stringify(body) });
+export const revokeSecureLink = (id: string) =>
+  tenant(`/mail/secure-links/${id}/revoke`, { method: "POST" });
+export const setVisibility = (threadId: string, visibility: "PRIVATE" | "TEAM" | "COMPANY") =>
+  tenant(`/mail/threads/${threadId}/visibility`, { method: "PATCH", body: JSON.stringify({ visibility }) });
+export const breakglass = (threadId: string, reason: string) =>
+  tenant(`/mail/threads/${threadId}/breakglass`, { method: "POST", body: JSON.stringify({ reason }) });
+export const verifyArchive = () => tenant("/mail/archive/verify");
+

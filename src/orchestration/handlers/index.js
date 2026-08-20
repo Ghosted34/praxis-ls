@@ -7,6 +7,7 @@
 "use strict";
 
 const { register } = require("../registry");
+const invalidateSignaturesOnEntity = require("./entity-updated-invalidate-signatures");
 
 const dossierMilestones = require("./dossier-created-instantiate-milestones");
 const advanceMilestone = require("./advance-milestone-on-op-event");
@@ -39,6 +40,16 @@ register(require("./outbound-dispatched-handling-cost"));     // outbound DISPAT
 
 // ── Finance lifecycle ──
 register(require("./receipt-posted-collected-signal"));       // receipt.posted → dossier.fully_collected (all billed invoices settled)
+
+// ── Mail signatures (PR-2) ──
+register(require("./employee-updated-invalidate-signature"));
+register(invalidateSignaturesOnEntity);
+register({
+  eventKey: "entity.letterhead_updated",
+  handlerKey: "entity.letterhead_updated:invalidate-signatures",
+  feature: null,
+  run: invalidateSignaturesOnEntity.run,
+});
 
 // ── Resolved decisions — intentionally NOT auto-wired (not pending) ──
 //  Payroll run → GL-only (company-wide 661/664). Dossier labour is DRIVER TIME,

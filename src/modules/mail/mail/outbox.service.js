@@ -203,6 +203,15 @@ async function send(client, actor, input = {}) {
   }
   if (!html && !text) throw new AppError("VALIDATION_ERROR", "a message needs a body", 422);
 
+  // Signature is baked into the FROZEN payload here, not at flush. A promotion
+  // that lands in the undo window must not rewrite a message the sender already
+  // approved. A failure here must not block the send — a missing signature is
+  // recoverable, a lost invoice is not.
+  try {
+    const baked = await attachSignature(client, actor, input, html, text);
+    html = baked.html; text = baked.text;
+  } catch { /* @silent:storage the message without a signature is still the message */ }
+
   const draftId = input.email_draft_id || null;
   const attachments = draftId ? await repo.listDraftAttachments(client, draftId) : [];
   if (attachments.length) await assertRoomFor(client, draftId, 0);
@@ -410,6 +419,23 @@ async function flush(client, deps = {}, { limit = 20 } = {}) {
     results.push(await flushOne(client, row, deps));
   }
   return { claimed: due.length, results };
+}
+
+async function attachSignature(client, actor, input, html, text) {
+  const { rows } = await client.query(
+    `SELECT state FROM feature_state WHERE feature_key = 'mail.signatures'`,
+  );
+  if (!rows[0] || rows[0].state !== "on") return { html, text };
+  const signatures = require("../signature/signature.service");
+  const resolved = await signatures.resolveFor(client, {
+    userId: actor.user_id || null,
+    connectionId: input.connectionId,
+    language: input.language || null,
+    partyLanguage: input.party_language || null,
+    repliedMessageLanguage: input.replied_language || null,
+    senderUiLanguage: input.ui_language || null,
+  });
+  return signatures.bake(html, text, resolved);
 }
 
 module.exports = {

@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS document_requirement (
   is_active    boolean NOT NULL DEFAULT true
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS document_requirement_scope_uq
+  ON document_requirement (scope_kind, COALESCE(scope_value, ''), doc_type_code);
+
 CREATE TABLE IF NOT EXISTS email_attachment_classification (
   email_attachment_classification_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email_attachment_id uuid NOT NULL REFERENCES email_attachment(email_attachment_id) ON DELETE CASCADE,
@@ -43,7 +46,7 @@ INSERT INTO document_requirement (scope_kind, scope_value, doc_type_code, applie
   ('GLOBAL', NULL, 'NIU', 'CLIENT', 20),
   ('GLOBAL', NULL, 'ID_SIGNATORY', 'CLIENT', 30),
   ('GLOBAL', NULL, 'BANK_DETAILS', 'CLIENT', 40)
-;
+ON CONFLICT DO NOTHING;
 
 -- DOWN
 --   DROP TABLE IF EXISTS email_attachment_classification;

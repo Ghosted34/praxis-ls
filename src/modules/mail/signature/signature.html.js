@@ -113,8 +113,8 @@ function appendToHtml(html, signatureHtml) {
 
 function appendToText(text, signatureText) {
   if (!signatureText) return text || "";
-  const body = String(text || "").replace(/\s+$/, "");
-  const sig = String(signatureText).replace(/^\s+/, "");
+  const body = String(text || "").trimEnd();
+  const sig = String(signatureText).trimStart();
   return body ? `${body}\n\n-- \n${sig}` : `-- \n${sig}`;
 }
 

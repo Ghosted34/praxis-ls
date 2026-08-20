@@ -40,17 +40,24 @@ CREATE TABLE IF NOT EXISTS email_thread_lock (
   expires_at timestamptz NOT NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS mail_sla_policy_name_uq ON mail_sla_policy (name);
+CREATE UNIQUE INDEX IF NOT EXISTS business_hours_dow_uq ON business_hours (day_of_week);
+
 INSERT INTO mail_sla_policy (name, applies_to_vip, first_response_minutes, resolution_minutes)
-SELECT 'Standard', false, 240, 2880
-WHERE NOT EXISTS (SELECT 1 FROM mail_sla_policy WHERE name = 'Standard');
+VALUES ('Standard', false, 240, 2880)
+ON CONFLICT (name) DO NOTHING;
 INSERT INTO mail_sla_policy (name, applies_to_vip, first_response_minutes, resolution_minutes)
-SELECT 'VIP', true, 60, 2880
-WHERE NOT EXISTS (SELECT 1 FROM mail_sla_policy WHERE name = 'VIP');
+VALUES ('VIP', true, 60, 2880)
+ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO business_hours (day_of_week, opens_at, closes_at, timezone)
-SELECT d, '08:00'::time, '17:00'::time, 'Africa/Douala'
-FROM generate_series(1,5) AS d
-WHERE NOT EXISTS (SELECT 1 FROM business_hours WHERE day_of_week = d);
+VALUES
+  (1, '08:00'::time, '17:00'::time, 'Africa/Douala'),
+  (2, '08:00'::time, '17:00'::time, 'Africa/Douala'),
+  (3, '08:00'::time, '17:00'::time, 'Africa/Douala'),
+  (4, '08:00'::time, '17:00'::time, 'Africa/Douala'),
+  (5, '08:00'::time, '17:00'::time, 'Africa/Douala')
+ON CONFLICT (day_of_week) DO NOTHING;
 
 INSERT INTO business_holiday (holiday_on, name) VALUES
   ('2026-01-01', 'New Year'),

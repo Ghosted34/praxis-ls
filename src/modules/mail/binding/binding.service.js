@@ -12,7 +12,7 @@ const { getSetting } = require("../../../shared/config/settings");
 async function lookupWorld(client, fromAddress) {
   const domain = String(fromAddress || "").split("@")[1] || "";
   const [dossiers, invoices, contacts, domains] = await Promise.all([
-    client.query(`SELECT dossier_id, ref FROM dossier LIMIT 500`).then((r) => r.rows).catch(() => []),
+    client.query(`SELECT dossier_id, ref FROM dossier_visible LIMIT 500`).then((r) => r.rows).catch(() => []),
     client.query(`SELECT invoice_id, doc_number FROM invoice LIMIT 500`).then((r) => r.rows).catch(() => []),
     client.query(
       `SELECT email, 'client:' || client_id AS entity_ref, name AS label

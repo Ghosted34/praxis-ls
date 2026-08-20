@@ -31,7 +31,7 @@ async function clientOverview(client, id) {
   if (!c) throw new AppError("NOT_FOUND", "client not found", 404);
   const extra = await client.query(
     `SELECT
-       (SELECT count(*) FROM dossier WHERE client_id = $1 AND status NOT IN ('CLOSED','CANCELLED')) AS open_dossiers,
+       (SELECT count(*) FROM dossier_visible WHERE client_id = $1 AND status NOT IN ('CLOSED','CANCELLED')) AS open_dossiers,
        (SELECT count(*) FROM quotation WHERE client_id = $1 AND status NOT IN ('ACCEPTED','REJECTED','EXPIRED')) AS open_quotes`,
     [id],
   ).then((r) => r.rows[0] || {}).catch(() => ({}));
@@ -56,7 +56,7 @@ async function clientOverview(client, id) {
 
 async function dossierOverview(client, id) {
   const { rows } = await client.query(
-    `SELECT dossier_id, ref, status, client_id FROM dossier WHERE dossier_id = $1`,
+    `SELECT dossier_id, ref, status, client_id FROM dossier_visible WHERE dossier_id = $1`,
     [id],
   );
   const d = rows[0];

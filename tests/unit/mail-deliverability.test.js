@@ -52,7 +52,7 @@ describe("RBL", () => {
       resolve: async (name) => (name.includes("spamhaus") ? ["127.0.0.2"] : Promise.reject(Object.assign(new Error("x"), { code: "ENOTFOUND" }))),
     });
     expect(r.verdict).toBe("FAIL");
-    expect(r.hint).toMatch(/zen\.spamhaus\.org/);
+    expect(r.hint).toContain("zen.spamhaus.org");
   });
 });
 

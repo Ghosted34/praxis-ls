@@ -41,6 +41,10 @@ const PUBLIC_BY_DESIGN = new Map([
   ],
   ["sales/public_intake", "Marketing website forms submit bounded, rate-limited CRM intake without accounts."],
   ["operations/tracking_public", "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing."],
+  [
+    "mail/public_secure",
+    "Secure download links are intentionally reachable without an account; lookup is by minted token only, every refusal is a uniform 404, and the route is rate-limited.",
+  ],
 ]);
 
 /**

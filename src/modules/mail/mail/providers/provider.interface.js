@@ -14,15 +14,32 @@
  */
 "use strict";
 
-/** Default capability set — adapters override the flags they support. */
+/**
+ * Default capability set — adapters override the flags they support.
+ *
+ * EVERY key is declared here, as `false`, rather than left for an adapter to
+ * add. An absent key reads as `undefined`, which is falsy, so a capability that
+ * is MISSING and one that is DENIED are indistinguishable at the call site —
+ * right up until somebody writes `if (caps.folderMove !== false)` and the two
+ * stop being the same thing. §3.5 fixes the shape of this object for exactly
+ * that reason; `tests/unit/mail-capabilities.test.js` holds every adapter to it.
+ */
 function baseCapabilities() {
   return {
     push: false,          // provider can webhook us on new mail (Graph/Gmail)
     delta: false,         // provider exposes a delta/history cursor
     serverThreads: false, // provider gives a first-class thread/conversation id
     appendSent: false,    // engine must APPEND sent copies to the Sent folder (SMTP)
+    folders: false,       // can enumerate + select folders               (IMAP: yes)
+    folderMove: false,    // can MOVE a message between folders           (IMAP: yes)
+    serverFlags: false,   // \Seen \Flagged \Answered are server-side     (IMAP: yes)
+    serverDrafts: false,  // can APPEND to Drafts        (not used in this programme)
+    serverSearch: false,  // provider-side search              (we use Postgres FTS)
   };
 }
+
+/** The keys every adapter must answer for. Exported so the gate cannot drift. */
+const CAPABILITY_KEYS = Object.freeze(Object.keys(baseCapabilities()));
 
 /**
  * Not instantiated directly — documents the contract and gives adapters a base to
@@ -49,4 +66,4 @@ const EmailProvider = {
   async renewSubscription(/* subscriptionId */) { return null; },
 };
 
-module.exports = { EmailProvider, baseCapabilities };
+module.exports = { EmailProvider, baseCapabilities, CAPABILITY_KEYS };

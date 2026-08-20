@@ -60,8 +60,22 @@ beforeEach(() => {
   access.assertCanRead.mockResolvedValue(true);
   mailRepo.getConnection.mockResolvedValue({ email_connection_id: "conn-1", status: "CONNECTED" });
   // The adapter the service reaches for when it propagates to the mail server.
+  //
+  // It declares `capabilities()` because a real adapter does, and because the
+  // service now ASKS before it calls (§3.5). A fixture that answers only the
+  // methods would make every propagation look unsupported — the same
+  // mock-shaped-differently-from-the-real-thing problem FN-1 is about. IMAP's
+  // real answer is used, since IMAP is the reference implementation and the CI
+  // target.
   jest.spyOn(require("../../src/modules/mail/mail/mail.service"), "resolveAdapter")
-    .mockResolvedValue({ markAsRead: mockMarkAsRead, moveMessage: mockMoveMessage });
+    .mockResolvedValue({
+      capabilities: () => ({
+        ...require("../../src/modules/mail/mail/providers/provider.interface").baseCapabilities(),
+        appendSent: true, folders: true, folderMove: true, serverFlags: true,
+      }),
+      markAsRead: mockMarkAsRead,
+      moveMessage: mockMoveMessage,
+    });
 });
 
 /* ── queryFrom: the search box becomes repo filters ───────────────────────── */

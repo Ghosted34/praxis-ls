@@ -217,3 +217,74 @@ Present but leaf-only, and needing a call-site counterpart: `mail-visibility`, `
 
 Items 4–6 are each a chapter's worth of work in their own right and should be planned as such rather
 than folded into a QC pass.
+
+---
+
+## 11. What the QC pass itself changed
+
+Nothing in this section is new feature work. Every fix connects code that was already written,
+already correct and already unit-tested to the path that was meant to call it.
+
+### 11.1 Closed
+
+| Gap | What was done |
+| --- | --- |
+| **5.1 visibility** | `visibility.clause` is ANDed into every thread read — list, get, FTS search, stream counts, label-apply, CRM timeline. `timelineByEntity` requires a caller and returns nothing without one. The AI read adapter passes the actor as a third argument, so `client_mail_timeline` and `list_mail_thread` are bound by the same predicate (§9.5's MUST). |
+| **5.9 break-glass** | Now `requireCeo()`, writes the `immutable_ledger` row *before* it reads, and actually returns the thread, through the single deliberately-unrestricted reader `getThreadUnrestricted`. |
+| **5.2 archive** | `triage/ingest-hooks.js` appends every ingested and every sent message to `email_archive`, under `FOR UPDATE` on the tail row so two concurrent archives cannot claim one predecessor. `GET /mail/archive/verify` now reports **coverage** as well as chain integrity — `verify([])` is `{ ok: true }`, and that was being shown as a pass over an empty table. |
+| **5.3 anti-spoofing** | `antispoof.evaluate` runs on every inbound message; `auth_verdict` and `auth_detail` are stored. Only `ADMIN_VERIFIED` domains are trusted; `OBSERVED` accrues with a counter, for the one-click "this domain belongs to <party>" affordance. |
+| **5.4 bounces** | DSNs are parsed into `email_bounce`, correlated to the original by `Message-ID`, and mark `client_contact` / `supplier_contact` — a soft bounce never downgrades an address already `HARD_FAILED`. |
+| **5.5 / 5.6 workers** | `mail-sla-sweep` and `mail-followup-sweep` written, registered and **enqueued on a repeat**. `deliverability-check-scheduler` had a worker and no tick, and is now enqueued too. `MAIL_FOLLOWUP_SWEEP_INTERVAL_MS` added; `MAIL_SLA_SWEEP_INTERVAL_MS` and `MAIL_DELIVERABILITY_INTERVAL_MS` already existed in config and were read by nobody. |
+| **5.7 SLA clock** | Computes in `business_hours.timezone` with real IANA arithmetic instead of the server's zone; the VIP ternary that returned the same value on both branches is gone; `resolution_due_at` is computed; PENDING/RESOLVED pause and stop the clocks; no calendar yields **no** due date rather than one a year out. |
+| **3.1 mention fan-out** | All three channels. `mention.service` posts the chat card into the author↔mentioned DM with `notifyMembers: false`, so one logical event stays one notification per user per channel. |
+| **3.2 / 3.7 mail-context** | 60-second Redis cache keyed by entity **and caller**, invalidated by the four named events through `invalidate-mail-context` handlers; `documents_missing` and `last_contact_at` are computed rather than hardcoded `null`; both they and the Interactions tab carry the visibility predicate; unbuilt tabs return `not_built: true` instead of an empty list that reads as "this client has none". |
+| **§3.5 capabilities** | `baseCapabilities()` declares all nine keys, so a capability that is missing and one that is denied are no longer indistinguishable. `propagateToServer` asks `capabilities()` before it calls, rather than probing for the method. |
+
+### 11.2 Tests added
+
+Seven suites, all of the *call-site* kind described in §8:
+
+- `tests/security/mail-visibility-wiring.test.js` — the predicate is applied at every read, the timeline fails closed, exactly one reader bypasses it and that one is CEO-gated and ledgered.
+- `tests/security/mail-ingest-hooks-wiring.test.js` — archive/verdict/DSN behaviour **and** that the sync loop and `recordOutbound` call the hook.
+- `tests/unit/mail-sweeps-wiring.test.js` — the clock, both sweeps, and that each queue is registered *and* enqueued.
+- `tests/unit/mail-capabilities.test.js` — the §3.7 matrix, plus proof that a denied capability is not attempted.
+- `tests/unit/mail-folder-sync.test.js` — the §3.7 claim proper: a UIDVALIDITY reset re-scans **only** the folder that was renumbered.
+- `tests/unit/mention-fanout.test.js` — three channels, exactly once, and the no-account refusal.
+- `tests/integration/mail-context-budget.test.js` — ≤ 6 statements cold, **zero** warm, per-caller keying, SCAN not KEYS.
+- `tests/unit/notification-dedupe.test.js` — rewritten from two leaf assertions to eleven, including that suppression covers push, not only the in-app row.
+
+Two existing fixtures were corrected rather than worked around: `mail-service.test.js` passed `{}` as
+its db client (a production guard had grown around that fixture), and `mail-threads.test.js` had an
+adapter with no `capabilities()`. Both are the FN-1 shape — a fixture that cannot produce what the
+real thing produces tests only itself.
+
+**`mail-html-serializer.test.js` (§3.7) is not missing after all**: `tests/unit/mail-compose.test.js`
+already covers the same ground in 61 tests, including the 102 KB clip threshold and the plain-text
+part. A naming mismatch, not a gap.
+
+### 11.3 Still open after this pass
+
+Unchanged from §5–§7 above, and none of it is a wiring job:
+
+- **PR-4's engine** (4.1–4.11). No LLM call is made on any mail path. The largest single gap.
+- **PR-3's remaining substance**: five of six dossier tabs, five of seven action cards, inbound
+  document intake, conversion dedup beyond exact e-mail, the Console VAPID panel.
+- **PR-5's remaining endpoints** (5.12): soft locks, SLA-policy and business-hours admin, secure-link
+  listing, thread sharing, verified-domain admin, `/mail/bounces`. Secure links still return a label
+  rather than the document (5.8), and scheduled send is not implemented (5.10).
+- **The frontend for PR-3 → PR-5** (3.9, 4.x, 5.14) — no partial credit exists in the tree.
+
+### 11.4 Two spec discrepancies found while testing
+
+Recorded rather than silently coded around:
+
+1. **§9.10 criterion 2 says a Friday 16:30 arrival with a 4-business-hour SLA is due Monday 10:30.**
+   On the calendar the guide itself seeds (Mon–Fri 08:00–17:00) the answer is Monday **11:30**: 30
+   minutes before Friday's close, then 3h30 from Monday's open. 10:30 requires an 18:00 close. The
+   test asserts the rule — *Monday, not Saturday* — and the arithmetic the seeded calendar produces.
+2. **§7.6 specifies `document_requirement.doc_type_ref_id uuid REFERENCES dictionary_ref(ref_id)`.**
+   Migration `10747` shipped `doc_type_code text` instead, and `email_attachment_classification`
+   likewise carries `suggested_doc_type_code`. Not corrected — the migration is already on `main` —
+   but the checklist count joins through `dictionary_ref.code`, and anything else reading these
+   columns must too. `npm run db:check:columns` catches a query written to the guide's shape; it
+   caught this one.

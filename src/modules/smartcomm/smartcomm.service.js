@@ -88,7 +88,17 @@ async function setPinned(client, { groupId, actor, pinned }) { await assertMembe
 async function setMuted(client, { groupId, actor, muted }) { await assertMember(client, groupId, actor.user_id); return repo.setMemberFlag(client, groupId, actor.user_id, "is_muted", muted === true); }
 
 // ── Messages ──
-async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {} }) {
+/**
+ * `notifyMembers: false` posts the message without raising its own notification.
+ *
+ * For callers that have ALREADY notified the same people about the same logical
+ * event — the mail mention fan-out is the first (§7.4, addition f: "one logical
+ * event produces at most one notification per user per channel"). Without it,
+ * being mentioned on a mail thread arrives twice: once as the mention, once as
+ * "new message in Smart Comms". The chat card is still posted and still shows
+ * up in the channel; only the duplicate notification is skipped.
+ */
+async function postMessage(client, { groupId, body = null, mediaVaultId = null, replyTo = null, attachments = [], actor = {}, notifyMembers = true }) {
   await assertMember(client, groupId, actor.user_id);
   if (!body && !mediaVaultId && (!attachments || !attachments.length)) throw new AppError("EMPTY_MESSAGE", "a message needs a body or media", 422);
   await client.query("BEGIN");
@@ -108,7 +118,7 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     // failure must never fail the message itself. The sender is excluded — you
     // already know you wrote it.
     try {
-      const others = await repo.memberUserIds(client, groupId, actor.user_id || null);
+      const others = notifyMembers ? await repo.memberUserIds(client, groupId, actor.user_id || null) : [];
       if (others.length) {
         await require("../../notification/notification.service").notifyMany(client, others, {
           eventTypeKey: "comms.message_posted",

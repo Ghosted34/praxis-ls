@@ -150,6 +150,19 @@ const inbound = (over = {}) => ({
   subject: "A", bodyText: "a", attachments: [], ...over,
 });
 
+/**
+ * The db client this file passes to the service.
+ *
+ * It was `{}` — an object with no `query`, which meant every code path in the
+ * sync loop that talks to the database directly rather than through a mocked
+ * repo was invisible here, and one of them (`cancel_on_reply` on ingest) had
+ * acquired a `typeof client.query === "function"` guard in PRODUCTION code to
+ * survive it. That is the FN-1 shape: a fixture that cannot produce what the
+ * driver produces tests only itself. It now answers, emptily but truthfully,
+ * so a direct query is exercised rather than skipped.
+ */
+const DB = { query: jest.fn(async () => ({ rows: [] })) };
+
 // jest.clearAllMocks() resets CALLS but not IMPLEMENTATIONS, so every default a
 // test may consume is re-established here. A mockResolvedValueOnce left over
 // from a previous test is one of the hardest failures in this file to read.
@@ -174,15 +187,15 @@ test("discovers folders from the server and syncs each with its own cursor", asy
   threads.syncableFolders.mockResolvedValue([INBOX, ARCHIVE]);
   mockFetchSince.mockResolvedValue({ messages: [], nextCursor: { uidvalidity: 10, last_uid: 4 } });
 
-  const res = await service.syncConnection({}, "conn-1", {});
+  const res = await service.syncConnection(DB, "conn-1", {});
 
   // Each folder is fetched with ITS OWN cursor, not one shared connection cursor.
   // UIDVALIDITY is per mailbox in IMAP: sharing a cursor makes a renumber in
   // Archive look like a renumber in INBOX and re-downloads the wrong folder.
   expect(mockFetchSince).toHaveBeenCalledWith(null, "INBOX");
   expect(mockFetchSince).toHaveBeenCalledWith({ uidvalidity: 10, last_uid: 3 }, "Archive");
-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-INBOX", { uidvalidity: 10, last_uid: 4 });
-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-ARCHIVE", { uidvalidity: 10, last_uid: 4 });
+  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-INBOX", { uidvalidity: 10, last_uid: 4 });
+  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-ARCHIVE", { uidvalidity: 10, last_uid: 4 });
   expect(res.folders).toEqual([
     { folder: "INBOX", fetched: 0 },
     { folder: "ARCHIVE", fetched: 0 },
@@ -198,19 +211,19 @@ test("inserts new messages, dedups, emits one event each, advances the folder cu
     .mockResolvedValueOnce({ email_message_id: "msg-a" })
     .mockResolvedValueOnce(null); // duplicate → ON CONFLICT DO NOTHING
 
-  const res = await service.syncConnection({}, "conn-1", { slug: "smartls" });
+  const res = await service.syncConnection(DB, "conn-1", { slug: "smartls" });
 
   expect(res).toMatchObject({ connection: "conn-1", fetched: 2, inserted: 1 });
   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
   expect(kinds.filter((k) => k === "email.thread.created" || k === "email.received")).toHaveLength(1);
-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-INBOX", { uidvalidity: 10, last_uid: 7 });
+  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-INBOX", { uidvalidity: 10, last_uid: 7 });
 });
 
 test("a message that starts a conversation is announced as a new thread", async () => {
   mockFetchSince.mockResolvedValue({ messages: [inbound()], nextCursor: null });
   threads.upsertThread.mockResolvedValue({ email_thread_id: "thr-new", message_count: 0 });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
   expect(mockEmitEvent).toHaveBeenCalledWith(
     expect.anything(),
@@ -225,13 +238,13 @@ test("a reply into an existing conversation is announced as received, not as a n
   });
   threads.upsertThread.mockResolvedValue({ email_thread_id: "thr-1", message_count: 2 });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
   expect(kinds).toContain("email.received");
   expect(kinds).not.toContain("email.thread.created");
   // Threaded onto the conversation the References header names, not onto itself.
-  expect(threads.upsertThread).toHaveBeenCalledWith({}, expect.objectContaining({ thread_key: "<a>" }));
+  expect(threads.upsertThread).toHaveBeenCalledWith(DB, expect.objectContaining({ thread_key: "<a>" }));
 });
 
 test("classifies the first inbound message of a conversation into a stream", async () => {
@@ -249,10 +262,10 @@ test("classifies the first inbound message of a conversation into a stream", asy
     nextCursor: null,
   });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
   expect(threads.updateThread).toHaveBeenCalledWith(
-    {}, "thr-1", expect.objectContaining({ stream: "SYSTEM", stream_reason: expect.stringContaining("Auto-Submitted") }),
+    DB, "thr-1", expect.objectContaining({ stream: "SYSTEM", stream_reason: expect.stringContaining("Auto-Submitted") }),
   );
 });
 
@@ -271,10 +284,10 @@ test("a known party overrides the system verdict — a client's mail is never bu
     nextCursor: null,
   });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
   expect(threads.updateThread).toHaveBeenCalledWith(
-    {}, "thr-1", expect.objectContaining({ stream: "HUMAN", is_vip: true }),
+    DB, "thr-1", expect.objectContaining({ stream: "HUMAN", is_vip: true }),
   );
 });
 
@@ -288,15 +301,15 @@ test("persists attachments to the vault and links them to the MESSAGE", async ()
   });
   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-c" });
 
-  const res = await service.syncConnection({}, "conn-1", { slug: "smartls" });
+  const res = await service.syncConnection(DB, "conn-1", { slug: "smartls" });
 
   expect(res.attachments).toBe(1);
   expect(vault.createDocument).toHaveBeenCalledWith(
-    {},
+    DB,
     expect.objectContaining({ slug: "smartls", entityRef: "email_message:msg-c" }),
   );
   expect(repo.addAttachment).toHaveBeenCalledWith(
-    {},
+    DB,
     expect.objectContaining({ email_inbound_id: "msg-c", vault_id: "vault-1", filename: "f.pdf" }),
   );
 });
@@ -308,14 +321,14 @@ test("ingest writes a binding SUGGESTION, never entity_ref (Q18)", async () => {
   });
   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-d" });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
-  expect(mockSuggest).toHaveBeenCalledWith({}, expect.objectContaining({
+  expect(mockSuggest).toHaveBeenCalledWith(DB, expect.objectContaining({
     fromAddress: "client@acme.cm",
     subject: "Re: SLAS-2026-0001 shipment",
   }));
   expect(threads.updateThread).not.toHaveBeenCalledWith(
-    {}, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
+    DB, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
   );
 });
 
@@ -325,7 +338,7 @@ test("sanitizes the inbound HTML body before storing (stored-XSS guard)", async 
     nextCursor: null,
   });
 
-  await service.syncConnection({}, "conn-1", {});
+  await service.syncConnection(DB, "conn-1", {});
 
   const row = threads.insertMessage.mock.calls[0][1];
   expect(row.body_html).toBe("SANITIZED:<script>evil()</script><p>hi</p>"); // passed through the sanitizer
@@ -337,9 +350,9 @@ test("one failing folder does not abort its siblings", async () => {
     .mockRejectedValueOnce(new Error("SELECT INBOX failed"))
     .mockResolvedValueOnce({ messages: [inbound({ externalMessageId: "<g>" })], nextCursor: { uidvalidity: 10, last_uid: 4 } });
 
-  const res = await service.syncConnection({}, "conn-1", {});
+  const res = await service.syncConnection(DB, "conn-1", {});
 
-  expect(threads.setFolderError).toHaveBeenCalledWith({}, "fold-INBOX", "SELECT INBOX failed");
+  expect(threads.setFolderError).toHaveBeenCalledWith(DB, "fold-INBOX", "SELECT INBOX failed");
   expect(res.inserted).toBe(1); // Archive still synced
   expect(res.folders).toEqual([
     { folder: "INBOX", error: "SELECT INBOX failed" },
@@ -352,17 +365,17 @@ test("one failing folder does not abort its siblings", async () => {
 
 test("records the error on the connection and does not throw", async () => {
   mockFetchSince.mockRejectedValue(new Error("IMAP auth failed"));
-  const res = await service.syncConnection({}, "conn-1", {});
+  const res = await service.syncConnection(DB, "conn-1", {});
   expect(res.error).toBeUndefined(); // per-folder now, not per-connection
   expect(res.folders).toEqual([{ folder: "INBOX", error: "IMAP auth failed" }]);
-  expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "IMAP auth failed");
+  expect(repo.setError).toHaveBeenCalledWith(DB, "conn-1", "IMAP auth failed");
 });
 
 test("a folder listing that fails stops the sync and records it on the connection", async () => {
   mockListFolders.mockRejectedValue(new Error("LIST refused"));
-  const res = await service.syncConnection({}, "conn-1", {});
+  const res = await service.syncConnection(DB, "conn-1", {});
   expect(res.error).toBe("LIST refused");
-  expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "LIST refused");
+  expect(repo.setError).toHaveBeenCalledWith(DB, "conn-1", "LIST refused");
   expect(mockFetchSince).not.toHaveBeenCalled();
 });
 
@@ -391,7 +404,7 @@ test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422
   mockSendEmail.mockRejectedValueOnce(smtpErr);
 
   await expect(
-    service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }),
+    service.send(DB, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }),
   ).rejects.toMatchObject({
     name: "AppError",
     code: "SENDER_NOT_AUTHORIZED",
@@ -409,7 +422,7 @@ test("send maps 550 user-unknown to RECIPIENT_REJECTED, not sender-auth", async 
   });
   mockSendEmail.mockRejectedValueOnce(smtpErr);
   await expect(
-    service.send({}, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
+    service.send(DB, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
   ).rejects.toMatchObject({ name: "AppError", code: "RECIPIENT_REJECTED", status: 422 });
   expect(threads.insertMessage).not.toHaveBeenCalled();
 });
@@ -423,12 +436,12 @@ test("markRead propagates to the server adapter and flips the local row (G-3)", 
   });
   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
 
-  const res = await service.markRead({}, "msg-1", "user-1");
+  const res = await service.markRead(DB, "msg-1", "user-1");
 
   expect(mockMarkAsRead).toHaveBeenCalledWith("<mid>");
   // Read state is PER USER and PER CONVERSATION now. A markRead that does not
   // carry a user id is the bug the whole model change exists to remove.
-  expect(threads.setThreadRead).toHaveBeenCalledWith({}, "user-1", "thr-1", true);
+  expect(threads.setThreadRead).toHaveBeenCalledWith(DB, "user-1", "thr-1", true);
   expect(res).toMatchObject({ email_message_id: "msg-1", is_read: true });
 });
 
@@ -442,15 +455,15 @@ test("markRead still flips the local row when server propagation fails", async (
   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
   mockMarkAsRead.mockRejectedValueOnce(new Error("provider down"));
 
-  const res = await service.markRead({}, "msg-2", "user-1");
+  const res = await service.markRead(DB, "msg-2", "user-1");
 
-  expect(threads.setThreadRead).toHaveBeenCalledWith({}, "user-1", "thr-2", true);
+  expect(threads.setThreadRead).toHaveBeenCalledWith(DB, "user-1", "thr-2", true);
   expect(res).toMatchObject({ email_message_id: "msg-2", is_read: true });
 });
 
 test("linkEntity binds the CONVERSATION, not the one message it was called on", async () => {
   threads.getMessage.mockResolvedValue({ email_message_id: "msg-9", email_thread_id: "thr-9" });
-  const res = await service.linkEntity({}, { inboundId: "msg-9", entity_ref: "dossier:dos-2" });
-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-9", { entity_ref: "dossier:dos-2" });
+  const res = await service.linkEntity(DB, { inboundId: "msg-9", entity_ref: "dossier:dos-2" });
+  expect(threads.updateThread).toHaveBeenCalledWith(DB, "thr-9", { entity_ref: "dossier:dos-2" });
   expect(res).toEqual({ email_thread_id: "thr-9", entity_ref: "dossier:dos-2" });
 });

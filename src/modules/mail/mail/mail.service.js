@@ -38,6 +38,8 @@ const threading = require("./threading");
 const folders = require("./folders");
 const stream = require("./stream");
 const threadRepo = require("./thread.repo");
+const triageHooks = require("../triage/ingest-hooks");
+const followupService = require("../triage/followup.service");
 
 const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
 const OAUTH_STATE_TTL = "10m";
@@ -417,17 +419,28 @@ async function syncConnection(client, id, ctx = {}) {
         if (!row) continue;
         inserted += 1;
         attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        // PR-5 §9.6/§9.7/§9.8 — archive, verdict, DSN. One call site, so the
+        // wiring test has one thing to assert on and a later edit to this loop
+        // has one thing to preserve. Archive failures propagate to the
+        // per-folder catch below; the other two are advisory (see the file).
+        await triageHooks.onMessageIngested(client, row, { raw: m });
         await autoLink(client, {
           threadId: row.thread_id, messageId: row.email_message_id,
           fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
           filenames: (m.attachments || []).map((a) => a.filename).filter(Boolean),
         });
-        if (m.direction !== "OUT" && client && typeof client.query === "function") {
-          await client.query(
-            `UPDATE email_followup SET status='CANCELLED'
-              WHERE email_thread_id = $1 AND status='PENDING' AND cancel_on_reply = true AND kind='NO_REPLY'`,
-            [row.thread_id],
-          ).catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
+        // A client reply cancels every pending boomerang on the thread (§9.3,
+        // "silently"). The rule lives in followup.service so the sweep and the
+        // ingest path cannot drift — the inline copy that used to be here only
+        // cancelled NO_REPLY, leaving a multi-step sequence to keep nagging
+        // about a client who had already answered.
+        //
+        // The `typeof client.query === "function"` guard that also stood here
+        // was shaped by a unit-test fixture with no `query`, not by anything the
+        // runtime does; the fixture now answers, so the guard has gone with it.
+        if (m.direction !== "OUT") {
+          await followupService.cancelOnReply(client, row.thread_id)
+            .catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
         }
         await emitEvent(client, {
           eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
@@ -694,6 +707,11 @@ async function recordOutbound(client, conn, m) {
     received_at: new Date(),
   });
   if (row) {
+    // §9.6 archives "every message, in and out". Outbound is the half that
+    // matters most to an auditor asking what we told a client and when, so it
+    // is archived at the moment of record and, like ingest, is allowed to fail
+    // the operation rather than leave a hole in the chain.
+    await triageHooks.onMessageSent(client, { ...row, thread_id: thread.email_thread_id });
     await threadRepo.refreshThreadCounts(client, thread.email_thread_id);
     await threadRepo.seedStateForMembers(client, row.email_message_id, conn.email_connection_id);
     if (m.originUserId) {
@@ -860,9 +878,19 @@ async function autoLink(client, args) {
   } catch { /* @silent:teardown — a failed suggestion never aborts the sync loop */ }
 }
 
-/** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
-const listThread = (client, q = {}) =>
-  threadRepo.listThreads(client, q.user_id || null, { connectionId: q.connection_id, limit: q.limit, before: q.before });
+/**
+ * Legacy flat message list, kept for the AI catalogue and the 360 timeline.
+ *
+ * `actor` is the third argument because that is what both AI adapters pass
+ * (see action-registrar). It is the fallback for `q.user_id`, so this read is
+ * scoped to the caller whether it arrives over HTTP or through the copilot —
+ * `listThreads` applies both the mailbox-access and the visibility predicate,
+ * and a null user id matches no mailbox, which is the fail-closed direction.
+ */
+const listThread = (client, q = {}, actor = null) =>
+  threadRepo.listThreads(client, q.user_id || (actor && actor.user_id) || null, {
+    connectionId: q.connection_id, limit: q.limit, before: q.before,
+  });
 const getMessage = (client, id, userId = null) => threadRepo.getMessage(client, userId, id);
 /** Mark a message read locally AND propagate to the mail server (G-3). The
  *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
@@ -888,9 +916,19 @@ async function markRead(client, id, actorUserId = null) {
   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));
 }
 const listAttachments = (client, id) => repo.listAttachments(client, id);
-/** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
-const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>
-  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
+/**
+ * Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref.
+ *
+ * Scoped to the caller for the same reason as `listThread`: this is the read
+ * that puts correspondence on a screen OUTSIDE the mailbox, which makes it the
+ * easiest place in the product to be shown a thread you were never meant to see
+ * (§9.10 criterion 7 names the client timeline explicitly). `actor` is the AI
+ * adapter's third argument; `args.user_id` is the HTTP caller's.
+ */
+const clientTimeline = (client, { client_id, entity_ref, limit, user_id } = {}, actor = null) =>
+  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, {
+    limit, userId: user_id || (actor && actor.user_id) || null,
+  });
 
 /** Manually attach a message to any entity (e.g. 'dossier:<id>' or 'client:<id>'). */
 async function linkEntity(client, { inboundId, entity_ref }) {

@@ -44,6 +44,15 @@ const PROCESSORS = [
   { name: "mail-send-flush-scheduler", concurrency: 1, handler: require("./handlers/mail-send-flush-scheduler") },
   { name: "deliverability-check", concurrency: 1, handler: require("./handlers/deliverability-check") },
   { name: "deliverability-check-scheduler", concurrency: 1, handler: require("./handlers/deliverability-check-scheduler") },
+  // PR-5 §9.2/§9.3. Both were missing entirely: `mail_sla_policy` and
+  // `email_followup` were written by the API and read by nothing, so an SLA was
+  // never measured and a snoozed thread never came back. Concurrency 1 — each
+  // sweep claims and stamps rows across a whole tenant, so two passes would
+  // contend rather than share.
+  { name: "mail-sla-sweep", concurrency: 1, handler: require("./handlers/mail-sla-sweep") },
+  { name: "mail-sla-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-sla-sweep-scheduler") },
+  { name: "mail-followup-sweep", concurrency: 1, handler: require("./handlers/mail-followup-sweep") },
+  { name: "mail-followup-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-followup-sweep-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
@@ -243,6 +252,47 @@ async function scheduleRecurring() {
   } else {
     await enqueue("mail-send-flush-scheduler", "tick", {}, { repeat: { every: flushEvery }, removeOnComplete: true, removeOnFail: 50 });
     logger.info({ every: flushEvery }, "mail send-flush scheduler registered");
+  }
+
+  // ── The three mail schedulers that had a WORKER and no TICK ───────────────
+  //
+  // Exactly the shape called out for `regie-aging` further down this file: a
+  // queue registered above, a handler on disk, and nothing anywhere that ever
+  // enqueued it — so the feature existed in the tree and not in the product.
+  // `MAIL_DELIVERABILITY_INTERVAL_MS` and `MAIL_SLA_SWEEP_INTERVAL_MS` had even
+  // been added to config/env.js and then read by nobody.
+  //
+  // Deliverability: the daily re-check is what turns "your DKIM record
+  // disappeared" into a red row and a notification instead of into invoices
+  // that quietly stop arriving (§6.5).
+  const deliverEvery = config.MAIL_DELIVERABILITY_INTERVAL_MS;
+  if (!deliverEvery || deliverEvery <= 0) {
+    logger.info("mail deliverability scheduler disabled (MAIL_DELIVERABILITY_INTERVAL_MS=0)");
+  } else {
+    await enqueue("deliverability-check-scheduler", "tick", {}, { repeat: { every: deliverEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: deliverEvery }, "mail deliverability scheduler registered");
+  }
+
+  // SLA clocks (§9.2). The interval is the worst-case lateness of a BREACH
+  // ALERT, not of the promise itself — the due dates are computed from
+  // `first_message_at`, so a worker outage costs notice, never accuracy.
+  const slaEvery = config.MAIL_SLA_SWEEP_INTERVAL_MS;
+  if (!slaEvery || slaEvery <= 0) {
+    logger.info("mail SLA sweep disabled (MAIL_SLA_SWEEP_INTERVAL_MS=0)");
+  } else {
+    await enqueue("mail-sla-sweep-scheduler", "tick", {}, { repeat: { every: slaEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: slaEvery }, "mail SLA sweep registered");
+  }
+
+  // Follow-ups (§9.3): snooze, no-reply boomerang, sequence steps. Warn rather
+  // than info when disabled — a user who snoozes a thread has been told it will
+  // come back, and a silently disabled sweep breaks that promise invisibly.
+  const followEvery = config.MAIL_FOLLOWUP_SWEEP_INTERVAL_MS;
+  if (!followEvery || followEvery <= 0) {
+    logger.warn("mail follow-up sweep disabled (MAIL_FOLLOWUP_SWEEP_INTERVAL_MS=0) — snoozed threads will not return");
+  } else {
+    await enqueue("mail-followup-sweep-scheduler", "tick", {}, { repeat: { every: followEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: followEvery }, "mail follow-up sweep registered");
   }
 
   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.

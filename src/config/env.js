@@ -564,7 +564,14 @@ const Schema = z.object({
   // value change, not a code change (Q35).
   MAIL_RBL_HOSTS: z.string().default("zen.spamhaus.org,bl.spamcop.net,b.barracudacentral.org"),
   MAIL_SECURE_LINK_DAYS: int(7),
+  // SLA clocks (PR-5 §9.2). 5 minutes: the sweep computes due dates for newly
+  // arrived threads and raises breaches, so the interval is the worst-case
+  // lateness of a breach alert, not of the underlying promise.
   MAIL_SLA_SWEEP_INTERVAL_MS: int(300000),
+  // Snooze / no-reply boomerang / sequence steps (PR-5 §9.3). 1 minute, because
+  // a follow-up is a wall-clock promise a person made to themselves — "bring
+  // this back at 14:00" arriving at 14:05 is fine, at 15:00 is not.
+  MAIL_FOLLOWUP_SWEEP_INTERVAL_MS: int(60000),
   MAIL_AI_MONTHLY_CAP_XAF: int(0),
 
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.

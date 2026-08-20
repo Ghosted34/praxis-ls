@@ -221,8 +221,8 @@ async function folders(client, actor, connectionId) {
 const labels = (client, actor) => repo.listLabels(client, actor.user_id);
 const createLabel = (client, actor, body) => repo.createLabel(client, actor.user_id, body);
 const deleteLabel = (client, actor, id) => repo.deleteLabel(client, actor.user_id, id);
-const timeline = (client, { entity_ref, client_id, limit } = {}) =>
-  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
+const timeline = (client, actor, { entity_ref, client_id, limit } = {}) =>
+  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit, userId: actor && actor.user_id });
 
 module.exports = {
   MODULE, queryFrom, list, get, markRead, star, move, bulk, setStream, applyLabel,

@@ -1,7 +1,7 @@
 "use strict";
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
-const { requirePermission } = require("../../../middleware/rbac");
+const { requirePermission, requireCeo } = require("../../../middleware/rbac");
 const { requireFeature } = require("../../../middleware/feature-gate");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { z } = require("zod");
@@ -10,6 +10,7 @@ const { audit } = require("../../../shared/events/emit");
 const vis = require("./visibility");
 const archive = require("./archive-chain");
 const secure = require("./secure-link");
+const threadRepo = require("../mail/thread.repo");
 
 const M = "MOD-72";
 const router = express.Router();
@@ -112,22 +113,61 @@ router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requireP
     ).then((r) => r.rows[0])),
   })));
 
-router.post("/threads/:id/breakglass", requirePermission(M, "approve"),
+/**
+ * Break-glass (§9.5). God-Mode only — `requireCeo`, not a MOD-72 grant, because
+ * the whole point is that no ordinary mail permission opens a Private thread.
+ *
+ * It RETURNS THE THREAD. The previous shape wrote the ledger row and answered
+ * `{ ok: true }`, which reads as a working audit trail while granting nothing:
+ * the caller still could not see the thread, so in practice the endpoint was
+ * never used and the ledger stayed empty. Access and the ledger row are written
+ * in the same transaction and in that order — the row lands BEFORE the body is
+ * read, so a crash mid-request cannot produce an unlogged read.
+ */
+router.post("/threads/:id/breakglass", requireCeo(),
   body(z.object({ reason: z.string().trim().min(3).max(500) }).strict()),
   asyncHandler(async (req, res) => {
-    await req.identityDb((c) => audit(c, {
-      actorUserId: actor(req).user_id, action: "mail.breakglass.read",
-      moduleKey: M, entityRef: `email_thread:${req.params.id}`,
-      after: { reason: req.body.reason }, isSensitive: true,
-    }));
-    return res.json({ data: { ok: true, ledgered: true } });
+    const data = await req.identityDb(async (c) => {
+      await audit(c, {
+        actorUserId: actor(req).user_id, action: "mail.breakglass.read",
+        moduleKey: M, entityRef: `email_thread:${req.params.id}`,
+        after: { reason: req.body.reason }, isSensitive: true,
+      });
+      const thread = await threadRepo.getThreadUnrestricted(c, req.params.id);
+      if (!thread) throw new AppError("NOT_FOUND", "conversation not found", 404);
+      return { ...thread, breakglass: true, ledgered: true };
+    });
+    return res.json({ data });
   }));
 
+/**
+ * Verify the chain — and say honestly what was verified.
+ *
+ * `archive.verify([])` returns `{ ok: true }`, which is correct about the chain
+ * and dangerously misleading as an answer to "is our archive sound?". For the
+ * whole of the PR-2→PR-5 merge nothing wrote `email_archive`, so this endpoint
+ * reported a green tick over an empty table to anyone who asked. `coverage` is
+ * therefore part of the answer: a chain of 0 rows against 40 000 messages is a
+ * failure of the archive, not a pass, and the response now says so in a shape
+ * an auditor can read.
+ */
 router.get("/archive/verify", requireFeature("mail.archive"), requirePermission("MOD-70", "view"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
       const { rows } = await c.query(`SELECT seq, content_hash, chain_hash, prev_hash FROM email_archive ORDER BY seq`);
-      return archive.verify(rows);
+      const chain = archive.verify(rows);
+      const { rows: cov } = await c.query(
+        `SELECT (SELECT count(*) FROM email_message)::int AS messages,
+                (SELECT count(*) FROM email_archive)::int AS archived`,
+      );
+      const { messages, archived } = cov[0] || { messages: 0, archived: 0 };
+      const complete = messages === archived;
+      return {
+        ...chain,
+        coverage: { messages, archived, unarchived: messages - archived, complete },
+        // One field a human can act on without reading the other five.
+        verdict: !chain.ok ? "CHAIN_BROKEN" : complete ? "SOUND" : "INCOMPLETE",
+      };
     }),
   })));
 

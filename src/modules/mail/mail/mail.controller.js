@@ -70,10 +70,10 @@ module.exports = {
   recipients: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.searchRecipients(c, req.query.q)) })),
 
   // ── Engine: messages ──
-  thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, req.query)) })),
+  thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, { ...req.query, user_id: req.user && req.user.user_id })) })),
   message: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getMessage(c, req.params.id)) })),
   attachments: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listAttachments(c, req.params.id)) })),
-  clientTimeline: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.clientTimeline(c, { client_id: req.params.id, limit: req.query.limit })) })),
+  clientTimeline: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.clientTimeline(c, { client_id: req.params.id, limit: req.query.limit, user_id: req.user && req.user.user_id })) })),
   linkThread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.linkEntity(c, { inboundId: req.params.id, entity_ref: req.body && req.body.entity_ref })) })),
   markRead: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.markRead(c, req.params.id)) })),
   /**

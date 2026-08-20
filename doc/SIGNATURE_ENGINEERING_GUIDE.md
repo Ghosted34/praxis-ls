@@ -1,7 +1,9 @@
 # Praxis LS — Multi-Tier Signature & Verification: Engineering Guide
 
 **Status:** Plan of record. Built from `doc/SIGNATURE_PROGRAMME_QUESTIONNAIRE.md` plus the answers
-returned on all 20 questions.
+returned on all 20 questions, and revised by **Round 2** (§1.5) which reopened Q11, Q12 and Q16,
+settled three of the four open items, added the visual-seal specification (§3.12) and the
+IP-handling directive (§3.13).
 **Read alongside:** `doc/CONVENTIONS.md` (module layout), `doc/BUILD_CONVENTIONS.md` (document
 lifecycle, numbering, approval, §7 secrets), `doc/DB_ARCHITECTURE.md` (database-per-tenant),
 `doc/DOCUMENT_TEMPLATES_PLAN.md` (the template kit and registry),
@@ -44,12 +46,12 @@ should reject a PR over. Anything marked _(v2)_ is explicitly out of scope.
 | 8 | OTP lifetime | **B** — 10 min, 5 attempts, 3 resends then 30-min cooldown, `sha256` at rest, constant-time compare | §6.4 |
 | 9 | Internal signer identity | **A + C** — session-resolved always; step-up OTP above a per-tenant value threshold, default off | §6.5 |
 | 10 | QR payload | **C** — `https://{host}/public/verify/{token}` + a printed human-readable short code | §3.7 |
-| 11 | Token at rest | **C** — HMAC-SHA256 under a server-side pepper; **no plaintext stored** | Reprints stream the vaulted artifact, never a re-render. §3.7 |
-| 12 | Portal disclosure | **C** — full summary always: reference, counterparty, total, line-item count, core clauses | Per-doc-type summary resolvers. Residual risk noted in §1.4(d). §5.4 |
+| 11 | Token at rest | **Round 2: B** — split. The **signing** token is peppered (it grants action); the **verify** token is plaintext, unique-indexed (it grants a public read) | Restores phone-readable codes, admin visibility and reprints. §3.7 |
+| 12 | Portal disclosure | **Round 2: B** — the portal shows the document **as signed**, from the stored canonical payload, plus the amendment verdict. No live query. | Adds `content_payload jsonb`. Removes the stale-copy-reveals-current-state leak. §5.4 |
 | 13 | Scan logging | **C** — log every scan, notify the owner on a first scan from a new IP, surface an anomaly signal | `signature_scan` + `immutable_ledger`. Privacy notice + retention setting. §5.5 |
 | 14 | QES provider | **B** — provider-agnostic adapter. **V1 is SignWell only.** DocuSign _(v2)_, ANTIC CA _(v2)_ | `src/services/qes/` with one adapter shipped. §7.2 |
-| 15 | QES billing | **C** — tenant-fronted, post-metered, upfront fee modal; charge on envelope-ID issue only; rollback on provider failure; non-refundable once dispatched | `signature_usage_ledger` + platform wallet monitor. §7.5 |
-| 16 | Tier eligibility | **Hybrid B + C** — tenant sets the allowed menu per doc type; sender may narrow it for one dispatch; **signer picks from what remains** | Three-level funnel. §3.4 |
+| 15 | QES billing | **C, narrowed in Round 2** — the **tenant absorbs** the cost in its own service pricing. Praxis meters and bills the tenant; there is **no per-envelope line to the tenant's client** | Deletes the client-facing fee modal and the `final_invoice` rebill. §7.5 |
+| 16 | Tier eligibility | **Hybrid B + C, simplified in Round 2** — tenant sets the allowed menu per doc type; the sender's control collapses to **two booleans**; signer picks from what remains | Because every digital signature is `AES_OTP`, a rank floor had nothing to sort. §3.4 |
 | 17 | Barcode | **B** — DataMatrix carrying a dedicated `print_job_id`, **subtle and discreet** | 12 mm, 40% grey, bottom-left. §8.3 |
 | 18 | Physical return path | **C** — manual upload, email-in (via the Smart Mail engine), and PWA camera capture | Engineer note left for the mail team. §8.5 |
 | 19 | Reconciliation confidence | **B** — auto-bind on a clean decode **plus** corroboration; everything else queues | §8.6 |
@@ -106,32 +108,88 @@ Q16's ceiling/floor comparison needs an ordering, and `WET` is not on the digita
 > An employment contract with a floor of `AES_OTP` can therefore still be wet-signed, which is
 > correct.
 
-**(d) Which five cards does the signer see?**
-Q1 says "they see all five … we give all four to anyone signing". Four tiers, five cards — the
-counts differ, so this is my reading, and §1.4(a) asks you to confirm it.
+**(d) Which cards does the signer see?** — **RESOLVED in Round 2: four.**
 
-> **Reading.** Once the model is orthogonal (Q1 = C), the natural fifth card is **TYPED** — the
-> "type your name" option every commercial signing UI offers beside draw and upload, and the one a
-> counterparty on a desktop with no touchscreen actually reaches for. The five seeded cards are in
-> §3.3. **The menu is a seeded registry, not code**, so adding or removing a card is one row.
+Stamp and Typed are **one card**, not two. The difference between them was never the mark; it was
+where the identity came from. Internal signers have theirs resolved from the session (the Bureau LPC
+rule); external signers state their name and role and prove control of the on-file address by OTP.
+Same rendered stamp either way.
 
-**(e) What does a "reprint" mean when the token is not recoverable (Q11 = C)?**
+> **Rule.** That distinction is recorded as `identity_source` (`SESSION` | `DECLARED`), **not** as a
+> second `visual_mark`. The enum is therefore four marks and the menu four cards (§3.3).
+> Name is *claimed*; email is *proved* — and the certificate says which, in those terms.
 
-> **Rule.** The vaulted PDF is the only printable original. `GET /signatures/:id/document` streams
-> the stored bytes. Nothing re-renders a signed document — a re-render would produce different bytes
-> (Puppeteer stamps `/CreationDate`), a different `artifact_hash`, and a QR whose token cannot be
-> re-derived from the HMAC.
+**(e) What does a "reprint" mean?** — **narrowed by Round 2's Q11 = B.**
 
-### 1.4 Open items — I need your word on these
+> **Rule.** The vaulted PDF remains the printable original: `GET /signatures/:id/document` streams
+> the stored bytes, and nothing re-renders a signed document, because a re-render produces different
+> bytes (Puppeteer stamps `/CreationDate`) and so a different `artifact_hash`.
+> The QR is no longer a reason for the rule — with the verify token in plaintext it *could* now be
+> reprinted. The artifact hash is reason enough on its own.
 
-None of them block PR-1 except (a), and (a) only blocks the seed row.
+### 1.4 Open items
 
-| | Item | Why it needs you |
+| | Item | Status |
 | --- | --- | --- |
-| **a** | **The five cards (§1.3(d)).** Confirm TYPED is the fifth, or name the one you meant. | It is one seed row in `10741`, but the signer-facing labels are yours to word. |
-| **b** | **The QES fee shown in the Q15 modal.** What number, in what currency, and does it vary per tenant? | The modal copy is written; the figure is a setting with no default I can invent. |
-| **c** | **Counsel on OHADA (Q14).** Still outstanding from the questionnaire. | Nothing in V1 depends on it — SignWell ships regardless. It decides whether adapter #3 is ever needed, and it must be answered before anyone tells a client Tier 3 is "government-backed". |
-| **d** | **Q12 = C residual risk, stated once and then dropped.** Full disclosure means anyone holding a scanned document sees the counterparty and the total. You chose this knowingly and Q11 = C (peppered token) is the mitigation that makes it coherent. Recorded here so it is a decision on the record, not an oversight. | No action needed unless you want a kill switch; if you do, say so and it is one setting. |
+| **a** | The cards | **CLOSED** — four (§1.3(d), §3.3). |
+| **b** | The QES fee | **CLOSED** — the tenant absorbs it in its service pricing. No client-facing figure is needed, so the `424 CONFIG_MISSING` blocker is gone. Praxis→tenant metering remains, at a **platform**-tier rate (§7.5). |
+| **c** | **Counsel on OHADA (Q14)** | **STILL OPEN.** Nothing in V1 waits on it — SignWell ships regardless, and §7.2's naming rule keeps the product honest meanwhile. It decides whether adapter #3 is ever built, and it **must** be answered before anyone tells a client Tier 3 is "government-backed". |
+| **d** | Portal disclosure risk | **CLOSED** — resolved by moving to the as-signed snapshot (Q12 = B). |
+| **e** | **Does an internal signer need an OTP every time?** | **ASSUMED, REVERSIBLE IN ONE LINE.** See §1.5(b). |
+
+### 1.5 Round 2 — the revisions, and why
+
+After the first pass you asked what your answers actually cost. Five follow-ups reopened Q11, Q12
+and Q16 and closed three of the four open items. This section records what moved.
+
+**(a) Q16 — the funnel lost a level, because there was nothing for it to sort.**
+The original level 3 let a sender narrow the preset menu for one dispatch. My proposed replacement
+was a *rank floor* ("this needs at least email-verified"). You pushed back: every digital signature
+already requires an OTP, so what is a floor for?
+
+You were right, and the consequence is larger than the question. If `STAMP` and `DRAWN` are both
+`AES_OTP`, the ladder has only **one** rung below QES. A floor across `{AES_OTP, AES_OTP, QES, WET}`
+can express exactly two states. So the sender's control is not a menu and not a floor — it is **two
+booleans**: *must this be certified?* and *may this be signed on paper?* That is §3.4, and it
+replaces a multi-select plus subset-validation with two checkboxes.
+
+**(b) The one thing I am assuming — say the word and it flips.**
+"We can NEVER SIGN without OTP" and Q9 ("session-resolved always; step-up OTP above a threshold")
+cannot both be literally true for internal signers. The build assumes:
+
+> **External signers: OTP always, no exception, no threshold.** This is absolute and has no
+> configuration that disables it.
+> **Internal signers: session identity, with step-up OTP above the Q9 threshold.**
+
+The reason is friction arithmetic, not principle. A dispatcher signing forty delivery notes a day
+would do forty OTP round-trips, and a control that painful gets switched off — which is precisely
+how Bureau LPC lost its OTP the first time (questionnaire §0.2). An internal signer is already
+behind a password; the marginal evidence an OTP adds there is small, and Q9's threshold buys it back
+exactly where the money is. **If you want internal OTP unconditionally, it is one line in §6.5** —
+set the threshold to zero and the whole product becomes universal-OTP with no other change.
+
+**(c) Q11 — I sent you the wrong way and this corrects it.**
+My questionnaire note said "if Q12 lands on C, revisit this", so you chose the peppered token for
+both credentials. The note's reasoning does not survive scrutiny: anyone who can dump the database
+can already read every invoice in it, so a working verify link discloses *less* than the dump the
+attacker would already hold. The pepper was defending a narrow case at the price of phone-readable
+codes, admin visibility and reprints. Split by what each credential grants — action versus a public
+read — and the asymmetry resolves it (§3.7).
+
+**(d) Q12 — the objection I raised was the wrong one.**
+I argued a competitor could learn your pricing. You were right to wave that off: anyone holding the
+paper can read the total on the paper. The real defect was that a **live** query lets an **old**
+copy disclose the **current** state — a March waybill scanned in September showing today's line
+items. The as-signed snapshot removes it, and pays for itself twice over: the Certificate of
+Completion gets materially richer, and an amended document can show a real before/after instead of
+a bare red flag (§5.4).
+
+**(e) Q15 — the client-facing billing subsystem is deleted.**
+The tenant absorbs the QES cost in its own service pricing. That removes the fee modal, the
+`final_invoice` rebill integration, the disputed-line-item path, and the `424 CONFIG_MISSING`
+blocker. Praxis→tenant metering stays, at a platform rate (§7.5).
+
+**(f) New in Round 2:** the visual seal specification (§3.12) and the IP-handling directive (§3.13).
 
 ---
 
@@ -140,7 +198,7 @@ None of them block PR-1 except (a), and (a) only blocks the seed row.
 ### 2.1 What we are building
 
 1. **A signature model with two axes and a preset menu.** `assurance_level` × `visual_mark`, with
-   five named presets an operator recognises as "the four tiers". Every signer — internal or
+   four named presets an operator recognises as "the four tiers". Every signer — internal or
    external — is offered the menu their tenant, their sender and their document type allow, and
    picks. (Q1, Q16)
 2. **Canonical-payload hashing per document type.** A versioned struct of the contract-relevant
@@ -240,54 +298,90 @@ Two independent columns, one preset catalogue. This is Q1 = C.
 
 `WET` at rank 2 is a judgment call — see §1.3(c).
 
-**Axis B — `visual_mark`: what the mark looks like.**
+**Axis B — `visual_mark`: what the mark looks like.** Four values, one per card.
 
-`STAMP` (generated block) · `TYPED` (typed name, rendered) · `DRAWN` (Base64 PNG from a pad) ·
-`UPLOAD` (an uploaded image of a signature) · `PROVIDER` (the QTSP's own seal) · `INK` (scanned paper)
+`STAMP` (the generated seal, §3.12) · `DRAWN` (Base64 PNG from a pad) · `PROVIDER` (the QTSP's own
+seal) · `INK` (scanned paper)
 
-**The preset catalogue** — what an operator and a signer actually see. Seeded in `10741`, editable
-per tenant. `UPLOAD` is defined in the enum but not seeded as a card in V1; see §1.4(a).
+There is no `TYPED` and no `UPLOAD`. Typed-name and session-resolved stamps render the *same mark*;
+what differs is where the identity came from, which is `identity_source`, not a mark (§1.3(d)).
+`UPLOAD` is deliberately absent: an uploaded signature image proves nothing about who uploaded it
+and invites indefinite reuse of one scan, which adds evidentiary noise exactly where this system is
+supposed to add weight.
 
-| `code` | Signer-facing (EN) | Signer-facing (FR) | `assurance_level` | `visual_mark` | "Tier" |
+**A third column — `identity_source`: how the signer's name got there.**
+
+| Value | Meaning |
+| --- | --- |
+| `SESSION` | Resolved server-side from `app_user`. Internal signers. Never from a request body. |
+| `DECLARED` | Stated by the signer on the signing page. External signers. |
+
+> **The distinction that matters, and the certificate must say it in these words:** the **name is
+> claimed**, the **email is proved**. A `DECLARED` signer typed "Jean Mbarga, Procurement Manager";
+> what the OTP established is that they control the address already on file. Those are two different
+> facts and the evidence document keeps them apart.
+
+**The preset catalogue** — four cards, seeded in `10741`, editable per tenant.
+
+| `code` | Signer-facing (EN) | Signer-facing (FR) | `assurance_level` | `visual_mark` | Tier |
 | --- | --- | --- | --- | --- | --- |
-| `STAMP` | Company stamp | Cachet de l'entreprise | `AES_OTP` | `STAMP` | 1 |
-| `TYPED` | Type your name | Saisir votre nom | `AES_OTP` | `TYPED` | 1 |
+| `STAMP` | Digital stamp | Cachet numérique | `AES_OTP` | `STAMP` | 1 |
 | `DRAWN` | Draw your signature | Dessiner votre signature | `AES_OTP` | `DRAWN` | 2 |
 | `CERTIFIED` | Certified signature | Signature certifiée | `QES` | `PROVIDER` | 3 |
 | `PRINT_SIGN` | Print and sign by hand | Imprimer et signer | `WET` | `INK` | 4 |
 
-The `tier_label` column carries "1"–"4" so the UI can group cards under the vocabulary your team
-uses out loud, while the schema stays orthogonal. That is the whole point of Q1 = C.
+Blurbs, bilingual, seeded:
+
+| `code` | EN | FR |
+| --- | --- | --- |
+| `STAMP` | Your name, role and the date, applied as a stamp. | Votre nom, fonction et la date, apposés en cachet. |
+| `DRAWN` | Sign with your finger or your mouse. | Signez avec le doigt ou la souris. |
+| `CERTIFIED` | Identity verified by an independent signature provider. | Identité vérifiée par un prestataire de signature indépendant. |
+| `PRINT_SIGN` | Print, sign in ink, and send the scan back. | Imprimez, signez à l'encre, puis renvoyez le scan. |
+
+The `tier_label` column carries "1"–"4" so the UI groups cards under the vocabulary your team uses
+out loud, while the schema stays orthogonal. That is the whole point of Q1 = C. **The same four
+cards appear to the sender and to the signer** — one catalogue, one component, two audiences.
 
 > **MUST.** `assurance_level` on a completed signature is derived from evidence actually collected
 > (§1.3(b)). The preset states the *target*; the signing service states the *outcome*. A signer who
 > picks `STAMP` and never completes the OTP is recorded as `SES`, and the portal says so.
 
-### 3.4 The eligibility funnel (Q16)
+### 3.4 The eligibility funnel (Q16, simplified in Round 2)
 
-Three levels, narrowing. Resolved once, server-side, in `presets.resolveMenu()`.
+Resolved once, server-side, in `presets.resolveMenu()`.
 
 ```
-1. DOC-TYPE CEILING (code)      document_vault.types.js declares min_rank / max_rank per doc type.
-                                A DELIVERY_NOTE may not require QES; an EMPLOYMENT_CONTRACT may not
-                                go below rank 2. Not tenant-editable.
+1. DOC-TYPE CEILING (code)      document_vault.types.js declares { signable, allowsWet, allowsQes }
+                                per doc type. A PAYSLIP is never wet-signed; a DELIVERY_NOTE never
+                                needs QES. Not tenant-editable.
         ↓
-2. TENANT MENU (setting)        settings section `signature_policy`, key = docType.
-                                { allowed: ["STAMP","TYPED","DRAWN","PRINT_SIGN"], default: "STAMP" }
+2. TENANT MENU (setting)        settings section `signature_policy`, key = docType, edited at
+                                /settings/signatures (§3.11).
+                                { allowed: ["STAMP","DRAWN"], default: "STAMP" }
                                 Anything outside the ceiling is rejected on write.
         ↓
-3. SENDER NARROWING (per send)  signature_request.allowed_presets — a subset of level 2, chosen at
-                                dispatch. "The tenant allows wet signatures, but not for this client."
+3. SENDER, AT DISPATCH          TWO BOOLEANS on signature_request, not a menu:
+                                  require_certified  → the menu collapses to CERTIFIED alone
+                                  allow_paper        → PRINT_SIGN stays in, or drops out
+                                Everything else the tenant allowed passes through untouched.
         ↓
-4. SIGNER CHOICE (per party)    signature_party.allowed_presets, defaulted from level 3. The signing
-                                page renders these as cards. The signer picks one.
+4. SIGNER CHOICE (per party)    signature_party.allowed_presets, computed from the three above.
+                                The signing page renders them as cards. The signer picks one.
 ```
+
+**Why two booleans and not a menu.** Every digital card is `AES_OTP` — `STAMP` and `DRAWN` differ
+only in appearance, never in legal weight. A sender choosing between them is choosing a *look* on
+someone else's behalf, which is exactly the choice you wanted to give the signer. The only sender
+decisions that carry meaning are the two that change the *evidence*: is third-party certification
+required, and is paper acceptable. §1.5(a).
 
 > **MUST.** The menu is resolved **server-side on every render of the signing page**, never trusted
 > from the client. A party POSTing a preset outside their resolved menu gets `422 PRESET_NOT_ALLOWED`.
 
-Empty menu after narrowing is a configuration error, not an empty page: dispatch fails at level 3
-with `422 EMPTY_SIGNATURE_MENU` rather than producing a signing link nobody can complete.
+`require_certified` on a doc type whose ceiling has `allowsQes: false` fails at dispatch with
+`422 CERTIFIED_NOT_AVAILABLE`. An otherwise empty menu fails with `422 EMPTY_SIGNATURE_MENU` rather
+than producing a signing link nobody can complete.
 
 ### 3.5 Feature flags
 
@@ -353,40 +447,43 @@ Doc types get a builder as they gain signing. V1 covers: `FINAL_INVOICE`, `PROFO
 `QUOTATION`, `PROPOSAL`, `PURCHASE_ORDER`, `DELIVERY_NOTE`, `TRANSIT_ORDER`, `EMPLOYMENT_CONTRACT`.
 An unregistered type throws `422 NO_CANONICAL_PAYLOAD` at signing time — never a silent skip.
 
-### 3.7 Tokens, codes and the pepper (Q10 = C, Q11 = C)
+### 3.7 Tokens and codes (Q10 = C, Q11 = B after Round 2)
 
-Two credentials per signature, both unguessable, **neither stored in plaintext**.
+Three credentials, stored according to **what each one grants** — not uniformly. This is the Round 2
+correction (§1.5(c)).
 
-| | Form | Where it appears | Stored as |
-| --- | --- | --- | --- |
-| `verify_token` | 32 random bytes → base64url (43 chars) | The QR's URL: `https://{host}/public/verify/{token}` | `verify_token_hmac` |
-| `verify_code` | 12 chars Crockford base32 (no I/L/O/U), shown `XXXX-XXXX-XXXX` | Printed under the QR, for manual entry | `verify_code_hmac` |
+| Credential | Form | Where it appears | Grants | Stored as |
+| --- | --- | --- | --- | --- |
+| `verify_token` | 32 random bytes → base64url | The QR's URL: `https://{host}/public/verify/{token}` | Read of a public summary | **plaintext**, unique-indexed |
+| `verify_code` | 12 chars Crockford base32 (no I/L/O/U), shown `XXXX-XXXX-XXXX` | Printed under the QR, for manual entry | Same | **plaintext**, unique-indexed |
+| `sign_token` | 32 random bytes → base64url | The signing link emailed to a party | **The ability to sign as that party** | `HMAC-SHA256(pepper, …)` |
 
-Both stored as `HMAC-SHA256(pepper, value)`, hex, unique-indexed. Lookup computes the HMAC of the
-presented value and matches the index — an O(1) equality lookup, not a scan.
+**Why the split.** A verify token resolves to a page the tenant has already chosen to publish; a
+sign token lets its holder act as the counterparty. Peppering both cost real capability — an
+operator could not read a verify code down the phone, no admin screen could list verify links — to
+defend a case that does not hold up, since anyone who can dump the database can already read every
+invoice in it directly. The sign token is different in kind: a leaked one is a forged signature, and
+it is short-lived, so peppering costs nothing there.
 
 ```
-SIGNATURE_TOKEN_PEPPER   required, ≥ 32 bytes, env only, NEVER in the tenant DB
+SIGNATURE_TOKEN_PEPPER            required, ≥ 32 bytes, env only, NEVER in the tenant DB
+SIGNATURE_TOKEN_PEPPER_PREVIOUS   optional, dual-read window during rotation
 ```
-
-Why a pepper and not a bare `sha256`: the token is short and its alphabet is known, so a stolen
-database dump plus a GPU is a realistic offline attack on a bare hash — and Q12 = C makes a working
-verify link disclose the counterparty and the total. The pepper lives outside the database, so a
-dump alone yields nothing. This is precisely the trade the questionnaire flagged under Q11: full
-disclosure raises the token's value, so the token gets stronger storage.
 
 **Consequences to hold on to:**
-- The plaintext token exists in exactly one place after minting: **the rendered PDF**. §1.3(e).
-- The signing-link token (PR-3) is a **separate** credential from the verify token. A signing link
-  grants the ability to *act*; a verify token grants the ability to *read a public summary*. Never
-  reuse one for the other.
-- **Pepper rotation** needs a dual-read window: add `SIGNATURE_TOKEN_PEPPER_PREVIOUS`, have the
-  lookup try current then previous, re-HMAC matched rows to the new pepper on read, and drop the
-  previous value once `verify_token_hmac_rotated_at` is non-null for every live row. Documented in
-  §9.5; not automated in V1.
+- Verify tokens and codes are recoverable, so `GET /signatures/:id` may show them to a holder of
+  MOD-64 `view`, and an operator can read a code to a caller. Reprints still stream the vaulted
+  artifact, for the artifact-hash reason in §1.3(e), not a token reason.
+- **Never reuse one credential as the other.** Separate columns, separate mint calls, separate
+  lifetimes: a verify token is permanent, a sign token expires with the request.
+- **Pepper rotation** now only affects sign tokens — in-flight signing links, not printed QRs. That
+  makes it a far smaller operation than the first draft implied: set
+  `SIGNATURE_TOKEN_PEPPER_PREVIOUS`, deploy, let open requests drain, clear it. Printed documents are
+  entirely unaffected. §9.5.
 
-Entropy: 12 Crockford chars = 2⁶⁰. Adequate **only with rate limiting** — the portal limiter in §5.2
-is load-bearing, not decoration.
+Entropy: 12 Crockford chars = 2⁶⁰. Adequate **only with rate limiting** — and now that the code is
+stored in plaintext, the portal limiter in §5.2 is the *sole* defence against enumeration. It is
+load-bearing, not decoration.
 
 ### 3.8 RBAC
 
@@ -446,12 +543,116 @@ migration landed.
 Coverage: `jest.config.js` gates on **functions at 13%**, deliberately (see its own comment). Do not
 raise it as a side effect of this programme; do not let these modules drag it down.
 
-### 3.11 Internationalisation
+### 3.11 Where the tenant configures this
+
+One new settings page: **`/settings/signatures`**, a card on the existing settings hub
+(`client/src/features/settings/settings-hub.tsx`), sitting beside *Document templates* and *Email
+signatures* — which is where someone looking for it will actually look.
+
+→ `client/src/features/settings/signatures-page.tsx`, gated MOD-70 `edit`.
+
+Four panels:
+
+1. **Per document type** — the funnel's level 2. A row per signable doc type, four checkboxes
+   (the four cards), and a default. Cards the doc-type ceiling forbids render disabled with the
+   reason, so an admin can see *why* wet-signing a payslip is not on offer rather than wondering
+   where the option went.
+2. **Verification** — scan notifications on/off, anomaly threshold, scan retention days, and the
+   portal's privacy-notice preview.
+3. **Identity** — the Q9 step-up toggle and its XAF threshold, with the plain-language consequence
+   written under it ("above this amount, staff signing this document will also enter an emailed
+   code").
+4. **Certified signatures** — the provider status, whether it is configured, and the current
+   month's envelope count. Read-only where the tenant does not administer the provider.
+
+The company seal (§3.12) is **not** configured here — it derives from branding and entity data that
+already exist. That is the point of it: nobody retypes what the system already knows.
+
+### 3.12 The visual seal (`visual_mark = 'STAMP'`)
+
+The seal is what most people will ever see of this system, so it is specified rather than left to
+the renderer. It derives entirely from data already held — tenant branding, `corporate_entity`, the
+signature row — and has **no editable copy**, which is what stops forty tenants inventing forty
+different legal-looking blocks.
+
+**Layout.** A single bordered block, `identity | verification` on one row:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ {TENANT} · ELECTRONIC SEAL                                   │  ← 8pt mono, brand colour
+├──────────────────────────────────────────────────────────────┤
+│  Jean Mbarga                                    ┌──────────┐ │  ← 11pt bold
+│  Commercial Director                            │    QR    │ │  ← 8pt
+│                                                 │          │ │
+│  Reason   Approved for dispatch                 └──────────┘ │  ← 7pt
+│  Ref      WAYBILL-8842-A                        A4B7-K92M-… │  ← short code, 6pt mono
+│  Signed   2026-08-20 14:35:12 WAT                            │
+│  Method   Verified by email code                             │
+│  Content  e3b0c44298fc1c14                                   │  ← 16-hex prefix, labelled
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Hard rules.**
+
+| Rule | Why |
+| --- | --- |
+| **MUST NOT print "VALID", a tick, or any verdict** | A static PDF cannot know it is valid. Validity depends on amendment and revocation, both of which happen *after* printing. A revoked signature would carry a green VALID badge on every copy in existence, forever — which contradicts §4.5's whole revocation model and is the first thing an opponent would point at. The seal states what it **is**; the portal states what it **evaluates to**. |
+| **MUST NOT print an IP address** | §3.13. |
+| **MUST NOT print "Praxis"** or any vendor mark | The product is white-label. The tenant's client sees the tenant. |
+| **MUST NOT print engineering vocabulary** | `Method` reads "Verified by email code" / "Vérifié par code e-mail" — never `AES_OTP`. Nobody outside this repo knows what that means, and a document a court reads should not need a glossary. |
+| **MUST** label the hash and truncate it consistently | Post-Q2 there are two hashes. Print the **content** hash, first **16** hex characters, labelled `Content`. An unlabelled 34-character fragment invites a reader to think it is the whole digest. |
+| **MUST** carry the QR and short code inside the seal border | The seal is the part people photograph and crop. A verification code outside it gets cropped off. |
+| **MUST** derive colour from tenant branding | Border and header take the branding accent already resolved in `cfg`; no hardcoded blue. |
+| **MUST** survive monochrome | Logistics documents get photocopied and faxed. Nothing may depend on colour to be readable: metadata at ≥7pt in a grey no lighter than `#4b5563`, and the border at ≥1pt. |
+
+**Print size.** 88 mm × 34 mm. The 34 mm is not arbitrary — it is the height budget Bureau LPC
+proved a signature block can occupy without pushing a one-page document onto a second page
+(questionnaire §0.1), and the same test applies here.
+
+**Bilingual.** Field labels follow the party's resolved language (§3.14).
+
+**`Reason`** is a genuinely good addition and is adopted, with one constraint: it is a **controlled
+vocabulary**, not free text. Free text on a legal seal is a liability field — someone will eventually
+type something that contradicts the document. Seeded: *Approved for dispatch · Approved for payment ·
+Goods received · Reviewed and accepted · Acknowledged*. Stored on the signature row as `sign_reason`.
+A tenant may edit the list at `/settings/signatures`; a signer picks from it and cannot type.
+
+**Provenance of every field** — nothing here is retyped, which is the §3.11 promise:
+
+| Field | Source |
+| --- | --- |
+| Tenant name, colour | branding + `corporate_entity` |
+| Name, role | `app_user` for `SESSION`; the signing form for `DECLARED` |
+| Reason | the signer's pick from the controlled list |
+| Ref | the document's own number |
+| Signed | `document_signature.signed_at`, rendered in the tenant timezone with the zone named |
+| Method | `assurance_level`, translated to plain language |
+| Content | `content_hash`, first 16 |
+| QR, code | `verify_token`, `verify_code` |
+
+### 3.13 IP addresses — handling directive
+
+Binding, and it applies to `document_signature.ip` and `signature_scan.ip` alike.
+
+| Stage | Rule |
+| --- | --- |
+| **Capture** | `ip` and `user_agent` at the exact moment of **OTP verification** — not at page load, not at request creation. The evidentiary claim is about the act of signing. |
+| **Store** | Full value, `inet` column, on the signature row and in `immutable_ledger`. |
+| **Visual seal** | **Never rendered.** §3.12. It is PII and must not travel on a physical logistics document that passes through a warehouse, a border post and a customer's filing cabinet. |
+| **Public portal** | **Masked** — `197.210.***.***` (first two octets for IPv4; first two groups for IPv6). Enough for audit transparency, not enough to identify a person. |
+| **Certificate of Completion** | **Masked by default.** A tenant setting `certificate_full_ip` (default `false`) unmasks it where a jurisdiction or a specific dispute requires it. *This one is my judgment call, not your directive* — the certificate is an evidence document but it is also shareable, so it gets the safer default and an explicit switch. |
+| **Internal view** | Full value, MOD-64 `view`, and the reveal is itself audited. |
+
+`services/signatures/mask.js` owns the masking. **MUST** be the only place an IP is formatted for
+display, so a future surface cannot forget the rule.
+
+### 3.14 Internationalisation
 
 FR and EN, matching `kit.js` (`t({fr, en}, cfg.language)`). Everything a counterparty reads —
-the signing page, the five preset cards, the OTP email, the verification portal, the Certificate of
-Completion — is bilingual. The party's language resolves from `client_master` preferred language
-where set, else the tenant default, else FR (this is a Cameroonian product; FR is the safer default).
+the signing page, the four preset cards, the OTP email, the verification portal, the visual seal and
+the Certificate of Completion — is bilingual. The party's language resolves from `client_master`
+preferred language where set, else the tenant default, else FR (this is a Cameroonian product; FR is
+the safer default).
 
 ---
 
@@ -508,33 +709,37 @@ CREATE TABLE document_signature (
   doc_type          text NOT NULL,
   document_vault_id uuid REFERENCES document_vault(doc_id),
 
-  -- the two hashes (Q2 = C)
+  -- the two hashes (Q2 = C), plus the payload itself (Q12 = B, Round 2)
   payload_version   integer NOT NULL DEFAULT 1,
   content_hash      text NOT NULL,   -- sha256 of the canonical BUSINESS payload — recomputable
   artifact_hash     text,            -- sha256 of the vaulted PDF bytes — frozen, NULL until rendered
+  content_payload   jsonb NOT NULL,  -- the canonical payload ITSELF, as signed. Feeds the portal's
+                                     -- as-signed summary (§5.4) and the certificate (§6.7). Storing
+                                     -- it is what lets us show WHAT was signed, not just prove it.
 
   -- the two axes (Q1 = C). assurance_level records evidence COLLECTED, never requested (§1.3(b)).
   assurance_level   text NOT NULL CHECK (assurance_level IN ('SES','AES_OTP','QES','WET')),
-  visual_mark       text NOT NULL CHECK (visual_mark IN ('STAMP','TYPED','DRAWN','UPLOAD','PROVIDER','INK')),
+  visual_mark       text NOT NULL CHECK (visual_mark IN ('STAMP','DRAWN','PROVIDER','INK')),
   preset_code       text,            -- the card the signer picked; NULL for system-recorded acts
+  sign_reason       text,            -- controlled vocabulary, §3.12. Printed on the seal.
 
   -- who signed
   party             text NOT NULL CHECK (party IN ('INTERNAL','EXTERNAL')),
-  signer_user_id    uuid REFERENCES app_user(user_id),   -- INTERNAL only, session-resolved
+  identity_source   text NOT NULL CHECK (identity_source IN ('SESSION','DECLARED')),
+  signer_user_id    uuid REFERENCES app_user(user_id),   -- SESSION only
   signer_name       text NOT NULL,   -- snapshot at signing time; never re-read from the user record
   signer_role       text,
-  signer_email      text,
+  signer_email      text,            -- the address the OTP actually went to. PROVED, unlike the name.
   signature_request_id uuid,         -- FK added in 10746 (PR-3); NULL for direct internal signing
 
   -- the mark itself
-  mark_image_b64    text,            -- DRAWN / UPLOAD only. NULL for STAMP / TYPED / PROVIDER / INK.
-  mark_text         text,            -- TYPED only.
+  mark_image_b64    text,            -- DRAWN only. NULL for STAMP / PROVIDER / INK.
 
-  -- verification credentials (Q10, Q11) — HMAC only, no plaintext (§3.7)
-  verify_token_hmac text NOT NULL,
-  verify_code_hmac  text NOT NULL,
+  -- verification credentials (§3.7). PLAINTEXT — these grant a public read, not an action.
+  verify_token      text NOT NULL,
+  verify_code       text NOT NULL,
 
-  -- evidence
+  -- evidence, captured at OTP VERIFICATION (§3.13), never at page load
   signed_at         timestamptz NOT NULL DEFAULT now(),
   ip                inet,
   user_agent        text,
@@ -548,27 +753,34 @@ CREATE TABLE document_signature (
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_sig_token ON document_signature(verify_token_hmac);
-CREATE UNIQUE INDEX uq_sig_code  ON document_signature(verify_code_hmac);
+CREATE UNIQUE INDEX uq_sig_token ON document_signature(verify_token);
+CREATE UNIQUE INDEX uq_sig_code  ON document_signature(verify_code);
 CREATE INDEX ix_sig_entity ON document_signature(entity_ref, signed_at DESC);
 CREATE INDEX ix_sig_doc    ON document_signature(document_vault_id);
 CREATE INDEX ix_sig_signer ON document_signature(signer_user_id);
 
--- INTERNAL signatures must carry a resolved user; EXTERNAL must not (the party
--- is not an app_user). Enforced here so no service can get it wrong.
-ALTER TABLE document_signature ADD CONSTRAINT ck_sig_internal_user
-  CHECK ((party = 'INTERNAL' AND signer_user_id IS NOT NULL)
-      OR (party = 'EXTERNAL' AND signer_user_id IS NULL));
+-- A session-resolved identity must carry the user it was resolved from; a
+-- declared one must not (the party is not an app_user). Enforced here so no
+-- service can get it wrong.
+ALTER TABLE document_signature ADD CONSTRAINT ck_sig_identity_source
+  CHECK ((identity_source = 'SESSION'  AND signer_user_id IS NOT NULL)
+      OR (identity_source = 'DECLARED' AND signer_user_id IS NULL));
 
--- A drawn/uploaded mark needs an image; a typed mark needs text. Cheap, and it
--- stops a half-recorded signature reaching the portal.
+-- A drawn mark needs its image. Cheap, and it stops a half-recorded signature
+-- reaching the portal.
 ALTER TABLE document_signature ADD CONSTRAINT ck_sig_mark_payload
-  CHECK ((visual_mark IN ('DRAWN','UPLOAD') AND mark_image_b64 IS NOT NULL)
-      OR (visual_mark = 'TYPED' AND mark_text IS NOT NULL)
+  CHECK ((visual_mark = 'DRAWN' AND mark_image_b64 IS NOT NULL)
       OR (visual_mark IN ('STAMP','PROVIDER','INK')));
+
+-- Round 2: external signers ALWAYS clear an OTP (§1.5(b)). No configuration
+-- disables this, so it is a constraint and not a service-layer rule.
+ALTER TABLE document_signature ADD CONSTRAINT ck_sig_external_verified
+  CHECK (party = 'INTERNAL'
+      OR assurance_level IN ('QES','WET')
+      OR otp_challenge_id IS NOT NULL);
 ```
 
-**`10741_signature_presets.sql`** — the catalogue (§3.3), seeded with the five cards.
+**`10741_signature_presets.sql`** — the catalogue (§3.3), seeded with the four cards.
 
 ```sql
 CREATE TABLE signature_preset (
@@ -586,22 +798,35 @@ CREATE TABLE signature_preset (
 );
 
 INSERT INTO signature_preset
-  (preset_code, label_en, label_fr, assurance_level, visual_mark, assurance_rank, tier_label, sort_order)
+  (preset_code, label_en, label_fr, blurb_en, blurb_fr,
+   assurance_level, visual_mark, assurance_rank, tier_label, sort_order)
 VALUES
-  ('STAMP',     'Company stamp',         'Cachet de l''entreprise',  'AES_OTP','STAMP',   2,'1',10),
-  ('TYPED',     'Type your name',        'Saisir votre nom',         'AES_OTP','TYPED',   2,'1',20),
-  ('DRAWN',     'Draw your signature',   'Dessiner votre signature', 'AES_OTP','DRAWN',   2,'2',30),
-  ('CERTIFIED', 'Certified signature',   'Signature certifiée',      'QES',    'PROVIDER',3,'3',40),
-  ('PRINT_SIGN','Print and sign by hand','Imprimer et signer',       'WET',    'INK',     2,'4',50)
+  ('STAMP','Digital stamp','Cachet numérique',
+   'Your name, role and the date, applied as a stamp.',
+   'Votre nom, fonction et la date, apposés en cachet.',
+   'AES_OTP','STAMP',2,'1',10),
+  ('DRAWN','Draw your signature','Dessiner votre signature',
+   'Sign with your finger or your mouse.',
+   'Signez avec le doigt ou la souris.',
+   'AES_OTP','DRAWN',2,'2',20),
+  ('CERTIFIED','Certified signature','Signature certifiée',
+   'Identity verified by an independent signature provider.',
+   'Identité vérifiée par un prestataire de signature indépendant.',
+   'QES','PROVIDER',3,'3',30),
+  ('PRINT_SIGN','Print and sign by hand','Imprimer et signer',
+   'Print, sign in ink, and send the scan back.',
+   'Imprimez, signez à l''encre, puis renvoyez le scan.',
+   'WET','INK',2,'4',40)
 ON CONFLICT (preset_code) DO NOTHING;
 ```
 
-Blurbs are left NULL here on purpose — they are signer-facing copy and belong to you (§1.4(a)).
-The signing page falls back to the label alone until they are filled.
+Plus `signature_reason` — the controlled vocabulary the seal prints (§3.12), seeded with
+*Approved for dispatch · Approved for payment · Goods received · Reviewed and accepted ·
+Acknowledged*, bilingual, tenant-editable, and **never** a free-text field.
 
 **`10742_signature_policy_seed.sql`** — the tenant menu (funnel level 2), seeded per doc type into
 the existing settings mechanism (`shared/config/settings.js`, section `signature_policy`,
-key = docType). Seed conservatively: `STAMP`, `TYPED`, `DRAWN` on for every signable type;
+key = docType). Seed conservatively: `STAMP` and `DRAWN` on for every signable type;
 `CERTIFIED` and `PRINT_SIGN` **off** until their PRs ship and their flags are enabled.
 
 **`10743_signature_events.sql`** — event-type rows so `emitEvent` resolves a category and the
@@ -710,8 +935,11 @@ the signer's name from a form field.
 4. Revoking returns the row with `revoked_at` set; the row still exists and still lists.
 5. A preset outside the resolved menu returns `422 PRESET_NOT_ALLOWED`.
 6. An unregistered doc type returns `422 NO_CANONICAL_PAYLOAD`.
-7. `verify_token_hmac` and `verify_code_hmac` are unique; no plaintext token column exists anywhere
-   in the schema (`grep` the migration; the reviewer checks this by eye).
+6a. The rendered seal contains no verdict word, no IP, no vendor name, and no `AES_OTP`-style token;
+   it fits 88 × 34 mm; and it stays legible converted to greyscale (§3.12).
+7. `verify_token` and `verify_code` are unique and readable back through `GET /signatures/:id`;
+   `sign_token_hmac` (PR-3) is **not** readable back anywhere. The reviewer checks the asymmetry by
+   eye — it is the whole of §3.7.
 8. `npm run ci` green.
 
 ### 4.8 Tests
@@ -727,8 +955,12 @@ narrowing, empty-menu error.
 
 `tests/unit/signature-staleness.test.js` — sign, mutate, assert `AMENDED` + one flag + idempotence.
 
-`tests/db/signature-constraints.test.js` — `ck_sig_internal_user` and `ck_sig_mark_payload` reject
-their bad shapes at the database, not just in the validator.
+`tests/db/signature-constraints.test.js` — `ck_sig_identity_source`, `ck_sig_mark_payload` and
+`ck_sig_external_verified` reject their bad shapes at the database, not just in the validator.
+
+`tests/unit/signature-seal.test.js` — renders the seal and asserts the §3.12 prohibitions as literal
+string checks: no `VALID`, no `Praxis`, no `AES_OTP`, no IP-shaped substring. Cheap, and it is what
+stops a well-meaning "let's add a green tick" from reaching a printed document.
 
 ### 4.9 Task list
 
@@ -737,9 +969,13 @@ their bad shapes at the database, not just in the validator.
 3. `tokens.js` + the pepper env var, wired into `src/config/env.js` as **required**.
 4. `presets.js` + `document_vault.types.js` ceiling fields.
 5. Rewrite the six `document_signature.*` files.
-6. Rewrite `signatures.tsx`; build the preset-card component PR-3 will reuse.
-7. Tests per §4.8.
-8. Delete nothing else yet — `document_verification` is PR-2's to replace.
+6. `services/signatures/mask.js` — the only place an IP is ever formatted for display (§3.13).
+7. `kit.sealBlock()` — the visual seal per §3.12, with the monochrome and no-verdict rules under
+   test. **Do not** let this land as ad-hoc markup in one template.
+8. Rewrite `signatures.tsx`; build the preset-card component PR-3 and the settings page both reuse.
+9. `client/src/features/settings/signatures-page.tsx` + its settings-hub card (§3.11).
+10. Tests per §4.8.
+11. Delete nothing else yet — `document_verification` is PR-2's to replace.
 
 ---
 
@@ -828,9 +1064,25 @@ Artifact       ✓ This file is the exact one we issued.           (artifact_has
 …and when the first fails: *"Signed on 3 March 2026, then modified on 11 March 2026. The signature
 below no longer covers the current contents."* — Q5 = C, surfaced where it matters.
 
+**The summary is the document AS SIGNED — never a live query.** This is Q12 = B, and the reason is
+§1.5(d): a live query lets an **old** copy disclose the **current** state. Someone holding a March
+waybill scans it in September and reads today's line items, today's counterparty, today's
+amendments — facts that were never on their paper.
+
+So the summary renders from `document_signature.content_payload`, the canonical payload stored at
+signing time. It cannot drift, it needs no joins, and it answers the question a verifier actually
+has: *what did this person attest to?*
+
+> **MUST NOT** query the live record to build the summary. The only live computation on this page is
+> the hash comparison that produces the two verdicts above.
+
+The amendment case gets a real before/after rather than a bare red flag: both payloads are
+structured, so the portal can name the fields that changed (*"Total: 1 607 900 XAF → 1 812 400 XAF"*)
+without disclosing anything the reader's own copy did not already contain.
+
 **Per-doc-type summaries.** A resolver registry keyed by doc type, sitting beside `DOC_TYPES` in
 `document_vault.types.js` so a new signable type cannot be added without someone seeing the summary
-slot. Each returns `{ title, fields: [{label, value}], detail? }`:
+slot. Each takes the **stored payload** and returns `{ title, fields: [{label, value}], detail? }`:
 
 - `FINAL_INVOICE` → reference, counterparty, total TTC, **line-item count**
 - `DELIVERY_NOTE` → reference, counterparty, item count, delivery date
@@ -839,10 +1091,11 @@ slot. Each returns `{ title, fields: [{label, value}], detail? }`:
   never clause bodies)
 - `QUOTATION` / `PROPOSAL` → reference, counterparty, total, validity date
 
-Plus, always: signer name and role, the preset card they used, the assurance level in plain words
-("verified by email code" / "certified by a third party" / "signed by hand and reconciled"), the
-timestamp, and the tenant's legal block (`legal_name`, RCCM, NIU, address) so a reader can reach the
-company directly.
+Plus, always: signer name and role, whether the name was **claimed or session-resolved** (§1.3(d)),
+the preset card used, the assurance level in plain words ("verified by email code" / "certified by a
+third party" / "signed by hand and reconciled" — never `AES_OTP`), the signing reason, the
+timestamp, the **masked** IP per §3.13, and the tenant's legal block (`legal_name`, RCCM, NIU,
+address) so a reader can reach the company directly.
 
 > **MUST NOT** render an unregistered doc type's raw record as a fallback summary. An unknown type
 > shows the verdict and the signer only. A fallback that dumps whatever columns exist is exactly how
@@ -1072,10 +1325,17 @@ database. A validator check is *also* present for the friendly error, but the co
 makes the rule true.
 
 **Level 3 — never the signer.** Q7 = C is forbidden. There is **no** code path anywhere in this
-programme where a signer supplies the address their own OTP is sent to. The signing page renders the
-address read-only, masked (`j••••@acme.cm`), so the signer can confirm it is theirs but cannot
-change it. If it is wrong, the request is reissued by the sender — which is exactly the audit
-behaviour you want.
+programme where a signer supplies the address their own OTP is sent to.
+
+What the external signer **may** fill in: their **name** and **role**, which is what the seal prints.
+What they **may not** touch: the **email**. The signing page renders it read-only and partially
+masked — *"We sent a code to j••••@acme.cm. If you are the authorised signatory, enter it below."*
+— so they can confirm it is theirs without being able to change it. If it is wrong, the sender
+reissues, which is exactly the audit behaviour you want.
+
+> This is the `identity_source = 'DECLARED'` case, and §1.3(d)'s rule applies verbatim: **the name is
+> claimed, the email is proved.** The portal and the certificate say so in those terms rather than
+> presenting a typed name as though the system had verified it.
 
 **Assurance consequence.** A party whose address is `ON_FILE` can reach `AES_OTP`. A party whose
 address is `OVERRIDE` **also** reaches `AES_OTP`, because a tenant user with `edit` has attested to
@@ -1145,14 +1405,33 @@ signer picks. Cards for presets whose PR has not shipped, or whose flag is off, 
 with a reason** rather than being hidden — a counterparty who was told "you can sign by hand" should
 see why that option is greyed out, not wonder whether the page is broken.
 
-Per Q1, every completion path passes through verification: `STAMP`, `TYPED` and `DRAWN` all require
-a verified OTP before `/complete` will accept. `CERTIFIED` hands off to the provider (PR-4), which
+Per Q1, every completion path passes through verification: `STAMP` and `DRAWN` both require a
+verified OTP before `/complete` will accept, with **no threshold and no setting that disables it**
+(§1.5(b); the `ck_sig_external_verified` constraint in §4.2 enforces it below the service layer). `CERTIFIED` hands off to the provider (PR-4), which
 does its own identity check. `PRINT_SIGN` issues a print job (PR-5) and settles out of band.
 
 > **MUST.** `/complete` re-derives the canonical hash and compares it to
 > `signature_request.content_hash`. Mismatch → `409 DOCUMENT_AMENDED`, the request moves to
 > `AMENDED`, every already-signed party is notified, a `compliance_flag` is raised. This is §1.3(a),
 > and it is what stops party B signing something party A never saw.
+
+**The sender signs first — confirmed, and it is the default.** Your Q7 described exactly this:
+*"our tenant's Commercial Director signs first, then routes it to the client's Procurement Manager."*
+That is a party like any other — `party_kind = 'ISSUER'`, `sequence_no = 1`, `identity_source =
+'SESSION'` — and the model already carries it with no special case.
+
+Two consequences worth stating because they are easy to get wrong:
+
+- **The issuer signs *before* dispatch, not after.** `POST /signature-requests/:id/dispatch` refuses
+  with `409 ISSUER_NOT_SIGNED` while an `ISSUER` party at `sequence_no = 1` is still `PENDING`. A
+  counterparty must never receive a link to countersign a document the issuing company has not
+  signed — that is how a document goes out attested by nobody.
+- **The issuer signs through the internal path** (`POST /signatures/internal`, session identity,
+  step-up per §6.5), not through a signing link. They are already authenticated; emailing them a
+  token would be theatre. The service resolves their `ISSUER` party row and settles it.
+
+An issuer-signs-first chain therefore runs: staff signs internally → dispatch → counterparty gets the
+link → optional second counterparty (the one override, Q7) → certificate.
 
 **Chain advance.** On a successful `/complete`, in one transaction: write the `document_signature`
 row, settle the party, and either dispatch the next `sequence_no` or — if none remains — set the
@@ -1326,11 +1605,14 @@ CREATE INDEX ix_sigusage_unbilled ON signature_usage_ledger(created_at) WHERE bi
 
 ### 7.4 Lifecycle
 
-1. **Fee modal** (Q15). Before dispatch the UI calls `GET /signatures/qes/quote` and renders:
-   *"Tier 3 third-party verification will be applied. A service fee of {fee} will be billed to your
-   account on dispatch."* The fee comes from `signature_policy.qes_unit_fee` — **§1.4(b) is
-   outstanding; there is no default and dispatch fails `424 CONFIG_MISSING` until it is set**, with
-   a link to the settings screen (the same 424 pattern `pdf.service.renderDocType` already uses).
+1. **Dispatch confirmation** (Q15, narrowed in Round 2). The tenant absorbs the provider cost in
+   its own service pricing, so there is **no client-facing fee and no charge consent**. The modal is
+   informational: *"This will be sent for certified signature and will use one certified envelope
+   from your monthly allowance."* No figure, no `424` blocker — §1.4(b) is closed.
+
+   > **Deleted from the original spec:** the fee modal, the `final_invoice` rebill integration, the
+   > disputed-line-item path, and the per-tenant `qes_unit_fee` setting. Metering survives, but it
+   > serves **Praxis→tenant** billing only, at a platform rate (§7.5).
 2. **Create.** Insert `qes_envelope` as `CREATING`. Call the adapter.
 3. **Charge on issue, and only on issue.** In the same transaction that writes `provider_ref`,
    insert the `signature_usage_ledger` row. `provider_ref NOT NULL` on the ledger makes
@@ -1345,23 +1627,36 @@ CREATE INDEX ix_sigusage_unbilled ON signature_usage_ledger(created_at) WHERE bi
 6. **Poll as a backstop.** `qes-poll-scheduler` every 30 minutes over non-terminal envelopes older
    than an hour. Webhooks get lost; a chain that stalls invisibly is worse than a redundant poll.
 7. **Cancel.** Q15: *non-refundable once the provider ref is issued*. Cancelling sets `CANCELLED`
-   and **leaves the ledger row in place**, with the certificate and billing portal both showing it
-   as a dispatched-then-cancelled envelope. Do not add a refund path; that was decided.
+   and **leaves the ledger row in place** — the provider consumed the quota whatever we do. Do not
+   add a refund path; that was decided. Since nothing is billed onward to the tenant's client, this
+   is now purely an internal accounting fact.
 
 **Evidence mirroring.** The provider's audit certificate is fetched and vaulted, not linked. A link
 to a third party's dashboard is worthless in year seven when the contract has lapsed. Our own
 Certificate of Completion (§6.7) references the mirrored vault copy.
 
-### 7.5 Platform wallet monitoring (Q15)
+### 7.5 Metering and platform wallet monitoring (Q15)
+
+There is exactly **one** billing relationship in scope: **Praxis → tenant**. The tenant → client
+relationship was deleted in Round 2 (the tenant absorbs the cost), which removes an entire
+subsystem.
+
+`signature_usage_ledger` therefore meters for Praxis's own billing, not for a client invoice. The
+unit rate is a **platform** setting (`platform.qes_unit_cost`), not a tenant one — a tenant cannot
+set the price Praxis charges it, and no tenant needs to see the figure at all.
 
 `qes-quota-scheduler` (daily) sums envelopes created this calendar month across all tenants against
 `platform.qes_monthly_quota`, and emits `qes.quota_low` at 80% and again at 95% to the platform
-alert-routing service. This is a **platform-tier** concern, not a tenant one: the free-tier quota
-belongs to the Praxis account, and a tenant must never see another tenant's consumption.
+alert-routing service. This stays **platform-tier**: the free-tier allowance belongs to the Praxis
+account, and one tenant must never see another's consumption.
+
+Each tenant sees only its own count, read-only, on the `/settings/signatures` "Certified signatures"
+panel (§3.11).
 
 ### 7.6 Acceptance criteria
 
-1. Dispatch with no `qes_unit_fee` configured returns `424 CONFIG_MISSING` with a settings link.
+1. The dispatch confirmation shows no monetary figure, and dispatch succeeds with no fee setting
+   configured — the `424 CONFIG_MISSING` path is gone (Round 2).
 2. A provider 5xx leaves `qes_envelope` `FAILED` and **zero** `signature_usage_ledger` rows.
 3. A successful create writes exactly one ledger row, in the same transaction as `provider_ref`.
 4. A webhook with a bad signature is rejected **before** the body is parsed, and logs nothing from it.
@@ -1379,7 +1674,7 @@ belongs to the Praxis account, and a tenant must never see another tenant's cons
 4. Envelope service + the transactional charge rule.
 5. Public webhook route + signature verification + idempotency.
 6. `qes-poll` + `qes-poll-scheduler` + `qes-quota-scheduler`.
-7. The fee modal and the billing view (document UUID + mirrored certificate link per Q15).
+7. The informational dispatch confirmation + the read-only tenant usage panel (§3.11 panel 4).
 8. Tests per §7.6, with the adapter stubbed — no live API calls in CI.
 
 ---
@@ -1622,7 +1917,7 @@ flags per run, so reconciling a document clears its flag on the next scan with n
 | File | PR | Adds |
 | --- | --- | --- |
 | `10740_signature_core.sql` | 1 | `document_signature` (replaces the `0410` stub) |
-| `10741_signature_presets.sql` | 1 | `signature_preset` + the five seeded cards |
+| `10741_signature_presets.sql` | 1 | `signature_preset` + the four seeded cards, `signature_reason` |
 | `10742_signature_policy_seed.sql` | 1 | `signature_policy` settings seed per doc type |
 | `10743_signature_events.sql` | 1 | `signature.signed / revoked / amended / stale_detected` |
 | `10744_signature_scan.sql` | 2 | `signature_scan` |
@@ -1693,21 +1988,25 @@ POST   /public/qes/:provider/webhook
 | `scan_anomaly_threshold` | `25` | Scans per rolling hour before an anomaly event |
 | `scan_retention_days` | `400` | `signature_scan` pruning |
 | `reminder_days` | `[2, 5]` | Reminder schedule; `[]` disables |
-| `qes_unit_fee` | **none** | **§1.4(b) — dispatch fails `424` until set** |
+| `certificate_full_ip` | `false` | Unmask the IP on the Certificate of Completion (§3.13) |
+| `sign_reasons` | seeded | The controlled reason vocabulary the seal prints (§3.12) |
 | `unreconciled_days` | `7` | Before the RED compliance flag |
 
 ### 9.5 Environment
 
 ```
 SIGNATURE_TOKEN_PEPPER            required, ≥32 bytes. Env only, never the tenant DB.
-SIGNATURE_TOKEN_PEPPER_PREVIOUS   optional, dual-read window during rotation (§3.7)
+                                  Protects SIGNING tokens only (§3.7).
+SIGNATURE_TOKEN_PEPPER_PREVIOUS   optional, dual-read window during rotation
 PUBLIC_PORTAL_BASE_URL            the https origin printed into QR codes
 ```
 
-**Pepper rotation** (manual in V1): set `_PREVIOUS` to the outgoing value, deploy, let the lookup
-re-HMAC matched rows on read, confirm no row still carries the old HMAC, then clear `_PREVIOUS`.
-Rotating without the dual-read window **invalidates every printed QR in existence** — this is the
-single most destructive operation in the programme and belongs in `INCIDENT_RUNBOOK.md`.
+**Pepper rotation** (manual in V1): set `_PREVIOUS` to the outgoing value, deploy, let open signature
+requests drain, then clear `_PREVIOUS`. After Round 2's Q11 = B this is a **small** operation —
+it invalidates in-flight signing links only. **Printed QR codes are unaffected**, because verify
+tokens are stored in plaintext and were never peppered. (The first draft of this guide had it as the
+most destructive operation in the programme; that was a consequence of peppering the verify token,
+and it is gone.)
 
 ### 9.6 v2 backlog
 

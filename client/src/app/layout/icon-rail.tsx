@@ -35,7 +35,7 @@ import { useCommandPalette } from "./command-palette-context";
 import { useQuickActions } from "@/components/quick-actions";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
 import { RailPinsSkeleton } from "./shell-skeleton";
-import { NavArrows } from "./nav-arrows";
+import { NavCluster } from "./nav-cluster";
 import { SearchIcon, TowerIcon, type IP } from "./nav-icons";
 
 function PlusIcon(p: IP) {
@@ -137,13 +137,14 @@ export function IconRail() {
       className="rail hidden flex-none flex-col items-center md:flex"
       aria-label={navT(t, "Shortcuts")}
     >
-      {/* Above everything, including Control Tower. Back and forward are the
-          only two controls here that act on where the user just WAS rather than
-          on where they might go, and the top of the strip is the one place a
-          hand reaches for them — see `nav-arrows.tsx` for why they are here at
-          all and not in the title bar. Renders nothing until the trail has
-          somewhere to lead. */}
-      <NavArrows />
+      {/* Above everything, including Control Tower. Back, forward and refresh
+          are the only controls here that act on where the user just WAS or on
+          what they are already looking at, rather than on where they might go,
+          and the top of the strip is the one place a hand reaches for them —
+          see `nav-cluster.tsx` for why all three share one pill, and
+          `nav-arrows.tsx` for why they are here at all and not in the title
+          bar. Always rendered; the arrows grey when the trail starts here. */}
+      <NavCluster />
 
       <RailButton
         label={navT(t, "Control Tower")}

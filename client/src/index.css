@@ -2032,6 +2032,53 @@
   }
 
   /**
+   * THE FRESHNESS DIAL — the refresh cell's mark (app/layout/nav-refresh.tsx).
+   *
+   * TWO WEIGHTS ON ONE CIRCLE, and that is the whole trick. The track is a
+   * hairline at 1.5 and the arc that rides on it is 2.1 — the same weight as
+   * the chevrons above, so the mark sits in the same family. Drawn at one
+   * weight the drained state reads as a rendering glitch; at two it reads as a
+   * gauge with less in it, which is what it is.
+   *
+   * THE ARC DOES NOT CHANGE COLOUR AS IT DRAINS. Old data on a costing screen
+   * is normal, and an idle control that turns amber says something is wrong.
+   * `--primary` is spent only on the two states that are actually asking for a
+   * decision: a refresh in flight, and one armed against a dead connection.
+   */
+  .rail-dial-track {
+    stroke: color-mix(in srgb, var(--muted-foreground) 22%, transparent);
+    stroke-width: 1.5;
+  }
+  .rail-dial-arc {
+    stroke: currentColor;
+    stroke-width: 2.1;
+    /* The drain steps once every fifteen seconds and each step is a fortieth
+       of the ring, so this transition is never SEEN as motion — it exists to
+       keep the one step anybody does watch (the snap back to full when a
+       refresh lands) from being a jump cut. */
+    transition:
+      stroke-dashoffset var(--dur) var(--ease),
+      stroke var(--dur) var(--ease);
+  }
+  .rail-nav-btn.is-working .rail-dial-arc,
+  .rail-nav-btn.is-armed .rail-dial-arc {
+    stroke: var(--primary);
+  }
+  /* A staged build, stated for as long as it is true rather than for as long as
+     a toast is on screen. Haloed in the page ground so it stays a dot rather
+     than merging into the arc behind it. */
+  .rail-refresh-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--primary);
+    box-shadow: 0 0 0 2px var(--background);
+  }
+
+  /**
    * The one-time nudge on the rail's edit affordance.
    *
    * 240ms, once — a buzz, not a dance. It fires on a user's first session only

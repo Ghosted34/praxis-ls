@@ -28,22 +28,17 @@ import {
   type TrailEntry,
 } from "./nav-trail";
 import { NavTrailContext, type NavTrailValue } from "./nav-trail-context";
+// Alt+← must not fire while somebody is editing a field — on Windows that chord
+// also moves the caret, and stealing it mid-sentence would navigate away from a
+// half-filled form. Shared with the rail's Alt+R refresh, which has the same
+// problem for the same reason (Option+R types "®").
+import { isEditing } from "@/lib/is-editing";
 
 /** The stack position React Router stamped on this entry. Missing only before
  *  the router's first `replaceState`, where 0 is the right answer anyway. */
 function historyIndex(): number {
   const state = window.history.state as { idx?: number } | null;
   return typeof state?.idx === "number" ? state.idx : 0;
-}
-
-/** Is the user typing? Alt+← must not fire while somebody is editing a field —
- *  on Windows that chord also moves the caret, and stealing it mid-sentence
- *  would navigate away from a half-filled form. */
-function isEditing(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el || !el.tagName) return false;
-  if (el.isContentEditable) return true;
-  return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
 }
 
 export function NavTrailProvider({ children }: { children: React.ReactNode }) {

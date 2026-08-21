@@ -865,3 +865,82 @@ idempotency, column and citext gates all OK.
 Client: lint 0 errors and 111 warnings against a budget of 112, `tsc -b && vite build` green,
 1,666 vitest tests passing across 106 suites, 6 skipped.
 Database: see §16.4 — nothing here has been run against one.
+
+---
+
+## 17. Fourth sweep — the QC pass on this session
+
+§16 closed with "nothing outstanding". The four PRs, the gates, and the
+verification numbers were all taken as read. This pass re-checked every claim
+in §11–§16 against the tree, and then asked the question the earlier sweeps
+had not: **were the regression tests the guide named actually written?** Two of
+them were not. Two production defects were hiding in the same places.
+
+### 17.1 Two named test files did not exist
+
+- `tests/integration/mail-search.test.js` (§3.7, §5.9). The parser and the SQL
+  builder were present and untested end-to-end — `search.js` had no dedicated
+  test at all. Now covers the full path: mini-language → parsed filters → the
+  SQL that reaches the driver, including the forgiving behaviours (unknown
+  operator searched as text, dangling operator ignored) that a "cleanup" would
+  otherwise break.
+- `tests/integration/mail-shared-inbox.test.js` (§9.11 — claim race under
+  concurrency). Drives the real claim route with two claimants racing through
+  one recording client; the emulation applies the `assigned_user_id IS NULL`
+  guard only if the SQL still carries it, so a regression to read-then-write
+  fails here as two winners.
+
+### 17.2 Two production defects the missing tests exposed
+
+1. **`client:` was a specified operator that did nothing.** §5.x lists it in
+   the mini-language; the parser stored it and `queryFrom()` dropped it — a
+   search that silently ignored one of its own operators. Now filters
+   `t.entity_ref IN (SELECT 'client:' || client_id FROM client_master WHERE
+   name ILIKE …)` — a name filter on the bound entity, deliberately not a
+   participant match.
+2. **The triage write routes leaked through `RETURNING *`.** claim, assign,
+   status and the visibility PATCH all returned the full thread row with no
+   visibility predicate — the exact §5.1 class, one layer up: any colleague
+   holding MOD-72 edit could read a PRIVATE thread's subject by claiming it,
+   and could widen an invisible PRIVATE thread to TEAM to walk in. All four
+   now gate through `threadRepo.getThread` (404 for invisible or missing,
+   deliberately indistinguishable) and carry `visibility.clause` inside the
+   UPDATE itself. Claim additionally distinguishes a missing thread (404) from
+   a lost race (409 `ALREADY_CLAIMED`) — the old shape labelled both as
+   "someone else claimed it".
+
+Two parser defects were fixed along the way, both against the parser's own
+documented contract: quoted phrases were re-split into ANDed words by
+`toTsQuery` (now `word1 <-> word2` phrase matches), and
+`subject:"bill of lading"` tokenised into a bare `subject:` and a stray phrase
+(the tokeniser now keeps an operator and its quoted value as one token).
+
+### 17.3 Other gaps closed
+
+- **§6.5's regression alert had no call-site test** (§4 gap 2.1's open
+  verification). `mail-deliverability-wiring.test.js` now runs `checkOne` and
+  asserts the PASS→FAIL transition emits `deliverability.regressed` AND
+  notifies the CEOs, and that the FAIL row survives a dead notifier.
+- **§6.7 criterion 9 / S2 — the snapshot test** for the four target clients
+  was never written (§4 gap 2.3). `mail-signature-snapshot.test.js` pins the
+  three canonical renders (named user, SYSTEM block, compact) and asserts the
+  four clients' constraints on each: attribute-width tables with no flex/grid
+  (Outlook 2016+), everything inline with no `<style>`/classes (Gmail), the
+  web-safe font stack (Apple Mail), and escaped-not-executed markup.
+- **`mail-no-telemetry`** now walks every source file in `src/modules/mail/`
+  instead of three named files — a new outbound path is covered the day it is
+  written.
+- **The stale `push.service.js` header** (§3.8) now describes the pipeline
+  that actually exists: Settings opt-in → `/notifications/push/subscribe` →
+  tenant `push_subscription` → `sendToUser` → Workbox `push-handler.js`.
+- **Client `mention-picker`** (§9's named gap): `notes.test.tsx` covers the
+  mention pre-flight — who is notified, through which channels, BEFORE
+  posting; deduplication; the POST payload; the internal-only boundary.
+
+### 17.4 Verification
+
+Backend: 5,400 tests across 345 suites, 0 failures. Lint 0 errors,
+`db:check:columns` OK, `db:check:idempotency` OK, citext gate OK.
+Client: `tsc -b && vite build` green; 1,690 vitest tests across 109 suites;
+lint 0 errors against the 112-warning budget — none of the warnings are this
+pass's files.

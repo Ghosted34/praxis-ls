@@ -23,15 +23,24 @@
 
 const FOLDERS = new Set(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]);
 
-/** Split on spaces, but keep "quoted phrases" together. */
+/**
+ * Split on spaces, but keep "quoted phrases" together — and keep an operator
+ * and its quoted value as ONE token, so `subject:"bill of lading"` is a
+ * subject filter for the phrase rather than a bare `subject:` and a stray
+ * phrase.
+ */
 function tokenise(q) {
   const out = [];
-  const re = /"([^"]*)"|(\S+)/g;
+  const re = /([a-z_]+):("(?:[^"]*)")|"([^"]*)"|(\S+)/g;
   let m;
   while ((m = re.exec(String(q || "")))) {
-    const quoted = m[1] !== undefined;
-    const value = quoted ? m[1] : m[2];
-    if (value !== "") out.push({ value, quoted });
+    if (m[1] !== undefined && m[2] !== undefined) {
+      out.push({ value: `${m[1]}:${m[2]}`, quoted: false });
+    } else if (m[3] !== undefined) {
+      if (m[3] !== "") out.push({ value: m[3], quoted: true });
+    } else if (m[4] !== undefined && m[4] !== "") {
+      out.push({ value: m[4], quoted: false });
+    }
   }
   return out;
 }
@@ -63,12 +72,24 @@ function parseQuery(q) {
     before: null, after: null,
   };
   const terms = [];
+  // `terms` for callers that want the plain strings; `tsqTerms` for the
+  // tsquery builder, which needs to know which terms were quoted so a phrase
+  // survives as a phrase instead of being re-split into ANDed words.
+  const tsqTerms = [];
 
   for (const { value, quoted } of tokenise(q)) {
     const m = !quoted && /^([a-z_]+):(.*)$/i.exec(value);
-    if (!m) { terms.push(value); continue; }
+    if (!m) {
+      terms.push(value);
+      tsqTerms.push({ text: value, quoted });
+      continue;
+    }
     const key = m[1].toLowerCase();
-    const val = m[2];
+    let val = m[2];
+    // `subject:"bill of lading"` means the phrase, not a literal quote mark.
+    // Tokenise already kept the quoted value together; strip the marks so the
+    // filter matches the words the user typed.
+    if (/^".*"$/.test(val)) val = val.slice(1, -1);
     if (val === "") continue;            // a dangling `from:` matches nothing useful
 
     switch (key) {
@@ -77,14 +98,14 @@ function parseQuery(q) {
       case "subject": filters.subject.push(val); break;
       case "folder": case "in": {
         const f = val.toUpperCase();
-        if (FOLDERS.has(f)) filters.folder = f; else terms.push(value);
+        if (FOLDERS.has(f)) filters.folder = f; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
         break;
       }
       case "label": filters.label = val; break;
       case "client": filters.client = val; break;
       case "stream": {
         const s = val.toUpperCase();
-        if (s === "HUMAN" || s === "SYSTEM") filters.stream = s; else terms.push(value);
+        if (s === "HUMAN" || s === "SYSTEM") filters.stream = s; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
         break;
       }
       case "is": {
@@ -93,21 +114,21 @@ function parseQuery(q) {
         else if (v === "read") filters.unread = false;
         else if (v === "starred") filters.starred = true;
         else if (v === "vip") filters.vip = true;
-        else terms.push(value);
+        else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
         break;
       }
       case "has": {
         if (val.toLowerCase() === "attachment") filters.hasAttachment = true;
-        else terms.push(value);
+        else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
         break;
       }
-      case "before": { const d = parseDate(val); if (d) filters.before = d; else terms.push(value); break; }
-      case "after": case "newer": { const d = parseDate(val); if (d) filters.after = d; else terms.push(value); break; }
-      default: terms.push(value);        // unknown operator → plain text
+      case "before": { const d = parseDate(val); if (d) filters.before = d; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); } break; }
+      case "after": case "newer": { const d = parseDate(val); if (d) filters.after = d; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); } break; }
+      default: terms.push(value); tsqTerms.push({ text: value, quoted: false }); // unknown operator → plain text
     }
   }
 
-  return { filters, terms, tsquery: toTsQuery(terms) };
+  return { filters, terms, tsquery: toTsQuery(tsqTerms) };
 }
 
 /**
@@ -118,14 +139,36 @@ function parseQuery(q) {
  * the final "rage" is typed feels broken. Every character that means something
  * to tsquery is stripped rather than escaped — the input is a search box, and a
  * user typing `&` means the character, not the operator.
+ *
+ * Terms may be plain strings or `{ text, quoted }`. A quoted term survives as
+ * a phrase (`word1 <-> word2`, the documented tsquery FOLLOWED BY operator)
+ * instead of being re-split into ANDed words — the parser's contract says
+ * "quotes group", and this is where that promise is kept.
  */
 function toTsQuery(terms) {
   const cleaned = terms
-    .map((t) => String(t).replace(/[!&|()<>:*'\\]/g, " ").trim())
-    .flatMap((t) => t.split(/\s+/))
-    .filter(Boolean);
+    .map((t) => {
+      const quoted = typeof t !== "string" && Boolean(t.quoted);
+      const text = String(typeof t === "string" ? t : t.text)
+        .replace(/[!&|()<>:*'\\]/g, " ")
+        .trim();
+      return { text, quoted };
+    })
+    .filter((t) => t.text);
   if (!cleaned.length) return null;
-  return cleaned.map((t, i) => (i === cleaned.length - 1 ? `${t}:*` : t)).join(" & ");
+  const last = cleaned.length - 1;
+  return cleaned
+    .map(({ text, quoted }, i) => {
+      const words = text.split(/\s+/);
+      if (quoted && words.length > 1) {
+        const phrase = words.join(" <-> ");
+        return i === last ? `${phrase}:*` : phrase;
+      }
+      return words
+        .map((w, j) => (i === last && j === words.length - 1 ? `${w}:*` : w))
+        .join(" & ");
+    })
+    .join(" & ");
 }
 
 module.exports = { FOLDERS, tokenise, parseDate, parseQuery, toTsQuery };

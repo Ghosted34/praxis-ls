@@ -639,7 +639,7 @@ below were flipped 'off' -> 'on' because their modules are built and mounted, an
 made 19 modules unreachable for everyone."* Same shape, different fifteen keys — except this version
 is worse, because a missing catalogue row cannot even be seen in the console, let alone flipped.
 
-Seed 9113 adds all fifteen under MOD-64, hung off `comms` so turning Smart Comms off takes the
+Seed 9114 adds all fifteen under MOD-64, hung off `comms` so turning Smart Comms off takes the
 mailbox with it. Twelve default ON — 9110 is explicit that `default_state` answers "is this module
 SHIPPABLE?", not "did the customer buy it?", and plan inclusion is the commercial gate. Three
 default OFF for reasons that are not about readiness: `mail.ai` (opt-in, like every `ai.*` key, and

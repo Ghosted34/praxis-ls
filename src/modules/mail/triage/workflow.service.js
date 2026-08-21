@@ -70,6 +70,13 @@ async function takeLock(client, threadId, actor = {}) {
     held_by_me: mine,
     held_by_other: !mine,
     holder_name: holder,
+    // The same two facts under the names every OTHER thread payload uses. The
+    // lock row calls them `user_id` and the thread payload calls them
+    // `locked_by` / `locked_by_name`, and a client reading one shape from the
+    // thread and a different shape from the lock endpoint is how a field ends
+    // up permanently `undefined` with nothing to show for it.
+    locked_by: lock.user_id,
+    locked_by_name: mine ? actor.full_name || null : holder,
     // The number the UI needs to say "40 seconds ago" without a second call.
     seconds_remaining: Math.max(0, Math.round((new Date(lock.expires_at) - Date.now()) / 1000)),
   };
@@ -153,14 +160,28 @@ async function afterPolicyChange(client, row, actor, verb) {
 
 /* ── The business calendar (§9.2) ─────────────────────────────────────────── */
 
-const getCalendar = async (client) => ({
-  hours: await client.query(
+const getCalendar = async (client) => {
+  const hours = await client.query(
     `SELECT day_of_week, opens_at, closes_at, timezone FROM business_hours ORDER BY day_of_week`,
-  ).then((r) => r.rows),
-  holidays: await client.query(
+  ).then((r) => r.rows);
+  const holidays = await client.query(
     `SELECT holiday_on, name FROM business_holiday ORDER BY holiday_on`,
-  ).then((r) => r.rows),
-});
+  ).then((r) => r.rows);
+  return {
+    hours,
+    holidays,
+    // `business_hours` is the name the setup screen reads, and it was reading a
+    // key nothing sent — so the working-week editor rendered an empty week on a
+    // tenant that had one configured, which looks identical to "not set up yet"
+    // and invites somebody to fill it in again. Both names are emitted rather
+    // than renaming `hours`, because the SLA clock already consumes `hours`.
+    business_hours: hours,
+    // The calendar's timezone is a property of the week, not of each day — the
+    // screen shows one, and picking it off row zero here beats every caller
+    // reaching into `hours[0]` and getting `undefined` on an unconfigured tenant.
+    timezone: hours.length ? hours[0].timezone : null,
+  };
+};
 
 /**
  * Replace the week wholesale.
@@ -255,9 +276,27 @@ const listShares = (client, threadId) =>
 
 /* ── Verified domains (§9.7) ──────────────────────────────────────────────── */
 
+/**
+ * `party_name` is resolved here, not left to the screen.
+ *
+ * This is the list an administrator reads to decide whether a domain genuinely
+ * belongs to a party — it is the input to the one hard block that stands between
+ * an operator and a redirected payment. Rendering `party_id` as a raw uuid makes
+ * that judgement impossible: nobody can tell whether `c-8f21…` is Camrail, and a
+ * row you cannot evaluate gets confirmed on trust or ignored, both of which
+ * defeat the control.
+ *
+ * `party_kind` decides which table to look in, so this is a CASE rather than a
+ * join — the column is a soft reference to two different masters and there is no
+ * foreign key to follow.
+ */
 const listVerifiedDomains = (client, { partyKind = null, partyId = null } = {}) =>
   client.query(
-    `SELECT d.*, d.domain::text AS domain
+    `SELECT d.*, d.domain::text AS domain,
+            CASE d.party_kind
+              WHEN 'CLIENT'   THEN (SELECT cm.name FROM client_master   cm WHERE cm.client_id   = d.party_id)
+              WHEN 'SUPPLIER' THEN (SELECT sm.name FROM supplier_master sm WHERE sm.supplier_id = d.party_id)
+            END AS party_name
        FROM party_verified_domain d
       WHERE ($1::text IS NULL OR d.party_kind = $1)
         AND ($2::uuid IS NULL OR d.party_id = $2)
@@ -323,14 +362,48 @@ async function unverifyDomain(client, id, actor = {}) {
 
 /* ── Bounces (§9.8) ───────────────────────────────────────────────────────── */
 
+/**
+ * One row per ADDRESS, not per bounce event.
+ *
+ * `email_bounce` records an event, and this used to return those events raw. But
+ * the screen is called "Undeliverable addresses" and asks three questions about
+ * each one — how many times, when last, and what the far end said — none of
+ * which a single event can answer. So it rendered a row per bounce with the
+ * count and date columns empty, and an address that failed forty times looked
+ * like forty separate problems.
+ *
+ * Aggregating here rather than in the screen is also the only correct place: a
+ * `LIMIT 100` over EVENTS silently truncates the address list, and one noisy
+ * mailbox can push every other bad address off the page.
+ *
+ * The worst verdict wins, not the newest: HARD outranks COMPLAINT outranks SOFT
+ * outranks DELAY. An address that hard-bounced in March and soft-bounced
+ * yesterday is still dead, and showing the recent SOFT would invite somebody to
+ * retry it.
+ *
+ * `diagnostic` is the one from the most recent event, because that is the text
+ * that explains the state the address is in now.
+ */
 const listBounces = (client, { limit = 100, recipient = null, type = null } = {}) =>
   client.query(
-    `SELECT b.*, b.recipient::text AS recipient, m.subject AS original_subject
+    `SELECT b.recipient::text AS address,
+            b.recipient::text AS recipient,
+            count(*)::int      AS bounce_count,
+            max(b.reported_at) AS last_bounced_at,
+            max(b.reported_at) AS reported_at,
+            (ARRAY_AGG(b.bounce_type ORDER BY
+               CASE b.bounce_type WHEN 'HARD' THEN 0 WHEN 'COMPLAINT' THEN 1
+                                  WHEN 'SOFT' THEN 2 ELSE 3 END))[1] AS bounce_type,
+            (ARRAY_AGG(b.diagnostic  ORDER BY b.reported_at DESC))[1] AS diagnostic,
+            (ARRAY_AGG(b.status_code ORDER BY b.reported_at DESC))[1] AS status_code,
+            (ARRAY_AGG(b.email_bounce_id ORDER BY b.reported_at DESC))[1] AS email_bounce_id,
+            (ARRAY_AGG(m.subject     ORDER BY b.reported_at DESC))[1] AS original_subject
        FROM email_bounce b
        LEFT JOIN email_message m ON m.email_message_id = b.original_message_id
       WHERE ($2::text IS NULL OR b.recipient = $2::citext)
         AND ($3::text IS NULL OR b.bounce_type = $3)
-      ORDER BY b.reported_at DESC
+      GROUP BY b.recipient
+      ORDER BY max(b.reported_at) DESC
       LIMIT $1`,
     [Math.min(Math.max(Number(limit) || 100, 1), 500), recipient, type],
   ).then((r) => r.rows);

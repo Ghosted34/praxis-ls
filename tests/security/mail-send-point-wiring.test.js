@@ -51,13 +51,13 @@ function registry() {
   for (const m of block.matchAll(/\(\s*'([a-z0-9_.]+)'[\s\S]*?,\s*(true|false),\s*\d+\)/g)) {
     rows.set(m[1], m[2] === "true");
   }
-  // Later migrations may correct a claim — 10773 does exactly that for
+  // Later migrations may correct a claim — 10777 does exactly that for
   // `auth.otp`. Reading only the seed would make this gate assert against a
   // state the database has not been in since.
   for (const f of fs.readdirSync(MIGRATIONS).sort()) {
     if (f === "10726_mail_send_point.sql") continue;
     // The `-- DOWN` block is a rollback recipe, not a statement that has run.
-    // Reading it as one made 10773's down-migration ("SET is_wired = true")
+    // Reading it as one made 10777's down-migration ("SET is_wired = true")
     // undo the up-migration this gate was checking for, in the gate only.
     const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8")
       .split(/^-- DOWN\s*$/m)[0]

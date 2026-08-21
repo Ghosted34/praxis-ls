@@ -104,12 +104,55 @@ function hashFile(filePath) {
   return crypto.createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
+/**
+ * The ledger key for a migration file — ALWAYS with forward slashes.
+ *
+ * ── WHY THIS IS NOT JUST path.relative ──────────────────────────────────────
+ *
+ * `path.relative` returns the host separator, so the same file is
+ * `tenant/0120_events_workflow.sql` on Linux and
+ * `tenant\0120_events_workflow.sql` on Windows. That string is the ledger's
+ * PRIMARY KEY (`public.schema_migration(scope, filename)`) and the value
+ * `appliedSet` compares against to decide what has already run.
+ *
+ * So a database migrated from a Windows workstation and then migrated again
+ * from Linux — CI, Docker, the deploy host — finds NO row it recognises and
+ * re-applies every migration from 0001. The reverse is equally true. Nothing
+ * errors; the run just reports several hundred files applied to a database that
+ * already had them.
+ *
+ * Most migrations survive that, because they are written `IF NOT EXISTS`. Not
+ * all of them do: `check-migration-idempotency.js` reports 49 files carrying a
+ * known idempotency backlog, and those are the ones that would do damage.
+ *
+ * Normalising here rather than at the comparison because the key must be
+ * host-independent at WRITE time too — otherwise every Windows run keeps
+ * seeding rows nothing else can read.
+ *
+ * A database whose ledger already holds backslash rows will re-apply once, on
+ * the first run after this change, and be consistent from then on. That is the
+ * same exposure it has had all along, taken deliberately and once.
+ */
+function ledgerKey(absPath) {
+  return path.relative(MIGRATIONS, absPath).split(path.sep).join("/");
+}
+
 async function appliedSet(cli, scope) {
   const { rows } = await cli.query(
     "SELECT filename FROM public.schema_migration WHERE scope=$1",
     [scope],
   );
-  return new Set(rows.map((r) => r.filename));
+  // Both forms are accepted on READ, so a ledger written by an older Windows
+  // run still counts as applied and the one-off re-apply above is avoided
+  // wherever it can be. Only the normalised form is ever WRITTEN.
+  const set = new Set();
+  for (const r of rows) {
+    set.add(r.filename);
+    if (typeof r.filename === "string" && r.filename.includes("\\")) {
+      set.add(r.filename.split("\\").join("/"));
+    }
+  }
+  return set;
 }
 
 async function applyTracked(cli, fileList, opts) {
@@ -130,7 +173,7 @@ async function applyTracked(cli, fileList, opts) {
   const done = await appliedSet(cli, scope);
   let applied = 0;
   for (const f of fileList) {
-    const name = path.relative(MIGRATIONS, f);
+    const name = ledgerKey(f);
     if (done.has(name)) continue;
     const sql = fs.readFileSync(f, "utf8");
     const prefixed = searchPath

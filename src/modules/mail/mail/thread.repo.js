@@ -59,6 +59,52 @@ const visibility = require("../triage/visibility");
 const vis = (n) => visibility.clause(`$${n}`);
 
 /**
+ * ── THE TRIAGE FIELDS, UNDER THE NAMES THE CLIENT READS ─────────────────────
+ *
+ * `TriageBar` renders the SLA due line, who holds the composer lock, and the
+ * assignee's name. Every one of those was `undefined` at runtime, for two
+ * separate reasons, and neither produced an error — the bar just quietly drew
+ * nothing and offered "Claim this" on a thread somebody had already claimed.
+ *
+ *   · `listThreads` selected an explicit column list that included none of the
+ *     §9.2 columns at all. The whole triage bar was blank in the list.
+ *   · `getThread` uses `SELECT t.*`, so it returned the columns — under their
+ *     DATABASE names. `assigned_user_id`, `first_response_due_at` and
+ *     `sla_breached_at` are not `assigned_to`, `sla_due_at` and `sla_breached`,
+ *     and an optional field that never arrives is indistinguishable in TypeScript
+ *     from one that is legitimately absent.
+ *
+ * Neither the client tests nor the server tests could see it: the client mocks
+ * the API, so it was asserting my invented shape against my invented shape.
+ * `scripts/check-response-contract.js` is what caught it, which is exactly the
+ * job it exists to do.
+ *
+ * Defined once and shared by both queries, because the bar renders from the
+ * list AND from the detail, and the two disagreeing is how this started.
+ *
+ * The lock join is deliberately `expires_at > now()` — an expired lock is not a
+ * lock. §9.2 is emphatic that it is advisory, and showing "Thierry is writing a
+ * reply" twenty minutes after Thierry closed his laptop is worse than showing
+ * nothing.
+ */
+const TRIAGE_COLUMNS = `
+            t.assigned_user_id AS assigned_to,
+            au.full_name       AS assigned_to_name,
+            t.work_status,
+            t.visibility,
+            t.first_response_due_at AS sla_due_at,
+            (t.sla_breached_at IS NOT NULL) AS sla_breached,
+            lk.user_id    AS locked_by,
+            lu.full_name  AS locked_by_name,
+            lk.expires_at AS lock_expires_at`;
+
+const TRIAGE_JOINS = `
+       LEFT JOIN app_user au ON au.user_id = t.assigned_user_id
+       LEFT JOIN email_thread_lock lk
+              ON lk.email_thread_id = t.email_thread_id AND lk.expires_at > now()
+       LEFT JOIN app_user lu ON lu.user_id = lk.user_id`;
+
+/**
  * The mailboxes this user may read, as a scalar subquery. Inlined rather than
  * fetched because it belongs inside the same plan as the query that uses it —
  * fetching a list of ids and passing it back in turns one query into two and
@@ -161,9 +207,11 @@ async function listThreads(client, userId, q = {}) {
             (SELECT m9.body_preview FROM email_message m9
               WHERE m9.email_thread_id = t.email_thread_id ORDER BY m9.received_at DESC LIMIT 1) AS preview,
             (SELECT m10.from_address FROM email_message m10
-              WHERE m10.email_thread_id = t.email_thread_id ORDER BY m10.received_at DESC LIMIT 1) AS last_from
+              WHERE m10.email_thread_id = t.email_thread_id ORDER BY m10.received_at DESC LIMIT 1) AS last_from,
+            ${TRIAGE_COLUMNS.trim()}
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+       ${TRIAGE_JOINS.trim()}
       WHERE ${where.join(" AND ")}
       ORDER BY t.is_vip DESC, t.last_message_at DESC
       LIMIT ${limit}`,
@@ -175,10 +223,15 @@ async function listThreads(client, userId, q = {}) {
 /** One conversation with every message on it, in order. */
 async function getThread(client, userId, threadId) {
   const { rows: head } = await client.query(
+    // `t.*` first, then the aliases — a later same-named column wins in
+    // node-postgres, so the client-facing names below override the raw ones
+    // rather than colliding with them.
     `SELECT t.*, t.participants::text[] AS participants,
-            c.email_address AS mailbox_address, c.kind AS mailbox_kind
+            c.email_address AS mailbox_address, c.kind AS mailbox_kind,
+            ${TRIAGE_COLUMNS.trim()}
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+       ${TRIAGE_JOINS.trim()}
       WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}
         AND ${vis(1)}`,
     [userId, threadId],

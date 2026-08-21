@@ -114,3 +114,32 @@ SELECT p.plan_id, f.feature_key, true
   ) AS f(feature_key)
  WHERE p.code = 'starter'
 ON CONFLICT (plan_id, feature_key) DO UPDATE SET included = EXCLUDED.included;
+
+-- DOWN
+--
+-- Undoing this is not just deleting the rows, and the order matters.
+--
+-- `plan_feature` first: `feature_catalogue` is its parent, and a catalogue row
+-- cannot go while a plan still references it.
+--
+-- Then the catalogue rows. Deleting one does NOT clear the `feature_state` rows
+-- it projected into every tenant — those live in tenant databases this file
+-- cannot reach. They are harmless (a state row nothing projects into is inert,
+-- and 10730 seeds them anyway), but they are also why running this down leaves
+-- the fleet in the state it started in: mail flags present per-tenant, all off,
+-- with no supported way to switch them on. That is the defect this seed exists
+-- to close, so undo it only to re-apply a corrected version.
+--
+-- DELETE FROM platform.plan_feature
+--  WHERE feature_key IN (
+--    'mail.core','mail.composer','mail.binding','mail.notes','mail.doc_intake',
+--    'mail.signatures','mail.deliverability','mail.shared_inbox','mail.followup',
+--    'mail.secure_links','mail.archive','mail.antispoof','mail.ai','mail.ocr',
+--    'mail.provider.oauth');
+--
+-- DELETE FROM platform.feature_catalogue
+--  WHERE feature_key IN (
+--    'mail.core','mail.composer','mail.binding','mail.notes','mail.doc_intake',
+--    'mail.signatures','mail.deliverability','mail.shared_inbox','mail.followup',
+--    'mail.secure_links','mail.archive','mail.antispoof','mail.ai','mail.ocr',
+--    'mail.provider.oauth');

@@ -15,12 +15,13 @@
     "dossier_visible",
     "false",
     "finals",
+    "first_out",
     "grant",
     "hits",
+    "jsonb_to_recordset",
     "patch",
     "span",
-    "unlinked_credit",
-    "jsonb_to_recordset"
+    "unlinked_credit"
   ],
   "allow": [
     "actor_email_snapshot",

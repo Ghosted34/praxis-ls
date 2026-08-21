@@ -24,7 +24,7 @@ const { requirePermission } = require("../../../middleware/rbac");
 const { requireFeature } = require("../../../middleware/feature-gate");
 const { asyncHandler } = require("../../../utils/errors");
 const { z } = require("zod");
-const { body } = require("../../../shared/http/validate");
+const { body, params } = require("../../../shared/http/validate");
 const service = require("./assist.service");
 const ocr = require("./ocr.service");
 const semantic = require("./semantic.service");
@@ -225,7 +225,14 @@ router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD
     data: await req.identityDb((c) => ocr.review(c, req.params.id, { fields: req.body.fields }, actor(req))),
   })));
 
+/**
+ * Dismiss carries no body, so it had no validator — and `:id` went to the
+ * repo unchecked. A path parameter is request input like any other; an
+ * unparseable one should be a 422 naming the field, not a 500 out of the
+ * driver on a malformed uuid.
+ */
 router.post("/assist/extractions/:id/dismiss", requireOcr, requirePermission("MOD-72", "edit"),
+  params(z.object({ id: z.string().uuid() })),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.dismiss(c, req.params.id, actor(req))),
   })));

@@ -18,7 +18,10 @@
  *
  * Plus the one that is purely a client concern: `not_built` is not "empty".
  */
-import * as React from "react";
+// No `import * as React` — `jsx: "react-jsx"` means JSX needs no import, and
+// `noUnusedLocals` fails the build on one. This file had it, and it shipped:
+// vitest transpiles without typechecking, so a green test run says nothing
+// about whether `tsc -b` (which `npm run build` runs first) will pass.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

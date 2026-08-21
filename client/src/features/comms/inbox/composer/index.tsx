@@ -302,6 +302,51 @@ export function Composer({
     }
   }
 
+  /**
+   * Swap a large attachment for a secure link (§9.4).
+   *
+   * `outbox.service` has computed `offer_secure_link` since PR-1B — a
+   * SECURE_LINK_HINT_BYTES constant, a flag on every tray response, and a
+   * caption in the composer reading "arrives in a later release". It arrived
+   * with PR-5 and the caption stayed, which is worse than never having promised
+   * it: the operator reads it, believes the feature is missing, and attaches the
+   * 18 MB PDF anyway.
+   *
+   * The link goes into the BODY and the attachment comes off. Doing only the
+   * first would send both, which is the 18 MB message plus a link to it.
+   */
+  async function sendAsSecureLink(a: {
+    email_attachment_id: string;
+    vault_id?: string | null;
+    filename?: string | null;
+  }) {
+    if (!a.vault_id) return;
+    setBusy(true);
+    try {
+      const link = await api.createSecureLink({
+        target_kind: "VAULT_DOC",
+        target_ref: a.vault_id,
+        label: a.filename || undefined,
+        days: 7,
+      });
+      const url = link.url || (link.token ? `${window.location.origin}/s/${link.token}` : "");
+      if (!url) throw new Error("The link came back without an address.");
+      editor
+        ?.chain()
+        .focus("end")
+        .insertContent(
+          `<p>${a.filename || "Document"}: <a href="${url}">${url}</a> ` +
+          `<em>(expires ${new Date(link.expires_at).toLocaleDateString()})</em></p>`,
+        )
+        .run();
+      await detach(a.email_attachment_id);
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /* ── Sending ────────────────────────────────────────────────────────────── */
 
   async function send() {
@@ -454,7 +499,7 @@ export function Composer({
         <AssistToolbar threadId={threadId} getText={getBodyText} setText={setBodyText} />
       </div>
 
-      <AttachmentTray tray={tray} onRemove={detach} busy={busy} />
+      <AttachmentTray tray={tray} onRemove={detach} onSecureLink={sendAsSecureLink} busy={busy} />
 
       {/* Warnings from the SERVER's serializer — the same code that will produce
           the message — so they are about what will actually be sent. */}

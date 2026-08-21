@@ -612,3 +612,101 @@ being routed around.
 ### 14.6 Verification
 
 5,104 backend tests across 333 suites, 0 lint errors, column, idempotency and citext gates OK.
+
+---
+
+## 15. The switch, and the screens
+
+Two things were still true after §14: the whole programme was unreachable, and a quarter of its API
+had no interface.
+
+### 15.1 There was no way to turn any of it on
+
+Migration 10730 seeds fifteen `mail.*` rows into every tenant's `feature_state`, all `'off'`. Every
+mail surface is gated on them, and `requireFeature` is mounted in FRONT of each router by
+`module-loader.js` with no bypass — not even for the CEO, who bypasses RBAC.
+
+**None of those keys existed in `platform.feature_catalogue`.**
+
+`provisioning.projectFeatures()` iterates the CATALOGUE, so it never touched them.
+`plans.service.reprojectPlan` does the same. No tenant-side route writes `feature_state` at all. So
+there was no supported way to switch the mailbox on — not from the console, not from a plan, not
+from a tenant screen. Four commits of work sat behind a hard 403 with no switch, and Q5's "all on
+for Smart Logistics" had no mechanism behind it.
+
+This is 9110's own documented failure mode, a second time. Its header records the first: *"nine keys
+below were flipped 'off' -> 'on' because their modules are built and mounted, and leaving them off
+made 19 modules unreachable for everyone."* Same shape, different fifteen keys — except this version
+is worse, because a missing catalogue row cannot even be seen in the console, let alone flipped.
+
+Seed 9113 adds all fifteen under MOD-64, hung off `comms` so turning Smart Comms off takes the
+mailbox with it. Twelve default ON — 9110 is explicit that `default_state` answers "is this module
+SHIPPABLE?", not "did the customer buy it?", and plan inclusion is the commercial gate. Three
+default OFF for reasons that are not about readiness: `mail.ai` (opt-in, like every `ai.*` key, and
+declaring `ai.assistant.backend` in its `depends_on` moves §3.3's floor-not-ceiling rule into the
+projection), `mail.ocr` (a vision vendor, billed per page), and `mail.provider.oauth` (Graph and
+Gmail are built and deliberately gated).
+
+`tests/security/feature-catalogue-coverage.test.js` now fails when a tenant-seeded flag has no
+catalogue row, when a `depends_on` names a key the catalogue lacks — the projection treats an
+unknown dependency as unmet and forces the feature off, to a fixpoint, so a typo there turns a
+shipped feature off for every tenant silently — and when the dependency graph has a cycle.
+
+### 15.2 Twenty-three endpoints had no interface
+
+PR-5's server side was complete and reachable only from a terminal. Four new tabs in
+`/comms/setup`:
+
+| Tab | Covers | Admin |
+| --- | --- | --- |
+| Follow-ups | pending boomerangs, with cancel | no |
+| Secure links | mint, list, view log, revoke | yes |
+| Response times | SLA policies + working hours + holidays | yes |
+| Trust & archive | confirmed domains, bounces, chain verification | yes |
+
+The two gating decisions came from what the server actually returns rather than from how
+administrative each felt. `workflow.listFollowups` filters on `f.user_id = $1`, so that list is the
+caller's own and everyone gets it. `secure-link.list` has no `created_by` filter — it is every link
+in the tenant, and the labels name clients and invoices ("Invoice INV-2026-0311"), so it is
+admin-only for that reason.
+
+Also wired: per-thread sharing beside the visibility control in the work rail, and the composer's
+secure-link offer. That last one had been a caption reading *"Sending a secure link instead arrives
+in a later release"*, sitting above a `SECURE_LINK_HINT_BYTES` threshold `outbox.service` had been
+computing since PR-1B. It arrived with PR-5 and the caption stayed — worse than never promising it,
+because the operator reads it, believes the feature is missing, and attaches the 18 MB PDF anyway.
+The button now mints the link, drops it into the body and detaches the file; doing only the first
+would send both.
+
+### 15.3 What the screens had to carry
+
+Each of these is a rule the API cannot enforce on its own, so `setup-pr5.test.tsx` pins them:
+
+* A secure-link token is shown **once**. Only its SHA-256 is stored, so no screen and no endpoint can
+  ever show it again — and if the dialog does not say so at the moment it appears, the operator loses
+  it and there is no error to explain why, just a function that cannot exist.
+* An `OBSERVED` domain is **not** a verified one. Ingest records every domain it sees corresponding
+  as a party; an impostor who emails twice is observed twice. The whole anti-spoof control rests on
+  that distinction and a list rendering them alike would destroy it.
+* With nothing confirmed, the send block stops nothing — stated on the screen, because the absence of
+  a warning would otherwise read as safety.
+* A broken hash chain is usually two messages archived concurrently, not tampering — but the
+  consequence for evidence is identical, and that belongs in a sentence rather than a red dot.
+* A follow-up vanishing on its own is the system working.
+* No SLA policy is a valid answer, not a misconfiguration to nag about.
+
+### 15.4 Two defects in this programme's own commits
+
+**An unused import shipped.** `work.test.tsx` carried `import * as React` under `noUnusedLocals`,
+which fails `tsc -b` — the first half of `npm run build`. It passed review because vitest transpiles
+without typechecking, so a green test run says nothing about whether the client compiles. Running
+both is now the habit; the file records why.
+
+**The tests asserted against half the DOM.** `DataList` renders every row twice — a table and a card
+list, one hidden by CSS — and jsdom applies no stylesheet, so every singular query throws "found
+multiple elements". Scoping to one half would tie the tests to which the component renders first.
+
+### 15.5 Verification
+
+5,126 backend tests across 334 suites, 0 lint errors, column, idempotency and citext gates OK.
+Client: typecheck clean, 1,649 vitest tests passing.

@@ -434,6 +434,8 @@ export type Followup = {
   note?: string | null;
   trigger?: string | null;
   status: string;
+  /** Joined by the server so the list reads as conversations, not as ids. */
+  subject?: string | null;
 };
 export const snoozeThread = (threadId: string, dueAt: string, note?: string) =>
   tenant<Followup>(`/mail/threads/${threadId}/snooze`, { method: "POST", body: { due_at: dueAt, note } });
@@ -459,6 +461,12 @@ export type SecureLink = {
   expires_at: string;
   revoked_at?: string | null;
   view_count?: number;
+  created_at?: string;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  entity_ref?: string | null;
+  /** The server's own answer, rather than the client re-deriving it from dates. */
+  is_live?: boolean;
 };
 export const createSecureLink = (body: {
   target_kind: "VAULT_DOC" | "GENERATED_PDF";

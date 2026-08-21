@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
 import * as api from "@/lib/mail-api";
@@ -214,6 +215,7 @@ export function VisibilityControl({
   const note = VISIBILITY.find((v) => v.value === current)?.note;
 
   return (
+    <div className="space-y-3">
     <div className="space-y-1">
       <label className="block text-xs font-medium text-muted-foreground" htmlFor={`vis-${threadId}`}>
         Who can see this
@@ -240,6 +242,81 @@ export function VisibilityControl({
         ))}
       </Select>
       {note && <p className="text-xs text-muted-foreground">{note}</p>}
+    </div>
+
+    {/* Sharing is the EXCEPTION to the visibility rule, not a second way of
+        expressing it. A PRIVATE thread shared with one colleague stays private
+        to everyone else — which is why the two controls sit together and the
+        share list only earns its place when the thread is not already
+        company-wide. */}
+    {current !== "COMPANY" && <ThreadShares threadId={threadId} />}
+    </div>
+  );
+}
+
+/**
+ * Who else can read this one conversation (§9.5).
+ *
+ * The visibility setting answers "which group", and this answers "and also
+ * these people". `triage/visibility`'s single predicate reads both, so a share
+ * is not a workaround for a PRIVATE thread — it is part of the same rule.
+ *
+ * Revoking is offered next to every name for the reason unbinding is: the
+ * person who notices a share is wrong is usually not the person who made it,
+ * and they will not go hunting for a way to correct someone else's work.
+ */
+function ThreadShares({ threadId }: { threadId: string }) {
+  const shares = useResource(() => api.listShares(threadId), [threadId]);
+  const [userId, setUserId] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try { await fn(); shares.reload(); } catch (err) { reportActionError(err); } finally { setBusy(false); }
+  }
+
+  const rows = shares.data || [];
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">Shared with</p>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nobody outside the group above.</p>
+      ) : (
+        <ul className="space-y-1">
+          {rows.map((s) => (
+            <li key={s.user_id} className="flex items-center justify-between gap-2 text-xs">
+              <span>{s.user_name || s.user_id}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => run(() => api.unshareThread(threadId, s.user_id))}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const id = userId.trim();
+          if (!id) return;
+          run(() => api.shareThread(threadId, id)).then(() => setUserId(""));
+        }}
+      >
+        <Input
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+          placeholder="Colleague"
+          aria-label="Share with"
+          className="h-8 text-xs"
+        />
+        <Button size="sm" type="submit" disabled={busy || !userId.trim()}>Share</Button>
+      </form>
     </div>
   );
 }

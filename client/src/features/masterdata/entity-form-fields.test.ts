@@ -2,12 +2,11 @@
  * The entity form's seeding — specifically its date controls.
  *
  * WHAT BROKE. `valuesFrom` seeded every control with `String(raw)`, which is
- * right for the other thirty columns and wrong for the two bound to
- * `<input type="date">`. A date arriving as a timestamp — what the API sent
- * before `shared/db/pg-date-types`, and what a cached response still can — left
- * the control BLANK while the form state kept the timestamp, so re-opening an
- * entity showed no incorporation date for one that was saved and Save posted the
- * unrenderable value back for the API to reject.
+ * right for the other columns and wrong for the two bound to the day-first
+ * `DateField`. A date arriving as a timestamp — what the API sent before
+ * `shared/db/pg-date-types`, and what a cached response still can — left the
+ * control blank while the form state kept the timestamp, so re-opening an entity
+ * showed no incorporation date and Save posted a value the API rejected.
  *
  * `entityFormBody` is asserted alongside it because the two are a pair: seeding
  * is only correct if what it produces survives the trip back out.
@@ -35,8 +34,8 @@ describe("valuesFrom · dates", () => {
     ).toBe("2021-09-21");
   });
 
-  it("seeds a legacy timestamp response as the day a date input can render", () => {
-    // Was `"2021-09-21T00:00:00.000Z"`, which the control refuses to display.
+  it("seeds a legacy timestamp response as the ISO day DateField stores", () => {
+    // Was `"2021-09-21T00:00:00.000Z"`, which the control cannot display.
     expect(
       valuesFrom(row({ incorporation_date: "2021-09-21T00:00:00.000Z" }))
         .incorporation_date,

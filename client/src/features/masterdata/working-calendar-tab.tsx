@@ -22,14 +22,16 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Field } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Callout } from "@/components/ui/callout";
+import { TimezonePicker } from "@/components/timezone-picker";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { errMsg, useResource } from "@/lib/use-resource";
-import { dateFmt } from "@/lib/format";
+import { dateDmy } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
 type Day = { weekday: number; opens_at: string; closes_at: string };
@@ -230,9 +232,11 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
           label="Timezone"
           hint="Opening hours below are wall-clock time in this zone."
         >
-          <Input
+          <TimezonePicker
             value={draft.timezone}
-            onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}
+            onChange={(timezone) => setDraft({ ...draft, timezone })}
+            label="Timezone"
+            allowEmpty={false}
           />
         </Field>
         <Field label="Calendar name">
@@ -340,18 +344,15 @@ export function WorkingCalendarTab({ entityId }: { entityId: string }) {
               {draft.holidays.map((h, i) => (
                 <TR key={h.working_calendar_holiday_id || i}>
                   <TD>
-                    <Input
+                    <DateField
                       value={h.holiday_date}
-                      onChange={(e) =>
-                        setHoliday(i, { holiday_date: e.target.value })
-                      }
-                      placeholder="2026-05-20"
-                      className="num w-36"
+                      onChange={(iso) => setHoliday(i, { holiday_date: iso })}
+                      className="w-40"
                       aria-label={`Holiday ${i + 1} date`}
                     />
                     {h.is_recurring && h.holiday_date && (
                       <span className="micro block">
-                        every {dateFmt(h.holiday_date).replace(/\s*\d{4}$/, "")}
+                        every {dateDmy(h.holiday_date).slice(0, 5)}
                       </span>
                     )}
                   </TD>

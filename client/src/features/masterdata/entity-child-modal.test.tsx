@@ -43,6 +43,8 @@ const ENTITY_360 = {
     legal_name: "SmartBox SARL",
     legal_form: "SARL",
     country_code: "CM",
+    incorporation_date: "2021-09-21",
+    dissolution_date: "2026-12-11",
     registration_status: "ACTIVE",
     is_active: true,
     share_capital: 10_000_000,
@@ -161,6 +163,13 @@ const open = () =>
   renderScreen(<EntityDossier entityId="e1" onEdit={() => {}} />, { routes });
 
 describe("Master data · entity nested modals", () => {
+  it("renders corporate statutory dates consistently as dd/mm/yyyy", async () => {
+    open();
+    expect(await screen.findByText("21/09/2021")).toBeInTheDocument();
+    expect(await screen.findByText("11/12/2026")).toBeInTheDocument();
+    expect(screen.queryByText("21 Sept 2021")).not.toBeInTheDocument();
+  });
+
   it("the contacts modal offers every department tag, as a labelled group", async () => {
     const user = userEvent.setup();
     const { container } = open();

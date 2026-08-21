@@ -38,7 +38,6 @@
  * This bar exists so the operator sees it before pressing send, NOT so the
  * client can decide whether the rule applies.
  */
-import * as React from "react";
 import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Textarea } from "@/components/ui/textarea";
@@ -176,45 +175,4 @@ export function GuardrailBar({
       )}
     </div>
   );
-}
-
-/**
- * Run the advisory check whenever the draft settles.
- *
- * Debounced, because it fires on every keystroke otherwise and the check reads
- * the thread's verdict server-side. 600 ms is roughly "stopped typing" without
- * being long enough for the bar to arrive after the send button was pressed.
- */
-export function useGuardrails(input: {
-  enabled: boolean;
-  html: string;
-  subject: string;
-  to: string[];
-  attachments: { filename?: string }[];
-}) {
-  const [result, setResult] = React.useState<api.GuardrailResult | null>(null);
-  const { enabled, html, subject, to, attachments } = input;
-  const key = `${html.length}|${subject}|${to.join(",")}|${attachments.length}`;
-
-  React.useEffect(() => {
-    if (!enabled || (!html.trim() && !subject.trim())) { setResult(null); return; }
-    let live = true;
-    const t = setTimeout(() => {
-      api
-        .assistGuardrails({
-          html, subject, to, attachments,
-          htmlBytes: new Blob([html]).size,
-        })
-        .then((r) => { if (live) setResult(r); })
-        // A failed advisory check must never look like a passed one, and must
-        // never block the composer either. Cleared, and the server still runs
-        // the authoritative check at send.
-        .catch(() => { if (live) setResult(null); });
-    }, 600);
-    return () => { live = false; clearTimeout(t); };
-    // `key` collapses the inputs; the arrays are new references every render.
-
-  }, [enabled, key]);
-
-  return result;
 }

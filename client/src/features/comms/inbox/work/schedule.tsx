@@ -31,11 +31,11 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// The choice type and the payload function live in `schedule-payload.ts` — a
+// module exporting both a component and a plain function loses fast refresh for
+// the component. See that file's header.
+import type { ScheduleChoice } from "./schedule-payload";
 
-export type ScheduleChoice =
-  | { kind: "NOW" }
-  | { kind: "AT"; iso: string }
-  | { kind: "MORNING" };
 
 /** Local `datetime-local` value → an ISO instant with the browser's offset. */
 const toIso = (v: string) => (v ? new Date(v).toISOString() : "");
@@ -123,14 +123,4 @@ export function SchedulePicker({
       </Button>
     </div>
   );
-}
-
-/** The two fields the send payload carries. Exactly one of them, or neither. */
-export function schedulePayload(v: ScheduleChoice): {
-  send_at?: string;
-  send_in_recipient_morning?: boolean;
-} {
-  if (v.kind === "AT") return { send_at: v.iso };
-  if (v.kind === "MORNING") return { send_in_recipient_morning: true };
-  return {};
 }

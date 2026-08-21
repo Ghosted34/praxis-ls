@@ -31,7 +31,8 @@ import { DocumentIntake } from "./intake";
 import { DossierDrawer } from "./dossier-drawer";
 import { DraftProvenance } from "./assist";
 import { GuardrailBar } from "./guardrails";
-import { SchedulePicker, schedulePayload, type ScheduleChoice } from "./schedule";
+import { SchedulePicker } from "./schedule";
+import { schedulePayload, type ScheduleChoice } from "./schedule-payload";
 import type { ActionCard, AssistDraft, GuardrailResult } from "@/lib/mail-api";
 
 vi.mock("@/lib/api-client", async () => {

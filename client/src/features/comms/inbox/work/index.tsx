@@ -159,6 +159,13 @@ export { DocumentIntake, Extractions, ChaseSnippet } from "./intake";
 export { ThreadNotes } from "./notes";
 export { ConvertDialog } from "./convert";
 export { AssistToolbar, ThreadSummary, DraftProvenance } from "./assist";
-export { GuardrailBar, VerdictBanner, VerdictPill, useGuardrails } from "./guardrails";
+export { GuardrailBar, VerdictBanner, VerdictPill } from "./guardrails";
 export { TriageBar, VisibilityControl } from "./triage";
-export { SchedulePicker, schedulePayload, type ScheduleChoice } from "./schedule";
+export { SchedulePicker } from "./schedule";
+
+// `useGuardrails` (./use-guardrails) and `schedulePayload` / `ScheduleChoice`
+// (./schedule-payload) are deliberately NOT re-exported here. This file defines
+// WorkRail, so re-exporting a hook or a plain function through it costs the
+// component its fast refresh — and nothing imported them from the barrel
+// anyway: the composer and the tests both reach for the modules directly, which
+// is the clearer import to read.

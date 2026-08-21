@@ -44,8 +44,10 @@ import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
 import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
-import { GuardrailBar, useGuardrails } from "../work/guardrails";
-import { SchedulePicker, schedulePayload, type ScheduleChoice } from "../work/schedule";
+import { GuardrailBar } from "../work/guardrails";
+import { useGuardrails } from "../work/use-guardrails";
+import { SchedulePicker } from "../work/schedule";
+import { schedulePayload, type ScheduleChoice } from "../work/schedule-payload";
 import { newIdempotencyKey, rememberSend, forgetSend } from "./offline-queue";
 
 /** PR-2..PR-5 register into these rather than editing the markup. */

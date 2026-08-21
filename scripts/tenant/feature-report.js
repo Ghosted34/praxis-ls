@@ -59,12 +59,37 @@ const MODULES_DIR = path.join(SRC_DIR, "modules");
  * differently: a module-level gate takes the whole base path with it, a
  * route-level one takes a handful of endpoints and leaves the rest working.
  */
-function routeGatesIn(dir) {
+/**
+ * `withFileTypes` rather than `readdirSync` + `statSync`.
+ *
+ * A `statSync` that decides whether to `readFileSync` is a check followed by a
+ * use, with a window between them — CodeQL flags it, and correctly, even though
+ * the worst case here is a diagnostic script throwing on a file that vanished
+ * mid-scan. The `Dirent` carries the type from the SAME directory read, so there
+ * is no second syscall and no window to lose the race in. It is also simply
+ * fewer syscalls per file.
+ *
+ * `readFile` can still fail on its own — the file may go between the readdir and
+ * the read — so it is guarded. A file this cannot open contributes no keys,
+ * which is the same answer it would give for a file containing none. That is the
+ * safe direction for THIS scan: `routeGatesIn` feeds the DARK ROUTES report, and
+ * a missed gate under-reports what is dark rather than inventing one.
+ */
+function readIfPossible(p) {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function routeGatesIn(dir, entries = null) {
   const keys = new Set();
-  for (const f of fs.readdirSync(dir)) {
-    const p = path.join(dir, f);
-    if (!fs.statSync(p).isFile() || !f.endsWith(".js")) continue;
-    for (const m of fs.readFileSync(p, "utf8").matchAll(/requireFeature\(\s*"([^"]+)"/g)) {
+  for (const e of entries || fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isFile() || !e.name.endsWith(".js")) continue;
+    for (const m of readIfPossible(path.join(dir, e.name)).matchAll(
+      /requireFeature\(\s*"([^"]+)"/g,
+    )) {
       keys.add(m[1]);
     }
   }
@@ -86,15 +111,19 @@ function routeGatesIn(dir) {
  */
 function keysMentionedInSrc() {
   const seen = new Set();
+  // Same withFileTypes / guarded-read reasoning as routeGatesIn above. The
+  // consequence of a missed file differs, though: this set is what decides a key
+  // is INERT, so a file that cannot be read makes the report MORE likely to call
+  // a live key inert. That is a false alarm rather than a false all-clear, which
+  // is the direction this particular check should fail in.
   (function walk(dir) {
-    for (const f of fs.readdirSync(dir)) {
-      const p = path.join(dir, f);
-      const st = fs.statSync(p);
-      if (st.isDirectory()) walk(p);
-      else if (f.endsWith(".js")) {
-        for (const m of fs
-          .readFileSync(p, "utf8")
-          .matchAll(/"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"/g)) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && e.name.endsWith(".js")) {
+        for (const m of readIfPossible(p).matchAll(
+          /"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"/g,
+        )) {
           seen.add(m[1]);
         }
       }
@@ -112,22 +141,32 @@ function keysMentionedInSrc() {
  */
 function scanModules() {
   const out = [];
-  for (const group of fs.readdirSync(MODULES_DIR)) {
-    const groupDir = path.join(MODULES_DIR, group);
-    if (!fs.statSync(groupDir).isDirectory()) continue;
-    for (const mod of fs.readdirSync(groupDir)) {
-      const modDir = path.join(groupDir, mod);
-      const routesFile = path.join(modDir, `${mod}.routes.js`);
-      if (!fs.existsSync(routesFile)) continue;
-      const src = fs.readFileSync(routesFile, "utf8");
+  // `withFileTypes` throughout, and the module directory is listed ONCE — the
+  // listing answers both "is there a routes file" and "which files does
+  // routeGatesIn scan", so the existence check and the read are no longer a
+  // check-then-use pair, and there is one readdir per module instead of two.
+  for (const g of fs.readdirSync(MODULES_DIR, { withFileTypes: true })) {
+    if (!g.isDirectory()) continue;
+    const groupDir = path.join(MODULES_DIR, g.name);
+    for (const m of fs.readdirSync(groupDir, { withFileTypes: true })) {
+      if (!m.isDirectory()) continue;
+      const modDir = path.join(groupDir, m.name);
+      const entries = fs.readdirSync(modDir, { withFileTypes: true });
+      const routesName = `${m.name}.routes.js`;
+      // Membership in the listing, not a separate existsSync. A module without
+      // its own routes file is not mounted and must stay out of the counts —
+      // §3.2's landmine is that `mail/` is a GROUP, and its seven service-only
+      // siblings are reached through a router that lives elsewhere.
+      if (!entries.some((e) => e.isFile() && e.name === routesName)) continue;
+      const src = readIfPossible(path.join(modDir, routesName));
       const feature = /feature:\s*"([^"]+)"/.exec(src);
       const basePath = /basePath:\s*"([^"]+)"/.exec(src);
       out.push({
-        group,
-        module: mod,
-        basePath: basePath ? basePath[1] : `/${mod}`,
+        group: g.name,
+        module: m.name,
+        basePath: basePath ? basePath[1] : `/${m.name}`,
         feature: feature ? feature[1] : null,
-        routeGates: routeGatesIn(modDir),
+        routeGates: routeGatesIn(modDir, entries),
       });
     }
   }

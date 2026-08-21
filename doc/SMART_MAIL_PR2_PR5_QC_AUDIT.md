@@ -710,3 +710,158 @@ multiple elements". Scoping to one half would tie the tests to which the compone
 
 5,126 backend tests across 334 suites, 0 lint errors, column, idempotency and citext gates OK.
 Client: typecheck clean, 1,649 vitest tests passing.
+
+---
+
+## 16. Handover — what is automatic, what is a decision, what is unverified
+
+§11–§15 record what was found and fixed. This section is the other half: what a person
+still has to do, and the calls that are not an engineer's to make. A rendered version of
+this section exists as `doc/lead-report.html`.
+
+### 16.1 Deploy does more than it looks like it does
+
+Both of the steps that read as manual are not.
+
+`scripts/deploy.sh` runs `docker compose run --rm migrate`, whose command is
+`npm run db:migrate:platform && npm run db:migrate:tenants`.
+
+* `migratePlatform()` applies `m.files.platform()` **and then** `m.files.platformSeeds()`
+  under scope `platform-seed`, tracked by filename. So `9114_seed_mail_features.sql` —
+  the switch, without which the whole programme is a hard 403 with nowhere to flip — lands
+  on its own with no separate step.
+* `migrateTenant()` calls `projectFeatures(slug)` immediately after applying the tenant
+  files, and `db:migrate:tenants` runs it for every tenant in the fleet. So the same deploy
+  that adds the catalogue rows projects them into every existing tenant's `feature_state`.
+
+The one thing worth doing by hand afterwards, because nothing above proves it:
+
+```
+node scripts/tenant/feature-report.js --slug=<a real tenant>
+```
+
+Fifteen `mail.*` rows, twelve of them `on`. If they are missing,
+`provisioning.projectFeatures(slug)` is the manual re-run.
+
+### 16.2 The AI half is switched on in the platform console, per tenant
+
+There is no tenant-side route that writes `feature_state` at all. The console path is
+`tenants.service.setFeature(slug, featureKey, state, actorId)` → `tenant_feature_override`.
+Vendor credentials are `src/services/platform/ai-vendor.service.js`, also platform-side.
+
+Order matters:
+
+1. **`ai.assistant.backend` first.** It is in `mail.ai`'s `depends_on`, and projection forces
+   a feature off when a dependency is off, applied to a fixpoint. Flipping `mail.ai` with the
+   backend off leaves it off — silently, and correctly. This is §3.3's floor-not-ceiling rule
+   moved out of `assist.service` and into the projection, where an operator can see it.
+2. `mail.ai`.
+3. `ai.vectorization`, for semantic search. Without it threads are never embedded and search
+   returns nothing **and raises no error** — which reads as a broken feature rather than an
+   unconfigured one.
+4. `mail.ocr`, only where the tenant has agreed to per-page vision billing.
+5. Chat (deepseek/gemini) and vision (gemini) credentials in the vendor store. Every
+   generating path meters in a `finally` — success and failure — so a vendor outage bills the
+   attempt rather than losing the record of it.
+
+### 16.3 Five decisions that are not an engineer's to make
+
+Each has a working default in the branch and each is a one-line change. They are written as
+options because the defaults were picked by whoever wrote the seed, which is not the same as
+being agreed.
+
+**D1 — What Starter gets.** *Default:* `mail.core`, `mail.composer`, `mail.binding`,
+`mail.signatures`, `mail.deliverability` — a real mailbox bound to real records, nothing that
+costs a vendor call or implies a team. Line drawn from what `comms` and `signatures` already
+promise Starter. · *Leaner:* drop `mail.binding`, making the ERP hook the thing you upgrade
+for — strongest upgrade pressure, weakest demo. · *Fuller:* add `mail.followup` and
+`mail.secure_links`, which cost nothing per use and demo well — buys adoption, spends the
+upgrade lever.
+
+**D2 — Twelve keys on, three off.** *Default:* follows 9110's stated rule that
+`default_state` answers "is this module SHIPPABLE?", not "did the customer buy it?"; plan
+inclusion is `plan_feature`'s job, exceptions are `tenant_feature_override`'s. · *Quieter:*
+also default `mail.antispoof` and `mail.archive` off until the first tenant has run clean —
+costs a second deliberate flip per tenant, and those two are the compliance story. ·
+*Simplest:* all fifteen on, plan does 100% of the gating — one fewer concept, but every
+Full-plan tenant gets AI billing exposure the day the catalogue lands.
+
+**D3 — `SCHEDULED_REPORT_CRON`.** *Default:* `"5 * * * *"`, hourly across every live tenant;
+worst-case lateness 60 minutes, so a report scheduled for 14:30 goes out at 15:05. ·
+*Cheaper:* `"5 6-19 * * *"` halves the fan-out and stops generating overnight reports nobody
+reads — a 02:00 report waits until 06:05. · *Tighter:* `"5,20,35,50 * * * *"` drops worst-case
+lateness to 15 minutes at 4× the fan-out; only worth it if report schedules are sub-hourly.
+
+**D4 — When `mail.provider.oauth` goes on.** Graph and Gmail are built and deliberately
+gated; the first tenant runs cPanel IMAP/SMTP. *Default:* stays off — zero risk, zero
+progress, and OAuth has never touched a real mailbox. · *Pilot:* one tenant via
+`tenant_feature_override`, catalogue default unchanged. · *Ship it:* default on next release
+— but only with an owner for the Microsoft and Google app registrations and consent screens,
+which is the long pole, not the code.
+
+**D5 — Whether `auth.otp` should exist.** The registry claimed `is_wired = true` for nine
+send points no caller passed. Eight are now genuinely wired; the ninth has no caller because
+2FA is TOTP and no emailed code exists anywhere in the product. *Default:* `10773` marks it
+unwired — the registry tells the truth and the gate stays green, but a row describes
+something that does not exist. · *Delete it:* cleanest if an emailed OTP is never coming. ·
+*Build it:* the usual reason this comes up is TOTP-only 2FA locking out anyone without the
+authenticator app.
+
+### 16.4 What was never verified, and what settles it
+
+**No database was available at any point in this work.** Every DB gate that passed here —
+`db:check:idempotency`, `db:check:columns`, `check-citext-arrays`, the catalogue-coverage and
+dependency-cycle checks — is static analysis over migration text. It reads SQL; it does not
+run it.
+
+CI settles it. The `migrations` job in `.github/workflows/ci.yaml` stands up a real
+`pgvector/pgvector:pg16`, runs `migrate-platform.js` (which applies the seed), provisions a
+tenant from nothing, and re-applies the whole tenant set to prove the ledger reports zero.
+What it does **not** prove is how projection behaves against an existing tenant's current
+`feature_state`, which is why §16.1 ends with `feature-report.js`.
+
+To exercise it locally instead, `doc/SETUP.md` has both paths; the short version is:
+
+```
+docker compose up -d postgres redis        # or a local PG 16 + pgvector + Redis
+npm run db:reset:local                     # migrate platform (incl. seeds) + provision smartls
+node scripts/tenant/feature-report.js --slug=smartls
+node scripts/db/migrate-tenants.js --slug=smartls   # must report 0 applied — the ledger's whole claim
+```
+
+### 16.5 Two defects found while writing this section
+
+**The seed number collided.** `9113_seed_mail_features.sql` against the existing
+`9113_catalogue_dictionary_bin.sql`. `scripts/db/check-migration-numbers.js` is a CI gate and
+fails on it, so this would have gone red on the first push; worse, the migrator keys on
+filename, so a deploy would have applied whichever it saw first. Renumbered to `9114`
+(`a56d6e19`).
+
+**Client lint had never run, and it was red.** The root `eslint.config.js` ignores
+`client/**`, so client lint sits outside the backend gate entirely. Run properly: one error
+and 115 warnings against a `--max-warnings 112` budget, both this programme's.
+
+The error was real. `useGuardrails` declared `[enabled, key]` while its body closed over four
+values not in that array. The array was the correct half — `to` and `attachments` are new
+references every render, so listing them restarts the 600 ms debounce on every keystroke and
+the check never fires. The **body** was wrong: it sent whatever the closure captured rather
+than what was on screen. Latest inputs now go through a ref, so the dependency array is
+honest rather than suppressed.
+
+The three surplus warnings were `react-refresh/only-export-components` on files this branch
+added. 53 files already carry that rule, but a `--max-warnings` number is a ratchet: it
+exists so the count comes down, not so new work can spend the headroom old work left behind.
+`useGuardrails` and `schedulePayload` moved to their own modules — the better shape anyway,
+since every consumer already imported them directly and nothing took them from the barrel.
+
+And the build caught §15.4's defect happening again within the hour: removing the hook left
+`import * as React` unused, which `noUnusedLocals` rejects. vitest transpiles without
+typechecking, so a green test run genuinely does not tell you the client compiles.
+
+### 16.6 Verification at head
+
+Backend: 5,126 tests across 334 suites, 0 lint errors, migration numbering, reversibility,
+idempotency, column and citext gates all OK.
+Client: lint 0 errors and 111 warnings against a budget of 112, `tsc -b && vite build` green,
+1,666 vitest tests passing across 106 suites, 6 skipped.
+Database: see §16.4 — nothing here has been run against one.

@@ -1,0 +1,1088 @@
+<title>Declared, Not Called</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    /* Envelope stock, stamp ink, and the three verdicts. */
+    --paper:      #ECEEEA;
+    --surface:    #FAFBF8;
+    --surface-2:  #F1F3EF;
+    --ink:        #1B211E;
+    --ink-muted:  #5D6764;
+    --ink-faint:  #838C88;
+    --rule:       #D5D9D2;
+    --rule-soft:  #E3E6E0;
+    --accent:     #14504F;
+    --accent-ink: #0E3E3D;
+    --accent-wash:#DDE9E7;
+    --ok:         #2E6B4E;
+    --ok-wash:    #DEEAE1;
+    --warn:       #8A6410;
+    --warn-wash:  #F0E7D1;
+    --crit:       #9E2B2B;
+    --crit-wash:  #F1DEDC;
+    --shadow:     0 1px 0 rgba(27,33,30,.04), 0 8px 24px -18px rgba(27,33,30,.35);
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #131614;
+      --surface:    #1B1F1D;
+      --surface-2:  #232825;
+      --ink:        #E5E8E3;
+      --ink-muted:  #9BA5A0;
+      --ink-faint:  #7B8580;
+      --rule:       #2F3532;
+      --rule-soft:  #262B28;
+      --accent:     #63B8B0;
+      --accent-ink: #8FD2CA;
+      --accent-wash:#1B3130;
+      --ok:         #74C296;
+      --ok-wash:    #1B2E24;
+      --warn:       #D9A749;
+      --warn-wash:  #302716;
+      --crit:       #E58079;
+      --crit-wash:  #33201F;
+      --shadow:     0 1px 0 rgba(0,0,0,.3), 0 8px 24px -18px rgba(0,0,0,.9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #131614;
+    --surface:    #1B1F1D;
+    --surface-2:  #232825;
+    --ink:        #E5E8E3;
+    --ink-muted:  #9BA5A0;
+    --ink-faint:  #7B8580;
+    --rule:       #2F3532;
+    --rule-soft:  #262B28;
+    --accent:     #63B8B0;
+    --accent-ink: #8FD2CA;
+    --accent-wash:#1B3130;
+    --ok:         #74C296;
+    --ok-wash:    #1B2E24;
+    --warn:       #D9A749;
+    --warn-wash:  #302716;
+    --crit:       #E58079;
+    --crit-wash:  #33201F;
+    --shadow:     0 1px 0 rgba(0,0,0,.3), 0 8px 24px -18px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 3rem) 6rem;
+  }
+
+  .measure { max-width: 66ch; }
+
+  p { margin: 0 0 .85em; }
+  p:last-child { margin-bottom: 0; }
+
+  a {
+    color: var(--accent-ink);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+
+  code, .mono { font-family: var(--mono); }
+
+  code {
+    font-size: .85em;
+    background: var(--surface-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .08em .34em;
+    overflow-wrap: anywhere;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .69rem;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* ── Masthead ────────────────────────────────────────────────────── */
+
+  header.masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(2.4rem, 7vw, 4rem);
+    line-height: .98;
+    letter-spacing: -.028em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: clamp(1.05rem, 2.2vw, 1.22rem);
+    line-height: 1.5;
+    color: var(--ink-muted);
+    max-width: 54ch;
+  }
+
+  .filed {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem 1.4rem;
+    font-family: var(--mono);
+    font-size: .74rem;
+    color: var(--ink-faint);
+    letter-spacing: .02em;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin-top: .5rem;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: .8rem .9rem .85rem;
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+  }
+
+  .stat b {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.32rem;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+  }
+
+  .stat span {
+    font-family: var(--mono);
+    font-size: .66rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ── Verdict block ───────────────────────────────────────────────── */
+
+  .verdict {
+    margin-top: 2.4rem;
+    padding: 1.5rem 1.6rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+  }
+
+  .verdict h2 {
+    font-family: var(--display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0;
+  }
+
+  /* ── Sections ────────────────────────────────────────────────────── */
+
+  section { margin-top: 3.4rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: .9rem;
+    padding-bottom: .6rem;
+    border-bottom: 1px solid var(--ink);
+    margin-bottom: .5rem;
+  }
+
+  .sec-head .tag {
+    font-family: var(--mono);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    color: var(--paper);
+    background: var(--ink);
+    padding: .15rem .45rem;
+    line-height: 1.4;
+  }
+
+  .sec-head h2 {
+    font-family: var(--display);
+    font-size: clamp(1.35rem, 3.4vw, 1.85rem);
+    font-weight: 600;
+    letter-spacing: -.022em;
+    margin: 0;
+    flex: 1;
+    text-wrap: balance;
+  }
+
+  .sec-head .count {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  .sec-intro {
+    color: var(--ink-muted);
+    font-size: .96rem;
+    margin: .9rem 0 1.6rem;
+    max-width: 62ch;
+  }
+
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--rule-soft);
+    border-top: 1px solid var(--rule-soft);
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .item {
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .55rem 1.4rem;
+    padding: 1.3rem 1.3rem 1.4rem;
+  }
+
+  @media (min-width: 860px) {
+    .item {
+      grid-template-columns: 8.5rem 1fr;
+      padding: 1.5rem 1.4rem 1.6rem;
+    }
+    .item .rail { grid-row: span 2; }
+  }
+
+  .rail {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+  }
+
+  @media (min-width: 860px) {
+    .rail { flex-direction: column; align-items: flex-start; gap: .5rem; }
+  }
+
+  .ref {
+    font-family: var(--mono);
+    font-size: .76rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    padding: .12rem .4rem;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .34rem;
+    font-family: var(--mono);
+    font-size: .64rem;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: .18rem .42rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  .chip::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+
+  .chip.blocking { color: var(--crit); background: var(--crit-wash); }
+  .chip.soon     { color: var(--warn); background: var(--warn-wash); }
+  .chip.call     { color: var(--accent); background: var(--accent-wash); }
+  .chip.open     { color: var(--ink-muted); background: var(--surface-2); }
+  .chip.done     { color: var(--ok); background: var(--ok-wash); }
+
+  .item h3 {
+    font-family: var(--display);
+    font-size: 1.06rem;
+    font-weight: 600;
+    letter-spacing: -.012em;
+    line-height: 1.35;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .item .body {
+    font-size: .96rem;
+    max-width: 66ch;
+    color: var(--ink);
+  }
+
+  .item .body p { margin-bottom: .7em; }
+
+  .consequence {
+    display: block;
+    margin-top: .75rem;
+    padding-left: .8rem;
+    border-left: 2px solid var(--rule);
+    font-size: .89rem;
+    color: var(--ink-muted);
+  }
+
+  .consequence b {
+    font-family: var(--mono);
+    font-size: .64rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: .12rem;
+  }
+
+  .cmd {
+    display: block;
+    margin-top: .7rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    background: var(--surface-2);
+    border: 1px solid var(--rule-soft);
+    padding: .5rem .65rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink);
+  }
+
+  /* ── Tables ──────────────────────────────────────────────────────── */
+
+  .tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 540px;
+    font-size: .88rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: .58rem .8rem;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: .66rem;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+
+  td.n {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  td.sha {
+    font-family: var(--mono);
+    font-size: .82rem;
+    white-space: nowrap;
+    color: var(--accent-ink);
+  }
+
+  /* ── Gates list ──────────────────────────────────────────────────── */
+
+  .opts {
+    list-style: none;
+    margin: .9rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: .5rem;
+  }
+
+  .opts li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .1rem .7rem;
+    padding: .55rem .7rem;
+    background: var(--surface-2);
+    border: 1px solid var(--rule-soft);
+    font-size: .89rem;
+    line-height: 1.5;
+  }
+
+  .opts li.picked {
+    background: var(--accent-wash);
+    border-color: var(--accent);
+  }
+
+  .opts .k {
+    font-family: var(--mono);
+    font-size: .64rem;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    align-self: start;
+    padding-top: .22rem;
+    white-space: nowrap;
+  }
+
+  .opts li.picked .k { color: var(--accent); }
+
+  .opts .v { color: var(--ink); }
+  .opts .v em { color: var(--ink-muted); font-style: italic; }
+
+  .gates {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .8rem;
+  }
+
+  .gates li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .1rem .8rem;
+    align-items: baseline;
+    padding-left: .9rem;
+    border-left: 2px solid var(--accent);
+  }
+
+  .gates .path {
+    font-family: var(--mono);
+    font-size: .8rem;
+    font-weight: 500;
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+  }
+
+  .gates .what {
+    grid-column: 1 / -1;
+    font-size: .92rem;
+    color: var(--ink-muted);
+    max-width: 62ch;
+  }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: .73rem;
+    color: var(--ink-faint);
+    line-height: 1.7;
+    max-width: 70ch;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Smart Mail · QC handover · PR-2 → PR-5</div>
+    <h1>Declared,<br>not called.</h1>
+    <p class="standfirst">
+      The schema shipped. The leaf logic shipped, and it is good. Almost none of it
+      was connected to anything. Six commits close that — here is what deploy and CI
+      handle on their own, the five calls that are yours, and what nobody has verified.
+    </p>
+    <div class="filed">
+      <span>Filed 2026-08-21</span>
+      <span>Branch: main</span>
+      <span>Base 585c0e73 → head 471eba4e</span>
+      <span>Detail: doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>6</b><span>Commits</span></div>
+      <div class="stat"><b>103</b><span>Files</span></div>
+      <div class="stat"><b>+14,286</b><span>Insertions</span></div>
+      <div class="stat"><b>5,126</b><span>Backend tests</span></div>
+      <div class="stat"><b>1,666</b><span>Client tests</span></div>
+    </div>
+  </header>
+
+  <div class="verdict">
+    <h2>The finding, in one paragraph</h2>
+    <div class="measure">
+      <p>
+        The merged programme had every table, column and pure helper the engineering
+        guide asks for, and the build was green — but eleven of its tables were read
+        by zero lines of application code, its feature flags gated nothing, and no
+        LLM call was made on any path. A test that imports a module and calls it has
+        tested that module; it has not tested that the product uses it. That is the
+        whole defect class, and four sweeps found it in six different shapes.
+      </p>
+      <p>
+        All six are now closed and each has a standing gate that fails the build if
+        it recurs. Nothing below is a code blocker. Deploy applies the migrations and
+        projects the features on its own; CI's <code>migrations</code> job runs them
+        against a real Postgres. What is genuinely left is five commercial and
+        operational calls, and one round of switching AI on per tenant.
+      </p>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <span class="tag">A</span>
+      <h2>Before any of this is reachable</h2>
+      <span class="count">6 items</span>
+    </div>
+    <p class="sec-intro">
+      In order. Each one is a hard stop for everything below it — <code>requireFeature</code>
+      is mounted in front of every mail router by the module loader and has no bypass,
+      not even for the CEO, who bypasses RBAC. <strong>The first two are automatic</strong>
+      — traced through the deploy path after this report was first written, and corrected
+      here.
+    </p>
+
+    <div class="items">
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-1</span><span class="chip done">Deploy does it</span></div>
+        <h3>The migrations and the seed</h3>
+        <div class="body">
+          <p>
+            Four new files: <code>10771</code> (the <code>mail_ai</code> AI flag),
+            <code>10772</code> (<code>mail.ocr</code>, off), <code>10773</code>
+            (marks the <code>auth.otp</code> send point unwired) and the platform seed
+            <code>9114_seed_mail_features.sql</code> — the switch that makes any of it
+            reachable.
+          </p>
+          <p>
+            <code>deploy.sh</code> runs <code>docker compose run --rm migrate</code>, whose
+            command is <code>npm run db:migrate:platform &amp;&amp; npm run
+            db:migrate:tenants</code>. <code>migratePlatform()</code> applies
+            <code>m.files.platformSeeds()</code> under scope <code>platform-seed</code>,
+            tracked by filename — so the seed lands on its own, with no separate step.
+          </p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-2</span><span class="chip done">Deploy does it</span></div>
+        <h3>Re-projecting existing tenants</h3>
+        <div class="body">
+          <p>
+            Also automatic, and for a less obvious reason: <code>migrateTenant()</code>
+            calls <code>projectFeatures(slug)</code> immediately after applying the tenant
+            files, and <code>db:migrate:tenants</code> runs it for every tenant in the
+            fleet. So the same deploy that adds the catalogue rows projects them into every
+            existing tenant's <code>feature_state</code>.
+          </p>
+          <span class="consequence"><b>To confirm rather than assume</b>
+            <code>node scripts/tenant/feature-report.js --slug=&lt;slug&gt;</code> after the
+            deploy. If a tenant is missing the <code>mail.*</code> rows, that is the
+            diagnostic, and <code>provisioning.projectFeatures(slug)</code> is the manual
+            re-run.</span>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-3</span><span class="chip soon">Watch this</span></div>
+        <h3><code>ai.assistant.backend</code> must be on first</h3>
+        <div class="body">
+          <p>
+            It is declared in <code>mail.ai</code>'s <code>depends_on</code>. Projection
+            forces a feature off when a dependency is off, applied to a fixpoint, and
+            treats an unknown dependency as unmet.
+          </p>
+          <span class="consequence"><b>The trap</b>
+            Switching <code>mail.ai</code> on with the backend off leaves it off, silently
+            and correctly. This is §3.3's rule — an AI flag is a floor, not a ceiling —
+            moved out of the service layer and into the projection, so it now fails in a
+            place an operator can see rather than only at request time.</span>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-4</span><span class="chip open">Per tenant</span></div>
+        <h3>Opt into <code>mail.ai</code> and <code>mail.ocr</code></h3>
+        <div class="body">
+          <p>
+            Both ship off by design, not because they are unfinished. <code>mail.ai</code>
+            is opt-in like every other <code>ai.*</code> key; <code>mail.ocr</code> sends a
+            scanned supplier invoice — bank details and all — to a vision vendor and is
+            billed per page, which a tenant should agree to separately from drafting.
+          </p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-5</span><span class="chip soon">Watch this</span></div>
+        <h3><code>ai.vectorization</code> for semantic search</h3>
+        <div class="body">
+          <p>
+            Without it, threads are never embedded. Search then returns nothing and raises
+            no error, which reads as a broken feature rather than an unconfigured one.
+            Every vector hit is re-filtered through <code>visibility.clause</code> on the
+            way out, so an unbound thread cannot leak through search.
+          </p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">OPS-6</span><span class="chip open">Ops</span></div>
+        <h3>Vendor credentials in the platform store</h3>
+        <div class="body">
+          <p>
+            Chat (deepseek / gemini) and vision (gemini). Every generating path runs the
+            same five steps in fixed order — gate, ground, generate, fence, meter — and
+            metering happens in a <code>finally</code>, on success <em>and</em> on failure,
+            so a vendor outage still bills the attempt rather than losing the record of it.
+          </p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="tag">B</span>
+      <h2>Yours to call</h2>
+      <span class="count">5 decisions</span>
+    </div>
+    <p class="sec-intro">
+      Each of these has a working default in the branch. None is load-bearing on the code —
+      changing any one is an edit to a seed file or an env var. They are here because I
+      picked them and you may not agree.
+    </p>
+
+    <div class="items">
+
+      <article class="item">
+        <div class="rail"><span class="ref">DEC-1</span><span class="chip call">Commercial</span></div>
+        <h3>What Starter gets</h3>
+        <div class="body">
+          <p>
+            I gave Starter a working mailbox and nothing that costs a vendor call or
+            implies a team: <code>mail.core</code>, <code>mail.composer</code>,
+            <code>mail.binding</code>, <code>mail.signatures</code>,
+            <code>mail.deliverability</code>. Full and Enterprise get all fifteen.
+          </p>
+          <span class="consequence"><b>How I drew the line</b>
+            <code>comms</code> and <code>signatures</code> are already in Starter, so a
+            mailbox is consistent with what that plan promises today. The shared inbox, the
+            immutable archive and the AI are what the larger plans are for. This is a
+            pricing judgement wearing a SQL file — overrule it freely.</span>
+          <ul class="opts">
+            <li class="picked"><span class="k">In branch</span><span class="v">The five above. A real mailbox bound to real records, nothing that costs a vendor call or implies a team. <em>Upgrade pressure comes from the shared inbox.</em></span></li>
+            <li><span class="k">Leaner</span><span class="v">Drop <code>mail.binding</code> — core, composer, signatures, deliverability only. Starter becomes a plain mailbox and the ERP hook is the thing you upgrade for. <em>Strongest upgrade pressure; weakest demo.</em></span></li>
+            <li><span class="k">Fuller</span><span class="v">Add <code>mail.followup</code> and <code>mail.secure_links</code>. Neither costs anything per use and both demo well. <em>Buys adoption, spends the upgrade lever.</em></span></li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">DEC-2</span><span class="chip call">Policy</span></div>
+        <h3>Twelve keys default on, three default off</h3>
+        <div class="body">
+          <p>
+            Following 9110's stated rule that <code>default_state</code> answers
+            "is this module shippable?", not "did the customer buy it?" — plan inclusion is
+            <code>plan_feature</code>'s job and per-tenant exceptions are
+            <code>tenant_feature_override</code>'s. The three off are
+            <code>mail.ai</code>, <code>mail.ocr</code> and
+            <code>mail.provider.oauth</code>, none for readiness reasons.
+          </p>
+          <ul class="opts">
+            <li class="picked"><span class="k">In branch</span><span class="v">12 on / 3 off. <code>default_state</code> answers "is it shippable", <code>plan_feature</code> answers "did they buy it", <code>tenant_feature_override</code> handles the exceptions. <em>Three concepts, each doing one job.</em></span></li>
+            <li><span class="k">Quieter</span><span class="v">Also default <code>mail.antispoof</code> and <code>mail.archive</code> off, flip them once the first tenant has run clean for a week. <em>Costs a second deliberate flip per tenant, and those two are the compliance story.</em></span></li>
+            <li><span class="k">Simplest</span><span class="v">All fifteen on; let plan and override do 100% of the gating. <em>One fewer concept — but every Full-plan tenant gets AI billing exposure the day the catalogue lands.</em></span></li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">DEC-3</span><span class="chip call">Load</span></div>
+        <h3><code>SCHEDULED_REPORT_CRON</code> defaults to hourly</h3>
+        <div class="body">
+          <p>
+            <code>"5 * * * *"</code>. Scheduled reports had been waiting on a cron nobody
+            had written down; the new scheduler fans out across every live tenant on the
+            hour, with <code>jobId: schedreport:&lt;db&gt;:live-&lt;hourStamp&gt;</code>
+            and <code>attempts: 1</code>.
+          </p>
+          <span class="consequence"><b>Worth a look before scale</b>
+            Two things move together here: fan-out cost, and how late a report can be.
+            Hourly means a report scheduled for 14:30 goes out at 15:05. The value is an
+            env var, so any of these costs nothing to adopt.</span>
+          <ul class="opts">
+            <li class="picked"><span class="k">In branch</span><span class="v"><code>5 * * * *</code> — hourly, every live tenant. <em>Worst-case lateness 60 min; 24 fan-outs a day.</em></span></li>
+            <li><span class="k">Cheaper</span><span class="v"><code>5 6-19 * * *</code> — waking hours only. Halves the fan-out and stops generating overnight reports nobody reads. <em>A report scheduled for 02:00 waits until 06:05.</em></span></li>
+            <li><span class="k">Tighter</span><span class="v"><code>5,20,35,50 * * * *</code> — worst-case lateness drops to 15 min at 4× the fan-out. <em>Only worth it if report schedules are actually sub-hourly.</em></span></li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">DEC-4</span><span class="chip call">Timing</span></div>
+        <h3>When <code>mail.provider.oauth</code> gets switched on</h3>
+        <div class="body">
+          <p>
+            Microsoft Graph and Gmail are built and deliberately gated — the call was one
+            provider done properly first, and the one the first tenant runs is cPanel
+            IMAP/SMTP. Nothing technical is waiting on this; it needs a date.
+          </p>
+          <ul class="opts">
+            <li class="picked"><span class="k">In branch</span><span class="v">Stays off. Revisit once the first cPanel tenant has run clean. <em>Zero risk, zero progress — Graph has never touched a real mailbox.</em></span></li>
+            <li><span class="k">Pilot</span><span class="v">One tenant via <code>tenant_feature_override</code>, catalogue default unchanged. <em>Tests OAuth against a real mailbox without committing the fleet. My pick if you want movement.</em></span></li>
+            <li><span class="k">Ship it</span><span class="v">Default on next release, plan gates it. <em>Only with an owner for the Microsoft and Google app registrations and consent screens — that review, not the code, is the long pole.</em></span></li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">DEC-5</span><span class="chip call">Product</span></div>
+        <h3>Whether <code>auth.otp</code> should ever exist</h3>
+        <div class="body">
+          <p>
+            The send-point registry claimed <code>is_wired = true</code> for nine points no
+            caller passed. Eight of them are now genuinely wired. The ninth,
+            <code>auth.otp</code>, has no caller because 2FA is TOTP and there is no
+            emailed code anywhere in the product — so <code>10773</code> marks it unwired
+            rather than inventing one.
+          </p>
+          <span class="consequence"><b>If an emailed OTP is planned</b>
+            That row becomes a claim waiting to be made true rather than a false one, and
+            the wiring gate will hold you to it the moment you flip it back.</span>
+          <ul class="opts">
+            <li class="picked"><span class="k">In branch</span><span class="v"><code>is_wired = false</code>. The registry tells the truth and the gate stays green. <em>Leaves a row describing a thing that does not exist.</em></span></li>
+            <li><span class="k">Delete it</span><span class="v">Drop the row entirely. <em>Cleanest if an emailed OTP is never coming — nothing false, nothing to explain to the next reader. Costs one more migration.</em></span></li>
+            <li><span class="k">Build it</span><span class="v">Implement the emailed code and flip the row back. <em>The usual reason this comes up is that TOTP-only 2FA locks out anyone without the authenticator app. If that has bitten support, this is the answer.</em></span></li>
+          </ul>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="tag">C</span>
+      <h2>Nobody had verified this</h2>
+      <span class="count">3 of 4 closed</span>
+    </div>
+    <p class="sec-intro">
+      Three of these have since been closed by pulling the real client config into a
+      container and running the gates properly — which turned up one more defect, described
+      below. The first item is the one that remains, and it is much the largest.
+    </p>
+
+    <div class="items">
+
+      <article class="item">
+        <div class="rail"><span class="ref">UNV-1</span><span class="chip soon">CI closes it</span></div>
+        <h3>No database was available at any point in this work</h3>
+        <div class="body">
+          <p>
+            Not once, in any of the four sweeps. Every database gate that passed —
+            <code>db:check:idempotency</code>, <code>db:check:columns</code>,
+            <code>check-citext-arrays</code>, the catalogue-coverage and dependency-cycle
+            checks — is <strong>static analysis over migration text</strong>. It reads SQL;
+            it does not run it. The migrations in this branch have never been applied to a
+            live database, and neither has the seed.
+          </p>
+          <p>
+            <strong>But CI can settle it, and does.</strong> The <code>migrations</code>
+            job in <code>ci.yaml</code> stands up a real <code>pgvector/pgvector:pg16</code>
+            service, runs <code>migrate-platform.js</code> — which is what applies the seed
+            — provisions a tenant from nothing, and re-applies the whole tenant set to prove
+            the ledger reports zero. Push the branch and that is no longer an assumption.
+          </p>
+          <span class="consequence"><b>What CI still will not tell you</b>
+            It proves the SQL applies and is idempotent on an empty database. It does not
+            prove projection behaves against <em>your existing tenants'</em> current
+            <code>feature_state</code>. So the one thing worth doing by hand afterwards is
+            <code>feature-report.js --slug=&lt;a real tenant&gt;</code>.</span>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">UNV-2</span><span class="chip done">Closed</span></div>
+        <h3>Client lint had never run — and it was red</h3>
+        <div class="body">
+          <p>
+            The root <code>eslint.config.js</code> ignores <code>client/**</code>, so client
+            lint sits outside the backend gate entirely and nothing in this programme had
+            ever run it. Pulled the real config into a container and ran it:
+            <strong>one error and 115 warnings against a <code>--max-warnings 112</code>
+            budget.</strong> Both were this branch's.
+          </p>
+          <p>
+            The error was real. <code>useGuardrails</code> declared
+            <code>[enabled, key]</code> while its body closed over four values not in that
+            array. The array was the correct part — <code>to</code> and
+            <code>attachments</code> are new references every render, so listing them
+            restarts the 600 ms debounce on every keystroke and the check never fires. The
+            <em>body</em> was wrong: it sent whatever the closure captured rather than what
+            was on screen. Latest inputs now go through a ref, so the array is honest rather
+            than suppressed.
+          </p>
+          <span class="consequence"><b>And the three surplus warnings</b>
+            All <code>react-refresh/only-export-components</code>, on files this branch
+            added. 53 files already carry that rule — but a <code>--max-warnings</code>
+            number is a ratchet: it exists so the count comes down, not so new work can spend
+            the headroom old work left behind. <code>useGuardrails</code> and
+            <code>schedulePayload</code> moved into their own modules, which is the better
+            shape anyway: every consumer already imported them directly and nothing ever took
+            them from the barrel. <strong>Now 0 errors, 111 warnings.</strong></span>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">UNV-3</span><span class="chip done">Closed</span></div>
+        <h3>The real client build</h3>
+        <div class="body">
+          <p>
+            <code>tsc -b &amp;&amp; vite build</code> now runs green — the true
+            project-references build, not the references-free typecheck that had been
+            standing in for it.
+          </p>
+          <span class="consequence"><b>It caught something on the first run</b>
+            Removing the hook from <code>guardrails.tsx</code> left
+            <code>import * as React</code> unused, which
+            <code>noUnusedLocals</code> rejects — the exact defect §15.4 records from earlier
+            in this programme, reproduced within an hour of fixing it. vitest transpiles
+            without typechecking, so a green test run genuinely does not tell you the client
+            compiles. Running both is the only version of this that works.</span>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">UNV-4</span><span class="chip done">Closed</span></div>
+        <h3>The client suites that failed outside CI</h3>
+        <div class="body">
+          <p>
+            With the real config in place, three of the four were never broken — they had
+            been failing on missing scaffolding. The last one,
+            <code>new-screen.test.ts</code>, failed on <code>fatal: not a git
+            repository</code>; given a real checkout it passes too.
+          </p>
+          <p>
+            <strong>1,666 tests across 106 suites, all passing</strong>, 6 skipped.
+          </p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="tag">D</span>
+      <h2>Left alone, on purpose</h2>
+      <span class="count">3 items</span>
+    </div>
+    <p class="sec-intro">
+      Found by the sweeps, judged not worth touching in this branch. Listed so they are
+      not re-found as new.
+    </p>
+
+    <div class="items">
+
+      <article class="item">
+        <div class="rail"><span class="ref">LEFT-1</span><span class="chip open">Dead code</span></div>
+        <h3><code>mail.repo.findClientByEmail</code> / <code>findDossierByRefs</code></h3>
+        <div class="body">
+          <p>
+            Legacy, superseded by the <code>binding/</code> module which does the same job
+            properly. Deleting them is a tidy-up commit, not part of this one.
+          </p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">LEFT-2</span><span class="chip open">Unused</span></div>
+        <h3><code>signature.repo.deleteCachedForIdentity</code></h3>
+        <div class="body">
+          <p>
+            An unused narrow helper. The audit flagged the signature-cache invalidation as
+            missing; it is not — the behaviour lands correctly via
+            <code>deleteAllIdentityCached</code>, just not through the helper the audit
+            named.
+          </p>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rail"><span class="ref">LEFT-3</span><span class="chip open">Unswept</span></div>
+        <h3>~17 legacy <code>mail-api.ts</code> exports with no caller</h3>
+        <div class="body">
+          <p>
+            They belong to older engine screens outside this programme's scope. Sweeping
+            them means touching screens nobody asked me to touch.
+          </p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <span class="tag">E</span>
+      <h2>What actually shipped</h2>
+      <span class="count">Reference</span>
+    </div>
+
+    <p class="sec-intro">
+      Four commits on <code>main</code>, in the order the sweeps found the work. Each was
+      verified byte-identical after transfer.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Commit</th><th>Files</th><th>What it closed</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="sha">5c2c3122</td>
+            <td class="n">75</td>
+            <td>PR-3's substance, PR-4's AI engine, PR-5's endpoints, and the entire frontend for all three</td>
+          </tr>
+          <tr>
+            <td class="sha">e5d52c6e</td>
+            <td class="n">19</td>
+            <td>A send point nobody passed, four events nobody emitted, a worker nobody enqueued</td>
+          </tr>
+          <tr>
+            <td class="sha">4b9b7718</td>
+            <td class="n">6</td>
+            <td>Scheduled reports waiting for a cron nobody had written down</td>
+          </tr>
+          <tr>
+            <td class="sha">c6e0db1f</td>
+            <td class="n">15</td>
+            <td>The switch that turns it all on, and the four admin screens PR-5 never got</td>
+          </tr>
+          <tr>
+            <td class="sha">a56d6e19</td>
+            <td class="n">2</td>
+            <td>The seed collided with <code>9113_catalogue_dictionary_bin.sql</code> — renumbered to <code>9114</code></td>
+          </tr>
+          <tr>
+            <td class="sha">471eba4e</td>
+            <td class="n">7</td>
+            <td>The client lint budget, and an effect that lied about its dependencies</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-family:var(--display);font-size:1.15rem;font-weight:600;letter-spacing:-.015em;margin:2.4rem 0 .3rem;">The six shapes of one defect</h3>
+    <p class="sec-intro" style="margin-top:.5rem;">
+      Same failure every time: something declared in an authoritative place, referred to by
+      nothing in the running product. Four sweeps were needed because each shape was
+      invisible to the gate that caught the last one.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Shape</th><th>Count</th><th>Declared in</th><th>Found by</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Tables nobody reads</td><td class="n">11</td><td>Migrations §6–§9</td><td>Sweep 1</td></tr>
+          <tr><td>Flags gating nothing</td><td class="n">3</td><td><code>feature_state</code></td><td>Sweep 2</td></tr>
+          <tr><td>Workers never enqueued</td><td class="n">3</td><td><code>jobs/workers.js</code></td><td>Sweep 3</td></tr>
+          <tr><td>Event types nobody emits</td><td class="n">4</td><td>Event catalogue</td><td>Sweep 3</td></tr>
+          <tr><td>Send points with no caller</td><td class="n">9</td><td><code>mail_send_point</code></td><td>Sweep 3</td></tr>
+          <tr><td>Feature keys with no catalogue row</td><td class="n">15</td><td><code>feature_state</code> vs platform</td><td>Sweep 4</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-family:var(--display);font-size:1.15rem;font-weight:600;letter-spacing:-.015em;margin:2.4rem 0 1rem;">The gates that stop it recurring</h3>
+
+    <ul class="gates">
+      <li>
+        <span class="path">tests/security/orphan-wiring-sweep.test.js</span>
+        <span class="what">A worker registered in <code>PROCESSORS</code> and enqueued by nothing fails the build. I reintroduced this exact defect myself mid-branch; the gate is what caught it.</span>
+      </li>
+      <li>
+        <span class="path">tests/security/mail-send-point-wiring.test.js</span>
+        <span class="what">A send point claiming <code>is_wired = true</code> with no <code>sendPoint:</code> caller fails. Guarded against its own false positives, including a rollback block that would otherwise have undone the check inside the check.</span>
+      </li>
+      <li>
+        <span class="path">tests/security/feature-catalogue-coverage.test.js</span>
+        <span class="what">A tenant-seeded flag with no catalogue row fails; so does a <code>depends_on</code> naming a key the catalogue lacks — projection treats an unknown dependency as unmet and turns a shipped feature off for every tenant, silently — and so does a cycle in the graph.</span>
+      </li>
+      <li>
+        <span class="path">client/src/lib/mail-api-encoding.test.ts</span>
+        <span class="what">All 33 client writes had used <code>body: JSON.stringify(x)</code> against a client that stringifies again — Express rejected the double-encoded string before any route ran, so the whole PR-3/4/5 API was dead on arrival. This fails if the pattern returns.</span>
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    Full working detail, sweep by sweep, is in <code>doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md</code> —
+    §11 to §15 cover this branch. Gate state at head: 5,126 backend tests across 334 suites,
+    0 lint errors, column / idempotency / citext checks all passing. Client: lint 0 errors and
+    111 warnings against a budget of 112, <code>tsc -b &amp;&amp; vite build</code> green,
+    1,666 vitest tests passing across 106 suites. See UNV-1 for the one thing "passing" still
+    does not mean.
+  </footer>
+
+</div>

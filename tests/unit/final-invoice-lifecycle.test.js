@@ -105,6 +105,19 @@ function fakeClient(initial) {
       if (/^SELECT advance_id/.test(s)) return { rows: [] };
 
       /**
+       * §2.7 — the pricing guard asks the tenant what its policy is
+       * (finance.invoice_pricing.source / .unit_price_tolerance) before it
+       * looks at any lines. No row means "unset", so the service's declared
+       * defaults apply — QUOTATION_WHEN_PRESENT.
+       *
+       * That is exactly the case under test: these fixtures carry
+       * `dossier_id: null`, so there is no accepted quotation to reconcile
+       * against and the guard correctly stands aside. Modelled here rather
+       * than caught by the catch-all, as the note below asks.
+       */
+      if (/^SELECT value FROM setting/.test(s)) return { rows: [] };
+
+      /**
        * TC-Q3 — THROW on unrecognised SQL. Do not return `{ rows: [] }`.
        *
        * This line used to be `return { rows: [] }`, which made the fake

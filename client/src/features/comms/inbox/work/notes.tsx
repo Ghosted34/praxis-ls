@@ -41,7 +41,7 @@ function NoteBody({ body }: { body: string }) {
     <p className="whitespace-pre-wrap text-sm">
       {parts.map((p, i) =>
         p.startsWith("@") ? (
-          <span key={i} className="font-medium text-primary">
+          <span key={i} className="font-medium text-primary-ink">
             {p}
           </span>
         ) : (

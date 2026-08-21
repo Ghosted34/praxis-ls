@@ -287,7 +287,7 @@ async function prefill(client, dossierId) {
 function rehydrate(row) {
   if (!row) return null;
   const jsonb = (v) => {
-    if (v == null) return null;
+    if (v === null) return null;
     if (typeof v === "string") { try { return JSON.parse(v); } catch { return null; } }
     return v;
   };

@@ -39,6 +39,7 @@ vi.mock("@/app/branding/branding-context", () => ({
   }),
 }));
 
+import { __resetPwaUpdate } from "@/lib/pwa-update";
 import { PwaUpdater } from "./pwa-updater";
 
 /** Minimal ServiceWorker stub that records what it was told. */
@@ -77,6 +78,11 @@ function installSwMock(registration: unknown) {
 let reload: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  // The staged-build flag and the "applying" latch are module state now
+  // (lib/pwa-update.ts) so the rail's refresh control can read them too. Module
+  // state outlives a test: without this, the first case's apply leaves
+  // `applying` true and every later case finds a button reading "Updating…".
+  __resetPwaUpdate();
   needRefreshState.current = true;
   reload = vi.fn();
   Object.defineProperty(window, "location", {

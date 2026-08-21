@@ -926,7 +926,8 @@
         "list_margin_simulations",
         "get_margin_simulation",
         "margin_simulation_from_costing",
-        "create_margin_simulation"
+        "create_margin_simulation",
+        "update_margin_simulation"
       ]
     },
     {

@@ -86,7 +86,11 @@ const vatFraction = async (client) =>
   Number(await getRule(client, "finance", "vat", "rate_percent", 19.25)) / 100;
 
 async function fiveFamily(client, body) {
-  const rates = body.rates || (await getSetting(client, "commercial", "extra_charge_rates", null)) || null;
+  // `tariff`, not `rates` — the module also exports a `rates(client)` function
+  // (the tariff a screen renders in its editor) and the two shadowed each
+  // other. Same word, two meanings, one scope; "tariff" is what the rest of
+  // this module and 10716 already call the table.
+  const tariff = body.rates || (await getSetting(client, "commercial", "extra_charge_rates", null)) || null;
   const currency = await assertCurrency(client, body.currency || "XAF");
   const fx = await resolveFx(client, body, currency);
   return simulateCharges({
@@ -96,7 +100,7 @@ async function fiveFamily(client, body) {
     emptyReturn: body.empty_return || null,
     freeDays: body.free_days ?? LEGACY_FREE_DAYS,
     yardTrigger: body.yard_trigger ?? null,
-    rates,
+    rates: tariff,
     fx,
     currency,
     vatRate: await vatFraction(client),
@@ -287,7 +291,10 @@ async function prefill(client, dossierId) {
 function rehydrate(row) {
   if (!row) return null;
   const jsonb = (v) => {
-    if (v === null) return null;
+    // Spelled out rather than `== null`: eqeqeq is an error in this repo, and
+    // both cases are real here — a nullable jsonb column and a key the row
+    // never had.
+    if (v === null || v === undefined) return null;
     if (typeof v === "string") { try { return JSON.parse(v); } catch { return null; } }
     return v;
   };

@@ -38,6 +38,11 @@ const threading = require("./threading");
 const folders = require("./folders");
 const stream = require("./stream");
 const threadRepo = require("./thread.repo");
+const triageHooks = require("../triage/ingest-hooks");
+const followupService = require("../triage/followup.service");
+const intake = require("../binding/intake.service");
+const semantic = require("../assist/semantic.service");
+const ocrQueue = require("../assist/ocr.enqueue");
 
 const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
 const OAUTH_STATE_TTL = "10m";
@@ -416,21 +421,73 @@ async function syncConnection(client, id, ctx = {}) {
         });
         if (!row) continue;
         inserted += 1;
-        attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        // Attachments BEFORE the archive hook, and their hashes go into it:
+        // the chain's content hash covers headers + body + attachment hashes
+        // (§9.6), so archiving first would seal a message with its attachments
+        // left out of the seal.
+        const att = await persistAttachments(client, row.email_message_id, m.attachments, ctx);
+        attachments += att.saved;
+        // PR-5 §9.6/§9.7/§9.8 — archive, verdict, DSN. One call site, so the
+        // wiring test has one thing to assert on and a later edit to this loop
+        // has one thing to preserve. Archive failures propagate to the
+        // per-folder catch below; the other two are advisory (see the file).
+        // `ctx` carries the per-run memo the anti-spoof corpus is read into.
+        await triageHooks.onMessageIngested(client, row, { raw: m, attachmentHashes: att.hashes, ctx });
+        // PR-3 §7.6 — propose a filing for each attachment. SUGGESTIONS only:
+        // "never file silently, at any confidence, in this programme." Advisory,
+        // so a classification failure never costs the message.
+        if (att.saved) {
+          await intake.suggestForMessage(client, {
+            messageId: row.email_message_id, threadId: row.thread_id, subject: m.subject,
+          }).catch(() => { /* @silent:storage the attachment row is the outcome */ });
+          // PR-4 §8.6 — queue field extraction for anything that already looks
+          // like a supplier invoice, receipt, PO, proof of payment or cheque.
+          // NOT during a backfill: `last_sync_at` is null exactly once per
+          // folder, and that pass can be 90 days deep. See ocr.enqueue.js — the
+          // narrowing there is the difference between a feature and a bill.
+          await ocrQueue.forMessage(client, {
+            messageId: row.email_message_id,
+            subject: m.subject,
+            ctx,
+            isFirstSync: !folder.last_sync_at,
+          }).catch(() => { /* @silent:storage extraction is an enrichment */ });
+        }
         await autoLink(client, {
           threadId: row.thread_id, messageId: row.email_message_id,
           fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
           filenames: (m.attachments || []).map((a) => a.filename).filter(Boolean),
         });
-        if (m.direction !== "OUT" && client && typeof client.query === "function") {
-          await client.query(
-            `UPDATE email_followup SET status='CANCELLED'
-              WHERE email_thread_id = $1 AND status='PENDING' AND cancel_on_reply = true AND kind='NO_REPLY'`,
-            [row.thread_id],
-          ).catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
+        // A client reply cancels every pending boomerang on the thread (§9.3,
+        // "silently"). The rule lives in followup.service so the sweep and the
+        // ingest path cannot drift — the inline copy that used to be here only
+        // cancelled NO_REPLY, leaving a multi-step sequence to keep nagging
+        // about a client who had already answered.
+        //
+        // The `typeof client.query === "function"` guard that also stood here
+        // was shaped by a unit-test fixture with no `query`, not by anything the
+        // runtime does; the fixture now answers, so the guard has gone with it.
+        if (m.direction !== "OUT") {
+          await followupService.cancelOnReply(client, row.thread_id)
+            .catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
         }
+        // PR-4 §8.9 — re-embed the thread so "search by meaning" can find it.
+        // Gated inside on the tenant's `ai.vectorization` flag, so a tenant that
+        // has not opted into embedding never has its correspondence vectorised
+        // — which for the most sensitive corpus in the product is the whole
+        // point of the flag. Best-effort by construction: an embedding vendor
+        // being down must not be what stops a mailbox syncing.
+        await semantic.onThreadUpdated(client, row.thread_id);
         await emitEvent(client, {
-          eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
+          // Symmetric, on the THREAD grain, matching the family 10735 seeds.
+          //
+          // The else branch used to emit `email.received` — the pre-thread
+          // engine's message-grain key — which left `email.thread.replied`
+          // seeded, described as "a new message joined an existing
+          // conversation", and emitted by nothing. The two are synonyms for the
+          // same moment and only one of them can be the answer, so a rule on
+          // "somebody replied" could never fire. `categoryFor` keys on the
+          // domain (`email`), so notification routing is unchanged by this.
+          eventTypeKey: row.is_new_thread ? "email.thread.created" : "email.thread.replied",
           moduleKey: events.MODULE,
           entityRef: events.msgRef(row.email_message_id),
           actorUserId: null,
@@ -471,32 +528,58 @@ async function syncConnection(client, id, ctx = {}) {
 }
 
 
-/** Store each attachment's bytes in the vault and link it to the message. One bad
- *  attachment (too large / storage error) is skipped, never aborting the sync. */
+/**
+ * Store each attachment's bytes in the vault and link it to the message. One bad
+ * attachment (too large / storage error) is skipped, never aborting the sync.
+ *
+ * ── EVERY ATTACHMENT IS HASHED, AND THE HASHES ARE RETURNED ─────────────────
+ *
+ * `checksum_sha256` was written on the OUTBOUND path (outbox.repo) and left
+ * null on ingest, which quietly hollowed out the archive: §9.6 defines the
+ * content hash as SHA-256 over canonicalised "headers + body + attachment
+ * hashes", so with no attachment hashes the chain covered the covering letter
+ * and not the invoice. Someone could replace an attached PDF in the vault and
+ * `/mail/archive/verify` would still report the chain intact — which is the one
+ * thing an auditor is relying on it not to do.
+ *
+ * Computed here rather than in the archive hook because this is the only place
+ * that holds the BYTES; by the time the hook runs there is a vault reference and
+ * nothing to hash.
+ *
+ * @returns {{saved:number, hashes:string[]}} hashes in attachment order.
+ */
 async function persistAttachments(client, inboundId, list, ctx = {}) {
-  if (!list || !list.length) return 0;
+  if (!list || !list.length) return { saved: 0, hashes: [] };
   const slug = ctx.slug || "unknown";
+  const crypto = require("crypto");
   let saved = 0;
+  const hashes = [];
   for (const a of list) {
     if (!a || !a.content || !a.content.length || a.content.length > ATTACH_MAX_BYTES) continue;
     try {
       const contentType = a.content_type || "application/octet-stream";
+      const checksum = crypto.createHash("sha256").update(a.content).digest("hex");
       const dataUrl = `data:${contentType};base64,${a.content.toString("base64")}`;
-       
+
       const doc = await documentVault.createDocument(client, {
         dataUrl, slug, entityRef: `email_message:${inboundId}`, docType: null, actor: { user_id: null },
       });
-       
+
       await repo.addAttachment(client, {
-        email_inbound_id: inboundId, vault_id: doc.doc_id,
+        // `email_message_id`, not `email_inbound_id` — 10737 renamed it. The
+        // old name failed this INSERT inside the @silent catch below, so every
+        // inbound attachment was stored in the vault and then orphaned.
+        email_message_id: inboundId, direction: "IN", vault_id: doc.doc_id,
         filename: a.filename || null, content_type: contentType, size_bytes: a.content.length,
+        checksum_sha256: checksum,
       });
+      hashes.push(checksum);
       saved += 1;
     } catch {
       /* @silent:storage skip this attachment; bytes may exceed the vault limit or storage failed */
     }
   }
-  return saved;
+  return { saved, hashes };
 }
 
 /** Send from a connected mailbox; records the OUT copy for the thread view. */
@@ -694,6 +777,11 @@ async function recordOutbound(client, conn, m) {
     received_at: new Date(),
   });
   if (row) {
+    // §9.6 archives "every message, in and out". Outbound is the half that
+    // matters most to an auditor asking what we told a client and when, so it
+    // is archived at the moment of record and, like ingest, is allowed to fail
+    // the operation rather than leave a hole in the chain.
+    await triageHooks.onMessageSent(client, { ...row, thread_id: thread.email_thread_id });
     await threadRepo.refreshThreadCounts(client, thread.email_thread_id);
     await threadRepo.seedStateForMembers(client, row.email_message_id, conn.email_connection_id);
     if (m.originUserId) {
@@ -860,9 +948,19 @@ async function autoLink(client, args) {
   } catch { /* @silent:teardown — a failed suggestion never aborts the sync loop */ }
 }
 
-/** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
-const listThread = (client, q = {}) =>
-  threadRepo.listThreads(client, q.user_id || null, { connectionId: q.connection_id, limit: q.limit, before: q.before });
+/**
+ * Legacy flat message list, kept for the AI catalogue and the 360 timeline.
+ *
+ * `actor` is the third argument because that is what both AI adapters pass
+ * (see action-registrar). It is the fallback for `q.user_id`, so this read is
+ * scoped to the caller whether it arrives over HTTP or through the copilot —
+ * `listThreads` applies both the mailbox-access and the visibility predicate,
+ * and a null user id matches no mailbox, which is the fail-closed direction.
+ */
+const listThread = (client, q = {}, actor = null) =>
+  threadRepo.listThreads(client, q.user_id || (actor && actor.user_id) || null, {
+    connectionId: q.connection_id, limit: q.limit, before: q.before,
+  });
 const getMessage = (client, id, userId = null) => threadRepo.getMessage(client, userId, id);
 /** Mark a message read locally AND propagate to the mail server (G-3). The
  *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
@@ -888,9 +986,19 @@ async function markRead(client, id, actorUserId = null) {
   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));
 }
 const listAttachments = (client, id) => repo.listAttachments(client, id);
-/** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
-const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>
-  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
+/**
+ * Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref.
+ *
+ * Scoped to the caller for the same reason as `listThread`: this is the read
+ * that puts correspondence on a screen OUTSIDE the mailbox, which makes it the
+ * easiest place in the product to be shown a thread you were never meant to see
+ * (§9.10 criterion 7 names the client timeline explicitly). `actor` is the AI
+ * adapter's third argument; `args.user_id` is the HTTP caller's.
+ */
+const clientTimeline = (client, { client_id, entity_ref, limit, user_id } = {}, actor = null) =>
+  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, {
+    limit, userId: user_id || (actor && actor.user_id) || null,
+  });
 
 /** Manually attach a message to any entity (e.g. 'dossier:<id>' or 'client:<id>'). */
 async function linkEntity(client, { inboundId, entity_ref }) {

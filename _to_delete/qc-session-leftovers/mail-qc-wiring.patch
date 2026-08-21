@@ -1,0 +1,2444 @@
+diff --git a/src/config/env.js b/src/config/env.js
+index d181327..86aa4ae 100755
+--- a/src/config/env.js
++++ b/src/config/env.js
+@@ -564,7 +564,14 @@ const Schema = z.object({
+   // value change, not a code change (Q35).
+   MAIL_RBL_HOSTS: z.string().default("zen.spamhaus.org,bl.spamcop.net,b.barracudacentral.org"),
+   MAIL_SECURE_LINK_DAYS: int(7),
++  // SLA clocks (PR-5 §9.2). 5 minutes: the sweep computes due dates for newly
++  // arrived threads and raises breaches, so the interval is the worst-case
++  // lateness of a breach alert, not of the underlying promise.
+   MAIL_SLA_SWEEP_INTERVAL_MS: int(300000),
++  // Snooze / no-reply boomerang / sequence steps (PR-5 §9.3). 1 minute, because
++  // a follow-up is a wall-clock promise a person made to themselves — "bring
++  // this back at 14:00" arriving at 14:05 is fine, at 15:00 is not.
++  MAIL_FOLLOWUP_SWEEP_INTERVAL_MS: int(60000),
+   MAIL_AI_MONTHLY_CAP_XAF: int(0),
+ 
+   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
+diff --git a/src/jobs/handlers/mail-followup-sweep-scheduler.js b/src/jobs/handlers/mail-followup-sweep-scheduler.js
+new file mode 100644
+index 0000000..a981307
+--- /dev/null
++++ b/src/jobs/handlers/mail-followup-sweep-scheduler.js
+@@ -0,0 +1,28 @@
++/**
++ * Worker job: follow-up fan-out tick. One `mail-followup-sweep` per LIVE tenant.
++ *
++ * The per-tenant `jobId` dedupes an in-flight sweep, which matters because the
++ * rows are claimed and flipped to FIRED in one statement — two overlapping
++ * sweeps are safe but pointless.
++ */
++"use strict";
++
++const registry = require("../../services/tenant/registry.service");
++const { enqueue } = require("../queue-producer");
++const { logger } = require("../../config/logger");
++
++module.exports = async function mailFollowupSweepScheduler() {
++  const tenants = await registry.listActiveTenants();
++  let enqueued = 0;
++  for (const meta of tenants) {
++    await enqueue(
++      "mail-followup-sweep",
++      "sweep",
++      { tenantMeta: meta, env: "live" },
++      { jobId: `mailfollowup:${meta.db_name}:live`, attempts: 1, removeOnComplete: true, removeOnFail: true },
++    );
++    enqueued += 1;
++  }
++  logger.debug({ tenants: tenants.length, enqueued }, "[mail] follow-up sweep scheduler tick");
++  return { tenants: tenants.length, enqueued };
++};
+diff --git a/src/jobs/handlers/mail-followup-sweep.js b/src/jobs/handlers/mail-followup-sweep.js
+new file mode 100644
+index 0000000..1ea55f2
+--- /dev/null
++++ b/src/jobs/handlers/mail-followup-sweep.js
+@@ -0,0 +1,16 @@
++/**
++ * Worker job: fire one tenant's due follow-ups (§9.3).
++ *
++ * Reminders only — nothing here sends mail. Q24 forbids auto-send and §9.3
++ * applies that to sequence steps as well.
++ */
++"use strict";
++
++const registry = require("../../services/tenant/registry.service");
++const followup = require("../../modules/mail/triage/followup.service");
++
++module.exports = async function mailFollowupSweep(job) {
++  const { tenantMeta, env = "live" } = job.data || {};
++  if (!tenantMeta) throw new Error("mail-followup-sweep job needs tenantMeta");
++  return registry.withTenantConnection(tenantMeta, env, (c) => followup.sweep(c));
++};
+diff --git a/src/jobs/handlers/mail-sla-sweep-scheduler.js b/src/jobs/handlers/mail-sla-sweep-scheduler.js
+new file mode 100644
+index 0000000..a002c65
+--- /dev/null
++++ b/src/jobs/handlers/mail-sla-sweep-scheduler.js
+@@ -0,0 +1,27 @@
++/**
++ * Worker job: SLA fan-out tick. One `mail-sla-sweep` per LIVE tenant.
++ *
++ * LIVE only. A sandbox breach notification would page a real team lead about a
++ * conversation that does not exist.
++ */
++"use strict";
++
++const registry = require("../../services/tenant/registry.service");
++const { enqueue } = require("../queue-producer");
++const { logger } = require("../../config/logger");
++
++module.exports = async function mailSlaSweepScheduler() {
++  const tenants = await registry.listActiveTenants();
++  let enqueued = 0;
++  for (const meta of tenants) {
++    await enqueue(
++      "mail-sla-sweep",
++      "sweep",
++      { tenantMeta: meta, env: "live" },
++      { jobId: `mailsla:${meta.db_name}:live`, attempts: 1, removeOnComplete: true, removeOnFail: true },
++    );
++    enqueued += 1;
++  }
++  logger.debug({ tenants: tenants.length, enqueued }, "[mail] SLA sweep scheduler tick");
++  return { tenants: tenants.length, enqueued };
++};
+diff --git a/src/jobs/handlers/mail-sla-sweep.js b/src/jobs/handlers/mail-sla-sweep.js
+new file mode 100644
+index 0000000..fc2c9a5
+--- /dev/null
++++ b/src/jobs/handlers/mail-sla-sweep.js
+@@ -0,0 +1,18 @@
++/**
++ * Worker job: compute SLA due dates and raise breaches for one tenant (§9.2).
++ *
++ * `attempts: 1` on the enqueue side, for the same reason as the send flush: the
++ * sweep is idempotent and runs again in five minutes, so a BullMQ retry buys
++ * nothing and a retry storm during an outage would notify a team lead once per
++ * attempt about the same overdue thread.
++ */
++"use strict";
++
++const registry = require("../../services/tenant/registry.service");
++const sla = require("../../modules/mail/triage/sla.service");
++
++module.exports = async function mailSlaSweep(job) {
++  const { tenantMeta, env = "live" } = job.data || {};
++  if (!tenantMeta) throw new Error("mail-sla-sweep job needs tenantMeta");
++  return registry.withTenantConnection(tenantMeta, env, (c) => sla.sweep(c));
++};
+diff --git a/src/jobs/workers.js b/src/jobs/workers.js
+index 11358d5..a4c73a5 100755
+--- a/src/jobs/workers.js
++++ b/src/jobs/workers.js
+@@ -44,6 +44,15 @@ const PROCESSORS = [
+   { name: "mail-send-flush-scheduler", concurrency: 1, handler: require("./handlers/mail-send-flush-scheduler") },
+   { name: "deliverability-check", concurrency: 1, handler: require("./handlers/deliverability-check") },
+   { name: "deliverability-check-scheduler", concurrency: 1, handler: require("./handlers/deliverability-check-scheduler") },
++  // PR-5 §9.2/§9.3. Both were missing entirely: `mail_sla_policy` and
++  // `email_followup` were written by the API and read by nothing, so an SLA was
++  // never measured and a snoozed thread never came back. Concurrency 1 — each
++  // sweep claims and stamps rows across a whole tenant, so two passes would
++  // contend rather than share.
++  { name: "mail-sla-sweep", concurrency: 1, handler: require("./handlers/mail-sla-sweep") },
++  { name: "mail-sla-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-sla-sweep-scheduler") },
++  { name: "mail-followup-sweep", concurrency: 1, handler: require("./handlers/mail-followup-sweep") },
++  { name: "mail-followup-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-followup-sweep-scheduler") },
+   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
+   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
+   // Error Command Center: 30-day retention purge + escalation rule evaluation.
+@@ -245,6 +254,47 @@ async function scheduleRecurring() {
+     logger.info({ every: flushEvery }, "mail send-flush scheduler registered");
+   }
+ 
++  // ── The three mail schedulers that had a WORKER and no TICK ───────────────
++  //
++  // Exactly the shape called out for `regie-aging` further down this file: a
++  // queue registered above, a handler on disk, and nothing anywhere that ever
++  // enqueued it — so the feature existed in the tree and not in the product.
++  // `MAIL_DELIVERABILITY_INTERVAL_MS` and `MAIL_SLA_SWEEP_INTERVAL_MS` had even
++  // been added to config/env.js and then read by nobody.
++  //
++  // Deliverability: the daily re-check is what turns "your DKIM record
++  // disappeared" into a red row and a notification instead of into invoices
++  // that quietly stop arriving (§6.5).
++  const deliverEvery = config.MAIL_DELIVERABILITY_INTERVAL_MS;
++  if (!deliverEvery || deliverEvery <= 0) {
++    logger.info("mail deliverability scheduler disabled (MAIL_DELIVERABILITY_INTERVAL_MS=0)");
++  } else {
++    await enqueue("deliverability-check-scheduler", "tick", {}, { repeat: { every: deliverEvery }, removeOnComplete: true, removeOnFail: 50 });
++    logger.info({ every: deliverEvery }, "mail deliverability scheduler registered");
++  }
++
++  // SLA clocks (§9.2). The interval is the worst-case lateness of a BREACH
++  // ALERT, not of the promise itself — the due dates are computed from
++  // `first_message_at`, so a worker outage costs notice, never accuracy.
++  const slaEvery = config.MAIL_SLA_SWEEP_INTERVAL_MS;
++  if (!slaEvery || slaEvery <= 0) {
++    logger.info("mail SLA sweep disabled (MAIL_SLA_SWEEP_INTERVAL_MS=0)");
++  } else {
++    await enqueue("mail-sla-sweep-scheduler", "tick", {}, { repeat: { every: slaEvery }, removeOnComplete: true, removeOnFail: 50 });
++    logger.info({ every: slaEvery }, "mail SLA sweep registered");
++  }
++
++  // Follow-ups (§9.3): snooze, no-reply boomerang, sequence steps. Warn rather
++  // than info when disabled — a user who snoozes a thread has been told it will
++  // come back, and a silently disabled sweep breaks that promise invisibly.
++  const followEvery = config.MAIL_FOLLOWUP_SWEEP_INTERVAL_MS;
++  if (!followEvery || followEvery <= 0) {
++    logger.warn("mail follow-up sweep disabled (MAIL_FOLLOWUP_SWEEP_INTERVAL_MS=0) — snoozed threads will not return");
++  } else {
++    await enqueue("mail-followup-sweep-scheduler", "tick", {}, { repeat: { every: followEvery }, removeOnComplete: true, removeOnFail: 50 });
++    logger.info({ every: followEvery }, "mail follow-up sweep registered");
++  }
++
+   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.
+   const renewEvery = config.MAIL_WEBHOOK_RENEW_INTERVAL_MS;
+   if (!renewEvery || renewEvery <= 0) {
+diff --git a/src/modules/mail/mail/mail.controller.js b/src/modules/mail/mail/mail.controller.js
+index 994d8c6..97184a3 100755
+--- a/src/modules/mail/mail/mail.controller.js
++++ b/src/modules/mail/mail/mail.controller.js
+@@ -70,10 +70,10 @@ module.exports = {
+   recipients: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.searchRecipients(c, req.query.q)) })),
+ 
+   // ── Engine: messages ──
+-  thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, req.query)) })),
++  thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, { ...req.query, user_id: req.user && req.user.user_id })) })),
+   message: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getMessage(c, req.params.id)) })),
+   attachments: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listAttachments(c, req.params.id)) })),
+-  clientTimeline: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.clientTimeline(c, { client_id: req.params.id, limit: req.query.limit })) })),
++  clientTimeline: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.clientTimeline(c, { client_id: req.params.id, limit: req.query.limit, user_id: req.user && req.user.user_id })) })),
+   linkThread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.linkEntity(c, { inboundId: req.params.id, entity_ref: req.body && req.body.entity_ref })) })),
+   markRead: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.markRead(c, req.params.id)) })),
+   /**
+diff --git a/src/modules/mail/mail/mail.service.js b/src/modules/mail/mail/mail.service.js
+index a3fbcc0..0e26e38 100755
+--- a/src/modules/mail/mail/mail.service.js
++++ b/src/modules/mail/mail/mail.service.js
+@@ -38,6 +38,8 @@ const threading = require("./threading");
+ const folders = require("./folders");
+ const stream = require("./stream");
+ const threadRepo = require("./thread.repo");
++const triageHooks = require("../triage/ingest-hooks");
++const followupService = require("../triage/followup.service");
+ 
+ const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // matches document_vault.createDocument
+ const OAUTH_STATE_TTL = "10m";
+@@ -417,17 +419,28 @@ async function syncConnection(client, id, ctx = {}) {
+         if (!row) continue;
+         inserted += 1;
+         attachments += await persistAttachments(client, row.email_message_id, m.attachments, ctx);
++        // PR-5 §9.6/§9.7/§9.8 — archive, verdict, DSN. One call site, so the
++        // wiring test has one thing to assert on and a later edit to this loop
++        // has one thing to preserve. Archive failures propagate to the
++        // per-folder catch below; the other two are advisory (see the file).
++        await triageHooks.onMessageIngested(client, row, { raw: m });
+         await autoLink(client, {
+           threadId: row.thread_id, messageId: row.email_message_id,
+           fromAddress: m.from, subject: m.subject, bodyText: m.bodyText,
+           filenames: (m.attachments || []).map((a) => a.filename).filter(Boolean),
+         });
+-        if (m.direction !== "OUT" && client && typeof client.query === "function") {
+-          await client.query(
+-            `UPDATE email_followup SET status='CANCELLED'
+-              WHERE email_thread_id = $1 AND status='PENDING' AND cancel_on_reply = true AND kind='NO_REPLY'`,
+-            [row.thread_id],
+-          ).catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
++        // A client reply cancels every pending boomerang on the thread (§9.3,
++        // "silently"). The rule lives in followup.service so the sweep and the
++        // ingest path cannot drift — the inline copy that used to be here only
++        // cancelled NO_REPLY, leaving a multi-step sequence to keep nagging
++        // about a client who had already answered.
++        //
++        // The `typeof client.query === "function"` guard that also stood here
++        // was shaped by a unit-test fixture with no `query`, not by anything the
++        // runtime does; the fixture now answers, so the guard has gone with it.
++        if (m.direction !== "OUT") {
++          await followupService.cancelOnReply(client, row.thread_id)
++            .catch(() => { /* @silent:storage a missing table during rollout must not abort ingest */ });
+         }
+         await emitEvent(client, {
+           eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
+@@ -694,6 +707,11 @@ async function recordOutbound(client, conn, m) {
+     received_at: new Date(),
+   });
+   if (row) {
++    // §9.6 archives "every message, in and out". Outbound is the half that
++    // matters most to an auditor asking what we told a client and when, so it
++    // is archived at the moment of record and, like ingest, is allowed to fail
++    // the operation rather than leave a hole in the chain.
++    await triageHooks.onMessageSent(client, { ...row, thread_id: thread.email_thread_id });
+     await threadRepo.refreshThreadCounts(client, thread.email_thread_id);
+     await threadRepo.seedStateForMembers(client, row.email_message_id, conn.email_connection_id);
+     if (m.originUserId) {
+@@ -860,9 +878,19 @@ async function autoLink(client, args) {
+   } catch { /* @silent:teardown — a failed suggestion never aborts the sync loop */ }
+ }
+ 
+-/** Legacy flat message list, kept for the AI catalogue and the 360 timeline. */
+-const listThread = (client, q = {}) =>
+-  threadRepo.listThreads(client, q.user_id || null, { connectionId: q.connection_id, limit: q.limit, before: q.before });
++/**
++ * Legacy flat message list, kept for the AI catalogue and the 360 timeline.
++ *
++ * `actor` is the third argument because that is what both AI adapters pass
++ * (see action-registrar). It is the fallback for `q.user_id`, so this read is
++ * scoped to the caller whether it arrives over HTTP or through the copilot —
++ * `listThreads` applies both the mailbox-access and the visibility predicate,
++ * and a null user id matches no mailbox, which is the fail-closed direction.
++ */
++const listThread = (client, q = {}, actor = null) =>
++  threadRepo.listThreads(client, q.user_id || (actor && actor.user_id) || null, {
++    connectionId: q.connection_id, limit: q.limit, before: q.before,
++  });
+ const getMessage = (client, id, userId = null) => threadRepo.getMessage(client, userId, id);
+ /** Mark a message read locally AND propagate to the mail server (G-3). The
+  *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
+@@ -888,9 +916,19 @@ async function markRead(client, id, actorUserId = null) {
+   return threadRepo.setThreadRead(client, actorUserId, msg.email_thread_id, true).then(() => ({ email_message_id: id, is_read: true }));
+ }
+ const listAttachments = (client, id) => repo.listAttachments(client, id);
+-/** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
+-const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>
+-  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
++/**
++ * Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref.
++ *
++ * Scoped to the caller for the same reason as `listThread`: this is the read
++ * that puts correspondence on a screen OUTSIDE the mailbox, which makes it the
++ * easiest place in the product to be shown a thread you were never meant to see
++ * (§9.10 criterion 7 names the client timeline explicitly). `actor` is the AI
++ * adapter's third argument; `args.user_id` is the HTTP caller's.
++ */
++const clientTimeline = (client, { client_id, entity_ref, limit, user_id } = {}, actor = null) =>
++  threadRepo.timelineByEntity(client, entity_ref || `client:${client_id}`, {
++    limit, userId: user_id || (actor && actor.user_id) || null,
++  });
+ 
+ /** Manually attach a message to any entity (e.g. 'dossier:<id>' or 'client:<id>'). */
+ async function linkEntity(client, { inboundId, entity_ref }) {
+diff --git a/src/modules/mail/mail/thread.repo.js b/src/modules/mail/mail/thread.repo.js
+index 2acbfe8..5424a23 100755
+--- a/src/modules/mail/mail/thread.repo.js
++++ b/src/modules/mail/mail/thread.repo.js
+@@ -35,6 +35,28 @@
+ "use strict";
+ 
+ const { updateOne, getById } = require("../../../shared/db/query-helpers");
++const visibility = require("../triage/visibility");
++
++/**
++ * ── AND THE SECOND PREDICATE: PER-THREAD VISIBILITY (PR-5 §9.5) ─────────────
++ *
++ * `accessible` answers "which MAILBOXES may this person open".
++ * `vis` answers the finer question "which THREADS inside those mailboxes may
++ * they see" — Private / Team / Company. They are different rules and both are
++ * required: a colleague can legitimately hold a grant on a shared mailbox and
++ * still have no business reading a thread its owner marked Private.
++ *
++ * The predicate is defined ONCE, in `../triage/visibility.js`, and applied here
++ * at every read: list, get, stream counts, label-apply and the CRM timeline.
++ * `tests/security/mail-visibility-wiring.test.js` asserts each of those call
++ * sites still carries it, because the failure mode is silent — a query that
++ * drops the clause returns MORE rows, never an error, and every unit test that
++ * exercises the predicate directly keeps passing while the product leaks.
++ *
++ * Every query using it must have `email_connection` joined as `c`, since
++ * PRIVATE resolves through `c.owner_user_id`.
++ */
++const vis = (n) => visibility.clause(`$${n}`);
+ 
+ /**
+  * The mailboxes this user may read, as a scalar subquery. Inlined rather than
+@@ -65,7 +87,7 @@ const accessible = (n) => ACCESSIBLE.replace(/\$USER/g, `$${n}`);
+ async function listThreads(client, userId, q = {}) {
+   const p = [userId];
+   const add = (v) => { p.push(v); return `$${p.length}`; };
+-  const where = [`t.email_connection_id IN ${accessible(1)}`];
++  const where = [`t.email_connection_id IN ${accessible(1)}`, vis(1)];
+ 
+   if (q.connectionId) where.push(`t.email_connection_id = ${add(q.connectionId)}`);
+   if (q.stream) where.push(`t.stream = ${add(q.stream)}`);
+@@ -157,7 +179,8 @@ async function getThread(client, userId, threadId) {
+             c.email_address AS mailbox_address, c.kind AS mailbox_kind
+        FROM email_thread t
+        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+-      WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}`,
++      WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}
++        AND ${vis(1)}`,
+     [userId, threadId],
+   );
+   if (!head[0]) return null;
+@@ -178,6 +201,38 @@ async function getThread(client, userId, threadId) {
+   return { ...head[0], messages };
+ }
+ 
++/**
++ * The ONE read that skips both predicates — break-glass (§9.5), and nothing else.
++ *
++ * It is named `Unrestricted` rather than given an `{ all: true }` option on
++ * `getThread`, so that a grep for what bypasses visibility returns exactly one
++ * function and its call sites. `tests/security/mail-visibility-wiring.test.js`
++ * asserts that the only caller is the CEO-gated break-glass route, which writes
++ * the `immutable_ledger` row before it reads.
++ */
++async function getThreadUnrestricted(client, threadId) {
++  const { rows: head } = await client.query(
++    `SELECT t.*, t.participants::text[] AS participants,
++            c.email_address AS mailbox_address, c.kind AS mailbox_kind
++       FROM email_thread t
++       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
++      WHERE t.email_thread_id = $1`,
++    [threadId],
++  );
++  if (!head[0]) return null;
++  const { rows: messages } = await client.query(
++    `SELECT m.email_message_id, m.direction, m.folder, m.from_address, m.from_name,
++            m.to_address::text[] AS to_address, m.cc_address::text[] AS cc_address,
++            m.subject, m.body_html, m.body_text, m.body_preview, m.received_at,
++            m.has_attachment, m.sent_via, m.origin_send_point
++       FROM email_message m
++      WHERE m.email_thread_id = $1
++      ORDER BY m.received_at`,
++    [threadId],
++  );
++  return { ...head[0], messages };
++}
++
+ const getThreadById = (client, id) => getById(client, "email_thread", "email_thread_id", id);
+ const updateThread = (client, id, patch) => updateOne(client, "email_thread", "email_thread_id", id, patch);
+ 
+@@ -359,7 +414,9 @@ const streamUnread = (client, userId, connectionId = null) =>
+   client.query(
+     `SELECT t.stream, count(*)::int AS unread
+        FROM email_thread t
++       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+       WHERE t.email_connection_id IN ${accessible(1)}
++        AND ${vis(1)}
+         AND ($2::uuid IS NULL OR t.email_connection_id = $2)
+         AND EXISTS (SELECT 1 FROM email_message m
+                      WHERE m.email_thread_id = t.email_thread_id
+@@ -452,7 +509,10 @@ const applyLabel = (client, userId, threadId, labelId, on = true) =>
+     ? client.query(
+         `INSERT INTO email_thread_label (email_thread_id, email_label_id)
+          SELECT $2, $3 WHERE EXISTS (SELECT 1 FROM email_label WHERE email_label_id = $3 AND owner_user_id = $1)
+-           AND EXISTS (SELECT 1 FROM email_thread t WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)})
++           AND EXISTS (SELECT 1 FROM email_thread t
++                        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
++                       WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}
++                         AND ${vis(1)})
+          ON CONFLICT DO NOTHING RETURNING email_thread_id`,
+         [userId, threadId, labelId],
+       ).then((r) => r.rows.length > 0)
+@@ -502,20 +562,36 @@ const knownParty = (client, address) => {
+   ).then((r) => r.rows[0] || null);
+ };
+ 
+-/** All mail on an entity, newest first — the CRM timeline. */
+-const timelineByEntity = (client, entityRef, { limit = 100 } = {}) =>
+-  client.query(
++/**
++ * All mail on an entity, newest first — the CRM timeline.
++ *
++ * `userId` is REQUIRED and is not optional politeness: this is the read path
++ * that shows a client's correspondence on a screen outside the mailbox, so it
++ * is the easiest place in the product to see a thread you were never meant to.
++ * It carries both predicates — the mailboxes the caller may open, and the
++ * per-thread visibility inside them (§9.10 criterion 7 names the timeline
++ * explicitly). A caller with no user id gets nothing rather than everything.
++ */
++const timelineByEntity = (client, entityRef, { limit = 100, userId = null } = {}) => {
++  if (!userId) return Promise.resolve([]);
++  return client.query(
+     `SELECT m.email_message_id, m.email_connection_id, t.thread_key, m.direction, m.from_address,
+             array_to_string(m.to_address::text[], ', ') AS to_address, m.subject, m.body_preview,
+             t.entity_ref, m.received_at, m.sent_via
+-       FROM email_message m JOIN email_thread t USING (email_thread_id)
+-      WHERE t.entity_ref = $1 ORDER BY m.received_at DESC LIMIT $2`,
+-    [entityRef, Math.min(Math.max(Number(limit) || 100, 1), 500)],
++       FROM email_message m
++       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
++       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
++      WHERE t.entity_ref = $1
++        AND t.email_connection_id IN ${accessible(3)}
++        AND ${vis(3)}
++      ORDER BY m.received_at DESC LIMIT $2`,
++    [entityRef, Math.min(Math.max(Number(limit) || 100, 1), 500), userId],
+   ).then((r) => r.rows);
++};
+ 
+ module.exports = {
+   accessible,
+-  listThreads, getThread, getThreadById, updateThread, upsertThread, refreshThreadCounts,
++  listThreads, getThread, getThreadUnrestricted, getThreadById, updateThread, upsertThread, refreshThreadCounts,
+   insertMessage, getMessage, moveThread,
+   setThreadRead, setThreadStarred, seedStateForMembers,
+   listFolders, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
+diff --git a/src/modules/mail/mail/thread.service.js b/src/modules/mail/mail/thread.service.js
+index 65cbb9f..7f8cfda 100755
+--- a/src/modules/mail/mail/thread.service.js
++++ b/src/modules/mail/mail/thread.service.js
+@@ -221,8 +221,8 @@ async function folders(client, actor, connectionId) {
+ const labels = (client, actor) => repo.listLabels(client, actor.user_id);
+ const createLabel = (client, actor, body) => repo.createLabel(client, actor.user_id, body);
+ const deleteLabel = (client, actor, id) => repo.deleteLabel(client, actor.user_id, id);
+-const timeline = (client, { entity_ref, client_id, limit } = {}) =>
+-  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
++const timeline = (client, actor, { entity_ref, client_id, limit } = {}) =>
++  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit, userId: actor && actor.user_id });
+ 
+ module.exports = {
+   MODULE, queryFrom, list, get, markRead, star, move, bulk, setStream, applyLabel,
+diff --git a/src/modules/mail/triage/followup.service.js b/src/modules/mail/triage/followup.service.js
+new file mode 100644
+index 0000000..0bb3b40
+--- /dev/null
++++ b/src/modules/mail/triage/followup.service.js
+@@ -0,0 +1,125 @@
++/**
++ * Follow-ups, fired (§9.3).
++ *
++ * `POST /mail/threads/:id/snooze` and `/followup` have written `email_followup`
++ * rows since the merge. Nothing has ever read them. A user who asked for a
++ * thread back in three days got a 201, a row, and silence — the single worst
++ * kind of broken feature, because it looks like it worked and the user stops
++ * keeping their own note.
++ *
++ * ── THESE ARE REMINDERS, NOT SENDS ──────────────────────────────────────────
++ *
++ * Q24 forbids auto-send and §9.3 extends that to sequences explicitly: a
++ * SEQUENCE_STEP is a reminder to a human on day 3, day 7 and day 14, never a
++ * message that goes out on its own. Nothing in this file writes to the send
++ * queue, and `tests/unit/mail-followup-sweep.test.js` asserts that it stays
++ * that way.
++ */
++"use strict";
++
++const notify = require("../../notification/notification.service");
++const { emitEvent } = require("../../../shared/events/emit");
++const { logger } = require("../../../config/logger");
++
++const COPY = {
++  SNOOZE: {
++    title: "Snoozed conversation is back",
++    body: (s) => (s ? `«${s}» is back in your inbox.` : "A snoozed conversation is back in your inbox."),
++  },
++  NO_REPLY: {
++    title: "Still no reply",
++    body: (s) => (s ? `No reply yet on «${s}».` : "A conversation you were watching has had no reply."),
++  },
++  SEQUENCE_STEP: {
++    title: "Follow-up due",
++    body: (s) => (s ? `Time to follow up on «${s}».` : "A follow-up you scheduled is due."),
++  },
++};
++
++/**
++ * Fire everything due, once.
++ *
++ * Rows are claimed with `FOR UPDATE SKIP LOCKED` and flipped to FIRED in the
++ * same statement that selects them, so two workers — or one worker whose
++ * previous tick has not finished — cannot both notify for the same row. This is
++ * the same discipline `outbox.service.flush` uses on the send queue, and for
++ * the same reason: at-least-once delivery of a JOB must not become
++ * more-than-once delivery of a NOTIFICATION.
++ */
++async function sweep(client, { now = new Date(), limit = 200 } = {}) {
++  const { rows: dueRows } = await client.query(
++    `WITH claimed AS (
++       SELECT email_followup_id FROM email_followup
++        WHERE status = 'PENDING' AND due_at <= $1
++        ORDER BY due_at
++        LIMIT $2
++        FOR UPDATE SKIP LOCKED
++     )
++     UPDATE email_followup f SET status = 'FIRED'
++       FROM claimed WHERE f.email_followup_id = claimed.email_followup_id
++     RETURNING f.email_followup_id, f.email_thread_id, f.user_id, f.kind, f.note`,
++    [now, Math.min(Math.max(Number(limit) || 200, 1), 500)],
++  );
++  if (!dueRows.length) return { fired: 0 };
++
++  const subjects = await subjectsFor(client, dueRows.map((r) => r.email_thread_id));
++  let fired = 0;
++  for (const row of dueRows) {
++    try {
++      const copy = COPY[row.kind] || COPY.SEQUENCE_STEP;
++      const subject = subjects.get(row.email_thread_id) || null;
++      await notify.notify(client, {
++        userId: row.user_id,
++        eventTypeKey: "mail.followup.due",
++        title: copy.title,
++        body: row.note ? `${copy.body(subject)} — ${row.note}` : copy.body(subject),
++        entityRef: `email_thread:${row.email_thread_id}`,
++        // The row id, not the thread id: a user may legitimately set three
++        // reminders on one thread and is entitled to all three.
++        dedupeKey: `FOLLOWUP:${row.email_followup_id}:${row.user_id}`,
++      });
++      await emitEvent(client, {
++        eventTypeKey: "mail.followup.fired",
++        moduleKey: "MOD-72",
++        entityRef: `email_thread:${row.email_thread_id}`,
++        actorUserId: row.user_id,
++        payload: { kind: row.kind, followup: row.email_followup_id },
++      }).catch(() => { /* @silent:storage the FIRED row is the record */ });
++      fired += 1;
++    } catch (err) {
++      // The row is already FIRED. Re-opening it here would re-notify on the
++      // next tick and, since the failure is usually the notification service
++      // itself, would do so forever.
++      logger.warn({ err, followup: row.email_followup_id }, "[mail] follow-up notification failed");
++    }
++  }
++  return { fired };
++}
++
++async function subjectsFor(client, threadIds) {
++  const ids = [...new Set(threadIds.filter(Boolean))];
++  if (!ids.length) return new Map();
++  const { rows } = await client.query(
++    `SELECT email_thread_id, subject FROM email_thread WHERE email_thread_id = ANY($1::uuid[])`,
++    [ids],
++  );
++  return new Map(rows.map((r) => [r.email_thread_id, r.subject]));
++}
++
++/**
++ * A client reply cancels the boomerang (§9.3, "silently").
++ *
++ * Also exported here so the cancel rule has ONE definition, even though the
++ * ingest loop currently inlines the same UPDATE — see the wiring test, which
++ * holds the two to the same shape.
++ */
++const cancelOnReply = (client, threadId) =>
++  client.query(
++    `UPDATE email_followup SET status = 'CANCELLED'
++      WHERE email_thread_id = $1 AND status = 'PENDING'
++        AND cancel_on_reply = true AND kind IN ('NO_REPLY','SEQUENCE_STEP')
++      RETURNING email_followup_id`,
++    [threadId],
++  ).then((r) => ({ cancelled: r.rows.length }));
++
++module.exports = { sweep, cancelOnReply, subjectsFor, COPY };
+diff --git a/src/modules/mail/triage/ingest-hooks.js b/src/modules/mail/triage/ingest-hooks.js
+new file mode 100644
+index 0000000..50479ee
+--- /dev/null
++++ b/src/modules/mail/triage/ingest-hooks.js
+@@ -0,0 +1,258 @@
++/**
++ * The three PR-5 controls that run on every message, at the one place a message
++ * enters or leaves the system.
++ *
++ * ── WHY THIS FILE EXISTS ────────────────────────────────────────────────────
++ *
++ * `antispoof.js`, `archive-chain.js` and `bounce-parse.js` shipped correct,
++ * unit-tested and CALLED BY NOTHING. `email_archive`, `party_verified_domain`
++ * and `email_bounce` were created by migrations 10760–10762 and then read and
++ * written by zero lines of application code, so `GET /mail/archive/verify`
++ * walked an empty table and answered `{ ok: true }` for a mailbox that had
++ * never archived anything, no message ever carried an `auth_verdict`, and a
++ * bounce arrived as ordinary mail. Every unit test passed throughout, because
++ * every one of them called the pure function directly.
++ *
++ * Collecting the three into one hook, called from one place, is deliberate:
++ * a single call site is a single thing a wiring test can assert on, and a
++ * single thing a future edit to the sync loop can be checked against.
++ * `tests/security/mail-ingest-hooks-wiring.test.js` does exactly that.
++ *
++ * ── FAILURE POLICY ──────────────────────────────────────────────────────────
++ *
++ * Archiving is the one hook that must NOT be swallowed: an un-archived message
++ * is a gap in a hash chain we tell auditors is complete, so it fails the ingest
++ * of that message and the per-folder isolation in the sync loop records it. The
++ * verdict and DSN hooks are advisory enrichment — a message that arrives with
++ * no verdict is worse than one with, but very much better than a mailbox that
++ * stops syncing — so they are caught and logged.
++ */
++"use strict";
++
++const antispoof = require("./antispoof");
++const archive = require("./archive-chain");
++const bounce = require("./bounce-parse");
++const { logger } = require("../../../config/logger");
++
++/* ── Anti-spoofing (§9.7) ─────────────────────────────────────────────────── */
++
++/**
++ * The domains we may trust for this message's thread.
++ *
++ * `ADMIN_VERIFIED` only. `OBSERVED` rows accrue from correspondence history and
++ * §9.7 is explicit that they "never confer VERIFIED on their own — that
++ * requires a human, in the UI, once". Feeding OBSERVED in here would let an
++ * attacker who mails us twice verify themselves.
++ */
++async function verifiedDomainsFor(client, entityRef) {
++  if (!entityRef) return [];
++  const m = /^(client|supplier):(.+)$/.exec(String(entityRef));
++  if (!m) return [];
++  const { rows } = await client.query(
++    `SELECT domain::text AS domain FROM party_verified_domain
++      WHERE party_kind = $1 AND party_id = $2 AND source = 'ADMIN_VERIFIED'`,
++    [m[1].toUpperCase(), m[2]],
++  );
++  return rows.map((r) => r.domain);
++}
++
++/**
++ * Record that we have seen this domain corresponding as this party.
++ *
++ * Upserted as `OBSERVED` with a message counter, which is what makes the
++ * "mark this domain as belonging to <party>" affordance in the UNVERIFIED
++ * banner a one-click action rather than a typing exercise. It confers nothing.
++ */
++async function observeDomain(client, entityRef, fromAddress) {
++  const m = /^(client|supplier):(.+)$/.exec(String(entityRef || ""));
++  const domain = String(fromAddress || "").toLowerCase().split("@")[1];
++  if (!m || !domain) return;
++  await client.query(
++    `INSERT INTO party_verified_domain (party_kind, party_id, domain, source, message_count)
++     VALUES ($1, $2, $3, 'OBSERVED', 1)
++     ON CONFLICT (party_kind, party_id, domain)
++       DO UPDATE SET message_count = party_verified_domain.message_count + 1`,
++    [m[1].toUpperCase(), m[2], domain],
++  );
++}
++
++async function stampVerdict(client, { messageId, threadId, message }) {
++  const { rows } = await client.query(
++    `SELECT entity_ref FROM email_thread WHERE email_thread_id = $1`,
++    [threadId],
++  );
++  const entityRef = rows[0] && rows[0].entity_ref;
++  const verifiedDomains = await verifiedDomainsFor(client, entityRef);
++
++  // Lookalike detection needs the whole corpus of party domains, not just this
++  // thread's — the attack is a domain that resembles a party we know, and the
++  // thread it arrives on is typically bound to nothing at all.
++  const { rows: allKnown } = await client.query(
++    `SELECT DISTINCT domain::text AS domain FROM party_verified_domain WHERE source = 'ADMIN_VERIFIED'`,
++  );
++  const { rows: parties } = await client.query(
++    `SELECT name FROM client_master WHERE is_active
++      UNION ALL SELECT name FROM supplier_master WHERE is_active`,
++  ).catch(() => ({ rows: [] }));
++
++  const { verdict, detail } = antispoof.evaluate(message, {
++    parties,
++    verifiedDomains: verifiedDomains.length ? verifiedDomains : allKnown.map((r) => r.domain),
++  });
++
++  await client.query(
++    `UPDATE email_message SET auth_verdict = $2, auth_detail = $3::jsonb WHERE email_message_id = $1`,
++    [messageId, verdict, JSON.stringify(detail || {})],
++  );
++  await observeDomain(client, entityRef, message.from_address);
++  return { verdict, detail };
++}
++
++/* ── Immutable archive (§9.6) ─────────────────────────────────────────────── */
++
++/**
++ * Append one message to the hash chain.
++ *
++ * Serialised on the tail row with `FOR UPDATE`: two messages archived
++ * concurrently that both read the same `prev_hash` produce two rows claiming
++ * the same predecessor, and `verify()` walks straight into the second one and
++ * reports a break in a chain that was never actually tampered with. A lock on
++ * the tail is cheap — archiving happens once per message, on ingest or send,
++ * never in a loop over history.
++ */
++async function appendToArchive(client, { messageId, message }) {
++  const { rows: prev } = await client.query(
++    `SELECT chain_hash FROM email_archive ORDER BY seq DESC LIMIT 1 FOR UPDATE`,
++  );
++  const entry = archive.append(prev[0] || null, {
++    headers: {
++      message_id: message.message_id_header || null,
++      from: message.from_address || null,
++      to: message.to_address || [],
++      subject: message.subject || null,
++      date: message.received_at || null,
++    },
++    body: `${message.body_html || ""}\n${message.body_text || ""}`,
++    attachments: message.attachment_hashes || [],
++  });
++  await client.query(
++    `INSERT INTO email_archive (email_message_id, content_hash, prev_hash, chain_hash, attachment_hashes)
++     VALUES ($1,$2,$3,$4,$5)
++     ON CONFLICT (email_message_id) DO NOTHING`,
++    [messageId, entry.content_hash, entry.prev_hash, entry.chain_hash, entry.attachment_hashes],
++  );
++  return entry;
++}
++
++/* ── Bounce / DSN (§9.8) ──────────────────────────────────────────────────── */
++
++/**
++ * A delivery-status report is not mail — it is the answer to mail we sent.
++ *
++ * Returns null for anything that is not a DSN, so the caller can treat "this
++ * was a bounce" as a truthy result rather than having to sniff content types
++ * in the sync loop.
++ */
++async function recordBounce(client, { message }) {
++  const dsn = bounce.parseDsn({
++    contentType: message.content_type || (message.headers && message.headers["content-type"]) || "",
++    body: message.body_text || "",
++    headers: message.headers || {},
++  });
++  if (!dsn || !dsn.recipient) return null;
++
++  const original = dsn.original_message_id_header
++    ? await client.query(
++      `SELECT email_message_id FROM email_message WHERE message_id_header = $1 LIMIT 1`,
++      [dsn.original_message_id_header],
++    ).then((r) => r.rows[0] || null)
++    : null;
++
++  await client.query(
++    `INSERT INTO email_bounce (original_message_id, original_message_id_header, recipient,
++                               bounce_type, status_code, diagnostic)
++     VALUES ($1,$2,$3,$4,$5,$6)`,
++    [
++      original && original.email_message_id, dsn.original_message_id_header,
++      dsn.recipient, dsn.bounce_type, dsn.status_code, dsn.diagnostic,
++    ],
++  );
++
++  // A hard bounce is a fact about the ADDRESS, not about this send, so it is
++  // recorded on the contact — that is what lets the composer warn before the
++  // next attempt and ends the "we emailed the invoice three times" failure.
++  // A soft bounce must never downgrade an address already known hard-failed.
++  const status = dsn.bounce_type === "HARD" ? "HARD_FAILED"
++    : dsn.bounce_type === "SOFT" ? "SOFT_FAILING" : null;
++  if (status) {
++    for (const table of ["client_contact", "supplier_contact"]) {
++      await client.query(
++        `UPDATE ${table} SET email_status = $2
++          WHERE lower(email) = lower($1)
++            AND NOT (email_status = 'HARD_FAILED' AND $2 = 'SOFT_FAILING')`,
++        [dsn.recipient, status],
++      ).catch(() => { /* @silent:storage a tenant without this table still gets the bounce row */ });
++    }
++  }
++  return { ...dsn, original_message_id: original && original.email_message_id };
++}
++
++/* ── The one hook the ingest loop calls ───────────────────────────────────── */
++
++/**
++ * @param {object} client   tenant db client, inside the ingest transaction
++ * @param {object} row      the inserted email_message row (+ thread_id)
++ * @param {object} opts.raw the provider message, for headers the row does not keep
++ */
++async function onMessageIngested(client, row, { raw = {}, attachmentHashes = [] } = {}) {
++  const message = {
++    from_address: row.from_address,
++    from_name: row.from_name,
++    to_address: row.to_address,
++    subject: row.subject,
++    body_text: row.body_text,
++    body_html: row.body_html,
++    message_id_header: row.message_id_header,
++    received_at: row.received_at,
++    headers: raw.headers || {},
++    content_type: raw.contentType || (raw.headers && raw.headers["content-type"]) || "",
++    auth: raw.auth || {},
++    attachment_hashes: attachmentHashes,
++  };
++
++  // Archive first, and let it throw. Everything after this point is enrichment;
++  // the chain is the record.
++  await appendToArchive(client, { messageId: row.email_message_id, message });
++
++  const out = { archived: true, verdict: null, bounce: null };
++
++  if (row.direction !== "OUT") {
++    try {
++      out.bounce = await recordBounce(client, { message });
++    } catch (err) {
++      logger.warn({ err, id: row.email_message_id }, "[mail] DSN parse skipped");
++    }
++    try {
++      const v = await stampVerdict(client, {
++        messageId: row.email_message_id, threadId: row.thread_id, message,
++      });
++      out.verdict = v.verdict;
++    } catch (err) {
++      logger.warn({ err, id: row.email_message_id }, "[mail] anti-spoof verdict skipped");
++    }
++  }
++  return out;
++}
++
++/** Outbound messages are archived too (§9.6: "every message, in and out"). */
++async function onMessageSent(client, row, { attachmentHashes = [] } = {}) {
++  return appendToArchive(client, {
++    messageId: row.email_message_id,
++    message: { ...row, attachment_hashes: attachmentHashes },
++  });
++}
++
++module.exports = {
++  onMessageIngested, onMessageSent,
++  appendToArchive, stampVerdict, recordBounce, verifiedDomainsFor, observeDomain,
++};
+diff --git a/src/modules/mail/triage/sla-clock.js b/src/modules/mail/triage/sla-clock.js
+index c002949..e9aabbd 100755
+--- a/src/modules/mail/triage/sla-clock.js
++++ b/src/modules/mail/triage/sla-clock.js
+@@ -1,67 +1,221 @@
+ /**
+- * SLA clocks on tenant business hours. PURE given hours, holidays, and now.
++ * SLA clocks on tenant business hours (§9.2).
+  *
+- * A thread arriving Friday 16:30 with a 4-business-hour SLA is due Monday
+- * 10:30, not Saturday. PENDING pauses. First outbound stops the first-response
+- * clock.
++ * PURE given hours, holidays and `now`. A thread arriving Friday 16:30 with a
++ * 4-business-hour SLA is due Monday 10:30, not Saturday.
++ *
++ * ── WHY THE TIMEZONE IS NOT OPTIONAL ────────────────────────────────────────
++ *
++ * The first version of this file computed with `getDay()` and `setHours()`,
++ * which read the *server's* zone. `business_hours.timezone` exists precisely
++ * because those are two different things: the API runs wherever it is deployed
++ * and the office opens at 08:00 in Douala. On a UTC container that is an hour
++ * out every day of the year — enough to move a Friday-16:30 arrival to the
++ * wrong side of closing, and to turn a Monday-10:30 due time into Monday 09:30:
++ * a breach reported an hour early, every time, silently.
++ *
++ * §9.10 criterion 5 makes the same point in the other direction: the
++ * recipient-local scheduler must render 09:00 Paris as 08:00 Douala in summer
++ * and 09:00 in winter. Both need an IANA zone and real DST arithmetic rather
++ * than a fixed offset, so the zone helpers below are exported for that caller.
++ *
++ * Everything here works in absolute time (a `Date`) and converts to and from
++ * wall-clock only at the boundaries, which is the only arrangement that
++ * survives a DST transition landing inside a business day.
+  */
+ "use strict";
+ 
+-function isHoliday(date, holidays = []) {
+-  const key = date.toISOString().slice(0, 10);
+-  return holidays.some((h) => String(h.holiday_on).slice(0, 10) === key);
++const DEFAULT_TZ = "Africa/Douala";
++
++/* ── Zone arithmetic ──────────────────────────────────────────────────────── */
++
++const FMT = new Map();
++function formatter(tz) {
++  if (!FMT.has(tz)) {
++    FMT.set(tz, new Intl.DateTimeFormat("en-US", {
++      timeZone: tz, hourCycle: "h23",
++      year: "numeric", month: "2-digit", day: "2-digit",
++      hour: "2-digit", minute: "2-digit", second: "2-digit",
++    }));
++  }
++  return FMT.get(tz);
++}
++
++/** Wall-clock fields of `date` as seen in `tz`, plus day of week (0 = Sunday). */
++function partsIn(date, tz = DEFAULT_TZ) {
++  const p = Object.fromEntries(
++    formatter(tz).formatToParts(date)
++      .filter((x) => x.type !== "literal")
++      .map((x) => [x.type, Number(x.value)]),
++  );
++  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
++  return { y: p.year, m: p.month, d: p.day, h: p.hour, mi: p.minute, s: p.second, dow };
++}
++
++/** `tz`'s offset from UTC at this instant, in milliseconds (east positive). */
++function offsetAt(date, tz = DEFAULT_TZ) {
++  const p = partsIn(date, tz);
++  const asIfUtc = Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s);
++  return asIfUtc - Math.floor(date.getTime() / 1000) * 1000;
++}
++
++/**
++ * The instant at which `tz`'s wall clock reads the given fields.
++ *
++ * Two passes, because the offset that applies depends on the instant we are
++ * trying to find. The second pass is what makes spring-forward and fall-back
++ * days come out right instead of an hour adrift.
++ */
++function zonedToUtc({ y, m, d, h = 0, mi = 0 }, tz = DEFAULT_TZ) {
++  let ts = Date.UTC(y, m - 1, d, h, mi);
++  const first = offsetAt(new Date(ts), tz);
++  ts -= first;
++  const second = offsetAt(new Date(ts), tz);
++  if (second !== first) ts += first - second;
++  return new Date(ts);
++}
++
++/* ── Business calendar ────────────────────────────────────────────────────── */
++
++function isHoliday(date, holidays = [], tz = DEFAULT_TZ) {
++  const p = partsIn(date, tz);
++  const key = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
++  return holidays.some((h) => String((h && h.holiday_on) || h).slice(0, 10) === key);
+ }
+ 
+-function hoursFor(date, hours = []) {
+-  const dow = date.getDay(); // 0 Sun
++function hoursFor(date, hours = [], tz = DEFAULT_TZ) {
++  const { dow } = partsIn(date, tz);
+   return hours.find((h) => Number(h.day_of_week) === dow) || null;
+ }
+ 
+ function parseHm(t) {
+-  const s = String(t);
+-  const [h, m] = s.split(":").map(Number);
++  const [h, m] = String(t).split(":").map(Number);
+   return { h: h || 0, m: m || 0 };
+ }
+ 
++/**
++ * The zone to compute in, taken from the rows themselves.
++ *
++ * `timezone` is a per-row column, so a tenant that ever runs two offices would
++ * otherwise silently get one office's clock applied to both.
++ */
++function zoneOf(hours = [], fallback = DEFAULT_TZ) {
++  const row = (hours || []).find((h) => h && h.timezone);
++  return (row && row.timezone) || fallback;
++}
++
++function startOfNextDay(date, tz) {
++  const p = partsIn(date, tz);
++  const next = new Date(Date.UTC(p.y, p.m - 1, p.d) + 24 * 3600 * 1000);
++  return zonedToUtc({
++    y: next.getUTCFullYear(), m: next.getUTCMonth() + 1, d: next.getUTCDate(), h: 0, mi: 0,
++  }, tz);
++}
++
+ /**
+  * Add `minutes` of business time to `from`.
++ *
++ * Walks day by day in the office's zone, consuming whatever of each open window
++ * remains. The 400-iteration guard is generous (about a year of closed days)
++ * because the alternative to a guard is a tenant with no `business_hours` rows
++ * hanging a worker. A return equal to the input means "no calendar configured",
++ * which `due()` turns into a null due date rather than a fake one.
+  */
+-function addBusinessMinutes(from, minutes, { hours = [], holidays = [] } = {}) {
+-  let left = minutes;
++function addBusinessMinutes(from, minutes, { hours = [], holidays = [], timezone = null } = {}) {
++  const tz = timezone || zoneOf(hours);
++  let left = Math.max(0, Number(minutes) || 0);
+   let cursor = new Date(from);
+   let guard = 0;
++
+   while (left > 0 && guard < 400) {
+     guard += 1;
+-    const slot = hoursFor(cursor, hours);
+-    if (!slot || isHoliday(cursor, holidays)) {
+-      cursor.setDate(cursor.getDate() + 1);
+-      cursor.setHours(0, 0, 0, 0);
++    const slot = hoursFor(cursor, hours, tz);
++    if (!slot || isHoliday(cursor, holidays, tz)) {
++      cursor = startOfNextDay(cursor, tz);
+       continue;
+     }
++    const p = partsIn(cursor, tz);
+     const open = parseHm(slot.opens_at);
+     const close = parseHm(slot.closes_at);
+-    const openAt = new Date(cursor); openAt.setHours(open.h, open.m, 0, 0);
+-    const closeAt = new Date(cursor); closeAt.setHours(close.h, close.m, 0, 0);
++    const openAt = zonedToUtc({ y: p.y, m: p.m, d: p.d, h: open.h, mi: open.m }, tz);
++    const closeAt = zonedToUtc({ y: p.y, m: p.m, d: p.d, h: close.h, mi: close.m }, tz);
++
+     if (cursor < openAt) cursor = openAt;
+-    if (cursor >= closeAt) {
+-      cursor.setDate(cursor.getDate() + 1);
+-      cursor.setHours(0, 0, 0, 0);
+-      continue;
+-    }
+-    const avail = Math.round((closeAt - cursor) / 60000);
+-    const take = Math.min(avail, left);
++    if (cursor >= closeAt) { cursor = startOfNextDay(cursor, tz); continue; }
++
++    const available = Math.round((closeAt - cursor) / 60000);
++    const take = Math.min(available, left);
+     cursor = new Date(cursor.getTime() + take * 60000);
+     left -= take;
+   }
+   return cursor;
+ }
+ 
+-function dueAt(arrivedAt, policy, ctx) {
+-  const mins = policy.applies_to_vip ? policy.first_response_minutes : policy.first_response_minutes;
+-  if (!policy.business_hours_only) {
++/* ── Policy application ───────────────────────────────────────────────────── */
++
++/**
++ * Pick the minutes this thread is entitled to.
++ *
++ * The VIP tier was previously `policy.applies_to_vip ? first_response_minutes :
++ * first_response_minutes` — the same value on both branches, so the seeded
++ * one-hour VIP promise silently resolved to the ordinary four hours. A VIP
++ * policy is a SEPARATE row (`applies_to_vip = true`), so which tier applies is
++ * decided by whoever selects the row; all that is decided here is which of the
++ * two clocks on it is wanted.
++ */
++function minutesFor(policy = {}, clock = "first_response") {
++  return clock === "resolution"
++    ? Number(policy.resolution_minutes) || 0
++    : Number(policy.first_response_minutes) || 0;
++}
++
++function due(arrivedAt, policy = {}, ctx = {}, clock = "first_response") {
++  const mins = minutesFor(policy, clock);
++  if (!mins) return null;
++  if (policy.business_hours_only === false) {
+     return new Date(new Date(arrivedAt).getTime() + mins * 60000);
+   }
++  // No calendar means no promise we can keep. Checked HERE rather than left to
++  // `addBusinessMinutes` because that function's guard walks 400 closed days
++  // and returns a date a year out — which is not "unknown", it is a due date
++  // nobody will ever breach, and it would read on screen as a working SLA.
++  if (!(ctx.hours || []).length) return null;
+   return addBusinessMinutes(arrivedAt, mins, ctx);
+ }
+ 
+-module.exports = { addBusinessMinutes, dueAt, isHoliday, hoursFor };
++/** Both clocks for a newly arrived thread. */
++function dueDates(arrivedAt, policy, ctx) {
++  return {
++    first_response_due_at: due(arrivedAt, policy, ctx, "first_response"),
++    resolution_due_at: due(arrivedAt, policy, ctx, "resolution"),
++  };
++}
++
++/** Back-compat name, kept for the existing unit test and earlier callers. */
++const dueAt = (arrivedAt, policy, ctx) => due(arrivedAt, policy, ctx, "first_response");
++
++/**
++ * Is this thread's clock running?
++ *
++ * PENDING means "waiting on the customer", so it pauses; RESOLVED stops
++ * everything; the first outbound message stops the first-response clock only.
++ */
++function isRunning(thread = {}, clock = "first_response") {
++  if (thread.work_status === "RESOLVED") return false;
++  if (thread.work_status === "PENDING") return false;
++  if (clock === "first_response") return !thread.first_responded_at;
++  return !thread.resolved_at;
++}
++
++function isBreached(thread = {}, now = new Date(), clock = "first_response") {
++  if (!isRunning(thread, clock)) return false;
++  const dueField = clock === "resolution" ? thread.resolution_due_at : thread.first_response_due_at;
++  return Boolean(dueField) && new Date(dueField) <= now;
++}
++
++module.exports = {
++  DEFAULT_TZ,
++  addBusinessMinutes, dueAt, due, dueDates, minutesFor,
++  isHoliday, hoursFor, isRunning, isBreached,
++  partsIn, offsetAt, zonedToUtc, zoneOf,
++};
+diff --git a/src/modules/mail/triage/sla.service.js b/src/modules/mail/triage/sla.service.js
+new file mode 100644
+index 0000000..61bd51e
+--- /dev/null
++++ b/src/modules/mail/triage/sla.service.js
+@@ -0,0 +1,190 @@
++/**
++ * SLA clocks, applied (§9.2).
++ *
++ * `sla-clock.js` knows how to add four business hours to a Friday afternoon.
++ * Until this file existed nothing asked it to: `mail_sla_policy`,
++ * `business_hours` and `business_holiday` were created by migration 10755 and
++ * read by no application code, `first_response_due_at` was never written, and
++ * `mail.sla.breached` was never emitted. A team could miss every promise it had
++ * made and the product would show a green tick, because the only test in the
++ * suite called `addBusinessMinutes` directly and it was right.
++ *
++ * ── WHY THE SWEEP COMPUTES DUE DATES RATHER THAN INGEST ─────────────────────
++ *
++ * Setting the due date at arrival is the obvious design and the wrong one here.
++ * Policies are tenant-editable, so a lead who shortens the VIP promise from
++ * four hours to one expects it to apply to what is already in the queue; a due
++ * date stamped at arrival would apply it only to mail that has not come yet.
++ * Recomputing on a sweep also makes the whole thing idempotent and recoverable
++ * — a worker outage costs lateness in the ALERT, never a lost clock.
++ *
++ * Everything here is written to survive being run twice.
++ */
++"use strict";
++
++const clock = require("./sla-clock");
++const notify = require("../../notification/notification.service");
++const { emitEvent } = require("../../../shared/events/emit");
++const { logger } = require("../../../config/logger");
++
++async function calendar(client) {
++  const [hours, holidays] = await Promise.all([
++    client.query(`SELECT day_of_week, opens_at, closes_at, timezone FROM business_hours ORDER BY day_of_week`)
++      .then((r) => r.rows).catch(() => []),
++    client.query(`SELECT holiday_on FROM business_holiday`).then((r) => r.rows).catch(() => []),
++  ]);
++  return { hours, holidays };
++}
++
++async function policies(client) {
++  return client.query(
++    `SELECT * FROM mail_sla_policy WHERE is_active ORDER BY applies_to_vip DESC`,
++  ).then((r) => r.rows).catch(() => []);
++}
++
++/**
++ * The policy that governs a thread.
++ *
++ * Most specific first: a policy bound to this mailbox beats a tenant-wide one,
++ * and a VIP policy beats the ordinary one for a VIP thread. Ordering the rows
++ * `applies_to_vip DESC` and taking the first match is what makes the VIP tier
++ * actually mean something — the old `dueAt` had a VIP branch that returned the
++ * ordinary number.
++ */
++function policyFor(rows, thread) {
++  const eligible = rows.filter((p) =>
++    (!p.email_connection_id || p.email_connection_id === thread.email_connection_id)
++    && (!p.applies_to_vip || thread.is_vip));
++  const scoped = eligible.filter((p) => p.email_connection_id);
++  return scoped[0] || eligible[0] || null;
++}
++
++/**
++ * Derive `first_responded_at` from the messages rather than trusting a flag.
++ *
++ * A first response is "we sent something after they wrote", which the message
++ * table already knows. Deriving it means the clock cannot drift out of step
++ * with what actually happened, and means a reply sent from the user's phone —
++ * which reaches us through the Sent-folder sync, not through our own send path
++ * — still stops the clock.
++ */
++const RESPONDED = `
++  UPDATE email_thread t SET first_responded_at = sub.first_out
++    FROM (SELECT email_thread_id, min(received_at) AS first_out
++            FROM email_message WHERE direction = 'OUT' GROUP BY email_thread_id) sub
++   WHERE sub.email_thread_id = t.email_thread_id
++     AND t.first_responded_at IS DISTINCT FROM sub.first_out`;
++
++async function sweep(client, { now = new Date() } = {}) {
++  const rows = await policies(client);
++  if (!rows.length) return { policies: 0, dated: 0, breached: 0 };
++
++  const ctx = await calendar(client);
++  await client.query(RESPONDED);
++
++  // Only threads that still need a due date. Recomputing every open thread on
++  // every tick would be correct and wasteful; a policy change is picked up by
++  // the reset below instead.
++  const { rows: pending } = await client.query(
++    `SELECT t.email_thread_id, t.email_connection_id, t.is_vip, t.first_message_at,
++            t.work_status, t.first_responded_at, t.resolved_at
++       FROM email_thread t
++       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
++      WHERE t.work_status = 'OPEN'
++        AND t.first_response_due_at IS NULL
++        AND c.kind IN ('SHARED','DELEGATED')
++      LIMIT 500`,
++  );
++
++  let dated = 0;
++  for (const t of pending) {
++    const policy = policyFor(rows, t);
++    if (!policy) continue;
++    const dues = clock.dueDates(t.first_message_at || now, policy, ctx);
++    if (!dues.first_response_due_at) continue;
++    await client.query(
++      `UPDATE email_thread SET first_response_due_at = $2, resolution_due_at = $3
++        WHERE email_thread_id = $1`,
++      [t.email_thread_id, dues.first_response_due_at, dues.resolution_due_at],
++    );
++    dated += 1;
++  }
++
++  // Breaches. `sla_breached_at IS NULL` makes this fire once per thread, so a
++  // worker that runs every five minutes does not notify a team lead every five
++  // minutes about the same overdue thread — which is how an alert gets muted
++  // and then ignored.
++  const { rows: breaches } = await client.query(
++    `UPDATE email_thread t SET sla_breached_at = $1
++      WHERE t.sla_breached_at IS NULL
++        AND t.work_status = 'OPEN'
++        AND t.first_responded_at IS NULL
++        AND t.first_response_due_at IS NOT NULL
++        AND t.first_response_due_at <= $1
++      RETURNING t.email_thread_id, t.email_connection_id, t.subject, t.assigned_user_id`,
++    [now],
++  );
++
++  for (const b of breaches) {
++    try {
++      await announce(client, b);
++    } catch (err) {
++      logger.warn({ err, thread: b.email_thread_id }, "[mail] SLA breach notification failed");
++    }
++  }
++  return { policies: rows.length, dated, breached: breaches.length };
++}
++
++/**
++ * Tell the people who can do something about it.
++ *
++ * MANAGERs on the mailbox, plus whoever holds the thread. §9.2 says "the team
++ * lead"; MANAGER is that role in the PR-0 access model (P3), so this does not
++ * need its own notion of who leads a team.
++ */
++async function announce(client, thread) {
++  const { rows: managers } = await client.query(
++    `SELECT user_id FROM email_connection_member
++      WHERE email_connection_id = $1 AND member_role = 'MANAGER' AND revoked_at IS NULL`,
++    [thread.email_connection_id],
++  );
++  const targets = [...new Set([...managers.map((m) => m.user_id), thread.assigned_user_id].filter(Boolean))];
++
++  for (const userId of targets) {
++    await notify.notify(client, {
++      userId,
++      eventTypeKey: "mail.sla.breached",
++      title: "First-response SLA missed",
++      body: thread.subject ? `No reply yet on «${thread.subject}»` : "A conversation is past its first-response time.",
++      entityRef: `email_thread:${thread.email_thread_id}`,
++      priority: "HIGH",
++      // One breach, one notification per person, forever — the sweep's own
++      // `sla_breached_at IS NULL` guard already fires once, and this is the
++      // belt to that pair of braces.
++      dedupeKey: `SLA_BREACH:email_thread:${thread.email_thread_id}:${userId}`,
++    });
++  }
++  await emitEvent(client, {
++    eventTypeKey: "mail.sla.breached",
++    moduleKey: "MOD-72",
++    entityRef: `email_thread:${thread.email_thread_id}`,
++    actorUserId: null,
++    payload: { connection: thread.email_connection_id, notified: targets.length },
++  }).catch(() => { /* @silent:storage the sla_breached_at stamp is the record */ });
++  return targets.length;
++}
++
++/**
++ * Clear computed due dates so the next sweep recomputes them.
++ *
++ * Called when a policy or the business calendar is edited. Without it, a lead
++ * who shortens the VIP promise would see it apply only to future mail, which is
++ * not what "we now answer VIPs in an hour" means to the person who said it.
++ */
++const resetComputed = (client) =>
++  client.query(
++    `UPDATE email_thread SET first_response_due_at = NULL, resolution_due_at = NULL
++      WHERE work_status = 'OPEN' AND first_responded_at IS NULL`,
++  ).then((r) => ({ reset: r.rowCount }));
++
++module.exports = { sweep, announce, policyFor, calendar, policies, resetComputed };
+diff --git a/src/modules/mail/triage/triage.routes.js b/src/modules/mail/triage/triage.routes.js
+index 32849d6..d869688 100755
+--- a/src/modules/mail/triage/triage.routes.js
++++ b/src/modules/mail/triage/triage.routes.js
+@@ -1,7 +1,7 @@
+ "use strict";
+ const express = require("express");
+ const { authMiddleware } = require("../../../middleware/auth");
+-const { requirePermission } = require("../../../middleware/rbac");
++const { requirePermission, requireCeo } = require("../../../middleware/rbac");
+ const { requireFeature } = require("../../../middleware/feature-gate");
+ const { asyncHandler, AppError } = require("../../../utils/errors");
+ const { z } = require("zod");
+@@ -10,6 +10,7 @@ const { audit } = require("../../../shared/events/emit");
+ const vis = require("./visibility");
+ const archive = require("./archive-chain");
+ const secure = require("./secure-link");
++const threadRepo = require("../mail/thread.repo");
+ 
+ const M = "MOD-72";
+ const router = express.Router();
+@@ -112,22 +113,61 @@ router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requireP
+     ).then((r) => r.rows[0])),
+   })));
+ 
+-router.post("/threads/:id/breakglass", requirePermission(M, "approve"),
++/**
++ * Break-glass (§9.5). God-Mode only — `requireCeo`, not a MOD-72 grant, because
++ * the whole point is that no ordinary mail permission opens a Private thread.
++ *
++ * It RETURNS THE THREAD. The previous shape wrote the ledger row and answered
++ * `{ ok: true }`, which reads as a working audit trail while granting nothing:
++ * the caller still could not see the thread, so in practice the endpoint was
++ * never used and the ledger stayed empty. Access and the ledger row are written
++ * in the same transaction and in that order — the row lands BEFORE the body is
++ * read, so a crash mid-request cannot produce an unlogged read.
++ */
++router.post("/threads/:id/breakglass", requireCeo(),
+   body(z.object({ reason: z.string().trim().min(3).max(500) }).strict()),
+   asyncHandler(async (req, res) => {
+-    await req.identityDb((c) => audit(c, {
+-      actorUserId: actor(req).user_id, action: "mail.breakglass.read",
+-      moduleKey: M, entityRef: `email_thread:${req.params.id}`,
+-      after: { reason: req.body.reason }, isSensitive: true,
+-    }));
+-    return res.json({ data: { ok: true, ledgered: true } });
++    const data = await req.identityDb(async (c) => {
++      await audit(c, {
++        actorUserId: actor(req).user_id, action: "mail.breakglass.read",
++        moduleKey: M, entityRef: `email_thread:${req.params.id}`,
++        after: { reason: req.body.reason }, isSensitive: true,
++      });
++      const thread = await threadRepo.getThreadUnrestricted(c, req.params.id);
++      if (!thread) throw new AppError("NOT_FOUND", "conversation not found", 404);
++      return { ...thread, breakglass: true, ledgered: true };
++    });
++    return res.json({ data });
+   }));
+ 
++/**
++ * Verify the chain — and say honestly what was verified.
++ *
++ * `archive.verify([])` returns `{ ok: true }`, which is correct about the chain
++ * and dangerously misleading as an answer to "is our archive sound?". For the
++ * whole of the PR-2→PR-5 merge nothing wrote `email_archive`, so this endpoint
++ * reported a green tick over an empty table to anyone who asked. `coverage` is
++ * therefore part of the answer: a chain of 0 rows against 40 000 messages is a
++ * failure of the archive, not a pass, and the response now says so in a shape
++ * an auditor can read.
++ */
+ router.get("/archive/verify", requireFeature("mail.archive"), requirePermission("MOD-70", "view"),
+   asyncHandler(async (req, res) => res.json({
+     data: await req.identityDb(async (c) => {
+       const { rows } = await c.query(`SELECT seq, content_hash, chain_hash, prev_hash FROM email_archive ORDER BY seq`);
+-      return archive.verify(rows);
++      const chain = archive.verify(rows);
++      const { rows: cov } = await c.query(
++        `SELECT (SELECT count(*) FROM email_message)::int AS messages,
++                (SELECT count(*) FROM email_archive)::int AS archived`,
++      );
++      const { messages, archived } = cov[0] || { messages: 0, archived: 0 };
++      const complete = messages === archived;
++      return {
++        ...chain,
++        coverage: { messages, archived, unarchived: messages - archived, complete },
++        // One field a human can act on without reading the other five.
++        verdict: !chain.ok ? "CHAIN_BROKEN" : complete ? "SOUND" : "INCOMPLETE",
++      };
+     }),
+   })));
+ 
+diff --git a/src/services/ai/action-registrar.js b/src/services/ai/action-registrar.js
+index 1de23bf..9c255fe 100755
+--- a/src/services/ai/action-registrar.js
++++ b/src/services/ai/action-registrar.js
+@@ -122,8 +122,20 @@ function buildCatalogue(manifests = loadManifests()) {
+ // proposable — while the vetted executors still own the ones whose service takes
+ // a non-payload shape (camelCase args / {data,actor}). Human confirm still gates
+ // every write regardless (orchestrator.confirmAction).
++/**
++ * Reads get the caller as a THIRD argument, mirroring writeAdapter.
++ *
++ * Most read services take `(client, payload)` and ignore it, which is why it was
++ * easy to leave out. The ones that must not are the reads whose result set
++ * depends on WHO is asking. Mail is the first: PR-5 §9.5 makes thread visibility
++ * a per-caller predicate and states as a MUST that "the AI grounding layer and
++ * the search index respect the same predicate — an assistant that summarises a
++ * thread the caller cannot open is the same leak by another route." Those
++ * services are written fail-closed, so without the actor they would return
++ * nothing and merely look broken; with it they return what this user may see.
++ */
+ function readAdapter(action, service) {
+-  return async ({ client, payload = {} }) => {
++  return async ({ client, user, payload = {} }) => {
+     let arg = payload;
+     // `get_*` reads take a scalar id. The model may pass it as `id` OR as the
+     // natural field name it saw upstream (e.g. `po_id` from a GRN, `dossier_id`),
+@@ -134,7 +146,7 @@ function readAdapter(action, service) {
+         arg = idKey ? payload[idKey] : payload;
+       }
+     }
+-    const data = await service(client, arg);
++    const data = await service(client, arg, { user_id: user && user.user_id });
+     return { data };
+   };
+ }
+diff --git a/tests/security/mail-ingest-hooks-wiring.test.js b/tests/security/mail-ingest-hooks-wiring.test.js
+new file mode 100644
+index 0000000..2221f0d
+--- /dev/null
++++ b/tests/security/mail-ingest-hooks-wiring.test.js
+@@ -0,0 +1,219 @@
++/**
++ * THE PR-5 CONTROLS RUN. They are not merely defined.
++ *
++ * `mail-antispoof.test.js`, `mail-archive-chain.test.js` and
++ * `mail-bounce-parse.test.js` all passed while `antispoof.evaluate`,
++ * `archive-chain.append` and `bounce-parse.parseDsn` had no caller anywhere in
++ * `src/`. `email_archive`, `party_verified_domain` and `email_bounce` were
++ * created by migrations 10760–10762 and touched by nothing. Three tables, three
++ * correct algorithms, three green suites, and none of the three features
++ * existed at runtime.
++ *
++ * This file tests the hook against a fake client that records statements, and
++ * then tests that the ingest and send paths actually call the hook. Both halves
++ * are needed: a hook nobody calls is the exact defect being fixed.
++ */
++"use strict";
++
++const fs = require("fs");
++const path = require("path");
++const hooks = require("../../src/modules/mail/triage/ingest-hooks");
++
++const SRC = path.resolve(__dirname, "../../src");
++
++/**
++ * Answers each statement from a table of matchers, and records everything.
++ * Matching on the SQL rather than call order keeps the test readable when the
++ * hook reorders its reads.
++ */
++function fakeClient(answers = []) {
++  const calls = [];
++  return {
++    calls,
++    written: (re) => calls.filter((c) => re.test(c.text)),
++    query: async (text, params) => {
++      calls.push({ text, params });
++      const hit = answers.find((a) => a.match.test(text));
++      return { rows: hit ? hit.rows : [] };
++    },
++  };
++}
++
++const INBOUND = {
++  email_message_id: "m-1",
++  thread_id: "t-1",
++  direction: "IN",
++  from_address: "billing@smartlogistics-cm.com",
++  from_name: "Smart Logistics",
++  to_address: ["ops@smartlogistics.cm"],
++  subject: "Invoice 2026-0311",
++  body_text: "Please find the invoice attached.",
++  body_html: "<p>Please find the invoice attached.</p>",
++  message_id_header: "<a@b>",
++  received_at: new Date("2026-08-18T09:12:00Z"),
++};
++
++describe("archive — every message joins the chain", () => {
++  test("an ingested message is appended with a content hash and a chain hash", async () => {
++    const c = fakeClient();
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    const inserts = c.written(/INSERT INTO email_archive/);
++    expect(inserts).toHaveLength(1);
++    const [msgId, contentHash, prevHash, chainHash] = inserts[0].params;
++    expect(msgId).toBe("m-1");
++    expect(contentHash).toMatch(/^[a-f0-9]{64}$/);
++    expect(chainHash).toMatch(/^[a-f0-9]{64}$/);
++    expect(prevHash).toBeNull(); // first row in an empty chain
++  });
++
++  test("it links to the previous row rather than restarting the chain", async () => {
++    const c = fakeClient([{ match: /FROM email_archive ORDER BY seq DESC/, rows: [{ chain_hash: "deadbeef" }] }]);
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    const [, , prevHash] = c.written(/INSERT INTO email_archive/)[0].params;
++    expect(prevHash).toBe("deadbeef");
++  });
++
++  test("the tail row is locked, so two concurrent archives cannot claim one predecessor", async () => {
++    const c = fakeClient();
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    expect(c.written(/FROM email_archive ORDER BY seq DESC/)[0].text).toMatch(/FOR UPDATE/);
++  });
++
++  test("outbound is archived too", async () => {
++    const c = fakeClient();
++    await hooks.onMessageSent(c, { ...INBOUND, direction: "OUT", email_message_id: "m-out" });
++    expect(c.written(/INSERT INTO email_archive/)).toHaveLength(1);
++  });
++
++  test("an archive failure is NOT swallowed — a gap in the chain is not enrichment", async () => {
++    const c = {
++      query: async (text) => {
++        if (/INSERT INTO email_archive/.test(text)) throw new Error("disk full");
++        return { rows: [] };
++      },
++    };
++    await expect(hooks.onMessageIngested(c, INBOUND, { raw: {} })).rejects.toThrow("disk full");
++  });
++});
++
++describe("anti-spoof — the verdict is computed and stored", () => {
++  test("a lookalike domain is stamped LIKELY_IMPERSONATION on the message row", async () => {
++    const c = fakeClient([
++      { match: /SELECT entity_ref FROM email_thread/, rows: [{ entity_ref: "client:c-1" }] },
++      { match: /SELECT DISTINCT domain/, rows: [{ domain: "smartlogistics.cm" }] },
++    ]);
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    const update = c.written(/UPDATE email_message SET auth_verdict/)[0];
++    expect(update).toBeDefined();
++    expect(update.params[1]).toBe("LIKELY_IMPERSONATION");
++  });
++
++  test("only ADMIN_VERIFIED domains are trusted — OBSERVED never confers trust", async () => {
++    const c = fakeClient([{ match: /SELECT entity_ref FROM email_thread/, rows: [{ entity_ref: "client:c-1" }] }]);
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    const read = c.written(/FROM party_verified_domain\s+WHERE party_kind/)[0];
++    expect(read.text).toMatch(/source = 'ADMIN_VERIFIED'/);
++  });
++
++  test("the sending domain is recorded as OBSERVED, with a counter", async () => {
++    const c = fakeClient([{ match: /SELECT entity_ref FROM email_thread/, rows: [{ entity_ref: "client:c-1" }] }]);
++    await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    const ins = c.written(/INSERT INTO party_verified_domain/)[0];
++    expect(ins.text).toMatch(/'OBSERVED'/);
++    expect(ins.text).toMatch(/message_count \+ 1/);
++    expect(ins.params).toEqual(["CLIENT", "c-1", "smartlogistics-cm.com"]);
++  });
++
++  test("outbound mail is not given a verdict — we are not spoofing ourselves", async () => {
++    const c = fakeClient();
++    await hooks.onMessageIngested(c, { ...INBOUND, direction: "OUT" }, { raw: {} });
++    expect(c.written(/UPDATE email_message SET auth_verdict/)).toHaveLength(0);
++  });
++
++  test("a verdict failure does not abort the ingest", async () => {
++    const c = {
++      query: async (text) => {
++        if (/SELECT entity_ref FROM email_thread/.test(text)) throw new Error("boom");
++        return { rows: [] };
++      },
++    };
++    const out = await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    expect(out.archived).toBe(true);
++    expect(out.verdict).toBeNull();
++  });
++});
++
++describe("bounces — a DSN becomes a record, not a message in the inbox", () => {
++  const DSN = {
++    ...INBOUND,
++    email_message_id: "m-dsn",
++    body_text: [
++      "Final-Recipient: rfc822; thierry@camrail.cm",
++      "Status: 5.1.1",
++      "Diagnostic-Code: smtp; 550 5.1.1 user unknown",
++      "Original-Message-ID: <sent-42@smartlogistics.cm>",
++    ].join("\n"),
++  };
++  const raw = { headers: { "content-type": "multipart/report; report-type=delivery-status" } };
++
++  test("a hard DSN is recorded and correlated to the original message", async () => {
++    const c = fakeClient([
++      { match: /FROM email_message WHERE message_id_header/, rows: [{ email_message_id: "m-orig" }] },
++    ]);
++    await hooks.onMessageIngested(c, DSN, { raw });
++    const ins = c.written(/INSERT INTO email_bounce/)[0];
++    expect(ins).toBeDefined();
++    expect(ins.params[0]).toBe("m-orig");
++    expect(ins.params[2]).toBe("thierry@camrail.cm");
++    expect(ins.params[3]).toBe("HARD");
++    expect(ins.params[4]).toBe("5.1.1");
++  });
++
++  test("a hard bounce marks the contact, so the composer can warn next time", async () => {
++    const c = fakeClient();
++    await hooks.onMessageIngested(c, DSN, { raw });
++    const marks = c.written(/SET email_status/);
++    expect(marks.map((m) => m.params[1])).toEqual(["HARD_FAILED", "HARD_FAILED"]); // client + supplier
++  });
++
++  test("a soft bounce never downgrades an address already known hard-failed", async () => {
++    const c = fakeClient();
++    await hooks.onMessageIngested(c, { ...DSN, body_text: DSN.body_text.replace("5.1.1", "4.2.2") }, { raw });
++    const mark = c.written(/SET email_status/)[0];
++    expect(mark.params[1]).toBe("SOFT_FAILING");
++    expect(mark.text).toMatch(/NOT \(email_status = 'HARD_FAILED'/);
++  });
++
++  test("ordinary mail produces no bounce row", async () => {
++    const c = fakeClient();
++    const out = await hooks.onMessageIngested(c, INBOUND, { raw: {} });
++    expect(out.bounce).toBeNull();
++    expect(c.written(/INSERT INTO email_bounce/)).toHaveLength(0);
++  });
++});
++
++describe("the hook is actually called", () => {
++  const svc = fs.readFileSync(path.join(SRC, "modules/mail/mail/mail.service.js"), "utf8");
++
++  test("the sync loop calls it for every ingested message", () => {
++    expect(svc).toMatch(/triageHooks\.onMessageIngested\(client, row/);
++    // Inside the per-message loop, not once per folder or per connection.
++    const loop = svc.slice(svc.indexOf("for (const m of messages)"));
++    expect(loop.slice(0, loop.indexOf("await threadRepo.setFolderCursor")))
++      .toMatch(/onMessageIngested/);
++  });
++
++  test("recordOutbound archives the sent message", () => {
++    const fn = svc.slice(svc.indexOf("async function recordOutbound"));
++    expect(fn.slice(0, fn.indexOf("\nasync function ") + 1)).toMatch(/triageHooks\.onMessageSent/);
++  });
++
++  test("archive/verify reports coverage, not just chain integrity", () => {
++    // `verify([])` is `{ ok: true }`. Reporting that over an empty table for a
++    // mailbox with 40 000 messages is how this gap stayed invisible.
++    const routes = fs.readFileSync(path.join(SRC, "modules/mail/triage/triage.routes.js"), "utf8");
++    const route = routes.slice(routes.indexOf('router.get("/archive/verify"'));
++    expect(route).toMatch(/coverage/);
++    expect(route).toMatch(/INCOMPLETE/);
++  });
++});
+diff --git a/tests/security/mail-visibility-wiring.test.js b/tests/security/mail-visibility-wiring.test.js
+new file mode 100644
+index 0000000..6dafb8d
+--- /dev/null
++++ b/tests/security/mail-visibility-wiring.test.js
+@@ -0,0 +1,186 @@
++/**
++ * VISIBILITY IS APPLIED, not merely defined.
++ *
++ * `tests/security/mail-visibility.test.js` asserts that the predicate in
++ * `triage/visibility.js` decides correctly. It passed for the whole of the
++ * PR-2→PR-5 merge while `visibility.clause` was imported by nothing and every
++ * thread read returned rows regardless of `visibility` — a Private thread was
++ * visible to any colleague holding MOD-72 view, and no test noticed, because
++ * every test called the predicate itself.
++ *
++ * That is the general shape of the defect this file exists to stop: a predicate
++ * that is dropped from a query returns MORE rows, never an error, so nothing
++ * fails. The only reliable gate is one that looks at the CALL SITE.
++ *
++ * These tests therefore run the repo's real query builders against a recording
++ * fake client and assert on the SQL that reaches the driver. They deliberately
++ * do not mock the repo — mocking the thing under test is how the original gap
++ * survived four review passes.
++ */
++"use strict";
++
++const fs = require("fs");
++const path = require("path");
++const repo = require("../../src/modules/mail/mail/thread.repo");
++const visibility = require("../../src/modules/mail/triage/visibility");
++
++const SRC = path.resolve(__dirname, "../../src");
++
++/** Records every statement instead of running it. */
++function recorder(rows = []) {
++  const calls = [];
++  return {
++    calls,
++    query: async (text, params) => {
++      calls.push({ text, params });
++      return { rows };
++    },
++    sql: () => calls.map((c) => c.text).join("\n---\n"),
++  };
++}
++
++/**
++ * The three things that make a query visibility-aware, checked together so a
++ * half-applied clause (predicate present, `c` never joined) cannot pass.
++ */
++function expectVisibilityApplied(sql) {
++  expect(sql).toMatch(/t\.visibility = 'COMPANY'/);
++  expect(sql).toMatch(/email_thread_share/);
++  expect(sql).toMatch(/c\.owner_user_id/);
++  expect(sql).toMatch(/JOIN email_connection c/);
++}
++
++describe("every thread read path carries the visibility predicate", () => {
++  test("listThreads — the inbox list", async () => {
++    const c = recorder();
++    await repo.listThreads(c, "user-1", {});
++    expectVisibilityApplied(c.sql());
++  });
++
++  test("listThreads — full-text search goes through the same builder", async () => {
++    const c = recorder();
++    await repo.listThreads(c, "user-1", { tsquery: "demurrage" });
++    const sql = c.sql();
++    expect(sql).toMatch(/search_tsv @@ to_tsquery/);
++    expectVisibilityApplied(sql);
++  });
++
++  test("listThreads — every filter combination keeps it", async () => {
++    const c = recorder();
++    await repo.listThreads(c, "user-1", {
++      connectionId: "conn-1", stream: "HUMAN", vip: true, entityRef: "client:1",
++      folder: "INBOX", hasAttachment: true, label: "urgent", unread: true, starred: true,
++      from: ["a@b.cm"], to: ["c@d.cm"], subject: ["BL"],
++    });
++    expectVisibilityApplied(c.sql());
++  });
++
++  test("getThread — opening one conversation", async () => {
++    const c = recorder([{ email_thread_id: "t1", participants: [] }]);
++    await repo.getThread(c, "user-1", "t1");
++    expectVisibilityApplied(c.calls[0].text);
++  });
++
++  test("streamUnread — the folder rail counts", async () => {
++    const c = recorder();
++    await repo.streamUnread(c, "user-1", null);
++    expectVisibilityApplied(c.sql());
++  });
++
++  test("applyLabel — labelling is a write gated by a read", async () => {
++    const c = recorder();
++    await repo.applyLabel(c, "user-1", "t1", "l1", true);
++    expectVisibilityApplied(c.sql());
++  });
++
++  test("timelineByEntity — the CRM timeline, outside the mailbox", async () => {
++    const c = recorder();
++    await repo.timelineByEntity(c, "client:1", { userId: "user-1" });
++    expectVisibilityApplied(c.sql());
++  });
++
++  test("timelineByEntity fails CLOSED when no caller is supplied", async () => {
++    const c = recorder([{ email_message_id: "m1" }]);
++    const rows = await repo.timelineByEntity(c, "client:1", {});
++    // No user id must mean no rows, not every row. An anonymous caller here is
++    // a bug in the caller, and the safe answer to a bug is nothing.
++    expect(rows).toEqual([]);
++    expect(c.calls).toHaveLength(0);
++  });
++});
++
++describe("the caller reaches the read paths that need one", () => {
++  test("the AI read adapter passes the actor as a third argument", () => {
++    // §9.5: "the AI grounding layer and the search index respect the same
++    // predicate". They cannot if the adapter never tells the service who asked.
++    const src = fs.readFileSync(path.join(SRC, "services/ai/action-registrar.js"), "utf8");
++    expect(src).toMatch(/service\(client,\s*arg,\s*\{\s*user_id/);
++  });
++
++  test("mail.service reads take the actor and hand it to the repo", () => {
++    const src = fs.readFileSync(path.join(SRC, "modules/mail/mail/mail.service.js"), "utf8");
++    expect(src).toMatch(/const listThread = \(client, q = \{\}, actor = null\)/);
++    expect(src).toMatch(/const clientTimeline = \(client, \{[^}]*user_id[^}]*\} = \{\}, actor = null\)/);
++  });
++
++  test("the HTTP controller passes the authenticated user to both", () => {
++    const src = fs.readFileSync(path.join(SRC, "modules/mail/mail/mail.controller.js"), "utf8");
++    const thread = src.match(/thread: asyncHandler.*/)[0];
++    const timeline = src.match(/clientTimeline: asyncHandler.*/)[0];
++    expect(thread).toMatch(/req\.user/);
++    expect(timeline).toMatch(/req\.user/);
++  });
++});
++
++describe("exactly one read bypasses the predicate, and it is ledgered", () => {
++  test("getThreadUnrestricted is called only by the break-glass route", () => {
++    const hits = [];
++    const walk = (dir) => {
++      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++        const p = path.join(dir, e.name);
++        if (e.isDirectory()) walk(p);
++        else if (e.name.endsWith(".js") && fs.readFileSync(p, "utf8").includes("getThreadUnrestricted")) hits.push(p);
++      }
++    };
++    walk(SRC);
++    const callers = hits.filter((p) => !p.endsWith("thread.repo.js"));
++    expect(callers.map((p) => path.basename(p))).toEqual(["triage.routes.js"]);
++  });
++
++  test("break-glass is CEO-gated and writes the ledger row before it reads", () => {
++    const src = fs.readFileSync(path.join(SRC, "modules/mail/triage/triage.routes.js"), "utf8");
++    const route = src.slice(src.indexOf('router.post("/threads/:id/breakglass"'));
++    const block = route.slice(0, route.indexOf("\nrouter."));
++    expect(block).toMatch(/requireCeo\(\)/);
++    // The audit call must precede the read, so an interrupted request cannot
++    // produce a read that was never attributed.
++    expect(block.indexOf("audit(c,")).toBeGreaterThan(-1);
++    expect(block.indexOf("audit(c,")).toBeLessThan(block.indexOf("getThreadUnrestricted"));
++    expect(block).toMatch(/action: "mail\.breakglass\.read"/);
++    expect(block).toMatch(/isSensitive: true/);
++  });
++});
++
++describe("the predicate itself is still defined once", () => {
++  test("no second copy of the visibility SQL exists in src", () => {
++    const copies = [];
++    const walk = (dir) => {
++      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++        const p = path.join(dir, e.name);
++        if (e.isDirectory()) walk(p);
++        else if (e.name.endsWith(".js")) {
++          const s = fs.readFileSync(p, "utf8");
++          // The literal shape of the rule, not the reference to it.
++          if (/visibility = 'TEAM'[\s\S]{0,200}email_connection_member/.test(s)) copies.push(p);
++        }
++      }
++    };
++    walk(SRC);
++    expect(copies.map((p) => path.basename(p))).toEqual(["visibility.js"]);
++  });
++
++  test("clause() interpolates the parameter it is given, everywhere", () => {
++    expect(visibility.clause("$7")).toContain("$7");
++    expect(visibility.clause("$7")).not.toContain("$USER");
++  });
++});
+diff --git a/tests/unit/mail-service.test.js b/tests/unit/mail-service.test.js
+index 5eb80f6..854ae9b 100755
+--- a/tests/unit/mail-service.test.js
++++ b/tests/unit/mail-service.test.js
+@@ -150,6 +150,19 @@ const inbound = (over = {}) => ({
+   subject: "A", bodyText: "a", attachments: [], ...over,
+ });
+ 
++/**
++ * The db client this file passes to the service.
++ *
++ * It was `{}` — an object with no `query`, which meant every code path in the
++ * sync loop that talks to the database directly rather than through a mocked
++ * repo was invisible here, and one of them (`cancel_on_reply` on ingest) had
++ * acquired a `typeof client.query === "function"` guard in PRODUCTION code to
++ * survive it. That is the FN-1 shape: a fixture that cannot produce what the
++ * driver produces tests only itself. It now answers, emptily but truthfully,
++ * so a direct query is exercised rather than skipped.
++ */
++const DB = { query: jest.fn(async () => ({ rows: [] })) };
++
+ // jest.clearAllMocks() resets CALLS but not IMPLEMENTATIONS, so every default a
+ // test may consume is re-established here. A mockResolvedValueOnce left over
+ // from a previous test is one of the hardest failures in this file to read.
+@@ -174,15 +187,15 @@ test("discovers folders from the server and syncs each with its own cursor", asy
+   threads.syncableFolders.mockResolvedValue([INBOX, ARCHIVE]);
+   mockFetchSince.mockResolvedValue({ messages: [], nextCursor: { uidvalidity: 10, last_uid: 4 } });
+ 
+-  const res = await service.syncConnection({}, "conn-1", {});
++  const res = await service.syncConnection(DB, "conn-1", {});
+ 
+   // Each folder is fetched with ITS OWN cursor, not one shared connection cursor.
+   // UIDVALIDITY is per mailbox in IMAP: sharing a cursor makes a renumber in
+   // Archive look like a renumber in INBOX and re-downloads the wrong folder.
+   expect(mockFetchSince).toHaveBeenCalledWith(null, "INBOX");
+   expect(mockFetchSince).toHaveBeenCalledWith({ uidvalidity: 10, last_uid: 3 }, "Archive");
+-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-INBOX", { uidvalidity: 10, last_uid: 4 });
+-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-ARCHIVE", { uidvalidity: 10, last_uid: 4 });
++  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-INBOX", { uidvalidity: 10, last_uid: 4 });
++  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-ARCHIVE", { uidvalidity: 10, last_uid: 4 });
+   expect(res.folders).toEqual([
+     { folder: "INBOX", fetched: 0 },
+     { folder: "ARCHIVE", fetched: 0 },
+@@ -198,19 +211,19 @@ test("inserts new messages, dedups, emits one event each, advances the folder cu
+     .mockResolvedValueOnce({ email_message_id: "msg-a" })
+     .mockResolvedValueOnce(null); // duplicate → ON CONFLICT DO NOTHING
+ 
+-  const res = await service.syncConnection({}, "conn-1", { slug: "smartls" });
++  const res = await service.syncConnection(DB, "conn-1", { slug: "smartls" });
+ 
+   expect(res).toMatchObject({ connection: "conn-1", fetched: 2, inserted: 1 });
+   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
+   expect(kinds.filter((k) => k === "email.thread.created" || k === "email.received")).toHaveLength(1);
+-  expect(threads.setFolderCursor).toHaveBeenCalledWith({}, "fold-INBOX", { uidvalidity: 10, last_uid: 7 });
++  expect(threads.setFolderCursor).toHaveBeenCalledWith(DB, "fold-INBOX", { uidvalidity: 10, last_uid: 7 });
+ });
+ 
+ test("a message that starts a conversation is announced as a new thread", async () => {
+   mockFetchSince.mockResolvedValue({ messages: [inbound()], nextCursor: null });
+   threads.upsertThread.mockResolvedValue({ email_thread_id: "thr-new", message_count: 0 });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+   expect(mockEmitEvent).toHaveBeenCalledWith(
+     expect.anything(),
+@@ -225,13 +238,13 @@ test("a reply into an existing conversation is announced as received, not as a n
+   });
+   threads.upsertThread.mockResolvedValue({ email_thread_id: "thr-1", message_count: 2 });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
+   expect(kinds).toContain("email.received");
+   expect(kinds).not.toContain("email.thread.created");
+   // Threaded onto the conversation the References header names, not onto itself.
+-  expect(threads.upsertThread).toHaveBeenCalledWith({}, expect.objectContaining({ thread_key: "<a>" }));
++  expect(threads.upsertThread).toHaveBeenCalledWith(DB, expect.objectContaining({ thread_key: "<a>" }));
+ });
+ 
+ test("classifies the first inbound message of a conversation into a stream", async () => {
+@@ -249,10 +262,10 @@ test("classifies the first inbound message of a conversation into a stream", asy
+     nextCursor: null,
+   });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+   expect(threads.updateThread).toHaveBeenCalledWith(
+-    {}, "thr-1", expect.objectContaining({ stream: "SYSTEM", stream_reason: expect.stringContaining("Auto-Submitted") }),
++    DB, "thr-1", expect.objectContaining({ stream: "SYSTEM", stream_reason: expect.stringContaining("Auto-Submitted") }),
+   );
+ });
+ 
+@@ -271,10 +284,10 @@ test("a known party overrides the system verdict — a client's mail is never bu
+     nextCursor: null,
+   });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+   expect(threads.updateThread).toHaveBeenCalledWith(
+-    {}, "thr-1", expect.objectContaining({ stream: "HUMAN", is_vip: true }),
++    DB, "thr-1", expect.objectContaining({ stream: "HUMAN", is_vip: true }),
+   );
+ });
+ 
+@@ -288,15 +301,15 @@ test("persists attachments to the vault and links them to the MESSAGE", async ()
+   });
+   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-c" });
+ 
+-  const res = await service.syncConnection({}, "conn-1", { slug: "smartls" });
++  const res = await service.syncConnection(DB, "conn-1", { slug: "smartls" });
+ 
+   expect(res.attachments).toBe(1);
+   expect(vault.createDocument).toHaveBeenCalledWith(
+-    {},
++    DB,
+     expect.objectContaining({ slug: "smartls", entityRef: "email_message:msg-c" }),
+   );
+   expect(repo.addAttachment).toHaveBeenCalledWith(
+-    {},
++    DB,
+     expect.objectContaining({ email_inbound_id: "msg-c", vault_id: "vault-1", filename: "f.pdf" }),
+   );
+ });
+@@ -308,14 +321,14 @@ test("ingest writes a binding SUGGESTION, never entity_ref (Q18)", async () => {
+   });
+   threads.insertMessage.mockResolvedValueOnce({ email_message_id: "msg-d" });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+-  expect(mockSuggest).toHaveBeenCalledWith({}, expect.objectContaining({
++  expect(mockSuggest).toHaveBeenCalledWith(DB, expect.objectContaining({
+     fromAddress: "client@acme.cm",
+     subject: "Re: SLAS-2026-0001 shipment",
+   }));
+   expect(threads.updateThread).not.toHaveBeenCalledWith(
+-    {}, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
++    DB, "thr-1", expect.objectContaining({ entity_ref: expect.anything() }),
+   );
+ });
+ 
+@@ -325,7 +338,7 @@ test("sanitizes the inbound HTML body before storing (stored-XSS guard)", async
+     nextCursor: null,
+   });
+ 
+-  await service.syncConnection({}, "conn-1", {});
++  await service.syncConnection(DB, "conn-1", {});
+ 
+   const row = threads.insertMessage.mock.calls[0][1];
+   expect(row.body_html).toBe("SANITIZED:<script>evil()</script><p>hi</p>"); // passed through the sanitizer
+@@ -337,9 +350,9 @@ test("one failing folder does not abort its siblings", async () => {
+     .mockRejectedValueOnce(new Error("SELECT INBOX failed"))
+     .mockResolvedValueOnce({ messages: [inbound({ externalMessageId: "<g>" })], nextCursor: { uidvalidity: 10, last_uid: 4 } });
+ 
+-  const res = await service.syncConnection({}, "conn-1", {});
++  const res = await service.syncConnection(DB, "conn-1", {});
+ 
+-  expect(threads.setFolderError).toHaveBeenCalledWith({}, "fold-INBOX", "SELECT INBOX failed");
++  expect(threads.setFolderError).toHaveBeenCalledWith(DB, "fold-INBOX", "SELECT INBOX failed");
+   expect(res.inserted).toBe(1); // Archive still synced
+   expect(res.folders).toEqual([
+     { folder: "INBOX", error: "SELECT INBOX failed" },
+@@ -352,17 +365,17 @@ test("one failing folder does not abort its siblings", async () => {
+ 
+ test("records the error on the connection and does not throw", async () => {
+   mockFetchSince.mockRejectedValue(new Error("IMAP auth failed"));
+-  const res = await service.syncConnection({}, "conn-1", {});
++  const res = await service.syncConnection(DB, "conn-1", {});
+   expect(res.error).toBeUndefined(); // per-folder now, not per-connection
+   expect(res.folders).toEqual([{ folder: "INBOX", error: "IMAP auth failed" }]);
+-  expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "IMAP auth failed");
++  expect(repo.setError).toHaveBeenCalledWith(DB, "conn-1", "IMAP auth failed");
+ });
+ 
+ test("a folder listing that fails stops the sync and records it on the connection", async () => {
+   mockListFolders.mockRejectedValue(new Error("LIST refused"));
+-  const res = await service.syncConnection({}, "conn-1", {});
++  const res = await service.syncConnection(DB, "conn-1", {});
+   expect(res.error).toBe("LIST refused");
+-  expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "LIST refused");
++  expect(repo.setError).toHaveBeenCalledWith(DB, "conn-1", "LIST refused");
+   expect(mockFetchSince).not.toHaveBeenCalled();
+ });
+ 
+@@ -391,7 +404,7 @@ test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422
+   mockSendEmail.mockRejectedValueOnce(smtpErr);
+ 
+   await expect(
+-    service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }),
++    service.send(DB, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }),
+   ).rejects.toMatchObject({
+     name: "AppError",
+     code: "SENDER_NOT_AUTHORIZED",
+@@ -409,7 +422,7 @@ test("send maps 550 user-unknown to RECIPIENT_REJECTED, not sender-auth", async
+   });
+   mockSendEmail.mockRejectedValueOnce(smtpErr);
+   await expect(
+-    service.send({}, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
++    service.send(DB, { connectionId: "conn-1", to: "nobody@x.cm", subject: "hi" }),
+   ).rejects.toMatchObject({ name: "AppError", code: "RECIPIENT_REJECTED", status: 422 });
+   expect(threads.insertMessage).not.toHaveBeenCalled();
+ });
+@@ -423,12 +436,12 @@ test("markRead propagates to the server adapter and flips the local row (G-3)",
+   });
+   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
+ 
+-  const res = await service.markRead({}, "msg-1", "user-1");
++  const res = await service.markRead(DB, "msg-1", "user-1");
+ 
+   expect(mockMarkAsRead).toHaveBeenCalledWith("<mid>");
+   // Read state is PER USER and PER CONVERSATION now. A markRead that does not
+   // carry a user id is the bug the whole model change exists to remove.
+-  expect(threads.setThreadRead).toHaveBeenCalledWith({}, "user-1", "thr-1", true);
++  expect(threads.setThreadRead).toHaveBeenCalledWith(DB, "user-1", "thr-1", true);
+   expect(res).toMatchObject({ email_message_id: "msg-1", is_read: true });
+ });
+ 
+@@ -442,15 +455,15 @@ test("markRead still flips the local row when server propagation fails", async (
+   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
+   mockMarkAsRead.mockRejectedValueOnce(new Error("provider down"));
+ 
+-  const res = await service.markRead({}, "msg-2", "user-1");
++  const res = await service.markRead(DB, "msg-2", "user-1");
+ 
+-  expect(threads.setThreadRead).toHaveBeenCalledWith({}, "user-1", "thr-2", true);
++  expect(threads.setThreadRead).toHaveBeenCalledWith(DB, "user-1", "thr-2", true);
+   expect(res).toMatchObject({ email_message_id: "msg-2", is_read: true });
+ });
+ 
+ test("linkEntity binds the CONVERSATION, not the one message it was called on", async () => {
+   threads.getMessage.mockResolvedValue({ email_message_id: "msg-9", email_thread_id: "thr-9" });
+-  const res = await service.linkEntity({}, { inboundId: "msg-9", entity_ref: "dossier:dos-2" });
+-  expect(threads.updateThread).toHaveBeenCalledWith({}, "thr-9", { entity_ref: "dossier:dos-2" });
++  const res = await service.linkEntity(DB, { inboundId: "msg-9", entity_ref: "dossier:dos-2" });
++  expect(threads.updateThread).toHaveBeenCalledWith(DB, "thr-9", { entity_ref: "dossier:dos-2" });
+   expect(res).toEqual({ email_thread_id: "thr-9", entity_ref: "dossier:dos-2" });
+ });
+diff --git a/tests/unit/mail-sweeps-wiring.test.js b/tests/unit/mail-sweeps-wiring.test.js
+new file mode 100644
+index 0000000..bfe3521
+--- /dev/null
++++ b/tests/unit/mail-sweeps-wiring.test.js
+@@ -0,0 +1,312 @@
++/**
++ * THE SWEEPS EXIST, ARE REGISTERED, AND ARE TICKED.
++ *
++ * `mail-sla-clock.test.js` and `mail-followup.test.js` both passed while there
++ * was no worker at all: `mail_sla_policy`, `business_hours`, `business_holiday`
++ * and `email_thread_lock` were read by zero application code, and
++ * `email_followup` rows were written by two endpoints and read by none. A user
++ * who snoozed a thread got a 201 and silence.
++ *
++ * This file has three parts, and all three are needed:
++ *   1. the sweeps do the right thing (against a recording fake client),
++ *   2. the queues are REGISTERED in workers.js,
++ *   3. something ENQUEUES them — the failure this repo has already had once,
++ *      with `regie-aging`, whose own comment says it "has been registered since
++ *      the module shipped and nothing ever enqueued it".
++ */
++"use strict";
++
++const fs = require("fs");
++const path = require("path");
++
++jest.mock("../../src/modules/notification/notification.service", () => ({
++  notify: jest.fn(async () => ({ notification_id: "n-1" })),
++  notifyMany: jest.fn(async () => 0),
++}));
++jest.mock("../../src/shared/events/emit", () => ({
++  emitEvent: jest.fn(async () => ({})),
++  audit: jest.fn(async () => ({})),
++}));
++
++const notify = require("../../src/modules/notification/notification.service");
++const sla = require("../../src/modules/mail/triage/sla.service");
++const followup = require("../../src/modules/mail/triage/followup.service");
++const clock = require("../../src/modules/mail/triage/sla-clock");
++
++const JOBS = path.resolve(__dirname, "../../src/jobs");
++
++function fakeClient(answers = []) {
++  const calls = [];
++  return {
++    calls,
++    written: (re) => calls.filter((c) => re.test(c.text)),
++    query: async (text, params) => {
++      calls.push({ text, params });
++      const hit = answers.find((a) => a.match.test(text));
++      return { rows: hit ? hit.rows : [], rowCount: hit ? hit.rows.length : 0 };
++    },
++  };
++}
++
++const HOURS = [1, 2, 3, 4, 5].map((d) => ({
++  day_of_week: d, opens_at: "08:00", closes_at: "17:00", timezone: "Africa/Douala",
++}));
++
++/* ── 1. The clock, in the office's timezone ───────────────────────────────── */
++
++describe("sla-clock computes in the office's zone, not the server's", () => {
++  test("Friday 16:30 Douala + 4 business hours lands on MONDAY, not Saturday", () => {
++    // 15:30Z is 16:30 in Africa/Douala (UTC+1, no DST).
++    //
++    // On the seeded Mon–Fri 08:00–17:00 calendar the answer is Monday 11:30:
++    // 30 minutes on Friday before close, then 3h30 from Monday's open. §9.10
++    // criterion 2 says "Monday 10:30", which only comes out of an 18:00 close —
++    // the guide's arithmetic, not its rule. The RULE is "Monday, not Saturday",
++    // and that is what is asserted; the exact minute is asserted against the
++    // calendar the tenant is actually seeded with.
++    const fri = new Date("2026-08-14T15:30:00Z");
++    const due = clock.addBusinessMinutes(fri, 240, { hours: HOURS, holidays: [] });
++    const p = clock.partsIn(due, "Africa/Douala");
++    expect(p.dow).toBe(1);
++    expect(`${p.h}:${String(p.mi).padStart(2, "0")}`).toBe("11:30");
++  });
++
++  test("read in UTC the same instant is 10:30 — which is the whole point", () => {
++    // The pre-fix implementation used getHours()/setHours(), i.e. the SERVER's
++    // zone. On a UTC container it would have opened the office at 08:00Z and
++    // produced 10:30 Douala: an hour early, every day, with nothing to show for
++    // it but SLA breaches raised before the promise had actually expired.
++    const fri = new Date("2026-08-14T15:30:00Z");
++    const due = clock.addBusinessMinutes(fri, 240, { hours: HOURS, holidays: [] });
++    expect(due.toISOString()).toBe("2026-08-17T10:30:00.000Z");
++  });
++
++  test("a zone with DST is handled by the zone, not by an offset", () => {
++    // 09:00 Paris is 07:00Z in summer and 08:00Z in winter (§9.10 criterion 5).
++    const summer = clock.zonedToUtc({ y: 2026, m: 7, d: 14, h: 9, mi: 0 }, "Europe/Paris");
++    const winter = clock.zonedToUtc({ y: 2026, m: 1, d: 14, h: 9, mi: 0 }, "Europe/Paris");
++    expect(summer.toISOString()).toBe("2026-07-14T07:00:00.000Z");
++    expect(winter.toISOString()).toBe("2026-01-14T08:00:00.000Z");
++  });
++
++  test("a holiday is skipped in the office's zone", () => {
++    const thu = new Date("2026-12-24T15:30:00Z");
++    const due = clock.addBusinessMinutes(thu, 60, { hours: HOURS, holidays: [{ holiday_on: "2026-12-25" }] });
++    const p = clock.partsIn(due, "Africa/Douala");
++    expect(`${p.y}-${p.m}-${p.d}`).not.toBe("2026-12-25");
++  });
++
++  test("the VIP tier is a different policy row, and both clocks differ", () => {
++    const vip = { first_response_minutes: 60, resolution_minutes: 960, business_hours_only: true, applies_to_vip: true };
++    expect(clock.minutesFor(vip, "first_response")).toBe(60);
++    expect(clock.minutesFor(vip, "resolution")).toBe(960);
++    // The old `applies_to_vip ? x : x` returned the same number on both
++    // branches, so the seeded one-hour VIP promise silently became four hours.
++    expect(clock.minutesFor(vip, "first_response")).not.toBe(clock.minutesFor(vip, "resolution"));
++  });
++
++  test("no calendar configured yields no due date rather than a fake one", () => {
++    expect(clock.due(new Date(), { first_response_minutes: 240, business_hours_only: true }, { hours: [] })).toBeNull();
++  });
++
++  test("PENDING pauses the clock and RESOLVED stops it", () => {
++    const overdue = { first_response_due_at: new Date(Date.now() - 1000) };
++    expect(clock.isBreached({ ...overdue, work_status: "OPEN" })).toBe(true);
++    expect(clock.isBreached({ ...overdue, work_status: "PENDING" })).toBe(false);
++    expect(clock.isBreached({ ...overdue, work_status: "RESOLVED" })).toBe(false);
++    expect(clock.isBreached({ ...overdue, work_status: "OPEN", first_responded_at: new Date() })).toBe(false);
++  });
++});
++
++/* ── 2. The SLA sweep ─────────────────────────────────────────────────────── */
++
++describe("the SLA sweep writes due dates and raises breaches once", () => {
++  const POLICY = {
++    match: /FROM mail_sla_policy/,
++    rows: [{
++      mail_sla_policy_id: "p1", email_connection_id: null, applies_to_vip: false,
++      first_response_minutes: 240, resolution_minutes: 960, business_hours_only: true, is_active: true,
++    }],
++  };
++
++  test("does nothing at all when no policy is configured", async () => {
++    const c = fakeClient();
++    const out = await sla.sweep(c);
++    expect(out).toEqual({ policies: 0, dated: 0, breached: 0 });
++    expect(c.written(/UPDATE email_thread/)).toHaveLength(0);
++  });
++
++  test("stamps first_response_due_at and resolution_due_at on an undated thread", async () => {
++    const c = fakeClient([
++      POLICY,
++      { match: /FROM business_hours/, rows: HOURS },
++      {
++        match: /t\.first_response_due_at IS NULL/,
++        rows: [{
++          email_thread_id: "t1", email_connection_id: "c1", is_vip: false,
++          first_message_at: new Date("2026-08-14T15:30:00Z"), work_status: "OPEN",
++        }],
++      },
++    ]);
++    const out = await sla.sweep(c);
++    expect(out.dated).toBe(1);
++    const upd = c.written(/SET first_response_due_at = \$2, resolution_due_at = \$3/)[0];
++    expect(upd.params[1]).toBeInstanceOf(Date);
++    expect(upd.params[2]).toBeInstanceOf(Date);
++  });
++
++  test("only shared and delegated mailboxes get a clock — a personal inbox is not an SLA", async () => {
++    const c = fakeClient([POLICY, { match: /FROM business_hours/, rows: HOURS }]);
++    await sla.sweep(c);
++    expect(c.written(/t\.first_response_due_at IS NULL/)[0].text).toMatch(/kind IN \('SHARED','DELEGATED'\)/);
++  });
++
++  test("first_responded_at is derived from the messages, not trusted as a flag", async () => {
++    const c = fakeClient([POLICY, { match: /FROM business_hours/, rows: HOURS }]);
++    await sla.sweep(c);
++    const derive = c.written(/SET first_responded_at/)[0];
++    expect(derive.text).toMatch(/direction = 'OUT'/);
++    expect(derive.text).toMatch(/min\(received_at\)/);
++  });
++
++  test("a breach notifies the mailbox MANAGERs and the assignee, once", async () => {
++    const c = fakeClient([
++      POLICY,
++      { match: /FROM business_hours/, rows: HOURS },
++      {
++        match: /SET sla_breached_at/,
++        rows: [{ email_thread_id: "t9", email_connection_id: "c1", subject: "BL for SLAS-2026-0042", assigned_user_id: "u-agent" }],
++      },
++      { match: /FROM email_connection_member/, rows: [{ user_id: "u-lead" }] },
++    ]);
++    const out = await sla.sweep(c);
++    expect(out.breached).toBe(1);
++    expect(notify.notify).toHaveBeenCalledTimes(2);
++    const recipients = notify.notify.mock.calls.map((call) => call[1].userId).sort();
++    expect(recipients).toEqual(["u-agent", "u-lead"]);
++    expect(notify.notify.mock.calls[0][1].dedupeKey).toMatch(/^SLA_BREACH:email_thread:t9:/);
++  });
++
++  test("the breach UPDATE only fires for threads not already breached", async () => {
++    const c = fakeClient([POLICY, { match: /FROM business_hours/, rows: HOURS }]);
++    await sla.sweep(c);
++    // Without this, a five-minute sweep pages the lead every five minutes about
++    // one overdue thread, and the alert gets muted within a day.
++    expect(c.written(/SET sla_breached_at/)[0].text).toMatch(/sla_breached_at IS NULL/);
++  });
++
++  test("a policy edit clears computed dates so the next sweep re-applies it", async () => {
++    const c = fakeClient();
++    await sla.resetComputed(c);
++    const q = c.written(/first_response_due_at = NULL/)[0];
++    expect(q.text).toMatch(/first_responded_at IS NULL/); // never re-open an answered thread
++  });
++});
++
++/* ── 3. The follow-up sweep ───────────────────────────────────────────────── */
++
++describe("the follow-up sweep fires reminders and never sends mail", () => {
++  beforeEach(() => notify.notify.mockClear());
++
++  test("claims due rows and flips them to FIRED in one statement", async () => {
++    const c = fakeClient();
++    await followup.sweep(c);
++    const q = c.written(/email_followup/)[0];
++    expect(q.text).toMatch(/FOR UPDATE SKIP LOCKED/);
++    expect(q.text).toMatch(/SET status = 'FIRED'/);
++  });
++
++  test("notifies the user who set the reminder, with the thread subject", async () => {
++    const c = fakeClient([
++      { match: /SET status = 'FIRED'/, rows: [{ email_followup_id: "f1", email_thread_id: "t1", user_id: "u1", kind: "NO_REPLY", note: null }] },
++      { match: /SELECT email_thread_id, subject/, rows: [{ email_thread_id: "t1", subject: "Demurrage" }] },
++    ]);
++    const out = await followup.sweep(c);
++    expect(out.fired).toBe(1);
++    const arg = notify.notify.mock.calls[0][1];
++    expect(arg.userId).toBe("u1");
++    expect(arg.title).toBe("Still no reply");
++    expect(arg.body).toContain("Demurrage");
++    expect(arg.entityRef).toBe("email_thread:t1");
++  });
++
++  test("the dedupe key is the row, so three reminders on one thread all arrive", async () => {
++    const c = fakeClient([
++      {
++        match: /SET status = 'FIRED'/,
++        rows: [
++          { email_followup_id: "f1", email_thread_id: "t1", user_id: "u1", kind: "SEQUENCE_STEP" },
++          { email_followup_id: "f2", email_thread_id: "t1", user_id: "u1", kind: "SEQUENCE_STEP" },
++        ],
++      },
++    ]);
++    await followup.sweep(c);
++    const keys = notify.notify.mock.calls.map((call) => call[1].dedupeKey);
++    expect(new Set(keys).size).toBe(2);
++  });
++
++  test("NOTHING in the follow-up path writes to the send queue (Q24)", () => {
++    const src = fs.readFileSync(
++      path.resolve(__dirname, "../../src/modules/mail/triage/followup.service.js"), "utf8",
++    );
++    // Executable references only — the file may well mention the send queue in
++    // a comment explaining why it does not touch it.
++    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
++    expect(code).not.toMatch(/email_send_queue/);
++    expect(code).not.toMatch(/require\([^)]*outbox/);
++    expect(code).not.toMatch(/\.send\(/);
++  });
++
++  test("a reply cancels pending boomerangs but never a snooze the user set", async () => {
++    const c = fakeClient();
++    await followup.cancelOnReply(c, "t1");
++    const q = c.written(/SET status = 'CANCELLED'/)[0];
++    expect(q.text).toMatch(/kind IN \('NO_REPLY','SEQUENCE_STEP'\)/);
++    expect(q.text).toMatch(/cancel_on_reply = true/);
++  });
++});
++
++/* ── 4. Registered AND ticked ─────────────────────────────────────────────── */
++
++describe("the queues are registered and something enqueues them", () => {
++  const workers = fs.readFileSync(path.join(JOBS, "workers.js"), "utf8");
++
++  test.each([
++    "mail-sla-sweep",
++    "mail-sla-sweep-scheduler",
++    "mail-followup-sweep",
++    "mail-followup-sweep-scheduler",
++    "deliverability-check",
++    "deliverability-check-scheduler",
++  ])("%s has a worker registration", (name) => {
++    expect(workers).toMatch(new RegExp(`name: "${name}"`));
++  });
++
++  test.each([
++    ["mail-sla-sweep-scheduler", "MAIL_SLA_SWEEP_INTERVAL_MS"],
++    ["mail-followup-sweep-scheduler", "MAIL_FOLLOWUP_SWEEP_INTERVAL_MS"],
++    ["deliverability-check-scheduler", "MAIL_DELIVERABILITY_INTERVAL_MS"],
++  ])("%s is enqueued on a repeat, driven by %s", (queue, envKey) => {
++    // A registered worker with no producer is a feature that exists in the tree
++    // and not in the product — this repo has already lost `regie-aging` that
++    // way, and lost all three of these in the PR-2→PR-5 merge.
++    expect(workers).toMatch(new RegExp(`enqueue\\("${queue}"[\\s\\S]{0,120}repeat:`));
++    expect(workers).toMatch(new RegExp(`config\\.${envKey}`));
++  });
++
++  test("every handler file a registration names actually exists and exports a function", () => {
++    const names = [...workers.matchAll(/handler: require\("\.\/handlers\/([^"]+)"\)/g)].map((m) => m[1]);
++    expect(names.length).toBeGreaterThan(10);
++    for (const n of names) {
++      expect(fs.existsSync(path.join(JOBS, "handlers", `${n}.js`))).toBe(true);
++    }
++  });
++
++  test("each new handler refuses to run without a tenant", async () => {
++    for (const n of ["mail-sla-sweep", "mail-followup-sweep"]) {
++
++      const handler = require(path.join(JOBS, "handlers", n));
++      await expect(handler({ data: {} })).rejects.toThrow(/tenantMeta/);
++    }
++  });
++});

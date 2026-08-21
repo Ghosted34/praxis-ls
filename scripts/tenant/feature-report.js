@@ -35,10 +35,77 @@ const a = Object.fromEntries(
   }),
 );
 
-const MODULES_DIR = path.join(__dirname, "..", "..", "src", "modules");
+const SRC_DIR = path.join(__dirname, "..", "..", "src");
+const MODULES_DIR = path.join(SRC_DIR, "modules");
 
 /**
- * Scan every `<group>/<module>/<module>.routes.js` for its `feature:` export.
+ * ── A MODULE-LEVEL `feature:` IS NOT THE ONLY GATE ──────────────────────────
+ *
+ * This script used to read only the `feature:` field off each module's route
+ * export, which is what `module-loader.js` mounts `requireFeature` from. That
+ * misses 58 gates.
+ *
+ * `src/modules/mail/` declares `feature: null` on all seven of its routers and
+ * gates PER ROUTE instead — deliberately, and the reason is in
+ * `mail.routes.js`: the same file carries PR-0's setup surface (connections,
+ * mailboxes, catalogue, send points), and that MUST stay reachable while the
+ * flags are off, or an admin cannot configure mail for the tenant they are
+ * about to enable it for. `portal/` does the same for three routes.
+ *
+ * So this script — whose entire job is answering "why is this account getting a
+ * 403 it should not" — was blind to every mail route in the product, and would
+ * report a tenant with the whole mailbox dark as "every gated module is ON".
+ * Both shapes are scanned now, and reported separately, because they fail
+ * differently: a module-level gate takes the whole base path with it, a
+ * route-level one takes a handful of endpoints and leaves the rest working.
+ */
+function routeGatesIn(dir) {
+  const keys = new Set();
+  for (const f of fs.readdirSync(dir)) {
+    const p = path.join(dir, f);
+    if (!fs.statSync(p).isFile() || !f.endsWith(".js")) continue;
+    for (const m of fs.readFileSync(p, "utf8").matchAll(/requireFeature\(\s*"([^"]+)"/g)) {
+      keys.add(m[1]);
+    }
+  }
+  return [...keys].sort();
+}
+
+/**
+ * Every dotted string literal anywhere in `src/`.
+ *
+ * Used only to decide whether a seeded key is INERT — checked by nothing at all
+ * — as opposed to checked somewhere this script cannot model. Not every gate is
+ * a `feature:` or a `requireFeature`: `mail.provider.oauth` is read straight
+ * out of `feature_state` by `assertProviderEnabled` in mail.service.js, because
+ * it gates a PROVIDER rather than a route.
+ *
+ * Deliberately loose — a key named only in a comment counts as referenced. A
+ * false "this is fine" is a quiet diagnostic; a false "this gates nothing"
+ * sends somebody hunting a defect that is not there.
+ */
+function keysMentionedInSrc() {
+  const seen = new Set();
+  (function walk(dir) {
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (f.endsWith(".js")) {
+        for (const m of fs
+          .readFileSync(p, "utf8")
+          .matchAll(/"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"/g)) {
+          seen.add(m[1]);
+        }
+      }
+    }
+  })(SRC_DIR);
+  return seen;
+}
+
+/**
+ * Scan every `<group>/<module>/<module>.routes.js` for its `feature:` export,
+ * and the whole module directory for per-route `requireFeature` calls.
  * We parse rather than require() so this runs without booting the app or its
  * DB pool. The loader only reads `basePath` and `feature` off the export, and
  * both are written as plain literals in all ~70 modules today.
@@ -49,7 +116,8 @@ function scanModules() {
     const groupDir = path.join(MODULES_DIR, group);
     if (!fs.statSync(groupDir).isDirectory()) continue;
     for (const mod of fs.readdirSync(groupDir)) {
-      const routesFile = path.join(groupDir, mod, `${mod}.routes.js`);
+      const modDir = path.join(groupDir, mod);
+      const routesFile = path.join(modDir, `${mod}.routes.js`);
       if (!fs.existsSync(routesFile)) continue;
       const src = fs.readFileSync(routesFile, "utf8");
       const feature = /feature:\s*"([^"]+)"/.exec(src);
@@ -59,6 +127,7 @@ function scanModules() {
         module: mod,
         basePath: basePath ? basePath[1] : `/${mod}`,
         feature: feature ? feature[1] : null,
+        routeGates: routeGatesIn(modDir),
       });
     }
   }
@@ -111,7 +180,7 @@ async function readFeatureState(td, schema) {
   }
 }
 
-function report(schema, modules, state) {
+function report(schema, modules, state, mentioned) {
   const gated = modules.filter((m) => m.feature);
   const blocked = [];
   const missing = [];
@@ -124,6 +193,17 @@ function report(schema, modules, state) {
     else open.push(m);
   }
 
+  // Per-route gates — see routeGatesIn(). One module can carry several, and a
+  // module with no module-level `feature:` can still be mostly dark.
+  const routeRows = [];
+  for (const m of modules) {
+    for (const key of m.routeGates || []) {
+      const row = state.get(key);
+      routeRows.push({ m, key, state: row ? row.state : null, source: row ? row.source : null });
+    }
+  }
+  const routeDark = routeRows.filter((r) => r.state !== "on");
+
   console.warn(`\n${"=".repeat(72)}`);
   console.warn(`SCHEMA: ${schema}`);
   console.warn("=".repeat(72));
@@ -131,6 +211,23 @@ function report(schema, modules, state) {
     `${modules.length} modules mounted · ${modules.length - gated.length} ungated · ` +
       `${open.length} gated+ON · ${blocked.length} gated+OFF · ${missing.length} gated+NO ROW`,
   );
+  if (routeRows.length) {
+    console.warn(
+      `${routeRows.length} route-level gates across ` +
+        `${new Set(routeRows.map((r) => `${r.m.group}/${r.m.module}`)).size} modules · ` +
+        `${routeRows.length - routeDark.length} ON · ${routeDark.length} OFF or no row`,
+    );
+  }
+
+  if (routeDark.length) {
+    console.warn(`\n--- DARK ROUTES: some endpoints of a mounted module 403 (the rest still work) ---`);
+    for (const r of routeDark) {
+      console.warn(
+        `  ${r.m.basePath.padEnd(28)} ${r.key.padEnd(30)} ` +
+          `(${r.m.group}/${r.m.module}, ${r.state ? `state=${r.state}, source=${r.source}` : "NO ROW"})`,
+      );
+    }
+  }
 
   if (blocked.length) {
     console.warn(`\n--- DARK: feature exists but is OFF (403 FEATURE_DISABLED for EVERYONE incl. CEO) ---`);
@@ -161,11 +258,29 @@ function report(schema, modules, state) {
     for (const o of orphans) console.warn(`  ${o}`);
   }
 
-  if (!blocked.length && !missing.length) {
-    console.warn(`\nEvery gated module is ON in ${schema}. If a page still 403s here, it is RBAC`);
-    console.warn(`(a missing permission row), not the feature gate — check the permission matrix.`);
+  // A flag that gates NOTHING is its own defect, and the expensive kind: the
+  // console shows it, an operator flips it, and the product does not change.
+  // Three mail keys shipped in exactly that state before this programme, and
+  // the only reason anyone found out was a hand audit.
+  const reachable = new Set();
+  for (const m of modules) {
+    if (m.feature) reachable.add(m.feature);
+    for (const k of m.routeGates || []) reachable.add(k);
   }
-  return { blocked: blocked.length, missing: missing.length };
+  const inert = [...state.keys()].filter((k) => !reachable.has(k) && !mentioned.has(k));
+  if (inert.length) {
+    console.warn(`\n--- INERT: seeded into feature_state, checked by nothing in src/ ---`);
+    console.warn(`  Flipping any of these changes no behaviour. Either wire it or drop the row.`);
+    for (const k of inert.sort()) {
+      console.warn(`  ${k.padEnd(34)} state=${state.get(k).state}`);
+    }
+  }
+
+  if (!blocked.length && !missing.length && !routeDark.length) {
+    console.warn(`\nEvery gate is ON in ${schema} — module-level and route-level both. If a page`);
+    console.warn(`still 403s here, it is RBAC (a missing permission row), not the feature gate.`);
+  }
+  return { blocked: blocked.length, missing: missing.length, routeDark: routeDark.length };
 }
 
 async function main() {
@@ -188,11 +303,13 @@ async function main() {
         ? [td.sandbox_schema || "sandbox"]
         : [td.live_schema || "live", td.sandbox_schema || "sandbox"];
 
+  const mentioned = keysMentionedInSrc();
+
   let dark = 0;
   for (const schema of schemas) {
     const state = await readFeatureState(td, schema);
-    const r = report(schema, modules, state);
-    dark += r.blocked + r.missing;
+    const r = report(schema, modules, state, mentioned);
+    dark += r.blocked + r.missing + r.routeDark;
   }
 
   if (dark) {

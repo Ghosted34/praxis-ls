@@ -343,6 +343,10 @@ async function sendCampaign(client, { id, templateId, tenantMeta, env = "live", 
       subject: renderMerge(subjectTpl, vars),
       html: renderMerge(htmlTpl, vars, { html: true }),
       from, purpose: "NOTIFICATIONS", moduleKey: events.MODULE,
+      // Carried on the JOB, not resolved here: the send happens in the worker,
+      // and resolving the sender now would freeze an answer that a binding
+      // change between queueing and sending should be allowed to move.
+      sendPoint: "campaign.send",
     });
     queued += 1;
   }

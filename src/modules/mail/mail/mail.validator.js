@@ -256,7 +256,35 @@ const schemas = {
       message: "undo_seconds must be 0, 10, 20 or 30",
     }).optional(),
     idempotency_key: z.string().trim().max(200).nullable().optional(),
-  }).strict(),
+
+    // Scheduled send (§9.3). Two shapes, and deliberately no third:
+    //   send_at                   — an instant the operator chose
+    //   send_in_recipient_morning — 09:00 on the recipient's clock
+    // §9.3 MUST NOT offer "best time to send"; Q32 removed the open data that
+    // would need, so there is no third option to accept here and no amount of
+    // client-side wishing that can invent one.
+    send_at: z.string().datetime({ offset: true }).nullable().optional(),
+    send_in_recipient_morning: z.boolean().optional(),
+
+    // §8.8's override. The reason is written to the immutable ledger, so the
+    // MAXIMUM matters as much as the minimum: this is a sentence explaining a
+    // decision, not somewhere to paste a thread. The 10-character floor lives
+    // in `presend.js` next to the block it releases, not here — a validation
+    // error on a field the user has not been shown yet reads as a bug, and the
+    // block is what puts the field on screen.
+    guardrail_override_reason: z.string().trim().max(2000).nullable().optional(),
+
+    // The two language axes the LANGUAGE_MISMATCH warning compares. Named
+    // separately (§3.9): the recipient's preference and the language this draft
+    // was written in are different facts, and conflating them is how a French
+    // client starts receiving English invoices.
+    recipient_language: z.enum(["en", "fr"]).nullable().optional(),
+    draft_language: z.enum(["en", "fr"]).nullable().optional(),
+  }).strict()
+    .refine((v) => !(v.send_at && v.send_in_recipient_morning), {
+      message: "Choose either an exact time or the recipient's morning, not both.",
+      path: ["send_at"],
+    }),
 
   attachmentUpload: z.object({
     email_draft_id: z.string().uuid(),

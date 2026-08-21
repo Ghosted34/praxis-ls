@@ -35,6 +35,74 @@
 "use strict";
 
 const { updateOne, getById } = require("../../../shared/db/query-helpers");
+const visibility = require("../triage/visibility");
+
+/**
+ * ── AND THE SECOND PREDICATE: PER-THREAD VISIBILITY (PR-5 §9.5) ─────────────
+ *
+ * `accessible` answers "which MAILBOXES may this person open".
+ * `vis` answers the finer question "which THREADS inside those mailboxes may
+ * they see" — Private / Team / Company. They are different rules and both are
+ * required: a colleague can legitimately hold a grant on a shared mailbox and
+ * still have no business reading a thread its owner marked Private.
+ *
+ * The predicate is defined ONCE, in `../triage/visibility.js`, and applied here
+ * at every read: list, get, stream counts, label-apply and the CRM timeline.
+ * `tests/security/mail-visibility-wiring.test.js` asserts each of those call
+ * sites still carries it, because the failure mode is silent — a query that
+ * drops the clause returns MORE rows, never an error, and every unit test that
+ * exercises the predicate directly keeps passing while the product leaks.
+ *
+ * Every query using it must have `email_connection` joined as `c`, since
+ * PRIVATE resolves through `c.owner_user_id`.
+ */
+const vis = (n) => visibility.clause(`$${n}`);
+
+/**
+ * ── THE TRIAGE FIELDS, UNDER THE NAMES THE CLIENT READS ─────────────────────
+ *
+ * `TriageBar` renders the SLA due line, who holds the composer lock, and the
+ * assignee's name. Every one of those was `undefined` at runtime, for two
+ * separate reasons, and neither produced an error — the bar just quietly drew
+ * nothing and offered "Claim this" on a thread somebody had already claimed.
+ *
+ *   · `listThreads` selected an explicit column list that included none of the
+ *     §9.2 columns at all. The whole triage bar was blank in the list.
+ *   · `getThread` uses `SELECT t.*`, so it returned the columns — under their
+ *     DATABASE names. `assigned_user_id`, `first_response_due_at` and
+ *     `sla_breached_at` are not `assigned_to`, `sla_due_at` and `sla_breached`,
+ *     and an optional field that never arrives is indistinguishable in TypeScript
+ *     from one that is legitimately absent.
+ *
+ * Neither the client tests nor the server tests could see it: the client mocks
+ * the API, so it was asserting my invented shape against my invented shape.
+ * `scripts/check-response-contract.js` is what caught it, which is exactly the
+ * job it exists to do.
+ *
+ * Defined once and shared by both queries, because the bar renders from the
+ * list AND from the detail, and the two disagreeing is how this started.
+ *
+ * The lock join is deliberately `expires_at > now()` — an expired lock is not a
+ * lock. §9.2 is emphatic that it is advisory, and showing "Thierry is writing a
+ * reply" twenty minutes after Thierry closed his laptop is worse than showing
+ * nothing.
+ */
+const TRIAGE_COLUMNS = `
+            t.assigned_user_id AS assigned_to,
+            au.full_name       AS assigned_to_name,
+            t.work_status,
+            t.visibility,
+            t.first_response_due_at AS sla_due_at,
+            (t.sla_breached_at IS NOT NULL) AS sla_breached,
+            lk.user_id    AS locked_by,
+            lu.full_name  AS locked_by_name,
+            lk.expires_at AS lock_expires_at`;
+
+const TRIAGE_JOINS = `
+       LEFT JOIN app_user au ON au.user_id = t.assigned_user_id
+       LEFT JOIN email_thread_lock lk
+              ON lk.email_thread_id = t.email_thread_id AND lk.expires_at > now()
+       LEFT JOIN app_user lu ON lu.user_id = lk.user_id`;
 
 /**
  * The mailboxes this user may read, as a scalar subquery. Inlined rather than
@@ -65,7 +133,7 @@ const accessible = (n) => ACCESSIBLE.replace(/\$USER/g, `$${n}`);
 async function listThreads(client, userId, q = {}) {
   const p = [userId];
   const add = (v) => { p.push(v); return `$${p.length}`; };
-  const where = [`t.email_connection_id IN ${accessible(1)}`];
+  const where = [`t.email_connection_id IN ${accessible(1)}`, vis(1)];
 
   if (q.connectionId) where.push(`t.email_connection_id = ${add(q.connectionId)}`);
   if (q.stream) where.push(`t.stream = ${add(q.stream)}`);
@@ -139,9 +207,11 @@ async function listThreads(client, userId, q = {}) {
             (SELECT m9.body_preview FROM email_message m9
               WHERE m9.email_thread_id = t.email_thread_id ORDER BY m9.received_at DESC LIMIT 1) AS preview,
             (SELECT m10.from_address FROM email_message m10
-              WHERE m10.email_thread_id = t.email_thread_id ORDER BY m10.received_at DESC LIMIT 1) AS last_from
+              WHERE m10.email_thread_id = t.email_thread_id ORDER BY m10.received_at DESC LIMIT 1) AS last_from,
+            ${TRIAGE_COLUMNS.trim()}
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+       ${TRIAGE_JOINS.trim()}
       WHERE ${where.join(" AND ")}
       ORDER BY t.is_vip DESC, t.last_message_at DESC
       LIMIT ${limit}`,
@@ -153,11 +223,17 @@ async function listThreads(client, userId, q = {}) {
 /** One conversation with every message on it, in order. */
 async function getThread(client, userId, threadId) {
   const { rows: head } = await client.query(
+    // `t.*` first, then the aliases — a later same-named column wins in
+    // node-postgres, so the client-facing names below override the raw ones
+    // rather than colliding with them.
     `SELECT t.*, t.participants::text[] AS participants,
-            c.email_address AS mailbox_address, c.kind AS mailbox_kind
+            c.email_address AS mailbox_address, c.kind AS mailbox_kind,
+            ${TRIAGE_COLUMNS.trim()}
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
-      WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}`,
+       ${TRIAGE_JOINS.trim()}
+      WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}`,
     [userId, threadId],
   );
   if (!head[0]) return null;
@@ -174,6 +250,38 @@ async function getThread(client, userId, threadId) {
       WHERE m.email_thread_id = $2
       ORDER BY m.received_at`,
     [userId, threadId],
+  );
+  return { ...head[0], messages };
+}
+
+/**
+ * The ONE read that skips both predicates — break-glass (§9.5), and nothing else.
+ *
+ * It is named `Unrestricted` rather than given an `{ all: true }` option on
+ * `getThread`, so that a grep for what bypasses visibility returns exactly one
+ * function and its call sites. `tests/security/mail-visibility-wiring.test.js`
+ * asserts that the only caller is the CEO-gated break-glass route, which writes
+ * the `immutable_ledger` row before it reads.
+ */
+async function getThreadUnrestricted(client, threadId) {
+  const { rows: head } = await client.query(
+    `SELECT t.*, t.participants::text[] AS participants,
+            c.email_address AS mailbox_address, c.kind AS mailbox_kind
+       FROM email_thread t
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE t.email_thread_id = $1`,
+    [threadId],
+  );
+  if (!head[0]) return null;
+  const { rows: messages } = await client.query(
+    `SELECT m.email_message_id, m.direction, m.folder, m.from_address, m.from_name,
+            m.to_address::text[] AS to_address, m.cc_address::text[] AS cc_address,
+            m.subject, m.body_html, m.body_text, m.body_preview, m.received_at,
+            m.has_attachment, m.sent_via, m.origin_send_point
+       FROM email_message m
+      WHERE m.email_thread_id = $1
+      ORDER BY m.received_at`,
+    [threadId],
   );
   return { ...head[0], messages };
 }
@@ -359,7 +467,9 @@ const streamUnread = (client, userId, connectionId = null) =>
   client.query(
     `SELECT t.stream, count(*)::int AS unread
        FROM email_thread t
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
       WHERE t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}
         AND ($2::uuid IS NULL OR t.email_connection_id = $2)
         AND EXISTS (SELECT 1 FROM email_message m
                      WHERE m.email_thread_id = t.email_thread_id
@@ -452,7 +562,10 @@ const applyLabel = (client, userId, threadId, labelId, on = true) =>
     ? client.query(
         `INSERT INTO email_thread_label (email_thread_id, email_label_id)
          SELECT $2, $3 WHERE EXISTS (SELECT 1 FROM email_label WHERE email_label_id = $3 AND owner_user_id = $1)
-           AND EXISTS (SELECT 1 FROM email_thread t WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)})
+           AND EXISTS (SELECT 1 FROM email_thread t
+                        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+                       WHERE t.email_thread_id = $2 AND t.email_connection_id IN ${accessible(1)}
+                         AND ${vis(1)})
          ON CONFLICT DO NOTHING RETURNING email_thread_id`,
         [userId, threadId, labelId],
       ).then((r) => r.rows.length > 0)
@@ -502,20 +615,36 @@ const knownParty = (client, address) => {
   ).then((r) => r.rows[0] || null);
 };
 
-/** All mail on an entity, newest first — the CRM timeline. */
-const timelineByEntity = (client, entityRef, { limit = 100 } = {}) =>
-  client.query(
+/**
+ * All mail on an entity, newest first — the CRM timeline.
+ *
+ * `userId` is REQUIRED and is not optional politeness: this is the read path
+ * that shows a client's correspondence on a screen outside the mailbox, so it
+ * is the easiest place in the product to see a thread you were never meant to.
+ * It carries both predicates — the mailboxes the caller may open, and the
+ * per-thread visibility inside them (§9.10 criterion 7 names the timeline
+ * explicitly). A caller with no user id gets nothing rather than everything.
+ */
+const timelineByEntity = (client, entityRef, { limit = 100, userId = null } = {}) => {
+  if (!userId) return Promise.resolve([]);
+  return client.query(
     `SELECT m.email_message_id, m.email_connection_id, t.thread_key, m.direction, m.from_address,
             array_to_string(m.to_address::text[], ', ') AS to_address, m.subject, m.body_preview,
             t.entity_ref, m.received_at, m.sent_via
-       FROM email_message m JOIN email_thread t USING (email_thread_id)
-      WHERE t.entity_ref = $1 ORDER BY m.received_at DESC LIMIT $2`,
-    [entityRef, Math.min(Math.max(Number(limit) || 100, 1), 500)],
+       FROM email_message m
+       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE t.entity_ref = $1
+        AND t.email_connection_id IN ${accessible(3)}
+        AND ${vis(3)}
+      ORDER BY m.received_at DESC LIMIT $2`,
+    [entityRef, Math.min(Math.max(Number(limit) || 100, 1), 500), userId],
   ).then((r) => r.rows);
+};
 
 module.exports = {
   accessible,
-  listThreads, getThread, getThreadById, updateThread, upsertThread, refreshThreadCounts,
+  listThreads, getThread, getThreadUnrestricted, getThreadById, updateThread, upsertThread, refreshThreadCounts,
   insertMessage, getMessage, moveThread,
   setThreadRead, setThreadStarred, seedStateForMembers,
   listFolders, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,

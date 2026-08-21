@@ -31,6 +31,9 @@ import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { dateTimeFmt } from "@/lib/format";
 import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
 import { SignatureSlot } from "./composer/signature-slot";
+import { WorkRail } from "./work";
+import { VerdictBanner, VerdictPill } from "./work/guardrails";
+import { Extractions } from "./work/intake";
 
 const Composer = React.lazy(() => import("./composer"));
 
@@ -97,7 +100,20 @@ function MessageBlock({
             <Pill tone="mute">{message.folder}</Pill>
             {origin && <Pill tone="warn">{origin}</Pill>}
             {message.has_attachment && <Pill tone="mute">Attachment</Pill>}
+            {/* §9.7. Absent verdict renders nothing — see the type. A green
+                tick for "we did not check" would be the worst of the three
+                possible outputs. */}
+            <VerdictPill verdict={message.auth_verdict} />
           </div>
+
+          <VerdictBanner
+            verdict={message.auth_verdict}
+            detail={
+              typeof message.auth_detail?.reason === "string"
+                ? message.auth_detail.reason
+                : null
+            }
+          />
           {cc.length > 0 && (
             <p className="text-xs text-muted-foreground">
               Cc: <span className="num">{cc.join(", ")}</span>
@@ -113,6 +129,12 @@ function MessageBlock({
             <div className="whitespace-pre-wrap text-sm">
               {message.body_text || message.body_preview || "(no content)"}
             </div>
+          )}
+
+          {/* §8.6 — whatever was read off this message's attachments, staged
+              and awaiting a person. Renders nothing when there is nothing. */}
+          {message.has_attachment && (
+            <Extractions messageId={message.email_message_id} />
           )}
         </div>
       )}
@@ -131,6 +153,7 @@ export function ThreadView({
   onToggleRead,
   onClose,
   onReplied,
+  onWorkChanged,
   busy,
 }: {
   thread: ThreadDetail | null;
@@ -144,6 +167,13 @@ export function ThreadView({
   onClose: () => void;
   /** Called once a reply is accepted into the send queue, so the list refreshes. */
   onReplied?: () => void;
+  /**
+   * Anything in the work rail changed the thread — a binding, a claim, a
+   * status, a visibility. Reloads the thread AND the list, because most of
+   * these are visible in both and a rail that updated only its own half would
+   * leave the list showing the previous assignee.
+   */
+  onWorkChanged?: () => void;
   busy: boolean;
 }) {
   // Declared before the early returns below, because hooks cannot be conditional.
@@ -246,14 +276,23 @@ export function ThreadView({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {messages.map((m, i) => (
-          <MessageBlock
-            key={m.email_message_id}
-            message={m}
-            defaultOpen={i === lastIndex}
-          />
-        ))}
+      {/* The conversation and the work rail, side by side on a wide screen and
+          stacked below one. The rail is second in the DOM so a keyboard or
+          screen-reader user reaches the correspondence first — it is what they
+          opened the thread for. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+          {messages.map((m, i) => (
+            <MessageBlock
+              key={m.email_message_id}
+              message={m}
+              defaultOpen={i === lastIndex}
+            />
+          ))}
+        </div>
+        <div className="min-h-0 shrink-0 xl:w-[22rem]">
+          <WorkRail thread={thread} onChanged={onWorkChanged || (() => {})} />
+        </div>
       </div>
 
       {/* The composer, when the reader opens it. Lazily: TipTap and ProseMirror

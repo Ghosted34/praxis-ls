@@ -19,7 +19,13 @@ module.exports = async function mailSync(job) {
     const results = [];
     for (const conn of conns) {
        
-      results.push(await mail.syncConnection(c, conn.email_connection_id, { slug: tenantMeta.slug }));
+      // `tenantMeta` and `env` ride along so the ingest path can ENQUEUE work
+      // rather than only do it inline — attachment extraction (§8.6) is a
+      // vendor call per file and must not sit inside the sync loop, where it
+      // would make a mailbox appear broken for the length of a first sync.
+      results.push(await mail.syncConnection(c, conn.email_connection_id, {
+        slug: tenantMeta.slug, tenantMeta, env,
+      }));
     }
     return { connections: conns.length, results };
   });

@@ -1,0 +1,96 @@
+feat(mail): build PR-3's substance, PR-4's engine, PR-5's endpoints, and the frontend
+
+The audit (doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md §12.6) closed with "nothing in
+this sweep touched PR-4's engine, PR-3's remaining tabs and cards, PR-5's
+missing endpoints, or the frontend." This is those four, plus the three defects
+the work itself uncovered. §13 of the audit records the detail.
+
+PR-4 — the chapter that was a facade
+------------------------------------
+`assist.service.js` resolved a PROMPT STRING and returned it; no model was ever
+called. `draft()` returned whatever `facts` array it was handed and the route
+never passed one, so every request took the "this thread is not bound to a
+record" branch — correct code unreachable from any other state. `grounding` was
+required and used only inside an `if` whose body was a comment, so the fence
+compared generated text against an empty fact list on every call.
+
+Five steps now run in a fixed order on every generating path: gate (two-level,
+through ai/governance — §3.3's "a flag is a floor, not a ceiling", and it picks
+up the budget the hand-rolled check skipped), ground (RBAC-checked per source
+against the CALLER), generate (llm.service.chat), fence (on the real output),
+meter (ai_usage_ledger, feature_key mail_ai, on success AND failure — a failed
+call still cost input tokens).
+
+With it: thread summaries and §8.5's five-message trigger, translate/rewrite
+that finally exercise the glossary's byte-for-byte guarantee on real output, a
+voice endpoint that takes the transcript rather than duplicating the product's
+speech-to-text, semantic search with a per-thread §9.5 re-filter, and
+attachment extraction into attachment_extraction.
+
+Withheld sources are REPORTED, not dropped — a silently thinner draft for some
+users than others is the version nobody can debug. A fenced draft is still
+returned with its unsupported values named: a blank composer teaches people to
+stop using the feature; a marked one teaches them what the assistant does not
+know.
+
+PR-5 and PR-3
+-------------
+Workflow endpoints (soft locks that never steal a live one, SLA policy CRUD
+that resets computed due dates, calendar, shares, ADMIN_VERIFIED domains,
+bounces), secure links that actually serve a document — the view is recorded
+BEFORE the bytes are fetched, and expired/revoked/never-existed all answer one
+identical 404 so the endpoint cannot enumerate tokens — and scheduled send,
+which refuses with NO_RECIPIENT_TIMEZONE rather than guessing.
+
+Five of six dossier tabs returned `{ rows: [] }`; each is now one query, and
+the unbuilt supplier combinations say `not_built` rather than returning an
+empty list that reads as a claim about the supplier. Cards became one file per
+card. Conversion previews against Master Data's shared duplicate detector and
+writes converted_entity_ref/converted_by, which migration 10748 added and
+nothing wrote.
+
+The three defects this work uncovered
+-------------------------------------
+1. A REGISTERED WORKER IS ONLY HALF A WIRING. mail-ocr-extract was written,
+   registered in workers.js, and enqueued by nothing — the same orphan defect
+   as the eleven tables, in a shape the orphan sweep could not see, introduced
+   by the commit that removed the last of them. Now enqueued from ingest and
+   narrowed four ways: not during a first sync (last_sync_at is null exactly
+   once per folder and that pass is 90 days deep), not for files that do not
+   already look financial, not without mail.ocr, and never twice.
+
+2. mail.ocr IS ITS OWN FLAG. Drafting sends a thread's text to a language
+   model; extraction sends a scanned supplier invoice — bank details and all —
+   to a vision vendor. One flag for both removes a choice a tenant is entitled
+   to make. Checked on the routes AND in the service, because the queue path
+   never passes through Express.
+
+3. THE ENTIRE PR-3/4/5 CLIENT API WAS DEAD ON ARRIVAL. Thirty-three writes used
+   `body: JSON.stringify(payload)` and api-client.ts already stringifies, so the
+   server received a JSON string literal and Express's strict parser 400'd every
+   one before it reached a route — starring a thread, saving a draft, SENDING A
+   MESSAGE, and all of PR-3/4/5. The older half of the file had always used
+   `body: payload`; the two conventions sat side by side.
+
+Frontend
+--------
+mail-api-work.ts carries the PR-3/4/5 surface with real types. The reading pane
+gained a work rail — binding chip showing each suggestion's SIGNAL, the record
+drawer with lazy tabs, action cards, document intake, notes, triage — as one
+accordion with a single open section, because §3.6's budget is about how many
+panels run at once. The composer gained the assist toolbar, the guardrail bar
+and the schedule picker. An absent anti-spoof verdict renders nothing rather
+than a green tick: "we did not check" is not "this is fine".
+
+Gates now standing
+------------------
+mail-orphan-sweep (escape hatch now EMPTY), mail-feature-gating, and four new
+ones: mail-ocr-enqueue (a registered worker that nothing enqueues),
+mail-ai-draft (the assistant stops calling a model, grounding stops executing,
+the fence stops seeing real text, or metering is dropped), mail-ai-routes (a
+route stops passing the caller, which silently produces an ungrounded draft),
+mail-presend-guardrail (§8.8's block leaves the send path, or an override stops
+reaching the ledger), and mail-api-encoding (the client double-encodes again).
+
+5,068 backend tests across 330 suites, 0 lint errors, column/idempotency/citext
+gates OK. Client typecheck clean, 1,630 vitest tests passing.

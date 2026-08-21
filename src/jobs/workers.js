@@ -31,8 +31,23 @@ const PROCESSORS = [
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
   { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
-  { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
+  // `ai-vision` was registered here and enqueued by nothing. It fed a
+  // document-scan turn to the assistant — but the assistant has no image entry
+  // point: no route, no validator, no upload control, nothing. It was a worker
+  // for a surface that was never built, and the general orphan sweep
+  // (tests/security/orphan-wiring-sweep.test.js) is what finally said so.
+  //
+  // The CAPABILITY is not gone. `services/ai/vision.service` is alive and has
+  // three real callers — company-profile refresh, CV scoring, and mail's
+  // attachment extraction (§8.6), which is doc-vision delivered somewhere a
+  // person can actually reach it. Restoring the chat flow means building its
+  // route first, at which point this handler is a `git show` away.
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
+  // The half that was missing. `scheduled-report` was registered from the day
+  // reports shipped and enqueued by nothing — its own header deferred the
+  // trigger to "an app scheduled-task or external cron", which was never part
+  // of the repo, so a scheduled report only ran if somebody POSTed the route.
+  { name: "scheduled-report-scheduler", concurrency: 1, handler: require("./handlers/scheduled-report-scheduler") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
@@ -44,8 +59,22 @@ const PROCESSORS = [
   { name: "mail-send-flush-scheduler", concurrency: 1, handler: require("./handlers/mail-send-flush-scheduler") },
   { name: "deliverability-check", concurrency: 1, handler: require("./handlers/deliverability-check") },
   { name: "deliverability-check-scheduler", concurrency: 1, handler: require("./handlers/deliverability-check-scheduler") },
+  // PR-5 §9.2/§9.3. Both were missing entirely: `mail_sla_policy` and
+  // `email_followup` were written by the API and read by nothing, so an SLA was
+  // never measured and a snoozed thread never came back. Concurrency 1 — each
+  // sweep claims and stamps rows across a whole tenant, so two passes would
+  // contend rather than share.
+  { name: "mail-sla-sweep", concurrency: 1, handler: require("./handlers/mail-sla-sweep") },
+  { name: "mail-sla-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-sla-sweep-scheduler") },
+  { name: "mail-followup-sweep", concurrency: 1, handler: require("./handlers/mail-followup-sweep") },
+  { name: "mail-followup-sweep-scheduler", concurrency: 1, handler: require("./handlers/mail-followup-sweep-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
+  // PR-4 §8.6. One attachment per job, so the unit of retry is the unit of
+  // cost. Concurrency 2, matching ai-vision: these are vendor calls billed per
+  // page, and a wide fan-out is how a first sync at the 90-day default depth
+  // turns into a bill nobody authorised.
+  { name: "mail-ocr-extract", concurrency: 2, handler: require("./handlers/mail-ocr-extract") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
   { name: "error-maintenance", concurrency: 1, handler: require("./handlers/error-maintenance") },
   // Milestone SLA scan (MOD-31): re-baselines open chains and emits at-risk /
@@ -245,6 +274,47 @@ async function scheduleRecurring() {
     logger.info({ every: flushEvery }, "mail send-flush scheduler registered");
   }
 
+  // ── The three mail schedulers that had a WORKER and no TICK ───────────────
+  //
+  // Exactly the shape called out for `regie-aging` further down this file: a
+  // queue registered above, a handler on disk, and nothing anywhere that ever
+  // enqueued it — so the feature existed in the tree and not in the product.
+  // `MAIL_DELIVERABILITY_INTERVAL_MS` and `MAIL_SLA_SWEEP_INTERVAL_MS` had even
+  // been added to config/env.js and then read by nobody.
+  //
+  // Deliverability: the daily re-check is what turns "your DKIM record
+  // disappeared" into a red row and a notification instead of into invoices
+  // that quietly stop arriving (§6.5).
+  const deliverEvery = config.MAIL_DELIVERABILITY_INTERVAL_MS;
+  if (!deliverEvery || deliverEvery <= 0) {
+    logger.info("mail deliverability scheduler disabled (MAIL_DELIVERABILITY_INTERVAL_MS=0)");
+  } else {
+    await enqueue("deliverability-check-scheduler", "tick", {}, { repeat: { every: deliverEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: deliverEvery }, "mail deliverability scheduler registered");
+  }
+
+  // SLA clocks (§9.2). The interval is the worst-case lateness of a BREACH
+  // ALERT, not of the promise itself — the due dates are computed from
+  // `first_message_at`, so a worker outage costs notice, never accuracy.
+  const slaEvery = config.MAIL_SLA_SWEEP_INTERVAL_MS;
+  if (!slaEvery || slaEvery <= 0) {
+    logger.info("mail SLA sweep disabled (MAIL_SLA_SWEEP_INTERVAL_MS=0)");
+  } else {
+    await enqueue("mail-sla-sweep-scheduler", "tick", {}, { repeat: { every: slaEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: slaEvery }, "mail SLA sweep registered");
+  }
+
+  // Follow-ups (§9.3): snooze, no-reply boomerang, sequence steps. Warn rather
+  // than info when disabled — a user who snoozes a thread has been told it will
+  // come back, and a silently disabled sweep breaks that promise invisibly.
+  const followEvery = config.MAIL_FOLLOWUP_SWEEP_INTERVAL_MS;
+  if (!followEvery || followEvery <= 0) {
+    logger.warn("mail follow-up sweep disabled (MAIL_FOLLOWUP_SWEEP_INTERVAL_MS=0) — snoozed threads will not return");
+  } else {
+    await enqueue("mail-followup-sweep-scheduler", "tick", {}, { repeat: { every: followEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: followEvery }, "mail follow-up sweep registered");
+  }
+
   // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.
   const renewEvery = config.MAIL_WEBHOOK_RENEW_INTERVAL_MS;
   if (!renewEvery || renewEvery <= 0) {
@@ -386,6 +456,22 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" }, "regie aging scheduler registered");
+  }
+
+  // Scheduled reports (1.3). Hourly rather than daily: `next_run_at` is a
+  // timestamp, so the tick interval is the resolution of every cadence a tenant
+  // can choose. Live only — a Test run would generate the report, have its mail
+  // suppressed by the sandbox guard, and still consume `next_run_at`.
+  const reportCron = config.SCHEDULED_REPORT_CRON;
+  if (!reportCron) {
+    logger.info("scheduled-report scheduler disabled (SCHEDULED_REPORT_CRON empty)");
+  } else {
+    await enqueue("scheduled-report-scheduler", "tick", {}, {
+      repeat: { pattern: reportCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: reportCron }, "scheduled-report scheduler registered");
   }
 
   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every

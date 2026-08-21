@@ -180,6 +180,17 @@ const deleteCachedForUser = (client, userId) =>
 const deleteCachedForIdentity = (client, identityKey) =>
   client.query(`DELETE FROM signature_render WHERE identity_key = $1`, [identityKey]);
 
+/**
+ * Every SYSTEM render, whatever its identity.
+ *
+ * `identity_key IS NOT NULL` is what makes this the system half — a personal
+ * render carries a `user_id` and no identity key. Used when the company itself
+ * changes, since every corporate block derives from the same entity row.
+ */
+const deleteAllIdentityCached = (client) =>
+  client.query(`DELETE FROM signature_render WHERE identity_key IS NOT NULL`)
+    .then((r) => r.rowCount);
+
 const deleteAllCached = (client) =>
   client.query(`DELETE FROM signature_render`);
 
@@ -194,6 +205,7 @@ const usersForEntity = (client, entityId) =>
 module.exports = {
   listTemplates, getTemplate, getTemplateByKey, defaultTemplate, updateTemplate,
   getProfile, upsertProfile, loadPerson, loadEntity,
-  getCached, putCached, deleteCachedForUser, deleteCachedForIdentity, deleteAllCached,
+  getCached, putCached, deleteCachedForUser, deleteCachedForIdentity,
+  deleteAllIdentityCached, deleteAllCached,
   usersForEntity,
 };

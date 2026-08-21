@@ -243,14 +243,30 @@ async function findDossierByRefs(client, refs) {
 }
 // ── Engine: attachments (email_attachment, 0482) ──
 const addAttachment = (client, data) => insertOne(client, "email_attachment", data);
-/** Attachments on one message. `email_inbound_id` still names the column —
- *  10731 re-pointed its FK at email_message rather than renaming it, so no data
- *  moved and no other reader had to change. */
-async function listAttachments(client, inboundId) {
+/**
+ * Attachments on one message.
+ *
+ * ── THE COLUMN IS `email_message_id`, AND HAS BEEN SINCE 10737 ──────────────
+ *
+ * The comment that used to sit here said `email_inbound_id` "still names the
+ * column". That was true after 10731 and stopped being true one migration
+ * later: 10737 renamed it, giving as its reason "renamed now, while there are
+ * six call sites, rather than in a year when there are sixty". The six call
+ * sites were then not updated.
+ *
+ * The consequence was invisible in the way this programme keeps producing: the
+ * INSERT in `persistAttachments` sits inside a `@silent:storage` catch, so
+ * every inbound attachment created its vault document and then silently failed
+ * to link to its message — and this SELECT threw on a column that no longer
+ * exists, taking the attachment strip with it. `npm run db:check:columns` is
+ * what found it.
+ */
+async function listAttachments(client, messageId) {
   return (await client.query(
-    "SELECT email_attachment_id, email_inbound_id, vault_id, filename, content_type, size_bytes, created_at " +
-      "FROM email_attachment WHERE email_inbound_id = $1 ORDER BY created_at",
-    [inboundId],
+    "SELECT email_attachment_id, email_message_id, vault_id, filename, content_type, size_bytes, "
+      + "checksum_sha256, direction, disposition, content_id, created_at "
+      + "FROM email_attachment WHERE email_message_id = $1 ORDER BY created_at",
+    [messageId],
   )).rows;
 }
 

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (445)
+## All codes (453)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -33,7 +33,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ACTUALS_LOCKED` | — | 1× | — |
 | `ADVANCE_NOT_CLEARED` | 422 | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
-| `AI_UNAVAILABLE` | 403, 503 | 4× | — |
+| `AI_UNAVAILABLE` | 403, 503 | 6× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_ANSWERED` | 409 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 2× | — |
@@ -41,7 +41,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 3× | — |
 | `ALREADY_CONVERTED` | 422 | 1× | — |
-| `ALREADY_DECIDED` | 422 | 2× | — |
+| `ALREADY_DECIDED` | 409, 422 | 3× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
 | `ALREADY_EXISTS` | 409 | 1× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
@@ -105,6 +105,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STATUS` | 422 | 4× | — |
 | `BAD_STORAGE_BUFFER` | 400 | 1× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
+| `BAD_TARGET` | 422 | 1× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
 | `BAD_THEME` | 422 | 1× | — |
 | `BAD_TOKEN` | 500 | 1× | — |
@@ -159,6 +160,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 3× | — |
+| `EMPTY_DRAFT` | 422 | 2× | — |
 | `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
@@ -166,12 +168,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_SET` | 422 | 1× | — |
 | `EMPTY_SIGNATURE_MENU` | 422 | 1× | — |
 | `EMPTY_STATEMENT` | 422 | 2× | — |
+| `EMPTY_TRANSCRIPT` | 422 | 1× | — |
 | `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `EXISTS` | 409 | 3× | — |
-| `FEATURE_DISABLED` | 403 | 2× | — |
+| `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
@@ -180,6 +183,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `FX_NOT_HERE` | — | 1× | — |
 | `GENERATION_UNAVAILABLE` | 502 | 1× | — |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
+| `GUARDRAIL_BLOCKED` | 422 | 1× | — |
+| `GUARDRAIL_REASON_TOO_SHORT` | 422 | 1× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
 | `HAS_SUBSIDIARIES` | 409 | 1× | — |
@@ -256,9 +261,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 495× | — |
+| `NOT_FOUND` | 404, 422 | 507× | — |
 | `NOT_LEAF` | 422 | 1× | — |
-| `NOT_OPEN` | 422 | 1× | — |
+| `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_PENDING` | 422 | 1× | — |
 | `NOT_PERSONAL` | 422 | 1× | — |
@@ -270,6 +275,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_REVERSIBLE` | 422 | 1× | — |
 | `NOT_SENT` | 422 | 1× | — |
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
+| `NOT_STORED` | 409 | 1× | — |
 | `NOT_TREASURY_CLASS` | 422 | 2× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
 | `NO_ACCEPTED_QUOTATION` | — | 1× | — |
@@ -311,6 +317,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RATE_MATCH` | 404 | 1× | — |
 | `NO_REASON` | 422 | 1× | — |
 | `NO_RECIPIENT` | 422 | 2× | — |
+| `NO_RECIPIENT_TIMEZONE` | — | 1× | — |
 | `NO_REPLY_ADDRESS` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
@@ -438,6 +445,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TRAINING_FULL` | 422 | 2× | — |
 | `TRAINING_NOT_JOINABLE` | 422 | 1× | — |
 | `TRANSCRIPTION_UNAVAILABLE` | 502 | 2× | — |
+| `UNKNOWN_ACTION` | 422 | 2× | — |
 | `UNKNOWN_CLIENT_TYPE` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER` | 422 | 1× | — |
 | `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
@@ -463,7 +471,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 198× | — |
+| `VALIDATION_ERROR` | 422 | 211× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

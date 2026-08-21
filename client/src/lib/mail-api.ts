@@ -4,6 +4,9 @@
  * own verified identity; this surfaces what went out and its delivery state.
  */
 import { tenant } from "./api-client";
+// The workflow/security half of the mail API. Imported for the types the core
+// thread and message shapes reference; re-exported wholesale at the foot.
+import type { AuthVerdict, Visibility, WorkStatus } from "./mail-api-work";
 
 export type Sender = {
   email_identity_id: string;
@@ -454,24 +457,24 @@ export const allMailboxes = (q: { kind?: MailboxKind; include_archived?: boolean
 export const listCatalogue = (includeDisabled = false) =>
   tenant<CatalogueEntry[]>(`/mail/catalogue${includeDisabled ? "?include_disabled=true" : ""}`);
 export const addCatalogueEntry = (body: Record<string, unknown>) =>
-  tenant<CatalogueEntry>("/mail/catalogue", { method: "POST", body: JSON.stringify(body) });
+  tenant<CatalogueEntry>("/mail/catalogue", { method: "POST", body: body });
 export const toggleCatalogueEntry = (key: string, isEnabled: boolean) =>
   tenant<CatalogueEntry>(`/mail/catalogue/${encodeURIComponent(key)}`, {
     method: "PATCH",
-    body: JSON.stringify({ is_enabled: isEnabled }),
+    body: { is_enabled: isEnabled },
   });
 
 /* Mailbox lifecycle */
 export const createSharedMailbox = (body: Record<string, unknown>) =>
-  tenant<Mailbox>("/mail/mailboxes/shared", { method: "POST", body: JSON.stringify(body) });
+  tenant<Mailbox>("/mail/mailboxes/shared", { method: "POST", body: body });
 export const archiveMailbox = (id: string) =>
   tenant<Mailbox>(`/mail/mailboxes/${id}/archive`, { method: "POST" });
 export const handoverMailbox = (id: string, body: { catalogue_key?: string | null; department?: string | null }) =>
-  tenant<Mailbox>(`/mail/mailboxes/${id}/handover`, { method: "POST", body: JSON.stringify(body) });
+  tenant<Mailbox>(`/mail/mailboxes/${id}/handover`, { method: "POST", body: body });
 export const setMailboxLimits = (
   id: string,
   body: { send_limit_hourly?: number | null; send_limit_daily?: number | null; sync_depth_days?: number | null },
-) => tenant<Mailbox>(`/mail/mailboxes/${id}/limits`, { method: "PATCH", body: JSON.stringify(body) });
+) => tenant<Mailbox>(`/mail/mailboxes/${id}/limits`, { method: "PATCH", body: body });
 export const sendAllowance = (id: string, count = 1) =>
   tenant<SendAllowance>(`/mail/mailboxes/${id}/allowance?count=${count}`);
 
@@ -481,7 +484,7 @@ export const listMembers = (id: string, includeRevoked = false) =>
 export const grantMember = (id: string, userId: string, role: MemberRole) =>
   tenant<MailboxMember>(`/mail/mailboxes/${id}/members`, {
     method: "POST",
-    body: JSON.stringify({ user_id: userId, member_role: role }),
+    body: { user_id: userId, member_role: role },
   });
 export const revokeMember = (id: string, userId: string) =>
   tenant<{ revoked: boolean }>(`/mail/mailboxes/${id}/members/${userId}`, { method: "DELETE" });
@@ -496,7 +499,7 @@ export const bindSendPoint = (
   body: { entity_id?: string | null; email_identity_id?: string | null; email_connection_id?: string | null },
 ) => tenant<SendPointBinding>(`/mail/send-points/${encodeURIComponent(key)}`, {
   method: "PUT",
-  body: JSON.stringify(body),
+  body: body,
 });
 export const unbindSendPoint = (key: string, entityId?: string) =>
   tenant<{ removed: boolean }>(
@@ -575,6 +578,24 @@ export type Thread = {
   is_starred: boolean;
   preview?: string | null;
   last_from?: string | null;
+
+  /* ── PR-5 · How the thread is being WORKED ────────────────────────────────
+   *
+   * Optional on the type because they arrive only once the shared-inbox
+   * features are on, and a mailbox with `mail.shared_inbox` off is a mailbox
+   * where none of this exists. Rendering has to tolerate their absence rather
+   * than treat it as "unassigned, open, no SLA" — those are claims. */
+  assigned_to?: string | null;
+  assigned_to_name?: string | null;
+  work_status?: WorkStatus | null;
+  visibility?: Visibility | null;
+  sla_due_at?: string | null;
+  sla_breached?: boolean | null;
+  locked_by?: string | null;
+  locked_by_name?: string | null;
+  lock_expires_at?: string | null;
+  /** Set once the thread has been turned into a record (§7.7). */
+  converted_entity_ref?: string | null;
 };
 
 export type Message = {
@@ -605,6 +626,14 @@ export type Message = {
   received_at?: string | null;
   is_read: boolean;
   is_starred: boolean;
+
+  /* ── PR-5 §9.7 · Anti-spoof ───────────────────────────────────────────────
+   *
+   * Stamped on INBOUND messages at ingest. Absent means the verdict has not
+   * been computed — not that the sender is fine — so the banner renders
+   * nothing rather than a green tick. */
+  auth_verdict?: AuthVerdict | null;
+  auth_detail?: Record<string, unknown> | null;
 };
 
 export type ThreadDetail = Thread & { messages: Message[] };
@@ -699,28 +728,28 @@ export const getThread = (id: string) =>
 export const setThreadRead = (id: string, on = true) =>
   tenant<{ email_thread_id: string; messages: number; is_read: boolean }>(
     `/mail/threads/${id}/read`,
-    { method: "POST", body: JSON.stringify({ on }) },
+    { method: "POST", body: { on } },
   );
 export const setThreadStarred = (id: string, on = true) =>
   tenant<{ email_thread_id: string; messages: number; is_starred: boolean }>(
     `/mail/threads/${id}/star`,
-    { method: "POST", body: JSON.stringify({ on }) },
+    { method: "POST", body: { on } },
   );
 export const moveThread = (id: string, folder: MailFolder) =>
   tenant<{ email_thread_id: string; folder: MailFolder; messages: number }>(
     `/mail/threads/${id}/move`,
-    { method: "POST", body: JSON.stringify({ folder }) },
+    { method: "POST", body: { folder } },
   );
 /** Correct the classifier. Recorded as a human decision so no later pass undoes it. */
 export const setThreadStream = (id: string, stream: MailStream) =>
   tenant<Thread>(`/mail/threads/${id}/stream`, {
     method: "POST",
-    body: JSON.stringify({ stream }),
+    body: { stream },
   });
 export const setThreadLabel = (id: string, labelId: string, on = true) =>
   tenant<{ email_thread_id: string; email_label_id: string; applied: boolean }>(
     `/mail/threads/${id}/label`,
-    { method: "POST", body: JSON.stringify({ label_id: labelId, on }) },
+    { method: "POST", body: { label_id: labelId, on } },
   );
 export const bulkThreads = (body: {
   ids: string[];
@@ -730,7 +759,7 @@ export const bulkThreads = (body: {
 }) =>
   tenant<BulkResult>("/mail/threads/bulk", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: body,
   });
 
 /**
@@ -747,7 +776,7 @@ export const listFolders = (connectionId?: string) =>
   tenant<FolderRailData>(`/mail/folders${qs({ connection_id: connectionId })}`);
 export const listLabels = () => tenant<Label[]>("/mail/labels");
 export const createLabel = (body: { name: string; colour?: string }) =>
-  tenant<Label>("/mail/labels", { method: "POST", body: JSON.stringify(body) });
+  tenant<Label>("/mail/labels", { method: "POST", body: body });
 export const deleteLabel = (id: string) =>
   tenant<{ email_label_id: string } | null>(`/mail/labels/${id}`, {
     method: "DELETE",
@@ -853,7 +882,7 @@ export const listDrafts = (threadId?: string) =>
   tenant<Draft[]>(`/mail/drafts${qs({ thread_id: threadId })}`);
 export const getDraft = (id: string) => tenant<Draft>(`/mail/drafts/${id}`);
 export const saveDraft = (body: Partial<Draft> & { email_draft_id?: string }) =>
-  tenant<Draft>("/mail/drafts", { method: "POST", body: JSON.stringify(body) });
+  tenant<Draft>("/mail/drafts", { method: "POST", body: body });
 export const discardDraft = (id: string) =>
   tenant<{ discarded: boolean }>(`/mail/drafts/${id}`, { method: "DELETE" });
 
@@ -867,14 +896,14 @@ export const uploadAttachment = (body: {
   disposition?: "attachment" | "inline";
   content_id?: string;
 }) => tenant<MailAttachment & { total_bytes: number; offer_secure_link: boolean }>(
-  "/mail/attachments/upload", { method: "POST", body: JSON.stringify(body) },
+  "/mail/attachments/upload", { method: "POST", body: body },
 );
 export const attachFromVault = (body: {
   email_draft_id: string;
   vault_id: string;
   filename?: string;
   disposition?: "attachment" | "inline";
-}) => tenant<MailAttachment>("/mail/attachments/from-vault", { method: "POST", body: JSON.stringify(body) });
+}) => tenant<MailAttachment>("/mail/attachments/from-vault", { method: "POST", body: body });
 export const removeAttachment = (draftId: string, attachmentId: string) =>
   tenant<{ removed: boolean }>(`/mail/drafts/${draftId}/attachments/${attachmentId}`, { method: "DELETE" });
 
@@ -895,7 +924,7 @@ export const sendMessage = (body: {
   quoted_text?: string | null;
   undo_seconds?: number;
   idempotency_key?: string;
-}) => tenant<QueuedSend>("/mail/send", { method: "POST", body: JSON.stringify(body) });
+}) => tenant<QueuedSend>("/mail/send", { method: "POST", body: body });
 
 export const cancelSend = (queueId: string) =>
   tenant<{ status: "CANCELLED" }>(`/mail/send/${queueId}/cancel`, { method: "POST" });
@@ -910,7 +939,7 @@ export const runCommand = (key: string, body: {
   entity_ref?: string | null;
   email_thread_id?: string | null;
 }) => tenant<CommandResult>(`/mail/commands/${encodeURIComponent(key)}`, {
-  method: "POST", body: JSON.stringify(body),
+  method: "POST", body: body,
 });
 
 /* ── PR-2: signatures & deliverability ──────────────────────────────────── */
@@ -954,7 +983,7 @@ export type SignatureProfile = {
 
 export const getSignatureProfile = () => tenant<SignatureProfile>("/mail/signature");
 export const saveSignatureProfile = (body: Record<string, unknown>) =>
-  tenant("/mail/signature", { method: "PUT", body: JSON.stringify(body) });
+  tenant("/mail/signature", { method: "PUT", body: body });
 export const previewSignature = (lang?: string) =>
   tenant<{ html: string; text: string }>(`/mail/signature/preview${lang ? `?lang=${lang}` : ""}`);
 export const listSignatureTemplates = () => tenant<SignatureTemplate[]>("/mail/signature/templates");
@@ -982,88 +1011,21 @@ export const listDeliverability = () => tenant<DomainHealthRow[]>("/mail/deliver
 export const checkDeliverability = (domain?: string) =>
   tenant("/mail/deliverability/check", {
     method: "POST",
-    body: JSON.stringify(domain ? { domain } : {}),
+    body: domain ? { domain } : {},
   });
 export const deliverabilityHistory = (domain: string) =>
   tenant<DomainHealthRow[]>(`/mail/deliverability/${encodeURIComponent(domain)}/history`);
 
-/* ── PR-3: binding, notes, context ──────────────────────────────────────── */
 
-export type BindingSuggestion = {
-  email_binding_suggestion_id: string;
-  entity_ref: string;
-  entity_label?: string | null;
-  signal: string;
-  matched_text?: string | null;
-  confidence: number;
-  status: "SUGGESTED" | "ACCEPTED" | "REJECTED" | "SUPERSEDED";
-};
-
-export const listSuggestions = (threadId: string) =>
-  tenant<BindingSuggestion[]>(`/mail/threads/${threadId}/suggestions`);
-export const acceptSuggestion = (threadId: string, sid: string) =>
-  tenant(`/mail/threads/${threadId}/suggestions/${sid}/accept`, { method: "POST" });
-export const rejectSuggestion = (threadId: string, sid: string) =>
-  tenant(`/mail/threads/${threadId}/suggestions/${sid}/reject`, { method: "POST" });
-export const bindThread = (threadId: string, entity_ref: string) =>
-  tenant(`/mail/threads/${threadId}/bind`, { method: "POST", body: JSON.stringify({ entity_ref }) });
-export const unbindThread = (threadId: string) =>
-  tenant(`/mail/threads/${threadId}/bind`, { method: "DELETE" });
-
-export type MailContext = {
-  kind: string;
-  header: Record<string, unknown>;
-  overview: Record<string, unknown>;
-  tabs_available: string[];
-};
-export const mailContext = (entityRef: string) =>
-  tenant<MailContext>(`/mail/context?entity_ref=${encodeURIComponent(entityRef)}`);
-export const mailContextTab = (entityRef: string, tab: string) =>
-  tenant(`/mail/context/${encodeURIComponent(tab)}?entity_ref=${encodeURIComponent(entityRef)}`);
-
-export type ThreadNote = {
-  email_thread_note_id: string;
-  author_user_id: string;
-  author_name?: string | null;
-  body: string;
-  created_at: string;
-  deleted_at?: string | null;
-};
-export const listNotes = (threadId: string) =>
-  tenant<ThreadNote[]>(`/mail/threads/${threadId}/notes`);
-export const addNote = (threadId: string, body: { body: string; mentions?: string[] }) =>
-  tenant(`/mail/threads/${threadId}/notes`, { method: "POST", body: JSON.stringify(body) });
-
-/* ── PR-4: AI assist ────────────────────────────────────────────────────── */
-
-export const assistCompose = (body: Record<string, unknown>) =>
-  tenant("/mail/assist/compose", { method: "POST", body: JSON.stringify(body) });
-export const assistDraft = (body: { thread_id: string }) =>
-  tenant("/mail/assist/draft", { method: "POST", body: JSON.stringify(body) });
-export const assistSummary = (threadId: string) =>
-  tenant(`/mail/assist/summary?thread_id=${encodeURIComponent(threadId)}`);
-export const assistGuardrails = (body: Record<string, unknown>) =>
-  tenant("/mail/assist/guardrails", { method: "POST", body: JSON.stringify(body) });
-
-/* ── PR-5: workflow / security ──────────────────────────────────────────── */
-
-export const claimThread = (threadId: string) =>
-  tenant(`/mail/threads/${threadId}/claim`, { method: "POST" });
-export const assignThread = (threadId: string, userId: string) =>
-  tenant(`/mail/threads/${threadId}/assign`, { method: "POST", body: JSON.stringify({ user_id: userId }) });
-export const setWorkStatus = (threadId: string, status: "OPEN" | "PENDING" | "RESOLVED") =>
-  tenant(`/mail/threads/${threadId}/status`, { method: "POST", body: JSON.stringify({ status }) });
-export const snoozeThread = (threadId: string, dueAt: string, note?: string) =>
-  tenant(`/mail/threads/${threadId}/snooze`, { method: "POST", body: JSON.stringify({ due_at: dueAt, note }) });
-export const createFollowup = (threadId: string, body: Record<string, unknown>) =>
-  tenant(`/mail/threads/${threadId}/followup`, { method: "POST", body: JSON.stringify(body) });
-export const createSecureLink = (body: Record<string, unknown>) =>
-  tenant("/mail/secure-links", { method: "POST", body: JSON.stringify(body) });
-export const revokeSecureLink = (id: string) =>
-  tenant(`/mail/secure-links/${id}/revoke`, { method: "POST" });
-export const setVisibility = (threadId: string, visibility: "PRIVATE" | "TEAM" | "COMPANY") =>
-  tenant(`/mail/threads/${threadId}/visibility`, { method: "PATCH", body: JSON.stringify({ visibility }) });
-export const breakglass = (threadId: string, reason: string) =>
-  tenant(`/mail/threads/${threadId}/breakglass`, { method: "POST", body: JSON.stringify({ reason }) });
-export const verifyArchive = () => tenant("/mail/archive/verify");
-
+/* ── PR-3, PR-4, PR-5 ──────────────────────────────────────────────────────
+ *
+ * Binding, the dossier drawer, action cards, notes, conversion, document
+ * intake, the AI layer, triage, SLA, secure links, visibility, anti-spoof and
+ * the archive all live in `mail-api-work.ts`.
+ *
+ * Split because this file passed a thousand lines and that section — the newest
+ * and least exercised third of the mail API — was the part nobody could see the
+ * shape of. Re-exported here so every existing `import * as api from
+ * "@/lib/mail-api"` keeps working; new code may import either.
+ */
+export * from "./mail-api-work";

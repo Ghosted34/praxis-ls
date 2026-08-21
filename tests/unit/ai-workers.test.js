@@ -1,6 +1,5 @@
 "use strict";
 const aiTranscribe = require("../../src/jobs/handlers/ai-transcribe");
-const aiVision = require("../../src/jobs/handlers/ai-vision");
 const transcription = require("../../src/services/ai/transcription.service");
 const vision = require("../../src/services/ai/vision.service");
 
@@ -10,11 +9,20 @@ describe("worker-ai handlers: input guards (no DB)", () => {
       /tenantMeta \+ user \+ audioBase64/,
     );
   });
-  test("ai-vision rejects missing job data", async () => {
-    await expect(
-      aiVision({ data: { tenantMeta: {}, user: { user_id: "u" } } }),
-    ).rejects.toThrow(/imageBase64/);
-  });
+  /**
+   * The `ai-vision` handler's guard test used to sit here.
+   *
+   * The handler is gone. It was registered in `workers.js` and enqueued by
+   * nothing — a worker for an assistant image flow that has no route, no
+   * validator and no upload control, so no job could ever reach it. The general
+   * orphan sweep (tests/security/orphan-wiring-sweep.test.js) is what surfaced
+   * it, and that sweep is now what stands in this test's place: it fails if any
+   * registered worker has no producer, which is the defect this file could not
+   * have caught however well it tested the handler's arguments.
+   *
+   * `vision.service` itself is untouched and still exercised below — the
+   * capability has three live callers, including mail's attachment extraction.
+   */
 });
 
 describe("provider services: validation", () => {

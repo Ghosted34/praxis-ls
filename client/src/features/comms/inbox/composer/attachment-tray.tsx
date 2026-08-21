@@ -19,10 +19,19 @@ const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
 export function AttachmentTray({
   tray,
   onRemove,
+  onSecureLink,
   busy,
 }: {
   tray: Tray | null;
   onRemove: (id: string) => void;
+  /**
+   * Swap a large attachment for a secure link (§9.4).
+   *
+   * Passed in rather than done here, because minting the link is the easy half:
+   * the composer owns the editor the URL has to land in, and dropping the
+   * attachment afterwards is its call, not the tray's.
+   */
+  onSecureLink?: (a: { email_attachment_id: string; vault_id?: string | null; filename?: string | null }) => void;
   busy?: boolean;
 }) {
   if (!tray || tray.attachments.length === 0) return null;
@@ -72,17 +81,41 @@ export function AttachmentTray({
           {mb(tray.total_bytes)} of {mb(tray.limit_bytes)}
         </span>
         {tray.offer_secure_link && (
-          <span title="Available once secure links are enabled">
-            <Pill tone="mute">Large — a secure link would be better</Pill>
-          </span>
+          <Pill tone="warn">Large — a secure link would be better</Pill>
         )}
       </div>
 
+      {/* This used to say "arrives in a later release". It has arrived, and a
+          promise left standing after the thing ships is worse than no promise:
+          the operator reads it, believes the feature is missing, and attaches
+          the 18 MB PDF anyway. */}
       {tray.offer_secure_link && (
-        <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-          Attachments this size are often rejected or filtered. Sending a secure
-          link instead arrives in a later release.
-        </p>
+        <div className="mt-1 space-y-1">
+          <p className="text-[0.6875rem] text-muted-foreground">
+            Attachments this size are often rejected or filtered on the way in.
+            A secure link expires, can be revoked, and tells you when it was
+            opened.
+          </p>
+          {onSecureLink && (
+            <div className="flex flex-wrap gap-1.5">
+              {files
+                // Only a file already in the vault can be served by a link —
+                // one still uploading has nothing to point at.
+                .filter((a) => a.vault_id)
+                .map((a) => (
+                  <Button
+                    key={a.email_attachment_id}
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => onSecureLink(a)}
+                  >
+                    Send {a.filename || "this"} as a link
+                  </Button>
+                ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

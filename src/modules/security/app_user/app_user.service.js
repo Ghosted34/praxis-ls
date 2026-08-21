@@ -606,6 +606,13 @@ async function sendResetEmail(client, { to, name, token, origin }) {
     text,
     purpose: "NOTIFICATIONS",
     moduleKey: events.MODULE,
+    // §3.5 — the SEND POINT, not just the broad purpose. `mail_send_point`
+    // declares this row `is_wired = true` and until now nothing passed the key,
+    // so a tenant who bound "Password reset" to security@ had their choice
+    // recorded and ignored. Additive: `sendpoint.service` falls through to the
+    // section binding and then the purpose identity exactly as before when no
+    // binding exists, so this cannot re-route a tenant who has configured none.
+    sendPoint: "auth.password_reset",
   });
 }
 

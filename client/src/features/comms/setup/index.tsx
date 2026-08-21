@@ -36,12 +36,41 @@ import { MyMailboxTab } from "./my-mailbox";
 import { MailboxesTab } from "./mailboxes";
 import { SendPointsTab } from "./send-points";
 import { SetupPage as SendersAndChannelsTab } from "../setup";
+import { SecureLinksTab } from "./secure-links";
+import { SlaTab } from "./sla";
+import { TrustTab } from "./trust";
+import { FollowupsTab } from "./followups";
 
-type TabKey = "mine" | "mailboxes" | "send-points" | "senders";
+type TabKey =
+  | "mine" | "mailboxes" | "send-points" | "senders"
+  | "secure-links" | "sla" | "trust" | "followups";
 
+/**
+ * The four tabs after "Senders & channels" are PR-5's surfaces, which had a
+ * complete server side and no screen at all — twenty-three endpoints reachable
+ * only from a terminal. Ordered by who opens them and how often: follow-ups and
+ * secure links are day-to-day operator work; response times and trust are
+ * things an administrator sets up once and revisits when something is wrong.
+ *
+ * The two gating decisions are drawn from what the SERVER actually returns, not
+ * from how administrative each one feels:
+ *
+ *   Follow-ups    `workflow.listFollowups` filters on `f.user_id = $1`, so the
+ *                 list is the caller's own pending boomerangs. Everyone gets it
+ *                 — an operator needs to see what is about to reappear in their
+ *                 mailbox, and nobody else's rows are in it.
+ *   Secure links  `secure-link.list` has no `created_by` filter: it is every
+ *                 link in the tenant. Labels name clients and invoices
+ *                 ("Invoice INV-2026-0311"), so that is a disclosure, and it is
+ *                 admin-only for that reason rather than by analogy.
+ */
 const TABS: { key: TabKey; label: string; adminOnly: boolean; hint: string }[] = [
   { key: "mine", label: "My mailbox", adminOnly: false, hint: "Your own professional address" },
+  { key: "followups", label: "Follow-ups", adminOnly: false, hint: "Conversations waiting to come back" },
+  { key: "secure-links", label: "Secure links", adminOnly: true, hint: "Every expiring link the company has sent, and who opened it" },
   { key: "mailboxes", label: "Mailboxes", adminOnly: true, hint: "Every mailbox in the company" },
+  { key: "sla", label: "Response times", adminOnly: true, hint: "How fast a first reply must be, and which hours count" },
+  { key: "trust", label: "Trust & archive", adminOnly: true, hint: "Confirmed domains, bounces, and the archive seal" },
   { key: "send-points", label: "Send points", adminOnly: true, hint: "Which address each part of the product sends from" },
   { key: "senders", label: "Senders & channels", adminOnly: true, hint: "System senders, shared SMTP, WhatsApp, DNS" },
 ];
@@ -86,7 +115,11 @@ export function CommsSetupPage() {
       )}
 
       {tab === "mine" && <MyMailboxTab />}
+      {tab === "followups" && <FollowupsTab />}
+      {tab === "secure-links" && <SecureLinksTab />}
       {tab === "mailboxes" && isAdmin && <MailboxesTab />}
+      {tab === "sla" && isAdmin && <SlaTab />}
+      {tab === "trust" && isAdmin && <TrustTab />}
       {tab === "send-points" && isAdmin && <SendPointsTab />}
       {tab === "senders" && isAdmin && <SendersAndChannelsTab />}
     </div>

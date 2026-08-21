@@ -122,8 +122,20 @@ function buildCatalogue(manifests = loadManifests()) {
 // proposable — while the vetted executors still own the ones whose service takes
 // a non-payload shape (camelCase args / {data,actor}). Human confirm still gates
 // every write regardless (orchestrator.confirmAction).
+/**
+ * Reads get the caller as a THIRD argument, mirroring writeAdapter.
+ *
+ * Most read services take `(client, payload)` and ignore it, which is why it was
+ * easy to leave out. The ones that must not are the reads whose result set
+ * depends on WHO is asking. Mail is the first: PR-5 §9.5 makes thread visibility
+ * a per-caller predicate and states as a MUST that "the AI grounding layer and
+ * the search index respect the same predicate — an assistant that summarises a
+ * thread the caller cannot open is the same leak by another route." Those
+ * services are written fail-closed, so without the actor they would return
+ * nothing and merely look broken; with it they return what this user may see.
+ */
 function readAdapter(action, service) {
-  return async ({ client, payload = {} }) => {
+  return async ({ client, user, payload = {} }) => {
     let arg = payload;
     // `get_*` reads take a scalar id. The model may pass it as `id` OR as the
     // natural field name it saw upstream (e.g. `po_id` from a GRN, `dossier_id`),
@@ -134,7 +146,7 @@ function readAdapter(action, service) {
         arg = idKey ? payload[idKey] : payload;
       }
     }
-    const data = await service(client, arg);
+    const data = await service(client, arg, { user_id: user && user.user_id });
     return { data };
   };
 }

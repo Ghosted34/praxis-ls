@@ -110,6 +110,10 @@ async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
     const info = await email.send(client, {
       to,
       purpose,
+      // The test must go out the way real mail does, or it tests something the
+      // product never does. Passing the send point means the address this
+      // proves is the address a bound tenant will actually send from.
+      sendPoint: "system.test",
       subject: "Praxis test email — your outbound email is working",
       text:
         "This is a test message from your Praxis tenant.\n\n"

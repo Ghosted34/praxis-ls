@@ -75,7 +75,7 @@ async function markRead(client, actor, threadId, isRead = true) {
   if (isRead) {
     propagateToServer(client, thread, async (adapter, m) => {
       if (m.external_message_id) await adapter.markAsRead(m.external_message_id);
-    }).catch(() => { /* @silent:teardown propagation is best-effort; the local flip already happened */ });
+    }, "serverFlags").catch(() => { /* @silent:teardown propagation is best-effort; the local flip already happened */ });
     await emitEvent(client, {
       eventTypeKey: "email.thread.read", moduleKey: MODULE, entityRef: ref(threadId),
       actorUserId: actor.user_id || null, payload: { messages: touched },
@@ -105,7 +105,7 @@ async function move(client, actor, threadId, folder) {
   if (dest) {
     propagateToServer(client, thread, async (adapter, m) => {
       if (adapter.moveMessage && m.external_message_id) await adapter.moveMessage(m.external_message_id, dest.provider_path);
-    }).catch(() => { /* @silent:teardown the local move stands even if the server refuses */ });
+    }, "folderMove").catch(() => { /* @silent:teardown the local move stands even if the server refuses */ });
   }
   await emitEvent(client, {
     eventTypeKey: "email.message.moved", moduleKey: MODULE, entityRef: ref(threadId),
@@ -119,16 +119,29 @@ async function move(client, actor, threadId, folder) {
  *
  * Requires the adapter, which requires credentials, which is why it is separated
  * out and always called without awaiting the caller's success on it.
+ *
+ * `requires` names the capability the operation needs (§3.5). Asking
+ * `capabilities()` rather than probing for the METHOD is the difference between
+ * "this mailbox type cannot move messages", which the UI can say, and a call
+ * that throws inside a best-effort catch and leaves the user staring at a
+ * button that appears to work and does nothing. Adapters are told to keep every
+ * key present precisely so this check is meaningful.
  */
-async function propagateToServer(client, thread, fn) {
+async function propagateToServer(client, thread, fn, requires = null) {
   const conn = await mailRepo.getConnection(client, thread.email_connection_id);
-  if (!conn || conn.status !== "CONNECTED") return;
+  if (!conn || conn.status !== "CONNECTED") return { skipped: "not_connected" };
   const { resolveAdapter } = require("./mail.service");
   const adapter = await resolveAdapter(client, conn);
+  const caps = typeof adapter.capabilities === "function" ? adapter.capabilities() : {};
+  if (requires && caps[requires] !== true) {
+    logger.debug({ requires, provider: conn.provider }, "[mail] server propagation not supported by this mailbox");
+    return { skipped: requires };
+  }
   for (const m of thread.messages || []) {
     try { await fn(adapter, m); }
     catch (err) { logger.debug({ err, message_id: m.email_message_id }, "[mail] server propagation skipped"); }
   }
+  return { propagated: (thread.messages || []).length };
 }
 
 /**
@@ -221,10 +234,13 @@ async function folders(client, actor, connectionId) {
 const labels = (client, actor) => repo.listLabels(client, actor.user_id);
 const createLabel = (client, actor, body) => repo.createLabel(client, actor.user_id, body);
 const deleteLabel = (client, actor, id) => repo.deleteLabel(client, actor.user_id, id);
-const timeline = (client, { entity_ref, client_id, limit } = {}) =>
-  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit });
+const timeline = (client, actor, { entity_ref, client_id, limit } = {}) =>
+  repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit, userId: actor && actor.user_id });
 
 module.exports = {
   MODULE, queryFrom, list, get, markRead, star, move, bulk, setStream, applyLabel,
   folders, labels, createLabel, deleteLabel, timeline,
+  // Exported for the capability gate's test — it is the one place that decides
+  // whether an operation reaches the mail server at all (§3.5).
+  propagateToServer,
 };

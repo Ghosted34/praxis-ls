@@ -55,13 +55,26 @@ beforeEach(() => {
 });
 
 describe("tab gating", () => {
-  test("an ordinary user sees only their own mailbox, and no tab strip", async () => {
+  /**
+   * This asserted "and no tab strip" until PR-5's surfaces landed.
+   *
+   * An ordinary user now has two tabs, because two of those surfaces are
+   * genuinely theirs: `workflow.listFollowups` filters on `f.user_id = $1`, so
+   * the follow-up list is their own pending boomerangs and nobody else's.
+   * Secure links went the other way — `secure-link.list` has no `created_by`
+   * filter and its labels name clients and invoices, so it is admin-only.
+   *
+   * What has NOT changed, and is what this test is really for: no admin surface
+   * leaks to a non-admin.
+   */
+  test("an ordinary user sees their own mailbox and their own follow-ups, and nothing administrative", async () => {
     caps.mockResolvedValue({ can_view: true, can_create: false, can_edit: false, can_administer: false, is_ceo: false });
     render(<CommsSetupPage />);
-    await waitFor(() => expect(screen.getByText("My mailbox")).toBeInTheDocument());
-    expect(screen.queryByRole("navigation", { name: /email setup sections/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Send points")).not.toBeInTheDocument();
-    expect(screen.queryByText("Mailboxes")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("My mailbox").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Follow-ups").length).toBeGreaterThan(0);
+    for (const adminOnly of ["Send points", "Mailboxes", "Response times", "Trust & archive", "Secure links", "Senders & channels"]) {
+      expect(screen.queryByText(adminOnly)).not.toBeInTheDocument();
+    }
   });
 
   test("an administrator gets the full strip", async () => {
@@ -69,7 +82,10 @@ describe("tab gating", () => {
     render(<CommsSetupPage />);
     const nav = await screen.findByRole("navigation", { name: /email setup sections/i });
     expect(nav).toBeInTheDocument();
-    for (const label of ["My mailbox", "Mailboxes", "Send points", "Senders & channels"]) {
+    for (const label of [
+      "My mailbox", "Follow-ups", "Mailboxes", "Secure links",
+      "Response times", "Trust & archive", "Send points", "Senders & channels",
+    ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });

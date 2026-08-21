@@ -212,8 +212,6 @@ async function markOne(dbName, { scope, file, force, dryRun }) {
 /**
  * The ledger key, in the EXACT form the migrator writes it.
  *
- * `applyTracked` keys on `path.relative(MIGRATIONS, f)` (migrator.js), which is
- * platform-native: `tenant/0483_x.sql` on Linux, `tenant\0483_x.sql` on Windows.
  * This script used to insert the `--file` argument verbatim, so a Windows
  * operator typing the forward-slash form from the usage line above wrote a row
  * the migrator could never match — and the script reported `recorded ✓` while
@@ -221,14 +219,23 @@ async function markOne(dbName, { scope, file, force, dryRun }) {
  * from "no-op" is worse than no tool: the operator re-runs migrate, gets the
  * identical error, and now distrusts the one thing that would have fixed it.
  *
- * `path.normalize` converts to the native separator on both platforms, which is
- * precisely what `path.relative` produces, so the two agree by construction
- * rather than by the operator having guessed the right slash.
+ * It then normalised to the NATIVE separator, because that is what
+ * `path.relative` handed the migrator. Both halves of that were one bug seen
+ * from two sides: the key was HOST-dependent, so a ledger written on Windows was
+ * unreadable on Linux and the entire set re-applied.
+ *
+ * `migrator.ledgerKey` now forces forward slashes on every platform, and this
+ * has to agree with it. Normalising to native here would put the bug straight
+ * back — on the one tool whose whole job is repairing the ledger.
+ *
+ * Backslashes are folded first so an operator may type either form and still
+ * land on the one the migrator writes.
  */
 // `arg()` returns `true` for a bare `--file` with no value, so this guards the
-// type as well as the separator — `path.normalize(true)` would throw a
-// TypeError instead of reaching the usage message below.
-const ledgerName = (file) => (typeof file === "string" ? path.normalize(file) : null);
+// type as well as the separator — normalising `true` would throw a TypeError
+// instead of reaching the usage message below.
+const ledgerName = (file) =>
+  typeof file === "string" ? path.posix.normalize(file.split("\\").join("/")) : null;
 
 async function main() {
   const scope = arg("scope");

@@ -1,0 +1,832 @@
+diff --git a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+index 68737fd..855aa36 100644
+--- a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
++++ b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+@@ -489,3 +489,103 @@ missing code: `mail.ocr` and `mail_ai` default OFF and need switching on per ten
+ requires `ai.vectorization`, without which threads are never embedded; and the vision and chat
+ vendors need credentials in the platform vendor store before either AI path does more than degrade
+ politely.
++
++---
++
++## 14. Third sweep — the classes the gates could not see
++
++§13 closed the four tracks and its own §13.4 recorded a worker that was registered and enqueued by
++nothing. That finding suggested the question this sweep asks: the orphan-table gate catches one KIND
++of declaration going unread. What are the others?
++
++Four kinds, swept: workers, event types, send points, columns. Two were clean. Two were not, and one
++of them is the largest single finding of the whole programme.
++
++### 14.1 The send-point binding layer was completely inert
++
++`mail_send_point` carries twenty-two rows. `sendpoint.service.resolve` implements the full tiered
++lookup — a binding for this send point AND this corporate entity, then tenant-wide, then the legacy
++section, then the purpose identity. `email.service.resolveMail` accepts a `sendPoint` and asks the
++registry first. The console lets a tenant bind an identity to every row, and the client API to do it
++exists.
++
++**No caller in `src/` ever passed one.** A repo-wide scan for a literal `sendPoint:` value outside
++the mail composer's own `"user.compose"` default returned nothing. Every system-email caller passed
++`purpose: "NOTIFICATIONS"` and stopped, so tiers 1 and 2 — the two the feature exists for — were
++unreachable.
++
++Nine rows declared `is_wired = true`, above a comment reading *"the eight true rows below were read
++off the code, not guessed"*, naming the exact files. Two were checked directly: `app_user.service`
++(auth.password_reset) and `template.service` (document.share). Neither did it.
++
++This is worse than an orphan table. A table nobody reads is invisible; this actively invited the
++configuration, recorded the tenant's choice, and ignored it. Somebody routing "Sign-in code" to
++`security@` and "Document sent to a party" to `documents@` got neither, with no symptom — mail still
++went out, from a plausible address.
++
++Eight send points are now passed at their call sites, `email-send.js` carries the key through Redis
++so campaign and scheduled-report sends resolve it in the worker, and `document.share` passes
++`entityId` so a group sends each company's paperwork from that company's address.
++
++The change is safe to ship live: tiers 3 and 4 are byte-for-byte what `email.service` already did, so
++a tenant who has bound nothing sends from precisely the address they sent from yesterday. Passing a
++key can only ever ADD an answer above the existing ones.
++
++The ninth, `auth.otp`, is a different problem: it claims a sender that does not exist. Two-factor
++sign-in is TOTP through an authenticator app, and every other "one-time" in that module is a one-time
++*link*. Migration 10773 flips it to `is_wired = false` rather than deleting the row — the row is
++still where the binding belongs the day an emailed code exists, and deleting it would silently drop
++any binding a tenant has already made.
++
++### 14.2 Four event types were seeded, described, and emitted by nothing
++
++Each ships with an English and a French description that appears in the tenant's event catalogue and
++in the notification-rule builder. A key an administrator can select that never fires is a rule that
++silently never runs.
++
++| Key | Was | Now |
++| --- | --- | --- |
++| `email.thread.replied` | The ingest ternary emitted `email.thread.created` on one branch and the pre-thread engine's `email.received` on the other. Two keys for one moment, and the one in the rule builder was the one that never fired. | Symmetric, both on the thread grain. `categoryFor` keys on the domain, so notification routing is unchanged. |
++| `email.attachment.filed` | Filing emitted only `document.captured`. | Both. They are different statements: one says a document exists on a record (what the vault listens to), the other says an inbound attachment was classified and a human confirmed it — the mail provenance a compliance officer wants. |
++| `email.draft.saved` | Nothing. | Once per draft, on creation — which is what 10739's own description promises. Per-save would bury the log under one conversation's typing. |
++| `document.share` | Matched the sweep's pattern but is a send point, not an event. | Covered by §14.1. |
++
++### 14.3 `ai-vision` was a worker for a screen that was never built
++
++Registered in `workers.js`, enqueued by nothing. It fed a document-scan turn to the assistant — and
++the assistant has no image entry point: no route, no validator, no upload control. No job could ever
++have reached it.
++
++Removed rather than left with an escape hatch. The capability is not gone: `services/ai/vision.service`
++has three live callers — company-profile refresh, CV scoring, and mail's attachment extraction
++(§8.6), which is doc-vision delivered somewhere a person can actually reach it.
++
++`scheduled-report` is also enqueued by nothing in-app, and that one is *by design*: its handler's
++header names an external cron or `POST /reports/scheduled/run-due`, and both exist. It is listed in
++the new sweep as externally driven, with a size ceiling on the list. Worth a decision from the lead —
++it is the only periodic job not in `scheduleRecurring()`.
++
++### 14.4 Two classes came back clean
++
++Every one of the 141 columns added by the mail-programme migrations is read. (A first pass flagged
++`checksum_sha256`; the regex had truncated it at the digits.)
++
++And §12.4's signature-cache fix did land — via `repo.deleteAllIdentityCached` rather than the
++narrower `deleteCachedForIdentity` the audit named. The behaviour is correct; only the unused helper
++remains, along with `mail.repo.findClientByEmail` / `findDossierByRefs`, superseded by `binding/`.
++
++### 14.5 The sweep is now a gate
++
++`tests/security/orphan-wiring-sweep.test.js` asks the general question rather than the table-shaped
++one: every registered worker must have a producer, and every event type the programme seeds must be
++emitted. `tests/security/mail-send-point-wiring.test.js` holds the registry to its own `is_wired`
++claim, and refuses a bare mention of a key as evidence — the gate guards itself with a row that is
++named in prose and sent by nothing.
++
++Four sweeps now stand, one per kind of declaration: tables, workers + events, send points, feature
++flags. Each carries a named, size-capped allowance list, because an allowance that grows is the gate
++being routed around.
++
++### 14.6 Verification
++
++5,091 backend tests across 332 suites, 0 lint errors, column, idempotency and citext gates OK.
+diff --git a/migrations/tenant/10773_send_point_auth_otp_unwired.sql b/migrations/tenant/10773_send_point_auth_otp_unwired.sql
+new file mode 100644
+index 0000000..43b2af0
+--- /dev/null
++++ b/migrations/tenant/10773_send_point_auth_otp_unwired.sql
+@@ -0,0 +1,23 @@
++-- §3.5 — `auth.otp` claims a sender that does not exist.
++--
++-- 10726 seeded nine rows with `is_wired = true`, above a comment reading "the
++-- eight true rows below were read off the code, not guessed", and naming
++-- src/modules/security/app_user/app_user.service.js as auth.otp's caller.
++--
++-- There is no emailed one-time code anywhere in the product. Two-factor sign-in
++-- is TOTP through an authenticator app (`authenticator.keyuri`, 0300-era), and
++-- every other "one-time" in that module is a one-time *link* — the password
++-- reset, which is its own send point and is now wired. So this row offered an
++-- administrator a binding for mail that is never sent.
++--
++-- Flipped rather than deleted. The row is still the right place to hang the
++-- binding on the day an emailed code exists, and deleting it would silently
++-- drop any binding a tenant has already made against it; `is_wired = false`
++-- makes the console show it as not-yet-sending, which is the true statement.
++UPDATE mail_send_point
++   SET is_wired = false,
++       description_en = 'No emailed code is sent today — two-factor sign-in uses an authenticator app. Reserved for when one exists.',
++       description_fr = 'Aucun code n''est envoyé par courriel aujourd''hui — la double authentification utilise une application. Réservé pour plus tard.'
++ WHERE send_point_key = 'auth.otp';
++-- DOWN
++--   UPDATE mail_send_point SET is_wired = true WHERE send_point_key = 'auth.otp';
+diff --git a/src/jobs/handlers/ai-vision.js b/src/jobs/handlers/ai-vision.js
+deleted file mode 100755
+index 235b744..0000000
+--- a/src/jobs/handlers/ai-vision.js
++++ /dev/null
+@@ -1,32 +0,0 @@
+-/**
+- * Worker job: document image (BL / invoice / receipt) → structured fields →
+- * prefilled assistant turn (AI_ARCHITECTURE §3/§5). Job data: { tenantMeta, env,
+- * user, imageBase64, mimeType, prompt, conversationId }. Governance-gated on the
+- * `doc_vision` feature. The extracted fields are handed to the orchestrator so any
+- * resulting write still goes through propose→confirm.
+- */
+-"use strict";
+-const registry = require("../../services/tenant/registry.service");
+-const vision = require("../../services/ai/vision.service");
+-const orchestrator = require("../../services/ai/orchestrator.service");
+-const governance = require("../../modules/ai/governance/governance.service");
+-const platformVendors = require("../../services/platform/ai-vendor.service");
+-
+-module.exports = async function aiVision(job) {
+-  const { tenantMeta, env = "live", user, imageBase64, mimeType, prompt, conversationId } = job.data || {};
+-  if (!tenantMeta || !user || !imageBase64) throw new Error("ai-vision needs tenantMeta + user + imageBase64");
+-
+-  return registry.withTenantConnection(tenantMeta, env, async (c) => {
+-    const gate = await governance.canUseFeature(c, { userId: user.user_id, featureKey: "doc_vision" });
+-    if (!gate.allowed) return { blocked: true, reason: gate.reason };
+-
+-    const vendor = await platformVendors.getConfig("gemini");
+-    const image = Buffer.from(imageBase64, "base64");
+-    const { fields, provider } = await vision.extract({ image, mimeType, prompt, vendor });
+-    await governance.recordUsage(c, { userId: user.user_id, featureKey: "doc_vision", conversationId, provider, callType: "vision" });
+-
+-    const message = `A document was scanned. Extracted fields: ${JSON.stringify(fields)}. Propose the appropriate action to record it.`;
+-    const turn = await orchestrator.ask({ client: c, user, conversationId, message, allowed: ["normal"], feature: "doc_vision" });
+-    return { extracted: fields, ...turn };
+-  });
+-};
+diff --git a/src/jobs/handlers/email-send.js b/src/jobs/handlers/email-send.js
+index 0e7aab7..ad94c97 100755
+--- a/src/jobs/handlers/email-send.js
++++ b/src/jobs/handlers/email-send.js
+@@ -1,13 +1,33 @@
+ /** Worker job: send one email from a purpose's verified identity via the tenant's
+  *  SMTP. Job data: { tenantMeta, env, to, subject, html, text, from, replyTo,
+- *  attachments, purpose, moduleKey }. `attachments` are nodemailer descriptors
+- *  ({filename, content, encoding, contentType}) — scheduled reports pass rendered
+- *  csv/xlsx as base64 so the job stays JSON-serialisable. */
++ *  attachments, purpose, moduleKey, sendPoint, entityId }. `attachments` are
++ *  nodemailer descriptors ({filename, content, encoding, contentType}) —
++ *  scheduled reports pass rendered csv/xlsx as base64 so the job stays
++ *  JSON-serialisable.
++ *
++ *  ── WHY `sendPoint` HAD TO BE ADDED HERE ───────────────────────────────────
++ *
++ *  Every queued send — campaigns, scheduled reports — landed on this handler,
++ *  which resolved the sender from the broad `purpose` alone. So a tenant could
++ *  bind "Marketing campaign" to marketing@ in the console, have the binding
++ *  stored, and watch every campaign go out from the notifications address
++ *  anyway: the key never survived the trip through Redis.
++ *
++ *  Resolved HERE rather than at enqueue time on purpose. The job may sit in the
++ *  queue for minutes; freezing the sender at enqueue would mean a binding
++ *  changed in between is ignored by mail that has not left yet, which is the
++ *  opposite of what an administrator changing it expects. */
+ "use strict";
+ const registry = require("../../services/tenant/registry.service");
+ const email = require("../../services/email.service");
+ module.exports = async function emailSend(job) {
+-  const { tenantMeta, env = "live", to, subject, html, text, from, replyTo, attachments, purpose, moduleKey } = job.data || {};
++  const {
++    tenantMeta, env = "live", to, subject, html, text, from, replyTo,
++    attachments, purpose, moduleKey, sendPoint = null, entityId = null,
++  } = job.data || {};
+   if (!tenantMeta) throw new Error("email job needs tenantMeta (sender identity is per-tenant/per-purpose)");
+-  return registry.withTenantConnection(tenantMeta, env, (c) => email.send(c, { to, subject, html, text, from, replyTo, attachments, purpose, moduleKey }));
++  return registry.withTenantConnection(tenantMeta, env, (c) => email.send(c, {
++    to, subject, html, text, from, replyTo, attachments, purpose, moduleKey,
++    sendPoint, entityId,
++  }));
+ };
+diff --git a/src/jobs/workers.js b/src/jobs/workers.js
+index 3cf1266..d300175 100755
+--- a/src/jobs/workers.js
++++ b/src/jobs/workers.js
+@@ -31,7 +31,17 @@ const PROCESSORS = [
+   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
+   { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
+   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
+-  { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
++  // `ai-vision` was registered here and enqueued by nothing. It fed a
++  // document-scan turn to the assistant — but the assistant has no image entry
++  // point: no route, no validator, no upload control, nothing. It was a worker
++  // for a surface that was never built, and the general orphan sweep
++  // (tests/security/orphan-wiring-sweep.test.js) is what finally said so.
++  //
++  // The CAPABILITY is not gone. `services/ai/vision.service` is alive and has
++  // three real callers — company-profile refresh, CV scoring, and mail's
++  // attachment extraction (§8.6), which is doc-vision delivered somewhere a
++  // person can actually reach it. Restoring the chat flow means building its
++  // route first, at which point this handler is a `git show` away.
+   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
+   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
+   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
+diff --git a/src/modules/documents/template/template.service.js b/src/modules/documents/template/template.service.js
+index 17510ca..6f7f63a 100755
+--- a/src/modules/documents/template/template.service.js
++++ b/src/modules/documents/template/template.service.js
+@@ -1035,6 +1035,11 @@ async function send(client, { docType, entityId, recordId, to, subject, actor =
+ 
+   await emailSvc.send(client, {
+     to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70",
++    // §3.5 — every generated document emailed from its record. This is the send
++    // point a group most wants bound PER CORPORATE ENTITY, so each company's
++    // paperwork leaves from that company's address; `entityId` is what lets
++    // `sendpoint.service` answer at that tier rather than tenant-wide.
++    sendPoint: "document.share", entityId: entityId || null,
+     // Record the source document on the send-log row (e.g. `invoice:<id>`).
+     entityRef: entityId || recordId ? `${String(docType).toLowerCase()}:${entityId || recordId}` : null,
+   });
+diff --git a/src/modules/mail/binding/intake.service.js b/src/modules/mail/binding/intake.service.js
+index 1096677..a95fda9 100644
+--- a/src/modules/mail/binding/intake.service.js
++++ b/src/modules/mail/binding/intake.service.js
+@@ -202,6 +202,25 @@ async function accept(client, classificationId, { docTypeCode = null, entityRef
+     actorUserId: actor.user_id || null,
+     payload: { doc_id: k.vault_id, doc_type_code: code, from: "MAIL" },
+   }).catch(() => { /* @silent:storage the vault row is the outcome */ });
++
++  // The MAIL-side event, which is a different statement from the vault one.
++  //
++  // `document.captured` says a document now exists on a record — it is what the
++  // vault and Client 360 listen to, and it is emitted the same way by every
++  // other capture path in the product. `email.attachment.filed` (10749) says
++  // something only true here: an INBOUND ATTACHMENT was classified and a human
++  // confirmed it. Seeded, described, and emitted by nothing, so a rule watching
++  // for mail-originated filings — the audit trail a compliance officer actually
++  // wants — had nothing to watch.
++  //
++  // Both, not one: collapsing them would either lose the mail provenance or
++  // make the vault's listener fire on a key it does not know.
++  await emitEvent(client, {
++    eventTypeKey: "email.attachment.filed", moduleKey: M,
++    entityRef: `email_attachment:${k.email_attachment_id}`,
++    actorUserId: actor.user_id || null,
++    payload: { doc_id: k.vault_id, doc_type_code: code, entity_ref: ref || null },
++  }).catch(() => { /* @silent:storage */ });
+   await audit(client, {
+     actorUserId: actor.user_id || null, action: "mail.document.filed",
+     moduleKey: M, entityRef: ref || `document_vault:${k.vault_id}`,
+diff --git a/src/modules/mail/mail/mail.service.js b/src/modules/mail/mail/mail.service.js
+index 7b6dfc2..b51045d 100755
+--- a/src/modules/mail/mail/mail.service.js
++++ b/src/modules/mail/mail/mail.service.js
+@@ -478,7 +478,16 @@ async function syncConnection(client, id, ctx = {}) {
+         // being down must not be what stops a mailbox syncing.
+         await semantic.onThreadUpdated(client, row.thread_id);
+         await emitEvent(client, {
+-          eventTypeKey: row.is_new_thread ? "email.thread.created" : events.RECEIVED,
++          // Symmetric, on the THREAD grain, matching the family 10735 seeds.
++          //
++          // The else branch used to emit `email.received` — the pre-thread
++          // engine's message-grain key — which left `email.thread.replied`
++          // seeded, described as "a new message joined an existing
++          // conversation", and emitted by nothing. The two are synonyms for the
++          // same moment and only one of them can be the answer, so a rule on
++          // "somebody replied" could never fire. `categoryFor` keys on the
++          // domain (`email`), so notification routing is unchanged by this.
++          eventTypeKey: row.is_new_thread ? "email.thread.created" : "email.thread.replied",
+           moduleKey: events.MODULE,
+           entityRef: events.msgRef(row.email_message_id),
+           actorUserId: null,
+diff --git a/src/modules/mail/mail/outbox.service.js b/src/modules/mail/mail/outbox.service.js
+index cf2a72b..18c150e 100755
+--- a/src/modules/mail/mail/outbox.service.js
++++ b/src/modules/mail/mail/outbox.service.js
+@@ -107,6 +107,25 @@ async function saveDraft(client, actor, input = {}) {
+   }
+ 
+   const row = await repo.upsertDraft(client, actor.user_id, { ...input, ...rendered });
++
++  // ONCE PER DRAFT, not per keystroke — which is what 10739's own description
++  // promises and what makes the event usable at all. The composer autosaves
++  // every few seconds; an event per save would bury the log under one
++  // conversation's typing.
++  //
++  // "New" is the absence of an incoming id: the composer sends none on the
++  // first save and echoes it back on every save after. Nothing else in the
++  // response distinguishes them, and asking the repo would be a second query
++  // to learn something the caller already knew.
++  if (!input.email_draft_id && row && row.email_draft_id) {
++    await emitEvent(client, {
++      eventTypeKey: "email.draft.saved", moduleKey: MODULE,
++      entityRef: `email_draft:${row.email_draft_id}`,
++      actorUserId: actor.user_id || null,
++      payload: { thread_id: row.email_thread_id || null, kind: row.kind || null },
++    }).catch(() => { /* @silent:storage the draft row is the outcome, not its event */ });
++  }
++
+   return { ...row, warnings };
+ }
+ 
+diff --git a/src/modules/notification/notification.service.js b/src/modules/notification/notification.service.js
+index 9b72146..5df939e 100755
+--- a/src/modules/notification/notification.service.js
++++ b/src/modules/notification/notification.service.js
+@@ -68,6 +68,11 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body
+       text: body ? `${title}\n\n${body}` : title,
+       purpose: "NOTIFICATIONS",
+       moduleKey: events.MODULE,
++      // Security notices are a different send point from ordinary alerts,
++      // because they are the ones a tenant most often wants coming from an
++      // address people recognise — and they are also the ones nobody can
++      // silence, so the From matters more, not less.
++      sendPoint: isSecurity ? "notification.security" : "notification.alert",
+     });
+   } catch (err) {
+     logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
+@@ -162,6 +167,7 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body =
+         text: body ? `${title}\n\n${body}` : title,
+         purpose: "NOTIFICATIONS",
+         moduleKey: events.MODULE,
++        sendPoint: isSecurity ? "notification.security" : "notification.alert",
+       });
+     } catch (err) {
+       logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
+diff --git a/src/modules/portal_auth/portal_auth.service.js b/src/modules/portal_auth/portal_auth.service.js
+index aa86d12..f30cbf9 100755
+--- a/src/modules/portal_auth/portal_auth.service.js
++++ b/src/modules/portal_auth/portal_auth.service.js
+@@ -151,6 +151,11 @@ async function sendInviteEmail(client, { to, name, token, origin, purpose, tenan
+     text,
+     purpose: "NOTIFICATIONS",
+     moduleKey: MODULE,
++    // One send point for both halves: the registry has `portal.invite`, and a
++    // portal password reset goes to the same audience from the same address.
++    // Splitting them would mean a registry row a tenant could bind and we would
++    // then have to keep two bindings in step for one conversation.
++    sendPoint: "portal.invite",
+   });
+ }
+ 
+diff --git a/src/modules/sales/inbound_intake/inbound_intake.service.js b/src/modules/sales/inbound_intake/inbound_intake.service.js
+index 06b9eb5..68df4ad 100755
+--- a/src/modules/sales/inbound_intake/inbound_intake.service.js
++++ b/src/modules/sales/inbound_intake/inbound_intake.service.js
+@@ -199,6 +199,10 @@ async function respond(client, { id, body, subject = null, actor = {} }) {
+       purpose: MAIL_PURPOSE,
+       moduleKey: events.MODULE,
+       entityRef: ref(id),
++      // §3.5. A reply to a website enquiry is the first thing a prospect ever
++      // receives from us, and it is the send point a tenant most reliably wants
++      // on a sales address rather than the generic notifications one.
++      sendPoint: "intake.reply",
+     });
+   } catch (err) {
+     await repo.settleResponse(client, attempt.contact_enquiry_response_id, {
+diff --git a/src/modules/sales/marketing_campaign/marketing_campaign.service.js b/src/modules/sales/marketing_campaign/marketing_campaign.service.js
+index 8588170..ee13a32 100755
+--- a/src/modules/sales/marketing_campaign/marketing_campaign.service.js
++++ b/src/modules/sales/marketing_campaign/marketing_campaign.service.js
+@@ -343,6 +343,10 @@ async function sendCampaign(client, { id, templateId, tenantMeta, env = "live",
+       subject: renderMerge(subjectTpl, vars),
+       html: renderMerge(htmlTpl, vars, { html: true }),
+       from, purpose: "NOTIFICATIONS", moduleKey: events.MODULE,
++      // Carried on the JOB, not resolved here: the send happens in the worker,
++      // and resolving the sender now would freeze an answer that a binding
++      // change between queueing and sending should be allowed to move.
++      sendPoint: "campaign.send",
+     });
+     queued += 1;
+   }
+diff --git a/src/modules/security/app_user/app_user.service.js b/src/modules/security/app_user/app_user.service.js
+index e99d6b9..5b987ea 100755
+--- a/src/modules/security/app_user/app_user.service.js
++++ b/src/modules/security/app_user/app_user.service.js
+@@ -606,6 +606,13 @@ async function sendResetEmail(client, { to, name, token, origin }) {
+     text,
+     purpose: "NOTIFICATIONS",
+     moduleKey: events.MODULE,
++    // §3.5 — the SEND POINT, not just the broad purpose. `mail_send_point`
++    // declares this row `is_wired = true` and until now nothing passed the key,
++    // so a tenant who bound "Password reset" to security@ had their choice
++    // recorded and ignored. Additive: `sendpoint.service` falls through to the
++    // section binding and then the purpose identity exactly as before when no
++    // binding exists, so this cannot re-route a tenant who has configured none.
++    sendPoint: "auth.password_reset",
+   });
+ }
+ 
+diff --git a/src/modules/smartcomm/smartcomm.config.service.js b/src/modules/smartcomm/smartcomm.config.service.js
+index 70a21ed..60e49b4 100755
+--- a/src/modules/smartcomm/smartcomm.config.service.js
++++ b/src/modules/smartcomm/smartcomm.config.service.js
+@@ -110,6 +110,10 @@ async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
+     const info = await email.send(client, {
+       to,
+       purpose,
++      // The test must go out the way real mail does, or it tests something the
++      // product never does. Passing the send point means the address this
++      // proves is the address a bound tenant will actually send from.
++      sendPoint: "system.test",
+       subject: "Praxis test email — your outbound email is working",
+       text:
+         "This is a test message from your Praxis tenant.\n\n"
+diff --git a/tests/security/mail-send-point-wiring.test.js b/tests/security/mail-send-point-wiring.test.js
+new file mode 100644
+index 0000000..195c396
+--- /dev/null
++++ b/tests/security/mail-send-point-wiring.test.js
+@@ -0,0 +1,159 @@
++/**
++ * A SEND POINT THAT CLAIMS TO BE WIRED MUST HAVE A CALLER (§3.5).
++ *
++ * ── THE FINDING ─────────────────────────────────────────────────────────────
++ *
++ * `email.service.resolveMail` has accepted a `sendPoint` since PR-0, and
++ * `sendpoint.service.resolve` implements the whole tiered lookup — a binding
++ * for this send point and this corporate entity, then tenant-wide, then the
++ * legacy section, then the purpose identity. The registry was seeded with
++ * twenty-two rows. The console lets a tenant bind an identity to each one. The
++ * client API to do it exists.
++ *
++ * NO CALLER IN `src/` EVER PASSED ONE.
++ *
++ * A repo-wide scan for a literal `sendPoint:` value outside the mail composer's
++ * own `"user.compose"` default returned nothing. Every system-email caller
++ * passed `purpose: "NOTIFICATIONS"` and stopped there, so tiers 1 and 2 — the
++ * two the whole feature exists for — could never be reached. A tenant who
++ * routed "Password reset" to security@ and "Document sent to a party" to
++ * documents@ had both choices recorded and ignored.
++ *
++ * Nine of those rows declared `is_wired = true`, above a comment reading "the
++ * eight true rows below were read off the code, not guessed", naming the exact
++ * files. Those files did not do it. That is the audit's headline defect one
++ * layer up, and worse than an orphan table, because a table nobody reads is
++ * invisible while this actively invited the configuration.
++ *
++ * ── WHY THE GATE READS THE SOURCE ───────────────────────────────────────────
++ *
++ * The same reason as the orphan-table sweep: no functional test can see this.
++ * Every send still worked, from a plausible address, and the only symptom was a
++ * binding that did nothing — which looks identical to a tenant who never made
++ * one.
++ */
++"use strict";
++
++const fs = require("fs");
++const path = require("path");
++
++const ROOT = path.resolve(__dirname, "../..");
++const MIGRATIONS = path.join(ROOT, "migrations/tenant");
++
++/** The registry as the migrations leave it: seed, then any later UPDATE. */
++function registry() {
++  const seed = fs.readFileSync(path.join(MIGRATIONS, "10726_mail_send_point.sql"), "utf8");
++  const block = seed.slice(
++    seed.indexOf("INSERT INTO mail_send_point\n"),
++    seed.indexOf("INSERT INTO mail_send_point_binding"),
++  );
++  const rows = new Map();
++  for (const m of block.matchAll(/\(\s*'([a-z0-9_.]+)'[\s\S]*?,\s*(true|false),\s*\d+\)/g)) {
++    rows.set(m[1], m[2] === "true");
++  }
++  // Later migrations may correct a claim — 10773 does exactly that for
++  // `auth.otp`. Reading only the seed would make this gate assert against a
++  // state the database has not been in since.
++  for (const f of fs.readdirSync(MIGRATIONS).sort()) {
++    if (f === "10726_mail_send_point.sql") continue;
++    // The `-- DOWN` block is a rollback recipe, not a statement that has run.
++    // Reading it as one made 10773's down-migration ("SET is_wired = true")
++    // undo the up-migration this gate was checking for, in the gate only.
++    const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8")
++      .split(/^-- DOWN\s*$/m)[0]
++      .replace(/^\s*--.*$/gm, "");
++    if (!/UPDATE mail_send_point\b/.test(sql)) continue;
++    for (const m of sql.matchAll(/UPDATE mail_send_point[\s\S]*?SET[\s\S]*?is_wired\s*=\s*(true|false)[\s\S]*?WHERE send_point_key = '([a-z0-9_.]+)'/g)) {
++      rows.set(m[2], m[1] === "true");
++    }
++  }
++  return rows;
++}
++
++const SRC = path.join(ROOT, "src");
++const allSrc = (function walk(dir, acc = []) {
++  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++    const p = path.join(dir, e.name);
++    if (e.isDirectory()) walk(p, acc);
++    else if (e.name.endsWith(".js")) acc.push(fs.readFileSync(p, "utf8"));
++  }
++  return acc;
++})(SRC).join("\n");
++
++const ROWS = registry();
++const WIRED = [...ROWS].filter(([, w]) => w).map(([k]) => k);
++
++describe("the send-point registry describes the code", () => {
++  test("the registry is readable and has the rows this gate thinks it does", () => {
++    expect(ROWS.size).toBeGreaterThan(15);
++    expect(ROWS.has("document.share")).toBe(true);
++  });
++
++  /**
++   * The key must appear as a LITERAL inside a `sendPoint:` expression.
++   *
++   * Not `allSrc.includes(key)` — the string turns up in comments and in the
++   * registry's own docs, and a gate that accepts a mention accepts a send point
++   * nobody passes. Not a bare `sendPoint: "<key>"` either: the notification
++   * pair is chosen by a ternary on the security flag, which is exactly right
++   * and would fail an equality check. So: the assignment, then the literal
++   * within the same expression.
++   */
++  const passes = (key) =>
++    new RegExp(`sendPoint:[^;\\n]{0,160}"${key.replace(/\./g, "\\.")}"`).test(allSrc);
++
++  test.each(WIRED)("%s claims is_wired and a caller passes it", (key) => {
++    expect(passes(key)).toBe(true);
++  });
++
++  test("a mere mention of the key does not satisfy the gate", () => {
++    // Guarding the guard: `invoice.issued` is a real registry row that nothing
++    // sends yet, and it appears in prose in sendpoint.service's header.
++    expect(passes("invoice.issued")).toBe(false);
++  });
++
++  test("auth.otp does not claim a sender the product does not have", () => {
++    // Two-factor sign-in is TOTP through an authenticator app. There is no
++    // emailed code, so there is nothing for a binding to route.
++    expect(ROWS.get("auth.otp")).toBe(false);
++  });
++
++  test("the queue handler carries the key through Redis", () => {
++    const handler = fs.readFileSync(path.join(ROOT, "src/jobs/handlers/email-send.js"), "utf8");
++    // Campaigns and scheduled reports send from the worker. Without this, their
++    // bindings are stored and dropped on the way to the send.
++    expect(handler).toMatch(/sendPoint/);
++    expect(handler).toMatch(/entityId/);
++  });
++
++  test("document.share passes the corporate entity, not just the key", () => {
++    const tpl = fs.readFileSync(
++      path.join(ROOT, "src/modules/documents/template/template.service.js"), "utf8",
++    );
++    // The per-entity tier is the reason this registry has two binding levels: a
++    // group sends each company's paperwork from that company's address. Passing
++    // the key without the entity collapses it to tenant-wide.
++    expect(tpl).toMatch(/sendPoint: "document\.share", entityId:/);
++  });
++});
++
++describe("passing a send point cannot re-route a tenant who has bound none", () => {
++  test("the resolver still falls through to the section and the purpose", () => {
++    const svc = fs.readFileSync(
++      path.join(ROOT, "src/modules/mail/mail/sendpoint.service.js"), "utf8",
++    );
++    // This is what makes the change above safe to ship to live tenants: tiers 3
++    // and 4 are exactly what `email.service` did before, so a tenant with no
++    // bindings sends from precisely the address they sent from yesterday.
++    expect(svc).toMatch(/LEGACY_SECTION/);
++    expect(svc).toMatch(/LEGACY_PURPOSE/);
++  });
++
++  test("email.service asks the registry first and keeps everything below it", () => {
++    const svc = fs.readFileSync(path.join(ROOT, "src/services/email.service.js"), "utf8");
++    expect(svc).toMatch(/if \(sendPoint\)/);
++    // A null send point must remain a no-op rather than an error: most sends in
++    // the product still have no registry row, and they must keep working.
++    expect(svc).toMatch(/sendPoint = null/);
++  });
++});
+diff --git a/tests/security/orphan-wiring-sweep.test.js b/tests/security/orphan-wiring-sweep.test.js
+new file mode 100644
+index 0000000..a1efeb4
+--- /dev/null
++++ b/tests/security/orphan-wiring-sweep.test.js
+@@ -0,0 +1,147 @@
++/**
++ * THE ORPHAN SWEEP, GENERALISED.
++ *
++ * ── WHY THERE ARE NOW THREE OF THESE ────────────────────────────────────────
++ *
++ * `mail-orphan-sweep.test.js` catches a TABLE that no code reads. It caught
++ * eleven. Then the commit that emptied its escape hatch introduced an orphan
++ * WORKER — `mail-ocr-extract`, registered in `workers.js` and enqueued by
++ * nothing — which that gate could not see, because a worker is not a table.
++ * A third sweep then found orphan EVENT TYPES and an entire orphan
++ * configuration layer (`mail-send-point-wiring.test.js` holds that one).
++ *
++ * The pattern is always the same shape and always invisible to functional
++ * tests: something is DECLARED in a place that reads as authoritative — a
++ * migration, a worker registry, an event catalogue — and nothing in the running
++ * product refers to it. Every test passes. The feature is absent.
++ *
++ * So this file stops asking "is this table read?" and asks the general
++ * question: for each kind of declaration the product makes, does the code that
++ * would act on it exist?
++ *
++ * ── THESE GATES DESCRIBE, THEY DO NOT ASPIRE ────────────────────────────────
++ *
++ * Each allowance below names a specific thing that is deliberately unwired, and
++ * says why. Adding a name is a claim someone has to defend in review; removing
++ * one is what building the thing looks like. A list that grows is the gate
++ * being routed around, so each has a size ceiling.
++ */
++"use strict";
++
++const fs = require("fs");
++const path = require("path");
++
++const ROOT = path.resolve(__dirname, "../..");
++const SRC = path.join(ROOT, "src");
++
++const jsFiles = (function walk(dir, acc = []) {
++  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++    const p = path.join(dir, e.name);
++    if (e.isDirectory()) walk(p, acc);
++    else if (e.name.endsWith(".js")) acc.push(p);
++  }
++  return acc;
++})(SRC);
++const allSrc = jsFiles.map((p) => fs.readFileSync(p, "utf8")).join("\n");
++
++/* ── Workers ──────────────────────────────────────────────────────────────── */
++
++describe("every registered worker has a producer", () => {
++  const workers = fs.readFileSync(path.join(SRC, "jobs/workers.js"), "utf8");
++  const names = [...workers.matchAll(/name:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
++
++  /**
++   * `scheduled-report` is driven from OUTSIDE the app.
++   *
++   * Its handler's own header says so: "the periodic trigger (an app
++   * scheduled-task or external cron) enqueues one job per live tenant, or
++   * POST /reports/scheduled/run-due drives a single tenant directly." Both of
++   * those are real — the route exists — so this is a deployment decision rather
++   * than a missing call. It is the only periodic job not registered in
++   * `scheduleRecurring()`, which is worth knowing about it.
++   */
++  const EXTERNALLY_DRIVEN = new Set(["scheduled-report"]);
++
++  test("the registry is readable and has the workers this gate thinks it does", () => {
++    expect(names.length).toBeGreaterThan(20);
++    expect(names).toContain("mail-ocr-extract");
++  });
++
++  test("nothing is registered and never enqueued", () => {
++    const orphans = names
++      .filter((n) => !EXTERNALLY_DRIVEN.has(n))
++      .filter((n) => !new RegExp(`enqueue\\(\\s*\\n?\\s*"${n}"`).test(allSrc));
++    // A handler file that no code enqueues is a feature that exists in the tree
++    // and not in the product — and `workers.js` is exactly where someone goes to
++    // check that a job exists, which is why registration alone reads as done.
++    expect(orphans).toEqual([]);
++  });
++
++  test("the externally-driven list stays short and stays honest", () => {
++    expect(EXTERNALLY_DRIVEN.size).toBeLessThanOrEqual(2);
++    for (const n of EXTERNALLY_DRIVEN) {
++      // If one of these acquires an in-app producer, it should leave the list
++      // rather than sit here claiming a deployment dependency it no longer has.
++      expect(new RegExp(`enqueue\\(\\s*\\n?\\s*"${n}"`).test(allSrc)).toBe(false);
++      expect(names).toContain(n);
++    }
++  });
++});
++
++/* ── Event types ──────────────────────────────────────────────────────────── */
++
++describe("every event type the mail programme seeds is emitted", () => {
++  const MIGRATIONS = path.join(ROOT, "migrations/tenant");
++  const files = fs.readdirSync(MIGRATIONS).filter((f) => /^107\d\d_/.test(f));
++  const sql = files
++    .map((f) => fs.readFileSync(path.join(MIGRATIONS, f), "utf8"))
++    // The `-- DOWN` block lists the same keys in a DELETE. Reading it would
++    // make every retired key look seeded.
++    .map((s) => s.split(/^-- DOWN\s*$/m)[0])
++    .join("\n");
++
++  const keys = [...new Set(
++    [...sql.matchAll(/'((?:mail|email|document|signature)\.[a-z_.]+)'/g)].map((m) => m[1]),
++  )].sort();
++
++  /**
++   * `document.share` is a SEND POINT key, not an event type — it lives in
++   * `mail_send_point`, and `mail-send-point-wiring.test.js` is the gate that
++   * holds it to account. It matches the pattern here only because send points
++   * and events share a dotted vocabulary.
++   */
++  const NOT_AN_EVENT = new Set(["document.share"]);
++
++  test("the migrations really do seed the keys this gate thinks they do", () => {
++    expect(keys.length).toBeGreaterThan(20);
++    expect(keys).toContain("email.thread.replied");
++  });
++
++  test("no key is seeded, described, and emitted by nothing", () => {
++    const dead = keys
++      .filter((k) => !NOT_AN_EVENT.has(k))
++      .filter((k) => !allSrc.includes(k));
++    // Each of these ships with an English and a French description that appears
++    // in the tenant's event catalogue and in the notification-rule builder. A
++    // key an administrator can select and that never fires is a rule that
++    // silently never runs.
++    expect(dead).toEqual([]);
++  });
++
++  test("the not-an-event list stays short", () => {
++    expect(NOT_AN_EVENT.size).toBeLessThanOrEqual(2);
++  });
++});
++
++/* ── The three sweeps know about each other ───────────────────────────────── */
++
++describe("the sweeps cover the declaration kinds this codebase has", () => {
++  test.each([
++    ["tables", "mail-orphan-sweep.test.js"],
++    ["send points", "mail-send-point-wiring.test.js"],
++    ["feature flags", "mail-feature-gating.test.js"],
++  ])("%s are swept by %s", (_kind, file) => {
++    // Named rather than assumed, so deleting one of them is a visible act.
++    expect(fs.existsSync(path.join(__dirname, file))).toBe(true);
++  });
++});
+diff --git a/tests/unit/ai-workers.test.js b/tests/unit/ai-workers.test.js
+index 7836022..31aca0e 100755
+--- a/tests/unit/ai-workers.test.js
++++ b/tests/unit/ai-workers.test.js
+@@ -1,6 +1,5 @@
+ "use strict";
+ const aiTranscribe = require("../../src/jobs/handlers/ai-transcribe");
+-const aiVision = require("../../src/jobs/handlers/ai-vision");
+ const transcription = require("../../src/services/ai/transcription.service");
+ const vision = require("../../src/services/ai/vision.service");
+ 
+@@ -10,11 +9,20 @@ describe("worker-ai handlers: input guards (no DB)", () => {
+       /tenantMeta \+ user \+ audioBase64/,
+     );
+   });
+-  test("ai-vision rejects missing job data", async () => {
+-    await expect(
+-      aiVision({ data: { tenantMeta: {}, user: { user_id: "u" } } }),
+-    ).rejects.toThrow(/imageBase64/);
+-  });
++  /**
++   * The `ai-vision` handler's guard test used to sit here.
++   *
++   * The handler is gone. It was registered in `workers.js` and enqueued by
++   * nothing — a worker for an assistant image flow that has no route, no
++   * validator and no upload control, so no job could ever reach it. The general
++   * orphan sweep (tests/security/orphan-wiring-sweep.test.js) is what surfaced
++   * it, and that sweep is now what stands in this test's place: it fails if any
++   * registered worker has no producer, which is the defect this file could not
++   * have caught however well it tested the handler's arguments.
++   *
++   * `vision.service` itself is untouched and still exercised below — the
++   * capability has three live callers, including mail's attachment extraction.
++   */
+ });
+ 
+ describe("provider services: validation", () => {
+diff --git a/tests/unit/mail-service.test.js b/tests/unit/mail-service.test.js
+index b354563..a81b73e 100755
+--- a/tests/unit/mail-service.test.js
++++ b/tests/unit/mail-service.test.js
+@@ -231,7 +231,7 @@ test("a message that starts a conversation is announced as a new thread", async
+   );
+ });
+ 
+-test("a reply into an existing conversation is announced as received, not as a new thread", async () => {
++test("a reply into an existing conversation is announced as a REPLY, not as a new thread", async () => {
+   mockFetchSince.mockResolvedValue({
+     messages: [inbound({ externalMessageId: "<r>", inReplyTo: "<a>", references: ["<a>"] })],
+     nextCursor: null,
+@@ -241,7 +241,20 @@ test("a reply into an existing conversation is announced as received, not as a n
+   await service.syncConnection(DB, "conn-1", {});
+ 
+   const kinds = mockEmitEvent.mock.calls.map((c) => c[1].eventTypeKey);
+-  expect(kinds).toContain("email.received");
++  /**
++   * This asserted `email.received` until the third sweep.
++   *
++   * The branch emitted the pre-thread engine's message-grain key while the
++   * other half of the same ternary emitted `email.thread.created` — so
++   * `email.thread.replied`, seeded by 10735 and described as "a new message
++   * joined an existing conversation", was emitted by nothing. Two keys for one
++   * moment, and the one an administrator can pick in the rule builder was the
++   * one that never fired.
++   *
++   * Now symmetric, both on the thread grain. `categoryFor` keys on the domain
++   * (`email`), so notification routing and preferences are unchanged.
++   */
++  expect(kinds).toContain("email.thread.replied");
+   expect(kinds).not.toContain("email.thread.created");
+   // Threaded onto the conversation the References header names, not onto itself.
+   expect(threads.upsertThread).toHaveBeenCalledWith(DB, expect.objectContaining({ thread_key: "<a>" }));

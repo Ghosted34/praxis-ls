@@ -93,12 +93,38 @@ function handlerReadsBody(controllerSrc, fnName) {
   return true; // handler not found — fail safe
 }
 
+/**
+ * Strip comments before matching routes.
+ *
+ * `ROUTE_RE` ends with `([^;]*?)\)\s*;` — the middleware chain, which may not
+ * contain a semicolon, because a semicolon is where the statement ends. That is
+ * right for code and wrong for prose, and a route whose chain carries an
+ * explanatory comment containing a `;` cannot be parsed at all: the engine fails
+ * at the semicolon, backtracks, and expands the ROUTE PATH group past its
+ * closing quote until some later text happens to parse. The route is then
+ * reported under a garbled path with its validator outside the captured chain —
+ * a FALSE POSITIVE naming a route that is correctly validated.
+ *
+ * `mail/assist/assist.routes.js` hit exactly this. `POST /assist/compose` has a
+ * full zod body schema, and a comment above one of its fields ends "...metering
+ * buckets on it;". One semicolon, in prose, in the file where this guard had the
+ * most to check.
+ *
+ * Stripped rather than the `[^;]` bound relaxed, because that bound is what
+ * stops a chain running away into the rest of the file. Replaced with spaces
+ * rather than deleted so every byte offset, and so every line number in a
+ * report, still points where it did.
+ */
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
+}
+
 const violations = [];
 
 for (const routesFile of walk(MODULES)) {
   const dir = path.dirname(routesFile);
   const name = path.basename(routesFile).replace(".routes.js", "");
-  const src = read(routesFile);
+  const src = stripComments(read(routesFile));
 
   const repoSrc = read(path.join(dir, `${name}.repo.js`));
   if (/\bwritable\s*:\s*\[/.test(repoSrc)) continue;
@@ -118,6 +144,14 @@ for (const routesFile of walk(MODULES)) {
       // gap in that route. Requires the camelCase suffix so it cannot match
       // `passthrough`, which is the no-op this whole guard exists to catch.
       /\bvalidate[A-Z]\w*\b/.test(chainText) ||
+      // `params(` and `query(` alongside `body(`, because the failure message
+      // this guard prints names all three ("give the route a zod validator
+      // (src/shared/http/validate.js: body/query/params)") and only `body` was
+      // ever accepted. A route with no body — `POST /extractions/:id/dismiss`
+      // — cannot be fixed the way it is told to fix it, so the advice sends you
+      // in a circle and the honest response looks indistinguishable from
+      // ignoring the guard.
+      /\b(params|query)\(/.test(chainText) ||
       /\bbody\(/.test(chainText);
     const isPassthrough = /\b(passthrough|noop)\b/.test(chainText);
     if (looksValidated && !isPassthrough) continue;

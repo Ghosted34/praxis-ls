@@ -115,6 +115,20 @@ describe("the search mini-language parses", () => {
     expect(p.filters.before).toBeNull();
     expect(p.tsquery).toContain("tuesday:*");
   });
+
+  test("a hostile run of underscores parses instantly, as a dangling operator", () => {
+    // CodeQL flagged the first tokeniser draft for a polynomial regex: on
+    // `____…____:` the `[a-z_]+` group backtracked once per character, O(n²)
+    // over a string the caller controls. With a linear tokeniser this parse
+    // completes in milliseconds; a reintroduction of the quadratic pattern
+    // blows the suite timeout rather than quietly shipping a DoS.
+    const hostile = `${"_".repeat(50000)}:`;
+    const started = Date.now();
+    const p = search.parseQuery(hostile);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(p.filters.from).toEqual([]);
+    expect(p.tsquery).toBeNull();
+  });
 });
 
 /* ── The call site: the query the driver receives ──────────────────────────── */

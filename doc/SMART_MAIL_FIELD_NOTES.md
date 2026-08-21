@@ -59,7 +59,9 @@ two were each one line away from the code they would have caught — the same
 ### What now prevents it
 
 1. `tests/integration/mail-search.test.js` — parser + call-site SQL, including
-   the forgiving behaviours pinned so a "cleanup" cannot break the search box.
+   the forgiving behaviours pinned so a "cleanup" cannot break the search box,
+   and a 50,000-underscore hostile parse that fails if the tokeniser ever
+   grows a backtrackable quantifier again (CodeQL caught the first draft).
 2. `tests/integration/mail-shared-inbox.test.js` — the claim race driven for
    real through the router; the emulation only applies the `assigned_user_id
    IS NULL` guard if the SQL still carries it, so a read-then-write regression
@@ -68,7 +70,9 @@ two were each one line away from the code they would have caught — the same
    `visibility.clause` inside the UPDATE; claim distinguishes missing (404)
    from claimed (409).
 4. The parser now honours its own "quotes group" contract (`word1 <-> word2`
-   phrases, and `subject:"bill of lading"` is one filter, not a stray phrase).
+   phrases, and `subject:"bill of lading"` is one filter, not a stray phrase),
+   with `tokenise` as a hand-scanned linear pass — a regex that has to decide
+   both where the operator ends and where the quote ends is a ReDoS.
 
 ---
 

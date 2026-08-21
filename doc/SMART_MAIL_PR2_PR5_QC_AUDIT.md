@@ -915,6 +915,23 @@ documented contract: quoted phrases were re-split into ANDed words by
 `subject:"bill of lading"` tokenised into a bare `subject:` and a stray phrase
 (the tokeniser now keeps an operator and its quoted value as one token).
 
+### 17.5 CI feedback on this pass
+
+The first push went red on two checks, and both were right.
+
+- **CodeQL: polynomial regex on the search box.** The combined tokeniser
+  pattern `([a-z_]+):("(?:[^"]*)")` has two backtrackable quantifiers feeding
+  each other; on a caller-controlled run of `_` before a colon the group
+  re-tries once per character, O(n²) per input chunk — a DoS on an
+  unauthenticated-surface-adjacent endpoint. `tokenise` is now a hand-scanned
+  single forward pass; the worst case is linear, and
+  `mail-search.test.js` carries a 50,000-underscore parse that times out if a
+  quadratic pattern returns.
+- **API docs in sync:** `doc/ERROR_CODES.md` is generated from the code; the
+  four new `NOT_FOUND` throws in the triage routes bumped the count 507× →
+  511× and the gate refused the commit until the file was regenerated. The
+  gate works; regenerate before pushing route work.
+
 ### 17.3 Other gaps closed
 
 - **§6.5's regression alert had no call-site test** (§4 gap 2.1's open
@@ -940,7 +957,7 @@ documented contract: quoted phrases were re-split into ANDed words by
 ### 17.4 Verification
 
 Backend: 5,400 tests across 345 suites, 0 failures. Lint 0 errors,
-`db:check:columns` OK, `db:check:idempotency` OK, citext gate OK.
-Client: `tsc -b && vite build` green; 1,690 vitest tests across 109 suites;
-lint 0 errors against the 112-warning budget — none of the warnings are this
-pass's files.
+`db:check:columns` OK, `db:check:idempotency` OK, citext gate OK, API docs in
+sync. Client: `tsc -b && vite build` green; 1,690 vitest tests across 109
+suites; lint 0 errors against the 112-warning budget — none of the warnings
+are this pass's files. CI: all jobs green after §17.5's fixes.

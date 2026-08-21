@@ -28,19 +28,57 @@ const FOLDERS = new Set(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"])
  * and its quoted value as ONE token, so `subject:"bill of lading"` is a
  * subject filter for the phrase rather than a bare `subject:` and a stray
  * phrase.
+ *
+ * Hand-scanned rather than regex-split. A regex that has to decide where the
+ * operator name ends AND where the quoted value ends has two backtrackable
+ * quantifiers feeding each other — CodeQL flagged the first draft as
+ * polynomial on a caller-controlled run of `_` (`([a-z_]+)` re-tries once per
+ * character before the quote fails, O(n²) over a chunk of input). Every pass
+ * here is a single forward scan, so the worst case is linear in the query
+ * length.
  */
 function tokenise(q) {
+  const s = String(q || "");
   const out = [];
-  const re = /([a-z_]+):("(?:[^"]*)")|"([^"]*)"|(\S+)/g;
-  let m;
-  while ((m = re.exec(String(q || "")))) {
-    if (m[1] !== undefined && m[2] !== undefined) {
-      out.push({ value: `${m[1]}:${m[2]}`, quoted: false });
-    } else if (m[3] !== undefined) {
-      if (m[3] !== "") out.push({ value: m[3], quoted: true });
-    } else if (m[4] !== undefined && m[4] !== "") {
-      out.push({ value: m[4], quoted: false });
+  const n = s.length;
+  const isSpace = (ch) => ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
+  const isWordChar = (ch) => {
+    const code = ch.charCodeAt(0);
+    return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code === 95;
+  };
+
+  let i = 0;
+  while (i < n) {
+    if (isSpace(s[i])) { i += 1; continue; }
+
+    // A quoted phrase: everything to the closing quote, spaces included.
+    if (s[i] === '"') {
+      const close = s.indexOf('"', i + 1);
+      const value = close === -1 ? s.slice(i + 1) : s.slice(i + 1, close);
+      if (value !== "") out.push({ value, quoted: true });
+      i = close === -1 ? n : close + 1;
+      continue;
     }
+
+    // An operator directly attached to its quoted value — `subject:"bill of
+    // lading"` — is one token. `[a-z_]+` is found by a forward scan, so there
+    // is no quantifier to backtrack.
+    let opEnd = i;
+    while (opEnd < n && isWordChar(s[opEnd])) opEnd += 1;
+    if (opEnd > i && s[opEnd] === ":" && s[opEnd + 1] === '"') {
+      const close = s.indexOf('"', opEnd + 2);
+      const value = close === -1 ? s.slice(opEnd + 2) : s.slice(opEnd + 2, close);
+      if (value !== "") out.push({ value: `${s.slice(i, opEnd + 1)}"${value}"`, quoted: false });
+      i = close === -1 ? n : close + 1;
+      continue;
+    }
+
+    // A plain word up to the next whitespace (operators without a quoted
+    // value, addresses, free text). parseQuery splits `op:value` itself.
+    let j = i;
+    while (j < n && !isSpace(s[j])) j += 1;
+    out.push({ value: s.slice(i, j), quoted: false });
+    i = j;
   }
   return out;
 }

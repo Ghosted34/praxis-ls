@@ -15,14 +15,16 @@ module.exports = {
   create: asyncHandler(async (req, res) => {
     const b = req.body;
     const data = await req.tenantDb((c) => service.createDraft(c, {
-      entityId: b.entity_id, clientId: b.client_id, dossierId: b.dossier_id, lines: b.lines || [], actor: actor(req),
+      entityId: b.entity_id, clientId: b.client_id, dossierId: b.dossier_id, lines: b.lines || [],
+      pricingOverride: b.pricing_override || null, actor: actor(req),
     }));
     res.status(201).json({ data });
   }),
   update: asyncHandler(async (req, res) => {
     const b = req.body;
     const data = await req.tenantDb((c) => service.updateDraft(c, {
-      invoiceId: req.params.id, patch: { client_id: b.client_id, dossier_id: b.dossier_id }, lines: b.lines || null, actor: actor(req),
+      invoiceId: req.params.id, patch: { client_id: b.client_id, dossier_id: b.dossier_id }, lines: b.lines || null,
+      pricingOverride: b.pricing_override || null, actor: actor(req),
     }));
     res.json({ data });
   }),

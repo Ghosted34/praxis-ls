@@ -24,5 +24,9 @@ router.get("/prefill/:dossierId", requirePermission(MODULE, "view"), validator.d
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/preview", requirePermission(MODULE, "view"), validator.compute, controller.preview);
 router.post("/", requirePermission(MODULE, "create"), validator.compute, controller.create);
+// §2.4a — a saved simulation had no edit path, so the screen's only forward
+// action was "Re-apply to workbench": re-seed the form and save a SECOND row.
+// Same inputs as create; the row and its computed result are replaced together.
+router.patch("/:id", requirePermission(MODULE, "edit"), validator.idParam, validator.compute, controller.update);
 
 module.exports = { basePath: "/extra-charge-simulations", feature: null, router };

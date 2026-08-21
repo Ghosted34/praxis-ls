@@ -95,6 +95,54 @@ function lineEconomics(ln, thresholds = {}) {
 }
 
 /**
+ * COST NATURE IS THE CONTRACT (§2.1).
+ *
+ * A line is a disbursement because of WHAT IT IS, not because someone ticked a
+ * box. The catalogue says what it is: dictionary_item.direction is NOT NULL and
+ * CHECKed to REVENUE | EXPENSE | DISBURSEMENT | ASSET (0630:48,77 → 0640:117),
+ * with `category` and `is_disbursement` alongside it.
+ *
+ * Every downstream rule keys off that classification, and the database enforces
+ * it at the bottom: `chk_disbursement_no_tax` on invoice_line (0230:92) and
+ * assert_line_valid() (0640:156) both REFUSE a disbursement carrying a
+ * tax_code_id. So a simulation line that is a disbursement AND VAT-applicable
+ * is not a preference — it is a row that cannot legally become an invoice. We
+ * refuse to construct it here, where the pricer can still see why, rather than
+ * letting it surface later as a trigger exception on someone else's screen.
+ *
+ * Returns { is_disbursement, vat_applicable, nature, source }.
+ *   source 'catalogue' — the dictionary classified it (authoritative)
+ *   source 'line'      — no dictionary item; the stored flag is all we have
+ *
+ * `disbursement_vat_transparent` (0630:56) is deliberately NOT consulted to
+ * turn VAT back on: it governs how a débours RE-BILLS its VAT-inclusive amount
+ * downstream, not whether the simulator adds VAT on top. Adding VAT here would
+ * double it.
+ */
+function classifyLine(ln = {}, dict = null) {
+  if (!dict) {
+    const stored = ln.is_disbursement === true;
+    return {
+      is_disbursement: stored,
+      vat_applicable: stored ? false : ln.vat_applicable === true,
+      nature: null,
+      source: "line",
+    };
+  }
+  const isDisbursement =
+    String(dict.direction || "").toUpperCase() === "DISBURSEMENT" ||
+    String(dict.category || "").toLowerCase() === "disbursement" ||
+    dict.is_disbursement === true;
+  return {
+    is_disbursement: isDisbursement,
+    // Pass-through never carries VAT — the invariant above.
+    vat_applicable: isDisbursement ? false : ln.vat_applicable === true,
+    nature: dict.direction || null,
+    source: "catalogue",
+  };
+}
+
+/**
  * Given a target margin % (on price) and a cost, the price that achieves it.
  *   price = cost / (1 - margin/100)   (margin < 100)
  */
@@ -106,4 +154,4 @@ function priceForMargin(cost, marginPercent) {
   return round2(c / (1 - m / 100));
 }
 
-module.exports = { computeMargin, priceForMargin, lineEconomics };
+module.exports = { computeMargin, priceForMargin, lineEconomics, classifyLine };

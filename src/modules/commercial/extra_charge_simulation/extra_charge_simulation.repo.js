@@ -45,4 +45,21 @@ async function dossierContainers(client, dossierId) {
   return rows;
 }
 
-module.exports = { insertSim, getSim, listSims, dossierPrefill, dossierContainers };
+/**
+ * §2.4a — replace a saved simulation's inputs and its computed result in one
+ * statement. `created_by` is deliberately not among the writable fields: an
+ * edit does not change who made the row.
+ */
+async function updateSim(client, id, fields) {
+  const keys = Object.keys(fields).filter((k) => k !== "created_by");
+  if (!keys.length) return getSim(client, id);
+  const sets = keys.map((k, i) => `${k} = $${i + 2}`);
+  const { rows } = await client.query(
+    `UPDATE extra_charge_simulation SET ${sets.join(", ")}
+      WHERE extra_charge_simulation_id = $1 RETURNING *`,
+    [id, ...keys.map((k) => fields[k])],
+  );
+  return rows[0] || null;
+}
+
+module.exports = { insertSim, getSim, updateSim, listSims, dossierPrefill, dossierContainers };

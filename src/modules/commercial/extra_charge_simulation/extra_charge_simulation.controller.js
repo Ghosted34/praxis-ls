@@ -16,4 +16,7 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.prefill(c, req.params.dossierId)) })),
   preview: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.preview(c, req.body)) })),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, req.body, actor(req))) })),
+  // §2.4a — edit a saved simulation instead of saving a near-duplicate beside it.
+  update: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.update(c, req.params.id, req.body, actor(req))) })),
 };

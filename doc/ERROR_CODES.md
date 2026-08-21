@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (441)
+## All codes (445)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -224,8 +224,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
-| `LOCKED` | 422 | 31× | — |
+| `LOCKED` | 422 | 32× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
 | `MAILBOX_FORBIDDEN` | 403 | 1× | — |
@@ -255,12 +256,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 493× | — |
+| `NOT_FOUND` | 404, 422 | 495× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_PENDING` | 422 | 1× | — |
 | `NOT_PERSONAL` | 422 | 1× | — |
+| `NOT_PRICED_BY_QUOTATION` | — | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_QUERIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -270,6 +272,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_TREASURY_CLASS` | 422 | 2× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
+| `NO_ACCEPTED_QUOTATION` | — | 1× | — |
 | `NO_ACCOUNT` | 500 | 2× | — |
 | `NO_ACTOR` | 401 | 2× | — |
 | `NO_AGING_ENTRY` | 422 | 1× | — |
@@ -296,7 +299,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
-| `NO_LINES` | 422 | 8× | — |
+| `NO_LINES` | 422 | 9× | — |
 | `NO_MODULE` | 422 | 2× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
@@ -330,7 +333,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ORDER_LOCKED` | 422 | 1× | — |
 | `OUT_OF_GEOFENCE` | 422 | 1× | — |
 | `OVERHEAD_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
-| `OVERRIDE_REASON_REQUIRED` | 422 | 1× | — |
+| `OVERRIDE_NOT_VIA_AI` | — | 1× | — |
+| `OVERRIDE_REASON_REQUIRED` | 422 | 2× | — |
 | `OVERRIDE_REQUIRED` | 422 | 1× | — |
 | `OVER_ALLOCATED` | 422 | 1× | — |
 | `OVER_DISBURSED` | 422 | 1× | — |

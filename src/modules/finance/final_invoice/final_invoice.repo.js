@@ -79,7 +79,40 @@ async function addAdvanceApplied(client, advanceId, amount) {
   await client.query("UPDATE advance SET applied_amount = applied_amount + $2 WHERE advance_id = $1", [advanceId, amount]);
 }
 
+/**
+ * §2.7 — the priced document behind an invoice: the dossier's accepted
+ * quotation, with its lines.
+ *
+ * ACCEPTED **or** CONVERTED: `accept({convert:true})` moves a quotation
+ * straight on to CONVERTED (quotation.service.js), so restricting this to
+ * ACCEPTED would make the guard blind on exactly the path that is supposed to
+ * be the correct one. Most recent wins — a re-quote supersedes.
+ */
+async function acceptedQuotationFor(client, dossierId) {
+  if (!dossierId) return null;
+  const { rows } = await client.query(
+    `SELECT quotation_id, doc_number, status, currency, total_ht, total_ttc
+       FROM quotation
+      WHERE dossier_id = $1 AND status IN ('ACCEPTED','CONVERTED')
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 1`,
+    [dossierId],
+  );
+  return rows[0] || null;
+}
+
+async function quotationLinesFor(client, quotationId) {
+  const { rows } = await client.query(
+    `SELECT dictionary_item_id, label, qty, unit_price, is_disbursement,
+            tax_code_id, container_type_ref_id
+       FROM quotation_line WHERE quotation_id = $1 ORDER BY line_no`,
+    [quotationId],
+  );
+  return rows;
+}
+
 module.exports = {
   insertInvoice, getInvoice, updateInvoice, deleteLines, insertLine, listLines,
   listInvoices, openAdvances, addAdvanceApplied,
+  acceptedQuotationFor, quotationLinesFor,
 };

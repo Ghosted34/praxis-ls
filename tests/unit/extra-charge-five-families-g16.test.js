@@ -25,7 +25,7 @@ const {
   parseContainers,
   simulateCharges,
   DEFAULT_RATES,
-  VAT_RATE,
+  LEGACY_VAT_RATE,
 } = require("../../src/modules/commercial/extra_charge_simulation/extra_charge_simulation.rules");
 
 // The legacy tariff, restated here independently of the source under test.
@@ -61,7 +61,11 @@ describe("G16 — the rate table is the legacy's", () => {
     expect(DEFAULT_RATES.detention).toEqual(LEGACY.detention);
     expect(DEFAULT_RATES.plug).toEqual({ 20: LEGACY.plug, 40: LEGACY.plug });
     expect(DEFAULT_RATES.yardTrigger).toBe(LEGACY.yardTrigger);
-    expect(VAT_RATE).toBe(0.1925);
+    // Renamed from VAT_RATE in §2.3: this is now the documented LEGACY value
+    // and the no-argument fallback, not the rate the engine actually applies.
+    // The tenant's rate (settings finance.vat) is threaded in per call — see
+    // "VAT comes from the tenant" in commercial-edit-and-classification.
+    expect(LEGACY_VAT_RATE).toBe(0.1925);
   });
 
   it("no reefer or flat-rack bills zero demurrage", () => {

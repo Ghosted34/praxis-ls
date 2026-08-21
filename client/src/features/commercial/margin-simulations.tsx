@@ -41,6 +41,7 @@ import {
 } from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { Stat } from "@/components/ui/stat";
+import { MeterGroup } from "@/components/ui/meter";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import { listCurrencies } from "@/lib/masterdata-api";
@@ -83,6 +84,22 @@ const BLANK: MLine = {
   notes: "",
 };
 
+/**
+ * The server's low-margin refusal (§2.5), told apart from any other 422 so the
+ * screen can ask for a reason instead of just printing the error. Matched on
+ * the error CODE, not its message — the message names the actual figures and is
+ * translated.
+ */
+function isLowMargin(e: unknown): boolean {
+  const c = e as { code?: string; body?: { code?: string; error?: string } } | null;
+  return (
+    c?.code === "LOW_MARGIN_JUSTIFICATION_REQUIRED" ||
+    c?.body?.code === "LOW_MARGIN_JUSTIFICATION_REQUIRED" ||
+    c?.body?.error === "LOW_MARGIN_JUSTIFICATION_REQUIRED" ||
+    /LOW_MARGIN_JUSTIFICATION_REQUIRED/.test(errMsg(e))
+  );
+}
+
 /** Editor-side line margin. The saved view shows the server's economics; this
  *  is the live feedback while typing (same formula, default bands). */
 function lineKpi(l: MLine): { text: string; tone: Tone } {
@@ -98,14 +115,110 @@ function lineKpi(l: MLine): { text: string; tone: Tone } {
   };
 }
 
+/**
+ * PROFITABILITY SNAPSHOT — the legacy screen's live picture, restored.
+ *
+ * `updateSnapshot()` (margin-simulator-billing.php:2155-2192) redrew Cost / Rev
+ * / Net on every keystroke, so a pricer watched the Net bar grow as they
+ * priced. Ours showed six flat figures and no shape at all, which is why
+ * SBX-2026-0001 — 95.7M of cost against nothing — looked like an ordinary row
+ * of numbers instead of the cliff it is.
+ *
+ * Everything here is already on the response: the server returns the totals and
+ * the service/disbursement split. Nothing is recomputed.
+ *
+ * Bars share one scale, so Net is read against Cost rather than stretched to
+ * fill its own track. Colour by job: cost is context (neutral), revenue is the
+ * brand figure, net is genuine state — and its sign is also in the number and
+ * the badge beside it, never colour alone.
+ */
+function ProfitabilitySnapshot({
+  totals,
+  currency,
+}: {
+  totals: Row;
+  currency: string;
+}) {
+  const cost = Number(totals.total_cost) || 0;
+  const revenue = Number(totals.total_price) || 0;
+  const net = Number(totals.margin_amount) || 0;
+  const pct = totals.margin_percent != null ? Number(totals.margin_percent) : null;
+  const disbursement = Number(totals.disbursement_total) || 0;
+  return (
+    <div className="lux-card space-y-3 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-micro uppercase text-muted-foreground">
+          {tr("Profitability snapshot")}
+        </p>
+        {pct != null && (
+          <Pill tone={pct >= 20 ? "ok" : pct >= 10 ? "warn" : "bad"}>
+            {`${tr("Global margin")} ${pct}%${pct < 10 ? ` · ${tr("CRITICAL")}` : ""}`}
+          </Pill>
+        )}
+      </div>
+      <MeterGroup
+        // Not wrapped in tr(): the extractor needs static keys, and this string
+        // is figures. The words around them are already translated labels.
+        ariaLabel={`${tr("Cost")} ${cost}, ${tr("Revenue")} ${revenue}, ${tr("Net")} ${net} ${currency} — ${pct ?? 0}%`}
+        rows={[
+          {
+            label: tr("Cost"),
+            value: cost,
+            display: money(cost, currency),
+            tone: "neutral",
+            // Margin is earned on services only, so say how much of the cost is
+            // pass-through — otherwise a débours-heavy file looks unprofitable.
+            hint: disbursement
+              ? `${tr("incl. débours")} ${money(disbursement, currency)}`
+              : undefined,
+          },
+          {
+            label: tr("Revenue"),
+            value: revenue,
+            display: money(revenue, currency),
+            tone: "accent",
+          },
+          {
+            label: tr("Net"),
+            value: net,
+            display: money(net, currency),
+            tone: net > 0 ? "ok" : net < 0 ? "bad" : "warn",
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+/**
+ * Target margin → price (§2.4b). The server already exposes this maths as
+ * `priceForMargin`; the screen had no control that used it, so a pricer typed
+ * prices in and hoped. price = cost / (1 - margin/100), same formula, applied
+ * to the SERVICE lines only — a débours is pass-through and priced at cost by
+ * definition, so marking one up is not a pricing decision, it is an error.
+ */
+function priceForMargin(cost: number, marginPercent: number): number {
+  if (!Number.isFinite(cost) || cost < 0) return 0;
+  if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent >= 100) return cost;
+  return Math.round((cost / (1 - marginPercent / 100)) * 100) / 100;
+}
+
 function MarginSimForm({
   open,
   onClose,
   onSaved,
+  editing = null,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * The simulation being edited (§2.4a), or null to create a new one. Editing
+   * used to be impossible — there was no endpoint — so a mistyped price meant
+   * abandoning the document and building it again. DRAFT and REJECTED only;
+   * the detail screen decides which, and the server refuses the rest.
+   */
+  editing?: Row | null;
 }) {
   const [currency, setCurrency] = React.useState("XAF");
   // Currencies come from the live currency module (GET /currencies), not a
@@ -139,15 +252,45 @@ function MarginSimForm({
   const [previewing, setPreviewing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // §2.4a — unclassified lines from an import. The catalogue is the SSOT for
+  // cost nature; a line with no catalogue entry only has a copied flag, and the
+  // screen should say so rather than imply the classification is known.
+  const [unclassified, setUnclassified] = React.useState<string[]>([]);
+  const [target, setTarget] = React.useState("");
+
   React.useEffect(() => {
     if (!open) return;
+    setUnclassified([]);
+    setTarget("");
+    setError(null);
+    if (editing) {
+      setCurrency(String(editing.currency || "XAF"));
+      setDossierId(editing.dossier_id ? String(editing.dossier_id) : "");
+      setCostingId(editing.costing_id ? String(editing.costing_id) : "");
+      const existing = (editing.lines as Row[] | undefined) || [];
+      setLines(
+        existing.length
+          ? existing.map((l) => ({
+              dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null,
+              label: String(l.label || ""),
+              qty: String(l.qty ?? "1"),
+              unit_cost: String(l.unit_cost ?? "0"),
+              unit_price: String(l.unit_price ?? "0"),
+              is_disbursement: l.is_disbursement === true,
+              vat_applicable: l.vat_applicable === true,
+              notes: String(l.notes || ""),
+            }))
+          : [{ ...BLANK }],
+      );
+      setTotals((editing.totals as Row | undefined) || null);
+      return;
+    }
     setCurrency("XAF");
     setDossierId("");
     setCostingId("");
     setLines([{ ...BLANK }]);
     setTotals(null);
-    setError(null);
-  }, [open]);
+  }, [open, editing]);
 
   const setLine = (i: number, patch: Partial<MLine>) =>
     setLines((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -177,6 +320,7 @@ function MarginSimForm({
     try {
       const out = await tenant<{
         costing: Row;
+        unclassified?: string[];
         lines: {
           dictionary_item_id: string | null;
           label: string;
@@ -186,6 +330,7 @@ function MarginSimForm({
           vat_applicable: boolean;
         }[];
       }>(`/margin-simulations/from-costing/${id}`);
+      setUnclassified(out.unclassified || []);
       setLines(
         out.lines.length
           ? out.lines.map((l) => ({
@@ -228,23 +373,54 @@ function MarginSimForm({
     setBusy(true);
     setError(null);
     try {
-      const created = await tenant<{ margin_simulation_id: string }>(
-        "/margin-simulations",
-        {
-          method: "POST",
-          body: {
-            dossier_id: dossierId || undefined,
-            costing_id: costingId || undefined,
-            currency: currency.trim().toUpperCase() || "XAF",
-            lines: payloadLines(),
-          },
-        },
-      );
+      const body = {
+        dossier_id: dossierId || undefined,
+        costing_id: costingId || undefined,
+        currency: currency.trim().toUpperCase() || "XAF",
+        lines: payloadLines(),
+      };
+      // §2.4a — PATCH an existing DRAFT/REJECTED, POST a new one. Editing a
+      // REJECTED simulation returns it to DRAFT server-side, which is what
+      // makes acting on a rejection possible at all.
+      const id = editing
+        ? String(editing.margin_simulation_id)
+        : (
+            await tenant<{ margin_simulation_id: string }>("/margin-simulations", {
+              method: "POST",
+              body,
+            })
+          ).margin_simulation_id;
+      if (editing) {
+        await tenant(`/margin-simulations/${id}`, { method: "PATCH", body });
+      }
       if (andSubmit) {
-        await tenant(
-          `/margin-simulations/${created.margin_simulation_id}/submit`,
-          { method: "POST" },
-        );
+        // §2.5 — submitting at or below cost needs a written reason. Ask for it
+        // only when the server says so, rather than nagging on every healthy
+        // deal: the server owns the threshold and the maths.
+        try {
+          await tenant(`/margin-simulations/${id}/submit`, { method: "POST" });
+        } catch (e) {
+          if (!isLowMargin(e)) throw e;
+          const why = window.prompt(
+            tr(
+              "This is priced at or below cost. Why is it being submitted? (the approver reads this)",
+            ),
+            "",
+          );
+          if (!why || why.trim().length < 10) {
+            setError(
+              tr(
+                "Submitting at or below cost needs a written justification of at least 10 characters. The draft has been saved.",
+              ),
+            );
+            onSaved();
+            return;
+          }
+          await tenant(`/margin-simulations/${id}/submit`, {
+            method: "POST",
+            body: { justification: why.trim() },
+          });
+        }
       }
       onSaved();
       onClose();
@@ -253,6 +429,20 @@ function MarginSimForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Apply a target margin to every SERVICE line (débours stay at cost). */
+  function applyTarget() {
+    const pct = Number(target);
+    if (!Number.isFinite(pct) || pct < 0 || pct >= 100) return;
+    setLines((rs) =>
+      rs.map((l) =>
+        l.is_disbursement
+          ? { ...l, unit_price: l.unit_cost }
+          : { ...l, unit_price: String(priceForMargin(Number(l.unit_cost) || 0, pct)) },
+      ),
+    );
+    setTotals(null);
   }
 
   const globalPct =
@@ -264,7 +454,7 @@ function MarginSimForm({
     <Modal
       open={open}
       onClose={onClose}
-      title="Margin simulation"
+      title={editing ? tr("Edit margin simulation") : tr("Margin simulation")}
       description="Rapid quote maths — margin on services only, débours pass-through. No GL (KB §6.7)."
       size="wide"
     >
@@ -317,6 +507,13 @@ function MarginSimForm({
         {linking && (
           <p className="micro" role="status">
             {tr("Importing costing lines…")}
+          </p>
+        )}
+        {unclassified.length > 0 && (
+          <p className="micro text-[rgb(var(--warn))]" role="status">
+            {tr("Not in the charge catalogue, so their cost nature is only a copied flag — check before pricing")}
+            {": "}
+            {unclassified.join(", ")}
           </p>
         )}
 
@@ -428,16 +625,34 @@ function MarginSimForm({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={preview} loading={previewing}>
             {tr("Preview")}
           </Button>
+          {/* §2.4b — the screen proposes a price instead of seeding zero. */}
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min="0"
+              max="99"
+              className="num w-20 text-right"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="20"
+              aria-label={tr("Target margin %")}
+            />
+            <Button size="sm" variant="outline" onClick={applyTarget}>
+              {tr("Price at target margin %")}
+            </Button>
+          </div>
           {globalPct != null && (
             <Pill tone={globalPct >= 20 ? "ok" : globalPct >= 10 ? "warn" : "bad"}>
               {globalPct < 10 ? `CRITICAL · ${globalPct}%` : `GLOBAL MARGIN ${globalPct}%`}
             </Pill>
           )}
         </div>
+
+        {totals && <ProfitabilitySnapshot totals={totals} currency={currency} />}
 
         {totals && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -477,7 +692,7 @@ function MarginSimForm({
             Cancel
           </Button>
           <Button variant="outline" onClick={() => save(false)} loading={busy}>
-            {tr("Save draft")}
+            {editing ? tr("Save changes") : tr("Save draft")}
           </Button>
           <Button onClick={() => save(true)} loading={busy}>
             {tr("Save and submit")}
@@ -510,11 +725,14 @@ function SimDetail({
   dossierRef,
   onClose,
   onChanged,
+  onEdit,
 }: {
   id: string;
   dossierRef: Map<string, string>;
   onClose: () => void;
   onChanged: () => void;
+  /** §2.4a — reopen this simulation in the editor. */
+  onEdit: (sim: Row) => void;
 }) {
   const sim = useResource<Row | null>(
     () => tenant<Row>(`/margin-simulations/${id}`),
@@ -538,6 +756,25 @@ function SimDetail({
       onChanged();
       return true;
     } catch (e) {
+      // §2.5 — the one refusal the screen can answer rather than just report.
+      if (path === "submit" && isLowMargin(e)) {
+        const why = window.prompt(
+          tr(
+            "This is priced at or below cost. Why is it being submitted? (the approver reads this)",
+          ),
+          "",
+        );
+        if (why && why.trim().length >= 10) {
+          setBusy(false);
+          return act("submit", { justification: why.trim() });
+        }
+        setError(
+          tr(
+            "Submitting at or below cost needs a written justification of at least 10 characters.",
+          ),
+        );
+        return false;
+      }
       setError(errMsg(e));
       return false;
     } finally {
@@ -650,6 +887,14 @@ function SimDetail({
             empty={{ title: tr("No lines") }}
           />
 
+          {totals && <ProfitabilitySnapshot totals={totals} currency={currency} />}
+
+          {s.low_margin_justification ? (
+            <p className="micro text-[rgb(var(--warn))]">
+              {tr("Submitted below cost")}: {cell(s.low_margin_justification)}
+            </p>
+          ) : null}
+
           {totals && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Stat
@@ -716,6 +961,15 @@ function SimDetail({
             </div>
           ) : (
             <div className="flex justify-end gap-2">
+              {/* §2.4a — DRAFT and REJECTED are editable, matching the legacy
+                  screen's isEditableStatus(). Editing a REJECTED simulation is
+                  the ONLY way to act on the rejection: without it, REJECTED is
+                  a terminal state and the document has to be rebuilt. */}
+              {(s.status === "DRAFT" || s.status === "REJECTED") && (
+                <Button variant="outline" disabled={busy} onClick={() => onEdit(s)}>
+                  {tr("Edit")}
+                </Button>
+              )}
               {s.status === "DRAFT" && (
                 <Button loading={busy} onClick={() => void act("submit")}>
                   {tr("Submit")}
@@ -754,6 +1008,10 @@ export function MarginSimulationsPage() {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [formOpen, setFormOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  // §2.4a — the simulation being edited. Held here rather than inside the
+  // detail modal so the editor replaces it cleanly instead of stacking a second
+  // modal on top of the first.
+  const [editing, setEditing] = React.useState<Row | null>(null);
 
   const dossierRef = React.useMemo(
     () =>
@@ -836,15 +1094,23 @@ export function MarginSimulationsPage() {
       <AiActions actions={MARGIN_AI} />
       <MarginSimForm
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        editing={editing}
+        onClose={() => {
+          setFormOpen(false);
+          setEditing(null);
+        }}
         onSaved={reload}
       />
-      {selectedId && (
+      {selectedId && !formOpen && (
         <SimDetail
           id={selectedId}
           dossierRef={dossierRef}
           onClose={() => setSelectedId(null)}
           onChanged={reload}
+          onEdit={(sim) => {
+            setEditing(sim);
+            setFormOpen(true);
+          }}
         />
       )}
     </section>

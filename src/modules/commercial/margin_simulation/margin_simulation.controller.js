@@ -22,8 +22,22 @@ module.exports = {
     }));
     res.status(201).json({ data });
   }),
+  // §2.4a — edit a DRAFT or REJECTED simulation.
+  update: asyncHandler(async (req, res) => {
+    const b = req.body;
+    const data = await req.tenantDb((c) => service.update(c, {
+      id: req.params.id,
+      patch: {
+        dossier_id: b.dossier_id, service_type_id: b.service_type_id,
+        costing_id: b.costing_id, currency: b.currency,
+      },
+      lines: Array.isArray(b.lines) ? b.lines : null,
+      actor: actor(req),
+    }));
+    res.json({ data });
+  }),
   submit: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.submit(c, { id: req.params.id, actor: actor(req) })) })),
+    res.json({ data: await req.tenantDb((c) => service.submit(c, { id: req.params.id, justification: req.body.justification, actor: actor(req) })) })),
   approve: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.approve(c, { id: req.params.id, actor: actor(req) })) })),
   reject: asyncHandler(async (req, res) =>

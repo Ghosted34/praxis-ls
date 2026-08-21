@@ -285,6 +285,10 @@ const BusinessPoliciesPage = lazyNamed(
   () => import("@/features/settings/business-policies"),
   "BusinessPoliciesPage",
 );
+const SignaturesSettingsPage = lazyNamed(
+  () => import("@/features/settings/signatures-page"),
+  "SignaturesSettingsPage",
+);
 
 /**
  * Fallback for the routes that render OUTSIDE the shell (reset-password, the
@@ -624,6 +628,10 @@ export function App() {
               <Route
                 path="settings/business-setup"
                 element={<Navigate to="/master/corporate-entities" replace />}
+              />
+              <Route
+                path="settings/signatures"
+                element={<SignaturesSettingsPage />}
               />
               <Route path="settings/login" element={<LoginEditor />} />
               <Route path="settings/pwa" element={<PwaPage />} />

@@ -18,6 +18,15 @@ jest.mock("../../src/shared/events/emit", () => ({
   resolveActorId: jest.fn(async (_c, id) => id),
 }));
 
+// The tenant VAT rate and the KPI thresholds are settings reads. Stubbed so
+// these stay unit tests of the workflow, and so the rate is EXPLICIT here
+// rather than whatever a fake client happens to return (§2.3).
+jest.mock("../../src/shared/config/settings", () => ({
+  getRule: jest.fn(async (_c, _s, _k, _f, fallback) => fallback),
+  getSetting: jest.fn(async () => null),
+  putSetting: jest.fn(async () => {}),
+}));
+
 const UUID = (n) => `${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`;
 
 describe("computeMargin — per-line VAT toggle (§3.1)", () => {
@@ -158,19 +167,26 @@ describe("fromCosting — LINK COSTING import", () => {
 });
 
 describe("workflow — DRAFT → SUBMITTED → APPROVED | REJECTED", () => {
-  function fakeClient({ status = "DRAFT", submittedBy = null } = {}) {
+  // §2.5: `submit` now reads the lines to check the margin before it lets a
+  // document move, so the fake has to have some. The default set is healthy
+  // (100 cost → 200 price); `lines` overrides it for the low-margin cases.
+  const HEALTHY = [{ qty: 1, unit_cost: 100, unit_price: 200, is_disbursement: false }];
+  function fakeClient({ status = "DRAFT", submittedBy = null, lines = HEALTHY, justification = null } = {}) {
     const queries = [];
     return {
       queries,
       async query(sql, params) {
         queries.push({ sql, params });
+        if (/FROM margin_simulation_line WHERE/.test(sql)) return { rows: lines };
         if (/FROM margin_simulation WHERE/.test(sql))
           return {
             rows: [
               {
                 margin_simulation_id: UUID(1),
                 status,
+                currency: "XAF",
                 submitted_by: submittedBy,
+                low_margin_justification: justification,
               },
             ],
           };

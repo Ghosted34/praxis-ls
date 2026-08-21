@@ -44,6 +44,7 @@ const schemas = {
     }).strict(),
   }),
   dossierParam: z.object({ dossierId: z.string().uuid() }),
+  idParam: z.object({ id: z.string().uuid() }),
 };
 
 const mw = (k, fromParams = false) => (req, _res, next) => {
@@ -54,4 +55,4 @@ const mw = (k, fromParams = false) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { compute: mw("compute"), saveRates: mw("saveRates"), dossierParam: mw("dossierParam", true), schemas };
+module.exports = { compute: mw("compute"), saveRates: mw("saveRates"), dossierParam: mw("dossierParam", true), idParam: mw("idParam", true), schemas };

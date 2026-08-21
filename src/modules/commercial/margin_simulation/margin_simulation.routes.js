@@ -23,7 +23,11 @@ router.post("/", requirePermission(MODULE, "create"), validator.compute, control
 // Workflow (§3.1): submitting is the author's act; approving/rejecting is a
 // decision (maker-checker enforced in the service); quoting creates a
 // quotation, so it carries the same permission as creating one.
-router.post("/:id/submit", requirePermission(MODULE, "edit"), validator.idParam, controller.submit);
+// §2.4a — the edit path. Without it a simulation was frozen at creation in
+// every status, REJECTED included, so the only response to a rejection was to
+// rebuild the document. `edit`, the same grant the costing's PATCH takes.
+router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+router.post("/:id/submit", requirePermission(MODULE, "edit"), validator.submit, controller.submit);
 router.post("/:id/approve", requirePermission(MODULE, "approve"), validator.idParam, controller.approve);
 router.post("/:id/reject", requirePermission(MODULE, "approve"), validator.reject, controller.reject);
 router.post("/:id/quote", requirePermission(MODULE, "create"), validator.idParam, controller.quote);

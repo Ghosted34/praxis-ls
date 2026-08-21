@@ -77,6 +77,14 @@ async function assertCurrency(client, code) {
   return want;
 }
 
+/**
+ * The tenant VAT rate as a FRACTION (§2.3). settings finance.vat stores a
+ * percent, the engine multiplies by a fraction, and `rates()` already did this
+ * conversion — the engine was the one place still holding its own literal.
+ */
+const vatFraction = async (client) =>
+  Number(await getRule(client, "finance", "vat", "rate_percent", 19.25)) / 100;
+
 async function fiveFamily(client, body) {
   const rates = body.rates || (await getSetting(client, "commercial", "extra_charge_rates", null)) || null;
   const currency = await assertCurrency(client, body.currency || "XAF");
@@ -91,6 +99,7 @@ async function fiveFamily(client, body) {
     rates,
     fx,
     currency,
+    vatRate: await vatFraction(client),
   });
 }
 
@@ -115,22 +124,14 @@ async function preview(client, body) {
  * TTC, and the resolved tariff as `rates_snapshot` — so the row can still
  * explain its own total after the tenant edits the tariff.
  */
-async function create(client, body, actor = {}) {
-  const five = isFiveFamily(body);
-  // fiveFamily already validates the currency; the generic tier stores a
-  // currency but has no conversion to touch it, so validate it here (SS4).
-  const ccy = five ? null : await assertCurrency(client, body.currency || "XAF");
-  const computed = five ? await fiveFamily(client, body) : await preview(client, body);
-
-  const common = {
-    dossier_id: body.dossier_id || null,
-    shipping_line: body.shipping_line || null,
-    container_variant: body.container_variant || null,
-    currency: computed.currency || ccy || "XAF",
-    created_by: await resolveActorId(client, actor.user_id),
-  };
-
-  const data = five
+/**
+ * The persisted row for a computed simulation. Extracted so `create` and
+ * `update` (§2.4a) write exactly the same shape — a saved edit that stored a
+ * different set of keys from a saved creation is the same class of bug as the
+ * one 10716's comment describes.
+ */
+function rowFor({ body, computed, five, ccy, common }) {
+  return five
     ? {
         ...common,
         containers: JSON.stringify(computed.containers),
@@ -157,7 +158,26 @@ async function create(client, body, actor = {}) {
         total_ht: computed.total_amount,
         vat_total: 0,
         total_amount: computed.total_amount,
+        currency: computed.currency || ccy || "XAF",
       };
+}
+
+async function create(client, body, actor = {}) {
+  const five = isFiveFamily(body);
+  // fiveFamily already validates the currency; the generic tier stores a
+  // currency but has no conversion to touch it, so validate it here (SS4).
+  const ccy = five ? null : await assertCurrency(client, body.currency || "XAF");
+  const computed = five ? await fiveFamily(client, body) : await preview(client, body);
+
+  const common = {
+    dossier_id: body.dossier_id || null,
+    shipping_line: body.shipping_line || null,
+    container_variant: body.container_variant || null,
+    currency: computed.currency || ccy || "XAF",
+    created_by: await resolveActorId(client, actor.user_id),
+  };
+
+  const data = rowFor({ body, computed, five, ccy, common });
 
   await client.query("BEGIN");
   try {
@@ -176,7 +196,9 @@ async function create(client, body, actor = {}) {
       },
     });
     await client.query("COMMIT");
-    return { ...sim, computed };
+    // rehydrate, not `{...sim, computed}` — so the shape a caller gets from
+    // create is byte-for-byte the shape it gets from get (§2.6).
+    return rehydrate(sim);
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -243,7 +265,114 @@ async function prefill(client, dossierId) {
   };
 }
 
-const get = (client, id) => repo.getSim(client, id);
+/**
+ * REHYDRATE A SAVED SIMULATION (§2.6).
+ *
+ * `get` returned the raw row and nothing else. `create` returns
+ * `{ ...row, computed }` — so the screen that SAVED a simulation could render
+ * its breakdown, HT, VAT and KPI strip, and the screen that RE-OPENED the same
+ * simulation got none of it. That is the "Saved simulation" dialog showing
+ * TOTAL TTC 450,000.00 XAF (a column on the row) beside TOTAL HT "—" (a key
+ * only `create` ever produced), over an empty charge breakdown.
+ *
+ * The fix is to rebuild `computed` from what 10716 already stores, so a saved
+ * row answers exactly as it did when it was computed. It is NOT re-derived from
+ * the engine: `rates_snapshot` was frozen precisely so a row keeps what it said
+ * after the tenant edits the tariff (10716, and the same rule 0661 applies to
+ * locked documents). We read the snapshot; we do not re-run the maths.
+ *
+ * Pre-10716 rows have no snapshot and no computed_charges worth the name; they
+ * render from their stored totals, which is what that migration prescribes.
+ */
+function rehydrate(row) {
+  if (!row) return null;
+  const jsonb = (v) => {
+    if (v == null) return null;
+    if (typeof v === "string") { try { return JSON.parse(v); } catch { return null; } }
+    return v;
+  };
+  const stored = jsonb(row.computed_charges);
+  const five = stored && !Array.isArray(stored) && (stored.rows || stored.families);
+  const metrics = (five && stored.metrics) || {};
+  return {
+    ...row,
+    computed: {
+      currency: row.currency,
+      // The five-family shape, as `create` returned it.
+      rows: five ? stored.rows || [] : [],
+      families: five ? stored.families || {} : {},
+      // The tiered model stores a bare breakdown array under the same column.
+      breakdown: five ? [] : Array.isArray(stored) ? stored : [],
+      containers: jsonb(row.containers) || [],
+      rates_used: jsonb(row.rates_snapshot),
+      total_ht: Number(row.total_ht),
+      vat: Number(row.vat_total),
+      total_ttc: Number(row.total_amount),
+      free_days: row.free_days,
+      yard_trigger: row.yard_trigger,
+      port_stay_days: metrics.port_stay_days ?? null,
+      due_date: metrics.due_date ?? null,
+      status: metrics.status ?? null,
+      container_count: metrics.container_count ?? null,
+      teu: metrics.teu ?? null,
+      // The rate this row was taxed at — not today's, which may differ.
+      vat_rate: metrics.vat_rate ?? null,
+      model: five ? "five_family" : "tiered",
+      // No frozen tariff ⇒ written before 10716; the totals stand, the
+      // breakdown cannot be reconstructed. The screen should say so rather
+      // than render an empty table as though there were no charges.
+      rendered_from_snapshot: Boolean(row.rates_snapshot),
+    },
+  };
+}
+
+async function get(client, id) {
+  return rehydrate(await repo.getSim(client, id));
+}
+
 const list = (client, q) => repo.listSims(client, q);
 
-module.exports = { preview, create, get, list, rates, saveRates, prefill, parseContainers };
+/**
+ * EDIT A SAVED SIMULATION (§2.4a).
+ *
+ * There was no update path, and the screen showed it: the only forward action
+ * on a saved simulation was "Re-apply to workbench", which re-seeds the form
+ * and saves a SECOND row. Every correction left a duplicate behind, and the
+ * register filled with near-identical simulations of the same file.
+ *
+ * A simulation carries no status and no GL (KB §7) — it is a what-if — so
+ * there is no lifecycle to guard here, unlike the margin simulator. What must
+ * hold is that the row and its totals never disagree: the inputs are
+ * recomputed in full and the stored result replaced wholesale, including a
+ * fresh tariff snapshot. A partial patch that left `computed_charges` stale
+ * would produce exactly the class of defect §2.6 is about.
+ */
+async function update(client, id, body, actor = {}) {
+  const existing = await repo.getSim(client, id);
+  if (!existing) throw new AppError("NOT_FOUND", "Simulation not found", 404);
+  const five = isFiveFamily(body);
+  const ccy = five ? null : await assertCurrency(client, body.currency || "XAF");
+  const computed = five ? await fiveFamily(client, body) : await preview(client, body);
+  const data = rowFor({ body, computed, five, ccy, common: {
+    dossier_id: body.dossier_id || null,
+    shipping_line: body.shipping_line || null,
+    container_variant: body.container_variant || null,
+    currency: computed.currency || ccy || "XAF",
+  } });
+  await client.query("BEGIN");
+  try {
+    const sim = await repo.updateSim(client, id, data);
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id),
+      before: { total_ttc: Number(existing.total_amount), currency: existing.currency },
+      after: { total_ttc: data.total_amount, currency: data.currency, model: five ? "five_family" : "tiered" },
+    });
+    await client.query("COMMIT");
+    return rehydrate(sim);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+module.exports = { preview, create, update, get, list, rates, saveRates, prefill, parseContainers };

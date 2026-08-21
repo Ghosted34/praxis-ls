@@ -20,5 +20,8 @@ module.exports = {
     // camelCase destructure silently dropped dossier_id/service_type_id —
     // an AI-created simulation lost its file link. Map explicitly.
     { key: "create_margin_simulation", service: (c, p, a) => service.create(c, { dossierId: p.dossier_id || null, serviceTypeId: p.service_type_id || null, costingId: p.costing_id || null, currency: p.currency, lines: p.lines || [], actor: a || {} }), schema: validator.schemas.compute, permission: { module: "MOD-27", action: "create" }, confirm: true, describe: "Compute + persist a margin simulation (margin on services only)." },
+    // §2.4a — without this the assistant could create a simulation it could
+    // never correct, which is the same dead end the screen had.
+    { key: "update_margin_simulation", service: (c, p, a) => service.update(c, { id: p.margin_simulation_id, patch: { dossier_id: p.dossier_id, service_type_id: p.service_type_id, costing_id: p.costing_id, currency: p.currency }, lines: Array.isArray(p.lines) ? p.lines : null, actor: a || {} }), schema: validator.schemas.aiUpdate, permission: { module: "MOD-27", action: "edit" }, confirm: true, describe: "Edit a DRAFT or REJECTED margin simulation (editing a rejected one returns it to DRAFT). Passing lines replaces the whole line set." },
   ],
 };

@@ -119,6 +119,25 @@ type Computed = {
   teu: number;
 };
 
+/**
+ * A saved simulation as the server returns it (§2.6). `GET /:id` rebuilds
+ * `computed` from the frozen jsonb, so a re-opened simulation answers exactly
+ * as it did when it was computed.
+ *
+ * `rendered_from_snapshot` false means the row predates the tariff freeze
+ * (10716): its totals stand, but the breakdown cannot be reconstructed, and the
+ * screen says so rather than rendering an empty table as though there were no
+ * charges.
+ */
+type SavedSim = Row & {
+  computed?: Computed & {
+    breakdown?: unknown[];
+    model?: "five_family" | "tiered";
+    rendered_from_snapshot?: boolean;
+    rates_used?: Record<string, unknown> | null;
+  };
+};
+
 /* ── Metrics band ─────────────────────────────────────────────────────────── */
 
 /**
@@ -406,6 +425,13 @@ export function ExtraChargeSimulationsPage() {
   const [filter, setFilter] = React.useState("all");
   // §3.2 — saved simulations are reusable, not inert: clicking a row opens it.
   const [selected, setSelected] = React.useState<Row | null>(null);
+  /**
+   * §2.4a — the saved simulation being EDITED, if any. Without this the only
+   * forward action was "Re-apply to workbench", which re-seeds the form and
+   * saves a SECOND row: every correction left a duplicate behind and the
+   * register filled with near-identical simulations of the same file.
+   */
+  const [editingId, setEditingId] = React.useState<string | null>(null);
 
   const body = React.useCallback(
     (): Record<string, unknown> => ({
@@ -472,11 +498,17 @@ export function ExtraChargeSimulationsPage() {
     setSaving(true);
     setError(null);
     try {
-      await tenant("/extra-charge-simulations", {
-        method: "POST",
-        body: body(),
-      });
-      setSavedNote("Simulation saved.");
+      // §2.4a — PATCH the row being edited, POST a new one. The server
+      // recomputes and replaces the stored result wholesale, including a fresh
+      // tariff snapshot, so the row and its totals can never disagree.
+      await tenant(
+        editingId
+          ? `/extra-charge-simulations/${editingId}`
+          : "/extra-charge-simulations",
+        { method: editingId ? "PATCH" : "POST", body: body() },
+      );
+      setSavedNote(editingId ? "Simulation updated." : "Simulation saved.");
+      setEditingId(null);
       reload();
       window.setTimeout(() => setSavedNote(null), 4000);
     } catch (e) {
@@ -484,6 +516,27 @@ export function ExtraChargeSimulationsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Load a saved simulation's inputs into the workbench. `asEdit` decides
+   *  whether saving updates that row or creates a new one. */
+  function loadIntoWorkbench(s: Row, asEdit: boolean) {
+    const list = s.containers as { q: number; s: number; t: string }[] | null;
+    if (Array.isArray(list) && list.length) {
+      setContainers(list.map((c) => `${c.q}x${c.s}${c.t}`).join(", "));
+    }
+    if (s.ata) setAta(String(s.ata).slice(0, 10));
+    if (s.gate_out) setGateOut(String(s.gate_out).slice(0, 10));
+    if (s.empty_return) setEmptyReturn(String(s.empty_return).slice(0, 10));
+    if (s.free_days != null) setFreeDays(String(s.free_days));
+    if (s.shipping_line) setShippingLine(String(s.shipping_line));
+    if (s.currency) setCurrency(String(s.currency));
+    if (s.dossier_id) {
+      setDossierId(String(s.dossier_id));
+      setDossierLabel(null);
+    }
+    setEditingId(asEdit ? String(s.extra_charge_simulation_id) : null);
+    setSelected(null);
   }
 
   // The ribbon command must be a STABLE array — republishing it on every
@@ -754,11 +807,29 @@ export function ExtraChargeSimulationsPage() {
                 </Field>
               </div>
 
+              {/* The tariff is editable from THIS screen (Rate configuration,
+                  above) — pointing at Settings was true of an earlier build and
+                  sends the operator away mid-simulation for no reason. VAT is
+                  the tenant's rate now too, not the engine's old 19.25%
+                  literal (§2.3). */}
               <p className="text-micro text-muted-foreground">
-                Rates come from the tenant tariff (Settings › Commercial). The
-                total recomputes as you type; saving freezes the tariff onto the
-                record so it can still explain itself after a rate change.
+                {tr(
+                  "Rates come from the tenant tariff — edit them in Rate configuration above. The total recomputes as you type; saving freezes the tariff onto the record so it can still explain itself after a rate change.",
+                )}
               </p>
+
+              {editingId && (
+                <p className="text-micro text-[rgb(var(--warn))]" role="status">
+                  {tr("Editing a saved simulation — saving replaces it.")}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setEditingId(null)}
+                  >
+                    {tr("Save as new instead")}
+                  </button>
+                </p>
+              )}
 
               <div className="hidden justify-end md:flex">
                 <Button
@@ -766,7 +837,7 @@ export function ExtraChargeSimulationsPage() {
                   loading={saving}
                   disabled={!computed || computed.total_ttc === 0}
                 >
-                  Save simulation
+                  {editingId ? tr("Update simulation") : tr("Save simulation")}
                 </Button>
               </div>
             </div>
@@ -1007,99 +1078,11 @@ export function ExtraChargeSimulationsPage() {
       {/* §3.2 — a saved simulation opens and re-applies: they are saved to be
           reused, not to sit as inert rows. */}
       {selected && (
-        <Modal
-          open
+        <SavedSimModal
+          summary={selected}
           onClose={() => setSelected(null)}
-          title={tr("Saved simulation")}
-          description="The estimate as computed, with the tariff it was frozen with."
-          size="lg"
-        >
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Metric label="Simulated" value={dateFmt(selected.created_at)} />
-              <Metric
-                label="Shipping line"
-                value={cell(selected.shipping_line)}
-              />
-              <Metric
-                label="Total HT"
-                value={money0(amount(selected.total_ht))}
-              />
-              <Metric
-                label="Total TTC"
-                value={money(selected.total_amount, String(selected.currency || "XAF"))}
-                tone="accent"
-              />
-            </div>
-            {(() => {
-              const cc = selected.computed_charges as
-                | { rows?: ChargeRow[] }
-                | ChargeRow[]
-                | null;
-              const rows = Array.isArray(cc) ? [] : (cc?.rows ?? []);
-              return rows.length ? (
-                <Table sticky maxHeight="320px" density="compact">
-                  <THead>
-                    <TR>
-                      <TH>Family</TH>
-                      <TH>Detail</TH>
-                      <TH className="text-right">Days</TH>
-                      <TH className="text-right">Amount HT</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {rows.map((r, i) => (
-                      <TR key={i}>
-                        <TD>{r.cat}</TD>
-                        <TD className="text-muted-foreground">{r.desc}</TD>
-                        <TD className="num text-right">{r.qty}</TD>
-                        <TD className="num text-right">{money0(r.total)}</TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              ) : null;
-            })()}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSelected(null)}>
-                {tr("Close")}
-              </Button>
-              <Button
-                onClick={() => {
-                  // Load the saved inputs back into the workbench — the live
-                  // preview recomputes against TODAY's tariff, which is the
-                  // point of re-applying (compare then vs now).
-                  const list = selected.containers as
-                    | { q: number; s: number; t: string }[]
-                    | null;
-                  if (Array.isArray(list) && list.length) {
-                    setContainers(
-                      list.map((c) => `${c.q}x${c.s}${c.t}`).join(", "),
-                    );
-                  }
-                  if (selected.ata) setAta(String(selected.ata).slice(0, 10));
-                  if (selected.gate_out)
-                    setGateOut(String(selected.gate_out).slice(0, 10));
-                  if (selected.empty_return)
-                    setEmptyReturn(String(selected.empty_return).slice(0, 10));
-                  if (selected.free_days != null)
-                    setFreeDays(String(selected.free_days));
-                  if (selected.shipping_line)
-                    setShippingLine(String(selected.shipping_line));
-                  if (selected.currency)
-                    setCurrency(String(selected.currency));
-                  if (selected.dossier_id) {
-                    setDossierId(String(selected.dossier_id));
-                    setDossierLabel(null);
-                  }
-                  setSelected(null);
-                }}
-              >
-                {tr("Re-apply to workbench")}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          onLoad={loadIntoWorkbench}
+        />
       )}
 
       <RateConfigModal
@@ -1110,5 +1093,115 @@ export function ExtraChargeSimulationsPage() {
 
       <AiActions actions={EXTRA_AI} />
     </PageContainer>
+  );
+}
+
+/**
+ * §2.6 — a saved simulation, read from the SERVER's rebuilt result.
+ *
+ * This modal used to read raw columns off the list row: `selected.total_ht`,
+ * `selected.computed_charges`. `create` returned a `computed` object and `get`
+ * returned only the bare row, so the screen that SAVED a simulation could
+ * render its breakdown and the screen that RE-OPENED the same simulation could
+ * not — hence TOTAL TTC 450,000.00 XAF beside TOTAL HT "—", over an empty
+ * charge table. `GET /:id` now rebuilds `computed` from the frozen jsonb, so
+ * this fetches by id and reads that.
+ */
+function SavedSimModal({
+  summary,
+  onClose,
+  onLoad,
+}: {
+  summary: Row;
+  onClose: () => void;
+  onLoad: (s: Row, asEdit: boolean) => void;
+}) {
+  const id = String(summary.extra_charge_simulation_id);
+  const detail = useResource<SavedSim | null>(
+    () => tenant<SavedSim>(`/extra-charge-simulations/${id}`),
+    [id],
+  );
+  // Fall back to the list row while the fetch is in flight, so the modal opens
+  // with something rather than blank.
+  const s = (detail.data || summary) as SavedSim;
+  const c = detail.data?.computed;
+  const currency = String(s.currency || "XAF");
+  const rows = c?.rows ?? [];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Saved simulation")}
+      description="The estimate as computed, with the tariff it was frozen with."
+      size="lg"
+    >
+      <div className="space-y-3">
+        {detail.error && <ErrorState message={detail.error} />}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Metric label="Simulated" value={dateFmt(s.created_at)} />
+          <Metric
+            label="Shipping line"
+            value={cell(s.shipping_line)}
+          />
+          <Metric
+            label="Total HT"
+            value={money0(c ? c.total_ht : amount(s.total_ht))}
+            sub={c ? `${(c.vat_rate * 100).toFixed(2)}% VAT · ${money0(c.vat)}` : undefined}
+          />
+          <Metric
+            label="Total TTC"
+            value={money(c ? c.total_ttc : amount(s.total_amount), currency)}
+            tone="accent"
+          />
+        </div>
+        {c && c.rendered_from_snapshot === false && (
+          <p className="text-micro text-[rgb(var(--warn))]">
+            {tr(
+              "Saved before the tariff was frozen onto the record — the totals stand, but the line-by-line breakdown cannot be reconstructed.",
+            )}
+          </p>
+        )}
+        {(() => {
+          return rows.length ? (
+            <Table sticky maxHeight="320px" density="compact">
+              <THead>
+                <TR>
+                  <TH>Family</TH>
+                  <TH>Detail</TH>
+                  <TH className="text-right">Days</TH>
+                  <TH className="text-right">Amount HT</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {rows.map((r, i) => (
+                  <TR key={i}>
+                    <TD>{r.cat}</TD>
+                    <TD className="text-muted-foreground">{r.desc}</TD>
+                    <TD className="num text-right">{r.qty}</TD>
+                    <TD className="num text-right">{money0(r.total)}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          ) : null;
+        })()}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            {tr("Close")}
+          </Button>
+          {/* Re-apply CLONES: the live preview recomputes against TODAY's
+              tariff, which is the point (compare then vs now), and saving
+              writes a new row. That is a legitimate act — it just is not
+              the only one, which is what made it a duplicate factory. */}
+          <Button variant="outline" onClick={() => onLoad(s, false)}>
+            {tr("Re-apply as new")}
+          </Button>
+          {/* §2.4a — correct THIS simulation instead of leaving a near
+              identical twin beside it. */}
+          <Button onClick={() => onLoad(s, true)}>{tr("Edit")}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

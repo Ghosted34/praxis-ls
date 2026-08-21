@@ -138,12 +138,65 @@ const DOC_TYPES = {
 };
 
 /**
+ * The signature CEILING per doc type — level 1 of the eligibility funnel
+ * (doc/SIGNATURE_ENGINEERING_GUIDE.md §3.4). Code, deliberately: a tenant may
+ * narrow this but must never widen it.
+ *
+ *   signable   can this doc type be signed at all?
+ *   allowsQes  may it be sent for third-party certification? Costs money per
+ *              envelope, so it is off unless the document's nature warrants it.
+ *   allowsWet  may it be printed and signed in ink? A payslip must not be — it
+ *              would put a salary on paper travelling through an office — while
+ *              a delivery note is signed on paper more often than not.
+ *
+ * Anything unlisted is NOT signable. That is the conservative default: a new
+ * doc type appearing in a signing menu because somebody forgot to think about
+ * it is the failure this table exists to prevent.
+ */
+/*
+ * Null-prototype: docType reaches this map from a request body, and a plain
+ * literal would resolve SIGNATURE_CEILING["constructor"] to `Object` — truthy,
+ * so the `|| NOT_SIGNABLE` fallback never fired and this function returned a
+ * FUNCTION where its contract promises an object. Nothing broke, because every
+ * property read off it came back undefined and read as "not allowed", but that
+ * is luck rather than design. Same class as the canonical.js CodeQL finding.
+ */
+const SIGNATURE_CEILING = Object.assign(Object.create(null), {
+  FINAL_INVOICE:       { signable: true, allowsQes: true,  allowsWet: true },
+  PROFORMA_ADVANCE:    { signable: true, allowsQes: false, allowsWet: true },
+  QUOTATION:           { signable: true, allowsQes: true,  allowsWet: true },
+  PROPOSAL:            { signable: true, allowsQes: true,  allowsWet: true },
+  PURCHASE_ORDER:      { signable: true, allowsQes: true,  allowsWet: true },
+  DELIVERY_NOTE:       { signable: true, allowsQes: false, allowsWet: true },
+  TRANSIT_ORDER:       { signable: true, allowsQes: false, allowsWet: true },
+  /*
+   * The one type that may NOT be wet-signed. An employment contract carries a
+   * salary, and the wet path prints it, hands it to a courier and posts the
+   * scan back through a shared mailbox. It is also the type most likely to be
+   * disputed years later, which is why it is the only one where certification
+   * is worth its cost.
+   */
+  EMPLOYMENT_CONTRACT: { signable: true, allowsQes: true,  allowsWet: false },
+});
+
+const NOT_SIGNABLE = Object.freeze({ signable: false, allowsQes: false, allowsWet: false });
+
+/** The ceiling for a doc type. Unregistered types are not signable. */
+const signaturePolicyFor = (docType) =>
+  (typeof docType === "string" && Object.prototype.hasOwnProperty.call(SIGNATURE_CEILING, docType)
+    ? SIGNATURE_CEILING[docType]
+    : NOT_SIGNABLE);
+
+/** Doc types that can carry a signature at all. */
+const signableDocTypes = () => Object.keys(SIGNATURE_CEILING);
+
+/**
  * The module whose grant governs reading this doc type. Falls back to MOD-70
  * (the historical gate) for anything unregistered, so an unknown type is gated
  * conservatively rather than left open.
  */
 const moduleKeyForDocType = (docType) =>
-  (DOC_TYPES[docType] && DOC_TYPES[docType].moduleKey) || "MOD-70";
+  (isDocType(docType) && DOC_TYPES[docType].moduleKey) || "MOD-70";
 
 const isDocType = (docType) => Object.prototype.hasOwnProperty.call(DOC_TYPES, docType);
 
@@ -165,4 +218,7 @@ function assertDocType(docType) {
   return docType;
 }
 
-module.exports = { DOC_TYPES, isDocType, assertDocType, moduleKeyForDocType };
+module.exports = {
+  DOC_TYPES, isDocType, assertDocType, moduleKeyForDocType,
+  SIGNATURE_CEILING, signaturePolicyFor, signableDocTypes,
+};

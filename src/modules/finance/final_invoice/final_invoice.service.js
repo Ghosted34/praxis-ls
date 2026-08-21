@@ -11,6 +11,8 @@
 
 const repo = require("./final_invoice.repo");
 const events = require("./final_invoice.events");
+const { reconcileAgainstQuotation } = require("./final_invoice.rules");
+const { getRule } = require("../../../shared/config/settings");
 const journalEntry = require("../journal_entry/journal_entry.service");
 const determination = require("../../../services/accounting/determination");
 const { applyAdvances } = require("../../../services/accounting/invoicing.rules");
@@ -24,18 +26,150 @@ const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 const ref = (id) => "invoice:" + id;
 
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
+/**
+ * §2.7 — THE PRICING GUARD. Lines may not be invented at the invoice.
+ *
+ * `updateDraft` took whatever lines a caller sent, at whatever prices. That is
+ * the hole through which costing COST figures reached invoice fb7db2f3, and it
+ * is open to the AI tool surface (`update_final_invoice`) on the same terms.
+ * Fixing the qty/price mangling (§2.2) does not close it: the numbers arrive
+ * intact and still wrong.
+ *
+ * Policy is a tenant setting, because "must every charge be quoted first" is a
+ * commercial rule, not a constant — some tenants bill ad-hoc work routinely:
+ *
+ *   QUOTATION_WHEN_PRESENT  (default) enforce when the dossier HAS an accepted
+ *                           quotation; allow free billing when it has none.
+ *                           Catches the real defect without blocking ad-hoc
+ *                           invoices, which is why it is the default rather
+ *                           than the strict mode.
+ *   QUOTATION_REQUIRED      additionally refuse to bill a dossier with no
+ *                           accepted quotation at all.
+ *   FREE                    no check — the pre-existing behaviour, kept as an
+ *                           explicit opt-out rather than a silent default.
+ *
+ * THE OVERRIDE is deliberately allowed, deliberately loud, and gated. A late
+ * charge that genuinely was not quoted is a real business event, and a control
+ * that cannot be released gets worked around (someone bills a second dossier).
+ * So a caller may pass `pricing_override: { reason }`, which is stored on the
+ * invoice, written to the audit trail, and shown to whoever approves. A reason
+ * under 10 characters is not a reason.
+ *
+ * WHO may release it is decided at the edge, not here: the routes gate the
+ * field's PRESENCE on `approve` + the APPROVER authority
+ * (routes.js OVERRIDE_GATE) while the route itself stays on `edit`, so a
+ * pricer can still fix a typo but only an approver can bill off-contract. The
+ * AI surface refuses the field outright — it carries one flat permission and no
+ * capability layer, so it cannot express that pairing (final_invoice.ai.js).
+ *
+ * This service therefore treats an override as already-authorised. It is the
+ * last line, not the gate: a new caller that reaches `updateDraft` without
+ * passing through one of those two doors would inherit the old hole, so keep
+ * new entry points gated the same way.
+ */
+const PRICING_MODES = new Set(["QUOTATION_WHEN_PRESENT", "QUOTATION_REQUIRED", "FREE"]);
+
+async function pricingPolicy(client) {
+  const mode = String(await getRule(client, "finance", "invoice_pricing", "source", "QUOTATION_WHEN_PRESENT"))
+    .toUpperCase().trim();
+  return {
+    mode: PRICING_MODES.has(mode) ? mode : "QUOTATION_WHEN_PRESENT",
+    tolerance: Number(await getRule(client, "finance", "invoice_pricing", "unit_price_tolerance", 0.01)),
+  };
+}
+
+/**
+ * Returns the override reason to persist (or null). Throws 422 listing every
+ * violation — all of them, not the first: a pricer fixing one line at a time
+ * against a silent endpoint is how an afternoon disappears.
+ */
+async function assertPricedSource(client, { invoice, dossierId, lines, override = null, actor = {} }) {
+  const policy = await pricingPolicy(client);
+  if (policy.mode === "FREE" || !Array.isArray(lines) || !lines.length) return null;
+
+  const dossier = dossierId || (invoice && invoice.dossier_id) || null;
+  const quotation = await repo.acceptedQuotationFor(client, dossier);
+
+  const reason = override && String(override.reason || "").trim();
+  const overriding = Boolean(reason);
+  if (overriding && reason.length < 10) {
+    throw new AppError("OVERRIDE_REASON_REQUIRED", "Billing off-quotation needs a written reason of at least 10 characters — it is shown to whoever approves the invoice", 422);
+  }
+
+  if (!quotation) {
+    if (policy.mode === "QUOTATION_REQUIRED" && !overriding) {
+      throw new AppError(
+        "NO_ACCEPTED_QUOTATION",
+        "This dossier has no accepted quotation, and the tenant requires one before a charge can be billed. Quote and have it accepted first, or supply pricing_override.reason.",
+        422,
+      );
+    }
+    return overriding ? reason : null;
+  }
+
+  if (overriding) {
+    await audit(client, {
+      actorUserId: actor.user_id || null, action: "final_invoice.pricing_override", moduleKey: events.MODULE,
+      entityRef: invoice ? ref(invoice.invoice_id) : "invoice:new",
+      after: { quotation_id: quotation.quotation_id, doc_number: quotation.doc_number, reason },
+    });
+    return reason;
+  }
+
+  const quoted = await repo.quotationLinesFor(client, quotation.quotation_id);
+  const { ok, violations } = reconcileAgainstQuotation(lines, quoted, { tolerance: policy.tolerance });
+  if (!ok) {
+    throw new AppError(
+      "NOT_PRICED_BY_QUOTATION",
+      `These lines do not match the accepted quotation ${quotation.doc_number || quotation.quotation_id}: ` +
+        violations.map((v) => v.message).join("; ") +
+        ". Correct the lines, re-quote, or supply pricing_override.reason.",
+      422,
+      { quotation_id: quotation.quotation_id, doc_number: quotation.doc_number, violations },
+    );
+  }
+  return null;
+}
+
+/**
+ * §2.2 — qty and unit price are preserved, and the extension is OURS.
+ *
+ * This used to hardcode `qty: 1` and write the caller's `amount` into
+ * `unit_price`, discarding any real quantity. An invoice built from a costing
+ * of "40 × 2,000,000" therefore printed ONE unit at 80,000,000 — the extended
+ * cost masquerading as a unit price (invoice fb7db2f3). `invoice_line.qty` has
+ * existed since 0230:85; nothing was ever putting anything in it.
+ *
+ * `line_ht` is now computed here rather than taken from the payload. A caller
+ * that can state the total independently of qty × price is a caller that can
+ * state a total which does not equal qty × price, and the printed document
+ * would then contradict its own arithmetic.
+ *
+ * `tax_code_id` is persisted (0230:88). Dropping it was the other half of the
+ * TVA 0.00 on that invoice: `determination.resolve` (:143) only taxes a line
+ * whose rule names a tax code and which is not a disbursement.
+ */
 async function replaceLines(client, invoiceId, lines) {
   await repo.deleteLines(client, invoiceId);
   for (let i = 0; i < lines.length; i += 1) {
     const ln = lines[i];
-     
+    // The deprecated `amount` form means one unit at that price.
+    const qty = ln.unit_price !== undefined ? Number(ln.qty ?? 1) : 1;
+    const unitPrice = ln.unit_price !== undefined ? Number(ln.unit_price) : Number(ln.amount);
+    const isDisbursement = ln.is_disbursement === true;
     await repo.insertLine(client, {
       invoice_id: invoiceId, dictionary_item_id: ln.dictionary_item_id,
-      label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_disbursement: ln.is_disbursement === true,
+      label: ln.label || "Line", qty, unit_price: unitPrice, is_disbursement: isDisbursement,
+      // Never on a disbursement: the DB CHECK and the ledger trigger both
+      // refuse that pair, and a 422 from the schema is the first line of
+      // defence — this is the second, for callers that bypass it.
+      tax_code_id: isDisbursement ? null : ln.tax_code_id || null,
       // Which box this charge was for (0663). NULL for anything with no
       // equipment dimension, and for every line invoiced before it shipped.
       container_type_ref_id: ln.container_type_ref_id || null,
-      line_ht: ln.amount, line_no: i + 1,
+      line_ht: round2(qty * unitPrice), line_no: i + 1,
     });
   }
 }
@@ -46,10 +180,15 @@ const econLinesFrom = (lineRows, dossierId) =>
 /** Insert a DRAFT invoice. TX-AGNOSTIC: assumes the caller's transaction context
  *  (so it can run inside a costing-approval tx OR standalone). */
 async function createDraftCore(client, opts) {
-  const { entityId, clientId = null, dossierId = null, lines = [], actor = {} } = opts;
+  const { entityId, clientId = null, dossierId = null, lines = [], actor = {}, pricingOverride = null } = opts;
+  // §2.7 — check BEFORE the row exists: a refused invoice should leave nothing
+  // behind. The quotation-conversion path passes lines lifted straight off the
+  // quotation, so it reconciles against itself and sails through.
+  const overrideReason = await assertPricedSource(client, { invoice: null, dossierId, lines, override: pricingOverride, actor });
   const invoice = await repo.insertInvoice(client, {
     entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "FINAL",
     status: "DRAFT", issued_by: await resolveActorId(client, actor.user_id),
+    pricing_override_reason: overrideReason,
   });
   if (lines.length) await replaceLines(client, invoice.invoice_id, lines);
   await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(invoice.invoice_id), after: invoice });
@@ -87,14 +226,28 @@ async function ensureDraftForCosting(client, costingId) {
   return { created: true, invoice_id: inv.invoice_id };
 }
 
-async function updateDraft(client, { invoiceId, patch = {}, lines = null, actor = {} }) {
+async function updateDraft(client, { invoiceId, patch = {}, lines = null, actor = {}, pricingOverride = null }) {
   const inv = await repo.getInvoice(client, invoiceId);
   if (!inv) throw new AppError("NOT_FOUND", "Invoice not found", 404);
   if (inv.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT invoice can be edited (post a reversal instead)", 422);
+  // §2.7 — the hole this closes. Checked against the dossier the lines will
+  // END UP on, not the one they came from: a patch may move the invoice and
+  // its lines in the same call, and validating the old dossier's quotation
+  // would check the lines against an offer they no longer belong to.
+  const overrideReason = Array.isArray(lines)
+    ? await assertPricedSource(client, {
+        invoice: inv,
+        dossierId: patch.dossier_id !== undefined ? patch.dossier_id : inv.dossier_id,
+        lines, override: pricingOverride, actor,
+      })
+    : null;
   await client.query("BEGIN");
   try {
     const fields = {};
     for (const k of ["client_id", "dossier_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    // Only ever set on a call that actually re-stated the lines; a later patch
+    // that touches nothing else must not silently clear the recorded reason.
+    if (Array.isArray(lines)) fields.pricing_override_reason = overrideReason;
     if (Object.keys(fields).length) await repo.updateInvoice(client, invoiceId, fields);
     if (Array.isArray(lines)) await replaceLines(client, invoiceId, lines);
     await client.query("COMMIT");

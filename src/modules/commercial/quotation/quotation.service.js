@@ -102,7 +102,25 @@ async function accept(client, { id, convert = false, actor = {} }) {
       // The equipment tag rides across the conversion (0663). Dropping it here
       // would be the same bug one document later: the invoice would carry two
       // identically-labelled lines at different prices and nothing saying why.
-      const econLines = lines.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.qty) * Number(l.unit_price), is_disbursement: l.is_disbursement, label: l.label, container_type_ref_id: l.container_type_ref_id || null }));
+      // §2.2 — qty and unit price cross INTACT. This used to pre-multiply into
+      // a single `amount`, and the invoice then stored it as one unit at that
+      // price: a quotation for 40 boxes at 2,000,000 became an invoice line
+      // reading "1 × 80,000,000". The quantity was not lost in the invoice, it
+      // was destroyed here, one document earlier.
+      //
+      // It also made the quotation fail the §2.7 guard against ITSELF — the
+      // conversion is the one path that is definitionally correctly priced.
+      // tax_code_id travels too: it is what the printed invoice shows in its
+      // VAT column, and dropping it was half of the TVA 0.00 on fb7db2f3.
+      const econLines = lines.map((l) => ({
+        dictionary_item_id: l.dictionary_item_id,
+        qty: Number(l.qty) || 1,
+        unit_price: Number(l.unit_price) || 0,
+        is_disbursement: l.is_disbursement,
+        tax_code_id: l.is_disbursement === true ? null : l.tax_code_id || null,
+        label: l.label,
+        container_type_ref_id: l.container_type_ref_id || null,
+      }));
       const inv = await finalInvoice.createDraft(client, { entityId: before.entity_id, clientId: before.client_id, dossierId: before.dossier_id, lines: econLines, actor });
       invoiceId = inv.invoice_id;
       await repo.update(client, id, { status: "CONVERTED" });

@@ -48,7 +48,19 @@ function computeDemurrage({ freeDays = 0, occupiedDays, tiers = [] }) {
 // families per container; the rebuild shipped only demurrage. The port below
 // mirrors the legacy rules exactly (the founder asked for it "copied as-is").
 
-const VAT_RATE = 0.1925;
+/**
+ * The legacy's frozen VAT rate (§2.3). Kept ONLY as the documented legacy
+ * value and as the fallback for a caller that supplies nothing — it is NOT read
+ * by `simulateCharges` any more.
+ *
+ * A tenant rate lives in settings finance.vat and is the same source the
+ * quotation totals, the margin simulator and `rates()` already use. Hardcoding
+ * it here meant a tenant could change its VAT rate everywhere and this one
+ * screen would keep quoting 19.25% — the exact "frozen number" defect this
+ * module was rebuilt to remove, still present two lines from a comment saying
+ * so.
+ */
+const LEGACY_VAT_RATE = 0.1925;
 
 /**
  * The legacy defaults — `let STATE = {…}` at
@@ -163,9 +175,13 @@ function demurrageKey(c, rates) {
  *   yardTrigger days of port stay that triggers the one-off yard charge
  *   rates       rate table (defaults to DEFAULT_RATES)
  *   fx          { XAF: 1, USD: x, EUR: y } — the legacy converted via 1/fx
+ *   vatRate     VAT as a FRACTION (0.1925), from settings finance.vat (§2.3).
+ *               Defaults to the legacy value only so a direct unit-test call
+ *               stays meaningful; every service path passes the tenant's.
  * Returns { rows, families, total_ht, vat, total_ttc, currency, per_container }.
  */
-function simulateCharges({ containers = [], ata = null, gateOut = null, emptyReturn = null, freeDays = 0, yardTrigger = null, rates = null, fx = null, currency = "XAF" }) {
+function simulateCharges({ containers = [], ata = null, gateOut = null, emptyReturn = null, freeDays = 0, yardTrigger = null, rates = null, fx = null, currency = "XAF", vatRate = LEGACY_VAT_RATE }) {
+  const VAT = Number.isFinite(Number(vatRate)) && Number(vatRate) >= 0 ? Number(vatRate) : LEGACY_VAT_RATE;
   const R = { ...DEFAULT_RATES, ...(rates || {}) };
   R.demurrage = { ...DEFAULT_RATES.demurrage, ...(rates && rates.demurrage) };
   R.storage = { ...DEFAULT_RATES.storage, ...(rates && rates.storage) };
@@ -272,7 +288,7 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
   }
 
   const total_ht = round2(rows.reduce((a, r) => a + r.total, 0));
-  const vat = round2(total_ht * VAT_RATE);
+  const vat = round2(total_ht * VAT);
 
   // The legacy KPI strip: free days, port stay, and whether the free period was
   // blown. Due date is ATA + (free - 1) days, and the status compares gate-out
@@ -287,7 +303,7 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
     total_ht,
     vat,
     total_ttc: round2(total_ht + vat),
-    vat_rate: VAT_RATE,
+    vat_rate: VAT,
     containers: list,
     // Metrics — what the screen puts above the table, computed server-side so
     // the client never re-derives a number the invoice will be argued over.
@@ -302,4 +318,4 @@ function simulateCharges({ containers = [], ata = null, gateOut = null, emptyRet
   };
 }
 
-module.exports = { daysBetween, computeDemurrage, parseContainers, simulateCharges, DEFAULT_RATES, VAT_RATE };
+module.exports = { daysBetween, computeDemurrage, parseContainers, simulateCharges, DEFAULT_RATES, LEGACY_VAT_RATE };

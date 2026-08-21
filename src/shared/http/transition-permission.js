@@ -104,8 +104,50 @@ function requireLifecyclePermissionOnPatch(moduleKey, actionByTarget, opts = {})
   };
 }
 
+/**
+ * A FIELD whose mere presence demands a stronger gate (§2.7).
+ *
+ * Sibling of `requireLifecyclePermissionOnPatch` above, and the same shape of
+ * problem: one route, two acts of different weight. There the act is named by a
+ * field's VALUE (a target status); here it is named by the field EXISTING at
+ * all.
+ *
+ * The case that needed it: `pricing_override` on a final invoice. Billing a
+ * client for something their accepted quotation does not cover is a commercial
+ * decision, not an edit — but it arrives on the ordinary `PATCH /:id`, which is
+ * correctly mounted on `edit`. Raising the whole route to `approve` would stop
+ * a pricer fixing a typo; leaving it at `edit` let anyone who can touch a line
+ * release the control that stands in front of the client's bill.
+ *
+ * Does nothing when the field is absent, so ordinary edits are untouched. When
+ * present, the request must satisfy BOTH the stronger permission and (if given)
+ * the segregation-of-duties capability — the same pairing a decision endpoint
+ * uses. CEO bypasses both, as everywhere.
+ *
+ * Mount AFTER the validator, so the field has been shape-checked before it is
+ * allowed to choose its own gate.
+ *
+ *     router.patch("/:id",
+ *       requirePermission(MODULE, "edit"),
+ *       validator.updateDraft,
+ *       requireFieldPermission(MODULE, "pricing_override", "approve", { capability: "APPROVER" }),
+ *       controller.update);
+ */
+function requireFieldPermission(moduleKey, field, action, opts = {}) {
+  const { capability = null } = opts;
+  return function fieldRbac(req, res, next) {
+    const present = req.body && req.body[field] !== undefined && req.body[field] !== null;
+    if (!present) return next();
+    return requirePermission(moduleKey, action)(req, res, (err) => {
+      if (err || !capability) return next(err);
+      return requireCapability(capability)(req, res, next);
+    });
+  };
+}
+
 module.exports = {
   requireTransitionPermission,
   requireTransitionCapability,
   requireLifecyclePermissionOnPatch,
+  requireFieldPermission,
 };

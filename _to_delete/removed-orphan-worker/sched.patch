@@ -1,0 +1,400 @@
+diff --git a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+index 855aa36..3104fb7 100644
+--- a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
++++ b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+@@ -560,10 +560,33 @@ Removed rather than left with an escape hatch. The capability is not gone: `serv
+ has three live callers — company-profile refresh, CV scoring, and mail's attachment extraction
+ (§8.6), which is doc-vision delivered somewhere a person can actually reach it.
+ 
+-`scheduled-report` is also enqueued by nothing in-app, and that one is *by design*: its handler's
+-header names an external cron or `POST /reports/scheduled/run-due`, and both exist. It is listed in
+-the new sweep as externally driven, with a size ceiling on the list. Worth a decision from the lead —
+-it is the only periodic job not in `scheduleRecurring()`.
++### 14.3b `scheduled-report` was waiting for a deployment step nobody had written down
++
++Raised as a question and then answered: it is not by design.
++
++`scheduled-report` was registered from the day reports shipped and enqueued by nothing. Its header
++deferred the trigger to "an app scheduled-task or external cron" — a dependency recorded in a comment
++in one handler and nowhere else, on a fleet where every other periodic job is registered in
++`scheduleRecurring()`. A tenant who scheduled a weekly receivables report got a `scheduled_report`
++row, watched `next_run_at` arrive and then sit in the past, and received nothing, unless somebody
++remembered to POST `/reports/scheduled/run-due` by hand.
++
++This is the same defect `regie-aging-scheduler` was written to fix, in the same directory, for the
++same reason — and its file header says so explicitly: "`regie-aging` has been a registered worker
++since the régie module shipped and NOTHING EVER ENQUEUED IT". That fix was made once and the pattern
++was not swept for. It has been now.
++
++`scheduled-report-scheduler` fans out one job per live tenant, hourly. **Hourly, not daily, because
++the tick interval is the resolution of the whole feature**: `next_run_at` is a timestamp and the due
++query asks `next_run_at <= now()`, so a daily tick makes every cadence a tenant can choose mean
++"whenever the fleet cron fires". At five past the hour, clear of the pile every other scheduler puts
++on the hour. Live only — a Test run would generate the report, have its mail suppressed by
++`email.service`'s sandbox guard, and still consume `next_run_at`, which is a rehearsal that spends
++the schedule without rehearsing anything.
++
++The sweep's externally-driven allowance is now **empty**, and a new test asserts that every
++`-scheduler` worker is actually ticked by `scheduleRecurring` — a cron handler nobody enqueues being
++exactly how this one spent its life.
+ 
+ ### 14.4 Two classes came back clean
+ 
+@@ -588,4 +611,4 @@ being routed around.
+ 
+ ### 14.6 Verification
+ 
+-5,091 backend tests across 332 suites, 0 lint errors, column, idempotency and citext gates OK.
++5,104 backend tests across 333 suites, 0 lint errors, column, idempotency and citext gates OK.
+diff --git a/src/config/env.js b/src/config/env.js
+index 86aa4ae..cd03955 100755
+--- a/src/config/env.js
++++ b/src/config/env.js
+@@ -361,6 +361,14 @@ const Schema = z.object({
+   // than mid-afternoon while someone is looking at the same advance. Empty
+   // disables it; POST /regie/age-due still ages on demand.
+   REGIE_AGING_CRON: z.string().default("0 6 * * *"),
++  // Scheduled reports (1.3): the tick that fans `scheduled-report` out per live
++  // tenant. HOURLY, at five past — `next_run_at` is a timestamp and the due
++  // query asks `next_run_at <= now()`, so this interval is the resolution of
++  // the whole feature: tick daily and every cadence becomes "whenever the cron
++  // happened to fire". Five past the hour keeps it clear of the pile of jobs
++  // every other scheduler puts on the hour. Empty disables it;
++  // POST /reports/scheduled/run-due still runs a tenant's due reports on demand.
++  SCHEDULED_REPORT_CRON: z.string().default("5 * * * *"),
+   // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
+   // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
+   // working day and clear of the 01:00 fleet backup.
+diff --git a/src/jobs/handlers/scheduled-report-scheduler.js b/src/jobs/handlers/scheduled-report-scheduler.js
+new file mode 100644
+index 0000000..568c691
+--- /dev/null
++++ b/src/jobs/handlers/scheduled-report-scheduler.js
+@@ -0,0 +1,92 @@
++/**
++ * Worker job: scheduled-report fan-out. One `scheduled-report` job per live
++ * tenant.
++ *
++ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
++ *
++ * `scheduled-report` has been a registered worker since reports shipped and
++ * nothing in the app ever enqueued it. Its own header named the missing half —
++ * "the periodic trigger (an app scheduled-task or external cron) enqueues one
++ * job per live tenant" — and left it to a deployment step that was never part
++ * of the repo. So a tenant who scheduled a weekly receivables report got a row
++ * in `scheduled_report`, a `next_run_at` that arrived and then sat in the past,
++ * and no email, unless somebody remembered to POST /reports/scheduled/run-due
++ * by hand.
++ *
++ * This is the same defect `regie-aging-scheduler` was written to fix, in the
++ * same directory, for the same reason. It is the last of them.
++ *
++ * ── WHY HOURLY, NOT DAILY ───────────────────────────────────────────────────
++ *
++ * `next_run_at` is a timestamp and `listDueScheduled` asks `next_run_at <=
++ * now()`, so the tick frequency IS the resolution of the whole feature. A daily
++ * tick would make every cadence mean "whenever the tick happens to run", and a
++ * report a finance lead set for Monday morning would arrive Monday at whatever
++ * hour the fleet cron fires. Hourly costs one cheap query per tenant per hour —
++ * `listDueScheduled` is an indexed range scan that returns nothing 23 times out
++ * of 24 — and bounds the lateness at an hour.
++ *
++ * ── WHY LIVE ONLY ───────────────────────────────────────────────────────────
++ *
++ * Reports EMAIL people. `email.service`'s sandbox guard already suppresses the
++ * send, so a Test run would generate the report, suppress the mail, and still
++ * advance `next_run_at` — a rehearsal that consumed the schedule without
++ * rehearsing anything. Test remains reachable through the route for anyone
++ * deliberately exercising the flow, which is the same line
++ * `contract-lapse-scheduler` and `regie-aging-scheduler` draw.
++ *
++ * ── IDEMPOTENCY ─────────────────────────────────────────────────────────────
++ *
++ * `runDue` advances `next_run_at` on every row it touches, so a second tick in
++ * the same hour re-selects nothing. The per-tenant `jobId` additionally dedupes
++ * an in-flight run, so a tenant whose reports take longer than the interval
++ * never piles up.
++ */
++"use strict";
++
++const registry = require("../../services/tenant/registry.service");
++const { enqueue } = require("../queue-producer");
++const { logger } = require("../../config/logger");
++
++/** `YYYY-MM-DDTHH` — the tick's own hour, for the dedupe key. */
++const hourStamp = () => new Date().toISOString().slice(0, 13);
++
++module.exports = async function scheduledReportScheduler() {
++  const tenants = await registry.listActiveTenants();
++  const stamp = hourStamp();
++  let enqueued = 0;
++  let skipped = 0;
++
++  for (const meta of tenants) {
++    try {
++      await enqueue(
++        "scheduled-report",
++        "run-due",
++        { tenantMeta: meta, env: "live" },
++        {
++          // `live-<hour>` rather than `live:<hour>`: a BullMQ custom job id may
++          // contain `:` only when it splits into exactly three segments, and a
++          // fourth throws `Custom Id cannot contain :`. Same shape as
++          // regie-aging-scheduler, for the same reason.
++          jobId: `schedreport:${meta.db_name}:live-${stamp}`,
++          // One attempt. The work is a report generation plus emails that are
++          // themselves queued with their own retries; re-running the whole
++          // sweep on a transient failure would re-generate reports that already
++          // went out. The next hour's tick is the retry.
++          attempts: 1,
++          removeOnComplete: true,
++          removeOnFail: 50,
++        },
++      );
++      enqueued += 1;
++    } catch (err) {
++      // One unreachable tenant must not stop the fan-out for the rest — the
++      // whole point of a per-tenant job is isolation.
++      logger.warn({ err, tenant: meta.db_name }, "[reports] scheduler could not enqueue tenant");
++      skipped += 1;
++    }
++  }
++
++  logger.debug({ tenants: tenants.length, enqueued, skipped }, "[reports] scheduled-report tick");
++  return { tenants: tenants.length, enqueued, skipped };
++};
+diff --git a/src/jobs/workers.js b/src/jobs/workers.js
+index d300175..12f72a6 100755
+--- a/src/jobs/workers.js
++++ b/src/jobs/workers.js
+@@ -43,6 +43,11 @@ const PROCESSORS = [
+   // person can actually reach it. Restoring the chat flow means building its
+   // route first, at which point this handler is a `git show` away.
+   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
++  // The half that was missing. `scheduled-report` was registered from the day
++  // reports shipped and enqueued by nothing — its own header deferred the
++  // trigger to "an app scheduled-task or external cron", which was never part
++  // of the repo, so a scheduled report only ran if somebody POSTed the route.
++  { name: "scheduled-report-scheduler", concurrency: 1, handler: require("./handlers/scheduled-report-scheduler") },
+   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
+   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
+   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
+@@ -453,6 +458,22 @@ async function scheduleRecurring() {
+     logger.info({ pattern: regieCron, tz: config.FX_SYNC_TZ || "UTC" }, "regie aging scheduler registered");
+   }
+ 
++  // Scheduled reports (1.3). Hourly rather than daily: `next_run_at` is a
++  // timestamp, so the tick interval is the resolution of every cadence a tenant
++  // can choose. Live only — a Test run would generate the report, have its mail
++  // suppressed by the sandbox guard, and still consume `next_run_at`.
++  const reportCron = config.SCHEDULED_REPORT_CRON;
++  if (!reportCron) {
++    logger.info("scheduled-report scheduler disabled (SCHEDULED_REPORT_CRON empty)");
++  } else {
++    await enqueue("scheduled-report-scheduler", "tick", {}, {
++      repeat: { pattern: reportCron, tz: "UTC" },
++      removeOnComplete: true,
++      removeOnFail: 50,
++    });
++    logger.info({ pattern: reportCron }, "scheduled-report scheduler registered");
++  }
++
+   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every
+   // working day in Africa/Lagos and clear of the fleet backup at 01:00, so a
+   // rebuild never races a dump. The tick itself only ENQUEUES per tenant; each
+diff --git a/tests/security/orphan-wiring-sweep.test.js b/tests/security/orphan-wiring-sweep.test.js
+index a1efeb4..ba64cb4 100644
+--- a/tests/security/orphan-wiring-sweep.test.js
++++ b/tests/security/orphan-wiring-sweep.test.js
+@@ -51,16 +51,21 @@ describe("every registered worker has a producer", () => {
+   const names = [...workers.matchAll(/name:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
+ 
+   /**
+-   * `scheduled-report` is driven from OUTSIDE the app.
++   * EMPTY, and that is the finding.
+    *
+-   * Its handler's own header says so: "the periodic trigger (an app
+-   * scheduled-task or external cron) enqueues one job per live tenant, or
+-   * POST /reports/scheduled/run-due drives a single tenant directly." Both of
+-   * those are real — the route exists — so this is a deployment decision rather
+-   * than a missing call. It is the only periodic job not registered in
+-   * `scheduleRecurring()`, which is worth knowing about it.
++   * `scheduled-report` sat here for one commit, on the strength of its own
++   * header — "the periodic trigger (an app scheduled-task or external cron)
++   * enqueues one job per live tenant". That was a deployment dependency nobody
++   * had written down anywhere else, on a fleet where every other periodic job
++   * is registered in `scheduleRecurring()`. A tenant who scheduled a weekly
++   * report got a row, a `next_run_at` that arrived and stayed in the past, and
++   * no email.
++   *
++   * It now has `scheduled-report-scheduler`, like every other one, so the list
++   * is empty again. Keep it that way: an entry here is a claim that something
++   * outside this repo runs a job, and the last such claim was not true.
+    */
+-  const EXTERNALLY_DRIVEN = new Set(["scheduled-report"]);
++  const EXTERNALLY_DRIVEN = new Set([]);
+ 
+   test("the registry is readable and has the workers this gate thinks it does", () => {
+     expect(names.length).toBeGreaterThan(20);
+@@ -86,6 +91,19 @@ describe("every registered worker has a producer", () => {
+       expect(names).toContain(n);
+     }
+   });
++
++  test("every periodic worker is registered in scheduleRecurring, not assumed", () => {
++    const workersSrc = fs.readFileSync(path.join(SRC, "jobs/workers.js"), "utf8");
++    const recurring = workersSrc.slice(workersSrc.indexOf("async function scheduleRecurring"));
++    const schedulers = names.filter((n) => n.endsWith("-scheduler"));
++    // A `-scheduler` handler exists to be ticked. One that `scheduleRecurring`
++    // does not enqueue is a cron nobody runs, which is how `scheduled-report`
++    // spent its whole life waiting for a deployment step that was never
++    // written down.
++    const unticked = schedulers.filter((n) => !recurring.includes(`"${n}"`));
++    expect(unticked).toEqual([]);
++    expect(schedulers).toContain("scheduled-report-scheduler");
++  });
+ });
+ 
+ /* ── Event types ──────────────────────────────────────────────────────────── */
+diff --git a/tests/unit/scheduled-report-scheduler.test.js b/tests/unit/scheduled-report-scheduler.test.js
+new file mode 100644
+index 0000000..b706cc0
+--- /dev/null
++++ b/tests/unit/scheduled-report-scheduler.test.js
+@@ -0,0 +1,136 @@
++/**
++ * THE TICK THAT MAKES SCHEDULED REPORTS RUN.
++ *
++ * `scheduled-report` was a registered worker with no producer for its whole
++ * life. Its header deferred the trigger to "an app scheduled-task or external
++ * cron", which was a deployment dependency written down nowhere else, on a
++ * fleet where every other periodic job is registered in `scheduleRecurring()`.
++ *
++ * The symptom was quiet in the way this programme keeps finding: a tenant
++ * scheduled a weekly receivables report, got a `scheduled_report` row, watched
++ * `next_run_at` arrive and then stay in the past, and received nothing. Every
++ * test passed. The route worked. Nobody was calling it.
++ *
++ * So the tests below are about the fan-out's shape rather than about report
++ * generation, which `report.runDue` already owns and tests.
++ */
++"use strict";
++
++jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn(async () => ({})) }));
++jest.mock("../../src/services/tenant/registry.service", () => ({
++  listActiveTenants: jest.fn(async () => []),
++  withTenantConnection: jest.fn(),
++}));
++
++const fs = require("fs");
++const path = require("path");
++const { enqueue } = require("../../src/jobs/queue-producer");
++const registry = require("../../src/services/tenant/registry.service");
++const scheduler = require("../../src/jobs/handlers/scheduled-report-scheduler");
++const handler = require("../../src/jobs/handlers/scheduled-report");
++
++const TENANTS = [{ db_name: "acme" }, { db_name: "camrail" }];
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  registry.listActiveTenants.mockResolvedValue(TENANTS);
++});
++
++describe("it fans out, one job per live tenant", () => {
++  test("every active tenant gets a job", async () => {
++    const out = await scheduler();
++    expect(out).toMatchObject({ tenants: 2, enqueued: 2, skipped: 0 });
++    expect(enqueue).toHaveBeenCalledTimes(2);
++    expect(enqueue).toHaveBeenCalledWith(
++      "scheduled-report", "run-due",
++      expect.objectContaining({ tenantMeta: TENANTS[0], env: "live" }),
++      expect.anything(),
++    );
++  });
++
++  test("LIVE only", async () => {
++    await scheduler();
++    for (const call of enqueue.mock.calls) expect(call[2].env).toBe("live");
++    // A Test run would generate the report, have its mail suppressed by
++    // email.service's sandbox guard, and still consume `next_run_at` — a
++    // rehearsal that spends the schedule without rehearsing anything.
++  });
++
++  test("one unreachable tenant does not stop the rest", async () => {
++    enqueue.mockRejectedValueOnce(new Error("redis unreachable"));
++    const out = await scheduler();
++    expect(out).toMatchObject({ tenants: 2, enqueued: 1, skipped: 1 });
++    // The whole point of a per-tenant job is isolation.
++  });
++
++  test("no tenants is a quiet no-op, not a failure", async () => {
++    registry.listActiveTenants.mockResolvedValue([]);
++    await expect(scheduler()).resolves.toMatchObject({ tenants: 0, enqueued: 0 });
++    expect(enqueue).not.toHaveBeenCalled();
++  });
++});
++
++describe("a slow tenant never piles up", () => {
++  test("the job id is per tenant per hour", async () => {
++    await scheduler();
++    const ids = enqueue.mock.calls.map((c) => c[3].jobId);
++    expect(ids[0]).toMatch(/^schedreport:acme:live-\d{4}-\d{2}-\d{2}T\d{2}$/);
++    expect(new Set(ids).size).toBe(2);
++  });
++
++  test("the id has no fourth colon", async () => {
++    await scheduler();
++    // BullMQ allows `:` in a custom id only when it splits into exactly three
++    // segments; a fourth throws `Custom Id cannot contain :`. Hence
++    // `live-<hour>` rather than `live:<hour>` — the same shape, and the same
++    // trap, as regie-aging-scheduler.
++    for (const c of enqueue.mock.calls) {
++      expect(c[3].jobId.split(":")).toHaveLength(3);
++    }
++  });
++
++  test("one attempt — the next hour's tick is the retry", async () => {
++    await scheduler();
++    // Re-running the whole sweep on a transient failure would re-generate
++    // reports whose emails already went out; those emails are queued with their
++    // own retries.
++    for (const c of enqueue.mock.calls) expect(c[3].attempts).toBe(1);
++  });
++});
++
++describe("the worker it feeds", () => {
++  test("refuses a job with no tenant rather than guessing one", async () => {
++    await expect(handler({ data: {} })).rejects.toThrow(/tenantMeta/);
++  });
++});
++
++describe("the tick is registered, and often enough to mean anything", () => {
++  const workers = fs.readFileSync(path.resolve(__dirname, "../../src/jobs/workers.js"), "utf8");
++  const env = fs.readFileSync(path.resolve(__dirname, "../../src/config/env.js"), "utf8");
++
++  test("the worker table registers the scheduler", () => {
++    expect(workers).toMatch(/name: "scheduled-report-scheduler"/);
++  });
++
++  test("scheduleRecurring enqueues it", () => {
++    const recurring = workers.slice(workers.indexOf("async function scheduleRecurring"));
++    expect(recurring).toMatch(/enqueue\("scheduled-report-scheduler"/);
++  });
++
++  test("HOURLY, because the interval is the feature's resolution", () => {
++    const m = env.match(/SCHEDULED_REPORT_CRON: z\.string\(\)\.default\("([^"]+)"\)/);
++    expect(m).toBeTruthy();
++    const [minute, hour] = m[1].split(" ");
++    // `next_run_at` is a timestamp and the due query asks `<= now()`. A daily
++    // tick would make every cadence a tenant can choose mean "whenever the cron
++    // fires", so a Monday-morning report arrives at the fleet cron's hour.
++    expect(hour).toBe("*");
++    // Off the hour: every other scheduler fires at :00.
++    expect(Number(minute)).toBeGreaterThan(0);
++  });
++
++  test("an empty cron disables it rather than crashing the runtime", () => {
++    const recurring = workers.slice(workers.indexOf("async function scheduleRecurring"));
++    expect(recurring).toMatch(/scheduled-report scheduler disabled/);
++  });
++});

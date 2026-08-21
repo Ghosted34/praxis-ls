@@ -24,6 +24,7 @@ import { Modal, Field } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { MeterGroup } from "@/components/ui/meter";
 import { Panel } from "@/components/ui/panel";
 import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { SearchSelect } from "@/components/ui/search-select";
@@ -321,6 +322,63 @@ export function ReconciliationPage() {
                 hint="Posted cost entries, débours excluded"
               />
             </KpiRow>
+
+            {/*
+              BUDGET vs ACTUAL — the legacy reconciliation's picture, restored.
+              `calculateTotals()` (operational-cost-reconciliation.php:1305-1355)
+              redrew these bars and re-graded live, and they answer in one glance
+              what three signed figures make you compute: did the actual clear
+              the budget, and by how much of it.
+
+              One shared scale, so Actual is read AGAINST Budget rather than
+              stretched to fill its own track. Colour by job: quoted is the brand
+              figure (what we sold), budget is the plan and therefore context,
+              actual is genuine state — under budget is ok, over is bad. The
+              grade is already on the pill beside the title, so the colour is
+              never the only thing saying it.
+            */}
+            {v && (
+              <div className="mb-4">
+                <MeterGroup
+                  ariaLabel={`Quoted ${v.quoted_ht ?? 0}, budget ${v.budget_ht ?? 0}, actual ${v.actual_ht ?? 0}`}
+                  rows={[
+                    ...(v.quoted_ht != null
+                      ? [
+                          {
+                            label: tr("Quoted"),
+                            value: Number(v.quoted_ht) || 0,
+                            display: money(v.quoted_ht),
+                            tone: "accent" as const,
+                          },
+                        ]
+                      : []),
+                    {
+                      label: tr("Budget"),
+                      value: Number(v.budget_ht) || 0,
+                      display: money(v.budget_ht),
+                      tone: "neutral" as const,
+                    },
+                    {
+                      label: tr("Actual"),
+                      value: Number(v.actual_ht) || 0,
+                      display: money(v.actual_ht),
+                      // budget_vs_actual is budget − actual: negative = overrun.
+                      tone:
+                        v.budget_vs_actual != null && v.budget_vs_actual < 0
+                          ? ("bad" as const)
+                          : ("ok" as const),
+                      hint:
+                        v.budget_vs_actual != null
+                          ? v.budget_vs_actual < 0
+                            ? tr("over budget")
+                            : tr("within budget")
+                          : undefined,
+                    },
+                  ]}
+                />
+              </div>
+            )}
+
             <KpiRow>
               <KpiTile
                 label="Did we quote it right?"

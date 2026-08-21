@@ -26,7 +26,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { makeQueryClient } from "@/lib/query-client";
 import type { NavAccess } from "@/lib/nav-access";
 import type { ShellPrefs } from "@/lib/preferences";
 
@@ -254,16 +256,30 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-function renderChrome(ui: React.ReactElement, at = "/") {
-  return render(
-    <TooltipProvider>
-      <MemoryRouter initialEntries={[at]}>
-        <ShellProvider>
-          <RibbonCommandsProvider>{ui}</RibbonCommandsProvider>
-        </ShellProvider>
-      </MemoryRouter>
-    </TooltipProvider>,
+/**
+ * The shell's providers, in the order main.tsx nests them.
+ *
+ * The QueryClient is here because the rail's refresh cell reads the query cache
+ * to draw its freshness dial (`nav-refresh.tsx`) — in the app it is the
+ * outermost provider of all, so a test that renders the rail without one is
+ * testing a tree that cannot exist.
+ */
+function chrome(ui: React.ReactElement, at: string) {
+  return (
+    <QueryClientProvider client={makeQueryClient()}>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={[at]}>
+          <ShellProvider>
+            <RibbonCommandsProvider>{ui}</RibbonCommandsProvider>
+          </ShellProvider>
+        </MemoryRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
+}
+
+function renderChrome(ui: React.ReactElement, at = "/") {
+  return render(chrome(ui, at));
 }
 
 const renderRibbon = (at = "/") => renderChrome(<Ribbon pathname={at} />, at);
@@ -513,17 +529,7 @@ describe("a screen's commands sit in row B, right-aligned", () => {
       await screen.findByRole("button", { name: "New invoice" }),
     ).toBeInTheDocument();
 
-    rerender(
-      <TooltipProvider>
-        <MemoryRouter initialEntries={["/finance"]}>
-          <ShellProvider>
-            <RibbonCommandsProvider>
-              <Ribbon pathname="/finance" />
-            </RibbonCommandsProvider>
-          </ShellProvider>
-        </MemoryRouter>
-      </TooltipProvider>,
-    );
+    rerender(chrome(<Ribbon pathname="/finance" />, "/finance"));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "New invoice" })).toBeNull(),
     );

@@ -15,17 +15,18 @@
  * them at the very top puts them in the same screen corner a browser's back
  * button occupies — which is the muscle memory that actually matters.
  *
- * ONE CONTROL, NOT TWO BUTTONS. They are drawn as a vertical segmented pair
- * inside a single bordered pill with a hairline between them. Two loose icon
- * cells in a strip of ten other icon cells read as two more shortcuts; a
- * segmented pair reads as one instrument with two ends, the way a toolbar's
- * back/forward always has.
+ * ONE CONTROL, NOT TWO BUTTONS. The two arrows are a vertical segmented pair
+ * with a hairline between them, and they share a bordered pill with the refresh
+ * cell below (`nav-cluster.tsx`, which draws it). Loose icon cells in a strip of
+ * ten other icon cells read as more shortcuts; a segmented group reads as one
+ * instrument, the way a toolbar's back/forward/reload always has.
  *
  * PRESS AND HOLD FOR THE TRAIL. Holding either arrow — or right-clicking it —
  * opens the named list of where that direction leads, so twelve steps back is
  * one gesture instead of twelve clicks. This is the whole reason the trail is
  * kept as a labelled record rather than as a bare call to `history.back()`:
- * the browser cannot tell you what is behind you, and this can.
+ * the browser cannot tell you what is behind you, and this can. The gesture
+ * itself lives in `use-hold-menu.ts`, shared with the refresh cell below.
  *
  * DISABLED IS INFORMATION. At the start of a session both arrows are greyed,
  * and that is a true statement rather than a limitation — it says the trail
@@ -42,12 +43,8 @@ import {
   DropdownLabel,
 } from "@/components/ui/dropdown-menu";
 import { useNavTrail } from "./nav-trail-context";
+import { useHoldMenu } from "./use-hold-menu";
 import type { TrailEntry } from "./nav-trail";
-
-/** How long a press becomes a hold. 450ms is the platform convention for a
- *  long-press menu — short enough to discover by accident, long enough that a
- *  deliberate click never trips it. */
-const HOLD_MS = 450;
 
 /**
  * The chevrons.
@@ -128,45 +125,12 @@ function ArrowButton({
   onGo: (delta: number) => void;
   className?: string;
 }) {
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const holdTimer = React.useRef<number | null>(null);
-  // Set the moment a hold fires, so the pointerup that follows is not also
-  // treated as a click. Without it, holding would open the menu and navigate.
-  const held = React.useRef(false);
-
-  const clearHold = React.useCallback(() => {
-    if (holdTimer.current !== null) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  }, []);
-
-  React.useEffect(() => clearHold, [clearHold]);
-
-  function startHold(e: React.PointerEvent) {
-    // Primary button only — a right-click has its own path below, and a
-    // middle-click should do nothing at all.
-    if (e.button !== 0 || !enabled || steps.length === 0) return;
-    held.current = false;
-    clearHold();
-    holdTimer.current = window.setTimeout(() => {
-      held.current = true;
-      setMenuOpen(true);
-    }, HOLD_MS);
-  }
-
-  function endHold() {
-    clearHold();
-  }
-
-  function onClick() {
-    // The click that ends a hold is the hold, not a navigation.
-    if (held.current) {
-      held.current = false;
-      return;
-    }
+  // A greyed arrow has nothing to list, so holding it must stay inert rather
+  // than opening an empty menu — which would make the gesture look broken on
+  // the one press where the user is already being told "there is nothing here".
+  const menu = useHoldMenu(enabled && steps.length > 0, () => {
     if (enabled) onGo(direction);
-  }
+  });
 
   const tip = target
     ? `${label} — ${target.context ? `${target.context} · ` : ""}${target.label}`
@@ -180,16 +144,7 @@ function ArrowButton({
           className={cn("rail-nav-btn", className)}
           aria-label={tip}
           aria-disabled={!enabled}
-          onClick={onClick}
-          onPointerDown={startHold}
-          onPointerUp={endHold}
-          onPointerLeave={endHold}
-          onPointerCancel={endHold}
-          onContextMenu={(e) => {
-            if (!enabled || steps.length === 0) return;
-            e.preventDefault();
-            setMenuOpen(true);
-          }}
+          {...menu.handlers}
         >
           {direction === -1 ? <ChevronLeft /> : <ChevronRight />}
         </button>
@@ -202,8 +157,8 @@ function ArrowButton({
         opened the menu by accident can simply click the arrow again.
       */}
       <DropdownMenu
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
+        open={menu.open}
+        onOpenChange={menu.setOpen}
         modal={false}
         align="start"
         label={label}
@@ -251,7 +206,7 @@ export function NavArrows() {
     useNavTrail();
 
   return (
-    <div className="rail-nav" role="group" aria-label={navT(t, "History")}>
+    <>
       <ArrowButton
         direction={-1}
         label={navT(t, "Back")}
@@ -269,6 +224,6 @@ export function NavArrows() {
         steps={steps(1)}
         onGo={go}
       />
-    </div>
+    </>
   );
 }

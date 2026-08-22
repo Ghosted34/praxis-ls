@@ -270,6 +270,57 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The certified-signature webhook now receives genuine deliveries (PR-4 remediation).** The
+  global `express.json()` in `server.js` parsed every JSON body before the webhook's route-level
+  text parser could run (body-parser sets `req._body`, and downstream parsers bail on it), so
+  `verifyWebhook` only ever saw a parsed object and rejected every real SignWell delivery with
+  401 — certified signatures could only settle through the poll backstop, at best an hour late.
+  The global parser now stashes the untouched bytes on `req.rawBody` (its `verify` callback),
+  the controller reads the raw form first and refuses re-serialisation (a re-serialised body is
+  not the body the signature covers), and the route header describes the plumbing that actually
+  exists. Proven by a new stack-level test that POSTs a genuinely signed payload through
+  `buildApp()` with `Content-Type: application/json` — written first and watched fail (401)
+  against the broken code — including the 401 for a forged hash and the idempotent replay.
+- **Credential resolution is tenant-named on every path (PR-4 remediation).** The QES
+  credential cache keyed on the ambient request context with a shared `"_"` fallback — and
+  workers have no request context, so the poll backstop let the first tenant polled in a
+  5-minute window populate a slot every other tenant then read: one tenant's SignWell key
+  answering another tenant's question, `credential_source` wrong on the audit rows, and other
+  tenants' envelopes unable to advance at all. `providerConfig` now takes the tenant
+  explicitly (the poll and completion paths name their slug), the ambient context is a
+  request-path convenience, and a call that names no tenant computes its answer and does not
+  cache it — a slot that cannot identify its tenant is a miss, never a shared seat.
+- **A failed envelope charge no longer strands the retry (PR-4 remediation).** On a handoff
+  charge failure the envelope row (inserted before the `BEGIN`) survived the rollback as
+  `CREATING` — an in-flight state that `uq_qes_active_party` and `getActiveForParty` both
+  cover — so the "please try again" advice threw `ENVELOPE_IN_FLIGHT` for the next hour. The
+  row now transitions to `FAILED` with the reason in the rollback path, so the retry is
+  possible immediately and the poll has nothing to clean up. The ledger-on-cancel decision
+  (provider document cancelled, no ledger row for an envelope nobody can use) is recorded in
+  the guide's §7.0 deviation table.
+- **The webhook timestamp window is asymmetric and the shape is defensive
+  (PR-4 remediation).** `Math.abs` accepted an event stamped 15 minutes in the future exactly
+  as readily as a replay 15 minutes old; backward is now the 15-minute replay window and
+  forward a 2-minute clock-skew allowance. A numeric-string `event.time` is coerced and logged
+  once, so a provider payload-shape change cannot fail every webhook closed with no signal
+  distinguishing it from a forgery.
+- **The QES poll no longer strands envelopes invisibly when the provider key is missing
+  (PR-4 remediation).** A tenant that removes its key previously left every in-flight envelope
+  open behind a per-envelope `logger.warn` — the shape that gets scrolled past. The key is
+  now read once per sweep; when it is missing each affected envelope carries the reason in
+  `last_error` (the durable record) and one alert goes out per tenant per sweep through the
+  platform alert channels. The envelopes stay open: the poll advances them the moment the key
+  is back.
+- **The migration-scoping gate now covers the programme's `qes` files and
+  `pg_trigger` lookups (PR-4 remediation).** `10785_qes_envelope.sql` and
+  `10787_qes_events.sql` did not match the gate's file pattern, so they were outside the net
+  for every future edit. The pattern now covers `qes` (applied files are not renamed — the
+  ledger keys on filename), and the gate reads `pg_trigger` lookups as well as
+  `pg_constraint`: the same database-wide catalog class, and it found a real one — 10781's
+  name-only trigger check (PR-3) skipped the sandbox trigger on every provisioned tenant,
+  leaving `signature_request.updated_at` dead in the sandbox. 10781 is applied and immutable,
+  so the scoped repair lands in 10787 (the 10779 pattern), and the test grandfathering 10781's
+  line asserts the repair exists, so the exemption cannot outlive the fix.
 - **The external signing chain no longer stops silently at the second signature.** The public
   `/complete` passed no mailer to the chain advance, so after a counterparty signed, the next
   party was marked `SENT` with a token minted and nowhere delivered — and the tenant's "send next

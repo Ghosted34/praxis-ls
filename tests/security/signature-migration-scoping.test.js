@@ -46,46 +46,96 @@ const path = require("path");
 
 const TENANT = path.resolve(__dirname, "../../migrations/tenant");
 
-/** This programme's migrations, by the tables they touch. */
+/**
+ * This programme's migrations, by the tables they touch.
+ *
+ * `qes` is in the net too (PR-4, remediation): `10785_qes_envelope.sql` and
+ * `10787_qes_events.sql` did not match the original pattern, so they were
+ * outside this gate for every future edit — no live hazard today (10785's
+ * constraints are all inline in the CREATE TABLE and its one pg_trigger
+ * lookup is scoped with tgrelid), but a gate that does not cover the files
+ * is a gate that has not been written. The applied files are not renamed —
+ * the ledger keys on filename and a rename reads as a new migration.
+ */
 const FILES = fs
   .readdirSync(TENANT)
-  .filter((f) => /^\d+_(signature|document_signature)/.test(f))
+  .filter((f) => /^\d+_(signature|document_signature|qes)/.test(f))
   .sort();
 
 /**
- * Every `pg_constraint` existence check in a file, with the text of the
- * surrounding predicate so the assertion can say whether it is scoped.
+ * Every existence check against the DATABASE-WIDE catalog tables in a file,
+ * with the table and the text of the surrounding predicate, so the assertion
+ * can say whether it is scoped to the running schema.
+ *
+ * pg_constraint and pg_trigger are both database-wide: the sandbox pass sees
+ * live's rows. The constraint form was the one that emptied every tenant's
+ * sandbox (the header); the trigger form is its quieter twin — 10781's
+ * name-only pg_trigger check skipped the sandbox trigger on every provision,
+ * leaving signature_request.updated_at dead in the sandbox. Both are checked
+ * here now.
  *
  * Comments are stripped first: these files DOCUMENT the unscoped form in order
  * to explain why it is wrong, and a grep that cannot tell an explanation from
  * an implementation would fail on the very comment warning about it.
  */
-function constraintChecks(sql) {
+function catalogChecks(sql) {
   const code = sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*--[^\n]*$/gm, " ");
   const out = [];
-  const re = /FROM\s+pg_constraint\s+WHERE\s+([^)]*)\)/gi;
+  const re = /FROM\s+(pg_constraint|pg_trigger)\s+WHERE\s+([^)]*)\)/gi;
   let m;
-  while ((m = re.exec(code)) !== null) out.push(m[1].replace(/\s+/g, " ").trim());
+  while ((m = re.exec(code)) !== null) {
+    out.push({ table: m[1], predicate: m[2].replace(/\s+/g, " ").trim() });
+  }
   return out;
 }
 
-const scoped = (predicate) => /conrelid\s*=\s*'[a-z_]+'::regclass/i.test(predicate)
+const scoped = (table, predicate) =>
+  (table === "pg_constraint" && /conrelid\s*=\s*'[a-z_]+'::regclass/i.test(predicate))
+  || (table === "pg_trigger" && /tgrelid\s*=\s*'[a-z_]+'::regclass/i.test(predicate))
   || /nspname\s*=\s*current_schema\(\)/i.test(predicate);
+
+/**
+ * Applied migrations are immutable (the idempotency gate freezes them), so a
+ * known unscoped lookup in an applied file is grandfathered HERE — with the
+ * repair it points at, and a test below that asserts the repair exists. The
+ * exemption cannot outlive the fix, which is the only shape of grandfather
+ * that does not become folklore.
+ */
+const GRANDFATHERED = new Map([
+  // Name-only pg_trigger check (line 101). Skipped the sandbox trigger on
+  // every provisioned tenant; the scoped repair is in 10787, section 2.
+  ["10781_signature_request.sql", "10787_qes_events.sql"],
+]);
 
 describe("the signature programme's migrations are schema-scoped", () => {
   test("this test is looking at the files it thinks it is", () => {
     // A glob that silently matches nothing passes every assertion below.
-    expect(FILES.length).toBeGreaterThanOrEqual(6);
+    expect(FILES.length).toBeGreaterThanOrEqual(9);
     expect(FILES).toContain("10771_signature_core.sql");
     expect(FILES).toContain("10779_signature_scan.sql");
+    // The PR-4 files: the ones that slipped the old pattern.
+    expect(FILES).toContain("10785_qes_envelope.sql");
+    expect(FILES).toContain("10787_qes_events.sql");
   });
 
-  test.each(FILES)("%s scopes every pg_constraint lookup to the current schema", (file) => {
+  test.each(FILES)("%s scopes every database-wide catalog lookup to the current schema", (file) => {
     const sql = fs.readFileSync(path.join(TENANT, file), "utf8");
-    const unscoped = constraintChecks(sql).filter((p) => !scoped(p));
-    // Reported with the predicate itself, so a failure names the line to fix
-    // rather than the file to go hunting through.
-    expect({ file, unscoped }).toEqual({ file, unscoped: [] });
+    const unscoped = catalogChecks(sql).filter(({ table, predicate }) => !scoped(table, predicate));
+    // The grandfathered lookups are the applied files that cannot be edited
+    // in place; everything else must be scoped, full stop.
+    const excused = GRANDFATHERED.has(file);
+    expect({ file, unscoped: excused ? [] : unscoped }).toEqual({ file, unscoped: [] });
+  });
+
+  test("every grandfathered lookup still has its repair in place", () => {
+    // The exemption is a bridge, not a destination: the file it names must
+    // carry the scoped fix, or the grandfather silently outlives the repair
+    // and the sandbox is broken again on the next fresh provision.
+    for (const [broken, repair] of GRANDFATHERED) {
+      const sql = fs.readFileSync(path.join(TENANT, repair), "utf8");
+      expect({ broken, repair, hasScopedRepair: sql.includes("tgname = 'trg_sigreq_updated' AND tgrelid = 'signature_request'::regclass") })
+        .toEqual({ broken, repair, hasScopedRepair: true });
+    }
   });
 
   test("10771 declares the primary key the rest of the programme references", () => {

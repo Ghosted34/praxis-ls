@@ -12,6 +12,18 @@
  *    see signwell.adapter.verifyWebhook), and a failure answers 401 with
  *    nothing from the body in the log (§7.6 criterion 4).
  *
+ *    How the raw body arrives: `src/server.js` mounts `express.json()`
+ *    GLOBALLY before this router, and its `verify` callback stashes the
+ *    untouched bytes on `req.rawBody`. That is the only place it can happen —
+ *    a route-level text parser behind the global one never runs, because
+ *    body-parser sets `req._body` once it has parsed and every downstream
+ *    body parser bails on that flag (the audit that found this: every
+ *    genuine delivery 401'd because the route only ever saw a parsed
+ *    object). The route-level `express.text` below is kept for the case the
+ *    provider posts a non-JSON content type, which the global parser skips;
+ *    the controller reads `req.rawBody` first, then `req.body` when it is a
+ *    string, and refuses anything else.
+ *
  * 2. THE LIMITER, keyed on IP. The provider's egress is a small set of
  *    addresses, and a scanner hitting this endpoint is not a provider — the
  *    key is the address, and the limit is generous enough for a real burst
@@ -34,10 +46,12 @@
  * The security is the signature, the limiter and the tenant-scoped lookup;
  * the flag adds nothing to any of them.
  *
- * The body must be parsed as RAW TEXT: a JSON parser middleware that
+ * The body must reach the check as RAW TEXT: a JSON parser middleware that
  * normalises key order or encodings would change the bytes the signature
- * covers. express.text with a generous limit (a completed document's event
- * carries the document shape, and a multi-recipient document is not small).
+ * covers. For the JSON case that now happens in server.js's verify callback
+ * (see point 1 above); this express.text is the non-JSON leg, with a
+ * generous limit (a completed document's event carries the document shape,
+ * and a multi-recipient document is not small).
  */
 "use strict";
 

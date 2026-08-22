@@ -57,12 +57,27 @@
 const crypto = require("crypto");
 const axios = require("axios");
 const { AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 const BASE_URL = "https://www.signwell.com/api/v1";
 const TIMEOUT_MS = 30_000;
 
 /** Webhook events older than this are replays, not deliveries. */
-const WEBHOOK_FRESHNESS_MS = 15 * 60 * 1000;
+/**
+ * The replay window, backward in time: an event older than this is a
+ * capture being replayed, and the HMAC alone would accept it forever,
+ * because event.time is what the signature covers.
+ */
+const WEBHOOK_REPLAY_WINDOW_MS = 15 * 60 * 1000;
+/**
+ * The forward-skew allowance: a little clock drift is ordinary, a timestamp
+ * in the future is not. Symmetric `Math.abs` would accept an event stamped
+ * fifteen minutes AHEAD exactly as readily as one fifteen minutes old — the
+ * skew allowance is deliberately minutes, not the whole window.
+ */
+const WEBHOOK_FUTURE_SKEW_MS = 2 * 60 * 1000;
+
+let warnedStringTime = false;
 
 /**
  * The provider's document status → the envelope vocabulary (10785).
@@ -320,16 +335,33 @@ function verifyWebhook({ _headers, rawBody, secret }) {
     }
     const event = body && body.event;
     if (!event || typeof event.type !== "string" || typeof event.hash !== "string") return false;
-    if (typeof event.time !== "number" || !Number.isFinite(event.time)) return false;
 
-    // The freshness window is on the EVENT TIME, not our arrival time —
-    // event.time is what the HMAC covers, so a replayed capture carries its
-    // original (now stale) time and fails here even though its hash is
-    // perfect.
-    const age = Math.abs(Date.now() - event.time * 1000);
-    if (age > WEBHOOK_FRESHNESS_MS) return false;
+    // event.time, defensively. The documented shape is a number, but failing
+    // closed SILENTLY on a shape change is the wrong failure: every webhook
+    // dies with no signal distinguishing "the provider changed its payload"
+    // from "someone is forging events". A numeric string is coerced — and
+    // logged ONCE, so the mismatch is visible without becoming a log flood.
+    let time = event.time;
+    if (typeof time === "string" && time.trim() !== "" && Number.isFinite(Number(time))) {
+      time = Number(time);
+      if (!warnedStringTime) {
+        warnedStringTime = true;
+        logger.warn("signwell webhook sent event.time as a string — accepted and coerced; check the provider's payload shape");
+      }
+    }
+    if (typeof time !== "number" || !Number.isFinite(time)) return false;
 
-    const expected = crypto.createHmac("sha256", secret).update(`${event.type}@${event.time}`).digest("hex");
+    // The window is on the EVENT TIME, not our arrival time — event.time is
+    // what the HMAC covers, so a replayed capture carries its original (now
+    // stale) time and fails here even though its hash is perfect.
+    // ASYMMETRIC on purpose: backward is the replay window (15 min), forward
+    // is a small clock-skew allowance (2 min). `Math.abs` would accept a
+    // future-stamped event as readily as a replay, and a forgery does not
+    // have to get the clock right at all.
+    const drift = Date.now() - time * 1000;
+    if (drift > WEBHOOK_REPLAY_WINDOW_MS || drift < -WEBHOOK_FUTURE_SKEW_MS) return false;
+
+    const expected = crypto.createHmac("sha256", secret).update(`${event.type}@${time}`).digest("hex");
     const given = String(event.hash).toLowerCase();
     if (expected.length !== given.length) return false;
     // Constant-time: the hash is 256 bits of provider state, and a timing
@@ -364,7 +396,8 @@ module.exports = {
   key: "signwell",
   BASE_URL,
   STATUS_MAP,
-  WEBHOOK_FRESHNESS_MS,
+  WEBHOOK_REPLAY_WINDOW_MS,
+  WEBHOOK_FUTURE_SKEW_MS,
   ProviderError,
   createEnvelope,
   cancelEnvelope,

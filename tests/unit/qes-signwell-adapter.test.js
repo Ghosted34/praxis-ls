@@ -171,12 +171,45 @@ describe("webhook verification — §7.6 criterion 4", () => {
     expect(adapter.verifyWebhook({ headers: {}, rawBody: JSON.stringify(evil), secret: WEBHOOK_ID })).toBe(false);
   });
 
-  test("a captured event re-sent LATER is refused by the freshness window", () => {
+  test("a captured event re-sent LATER is refused by the replay window", () => {
     // The scheme alone would accept a replayed capture forever: the hash is
     // still perfect. event.time is what the window checks, and it does not
     // move with the replay.
     const old = Math.floor(Date.now() / 1000) - 24 * 3600;
     const body = JSON.stringify(genuineEvent("document_completed", old));
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: body, secret: WEBHOOK_ID })).toBe(false);
+  });
+
+  test("the window is asymmetric: forward skew gets minutes, not the whole window", () => {
+    // `Math.abs` would accept an event stamped 15 minutes in the FUTURE as
+    // readily as one 15 minutes old. A forgery does not have to get the
+    // clock right at all, so the forward allowance is small on purpose.
+    const now = Math.floor(Date.now() / 1000);
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: JSON.stringify(genuineEvent("document_completed", now + 3 * 60)), secret: WEBHOOK_ID })).toBe(false);
+    // Ordinary clock drift, a minute or two ahead: accepted.
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: JSON.stringify(genuineEvent("document_completed", now + 60)), secret: WEBHOOK_ID })).toBe(true);
+    // And the backward edge of the replay window still works: 14 minutes
+    // old is a normal event, 20 minutes is a replay.
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: JSON.stringify(genuineEvent("document_completed", now - 14 * 60)), secret: WEBHOOK_ID })).toBe(true);
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: JSON.stringify(genuineEvent("document_completed", now - 20 * 60)), secret: WEBHOOK_ID })).toBe(false);
+  });
+
+  test("event.time as a numeric string is coerced, not failed closed", () => {
+    // If the provider ever ships the timestamp as a string — or changes its
+    // shape — every webhook must not die with no signal distinguishing a
+    // payload change from a forgery. A numeric string is the same value.
+    const now = Math.floor(Date.now() / 1000);
+    const time = String(now);
+    const hash = crypto.createHmac("sha256", WEBHOOK_ID).update(`document_completed@${time}`).digest("hex");
+    const body = JSON.stringify({ event: { hash, time, type: "document_completed" }, data: { object: { id: "doc-1" } } });
+    expect(adapter.verifyWebhook({ headers: {}, rawBody: body, secret: WEBHOOK_ID })).toBe(true);
+  });
+
+  test("event.time as a NON-numeric string is refused, like any other bad shape", () => {
+    const body = JSON.stringify({
+      event: { hash: "ab", time: "asap", type: "document_completed" },
+      data: { object: { id: "doc-1" } },
+    });
     expect(adapter.verifyWebhook({ headers: {}, rawBody: body, secret: WEBHOOK_ID })).toBe(false);
   });
 

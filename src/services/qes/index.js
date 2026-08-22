@@ -32,8 +32,17 @@
  * fine; a round trip per OTP verify would not). A 5-minute TTL matches the
  * event-type cache in shared/events/emit.js — long enough to make the common
  * case free, short enough that a rotated key is effective without a restart.
- * The cache is keyed by tenant (requestContext) so one tenant's key can never
- * answer another tenant's question — the same mistake PERF S9 was about.
+ *
+ * The cache is keyed by a NAMED tenant: the slug the caller passes
+ * explicitly, else the ambient request context on the request path. When
+ * NEITHER names a tenant the entry is computed and NOT cached. A slot that
+ * cannot identify its tenant must be a cache miss, never a shared one — the
+ * version that fell back to a shared "_" key let the first tenant polled
+ * populate a slot that every other tenant in the same 5-minute window then
+ * read, because workers have no request context at all and the poll
+ * scheduler fans the fleet out together. One tenant's key answering another
+ * tenant's question is the mistake PERF S9 was about, wearing a worker's
+ * clothes.
  */
 "use strict";
 
@@ -53,9 +62,18 @@ const ADAPTERS = new Map([
 const TTL_MS = 5 * 60 * 1000;
 const credentialCache = new Map(); // "<tenant>:<provider>" -> { at, cfg }
 
-function cacheKey(providerKey) {
+/**
+ * The tenant the cache key will name, or null.
+ *
+ * Explicit beats ambient: a worker that knows its tenant says so, and an
+ * ambient context that exists is the request path's convenience. Null means
+ * "this call cannot identify its tenant", which the caller of providerConfig
+ * reads as "compute, but do not cache".
+ */
+function tenantOf(explicit) {
+  if (explicit) return String(explicit);
   const ctx = requestContext.get();
-  return `${(ctx && ctx.tenant) || "_"}:${providerKey}`;
+  return (ctx && ctx.tenant) || null;
 }
 
 /** Drop the credential cache. Exposed for tests and for the settings write path. */
@@ -91,12 +109,15 @@ function resolveAdapter(providerKey = "signwell") {
  * the counterparty needs a straight answer) or a disabled card (the menu,
  * where the flag is the more visible control).
  */
-async function providerConfig(client, providerKey = "signwell") {
+async function providerConfig(client, providerKey = "signwell", { tenant = null } = {}) {
   resolveAdapter(providerKey); // fail on an unknown provider BEFORE the cache
 
-  const key = cacheKey(providerKey);
-  const hit = credentialCache.get(key);
-  if (hit && hit.at + TTL_MS > Date.now()) return hit.cfg;
+  const t = tenantOf(tenant);
+  const key = t ? `${t}:${providerKey}` : null;
+  if (key) {
+    const hit = credentialCache.get(key);
+    if (hit && hit.at + TTL_MS > Date.now()) return hit.cfg;
+  }
 
   let cfg = null;
 
@@ -129,7 +150,9 @@ async function providerConfig(client, providerKey = "signwell") {
     }
   }
 
-  if (cfg) credentialCache.set(key, { at: Date.now(), cfg });
+  // Cached only when the key names a tenant — see tenantOf for why an
+  // unidentifiable slot must stay a miss.
+  if (cfg && key) credentialCache.set(key, { at: Date.now(), cfg });
   return cfg;
 }
 
@@ -175,8 +198,8 @@ async function platformPricing() {
  * The feature flag is a separate question (the menu answers it); this is
  * the "is there an account behind the switch" question.
  */
-async function isConfigured(client, providerKey = "signwell") {
-  return Boolean(await providerConfig(client, providerKey));
+async function isConfigured(client, providerKey = "signwell", opts = {}) {
+  return Boolean(await providerConfig(client, providerKey, opts));
 }
 
 module.exports = {

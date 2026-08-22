@@ -14,9 +14,23 @@ const live = (req, fn) => req.tenantDbIn("live", fn);
 
 module.exports = {
   webhook: asyncHandler(async (req, res) => {
+    // The RAW body, in the order the stack provides it:
+    //   1. req.rawBody — stashed by server.js's global JSON parser verify
+    //      callback (the bytes exactly as delivered, for application/json);
+    //   2. req.body as a string — the route-level express.text, for a
+    //      non-JSON content type the global parser skipped;
+    //   3. nothing — a parsed object with no raw form, which the signature
+    //      check refuses rather than guessing at re-serialisation.
+    // Re-serialising req.body is deliberately NOT an option: JSON.stringify
+    // does not reproduce the delivered bytes (key order, number formatting,
+    // Unicode escaping), and the signature covers what was sent.
+    const rawBody =
+      req.rawBody ||
+      (typeof req.body === "string" && req.body.length > 0 ? req.body : null);
+
     const out = await live(req, (c) => service.handleWebhook(c, {
       provider: req.provider,
-      rawBody: req.body,
+      rawBody,
       headers: req.headers,
       slug: (req.tenant && req.tenant.slug) || null,
       tenantName: (req.tenant && req.tenant.name) || "",

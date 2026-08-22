@@ -47,6 +47,7 @@ const canonical = require("../../../services/signatures/canonical");
 const tokens = require("../../../services/signatures/tokens");
 const { getSetting, putSetting } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const alertRouting = require("../../../services/platform/alert-routing.service");
 const { originForSlug } = require("../../../services/signatures/verify-link");
 const storage = require("../../../services/storage.service");
 const crypto = require("crypto");
@@ -185,7 +186,10 @@ async function providerConfigOrNull(client) {
 async function handoff(client, { party, request, language = "fr", slug = null, origin = null }) {
   const L = lang(language);
 
-  const cfg = await qes.providerConfig(client, "signwell");
+  // The tenant is named EXPLICITLY, not read from the ambient context:
+  // this is the call a worker may reach, and a worker has no request
+  // context to name it from (services/qes/index.js, the caching note).
+  const cfg = await qes.providerConfig(client, "signwell", { tenant: slug });
   if (!cfg) {
     throw new AppError(
       "QES_NOT_CONFIGURED",
@@ -280,10 +284,26 @@ async function handoff(client, { party, request, language = "fr", slug = null, o
     await client.query("COMMIT");
   } catch {
     await client.query("ROLLBACK").catch(() => { /* @silent:teardown — the rollback IS the cleanup */ });
+    // The envelope row was inserted BEFORE the BEGIN, so it survives this
+    // rollback as CREATING — and CREATING is an IN-FLIGHT state:
+    // uq_qes_active_party and getActiveForParty both cover it, so the retry
+    // the error message below advises would throw ENVELOPE_IN_FLIGHT for the
+    // next hour (until the poll's stale sweep clears it). The advice must be
+    // true immediately, so the row goes FAILED with the reason, in its own
+    // statement after the rollback.
+    await repo.updateEnvelope(client, envelope.envelope_id, {
+      status: "FAILED",
+      last_error: "the charge could not be recorded — envelope cancelled at the provider; send the request again",
+    }).catch(() => { /* @silent:storage — a row that cannot be stamped still
+      leaves the provider document cancelled and the error below tells the
+      truth; the poll reports any mismatch it finds. */ });
     // The provider has a document we will not have billed. Cancel it rather
     // than leak quota: the provider consumed nothing we were going to pay
     // for, and leaving an open document with a signable link in a mailbox
-    // nobody is watching is worse than the DELETE.
+    // nobody is watching is worse than the DELETE. (Deliberately no ledger
+    // row for it — see §7.0: a tenant is never billed for an envelope
+    // nobody can use; §7.4 step 7's "no refund path" governs the voiding of
+    // a DISPATCHED envelope that already carries its row.)
     try {
       await adapter.cancelEnvelope({ apiKey: cfg.apiKey, envelopeId: created.envelopeId, reason: "charge transaction failed" });
     } catch {
@@ -539,7 +559,10 @@ async function completedEnvelope(client, envelope, source, slug, tenantName) {
 
   // 4–7, with the claim put back on anything that can heal.
   try {
-    const cfg = await qes.providerConfig(client, "signwell");
+    // Named tenant: this runs from the webhook (which has a context) AND
+    // from the poll worker (which does not). The explicit slug is the only
+    // source that is right in both.
+    const cfg = await qes.providerConfig(client, "signwell", { tenant: slug });
     if (!cfg) throw new AppError("QES_NOT_CONFIGURED", "No signing provider credentials are configured.", 409);
 
     const signedBuf = await adapter.fetchSignedDocument({ apiKey: cfg.apiKey, envelopeId: envelope.provider_ref });
@@ -730,6 +753,48 @@ async function pollTenant(client, { slug = null, tenantName = "", olderThanHours
   let progressed = 0;
   let failed = 0;
 
+  // The provider's key, ONCE per sweep, before the loop — and named on the
+  // tenant explicitly: this worker has no request context to read it from.
+  // A missing key is then one answer for the sweep, not N warn lines and a
+  // silent continue per envelope (the shape that gets scrolled past).
+  let cfg = null;
+  if (stale.length) cfg = await qes.providerConfig(client, "signwell", { tenant: slug });
+
+  if (!cfg) {
+    if (!stale.length) {
+      logger.debug({ slug }, "[qes] poll sweep — nothing open");
+      return { checked: 0, progressed: 0, failed: 0, not_configured: false };
+    }
+    // Not configured: the envelopes stay OPEN — the poll advances them the
+    // moment the key is back, and marking them FAILED would burn the
+    // provider's in-flight document for a configuration gap. But "open" must
+    // not mean "invisible": a tenant that removes its key strands every
+    // in-flight envelope, and the operator needs to see it in two places.
+    //
+    //   1. ON THE ROW — each affected envelope carries the reason in
+    //      last_error, which is the durable record an operator (or an audit)
+    //      finds without the job log.
+    //   2. IN THE FLEET VIEW — one alert per tenant per sweep through the
+    //      platform alert channels, where "a tenant's envelopes are stuck"
+    //      belongs.
+    for (const envelope of stale) {
+      // One stamp per envelope, and the stamp is the point.
+      await repo.updateEnvelope(client, envelope.envelope_id, {
+        last_error: "provider not configured — the poll advances this when the key is restored",
+      }).catch(() => { /* @silent:storage — the alert below is the record; a
+        stamp that fails still leaves the sweep's summary in the job result. */ });
+    }
+    await alertRouting.raise({
+      event: "qes.not_configured",
+      severity: "notify",
+      subject: `QES provider not configured for tenant '${slug}' — ${stale.length} open envelope(s) cannot be advanced until the key is restored`,
+      detail: { slug, open_envelopes: stale.length },
+    }).catch(() => { /* @silent:teardown — the row stamps and the return
+      value carry the fact; the channel is a convenience on top. */ });
+    logger.warn({ slug, open: stale.length }, "[qes] poll sweep — provider not configured, envelopes left open and flagged");
+    return { checked: stale.length, progressed: 0, failed: 0, not_configured: true };
+  }
+
   for (const envelope of stale) {
     try {
       // A CREATING envelope with no provider_ref is a create call whose
@@ -744,14 +809,6 @@ async function pollTenant(client, { slug = null, tenantName = "", olderThanHours
           await emitEnvelopeEvent(client, events.ENVELOPE_FAILED, envelope, { status: "FAILED", source, reason: "create never confirmed" });
           failed += 1;
         }
-        continue;
-      }
-      const cfg = await qes.providerConfig(client, "signwell");
-      if (!cfg) {
-        // Not configured: nothing to poll, and marking the envelope FAILED
-        // would be a lie (the provider may still be working). Leave it; the
-        // operator's configuration is the blocker, and the job log says so.
-        logger.warn({ envelope_id: envelope.envelope_id, slug }, "QES poll skipped — provider not configured");
         continue;
       }
       const status = await adapter.getStatus({ apiKey: cfg.apiKey, envelopeId: envelope.provider_ref });

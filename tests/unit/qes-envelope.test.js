@@ -225,6 +225,38 @@ describe("the charge transaction is the arbiter — a failed commit un-sends the
       expect.objectContaining({ apiKey: "sw_key", envelopeId: "sw-doc-9" }),
     );
   });
+
+  test("the stranded envelope goes FAILED immediately, so the advised retry is possible", async () => {
+    // The audit finding: insertEnvelope runs BEFORE the BEGIN, so on charge
+    // failure the row survives the rollback as CREATING — an IN-FLIGHT state
+    // that uq_qes_active_party and getActiveForParty both cover. Left there,
+    // the "please try again" advice is a lie for the next hour (until the
+    // poll's stale sweep clears it), and the retry throws ENVELOPE_IN_FLIGHT.
+    // The row must be transitioned to FAILED in the rollback path.
+    const client = makeClient();
+    primeHandoff(client);
+    jest.spyOn(adapter, "createEnvelope").mockResolvedValue({
+      envelopeId: "sw-doc-9", webhookId: "hook-1", partyLinks: [],
+    });
+    const update = jest.spyOn(repo, "updateEnvelope");
+    jest.spyOn(client, "query")
+      .mockImplementation(async (sql) => {
+        if (String(sql).trim() === "COMMIT") throw new Error("connection lost mid-commit");
+        return { rows: [] };
+      });
+    jest.spyOn(adapter, "cancelEnvelope").mockResolvedValue({ cancelled: true });
+
+    expect(await codeOf(
+      qesService.handoff(client, { party: party(), request: request(), language: "fr", slug: "t", origin: "https://t.example" }),
+    )).toBe("QES_LEDGER_FAILED");
+
+    // FAILED, not left CREATING — and with a reason that is also the answer
+    // to "why can't I see it in the provider dashboard?"
+    expect(update).toHaveBeenCalledWith(
+      client, "env-1",
+      expect.objectContaining({ status: "FAILED", last_error: expect.stringContaining("cancelled at the provider") }),
+    );
+  });
 });
 
 describe("one in-flight envelope per party — the friendly half of the index", () => {

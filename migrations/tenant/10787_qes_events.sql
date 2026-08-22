@@ -38,11 +38,50 @@ INSERT INTO event_type (key, module_key, name, description) VALUES
    'Platform-level alert: the monthly certified envelope allowance across all tenants crossed 80 or 95 percent. Routed to the platform alert channels, never to a tenant.')
 ON CONFLICT (key) DO NOTHING;
 
+-- ---------------------------------------------------------------------------
+-- 2. Repair: the unscoped pg_trigger lookup in 10781.
+--
+-- 10781's DO block checks pg_trigger by name only:
+--
+--     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sigreq_updated')
+--
+-- pg_trigger is DATABASE-wide, and provisioning migrates LIVE first — so on
+-- the SANDBOX pass the lookup finds the LIVE schema's trigger and skips the
+-- CREATE. Every provisioned tenant's sandbox is missing trg_sigreq_updated,
+-- and signature_request.updated_at does not advance there. This is the same
+-- bug class 10779 repaired for 10771's constraints; the trigger check is
+-- the one that slipped through, because the scoping gate read only
+-- pg_constraint (it now reads both — see
+-- tests/security/signature-migration-scoping.test.js).
+--
+-- 10781 is applied and therefore immutable, so the repair lands HERE, in a
+-- file no tenant has run yet: the same check with the tgrelid scope the
+-- lookup needed. On the live schema the trigger exists, so this is a no-op;
+-- on the sandbox schema it creates the missing trigger. Re-runnable either
+-- way. The scoping test grandfathering 10781's line points at this block,
+-- so the exemption dies with the fix.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sigreq_updated' AND tgrelid = 'signature_request'::regclass) THEN
+    CREATE TRIGGER trg_sigreq_updated
+      BEFORE UPDATE ON signature_request
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
 -- ============================================================================
 -- VERIFY
 --   SELECT key FROM event_type WHERE key LIKE 'qes.%' ORDER BY key;  -- expect 5
+--   SELECT count(*) FROM pg_trigger
+--    WHERE tgname = 'trg_sigreq_updated' AND tgrelid = 'signature_request'::regclass;
+--     -- expect 1 in both schemas after the repair (the sandbox pass is the
+--     -- one that was missing it)
 --
 -- DOWN
+--   -- The repair is additive: dropping the event rows leaves the repaired
+--   -- trigger in place, and that is correct — it is the sandbox's own
+--   -- trigger, and removing it would re-break updated_at.
 --   DELETE FROM event_type WHERE key IN
 --     ('qes.envelope_created','qes.envelope_completed','qes.envelope_declined',
 --      'qes.envelope_failed','qes.quota_low');

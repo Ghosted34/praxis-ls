@@ -5,6 +5,7 @@ const { AppError } = require("../../../utils/errors");
 const repo = require("./hr_contract.repo");
 const events = require("./hr_contract.events");
 const employeeService = require("../../master/employees/employees.service");
+const numbering = require("../../../services/documents/numbering.service");
 
 // Contract lifecycle: DRAFT → ISSUED → SIGNED → ENDED. A signed or ended
 // contract is terminal for forward flow (ENDED only reachable from SIGNED).
@@ -248,8 +249,75 @@ module.exports = {
     // past DRAFT for the same reason.
     const patch = { status };
     if (status === "SIGNED" && !before.signed_on) patch.signed_on = new Date().toISOString().slice(0, 10);
+
+    /**
+     * A REAL CONTRACT NUMBER, at issue.
+     *
+     * `MOD-12 → "CTR"` has been registered in numbering.service since the
+     * scheme table was written, and nothing ever called it. With no
+     * `doc_number`, the PDF template fell back to
+     * `String(hr_contract_id).slice(0, 8)` — so every employment contract this
+     * system has issued went out numbered with eight hex characters of a UUID
+     * instead of the tenant's configured sequence.
+     *
+     * Allocated at ISSUED, not at draft: that is the moment the document
+     * becomes an instrument that leaves the building, and it is where the
+     * invoice does it too. A draft that is never issued must not burn a number
+     * — gaps in a contract register are the kind of thing an auditor asks about.
+     * Guarded on `!before.doc_number`, so re-issuing never renumbers.
+     */
+    if (status === "ISSUED" && !before.doc_number) {
+      const entityId = before.entity_id
+        || (await repo.entityIdFor(client, { contractId: id, employeeId: before.employee_id }));
+      if (entityId) {
+        const { number } = await numbering.allocate(client, {
+          moduleKey: "MOD-12", entityId, date: before.effective_on || null,
+        });
+        patch.doc_number = number;
+      }
+    }
+
     const row = await repo.update(client, id, patch);
     const entityRef = `hr_contract:${id}`;
+
+    /**
+     * SIGNING A RENEWAL ENDS WHAT IT RENEWS.
+     *
+     * `renew()` creates a new contract row rather than editing the old one,
+     * and that is correct: the old `body_md` is the wording the parties
+     * signed, and this module refuses to rewrite a signed document anywhere
+     * else. A renewal is a new instrument with its own term and its own
+     * signatures.
+     *
+     * What was missing is the other half. Nothing ever closed the predecessor,
+     * so once a renewal was signed the employee held TWO live contracts —
+     * both in ('ISSUED','SIGNED'), both showing in the register, with nothing
+     * saying which one governs. `renews_contract_id` recorded the chain and no
+     * code acted on it.
+     *
+     * Done at SIGNED, deliberately. Not at renew() — the old contract must
+     * stay live while its replacement is being drafted, or the employee is
+     * briefly under no contract at all. Not at ISSUED — issued is not yet
+     * binding. Signing is the moment the new terms take effect, which is the
+     * moment the old ones stop.
+     *
+     * The predecessor's `end_on` is NOT rewritten: it is an agreed date on a
+     * signed document, and this module does not edit those. The status change
+     * and its reason go to the audit trail instead.
+     */
+    if (status === "SIGNED" && before.renews_contract_id) {
+      const prior = await repo.findById(client, before.renews_contract_id);
+      if (prior && (prior.status === "ISSUED" || prior.status === "SIGNED")) {
+        const ended = await repo.update(client, prior.hr_contract_id, { status: "ENDED" });
+        await audit(client, {
+          actorUserId: actor.user_id, action: events.STATUS_CHANGED, moduleKey: events.MODULE,
+          entityRef: `hr_contract:${prior.hr_contract_id}`,
+          before: prior, after: ended,
+          payload: { superseded_by: id, reason: "renewal signed" },
+        });
+      }
+    }
+
     await emitEvent(client, { eventTypeKey: events.STATUS_CHANGED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id });
     await audit(client, { actorUserId: actor.user_id, action: events.STATUS_CHANGED, moduleKey: events.MODULE, entityRef, before, after: row });
     return row;

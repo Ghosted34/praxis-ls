@@ -32,39 +32,74 @@ const ref = (id) => "corporate_entity:" + id;
 const LOGO_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp", "image/svg+xml": "svg" };
 const MAX_LOGO_BYTES = 512 * 1024;
 
-/** Columns create() accepts, mapped from the camelCase the controller passes. */
-async function create(client, {
-  code, legalName, tradingName = null, niu = null, rccm = null, countryCode = "CM",
-  address = null, bankBlock = {}, docPrefix = "SLS", defaultLanguage = "fr",
-  fiscalYearStartMonth = 1, legalForm = null, incorporationDate = null,
-  accountingFramework = null, registrationStatus = null, parentEntityId = null,
-  relationshipType = null, description = null, actor = {},
-}) {
+/**
+ * Old camelCase argument names -> the column they meant. The pre-fix create()
+ * took a hand-picked camelCase object, which is exactly how DATA 2.7 happened:
+ * the shared schema validated ~40 snake_case fields, the controller re-mapped
+ * 18 of them by hand, and the other twenty were silently dropped on POST while
+ * PATCH (driven by repo.WRITABLE) persisted them all — so the edit modal opened
+ * half-empty on an entity the user had just filled in completely. The map keeps
+ * any straggler caller on the old shape working while the column names are now
+ * the one canonical spelling.
+ */
+const CREATE_CAMEL_ALIASES = {
+  legalName: "legal_name", tradingName: "trading_name", countryCode: "country_code",
+  bankBlock: "bank_block", docPrefix: "doc_prefix", defaultLanguage: "default_language",
+  fiscalYearStartMonth: "fiscal_year_start_month", legalForm: "legal_form",
+  incorporationDate: "incorporation_date", accountingFramework: "accounting_framework",
+  registrationStatus: "registration_status", parentEntityId: "parent_entity_id",
+  relationshipType: "relationship_type",
+};
+
+/**
+ * Register a corporate entity.
+ *
+ * `input` is the schema-validated body (entityCommon.masterCreate) in COLUMN
+ * NAMES, plus `actor`. Every writable column is accepted through the SAME
+ * allow-list the PATCH path uses (repo.WRITABLE), so a field the shared schema
+ * accepts can never again be silently dropped between validation and INSERT —
+ * create and update agree by construction instead of by two hand-kept lists.
+ *
+ * `actorArg` exists for the AI write adapter, which calls
+ * `service(client, payload, actor)` with the actor as a third positional
+ * argument rather than folded into the body.
+ */
+async function create(client, input = {}, actorArg = null) {
+  const { actor = actorArg || {}, ...body } = input;
+  for (const [camel, col] of Object.entries(CREATE_CAMEL_ALIASES)) {
+    if (body[camel] !== undefined && body[col] === undefined) body[col] = body[camel];
+    delete body[camel];
+  }
+
+  const code = body.code;
   const existing = await repo.getByCode(client, code);
   if (existing) throw new AppError("DUPLICATE_CODE", "An entity with code " + code + " already exists", 409);
-  rules.assertFiscalMonth(fiscalYearStartMonth);
+  rules.assertFiscalMonth(body.fiscal_year_start_month);
 
-  if (parentEntityId) {
-    const parent = await repo.get(client, parentEntityId);
+  if (body.parent_entity_id) {
+    const parent = await repo.get(client, body.parent_entity_id);
     if (!parent) throw new AppError("NOT_FOUND", "The parent entity does not exist", 404);
   }
 
+  // Column values for the INSERT. Nulls are dropped ON CREATE only: there is no
+  // previous value to clear, and omitting the column is what lets the DEFAULTs
+  // and the 0515 triggers derive `accounting_framework`, `default_currency`,
+  // `payroll_country`, `incorporation_country`, `numbering_reset`, `doc_prefix`,
+  // `default_language` and `country_code` — the trigger is the one place that
+  // knows how to read country_profile. (PATCH keeps sending explicit nulls,
+  // because there a null means "clear this".)
+  const fields = { code };
+  for (const k of repo.WRITABLE) {
+    if (body[k] !== undefined && body[k] !== null) fields[k] = body[k];
+  }
+  if (fields.bank_block !== undefined) fields.bank_block = JSON.stringify(fields.bank_block || {});
+  // Service-owned column, so not in WRITABLE — but the create schema allows
+  // starting life as a DRAFT, and the 0515 trigger defaults it to ACTIVE.
+  if (body.registration_status) fields.registration_status = body.registration_status;
+
   await client.query("BEGIN");
   try {
-    const row = await repo.insert(client, {
-      code, legal_name: legalName, trading_name: tradingName, niu, rccm,
-      country_code: countryCode, address,
-      bank_block: JSON.stringify(bankBlock || {}), doc_prefix: docPrefix,
-      default_language: defaultLanguage, fiscal_year_start_month: fiscalYearStartMonth,
-      legal_form: legalForm, incorporation_date: incorporationDate,
-      description,
-      // Null lets the column DEFAULT / the 0515 trigger derive them, which is the
-      // one place that knows how to read country_profile.
-      ...(accountingFramework ? { accounting_framework: accountingFramework } : {}),
-      ...(registrationStatus ? { registration_status: registrationStatus } : {}),
-      ...(parentEntityId ? { parent_entity_id: parentEntityId } : {}),
-      ...(relationshipType ? { relationship_type: relationshipType } : {}),
-    });
+    const row = await repo.insert(client, fields);
     // The two-character marker that leads this entity's OPERATION-file
     // references (`SL` in `SL7Z3K9QW2M4XBSM`) — derived from the name, walked
     // past anything already taken, and persisted once. Assigned here, in the

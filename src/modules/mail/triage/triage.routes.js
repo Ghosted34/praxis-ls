@@ -22,10 +22,24 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
+      // Claiming reads the thread back, so it is a READ in the §9.5 sense and
+      // must be visibility-gated like every other read — otherwise a Private
+      // thread's subject and participants leak through `RETURNING *`. A thread
+      // the caller cannot see answers NOT_FOUND, identical to one that does
+      // not exist, because the endpoint must not be an oracle for either.
+      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
+        throw new AppError("NOT_FOUND", "conversation not found", 404);
+      }
+      // The race-safe half: ONE conditional statement, so two claimants cannot
+      // both win. The visibility predicate rides along in case the thread was
+      // made PRIVATE between the gate read and this write.
       const { rows } = await c.query(
-        `UPDATE email_thread SET assigned_user_id=$2, assigned_at=now()
-          WHERE email_thread_id=$1 AND assigned_user_id IS NULL
-          RETURNING *, participants::text[] AS participants`,
+        `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
+           FROM email_connection c
+          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
+            AND assigned_user_id IS NULL
+            AND (${vis.clause("$2")})
+          RETURNING t.*, t.participants::text[] AS participants`,
         [req.params.id, actor(req).user_id],
       );
       if (!rows[0]) throw new AppError("ALREADY_CLAIMED", "Someone else already claimed this thread.", 409);
@@ -36,24 +50,40 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
 router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
   body(z.object({ user_id: z.string().uuid() }).strict()),
   asyncHandler(async (req, res) => res.json({
-    data: await req.identityDb((c) => c.query(
-      `UPDATE email_thread SET assigned_user_id=$2, assigned_at=now()
-        WHERE email_thread_id=$1
-        RETURNING *, participants::text[] AS participants`,
-      [req.params.id, req.body.user_id],
-    ).then((r) => r.rows[0])),
+    data: await req.identityDb(async (c) => {
+      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
+        throw new AppError("NOT_FOUND", "conversation not found", 404);
+      }
+      const { rows } = await c.query(
+        `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
+           FROM email_connection c
+          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
+            AND (${vis.clause("$3")})
+          RETURNING t.*, t.participants::text[] AS participants`,
+        [req.params.id, req.body.user_id, actor(req).user_id],
+      );
+      return rows[0];
+    }),
   })));
 
 router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
   body(z.object({ status: z.enum(["OPEN", "PENDING", "RESOLVED"]) }).strict()),
   asyncHandler(async (req, res) => res.json({
-    data: await req.identityDb((c) => c.query(
-      `UPDATE email_thread SET work_status=$2,
-              resolved_at = CASE WHEN $2='RESOLVED' THEN now() ELSE resolved_at END
-        WHERE email_thread_id=$1
-        RETURNING *, participants::text[] AS participants`,
-      [req.params.id, req.body.status],
-    ).then((r) => r.rows[0])),
+    data: await req.identityDb(async (c) => {
+      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
+        throw new AppError("NOT_FOUND", "conversation not found", 404);
+      }
+      const { rows } = await c.query(
+        `UPDATE email_thread t SET work_status=$2,
+                resolved_at = CASE WHEN $2='RESOLVED' THEN now() ELSE resolved_at END
+           FROM email_connection c
+          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
+            AND (${vis.clause("$3")})
+          RETURNING t.*, t.participants::text[] AS participants`,
+        [req.params.id, req.body.status, actor(req).user_id],
+      );
+      return rows[0];
+    }),
   })));
 
 router.post("/threads/:id/snooze", requireFeature("mail.followup"), requirePermission(M, "edit"),
@@ -281,11 +311,23 @@ router.get("/secure-links/:id/views", requireFeature("mail.secure_links"), requi
 router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requirePermission(M, "edit"),
   body(z.object({ visibility: z.enum(["PRIVATE", "TEAM", "COMPANY"]) }).strict()),
   asyncHandler(async (req, res) => res.json({
-    data: await req.identityDb((c) => c.query(
-      `UPDATE email_thread SET visibility=$2 WHERE email_thread_id=$1
-        RETURNING *, participants::text[] AS participants`,
-      [req.params.id, req.body.visibility],
-    ).then((r) => r.rows[0])),
+    data: await req.identityDb(async (c) => {
+      // Changing visibility also RETURNS the thread, and widening a PRIVATE
+      // thread you could not see to TEAM would be the shortest route into it —
+      // so the caller must already be able to read it.
+      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
+        throw new AppError("NOT_FOUND", "conversation not found", 404);
+      }
+      const { rows } = await c.query(
+        `UPDATE email_thread t SET visibility=$2
+           FROM email_connection c
+          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
+            AND (${vis.clause("$3")})
+          RETURNING t.*, t.participants::text[] AS participants`,
+        [req.params.id, req.body.visibility, actor(req).user_id],
+      );
+      return rows[0];
+    }),
   })));
 
 /**

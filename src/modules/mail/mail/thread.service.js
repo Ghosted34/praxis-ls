@@ -48,6 +48,7 @@ function queryFrom(q = {}) {
     from: f.from && f.from.length ? f.from : undefined,
     to: f.to && f.to.length ? f.to : undefined,
     subject: f.subject && f.subject.length ? f.subject : undefined,
+    client: f.client || undefined,
     before: q.before || f.before || undefined,
     after: f.after || undefined,
     tsquery: parsed.tsquery || undefined,

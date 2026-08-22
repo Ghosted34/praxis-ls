@@ -10,6 +10,72 @@ Newest first.
 
 ---
 
+## FN-2 · 2026-08-21 · A specified search operator did nothing, and the triage writes leaked what the reads protected
+
+**Severity:** a silent search no-op; a visibility leak through `RETURNING *` on
+the PR-5 write routes. **Found by:** the QC pass of this session, when two test
+files the guide names by name turned out not to exist.
+**Fixed in:** the same pass.
+
+### The two named-but-missing tests were the symptom
+
+`tests/integration/mail-search.test.js` (§3.7) and
+`tests/integration/mail-shared-inbox.test.js` (§9.11) were both absent from the
+tree, and both chapters read as complete without them. Every earlier sweep had
+asked "what did a migration create that nothing reads?" and "what did a worker
+register that nothing enqueues?" — and had **not** asked the test-plan's own
+question: "does the test the guide names by name exist?" The audit's §9 listed
+both as missing; §11–§16 never claimed to have written them; the gap survived
+three sweeps because each sweep measured code, not tests.
+
+### What writing them uncovered
+
+`client:` is in the guide's mini-language (§5.x). The parser stored it and
+`queryFrom()` dropped it — a search operator that silently did nothing, which
+is worse than an unknown one, because an unknown one is searched as text and a
+known one reads as working.
+
+The triage write routes — claim, assign, status, visibility PATCH — all ended
+in `RETURNING *` with no visibility predicate. §5.1's critical had been fixed
+at the repo layer (list, get, search, timeline); the fix never reached the
+route layer, where four writes returned the thread they were writing to. Any
+colleague holding MOD-72 edit could read a PRIVATE thread's subject by
+claiming it — and could widen an invisible PRIVATE thread to TEAM, the
+shortest route into it. The read gate was `threadRepo.getThread`; the routes
+did not call it.
+
+### The two shapes worth internalising
+
+**A write that RETURNS the row is a read.** The visibility sweep enumerated
+repos and query builders; nobody enumerated `RETURNING` on writes. Where a
+route returns entity content, the §9.5 predicate applies to it as surely as to
+a list endpoint.
+
+**A test plan is a checklist, and a checklist with two unchecked boxes reads
+as done.** The guide names ~20 test files; the tree had 18 of them. The missing
+two were each one line away from the code they would have caught — the same
+"gap between the mock and the database" shape as FN-1, one layer up.
+
+### What now prevents it
+
+1. `tests/integration/mail-search.test.js` — parser + call-site SQL, including
+   the forgiving behaviours pinned so a "cleanup" cannot break the search box,
+   and a 50,000-underscore hostile parse that fails if the tokeniser ever
+   grows a backtrackable quantifier again (CodeQL caught the first draft).
+2. `tests/integration/mail-shared-inbox.test.js` — the claim race driven for
+   real through the router; the emulation only applies the `assigned_user_id
+   IS NULL` guard if the SQL still carries it, so a read-then-write regression
+   shows up as two winners.
+3. The four triage writes gate through `getThread` and carry
+   `visibility.clause` inside the UPDATE; claim distinguishes missing (404)
+   from claimed (409).
+4. The parser now honours its own "quotes group" contract (`word1 <-> word2`
+   phrases, and `subject:"bill of lading"` is one filter, not a stray phrase),
+   with `tokenise` as a hand-scanned linear pass — a regex that has to decide
+   both where the operator ends and where the quote ends is a ReDoS.
+
+---
+
 ## FN-1 · 2026-08-19 · The Mailbox tab would not open
 
 **Severity:** the Mailbox tab was unusable, and mail ingestion was silently broken.

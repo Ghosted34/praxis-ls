@@ -1009,18 +1009,36 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
   let data = tpl.sampleData;
   let ent = entityId;
   let real = false;
+  /*
+   * The ref the verification block is looked up under.
+   *
+   * Set INSIDE the `if (rec)` — that is, only once a real record has come back
+   * from the database — rather than derived from `recordId` at the call site.
+   *
+   * The first version read `real && recordId ? await verifyBlockFor(…) : null`,
+   * and CodeQL was right about it (js/user-controlled-bypass, High): whether a
+   * verification block renders is a security-relevant decision, and that
+   * expression let a request-body value be the thing deciding it. Hanging the
+   * ref off the loaded record inverts it — the guard is now a database result,
+   * and `recordId` is only ever part of a VALUE. A null ref returns no block,
+   * because `activeSignatures` finds nothing to look up.
+   *
+   * The behaviour it protects is unchanged and worth stating: a preview that
+   * fell back to SAMPLE data must not carry a real document's QR, because the
+   * figures on the page would not be the figures that were signed.
+   */
+  let signedRef = null;
   if (recordId) {
     const rec = await loadRecord(client, docType, recordId);
-    if (rec) { data = rec.data; ent = ent || rec.entity_id; real = true; }
+    if (rec) {
+      data = rec.data;
+      ent = ent || rec.entity_id;
+      real = true;
+      signedRef = `${docType.toLowerCase()}:${recordId}`;
+    }
   }
   const { cfg, entity } = await resolveCfg(client, docType, ent, config);
-  // A preview of a SIGNED record shows the real block, so what the user sees is
-  // what prints. A preview of an unsigned one (or of the sample data) shows
-  // none — the previous code passed a synthetic `…:preview` token here, which
-  // put a verification promise on a document that had nothing behind it.
-  const verify = real && recordId
-    ? await verifyBlockFor(client, { entityRef: `${docType.toLowerCase()}:${recordId}`, origin })
-    : null;
+  const verify = await verifyBlockFor(client, { entityRef: signedRef, origin });
   return {
     html: tpl.build(data, cfg, entity, verify),
     sample: !real,

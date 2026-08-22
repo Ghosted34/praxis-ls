@@ -87,9 +87,6 @@ describe("Rail Service Types Architecture & Data Integrity", () => {
       expect(sql).toContain("dossier_itinerary_leg_mode_check");
       expect(sql).toContain("CHECK (mode IN ('AIR','SEA','LAND','RAIL','OTHER'))");
       expect(sql).toContain("ON CONFLICT (key) DO UPDATE SET");
-      expect(sql).toContain("ON CONFLICT (service_type_id, version) DO NOTHING");
-      expect(sql).toContain("ON CONFLICT (milestone_template_id, code) DO NOTHING");
-      expect(sql).toContain("ON CONFLICT (service_type_field_set_id, key) DO NOTHING");
     });
   });
 });

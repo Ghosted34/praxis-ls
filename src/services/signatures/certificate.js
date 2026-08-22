@@ -48,8 +48,24 @@ function stamp(value, timezone) {
   const utc = d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
   let local = "";
   try {
+    /*
+     * Explicit components, NOT `dateStyle`/`timeStyle`.
+     *
+     * `Intl.DateTimeFormat` throws when `timeZoneName` is combined with either
+     * style shorthand — and the catch below swallowed it, so every certificate
+     * printed a UTC stamp and an EMPTY local one. Nothing failed; the field was
+     * just blank. Caught by a test asserting the two differ, which is the only
+     * way a silently-empty evidence field gets noticed.
+     *
+     * The zone NAME is the part that matters: "11 Mar 2026, 10:14:02" is
+     * ambiguous across a border, and this document is read across borders.
+     */
     local = new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone || "UTC", dateStyle: "medium", timeStyle: "medium", timeZoneName: "short",
+      timeZone: timezone || "UTC",
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false,
+      timeZoneName: "short",
     }).format(d);
   } catch {
     /* @silent:parse — an unknown tenant timezone must not stop an evidence

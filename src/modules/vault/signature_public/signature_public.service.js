@@ -168,6 +168,21 @@ async function resolve(client, { token, lang = "fr", markViewed = true }) {
 
   const challenge = await repo.latestOtp(client, { partyId: party.party_id });
 
+  /*
+   * The decline vocabulary travels WITH the page.
+   *
+   * The obvious alternative — have the page fetch `/signatures/reasons` — does
+   * not work and should not be made to: that route is MOD-64 `view` behind
+   * authMiddleware, and the counterparty has no account. Opening a second
+   * public endpoint to serve five labels would be a second anonymous surface
+   * to rate-limit, log and reason about, for data this response is already
+   * making a round trip for.
+   */
+  const declineReasons = (await presets.reasons(client, { kind: "DECLINE" })).map((r) => ({
+    reason_code: r.reason_code,
+    label: language === "en" ? r.label_en : r.label_fr,
+  }));
+
   return {
     language,
     status: party.status,
@@ -187,6 +202,7 @@ async function resolve(client, { token, lang = "fr", markViewed = true }) {
     },
     as_requested: asRequested,
     menu: { cards, blocked, default: menu.default },
+    decline_reasons: declineReasons,
     otp: otp.present(challenge),
   };
 }

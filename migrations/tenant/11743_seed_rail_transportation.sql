@@ -143,18 +143,24 @@ INSERT INTO _tmp_rail_stages (svc,seq,code,label_en,label_fr,weight,min_h,owner,
  ('END_TO_END_RAIL_FREIGHT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued');
 
 INSERT INTO milestone_template_stage (
-  milestone_template_id, seq, code, name_en, name_fr,
-  weight, min_duration_hours, default_offset_days, owner_tier,
-  is_anchor, is_target_lock, is_client_visible, evidence_type,
-  chain_segment, cadence_pattern, auto_advance_on_event,
+  milestone_template_id, stage_seq, code, label_fr, label_en, default_offset_days,
+  weight, min_duration_hours, owner_tier, is_anchor, is_target_lock, is_client_visible,
+  required_evidence_doc_type, auto_advance_on_event, chain_segment, cadence,
   is_system, system_code, source_version
 )
 SELECT
-  mt.milestone_template_id, s.seq, s.code, s.label_en, s.label_fr,
-  s.weight, s.min_h,
-  round((SUM(s.weight) OVER (PARTITION BY s.svc, s.segment ORDER BY s.seq) - s.weight)::numeric * st.default_duration_days / 100.0, 1),
-  s.owner, s.anchor, s.lock, s.visible, s.evidence,
-  s.segment, s.cadence, s.auto_event,
+  mt.milestone_template_id, s.seq, s.code, s.label_fr, s.label_en,
+  COALESCE(
+    round(
+      (SUM(s.weight) OVER (
+         PARTITION BY s.svc, s.segment ORDER BY s.seq
+         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+       ))::numeric / 100.0 * st.default_duration_days
+    )::integer,
+    0
+  ),
+  s.weight, s.min_h, s.owner, s.anchor, s.lock, s.visible,
+  s.evidence, s.auto_event, s.segment, s.cadence,
   true, s.code, 1
 FROM _tmp_rail_stages s
 JOIN service_type st ON st.key = s.svc

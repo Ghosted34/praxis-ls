@@ -57,17 +57,13 @@ module.exports = {
   }),
 
   create: asyncHandler(async (req, res) => {
-    const b = req.body;
-    const data = await req.tenantDb((c) => service.create(c, {
-      code: b.code, legalName: b.legal_name, tradingName: b.trading_name,
-      niu: b.niu, rccm: b.rccm, countryCode: b.country_code, address: b.address,
-      bankBlock: b.bank_block, docPrefix: b.doc_prefix, defaultLanguage: b.default_language,
-      fiscalYearStartMonth: b.fiscal_year_start_month, legalForm: b.legal_form,
-      incorporationDate: b.incorporation_date, accountingFramework: b.accounting_framework,
-      registrationStatus: b.registration_status, parentEntityId: b.parent_entity_id,
-      relationshipType: b.relationship_type, description: b.description,
-      actor: actor(req),
-    }));
+    // The body has already been validated (and pruned of unknown keys) by the
+    // shared masterCreate schema, and service.create filters it through the
+    // same WRITABLE allow-list PATCH uses. Passing it whole is what closed
+    // DATA 2.7: the previous hand-written camelCase re-mapping listed 18 of
+    // the schema's ~40 fields, and every field it forgot was silently dropped
+    // on create while remaining editable on update.
+    const data = await req.tenantDb((c) => service.create(c, { ...req.body, actor: actor(req) }));
     res.status(201).json({ data });
   }),
 

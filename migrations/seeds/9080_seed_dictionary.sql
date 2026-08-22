@@ -469,8 +469,16 @@ UPDATE _dict_seed s SET code = m.new_code
                     WHEN 'DISBURSEMENT' THEN 'D' ELSE 'A' END
                || lpad((row_number() OVER (PARTITION BY direction ORDER BY label_en))::text, 3, '0') AS new_code
       FROM _dict_seed
+     WHERE key NOT IN ('RAIL_FREIGHT','RAIL_SHUNTING_FEE','RAIL_TERMINAL_HANDLING','WAGON_DEMURRAGE','RAIL_ESCORT_FEE','RAIL_CORRIDOR_LEVY')
   ) m
  WHERE m.key = s.key;
+
+UPDATE _dict_seed SET code = '#R022' WHERE key = 'RAIL_FREIGHT';
+UPDATE _dict_seed SET code = '#R023' WHERE key = 'RAIL_SHUNTING_FEE';
+UPDATE _dict_seed SET code = '#R024' WHERE key = 'RAIL_TERMINAL_HANDLING';
+UPDATE _dict_seed SET code = '#E045' WHERE key = 'WAGON_DEMURRAGE';
+UPDATE _dict_seed SET code = '#E046' WHERE key = 'RAIL_ESCORT_FEE';
+UPDATE _dict_seed SET code = '#D147' WHERE key = 'RAIL_CORRIDOR_LEVY';
 
 -- ── 8. The catalogue rows ───────────────────────────────────────────────────
 -- category, is_disbursement, provider_kind and disbursement_vat_transparent are DERIVED

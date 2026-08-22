@@ -29,17 +29,23 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
-      // Claiming reads the thread back, so it is a READ in the §9.5 sense and
-      // must be visibility-gated like every other read — otherwise a Private
-      // thread's subject and participants leak through `RETURNING *`. A thread
-      // the caller cannot see answers NOT_FOUND, identical to one that does
-      // not exist, because the endpoint must not be an oracle for either.
-      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
-        throw new AppError("NOT_FOUND", "conversation not found", 404);
-      }
-      // The race-safe half: ONE conditional statement, so two claimants cannot
-      // both win. The visibility predicate rides along in case the thread was
-      // made PRIVATE between the gate read and this write.
+      // `requireVisibleThread()` on the route has already refused a thread this
+      // caller cannot see, with the same 404 a non-existent one gets, so the
+      // endpoint is an oracle for neither. The inline `getThread` that used to
+      // stand here was the FN-2 fix; it is now the SECOND full read of the same
+      // thread on every claim — the middleware does the identical check with a
+      // single-row query — so it is gone rather than left as a duplicate that
+      // future readers must reason about.
+      //
+      // What stays is the race-safe half: ONE conditional statement, so two
+      // claimants cannot both win. The visibility predicate rides along inside
+      // it in case the thread was made PRIVATE between the gate and this
+      // write — the gate answers "may they see it", the predicate closes the
+      // window between the two answers.
+      //
+      // Note what this path deliberately does NOT do: read the assignment
+      // first. A claim that pre-reads `assigned_user_id` is one refactor from
+      // read-then-write, and read-then-write is how two agents both win.
       const { rows } = await c.query(
         `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
            FROM email_connection c
@@ -58,9 +64,6 @@ router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requireP
   body(z.object({ user_id: z.string().uuid() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
-      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
-        throw new AppError("NOT_FOUND", "conversation not found", 404);
-      }
       const { rows } = await c.query(
         `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
            FROM email_connection c
@@ -77,9 +80,6 @@ router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requireP
   body(z.object({ status: z.enum(["OPEN", "PENDING", "RESOLVED"]) }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
-      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
-        throw new AppError("NOT_FOUND", "conversation not found", 404);
-      }
       const { rows } = await c.query(
         `UPDATE email_thread t SET work_status=$2,
                 resolved_at = CASE WHEN $2='RESOLVED' THEN now() ELSE resolved_at END
@@ -353,9 +353,6 @@ router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requireP
       // Changing visibility also RETURNS the thread, and widening a PRIVATE
       // thread you could not see to TEAM would be the shortest route into it —
       // so the caller must already be able to read it.
-      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
-        throw new AppError("NOT_FOUND", "conversation not found", 404);
-      }
       const { rows } = await c.query(
         `UPDATE email_thread t SET visibility=$2
            FROM email_connection c

@@ -68,13 +68,20 @@ function sharedClient({ visibleTo = new Set(["u-owner"]) } = {}) {
     query: async (text, params) => {
       calls.push({ text, params });
       const sql = text.trim().replace(/\s+/g, " ");
-      if (sql.startsWith("SELECT t.*")) {
-        // getThread head — the visibility-gated read the routes must consult.
+      // getThread (`SELECT t.*`) and the C-4 gate (`headIfVisible` selects a
+      // named column list). Both are the same question: may this caller see
+      // this thread? A 404 from the gate is indistinguishable from a missing
+      // row, so the fixture must answer both or every write 404s before SQL.
+      if (sql.startsWith("SELECT t.*") || /SELECT t\.email_thread_id, t\.email_connection_id, t\.subject, t\.visibility/.test(sql)) {
         const [userId, threadId] = params;
         const th = threads.get(threadId);
         if (!th || !visibleTo.has(userId)) return { rows: [] };
         return {
-          rows: [{ email_thread_id: threadId, subject: th.subject, participants: [], visibility: th.visibility }],
+          rows: [{
+            email_thread_id: threadId, email_connection_id: "conn-1",
+            subject: th.subject, participants: [], visibility: th.visibility,
+            owner_user_id: "u-owner",
+          }],
         };
       }
       if (/FROM email_message m/.test(sql)) return { rows: [] };

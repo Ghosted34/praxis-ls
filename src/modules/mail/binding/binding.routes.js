@@ -59,9 +59,9 @@ router.post("/suggestions/accept-batch", requireFeature("mail.binding"), require
   }));
 
 router.get("/context", requireFeature("mail.binding"), requirePermission(M, "view"),
-  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.overview(c, req.query.entity_ref, { userId: actor(req).user_id })) })));
+  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.overview(c, req.query.entity_ref, { userId: actor(req).user_id, user: req.user })) })));
 router.get("/context/:tab", requireFeature("mail.binding"), requirePermission(M, "view"),
-  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.tab(c, req.query.entity_ref, req.params.tab, { userId: actor(req).user_id })) })));
+  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.tab(c, req.query.entity_ref, req.params.tab, { userId: actor(req).user_id, user: req.user })) })));
 
 /* Every card that applies to this thread, with its readiness — ONE query, so
  * the reading pane draws the whole strip without spending the §3.6 budget. */

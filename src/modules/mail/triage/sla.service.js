@@ -77,7 +77,7 @@ const RESPONDED = `
 
 async function sweep(client, { now = new Date() } = {}) {
   const rows = await policies(client);
-  if (!rows.length) return { policies: 0, dated: 0, breached: 0 };
+  if (!rows.length) return { policies: 0, dated: 0, breached: 0, resolution_breached: 0 };
 
   const ctx = await calendar(client);
   await client.query(RESPONDED);
@@ -85,6 +85,10 @@ async function sweep(client, { now = new Date() } = {}) {
   // Only threads that still need a due date. Recomputing every open thread on
   // every tick would be correct and wasteful; a policy change is picked up by
   // the reset below instead.
+  // P5-1. `LIMIT 500` without an order starved the oldest (most at-risk)
+  // threads under a sustained backlog: which 500 got dated was whatever the
+  // planner returned. Oldest first is the only order that matches "the clock
+  // that has been running longest is the one we date next".
   const { rows: pending } = await client.query(
     `SELECT t.email_thread_id, t.email_connection_id, t.is_vip, t.first_message_at,
             t.work_status, t.first_responded_at, t.resolved_at
@@ -93,6 +97,7 @@ async function sweep(client, { now = new Date() } = {}) {
       WHERE t.work_status = 'OPEN'
         AND t.first_response_due_at IS NULL
         AND c.kind IN ('SHARED','DELEGATED')
+      ORDER BY t.first_message_at ASC NULLS LAST
       LIMIT 500`,
   );
 
@@ -127,12 +132,41 @@ async function sweep(client, { now = new Date() } = {}) {
 
   for (const b of breaches) {
     try {
-      await announce(client, b);
+      await announce(client, b, "first_response");
     } catch (err) {
       logger.warn({ err, thread: b.email_thread_id }, "[mail] SLA breach notification failed");
     }
   }
-  return { policies: rows.length, dated, breached: breaches.length };
+
+  // P5-1. `resolution_due_at` was computed and stored and then never read.
+  // First-response is the only clock that notified, so a team could miss every
+  // resolution promise with a green queue. Own stamp (`resolution_breached_at`)
+  // so a first-response breach does not swallow the later resolution one, and
+  // so this also fires once.
+  const { rows: resolutionBreaches } = await client.query(
+    `UPDATE email_thread t SET resolution_breached_at = $1
+      WHERE t.resolution_breached_at IS NULL
+        AND t.work_status = 'OPEN'
+        AND t.resolved_at IS NULL
+        AND t.resolution_due_at IS NOT NULL
+        AND t.resolution_due_at <= $1
+      RETURNING t.email_thread_id, t.email_connection_id, t.subject, t.assigned_user_id`,
+    [now],
+  );
+
+  for (const b of resolutionBreaches) {
+    try {
+      await announce(client, b, "resolution");
+    } catch (err) {
+      logger.warn({ err, thread: b.email_thread_id }, "[mail] resolution SLA notification failed");
+    }
+  }
+  return {
+    policies: rows.length,
+    dated,
+    breached: breaches.length,
+    resolution_breached: resolutionBreaches.length,
+  };
 }
 
 /**
@@ -142,26 +176,32 @@ async function sweep(client, { now = new Date() } = {}) {
  * lead"; MANAGER is that role in the PR-0 access model (P3), so this does not
  * need its own notion of who leads a team.
  */
-async function announce(client, thread) {
+async function announce(client, thread, clock = "first_response") {
   const { rows: managers } = await client.query(
     `SELECT user_id FROM email_connection_member
       WHERE email_connection_id = $1 AND member_role = 'MANAGER' AND revoked_at IS NULL`,
     [thread.email_connection_id],
   );
   const targets = [...new Set([...managers.map((m) => m.user_id), thread.assigned_user_id].filter(Boolean))];
+  const resolution = clock === "resolution";
 
   for (const userId of targets) {
     await notify.notify(client, {
       userId,
       eventTypeKey: "mail.sla.breached",
-      title: "First-response SLA missed",
-      body: thread.subject ? `No reply yet on «${thread.subject}»` : "A conversation is past its first-response time.",
+      title: resolution ? "Resolution SLA missed" : "First-response SLA missed",
+      body: resolution
+        ? (thread.subject ? `Still open past its resolution time: «${thread.subject}»` : "A conversation is past its resolution time.")
+        : (thread.subject ? `No reply yet on «${thread.subject}»` : "A conversation is past its first-response time."),
       entityRef: `email_thread:${thread.email_thread_id}`,
       priority: "HIGH",
       // One breach, one notification per person, forever — the sweep's own
-      // `sla_breached_at IS NULL` guard already fires once, and this is the
-      // belt to that pair of braces.
-      dedupeKey: `SLA_BREACH:email_thread:${thread.email_thread_id}:${userId}`,
+      // stamp (`sla_breached_at` / `resolution_breached_at`) already fires
+      // once, and this is the belt to that pair of braces. Distinct keys so
+      // the two clocks cannot suppress each other inside the 60s window.
+      dedupeKey: resolution
+        ? `SLA_RESOLUTION:email_thread:${thread.email_thread_id}:${userId}`
+        : `SLA_BREACH:email_thread:${thread.email_thread_id}:${userId}`,
     });
   }
   await emitEvent(client, {
@@ -169,7 +209,7 @@ async function announce(client, thread) {
     moduleKey: "MOD-72",
     entityRef: `email_thread:${thread.email_thread_id}`,
     actorUserId: null,
-    payload: { connection: thread.email_connection_id, notified: targets.length },
+    payload: { connection: thread.email_connection_id, notified: targets.length, clock },
   }).catch(() => { /* @silent:storage the sla_breached_at stamp is the record */ });
   return targets.length;
 }

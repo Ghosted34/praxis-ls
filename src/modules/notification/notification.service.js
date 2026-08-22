@@ -188,6 +188,7 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
 }
 
 const DEDUPE_MS = 60_000;
+const DEDUPE_TTL_S = Math.ceil(DEDUPE_MS / 1000);
 const recentDedupe = new Map();
 
 function shouldDedupe(key) {
@@ -200,11 +201,44 @@ function shouldDedupe(key) {
   return false;
 }
 
+/**
+ * P5-2. The in-memory Map is correct inside one process and wrong everywhere
+ * else: two API replicas, or a worker restart inside the 60s window, both
+ * deliver the same event twice. Redis `SET NX EX 60` is the same 60-second
+ * claim across the fleet. The Map stays as the fallback when Redis is down
+ * or uninitialised (tests, a cold boot) so the guarantee degrades to
+ * process-local rather than disappearing.
+ *
+ * Returns true when this key has already been claimed inside the window.
+ */
+function tryRedis() {
+  try {
+    return require("../../config/redis").getClient();
+  } catch {
+    return null;
+  }
+}
+
+async function claimDedupe(key) {
+  if (!key) return false;
+  const redis = tryRedis();
+  if (redis) {
+    try {
+      const ok = await redis.set(`notify:dedupe:${key}`, "1", "NX", "EX", DEDUPE_TTL_S);
+      if (ok === null) return true;
+      if (ok === "OK") return false;
+    } catch {
+      // Fall through to the process-local map.
+    }
+  }
+  return shouldDedupe(key);
+}
+
 async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, dedupeKey = null }) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
   const isSecurity = isSecurityCategory(cat);
-  if (dedupeKey && shouldDedupe(dedupeKey)) {
+  if (dedupeKey && await claimDedupe(dedupeKey)) {
     return null;
   }
 
@@ -262,7 +296,7 @@ async function unsubscribePush(client, actor, { endpoint }) {
 }
 
 module.exports = {
-  DEDUPE_MS, shouldDedupe, recentDedupe,
+  DEDUPE_MS, DEDUPE_TTL_S, shouldDedupe, claimDedupe, recentDedupe,
   notifyMany,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
   pushPublicKey, subscribePush, unsubscribePush,

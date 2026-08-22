@@ -14,11 +14,6 @@ const fs = require("fs/promises");
 const path = require("path");
 const bwipjs = require("bwip-js");
 const sharp = require("sharp");
-const { createCanvas, DOMMatrix, Path2D, ImageData } = require("@napi-rs/canvas");
-global.DOMMatrix = global.DOMMatrix || DOMMatrix;
-global.Path2D = global.Path2D || Path2D;
-global.ImageData = global.ImageData || ImageData;
-const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
 const { prepareZXingModule, readBarcodesFromImageData } = require("zxing-wasm/reader");
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford without I, L, O, U.
@@ -75,6 +70,11 @@ function isPdf(buffer) {
 
 async function rasterisePdf(buffer, { density = 300 } = {}) {
   try {
+    const { createCanvas, DOMMatrix, Path2D, ImageData } = require("@napi-rs/canvas");
+    global.DOMMatrix = global.DOMMatrix || DOMMatrix;
+    global.Path2D = global.Path2D || Path2D;
+    global.ImageData = global.ImageData || ImageData;
+    const pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
     const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
     const page = await doc.getPage(1);
     const scale = density / 72;

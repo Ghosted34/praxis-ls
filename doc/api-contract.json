@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 131,
-  "route_count": 1425,
+  "modules_mounted": 132,
+  "route_count": 1434,
   "tiers": {
     "public": 41,
     "self-scoped": 83,
-    "gated": 1301
+    "gated": 1310
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3543,6 +3543,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/signatures/ingest/queue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/signatures/menu": {
       "auth": true,
       "rbac": true,
@@ -3550,6 +3556,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/signatures/presets": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/print-jobs/:id/barcode": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7665,7 +7677,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/signatures/ingest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/bind": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/decode": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/signatures/internal": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs/:id/printed": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs/:id/reprint": {
       "auth": true,
       "rbac": true,
       "validated": false,

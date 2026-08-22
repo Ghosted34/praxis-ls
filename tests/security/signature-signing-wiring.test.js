@@ -228,10 +228,21 @@ describe("§6.6 — completion cannot bypass verification", () => {
     expect(qesAt).toBeLessThan(src.indexOf("OTP_REQUIRED"));
   });
 
-  test("the paper card is still PR-5's, and is refused rather than half-written", () => {
+  test("the paper card hands off to the wet-signature service, and settles no signature row", () => {
+    // PR-5 shipped: PRINT_SIGN issues a print job and settles out of band via
+    // returned-paper reconciliation (§8.6) — no document_signature row exists
+    // until the physical copy comes back, so this branch must not fall into
+    // the OTP/settle path below it.
     const src = code(publicService);
     expect(src).toMatch(/assurance_level === "WET"/);
-    expect(src).toMatch(/NOT_IMPLEMENTED/);
+    expect(src).toMatch(/signature_wet\.service/);
+    expect(src).toMatch(/wet\.issue\(/);
+    // And it sits before the OTP requirement, the same ordering rule as the
+    // certified card: a paper act is not an OTP act.
+    const wetAt = src.indexOf("assurance_level === \"WET\"");
+    const otpAt = src.indexOf("OTP_REQUIRED");
+    expect(wetAt).toBeGreaterThan(0);
+    expect(wetAt).toBeLessThan(otpAt);
   });
 
   test("the digital cards still require the verified code bound to this payload", () => {

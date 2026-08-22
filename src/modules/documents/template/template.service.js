@@ -994,6 +994,28 @@ async function activeSignatures(client, entityRef) {
  * 404 would teach readers that the tenant's QRs do not work — which costs more
  * than the blank space saves.
  */
+async function wetPrintBlockFor(client, { entityRef }) {
+  if (!entityRef) return null;
+  try {
+    const { rows: flagRows } = await client.query(
+      "SELECT 1 FROM feature_state WHERE feature_key = 'signatures.wet' AND state = 'on' LIMIT 1",
+    );
+    if (!flagRows[0]) return null;
+    const wetRepo = require("../../vault/signature_wet/signature_wet.repo");
+    const barcode = require("../../../services/signatures/barcode");
+    const job = await wetRepo.openJobForEntity(client, entityRef);
+    if (!job) return null;
+    return {
+      code: job.print_code,
+      svg: await barcode.generateSvg(job.print_code),
+      reprintNo: job.reprint_no,
+    };
+  } catch (err) {
+    logger.warn({ err: err && err.message, entity_ref: entityRef }, "wet-signature barcode could not be rendered");
+    return null;
+  }
+}
+
 async function verifyBlockFor(client, { entityRef, origin = null, signatures = null }) {
   const rows = signatures || (await activeSignatures(client, entityRef));
   if (!rows.length) return null;
@@ -1041,6 +1063,7 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
     }
   }
   const { cfg, entity } = await resolveCfg(client, docType, ent, config);
+  cfg.wet_print = await wetPrintBlockFor(client, { entityRef: signedRef });
   const verify = await verifyBlockFor(client, { entityRef: signedRef, origin });
   return {
     html: tpl.build(data, cfg, entity, verify),
@@ -1080,6 +1103,7 @@ async function generate(client, { docType, entityId, recordId, actor, origin = n
   // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
   cfg.watermark = kit.watermarkFor(client, cfg.watermark);
   const signatures = await activeSignatures(client, entityRef);
+  cfg.wet_print = await wetPrintBlockFor(client, { entityRef });
   const verify = await verifyBlockFor(client, { entityRef, origin, signatures });
   const html = tpl.build(data, cfg, entity, verify);
   const out = await pdf.renderAndStore(client, { html, key, entityRef, docType, actor });

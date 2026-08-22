@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 11748 HR contract: a real document number.
+-- TENANT DB — 12743 HR contract: a real document number.
 --
 -- WHAT WAS WRONG
 --
@@ -33,9 +33,9 @@ ALTER TABLE hr_contract
   ADD COLUMN IF NOT EXISTS doc_number text;
 
 COMMENT ON COLUMN hr_contract.doc_number IS
-  'Allocated from numbering.service (MOD-12 → CTR prefix) at ISSUED, never on a draft — an unissued draft must not burn a number and leave a gap in the register. NULL on rows issued before 11748, which still render their id fragment.';
+  'Allocated from numbering.service (MOD-12 → CTR prefix) at ISSUED, never on a draft — an unissued draft must not burn a number and leave a gap in the register. NULL on rows issued before 12743, which still render their id fragment.';
 
--- Partial: NULLs are the pre-11748 rows and must not collide with each other.
+-- Partial: NULLs are the pre-12743 rows and must not collide with each other.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_hr_contract_doc_number
   ON hr_contract (doc_number) WHERE doc_number IS NOT NULL;
 

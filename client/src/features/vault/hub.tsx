@@ -28,6 +28,7 @@ import { ReportsPage } from "./reports";
 import { ComplianceFlagsPage } from "./compliance-flags";
 import { DocumentsPage } from "./documents";
 import { SignaturesPage } from "./signatures";
+import { ReconciliationPage } from "./reconciliation";
 
 const shell = pageShell.wide;
 
@@ -355,6 +356,7 @@ const TABS = hubTabs("/vault", {
   overview: Overview,
   documents: DocumentsPage,
   signatures: SignaturesPage,
+  reconciliation: ReconciliationPage,
   "compliance-flags": ComplianceFlagsPage,
   reports: ReportsPage,
 });

@@ -18,6 +18,7 @@ const CATALOGUE = {
   "procurement.unmatched": { severity: "WARN", describe: "A posted supplier invoice has no matched goods-received note (three-way match)." },
   "regie.aged_unjustified": { severity: "RED", describe: "A régie d'avance is aged and unjustified (581 unresolved)." },
   "disbursement.tax_violation": { severity: "RED", describe: "A débours journal line carries a tax code — débours must be tax-free (KB §23.5)." },
+  "signature.wet_unreconciled": { severity: "RED", describe: "A paper-signature copy was printed and has not returned within the tenant's unreconciled-days control." },
   ...PROOF_OBLIGATIONS,
 };
 

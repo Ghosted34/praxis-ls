@@ -71,6 +71,10 @@ const PROCESSORS = [
   // a second concurrent sweep would count the fleet twice and could emit
   // the threshold alert in the same minute.
   { name: "qes-quota", concurrency: 1, handler: require("./handlers/qes-quota") },
+  // Wet-signature decode (SIGNATURE_ENGINEERING_GUIDE §8.4): the barcode is
+  // the expensive half of the ingest, so one attachment per job and
+  // concurrency 1 — a decode burst is a CPU burst on the worker host.
+  { name: "signature-ingest-decode", concurrency: 1, handler: require("./handlers/signature-ingest-decode") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },

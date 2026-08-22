@@ -234,6 +234,15 @@ function shell(title, bodyHtml, cfg = {}) {
        length — above the 0.5mm a phone camera needs at arm's length (§3.7). */
     .foot .foot-vfy svg { width: 20mm; height: 20mm; margin: 0 auto; }
     .foot .foot-vfy .hint { font-size: 7px; line-height: 1.3; margin-top: 0.8mm; }
+    /* Wet-signature reconciliation mark (§8.3). It is deliberately quieter
+       than the verification QR: bottom-left, 40% grey, 12mm square, 5pt code.
+       The padding is the quiet zone; without it a mathematically valid symbol
+       can be unreadable after a photocopy. */
+    .wet-code { width: 24mm; text-align: left; break-inside: avoid; page-break-inside: avoid; flex: none; }
+    .wet-code .dm { width: 12mm; height: 12mm; padding: 2mm; box-sizing: content-box; display: flex; align-items: center; justify-content: center; }
+    .wet-code .dm svg { width: 12mm; height: 12mm; display: block; }
+    .wet-code .cap { font-family: ${c.monoFont}; font-size: 5pt; line-height: 1.1; color: #666; white-space: nowrap; }
+    .wet-code .copy { font-family: ${c.font}; font-size: 5pt; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
     .sig { display: flex; gap: 40px; margin-top: 30px; }
     .sig .b { flex: 1; }
     .sig .sig-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: ${c.muted}; }
@@ -439,6 +448,24 @@ function sealBlock(sig = {}, cfg = {}) {
 }
 
 /**
+ * The wet-signature DataMatrix. It encodes only the print_code — never the
+ * verify token, never entity_ref — because a photocopy must not become a public
+ * verification credential. `svg` is generated server-side by
+ * services/signatures/barcode.js.
+ */
+function printBarcode(job = {}, cfg = {}) {
+  if (!job || !job.code || !job.svg) return "";
+  const copy = Number(job.reprintNo || job.reprint_no || 0) > 0
+    ? `<div class="copy">${t({ fr: "Copie", en: "Copy" }, cfg.language)} ${esc(job.reprintNo || job.reprint_no)}</div>`
+    : "";
+  return `<div class="wet-code"><div class="dm">${job.svg}</div><div class="cap">${esc(formatPrintCode(job.code))}</div>${copy}</div>`;
+}
+
+function formatPrintCode(code) {
+  return String(code || "").toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/(.{6})(?=.)/g, "$1-");
+}
+
+/**
  * The verification block — a QR and, beneath it, the same code in type
  * (doc/SIGNATURE_ENGINEERING_GUIDE.md §5.2).
  *
@@ -546,15 +573,16 @@ function footer(entity = {}, cfg = {}, verify) {
   const custom = cfg.footer_text ? `<div>${esc(cfg.footer_text)}</div>` : "";
   const v = verify && typeof verify === "object" && verify.code ? verify : null;
   const host = v ? String(v.url || "").replace(/^https?:\/\//i, "").split("/")[0] : "";
+  const wet = cfg.wet_print && cfg.show && cfg.show.qr ? printBarcode(cfg.wet_print, cfg) : "";
   const block = v && cfg.show && cfg.show.qr
     ? `<div class="foot-vfy">${verifyBlock({ ...v, showHint: true, hintUrl: host }, cfg)}</div>`
     : "";
-  return `<div class="foot"><div class="foot-legal">${legal}${custom}</div>${block}</div>`;
+  return `<div class="foot">${wet}<div class="foot-legal">${legal}${custom}</div>${block}</div>`;
 }
 
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, signerBlock,
-  sealBlock, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
+  sealBlock, printBarcode, formatPrintCode, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
 };

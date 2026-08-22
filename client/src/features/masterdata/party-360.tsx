@@ -27,6 +27,7 @@ import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { TimezonePicker } from "@/components/timezone-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
 import {
   SCAN_ACCEPT,
@@ -149,7 +150,14 @@ type FieldSpec = {
   key: string;
   label: string;
   type?:
-    "text" | "number" | "date" | "email" | "country" | "checkbox" | "select";
+    | "text"
+    | "number"
+    | "date"
+    | "email"
+    | "country"
+    | "timezone"
+    | "checkbox"
+    | "select";
   options?: { value: string; label: string }[];
   placeholder?: string;
 };
@@ -197,6 +205,12 @@ function AddModal({
               <SmartCountryPicker
                 value={(values[f.key] as string) || ""}
                 onChange={(c) => set(f.key, c)}
+                label={f.label}
+              />
+            ) : f.type === "timezone" ? (
+              <TimezonePicker
+                value={(values[f.key] as string) || ""}
+                onChange={(timezone) => set(f.key, timezone)}
                 label={f.label}
               />
             ) : f.type === "checkbox" ? (
@@ -2097,8 +2111,9 @@ export function PartyDossier({
                     ))}
                   </div>
                   <p className="mt-1 micro">
-                    {[c.title, c.email, c.phone].filter(Boolean).join(" · ") ||
-                      "—"}
+                    {[c.title, c.email, c.phone, c.timezone]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {/* Client "Message" opens the Smart Comms CLIENT channel (§3.4); mailto is the fallback. */}
@@ -2456,6 +2471,7 @@ export function PartyDossier({
               label: "Phone (E.164)",
               placeholder: "+237690000000",
             },
+            { key: "timezone", label: "Timezone", type: "timezone" },
             { key: "is_primary", label: "Primary", type: "checkbox" },
           ]}
           onSubmit={async (v) => {

@@ -243,6 +243,9 @@ export type Entity = {
   legal_name: string;
   trading_name?: string | null;
   legal_form?: string | null;
+  legal_form_code?: string | null;
+  legal_form_source?: "GLEIF_ISO_20275" | "OHADA" | null;
+  legal_form_jurisdiction?: string | null;
   niu?: string | null;
   rccm?: string | null;
   country_code?: string | null;
@@ -1662,6 +1665,8 @@ export type Contact = {
   phone?: string | null;
   role_tags?: string[];
   is_primary?: boolean;
+  language?: string | null;
+  timezone?: string | null;
   is_active?: boolean;
 };
 export type Address = {

@@ -132,6 +132,21 @@ export function dateFmt(d: unknown): string {
   });
 }
 
+/**
+ * Strict day-first numeric date for statutory/corporate records: dd/mm/yyyy.
+ *
+ * Unlike `toLocaleDateString`, this cannot flip to mm/dd on a US-configured
+ * workstation. `parseLoose` also preserves a bare Postgres calendar date in
+ * every timezone, so `2026-07-03` is always `03/07/2026`, never the previous day.
+ */
+export function dateDmy(d: unknown): string {
+  if (!d) return "—";
+  const dt = d instanceof Date ? d : parseLoose(String(d));
+  if (!dt || Number.isNaN(dt.getTime())) return "—";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`;
+}
+
 /** `YYYY-MM-DD`, optionally with a time part after it. */
 const CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 

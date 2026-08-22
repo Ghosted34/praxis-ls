@@ -8,6 +8,10 @@ uploads/
 *.min.js
 package-lock.json
 
+# Generated compactly from the official 3,446-code GLEIF CSV. Reformatting this
+# array adds thousands of lines without making the source more maintainable.
+packages/shared/data/legal-forms.generated.js
+
 # Praxis backend sources are hand-formatted; skip to avoid a sync/truncation race
 src/
 scripts/

@@ -16,7 +16,7 @@
  * exercised on a UTC runner.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { dateFmt, toDateInput } from "./format";
+import { dateDmy, dateFmt, toDateInput } from "./format";
 
 const withTz = <T>(tz: string, fn: () => T): T => {
   const previous = process.env.TZ;
@@ -79,6 +79,23 @@ describe("toDateInput", () => {
 
   it("pads single-digit months and days", () => {
     expect(toDateInput(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+});
+
+describe("dateDmy", () => {
+  it("always renders strict dd/mm/yyyy, regardless of workstation locale or timezone", () => {
+    expect(withTz("America/New_York", () => dateDmy("2026-07-03"))).toBe(
+      "03/07/2026",
+    );
+    expect(withTz("Africa/Douala", () => dateDmy("2026-07-03"))).toBe(
+      "03/07/2026",
+    );
+    expect(dateDmy("2026-12-11")).toBe("11/12/2026");
+  });
+
+  it("renders blanks and invalid values as an em dash", () => {
+    expect(dateDmy(null)).toBe("—");
+    expect(dateDmy("not a date")).toBe("—");
   });
 });
 

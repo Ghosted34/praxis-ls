@@ -29,8 +29,10 @@ const {
   amount,
   optionalDate,
   optionalPercent,
+  optionalTimezone,
   blankToUndefined,
 } = require("./common");
+const legalForms = require("../data/legal-forms");
 
 const optionalCurrency = blankToUndefined(currency);
 const optionalAmount = blankToUndefined(amount);
@@ -215,7 +217,7 @@ const contactShape = {
   language: blankToUndefined(
     z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
   ),
-  timezone: optionalText,
+  timezone: optionalTimezone,
   is_active: z.boolean().optional(),
 };
 exports.contactCreate = z.object(contactShape);
@@ -303,7 +305,20 @@ exports.establishmentUpdate = withEstablishmentRules(
 // previous pair listed the same fields twice, and a column added to one was
 // silently unwritable through the other.
 const nullableText = optionalText.nullable();
+const nullableTimezone = optionalTimezone.nullable();
 const nullableCountry = countryCode.nullable();
+const nullableLegalFormCode = blankToUndefined(
+  z
+    .string()
+    .trim()
+    .regex(
+      /^[A-Za-z0-9][A-Za-z0-9-]{0,31}$/,
+      "Choose a legal form from the list.",
+    ),
+).nullable();
+const nullableLegalFormJurisdiction = blankToUndefined(
+  z.string().trim().min(2).max(16),
+).nullable();
 const nullableCurrency = optionalCurrency.nullable();
 const nullableAmount = optionalAmount.nullable();
 const nullableDate = optionalDate.nullable();
@@ -315,7 +330,15 @@ const logoRef = z.string().optional().nullable();
 const masterShape = {
   legal_name: requiredText("Legal name"),
   trading_name: nullableText,
+  // `legal_form` is the printable suffix/name. The three reference fields make
+  // the picker selection jurisdiction-specific and auditable.
   legal_form: nullableText,
+  legal_form_code: nullableLegalFormCode,
+  legal_form_source: z
+    .enum([legalForms.SOURCE_ISO, legalForms.SOURCE_OHADA])
+    .optional()
+    .nullable(),
+  legal_form_jurisdiction: nullableLegalFormJurisdiction,
   niu: nullableText,
   rccm: nullableText,
   country_code: countryCode,
@@ -326,7 +349,7 @@ const masterShape = {
   email: nullableText,
   phone: nullableText,
   headcount: nullableAmount,
-  timezone: nullableText,
+  timezone: nullableTimezone,
 
   incorporation_date: nullableDate,
   incorporation_country: nullableCountry,
@@ -363,17 +386,48 @@ const masterShape = {
   logo_dark_ref: logoRef,
 };
 
-/** Dissolution cannot precede incorporation — the one cross-field rule here. */
+/** Cross-field rules for statutory identity and incorporation dates. */
 const withMasterRules = (schema) =>
-  schema.refine(
-    (v) =>
-      !(v.incorporation_date && v.dissolution_date) ||
-      v.dissolution_date >= v.incorporation_date,
-    {
-      message: "Dissolution cannot be before incorporation.",
-      path: ["dissolution_date"],
-    },
-  );
+  schema
+    .refine(
+      (v) =>
+        !(v.incorporation_date && v.dissolution_date) ||
+        v.dissolution_date >= v.incorporation_date,
+      {
+        message: "Dissolution cannot be before incorporation.",
+        path: ["dissolution_date"],
+      },
+    )
+    .refine(
+      (v) => {
+        const refs = [
+          v.legal_form_code,
+          v.legal_form_source,
+          v.legal_form_jurisdiction,
+        ];
+        return refs.every(Boolean) || refs.every((value) => !value);
+      },
+      {
+        message: "Choose the legal form again to complete its reference.",
+        path: ["legal_form_code"],
+      },
+    )
+    .refine(
+      (v) => {
+        if (!v.legal_form_code) return true; // pre-picker legacy row
+        const selected = legalForms.byReference({
+          source: v.legal_form_source,
+          code: v.legal_form_code,
+          countryCode: v.country_code,
+          jurisdictionCode: v.legal_form_jurisdiction,
+        });
+        return Boolean(selected && selected.abbreviation === v.legal_form);
+      },
+      {
+        message: "Choose a legal form from this country's list.",
+        path: ["legal_form"],
+      },
+    );
 
 exports.masterCreate = withMasterRules(
   z.object({
@@ -578,7 +632,7 @@ exports.workingCalendarHoliday = z.object({
 });
 
 exports.workingCalendarSave = z.object({
-  timezone: z.string().min(1).optional(),
+  timezone: optionalTimezone,
   name: optionalText.nullable(),
   days: z
     .array(exports.workingCalendarDay)

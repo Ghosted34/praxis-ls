@@ -171,6 +171,8 @@ export declare namespace common {
   const currency: z.ZodString;
   function blankToUndefined<T>(schema: z.ZodType<T>): Blankable<T>;
   const optionalText: Blankable<string>;
+  const ianaTimezone: z.ZodType<string, z.ZodTypeDef, string>;
+  const optionalTimezone: Blankable<string>;
   const email: Blankable<string>;
   const countryCode: Blankable<string>;
   const optionalDate: Blankable<string>;
@@ -612,6 +614,73 @@ export declare namespace currencies {
   function forCountry(countryCode: string): Currency | undefined;
   /** The most representative country for a currency (for its flag), or null. */
   function representativeCountry(code: string): string | null;
+}
+
+/** One canonical geographic IANA timezone (or UTC). */
+export type Timezone = {
+  id: string;
+  region: string;
+  city: string;
+  country_code: string | null;
+  comment: string;
+  /** Deprecated IANA links retained for discovery, never for persistence. */
+  aliases: readonly string[];
+};
+
+export declare namespace timezones {
+  const TZDB_VERSION: string;
+  /** All 418 geographic tzdb zones plus UTC. */
+  const CATALOGUE: readonly Timezone[];
+  const ALIASES: Readonly<Record<string, string>>;
+  function normalize(id: string): string;
+  function isValid(id: string): boolean;
+  function byId(id: string): Timezone | undefined;
+}
+
+export type LegalFormSource = "GLEIF_ISO_20275" | "OHADA";
+export type LegalFormKind =
+  "LEGAL_ENTITY" | "REGISTERED_BUSINESS" | "UNINCORPORATED" | "ESTABLISHMENT";
+export type LegalForm = {
+  key: string;
+  code: string;
+  source: LegalFormSource;
+  source_version: string;
+  source_url: string;
+  country_code: string;
+  country_name: string;
+  jurisdiction_code: string;
+  jurisdiction_name: string;
+  name: string;
+  abbreviation: string;
+  aliases: readonly string[];
+  kind: LegalFormKind;
+};
+export type LegalFormReference = {
+  source?: string | null;
+  code?: string | null;
+  countryCode?: string | null;
+  jurisdictionCode?: string | null;
+};
+
+export declare namespace legalForms {
+  const SOURCE_ISO: "GLEIF_ISO_20275";
+  const SOURCE_OHADA: "OHADA";
+  const GLEIF_VERSION: string;
+  const GLEIF_RELEASED_ON: string;
+  const GLEIF_SOURCE_URL: string;
+  const GLEIF_SOURCE_SHA256: string;
+  const OHADA_VERSION: string;
+  const OHADA_MEMBERS: readonly string[];
+  /** Active ISO forms plus verified OHADA supplements. */
+  const CATALOGUE: readonly LegalForm[];
+  function forCountry(countryCode: string): readonly LegalForm[];
+  function byKey(key: string): LegalForm | undefined;
+  function byReference(reference: LegalFormReference): LegalForm | undefined;
+  function matchStored(
+    countryCode: string,
+    value: string,
+  ): LegalForm | undefined;
+  function isValidReference(reference: LegalFormReference): boolean;
 }
 
 /**

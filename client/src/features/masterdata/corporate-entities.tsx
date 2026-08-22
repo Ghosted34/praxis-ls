@@ -38,6 +38,7 @@ import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { ScreenError } from "@/components/connection/screen-error";
@@ -49,6 +50,8 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
 import { SmartCurrencyPicker } from "@/components/smart-currency-picker";
+import { TimezonePicker } from "@/components/timezone-picker";
+import { LegalFormPicker } from "@/components/legal-form-picker";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
@@ -140,6 +143,22 @@ function EntityForm({
   });
 
   const set = (k: string, value: string) => setV((s) => ({ ...s, [k]: value }));
+  const setCountry = (countryCode: string) =>
+    setV((current) =>
+      current.country_code === countryCode
+        ? current
+        : {
+            ...current,
+            country_code: countryCode,
+            // A legal form only means something inside its jurisdiction. Keeping
+            // Cameroon SARL after switching the entity to Germany would create
+            // internally contradictory statutory data.
+            legal_form: "",
+            legal_form_code: "",
+            legal_form_source: "",
+            legal_form_jurisdiction: "",
+          },
+    );
 
   // A subsidiary's parent can be any other entity — never itself, which the API
   // rejects anyway (rules.assertNoCycle), but offering it would be a trap.
@@ -319,21 +338,37 @@ function EntityForm({
             />
           </Field>
           <Field
-            label="Legal form"
-            hint="SARL, SA, SAS, Ltd, GmbH… — printed on the letterhead"
+            label={tr("Country")}
+            hint="Legal forms below are limited to this jurisdiction"
           >
-            <Input
-              value={v.legal_form}
-              onChange={(e) => set("legal_form", e.target.value)}
-              placeholder="SARL"
-            />
-          </Field>
-          <Field label={tr("Country")}>
             <CountrySelect
               value={v.country_code}
-              onChange={(c) => set("country_code", c)}
+              onChange={setCountry}
               allowEmpty={false}
               label={tr("Country")}
+            />
+          </Field>
+          <Field
+            label="Legal form"
+            hint="Verified for the selected country and printed on the letterhead"
+          >
+            <LegalFormPicker
+              countryCode={v.country_code}
+              value={v.legal_form}
+              reference={{
+                code: v.legal_form_code,
+                source: v.legal_form_source,
+                jurisdictionCode: v.legal_form_jurisdiction,
+              }}
+              onChange={(selection) =>
+                setV((current) => ({
+                  ...current,
+                  legal_form: selection?.abbreviation || "",
+                  legal_form_code: selection?.code || "",
+                  legal_form_source: selection?.source || "",
+                  legal_form_jurisdiction: selection?.jurisdiction_code || "",
+                }))
+              }
             />
           </Field>
           <Field label="Industry">
@@ -414,10 +449,10 @@ function EntityForm({
             label="Timezone"
             hint="Used when a document's date matters locally"
           >
-            <Input
+            <TimezonePicker
               value={v.timezone}
-              onChange={(e) => set("timezone", e.target.value)}
-              placeholder="Africa/Douala"
+              onChange={(timezone) => set("timezone", timezone)}
+              label="Timezone"
             />
           </Field>
         </Fieldset>
@@ -427,10 +462,9 @@ function EntityForm({
           hint="The statutory facts documents print. Share capital is mandatory on French invoices and is on the readiness checklist."
         >
           <Field label="Date of incorporation">
-            <Input
-              type="date"
+            <DateField
               value={v.incorporation_date}
-              onChange={(e) => set("incorporation_date", e.target.value)}
+              onChange={(iso) => set("incorporation_date", iso)}
             />
           </Field>
           <Field
@@ -457,10 +491,9 @@ function EntityForm({
             label="Dissolution date"
             hint="Leave blank while the company exists"
           >
-            <Input
-              type="date"
+            <DateField
               value={v.dissolution_date}
-              onChange={(e) => set("dissolution_date", e.target.value)}
+              onChange={(iso) => set("dissolution_date", iso)}
             />
           </Field>
           <Field

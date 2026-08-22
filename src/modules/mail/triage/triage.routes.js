@@ -5,6 +5,7 @@ const { requirePermission, requireCeo } = require("../../../middleware/rbac");
 const { requireFeature } = require("../../../middleware/feature-gate");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { z } = require("zod");
+const { common } = require("@praxis/shared");
 const { body } = require("../../../shared/http/validate");
 const { audit } = require("../../../shared/events/emit");
 const vis = require("./visibility");
@@ -166,7 +167,7 @@ router.put("/business-hours", requireFeature("mail.shared_inbox"), requirePermis
       day_of_week: z.coerce.number().int().min(0).max(6),
       opens_at: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
       closes_at: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
-      timezone: z.string().max(64).optional(),
+      timezone: common.ianaTimezone.optional(),
     }).strict()).max(7),
   }).strict()),
   asyncHandler(async (req, res) => res.json({

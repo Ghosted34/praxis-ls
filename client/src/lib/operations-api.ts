@@ -1537,7 +1537,7 @@ export const LEG_TYPES = [
 ] as const;
 export type LegType = (typeof LEG_TYPES)[number];
 
-export const LEG_MODES = ["AIR", "SEA", "LAND", "OTHER"] as const;
+export const LEG_MODES = ["AIR", "SEA", "LAND", "RAIL", "OTHER"] as const;
 export type LegMode = (typeof LEG_MODES)[number];
 
 export const LEG_STATUSES = [

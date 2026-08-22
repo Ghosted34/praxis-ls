@@ -228,7 +228,7 @@ async function claimDedupe(key) {
       if (ok === null) return true;
       if (ok === "OK") return false;
     } catch {
-      // Fall through to the process-local map.
+      /* @silent:storage Redis down — degrade to the process-local map */
     }
   }
   return shouldDedupe(key);

@@ -98,7 +98,7 @@ async function closeBrowser() {
     const browser = await pending;
     await browser.close();
   } catch {
-    /* already gone */
+    /* @silent:teardown browser already disconnected */
   }
 }
 

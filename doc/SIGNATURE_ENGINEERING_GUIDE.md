@@ -542,7 +542,7 @@ collision on merge — it is a **hard** gate, not a warning. `main`'s high-water
 | --- | --- |
 | `10771`–`10774` | PR-1 — core schema, presets, policy seed, events ✅ |
 | ~~`10775`–`10776`~~ → `10779`–`10780` | PR-2 — scan log, portal wiring ✅ |
-| `10781`–`10784` | PR-3 — requests, parties, OTP, certificate doc type |
+| `10781`–`10784` | PR-3 — requests, parties, OTP, certificate ✅ |
 | `10785`–`10787` | PR-4 — QES envelopes, usage ledger |
 | `10788`–`10791` | PR-5 — print jobs, ingestion queue, compliance rule |
 | seeds `9115` | PR-2 — the `signatures.*` platform feature catalogue ✅ |
@@ -1314,11 +1314,30 @@ OTP path shows up as a metric before it shows up as a support ticket.
 
 ---
 
-## 6. PR-3 — Signing sessions, OTP and the signer menu
+## 6. PR-3 — Signing sessions, OTP and the signer menu · **DELIVERED**
 
 **Ships:** signature requests, ordered parties, the on-file/override rule, email OTP, the public
 signing page where the signer picks their card, decline-with-reason, reminders, and the Certificate
 of Completion.
+
+### 6.0 What actually shipped, and what changed from this specification
+
+Six deviations, each with its reason. Everything else in this chapter shipped as written.
+
+| Spec | Shipped | Why |
+| --- | --- | --- |
+| `10746`–`10749` | `10781`–`10784` | The reserved range was taken again. Re-checked against `main` immediately before the first file, per §3.9. |
+| `signature.*` events | `document_signature.*` | The mail programme owns the shorter prefix (10768), and `categories.js` keys on it. Same call PR-1 and PR-2 made. |
+| The reminder carries the original link | It mints a **fresh** token and says so | §6.8 does not say what link a reminder carries, and there are only three answers. Re-sending the original is impossible by design — the plaintext is emailed once and never stored (§3.7). Sending no link makes the counterparty hunt for a five-day-old email, which is most of why they had not signed. So the reminder rotates the credential and the email states plainly that the earlier link has stopped working. Rotation is also the better security answer for a token that has been sitting in an inbox. |
+| Decline reasons fetched by the signing page | Served **with** `GET /public/sign/:token` | `/signatures/reasons` is MOD-64 `view` behind `authMiddleware`, and the counterparty has no account. Opening a second anonymous endpoint to serve five labels would be a second surface to limit, log and reason about, for data the page is already making a round trip for. |
+| Step-up compares a caller-supplied `totalXaf` | Derived from the canonical payload | PR-1's `stepUpRequired({ totalXaf })` meant every caller had to compute the same figure the same way, and one that passed zero silently skipped the control. It now reads the total the signature actually attests to, rounding included. The old signature is kept for back-compat and marked as such. |
+| The certificate is a queued job | Generated in the request path, best-effort against the signature | With no PAdES seal the certificate IS the evidentiary case, so a queue that is down means a completed chain with no evidence and nobody watching. It is idempotent on `request_id`, so a retry is free — and `POST /signature-requests/:id/certificate` recovers one that failed. It is deliberately best-effort *against the signature*: failing the counterparty's request because a renderer hiccuped would lose an act that has already legally happened. |
+
+**Two defects found by the new tests, not by review.** The certificate's local timestamp was
+silently empty — `Intl.DateTimeFormat` throws when `timeZoneName` is combined with `dateStyle`, and
+the surrounding catch swallowed it, so every certificate would have printed a UTC stamp beside a
+blank one. And the step-up threshold compared against a raw column rather than the rounded canonical
+figure.
 
 This is the largest chapter and the one that carries the most of your answers: Q1, Q6, Q7, Q8, Q9,
 Q16 and — because Q3 removed the seal — Q3's replacement evidence model.
@@ -2068,10 +2087,10 @@ flags per run, so reconciling a document clears its flag on the next scan with n
 | `10779_signature_scan.sql` | 2 ✅ | `signature_scan` |
 | `10780_signature_portal.sql` | 2 ✅ | `signatures.*` feature switches, `verify_base_url`, `document_signature.scanned_new_ip / scan_anomaly` |
 | `seeds/9115_seed_signature_features.sql` | 2 ✅ | `platform.feature_catalogue` rows for the four `signatures.*` flags, and their plan inclusion |
-| `10781_signature_request.sql` | 3 | `signature_request` + FK from `document_signature` |
-| `10782_signature_party.sql` | 3 | `signature_party` + the one-override index |
-| `10783_signature_otp.sql` | 3 | `signature_otp` |
-| `10784_signature_certificate_doctype.sql` | 3 | `SIGNATURE_CERTIFICATE` doc type + events |
+| `10781_signature_request.sql` | 3 ✅ | `signature_request` + FK from `document_signature` |
+| `10782_signature_party.sql` | 3 ✅ | `signature_party` + the one-override index |
+| `10783_signature_otp.sql` | 3 ✅ | `signature_otp` + FK from `document_signature` |
+| `10784_signature_certificate.sql` | 3 ✅ | `certificate_doc_id`, reminder counters, 8 events, the DECLINE reason vocabulary |
 | `10785_qes_envelope.sql` | 4 | `qes_envelope` |
 | `10786_signature_usage_ledger.sql` | 4 | `signature_usage_ledger` |
 | `10787_qes_events.sql` | 4 | `qes.*` events |

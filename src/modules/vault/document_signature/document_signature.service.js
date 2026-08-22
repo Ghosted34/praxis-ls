@@ -239,9 +239,28 @@ async function signInternal(client, opts) {
   const user = users[0];
   if (!user) throw new AppError("NO_ACTOR", "Signing user not found", 401);
 
-  // Rule 2: the evidence actually collected. A step-up OTP (PR-3) supplies
-  // otpChallengeId and lifts this to AES_OTP; without one it stays SES, whatever
-  // the preset asked for.
+  /*
+   * Rule 2, and §6.5's step-up.
+   *
+   * `assurance_level` records the evidence ACTUALLY collected, never what the
+   * preset asked for (§1.3(b)). A session alone is SES. A cleared step-up
+   * supplies `otpChallengeId` and lifts the SAME preset to AES_OTP — which is
+   * the mechanism working as designed rather than an inconsistency.
+   *
+   * Above the threshold the step-up is REQUIRED, and this is where that is
+   * enforced. Refusing here rather than in the controller means an AI action
+   * or a future endpoint cannot route around it: the choke point every
+   * signature passes through is the one that asks.
+   */
+  const stepUp = await stepUpNeeded(client, { docType, doc: liveDoc });
+  if (stepUp && !otpChallengeId) {
+    throw new AppError(
+      "STEPUP_REQUIRED",
+      "This document is above the amount that requires an emailed code as well as your password.",
+      403,
+      { doc_type: docType, entity_ref: entityRef },
+    );
+  }
   const assurance = otpChallengeId ? "AES_OTP" : "SES";
 
   const vaultDoc = await vaultRepo.getByRef(client, entityRef).catch(() => null);
@@ -369,7 +388,52 @@ async function pruneScans(client) {
 
 const stats = (client) => repo.stats(client);
 
-/** Is the internal step-up OTP required for this document? (Q9 = C, PR-3.) */
+/**
+ * Is the internal step-up OTP required for this document? (Q9 = C, §6.5.)
+ *
+ * The total is DERIVED from the document rather than passed in. PR-1's version
+ * took a `totalXaf` argument, which meant every caller had to compute the same
+ * figure the same way — and a caller that computed it wrong, or passed zero,
+ * silently skipped the control. Reading it from the canonical payload means it
+ * is the same number the signature attests to.
+ *
+ * Default OFF, per §1.5(b): a dispatcher signing forty delivery notes a day
+ * would do forty OTP round-trips, and a control that painful gets switched off
+ * — which is how the predecessor system lost its OTP. Setting the threshold to
+ * zero makes the product universal-OTP with no other change.
+ */
+async function stepUpNeeded(client, { docType, doc }) {
+  const enabled = await getSetting(client, "signature_policy", "stepup_enabled", false);
+  if (enabled !== true) return false;
+  const threshold = await getSetting(client, "signature_policy", "stepup_threshold_xaf", null);
+  if (threshold === null || threshold === undefined) return false;
+  const total = documentTotalXaf(docType, doc);
+  return total !== null && total >= Number(threshold);
+}
+
+/**
+ * The figure the threshold compares against, read off the canonical payload.
+ *
+ * A doc type with no money on its face — a delivery note, a transit order —
+ * returns null and never steps up. That is correct rather than a gap: the
+ * threshold is about value at risk, and a waybill carries none.
+ */
+function documentTotalXaf(docType, doc) {
+  try {
+    const payload = canonical.canonical(docType, doc);
+    if (payload.totals && Number.isFinite(Number(payload.totals.total_ttc))) {
+      return Number(payload.totals.total_ttc);
+    }
+    if (Number.isFinite(Number(payload.gross_salary))) return Number(payload.gross_salary);
+  } catch {
+    /* @silent:parse — a doc type with no canonical builder cannot be signed at
+       all; signInternal rejects it with NO_CANONICAL_PAYLOAD before the
+       threshold could matter. */
+  }
+  return null;
+}
+
+/** Back-compat for callers that already hold a total. Prefer stepUpNeeded. */
 async function stepUpRequired(client, { totalXaf }) {
   const enabled = await getSetting(client, "signature_policy", "stepup_enabled", false);
   if (enabled !== true) return false;
@@ -385,5 +449,5 @@ module.exports = {
   // Exported for the public portal, which detects the same amendment from the
   // other side of the wall and must raise the same flag. One detector, two
   // entry points — two would drift.
-  statusOf, present, methodWords, stepUpRequired, loadDoc, onAmendmentDetected,
+  statusOf, present, methodWords, stepUpRequired, stepUpNeeded, documentTotalXaf, loadDoc, onAmendmentDetected,
 };

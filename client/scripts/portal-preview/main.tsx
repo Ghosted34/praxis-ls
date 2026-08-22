@@ -11,9 +11,10 @@ import * as React from "react";
 import ReactDOM from "react-dom/client";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { VerifyPage } from "@/features/public/verify-page";
+import { SignPage } from "@/features/public/sign-page";
 import "@fontsource-variable/inter";
 import "@/index.css";
-import { SCENES } from "./scenes";
+import { SCENES, SIGN_SCENES } from "./scenes";
 
 function Frame({ id, caption, children }: { id: string; caption: string; children: React.ReactNode }) {
   return (
@@ -46,6 +47,16 @@ function Scene({ code, lang }: { code: string; lang: string }) {
   );
 }
 
+function SignScene({ token, lang }: { token: string; lang: string }) {
+  return (
+    <MemoryRouter initialEntries={[`/sign/${token}?lang=${lang}`]}>
+      <Routes>
+        <Route path="/sign/:token" element={<SignPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 /*
  * The app's stylesheet pins `html, body { height: 100%; overflow: hidden }` —
  * the shell owns scrolling, so the DOCUMENT never scrolls. That is right for
@@ -64,6 +75,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     {SCENES.map((s) => (
       <Frame key={s.id} id={s.id} caption={s.caption}>
         <Scene code={s.code} lang={s.id === "fr" ? "fr" : "en"} />
+      </Frame>
+    ))}
+    {SIGN_SCENES.map((s) => (
+      <Frame key={s.id} id={s.id} caption={s.caption}>
+        <SignScene token={s.token} lang={s.id === "sign-fr" ? "fr" : "en"} />
       </Frame>
     ))}
   </div>,

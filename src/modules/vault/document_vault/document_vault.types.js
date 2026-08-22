@@ -64,6 +64,21 @@ const DOC_TYPES = {
   REGIE_ADVANCE:         { label: "Régie advance",            module: "costing/regie",                 moduleKey: "MOD-49" },
   COMMS_CERTIFIED_EXPORT:{ label: "Certified comms export",   module: "smartcomm",                     moduleKey: "MOD-64" },
   /*
+   * The Certificate of Completion (SIGNATURE_ENGINEERING_GUIDE §6.7).
+   *
+   * A doc type rather than a report, because with no PAdES seal this document
+   * plus the immutable_ledger trail is the ENTIRE evidentiary case — so it
+   * goes through the same pipeline as everything else: rendered by the
+   * template registry, captured into document_vault, hashed like any artifact,
+   * downloadable through the same gated route. An evidence document living
+   * outside the vault would be the one document in the system with no content
+   * hash and no audit trail of its own.
+   *
+   * It is NOT in SIGNATURE_CEILING below: a certificate is the output of
+   * signing, and a certificate that could itself be signed is a loop.
+   */
+  SIGNATURE_CERTIFICATE:{ label: "Certificate of completion", module: "vault/signature_request",       moduleKey: "MOD-64" },
+  /*
    * The text of a discovery dictation (MOD-21). Registered for the same reason
    * the master-data scans below are: `moduleKeyForDocType` falls back to MOD-70
    * for an unregistered type, so without this row the salesperson who just

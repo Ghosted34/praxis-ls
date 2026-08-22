@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 127,
-  "route_count": 1407,
+  "modules_mounted": 129,
+  "route_count": 1419,
   "tiers": {
-    "public": 34,
+    "public": 40,
     "self-scoped": 83,
-    "gated": 1290
+    "gated": 1296
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3123,6 +3123,18 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/public/sign/:token": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/sign/:token/document": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/public/tracking/:reference": {
       "auth": false,
       "rbac": false,
@@ -3484,6 +3496,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/settings/sections": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signature-requests/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signature-requests/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7227,6 +7251,30 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/public/sign/:token/complete": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/sign/:token/decline": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/sign/:token/otp": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/sign/:token/verify": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "POST /api/tenant/purchase-orders/": {
       "auth": true,
       "rbac": true,
@@ -7546,6 +7594,30 @@
       "tier": "self-scoped"
     },
     "POST /api/tenant/settings/integration_secret/:key/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signature-requests/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signature-requests/:id/certificate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signature-requests/:id/dispatch": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signature-requests/:id/void": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -335,34 +335,6 @@ JOIN service_type_field_set fs
   ON fs.service_type_id = st.service_type_id AND fs.is_system AND fs.version = 1
 ON CONFLICT (service_type_field_set_id, key) DO NOTHING;
 
--- ── 5. Financial dictionary applicability ───────────────────────────────────
--- Connect common lines and rail-specific charges to the three services.
-INSERT INTO service_type_dictionary_item (service_type_id, dictionary_item_id, tier, sort_order)
-SELECT st.service_type_id, di.dictionary_item_id, 'BASIC', 100
-  FROM service_type st
-  CROSS JOIN dictionary_item di
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
-   AND di.key IN (
-     'DISBURSEMENT_COMMISSION','DOCUMENTATION_FEE','FILE_OPENING',
-     'SERVICE_CHARGES','BANK_CHARGES','LOCAL_INSURANCE','STAMP',
-     'TRANSPORT_AUTHORISATION','RAIL_FREIGHT','RAIL_TERMINAL_HANDLING',
-     'TRANSIT_TITLE_T1','BORDER_CROSSING_FORMALITIES','CUSTOMS_FORMALITIES',
-     'ORIGIN_CHARGES','CARGO_PICKUP','DELIVERY_AT_DESTINATION'
-   )
-ON CONFLICT (service_type_id, dictionary_item_id) DO NOTHING;
-
-INSERT INTO service_type_dictionary_item (service_type_id, dictionary_item_id, tier, sort_order)
-SELECT st.service_type_id, di.dictionary_item_id, 'ADVANCED', 300
-  FROM service_type st
-  CROSS JOIN dictionary_item di
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
-   AND di.key IN (
-     'EXTRA_LEGAL_WORK','IMPORT_DECLARATION_FEE','BANK_CAUTION',
-     'FACILITY_PAYMENT','RAIL_SHUNTING_FEE','WAGON_DEMURRAGE',
-     'RAIL_ESCORT_FEE','RAIL_CORRIDOR_LEVY','CONVOY_SECURITY'
-   )
-ON CONFLICT (service_type_id, dictionary_item_id) DO NOTHING;
-
 -- DOWN
 -- DELETE FROM service_type_dictionary_item WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'));
 -- DELETE FROM service_type_field WHERE service_type_field_set_id IN (SELECT service_type_field_set_id FROM service_type_field_set WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT')));

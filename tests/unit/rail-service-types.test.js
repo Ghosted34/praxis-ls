@@ -90,7 +90,6 @@ describe("Rail Service Types Architecture & Data Integrity", () => {
       expect(sql).toContain("ON CONFLICT (service_type_id, version) DO NOTHING");
       expect(sql).toContain("ON CONFLICT (milestone_template_id, code) DO NOTHING");
       expect(sql).toContain("ON CONFLICT (service_type_field_set_id, key) DO NOTHING");
-      expect(sql).toContain("ON CONFLICT (service_type_id, dictionary_item_id) DO NOTHING");
     });
   });
 });

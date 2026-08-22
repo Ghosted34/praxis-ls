@@ -119,12 +119,30 @@ ALTER TABLE document_signature ADD COLUMN IF NOT EXISTS revoked_by uuid REFERENC
 ALTER TABLE document_signature ADD COLUMN IF NOT EXISTS revoke_reason text;
 
 -- ---------------------------------------------------------------------------
+-- ⚠ EVERY pg_constraint LOOKUP BELOW IS SCOPED WITH `conrelid = '<table>'::regclass`.
+--
+--   `pg_constraint` is DATABASE-wide, not schema-wide, and a tenant database
+--   holds BOTH schemas — live and sandbox. Provisioning migrates live first.
+--   An unscoped `WHERE conname = 'document_signature_pkey'` therefore matched
+--   LIVE's constraint during the SANDBOX pass and skipped every ADD below, so
+--   the sandbox schema ended up with no primary key and no check constraints
+--   at all. Nothing failed: the DO blocks did exactly what they were told.
+--
+--   It surfaced when 10779 added the first FOREIGN KEY to this table and
+--   provisioning stopped with "there is no unique constraint matching given
+--   keys for referenced table document_signature" — on the sandbox pass only.
+--
+--   `::regclass` resolves through search_path, so it means "in the schema this
+--   migration is currently running in", which is what every one of these
+--   checks meant all along. It is the form the rest of migrations/tenant uses
+--   (0493, 0650, 0682).
+--
 -- 3. Tighten what the stub left loose. The table is empty (step 0 guarantees
 --    it), so these cannot fail on existing data.
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'document_signature_pkey') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'document_signature_pkey' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT document_signature_pkey PRIMARY KEY (signature_id);
   END IF;
 END $$;
@@ -169,31 +187,31 @@ CREATE INDEX IF NOT EXISTS ix_sig_request ON document_signature(signature_reques
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_assurance') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_assurance' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_assurance
       CHECK (assurance_level IN ('SES','AES_OTP','QES','WET'));
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_mark
       CHECK (visual_mark IN ('STAMP','DRAWN','PROVIDER','INK'));
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_party') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_party' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_party
       CHECK (party IN ('INTERNAL','EXTERNAL'));
   END IF;
 
   -- A session-resolved identity must carry the user it came from; a declared
   -- one must not (the signer is not an app_user).
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_identity_source') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_identity_source' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_identity_source
       CHECK ((identity_source = 'SESSION'  AND signer_user_id IS NOT NULL)
           OR (identity_source = 'DECLARED' AND signer_user_id IS NULL));
   END IF;
 
   -- A drawn mark needs its image; the other three marks are generated.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark_payload') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark_payload' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_mark_payload
       CHECK ((visual_mark = 'DRAWN' AND mark_image_b64 IS NOT NULL)
           OR (visual_mark IN ('STAMP','PROVIDER','INK')));
@@ -204,7 +222,7 @@ BEGIN
   -- excepted because their evidence comes from elsewhere: a third-party
   -- provider's identity check, or a barcode-reconciled wet signature.
   -- (guide §1.5(b))
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_external_verified') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_external_verified' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_external_verified
       CHECK (party = 'INTERNAL'
           OR assurance_level IN ('QES','WET')
@@ -213,7 +231,7 @@ BEGIN
 
   -- Revocation is all-or-nothing: a row claiming a revocation date must say who
   -- did it, so "revoked by nobody" cannot reach the portal.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_revocation') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_revocation' AND conrelid = 'document_signature'::regclass) THEN
     ALTER TABLE document_signature ADD CONSTRAINT ck_sig_revocation
       CHECK ((revoked_at IS NULL AND revoked_by IS NULL)
           OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL));

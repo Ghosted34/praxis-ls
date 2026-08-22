@@ -38,12 +38,29 @@ const { getSetting } = require("../../shared/config/settings");
 const tokens = require("./tokens");
 const qr = require("./qr");
 
-/** Strip trailing slashes and anything after the authority. */
+/**
+ * Normalise a base URL: give it a scheme if it has none, and drop trailing
+ * slashes so `verifyUrl` never emits `//v/CODE`.
+ *
+ * ⚠ THE TRAILING-SLASH TRIM IS A LOOP, NOT `replace(/\/+$/, "")`
+ *   (CodeQL js/polynomial-redos, High).
+ *
+ * `origin` reaches this from `req.get("host")` on the render path, so it is
+ * caller-controlled. A quantifier anchored at the end of a string — `\/+$`,
+ * `\s+$`, and every variant of that shape — makes the engine re-scan from each
+ * successive start position when the match ultimately fails, which is quadratic
+ * in the length of the run. A request with a Host header of fifty thousand
+ * slashes is not a plausible accident, but it is a cheap one to send.
+ *
+ * The loop is linear, obviously so to a reader, and there is no pattern left
+ * for a scanner to flag or for a later edit to reintroduce.
+ */
 function normaliseBase(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  return withScheme.replace(/\/+$/, "");
+  let out = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  while (out.endsWith("/")) out = out.slice(0, -1);
+  return out;
 }
 
 /** `https://smartls.praxisls.com` for a tenant slug. */

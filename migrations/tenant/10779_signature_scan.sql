@@ -37,6 +37,82 @@
 -- Idempotent. Re-runnable.
 -- ============================================================================
 
+-- ---------------------------------------------------------------------------
+-- REPAIR FIRST: make sure document_signature actually has its primary key.
+--
+-- 10771 guarded every constraint it adds with an UNSCOPED
+-- `IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = …)`.
+-- `pg_constraint` is DATABASE-wide, and a tenant database holds BOTH schemas.
+-- Provisioning migrates live first, so during the SANDBOX pass every one of
+-- those checks found LIVE's constraint and skipped its own — leaving the
+-- sandbox schema with no primary key and no check constraints on
+-- document_signature. Nothing failed; the DO blocks did as they were told.
+--
+-- It surfaced here, because the FOREIGN KEY below is the first thing in the
+-- programme to REQUIRE that key: provisioning stopped with "there is no unique
+-- constraint matching given keys for referenced table document_signature",
+-- sandbox pass only.
+--
+-- 10771 is fixed at source, which settles it for every future provision. This
+-- block settles it for a tenant that already applied the broken version — that
+-- migration is recorded as applied and will never re-run for them, so the
+-- repair has to live in a file that has not run yet. This is that file.
+--
+-- Every check below is scoped with `conrelid = '<table>'::regclass`, which
+-- resolves through search_path and therefore means "in the schema this
+-- migration is running in". That is the form the rest of migrations/tenant
+-- uses (0493, 0650, 0682) and the form this programme uses from here on.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'document_signature'::regclass AND contype = 'p'
+  ) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT document_signature_pkey PRIMARY KEY (signature_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_assurance' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_assurance
+      CHECK (assurance_level IN ('SES','AES_OTP','QES','WET'));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_mark
+      CHECK (visual_mark IN ('STAMP','DRAWN','PROVIDER','INK'));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_party' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_party
+      CHECK (party IN ('INTERNAL','EXTERNAL'));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_identity_source' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_identity_source
+      CHECK ((identity_source = 'SESSION'  AND signer_user_id IS NOT NULL)
+          OR (identity_source = 'DECLARED' AND signer_user_id IS NULL));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_mark_payload' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_mark_payload
+      CHECK ((visual_mark = 'DRAWN' AND mark_image_b64 IS NOT NULL)
+          OR (visual_mark IN ('STAMP','PROVIDER','INK')));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_external_verified' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_external_verified
+      CHECK (party = 'INTERNAL'
+          OR assurance_level IN ('QES','WET')
+          OR otp_challenge_id IS NOT NULL);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_sig_revocation' AND conrelid = 'document_signature'::regclass) THEN
+    ALTER TABLE document_signature ADD CONSTRAINT ck_sig_revocation
+      CHECK ((revoked_at IS NULL AND revoked_by IS NULL)
+          OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL));
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS signature_scan (
   scan_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   -- ON DELETE CASCADE: a signature row is never deleted in normal operation
@@ -79,7 +155,7 @@ BEGIN
   -- The distinction is worth keeping: a document being verified by typed code
   -- has usually been read down a phone line, which is a different story from
   -- one scanned at a border post.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_scan_via') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_scan_via' AND conrelid = 'signature_scan'::regclass) THEN
     ALTER TABLE signature_scan ADD CONSTRAINT ck_scan_via CHECK (via IN ('QR','CODE'));
   END IF;
 END $$;
@@ -99,6 +175,10 @@ COMMENT ON COLUMN signature_scan.is_new_ip IS
 --    WHERE conrelid = 'signature_scan'::regclass AND contype = 'c';  -- ck_scan_via
 --   SELECT indexname FROM pg_indexes WHERE tablename = 'signature_scan';
 --     -- expect ix_scan_age, ix_scan_sig, ix_scan_sig_ip, ix_scan_window
+--   -- The repair, in BOTH schemas:
+--   SELECT conname, contype FROM pg_constraint
+--    WHERE conrelid = 'document_signature'::regclass ORDER BY conname;
+--     -- expect the primary key plus all seven ck_sig_* checks
 --
 -- DOWN
 --   -- DESTRUCTIVE: drops the queryable scan history. The immutable_ledger copy

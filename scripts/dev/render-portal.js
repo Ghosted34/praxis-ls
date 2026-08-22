@@ -65,12 +65,41 @@ const MIME = new Map(Object.entries({
   ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png",
 }));
 
+/** Every file under `dir`, keyed by the URL path that should serve it. */
+function manifest(dir, prefix = "", into = new Map()) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    const url = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) manifest(abs, url, into);
+    else into.set(url, abs);
+  }
+  return into;
+}
+
+/**
+ * A one-file static server on an ephemeral port.
+ *
+ * The bundle is an ES module, and Chromium refuses to load one over `file://`
+ * — "Cross origin requests are only supported for protocol schemes: … http,
+ * https". So the preview is served rather than opened, which costs a few lines
+ * and removes a failure that looks exactly like a broken page.
+ *
+ * ⚠ IT SERVES FROM A MANIFEST, NOT FROM `path.join(dir, req.url)`
+ *   (CodeQL js/path-injection, High).
+ *
+ * The first version joined the request path onto the dist directory and
+ * checked `file.startsWith(dir)` afterwards. That guard is weaker than it
+ * looks — `/a/dist` is a prefix of `/a/dist-elsewhere` — and it is the shape a
+ * scanner flags because it is the shape people get wrong. Building the map of
+ * servable files up front means the request path is only ever a LOOKUP KEY: it
+ * is never concatenated into a path, so there is nothing to traverse out of.
+ */
 function serve(dir) {
+  const files = manifest(dir);
   const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent(String(req.url).split("?")[0]).replace(/^\/+/, "") || "index.html";
-    const file = path.join(dir, rel);
-    // Never serve outside the built directory, even from a dev tool.
-    if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const url = String(req.url || "/").split("?")[0];
+    const file = files.get(url === "/" ? "/index.html" : url);
+    if (!file) {
       res.writeHead(404).end("not found");
       return;
     }

@@ -1,11 +1,11 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 125,
-  "route_count": 1403,
+  "modules_mounted": 127,
+  "route_count": 1407,
   "tiers": {
     "public": 34,
-    "self-scoped": 79,
+    "self-scoped": 83,
     "gated": 1290
   },
   "routes": {
@@ -2133,6 +2133,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/legal-forms/": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/legal-forms/:source/:country/:code": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/locations/": {
       "auth": true,
       "rbac": true,
@@ -3860,6 +3872,18 @@
       "rbac": true,
       "validated": true,
       "tier": "gated"
+    },
+    "GET /api/tenant/timezones/": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/timezones/*": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/trainings/": {
       "auth": true,

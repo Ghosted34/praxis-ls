@@ -6,7 +6,8 @@
 const crypto = require("crypto");
 const repo = require("./document_vault.repo");
 const events = require("./document_vault.events");
-const { assertDocType } = require("./document_vault.types");
+const { assertDocType, moduleKeyForDocType } = require("./document_vault.types");
+const identityCache = require("../../../shared/cache/identity-cache");
 const storage = require("../../../services/storage.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
@@ -110,6 +111,66 @@ async function fetchBytes(client, docId) {
 
 const getByRef = (client, ref) => repo.getByRef(client, ref);
 const get = (client, id) => repo.get(client, id);
+
+const MODULE_KEY = "MOD-64";
+
+/**
+ * The vault's own authorisation rule — C-2.
+ *
+ * SEC-M3 put this rule in `requireDocumentPermission`, an express middleware in
+ * `document_vault.routes.js` keyed on `req.params.id`. That made it correct for
+ * the vault's own two routes and UNREACHABLE from anywhere else: a caller in
+ * another module could only reach `service.get`, which is a bare id lookup, so
+ * the rule may as well not have existed for them.
+ *
+ * `mail/attachment.service.fromVault` was that caller. It called
+ * `documentVault.get(client, id, { actor })` — passing an actor the function
+ * does not take — under a comment stating that "`getByRef`/`get` apply the
+ * module's own confidentiality rules", which was simply not true. Any MOD-72
+ * *create* user could attach ANY document in the tenant vault — HR files, other
+ * clients' contracts, bank documents — to a draft and mail it outside. The
+ * comment is the interesting part of that finding: the author checked that the
+ * rule should be applied and believed it was.
+ *
+ * So the decision moves here, where any module can call it, and the middleware
+ * becomes a thin wrapper over it. One rule, two callers — the same shape as
+ * `mail/triage/visibility.js`.
+ *
+ * TWO CLIENTS, deliberately. The document row lives in the tenant schema
+ * (which may be sandbox) and the RBAC grants live in the identity/live schema.
+ * Callers that have one connection for both — mail is pinned to live by
+ * `req.identityDb` — pass it twice; the vault's own routes pass `req.tenantDb`
+ * and `req.identityDb` respectively. Guessing one from the other here is how a
+ * sandbox caller would end up checked against no grants at all.
+ *
+ * Returns the document row on success. Throws PERMISSION_DENIED (403) when the
+ * caller may not read it, and returns null when it does not exist — existence
+ * is the CALLER's to report, so this does not turn a missing id into a
+ * permission error or vice versa.
+ */
+async function assertDocumentAccess(docClient, identityClient, docId, user, action = "view") {
+  if (!user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  const doc = await repo.get(docClient, docId);
+  if (!doc) return null;
+  if (user.is_ceo) return doc;
+
+  const owning = moduleKeyForDocType(doc.doc_type);
+  const column = action === "edit" ? "can_update" : "can_read";
+  const roleIds = user.role_ids || [];
+
+  for (const moduleKey of [owning, MODULE_KEY]) {
+    // Sequential on purpose: two grants at most, and the first hit short-
+    // circuits, so the common case is one cache read rather than two.
+    const grants = await identityCache.getGrants(identityClient, { role_ids: roleIds, module: moduleKey });
+    if (grants.some((g) => g[column] === true)) return doc;
+  }
+
+  throw new AppError(
+    "PERMISSION_DENIED",
+    `No permission to read this document (${doc.doc_type || "untyped"} — needs ${owning})`,
+    403,
+  );
+}
 const list = (client, q) => repo.list(client, q);
 
 /**
@@ -194,4 +255,4 @@ async function archiveDocument(client, { id, actor = {} }) {
   return row;
 }
 
-module.exports = { capture, fetchBytes, getByRef, get, list, createDocument, archiveDocument, resolveStatus, hasBytes };
+module.exports = { capture, fetchBytes, getByRef, get, list, assertDocumentAccess, createDocument, archiveDocument, resolveStatus, hasBytes };

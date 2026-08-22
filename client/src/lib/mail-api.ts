@@ -218,6 +218,27 @@ export const getMessage = (id: string) =>
   tenant<ThreadMsg>(`/mail/thread/${id}`);
 export const listMsgAttachments = (id: string) =>
   tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
+
+/**
+ * Open an inbound attachment (audit H-2).
+ *
+ * §5.4's download endpoint did not exist — no route, no handler, no client
+ * call — so the reading pane could say a message HAD an attachment and offered
+ * no way to open it. The server side is visibility-scoped: an attachment on a
+ * conversation the caller cannot see answers 404, identical to one that does
+ * not exist.
+ *
+ * `tenantDownload` rather than `tenant`, because the response is bytes and not
+ * an envelope; it carries the session the same way and saves under the
+ * filename the sender used.
+ */
+export async function downloadAttachment(attachmentId: string, filename?: string | null) {
+  const { tenantDownload } = await import("./api-client");
+  await tenantDownload(
+    `/mail/attachments/${attachmentId}/download`,
+    filename || "attachment",
+  );
+}
 export const markThreadRead = (id: string) =>
   tenant<{ email_inbound_id: string }>(`/mail/thread/${id}/read`, {
     method: "POST",

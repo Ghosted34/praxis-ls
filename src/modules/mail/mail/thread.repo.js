@@ -438,8 +438,13 @@ const seedStateForMembers = (client, messageId, connectionId) =>
 
 /* ── Folders ──────────────────────────────────────────────────────────────── */
 
-const listFolders = (client, connectionId, userId = null) =>
-  client.query(
+const listFolders = (client, connectionId, userId = null) => {
+  // P1A-2. A connection_id with no accessible-connection check enumerated
+  // folder names and message counts for any mailbox in the tenant. Fail
+  // closed: no caller, or no mailbox, is an empty rail — not a tenant-wide
+  // listing and not a 403 that confirms the mailbox exists.
+  if (!userId || !connectionId) return Promise.resolve([]);
+  return client.query(
     // `unread_count`, spelled the same as in listThreads. The rail and the list
     // show the same number and the client should not have to remember which
     // endpoint calls it what.
@@ -456,10 +461,12 @@ const listFolders = (client, connectionId, userId = null) =>
                                  WHERE s.email_message_id = m.email_message_id AND s.user_id = $2 AND s.is_read))::int AS unread_count
        FROM email_folder f
       WHERE f.email_connection_id = $1
+        AND f.email_connection_id IN ${accessible(2)}
       ORDER BY COALESCE(array_position(ARRAY['INBOX','SENT','DRAFTS','ARCHIVE','SPAM','TRASH'], f.canonical), 99),
                f.display_name, f.provider_path`,
     [connectionId, userId],
   ).then((r) => r.rows);
+};
 
 /**
  * Unread conversations per stream, for the rail's People / Notices counts.
@@ -649,6 +656,156 @@ const timelineByEntity = (client, entityRef, { limit = 100, userId = null } = {}
   ).then((r) => r.rows);
 };
 
+/* ── §9.5 gate reads ───────────────────────────────────────────────────────
+ *
+ * The cheap half of `getThread`, for `./visible.js` to run as route middleware.
+ *
+ * `getThread` reads the head AND every message body on the thread, which is the
+ * right shape for the reading pane and the wrong shape for a gate that now runs
+ * on ~30 routes, most of which then read something else entirely. These return
+ * the smallest row that answers "may this caller see it", carrying just enough
+ * (connection, visibility, entity_ref) that a handler needing those does not pay
+ * for a second read.
+ *
+ * All of them apply BOTH predicates — `accessible` (which mailboxes may this
+ * person open) and `vis` (which threads inside them) — because either alone is
+ * a hole. `accessible` alone is what the legacy detail read and `getMessage`
+ * had, and it lets a member of a shared mailbox open a colleague's PRIVATE
+ * thread. `vis` alone would let a non-member read a COMPANY thread in a mailbox
+ * they hold no grant on.
+ */
+
+/** Thread head if this caller may see it; null if it is invisible OR absent —
+ *  deliberately the same answer, see the 404 note in `./visible.js`. */
+const headIfVisible = (client, userId, threadId) =>
+  client.query(
+    `SELECT t.email_thread_id, t.email_connection_id, t.subject, t.visibility,
+            t.entity_ref, t.work_status, t.assigned_user_id, c.owner_user_id
+       FROM email_thread t
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE t.email_thread_id = $2
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}`,
+    [userId, threadId],
+  ).then((r) => r.rows[0] || null);
+
+/** Message → its thread → the same predicate. */
+const messageIfVisible = (client, userId, messageId) =>
+  client.query(
+    `SELECT m.email_message_id, m.email_thread_id, m.email_connection_id, m.subject
+       FROM email_message m
+       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE m.email_message_id = $2
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}`,
+    [userId, messageId],
+  ).then((r) => r.rows[0] || null);
+
+/**
+ * Attachment → whichever owner it has.
+ *
+ * The one-owner CHECK from 10737 guarantees exactly one of `email_message_id` /
+ * `email_draft_id` is set, so the two arms of this UNION are mutually exclusive
+ * and it cannot return two rows for one attachment.
+ *
+ * An INBOUND attachment resolves through its message's thread. A DRAFT
+ * attachment has no thread and never did — it is reachable only by the person
+ * composing, so it resolves through `email_draft.user_id`, the same rule
+ * `attachment.service.assertOwnDraft` already enforces on the draft routes.
+ * Anything owned by neither is not found.
+ */
+const attachmentIfVisible = (client, userId, attachmentId) =>
+  client.query(
+    `SELECT a.email_attachment_id, a.email_message_id, a.email_draft_id, a.vault_id,
+            a.filename, a.content_type, a.size_bytes, a.direction, a.disposition,
+            a.checksum_sha256, m.email_thread_id
+       FROM email_attachment a
+       JOIN email_message m ON m.email_message_id = a.email_message_id
+       JOIN email_thread t  ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE a.email_attachment_id = $2
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}
+      UNION ALL
+     SELECT a.email_attachment_id, a.email_message_id, a.email_draft_id, a.vault_id,
+            a.filename, a.content_type, a.size_bytes, a.direction, a.disposition,
+            a.checksum_sha256, NULL::uuid AS email_thread_id
+       FROM email_attachment a
+       JOIN email_draft d ON d.email_draft_id = a.email_draft_id
+      WHERE a.email_attachment_id = $2
+        AND d.user_id = $1`,
+    [userId, attachmentId],
+  ).then((r) => r.rows[0] || null);
+
+/**
+ * Narrow a caller-supplied list of thread ids to the ones they may see.
+ *
+ * For the batch endpoints. Returns the visible subset rather than refusing the
+ * batch, so the endpoint cannot be walked as an existence oracle; the caller is
+ * told how many were dropped, not which.
+ */
+const filterVisibleThreadIds = (client, userId, ids) =>
+  client.query(
+    `SELECT t.email_thread_id
+       FROM email_thread t
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE t.email_thread_id = ANY($2::uuid[])
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}`,
+    [userId, ids],
+  ).then((r) => r.rows.map((x) => x.email_thread_id));
+
+/* ── Deletion (H-1) ────────────────────────────────────────────────────────
+ *
+ * §9.6: a message that has been sealed into the archive chain cannot be
+ * deleted — the chain covers its body hash, so removing the row would break
+ * verification for every message after it. The audit's point was that the
+ * service-layer "block" was vacuous because no deletion path existed at all;
+ * these are the reads and writes that make it real.
+ */
+
+/** Which of these messages are sealed into the archive, and therefore undeletable. */
+const archivedMessageIds = (client, messageIds) =>
+  client.query(
+    `SELECT DISTINCT a.email_message_id
+       FROM email_archive a
+      WHERE a.email_message_id = ANY($1::uuid[])`,
+    [messageIds],
+  ).then((r) => r.rows.map((x) => x.email_message_id));
+
+/**
+ * Delete every message on a thread that this caller may see and that is not
+ * archived. Visibility rides inside the statement, not only on the gate, so a
+ * thread made PRIVATE between gate and delete is still refused.
+ */
+const deleteThreadMessages = (client, userId, threadId, { skipIds = [] } = {}) =>
+  client.query(
+    `DELETE FROM email_message m
+      USING email_thread t, email_connection c
+      WHERE m.email_thread_id = $2
+        AND t.email_thread_id = m.email_thread_id
+        AND c.email_connection_id = t.email_connection_id
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}
+        AND NOT (m.email_message_id = ANY($3::uuid[]))
+      RETURNING m.email_message_id, m.external_message_id, m.provider_folder, m.folder`,
+    [userId, threadId, skipIds],
+  ).then((r) => r.rows);
+
+/** Every message the caller may see in one folder — the empty-trash read. */
+const messagesInFolder = (client, userId, folder) =>
+  client.query(
+    `SELECT m.email_message_id, m.email_thread_id, m.external_message_id, m.provider_folder
+       FROM email_message m
+       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE m.folder = $2
+        AND t.email_connection_id IN ${accessible(1)}
+        AND ${vis(1)}`,
+    [userId, folder],
+  ).then((r) => r.rows);
+
 module.exports = {
   accessible,
   listThreads, getThread, getThreadUnrestricted, getThreadById, updateThread, upsertThread, refreshThreadCounts,
@@ -657,4 +814,6 @@ module.exports = {
   listFolders, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
   listLabels, createLabel, deleteLabel, applyLabel,
   streamRules, knownParty, timelineByEntity,
+  headIfVisible, messageIfVisible, attachmentIfVisible, filterVisibleThreadIds,
+  archivedMessageIds, deleteThreadMessages, messagesInFolder,
 };

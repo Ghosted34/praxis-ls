@@ -31,6 +31,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /** Overdue, soon, or later — the three states that change what you do next. */
@@ -38,9 +39,9 @@ function due(f: api.Followup): { label: string; tone: Tone } {
   const t = Date.parse(f.due_at);
   if (Number.isNaN(t)) return { label: "—", tone: "mute" };
   const delta = t - Date.now();
-  if (delta < 0) return { label: "Overdue", tone: "bad" };
-  if (delta < 24 * 3600_000) return { label: "Today", tone: "warn" };
-  return { label: "Waiting", tone: "mute" };
+  if (delta < 0) return { label: tr("Overdue"), tone: "bad" };
+  if (delta < 24 * 3600_000) return { label: tr("Today"), tone: "warn" };
+  return { label: tr("Waiting"), tone: "mute" };
 }
 
 const TRIGGER_TEXT: Record<string, string> = {
@@ -58,13 +59,13 @@ export function FollowupsTab() {
   const columns: Column<api.Followup>[] = [
     {
       key: "due_at",
-      label: "Comes back",
+      label: tr("Comes back"),
       render: (r) => <span className="num">{dateTimeFmt(r.due_at)}</span>,
     },
     {
       key: "state",
       label: "",
-      srLabel: "State",
+      srLabel: tr("State"),
       render: (r) => {
         const d = due(r);
         return <Pill tone={d.tone}>{d.label}</Pill>;
@@ -72,19 +73,19 @@ export function FollowupsTab() {
     },
     {
       key: "trigger",
-      label: "Condition",
+      label: tr("Condition"),
       render: (r) => (
         <span className="text-xs text-muted-foreground">
-          {TRIGGER_TEXT[r.trigger || "NO_REPLY"] || r.trigger}
+          {TRIGGER_TEXT[r.trigger || "NO_REPLY"] ? tr(TRIGGER_TEXT[r.trigger || "NO_REPLY"]) : r.trigger}
         </span>
       ),
     },
     {
       key: "subject",
-      label: "Conversation",
-      render: (r) => r.subject || "(no subject)",
+      label: tr("Conversation"),
+      render: (r) => r.subject || tr("(no subject)"),
     },
-    { key: "note", label: "Note", render: (r) => r.note || "—" },
+    { key: "note", label: tr("Note"), render: (r) => r.note || "—" },
     {
       key: "_a",
       label: "",
@@ -105,7 +106,7 @@ export function FollowupsTab() {
             }
           }}
         >
-          Cancel
+          {tr("Cancel")}
         </Button>
       ),
     },
@@ -114,14 +115,13 @@ export function FollowupsTab() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Follow-ups"
-        description="Conversations waiting to come back. Cancelling drops the reminder — the conversation itself stays where it is."
+        title={tr("Follow-ups")}
+        description={tr("Conversations waiting to come back. Cancelling drops the reminder — the conversation itself stays where it is.")}
       />
 
       {/* Said before anyone reports it as a bug. */}
       <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-        A follow-up cancels itself when the other side replies, so one
-        disappearing from this list on its own is the system working.
+        {tr("A follow-up cancels itself when the other side replies, so one disappearing from this list on its own is the system working.")}
       </p>
 
       <DataList
@@ -131,8 +131,8 @@ export function FollowupsTab() {
         loading={followups.loading}
         rowKey={(r) => r.email_followup_id}
         empty={{
-          title: "Nothing is waiting to come back",
-          hint: "Snooze a conversation from the reading pane and it appears here until it fires or they reply.",
+          title: tr("Nothing is waiting to come back"),
+          hint: tr("Snooze a conversation from the reading pane and it appears here until it fires or they reply."),
         }}
       />
     </div>

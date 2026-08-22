@@ -7,6 +7,7 @@
  * inventory and this badge can never disagree about what OK means.
  */
 import { Pill, type Tone } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
 import type { MailboxHealth } from "@/lib/mail-api";
 
 const TONE: Record<string, Tone> = {
@@ -31,7 +32,9 @@ export function HealthPill({ health }: { health?: MailboxHealth | null }) {
   if (!health) return null;
   return (
     <span title={health.reason}>
-      <Pill tone={TONE[health.level] || "mute"}>{LABEL[health.level] || health.level}</Pill>
+      <Pill tone={TONE[health.level] || "mute"}>
+        {LABEL[health.level] ? tr(LABEL[health.level]) : health.level}
+      </Pill>
     </span>
   );
 }

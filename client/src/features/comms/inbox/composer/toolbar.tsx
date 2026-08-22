@@ -19,6 +19,7 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Select } from "@/components/ui/modal";
+import { tr } from "@/lib/i18n";
 import { FONTS } from "./fonts";
 import { type Editor } from "./use-editor";
 
@@ -81,67 +82,67 @@ export function ComposerToolbar({
   return (
     <div
       role="toolbar"
-      aria-label="Formatting"
+      aria-label={tr("Formatting")}
       aria-controls="composer-body"
       className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1"
     >
-      <Tool label="Bold" active={editor.isActive("bold")} onClick={() => chain().toggleBold().run()}>
+      <Tool label={tr("Bold")} active={editor.isActive("bold")} onClick={() => chain().toggleBold().run()}>
         <strong>B</strong>
       </Tool>
-      <Tool label="Italic" active={editor.isActive("italic")} onClick={() => chain().toggleItalic().run()}>
+      <Tool label={tr("Italic")} active={editor.isActive("italic")} onClick={() => chain().toggleItalic().run()}>
         <em>I</em>
       </Tool>
-      <Tool label="Underline" active={editor.isActive("underline")} onClick={() => chain().toggleUnderline().run()}>
+      <Tool label={tr("Underline")} active={editor.isActive("underline")} onClick={() => chain().toggleUnderline().run()}>
         <span className="underline">U</span>
       </Tool>
-      <Tool label="Strikethrough" active={editor.isActive("strike")} onClick={() => chain().toggleStrike().run()}>
+      <Tool label={tr("Strikethrough")} active={editor.isActive("strike")} onClick={() => chain().toggleStrike().run()}>
         <span className="line-through">S</span>
       </Tool>
 
       <Divider />
 
-      <Tool label="Heading" active={editor.isActive("heading", { level: 2 })} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
+      <Tool label={tr("Heading")} active={editor.isActive("heading", { level: 2 })} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
         H
       </Tool>
-      <Tool label="Bulleted list" active={editor.isActive("bulletList")} onClick={() => chain().toggleBulletList().run()}>
+      <Tool label={tr("Bulleted list")} active={editor.isActive("bulletList")} onClick={() => chain().toggleBulletList().run()}>
         •
       </Tool>
-      <Tool label="Numbered list" active={editor.isActive("orderedList")} onClick={() => chain().toggleOrderedList().run()}>
+      <Tool label={tr("Numbered list")} active={editor.isActive("orderedList")} onClick={() => chain().toggleOrderedList().run()}>
         1.
       </Tool>
-      <Tool label="Quote" active={editor.isActive("blockquote")} onClick={() => chain().toggleBlockquote().run()}>
+      <Tool label={tr("Quote")} active={editor.isActive("blockquote")} onClick={() => chain().toggleBlockquote().run()}>
         ❝
       </Tool>
-      <Tool label="Code" active={editor.isActive("code")} onClick={() => chain().toggleCode().run()}>
+      <Tool label={tr("Code")} active={editor.isActive("code")} onClick={() => chain().toggleCode().run()}>
         {"</>"}
       </Tool>
 
       <Divider />
 
       <Tool
-        label="Link"
+        label={tr("Link")}
         active={editor.isActive("link")}
         onClick={() => {
           if (editor.isActive("link")) { chain().unsetLink().run(); return; }
           // window.prompt rather than a modal: the caret and the selection have
           // to survive, and every dialog in this app moves focus. Replaced with
           // an inline popover when one exists that does not steal focus.
-          const url = window.prompt("Link to:");
+          const url = window.prompt(tr("Link to:"));
           if (url) chain().setLink({ href: url }).run();
         }}
       >
         🔗
       </Tool>
-      <Tool label="Insert table" onClick={() => chain().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()}>
+      <Tool label={tr("Insert table")} onClick={() => chain().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()}>
         ▦
       </Tool>
-      <Tool label="Horizontal rule" onClick={() => chain().setHorizontalRule().run()}>
+      <Tool label={tr("Horizontal rule")} onClick={() => chain().setHorizontalRule().run()}>
         —
       </Tool>
 
       <Divider />
 
-      <label className="sr-only" htmlFor="composer-font">Font</label>
+      <label className="sr-only" htmlFor="composer-font">{tr("Font")}</label>
       <Select
         id="composer-font"
         className="h-7 w-auto text-xs"
@@ -151,13 +152,13 @@ export function ComposerToolbar({
           : chain().unsetFontFamily().run())}
         // The note lives on the control so it is read out with it, rather than
         // as a caption a screen-reader user meets with no context.
-        title="Only fonts that render on every mail client are offered. A font the recipient does not have is substituted silently."
+        title={tr("Only fonts that render on every mail client are offered. A font the recipient does not have is substituted silently.")}
       >
-        <option value="">Default font</option>
+        <option value="">{tr("Default font")}</option>
         {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
       </Select>
 
-      <Tool label="Clear formatting" onClick={() => chain().unsetAllMarks().clearNodes().run()}>
+      <Tool label={tr("Clear formatting")} onClick={() => chain().unsetAllMarks().clearNodes().run()}>
         ⌫
       </Tool>
 
@@ -170,8 +171,7 @@ export function ComposerToolbar({
 export function FontNote() {
   return (
     <p className="px-3 pb-1 text-[0.6875rem] text-muted-foreground">
-      Only fonts that render everywhere are offered — a font the recipient does not
-      have is substituted without warning.
+      {tr("Only fonts that render everywhere are offered — a font the recipient does not have is substituted without warning.")}
     </p>
   );
 }

@@ -12,6 +12,7 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
 import type { AttachmentTray as Tray } from "@/lib/mail-api";
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
@@ -48,13 +49,13 @@ export function AttachmentTray({
             key={a.email_attachment_id}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs"
           >
-            <span className="max-w-52 truncate">{a.filename || "file"}</span>
+            <span className="max-w-52 truncate">{a.filename || tr("file")}</span>
             <span className="num text-muted-foreground">{mb(Number(a.size_bytes || 0))}</span>
             <button
               type="button"
               disabled={busy}
               onClick={() => onRemove(a.email_attachment_id)}
-              aria-label={`Remove ${a.filename || "attachment"}`}
+              aria-label={`${tr("Remove")} ${a.filename || tr("attachment")}`}
               className="rounded px-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
             >
               ×
@@ -70,7 +71,7 @@ export function AttachmentTray({
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Attachment size used"
+          aria-label={tr("Attachment size used")}
         >
           <div
             className={cn("h-full rounded-full", pct > 90 ? "bg-destructive" : "bg-primary")}
@@ -78,10 +79,10 @@ export function AttachmentTray({
           />
         </div>
         <span className="num text-[0.6875rem] text-muted-foreground">
-          {mb(tray.total_bytes)} of {mb(tray.limit_bytes)}
+          {mb(tray.total_bytes)} {tr("of")} {mb(tray.limit_bytes)}
         </span>
         {tray.offer_secure_link && (
-          <Pill tone="warn">Large — a secure link would be better</Pill>
+          <Pill tone="warn">{tr("Large — a secure link would be better")}</Pill>
         )}
       </div>
 
@@ -92,9 +93,7 @@ export function AttachmentTray({
       {tray.offer_secure_link && (
         <div className="mt-1 space-y-1">
           <p className="text-[0.6875rem] text-muted-foreground">
-            Attachments this size are often rejected or filtered on the way in.
-            A secure link expires, can be revoked, and tells you when it was
-            opened.
+            {tr("Attachments this size are often rejected or filtered on the way in. A secure link expires, can be revoked, and tells you when it was opened.")}
           </p>
           {onSecureLink && (
             <div className="flex flex-wrap gap-1.5">
@@ -110,7 +109,7 @@ export function AttachmentTray({
                     disabled={busy}
                     onClick={() => onSecureLink(a)}
                   >
-                    Send {a.filename || "this"} as a link
+                    {tr("Send")} {a.filename || tr("this")} {tr("as a link")}
                   </Button>
                 ))}
             </div>
@@ -147,7 +146,7 @@ export function AttachButton({
         }}
       />
       <Button size="sm" variant="outline" disabled={disabled} onClick={() => ref.current?.click()}>
-        Attach
+        {tr("Attach")}
       </Button>
     </>
   );

@@ -29,6 +29,12 @@ const { requireFeature } = require("../../../middleware/feature-gate");
 const c = require("./mail.controller");
 const v = require("./mail.validator");
 
+const {
+  requireVisibleThread,
+  requireVisibleMessage,
+  requireVisibleAttachment,
+} = require("./visible");
+
 const M = "MOD-72";
 const router = express.Router();
 
@@ -87,6 +93,11 @@ router.get("/oauth/google/start", requirePermission(M, "edit"), c.ggOAuthStart);
 // Read-only view (original)
 router.get("/senders", requirePermission(M, "view"), c.senders);
 router.get("/sent", core, requirePermission(M, "view"), c.sent);
+/* C-3. Still mounted, now scoped. `mail.repo.listInbox` applies `accessible` +
+ * the §9.5 predicate and computes `is_read` per caller; before that it was
+ * `WHERE direction = 'IN'` and nothing else, so this route listed every inbound
+ * message in the tenant to any mail user and the live "Message log" tab
+ * rendered it. The endpoint's response shape is unchanged. */
 router.get("/inbox", core, requirePermission(M, "view"), c.inbox);
 router.patch("/senders/:id", requirePermission(M, "edit"), v.senderPatch, c.updateSender);
 router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender);
@@ -178,7 +189,15 @@ router.get("/cpanel-preset", requirePermission(M, "view"), c.cpanel);
  * keeps working on it — an inbox that behaves differently once you type in the
  * box is two inboxes to maintain. */
 
-// Static paths BEFORE `/threads/:id`, or Express matches "folders" as an id.
+/* The conversation routes below reach `thread.service`, which already reads
+ * through `repo.getThread` and so already carries §9.5 — these gates are not
+ * closing an open hole the way binding/triage/assist's were. They are here so
+ * the invariant is UNIFORM: `mail-route-visibility.test.js` asserts that every
+ * thread-scoped route carries a gate, and an invariant with "except the ones
+ * whose service happens to be correct" in it is not one a future author can
+ * apply without reading every service first. The cost is one indexed head read.
+ *
+ * Static paths BEFORE `/threads/:id`, or Express matches "folders" as an id. */
 router.get("/folders", core, requirePermission(M, "view"), c.mailFolders);
 router.get("/labels", core, requirePermission(M, "view"), c.mailLabels);
 router.post("/labels", core, requirePermission(M, "create"), v.label, c.createLabel);
@@ -186,12 +205,33 @@ router.delete("/labels/:id", core, requirePermission(M, "edit"), c.deleteLabel);
 
 router.get("/threads", core, requirePermission(M, "view"), c.threads);
 router.post("/threads/bulk", core, requirePermission(M, "edit"), v.threadBulk, c.threadBulk);
-router.get("/threads/:id", core, requirePermission(M, "view"), c.threadGet);
-router.post("/threads/:id/read", core, requirePermission(M, "edit"), v.threadFlag, c.threadRead);
-router.post("/threads/:id/star", core, requirePermission(M, "edit"), v.threadFlag, c.threadStar);
-router.post("/threads/:id/move", core, requirePermission(M, "edit"), v.threadMove, c.threadMove);
-router.post("/threads/:id/stream", core, requirePermission(M, "edit"), v.threadStream, c.threadStream);
-router.post("/threads/:id/label", core, requirePermission(M, "edit"), v.labelApply, c.threadLabel);
+
+/* ── Deletion (H-1) ───────────────────────────────────────────────────────
+ *
+ * `delete` rather than `edit`: removing correspondence is not a state change on
+ * it. Both routes refuse anything sealed into the archive chain and ledger the
+ * attempt — see thread.service.remove for why the refusal is the feature. */
+router.delete("/threads/:id", core, requirePermission(M, "delete"), requireVisibleThread(), c.threadDelete);
+router.post("/folders/empty", core, requirePermission(M, "delete"), v.folderEmpty, c.folderEmpty);
+
+/* ── Inbound attachments (H-2) ────────────────────────────────────────────
+ *
+ * §5.4's download route did not exist — no route, no handler, no client call —
+ * so the reading pane rendered an "Attachment" pill and there was no way to
+ * open the bill of lading that had just arrived. Acceptance criterion 8 was
+ * half met: storage and hashing yes, retrieval no.
+ *
+ * `requireVisibleAttachment` resolves the attachment to its thread and applies
+ * the §9.5 predicate, so an attachment on a conversation the caller cannot see
+ * is a 404 — the same answer as one that does not exist. */
+router.get("/attachments/:attachmentId/download", core, requirePermission(M, "view"),
+  requireVisibleAttachment("attachmentId"), c.downloadAttachment);
+router.get("/threads/:id", core, requirePermission(M, "view"), requireVisibleThread(), c.threadGet);
+router.post("/threads/:id/read", core, requirePermission(M, "edit"), requireVisibleThread(), v.threadFlag, c.threadRead);
+router.post("/threads/:id/star", core, requirePermission(M, "edit"), requireVisibleThread(), v.threadFlag, c.threadStar);
+router.post("/threads/:id/move", core, requirePermission(M, "edit"), requireVisibleThread(), v.threadMove, c.threadMove);
+router.post("/threads/:id/stream", core, requirePermission(M, "edit"), requireVisibleThread(), v.threadStream, c.threadStream);
+router.post("/threads/:id/label", core, requirePermission(M, "edit"), requireVisibleThread(), v.labelApply, c.threadLabel);
 
 /* ── Engine: messages (pre-PR-1A) ─────────────────────────────────────────
  *
@@ -201,11 +241,14 @@ router.post("/threads/:id/label", core, requirePermission(M, "edit"), v.labelApp
  * paths rather than one path with a mode flag, so the old one can be deleted in
  * one commit when nothing calls it. */
 router.get("/thread", core, requirePermission(M, "view"), c.thread);
-router.get("/thread/:id", core, requirePermission(M, "view"), c.message);
-router.get("/thread/:id/attachments", core, requirePermission(M, "view"), c.attachments);
+/* P1A-1/P1A-2, the same class as C-4 on the legacy surface: the flat detail
+ * read was scoped to accessible CONNECTIONS but not to thread visibility, so
+ * inside a shared mailbox it opened a thread the new surface would 404. */
+router.get("/thread/:id", core, requirePermission(M, "view"), requireVisibleMessage("id"), c.message);
+router.get("/thread/:id/attachments", core, requirePermission(M, "view"), requireVisibleMessage("id"), c.attachments);
 router.get("/client/:id/timeline", core, requirePermission(M, "view"), c.clientTimeline);
-router.post("/thread/:id/link", core, requirePermission(M, "create"), v.threadLink, c.linkThread);
-router.post("/thread/:id/read", core, requirePermission(M, "edit"), c.markRead);
+router.post("/thread/:id/link", core, requirePermission(M, "create"), requireVisibleMessage("id"), v.threadLink, c.linkThread);
+router.post("/thread/:id/read", core, requirePermission(M, "edit"), requireVisibleMessage("id"), c.markRead);
 /* ── PR-1B: composing ─────────────────────────────────────────────────────
  *
  * Action mapping:
@@ -251,6 +294,9 @@ router.delete("/drafts/:id/attachments/:attachmentId", composer, requirePermissi
  * `/bank`. */
 router.get("/commands", composer, requirePermission(M, "view"), c.commands);
 router.post("/commands/:key", composer, requirePermission(M, "view"), v.runCommand, c.runCommand);
-router.post("/thread/:id/reply", composer, requirePermission(M, "create"), v.reply, c.reply);
+/* `:id` here is a MESSAGE id (legacy flat surface), so this is the message gate,
+ * not the thread one. Replying to a message quotes it, so a reply to something
+ * the caller cannot see would hand them the text they could not read. */
+router.post("/thread/:id/reply", composer, requirePermission(M, "create"), requireVisibleMessage("id"), v.reply, c.reply);
 
 module.exports = { basePath: "/mail", feature: null, router };

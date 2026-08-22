@@ -41,6 +41,7 @@ import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { fieldLabel, humanizeRef } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /* ── Document intake ───────────────────────────────────────────────────────── */
@@ -59,22 +60,22 @@ function IntakeRow({ row, onDone }: { row: api.IntakeSuggestion; onDone: () => v
   return (
     <li className="rounded-lg border border-border bg-card/40 px-3 py-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="truncate text-sm font-medium">{row.filename || "Attachment"}</span>
+        <span className="truncate text-sm font-medium">{row.filename || tr("Attachment")}</span>
         {typeof row.confidence === "number" && (
           <Pill tone={row.confidence >= 0.8 ? "ok" : "warn"}>
-            {Math.round(row.confidence * 100)}% sure
+            {`${Math.round(row.confidence * 100)}% ${tr("sure")}`}
           </Pill>
         )}
       </div>
 
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Looks like a <span className="font-medium">{row.suggested_doc_type_code || "document"}</span>
+        {tr("Looks like a")} <span className="font-medium">{row.suggested_doc_type_code || tr("document")}</span>
         {row.suggested_entity_ref ? (
-          <> for {row.entity_label || humanizeRef(row.suggested_entity_ref)}</>
+          <> {tr("for")} {row.entity_label || humanizeRef(row.suggested_entity_ref)}</>
         ) : (
-          <> — but nothing says whose it is yet</>
+          <> {tr("— but nothing says whose it is yet")}</>
         )}
-        {row.matched_on ? <> (from the {row.matched_on})</> : null}.
+        {row.matched_on ? <> ({tr("from the")} {row.matched_on})</> : null}.
       </p>
 
       {editing && (
@@ -82,15 +83,15 @@ function IntakeRow({ row, onDone }: { row: api.IntakeSuggestion; onDone: () => v
           <Input
             value={docType}
             onChange={(e) => setDocType(e.target.value)}
-            placeholder="Document type code"
-            aria-label="Document type"
+            placeholder={tr("Document type code")}
+            aria-label={tr("Document type")}
             className="h-8 text-xs"
           />
           <Input
             value={entityRef}
             onChange={(e) => setEntityRef(e.target.value)}
             placeholder="client:… or dossier:…"
-            aria-label="File it against"
+            aria-label={tr("File it against")}
             className="h-8 text-xs"
           />
         </div>
@@ -107,11 +108,11 @@ function IntakeRow({ row, onDone }: { row: api.IntakeSuggestion; onDone: () => v
             }))
           }
         >
-          File it
+          {tr("File it")}
         </Button>
         {/* The correction path. Without it the confirm is a rubber stamp. */}
         <Button size="sm" variant="outline" onClick={() => setEditing((v) => !v)}>
-          {editing ? "Keep the suggestion" : "Change it"}
+          {editing ? tr("Keep the suggestion") : tr("Change it")}
         </Button>
         <Button
           size="sm"
@@ -119,7 +120,7 @@ function IntakeRow({ row, onDone }: { row: api.IntakeSuggestion; onDone: () => v
           disabled={busy}
           onClick={() => act(() => api.rejectIntake(row.email_attachment_classification_id))}
         >
-          Not a document
+          {tr("Not a document")}
         </Button>
       </div>
     </li>
@@ -130,19 +131,19 @@ export function DocumentIntake({ threadId }: { threadId: string }) {
   const res = useResource(() => api.listIntake(threadId), [threadId]);
   const open = (res.data || []).filter((r) => r.status === "SUGGESTED");
 
-  if (res.loading) return <LoadingRow label="Checking the attachments…" />;
+  if (res.loading) return <LoadingRow label={tr("Checking the attachments…")} />;
   if (res.error) return <ErrorState message={res.error} />;
   if (!open.length) return null;
 
   return (
-    <section aria-label="Documents waiting to be filed" className="space-y-2">
+    <section aria-label={tr("Documents waiting to be filed")} className="space-y-2">
       <ul className="space-y-1.5">
         {open.map((r) => (
           <IntakeRow key={r.email_attachment_classification_id} row={r} onDone={res.reload} />
         ))}
       </ul>
       <p className="text-xs text-muted-foreground">
-        Nothing is filed until you say so — at any confidence.
+        {tr("Nothing is filed until you say so — at any confidence.")}
       </p>
     </section>
   );
@@ -175,9 +176,9 @@ function ExtractionRow({ row, onDone }: { row: api.Extraction; onDone: () => voi
   return (
     <li className="rounded-lg border border-border bg-card/40 px-3 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium">{row.filename || "Attachment"}</span>
+        <span className="truncate text-sm font-medium">{row.filename || tr("Attachment")}</span>
         <span className="flex items-center gap-1.5">
-          <Pill tone="mute">{KIND_LABEL[row.doc_kind]}</Pill>
+          <Pill tone="mute">{tr(KIND_LABEL[row.doc_kind])}</Pill>
           <Pill tone={STATUS_TONE[row.status]}>{row.status}</Pill>
         </span>
       </div>
@@ -185,15 +186,13 @@ function ExtractionRow({ row, onDone }: { row: api.Extraction; onDone: () => voi
       {row.status === "FAILED" ? (
         // Shown rather than hidden. See the header.
         <p className="mt-1 text-xs text-muted-foreground">
-          We could not read this one. Nothing has been staged from it — open the
-          file and enter the details by hand.
+          {tr("We could not read this one. Nothing has been staged from it — open the file and enter the details by hand.")}
         </p>
       ) : (
         <>
           {typeof row.confidence === "number" && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {Math.round(row.confidence * 100)}% of the fields we asked for came
-              back. Check them against the document.
+              {`${Math.round(row.confidence * 100)}% ${tr("of the fields we asked for came back. Check them against the document.")}`}
             </p>
           )}
 
@@ -215,7 +214,7 @@ function ExtractionRow({ row, onDone }: { row: api.Extraction; onDone: () => voi
 
           {row.matches?.length > 0 && (
             <div className="mt-2">
-              <p className="text-xs font-medium text-muted-foreground">This may belong to</p>
+              <p className="text-xs font-medium text-muted-foreground">{tr("This may belong to")}</p>
               <ul className="mt-0.5 space-y-0.5">
                 {row.matches.map((m, i) => (
                   <li key={`${m.kind}-${m.id}-${i}`} className="text-xs">
@@ -223,7 +222,7 @@ function ExtractionRow({ row, onDone }: { row: api.Extraction; onDone: () => voi
                     {/* WHY we think so. A bare list of numbers makes the
                         reviewer redo the search we already did. */}
                     {m.on ? (
-                      <span className="text-muted-foreground"> — matched on {fieldLabel(m.on)}</span>
+                      <span className="text-muted-foreground"> — {tr("matched on")} {fieldLabel(m.on)}</span>
                     ) : null}
                   </li>
                 ))}
@@ -236,17 +235,17 @@ function ExtractionRow({ row, onDone }: { row: api.Extraction; onDone: () => voi
       {row.status === "EXTRACTED" && (
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" disabled={busy} onClick={() => act(() => api.reviewExtraction(row.attachment_extraction_id, fields))}>
-            These are right
+            {tr("These are right")}
           </Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act(() => api.dismissExtraction(row.attachment_extraction_id))}>
-            Discard
+            {tr("Discard")}
           </Button>
         </div>
       )}
       {row.status === "FAILED" && (
         <div className="mt-2">
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => act(() => api.dismissExtraction(row.attachment_extraction_id))}>
-            Dismiss
+            {tr("Dismiss")}
           </Button>
         </div>
       )}
@@ -261,15 +260,14 @@ export function Extractions({ messageId }: { messageId: string }) {
   if (res.loading || res.error || !rows.length) return null;
 
   return (
-    <section aria-label="Details read off the attachments" className="space-y-2">
+    <section aria-label={tr("Details read off the attachments")} className="space-y-2">
       <ul className="space-y-1.5">
         {rows.map((r) => (
           <ExtractionRow key={r.attachment_extraction_id} row={r} onDone={res.reload} />
         ))}
       </ul>
       <p className="text-xs text-muted-foreground">
-        Confirming these stages them for review. The record itself is still
-        created in the module that owns it.
+        {tr("Confirming these stages them for review. The record itself is still created in the module that owns it.")}
       </p>
     </section>
   );
@@ -299,7 +297,7 @@ export function ChaseSnippet({
   if (data.nothing_outstanding) {
     return (
       <p className="text-xs text-muted-foreground">
-        Every required document has been received — nothing to chase.
+        {tr("Every required document has been received — nothing to chase.")}
       </p>
     );
   }
@@ -312,10 +310,10 @@ export function ChaseSnippet({
 
   return (
     <div className="rounded-lg border border-border bg-card/40 px-3 py-2">
-      <p className="text-xs text-muted-foreground">Still outstanding</p>
+      <p className="text-xs text-muted-foreground">{tr("Still outstanding")}</p>
       <p className="mt-0.5 text-sm">{names.join(" · ")}</p>
       <Button size="sm" variant="outline" className="mt-1.5" onClick={() => onUse(text)}>
-        Ask for them
+        {tr("Ask for them")}
       </Button>
     </div>
   );

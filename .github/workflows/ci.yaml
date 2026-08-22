@@ -784,6 +784,24 @@ jobs:
             exit 1
           fi
 
+          # THE BACKFILL SUITE BY NAME, not just "something ran".
+          #
+          # The aggregate check above is satisfied by any one suite. This job's
+          # whole history is that a DB-backed suite can self-skip while the run
+          # goes green — and mail-model-backfill is the most skippable of them
+          # all: it is the ONLY test of 10731, the migration that moved every
+          # existing message into email_thread / email_message /
+          # email_message_state. If DATABASE_URL stops reaching it, the thing
+          # that stops being tested is a one-way data migration.
+          backfill=$(jq '[.testResults[]
+                          | select(.name | endswith("mail-model-backfill.test.js"))
+                          | .assertionResults[] | select(.status=="passed")] | length' /tmp/integration.json)
+          echo "mail-model-backfill: $backfill assertion(s)"
+          if [ "$backfill" -lt 10 ]; then
+            echo "::error::tests/integration/mail-model-backfill.test.js did not run (or shrank). It self-skips without DATABASE_URL, and it is the only test 10731's backfill has."
+            exit 1
+          fi
+
   security:
     runs-on: ubuntu-latest
     steps:

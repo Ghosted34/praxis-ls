@@ -385,18 +385,28 @@ export const setWorkStatus = (threadId: string, status: WorkStatus) =>
  * A SOFT lock. It expires, and taking one never steals a live one — two people
  * typing into the same shared mailbox is the problem, and a lock nobody can
  * release is a worse one.
+ *
+ * The field list is `workflow.takeLock`'s return, checked against it rather
+ * than inferred: this type used to declare a `taken: boolean` the server has
+ * never sent, and `release` was typed as returning a lock when it returns
+ * `{ released }`. Nothing caught either, because nothing called either — a
+ * type is only as true as its first caller.
  */
 export type ThreadLock = {
   email_thread_id: string;
+  user_id?: string | null;
+  expires_at?: string | null;
+  held_by_me: boolean;
+  held_by_other: boolean;
+  holder_name?: string | null;
   locked_by?: string | null;
   locked_by_name?: string | null;
-  expires_at?: string | null;
-  taken: boolean;
+  seconds_remaining?: number;
 };
 export const takeThreadLock = (threadId: string) =>
   tenant<ThreadLock>(`/mail/threads/${threadId}/lock`, { method: "POST", body: {} });
 export const releaseThreadLock = (threadId: string) =>
-  tenant<ThreadLock>(`/mail/threads/${threadId}/lock`, { method: "DELETE" });
+  tenant<{ released: boolean }>(`/mail/threads/${threadId}/lock`, { method: "DELETE" });
 
 /* ═══ PR-5 · SLA and the business calendar ═════════════════════════════════ */
 
@@ -536,11 +546,27 @@ export type Bounce = {
   diagnostic?: string | null;
 };
 export const listBounces = () => tenant<Bounce[]>("/mail/bounces");
-/** Asked BEFORE a send, so a hard-bounced address is caught in the composer. */
+/**
+ * The status of an address the tenant already knows about, or nothing.
+ *
+ * `email_status` is the CONTACT's, not the bounce log's: the log records what
+ * happened, this records what is now true of the address. Only the addresses
+ * worth warning about come back, so an empty array is a clean recipient list.
+ */
+export type AddressStatus = {
+  email: string;
+  email_status: "SOFT_FAILING" | "HARD_FAILED";
+};
+/**
+ * Asked BEFORE a send, so a hard-bounced address is caught in the composer.
+ *
+ * The old declaration here was a `Record<string, {...}>` — a shape the server
+ * has never returned; `workflow.addressStatus` returns rows. It went unnoticed
+ * for the same reason the route it calls went unnoticed: nothing called it, so
+ * the type was never held against a response.
+ */
 export const checkAddresses = (addresses: string[]) =>
-  tenant<Record<string, { status: string; bounce_type?: string; last_bounced_at?: string }>>(
-    "/mail/bounces/check", { method: "POST", body: { addresses } },
-  );
+  tenant<AddressStatus[]>("/mail/bounces/check", { method: "POST", body: { addresses } });
 
 /* ═══ PR-5 · The archive ═══════════════════════════════════════════════════ */
 

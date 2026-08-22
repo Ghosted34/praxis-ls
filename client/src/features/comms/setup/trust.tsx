@@ -42,6 +42,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /* ── Verified domains ─────────────────────────────────────────────────────── */
@@ -56,28 +57,27 @@ function VerifyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     <Modal
       open
       onClose={onClose}
-      title="Confirm a domain"
-      description="Say that this domain genuinely belongs to this party. The send-side check uses it to spot a payment redirected to a lookalike."
+      title={tr("Confirm a domain")}
+      description={tr("Say that this domain genuinely belongs to this party. The send-side check uses it to spot a payment redirected to a lookalike.")}
     >
       <div className="space-y-3">
-        <Field label="Party type">
+        <Field label={tr("Party type")}>
           <Select value={kind} onChange={(e) => setKind(e.target.value as "CLIENT" | "SUPPLIER")}>
-            <option value="CLIENT">Client</option>
-            <option value="SUPPLIER">Supplier</option>
+            <option value="CLIENT">{tr("Client")}</option>
+            <option value="SUPPLIER">{tr("Supplier")}</option>
           </Select>
         </Field>
-        <Field label="Party">
-          <Input value={partyId} onChange={(e) => setPartyId(e.target.value)} placeholder="client id" />
+        <Field label={tr("Party")}>
+          <Input value={partyId} onChange={(e) => setPartyId(e.target.value)} placeholder={tr("client id")} />
         </Field>
-        <Field label="Domain" hint="Just the domain — camrail.cm, not an address.">
+        <Field label={tr("Domain")} hint={tr("Just the domain — camrail.cm, not an address.")}>
           <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="camrail.cm" />
         </Field>
-        <Callout tone="warn" title="Only confirm what you have checked.">
-          This is the list the send block trusts. A lookalike confirmed here
-          stops being flagged.
+        <Callout tone="warn" title={tr("Only confirm what you have checked.")}>
+          {tr("This is the list the send block trusts. A lookalike confirmed here stops being flagged.")}
         </Callout>
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button size="sm" variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
           <Button
             size="sm"
             disabled={busy || !partyId.trim() || !domain.trim()}
@@ -94,7 +94,7 @@ function VerifyDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () =
               }
             }}
           >
-            Confirm
+            {tr("Confirm")}
           </Button>
         </div>
       </div>
@@ -112,18 +112,18 @@ function Domains() {
   const observed = rows.filter((d) => d.source !== "ADMIN_VERIFIED");
 
   const columns: Column<api.VerifiedDomain>[] = [
-    { key: "domain", label: "Domain", render: (r) => <span className="num">{r.domain}</span> },
-    { key: "party", label: "Belongs to", render: (r) => r.party_name || r.party_id },
-    { key: "kind", label: "Type", render: (r) => (r.party_kind === "CLIENT" ? "Client" : "Supplier") },
+    { key: "domain", label: tr("Domain"), render: (r) => <span className="num">{r.domain}</span> },
+    { key: "party", label: tr("Belongs to"), render: (r) => r.party_name || r.party_id },
+    { key: "kind", label: tr("Type"), render: (r) => (r.party_kind === "CLIENT" ? tr("Client") : tr("Supplier")) },
     {
       key: "source",
-      label: "Status",
+      label: tr("Status"),
       render: (r) =>
         r.source === "ADMIN_VERIFIED" ? (
-          <Pill tone="ok">Confirmed</Pill>
+          <Pill tone="ok">{tr("Confirmed")}</Pill>
         ) : (
           // Seen, not trusted. An impostor who emails twice is observed twice.
-          <Pill tone="mute">Seen {r.message_count ?? 0}×</Pill>
+          <Pill tone="mute">{tr("Seen")} {r.message_count ?? 0}×</Pill>
         ),
     },
     {
@@ -147,7 +147,7 @@ function Domains() {
               }
             }}
           >
-            Withdraw
+            {tr("Withdraw")}
           </Button>
         ) : null,
     },
@@ -156,15 +156,13 @@ function Domains() {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="Confirmed domains"
-        description="Which domains genuinely belong to which party. This is the list the financial-document send block compares against."
-        action={<Button size="sm" onClick={() => setAdding(true)}>Confirm a domain</Button>}
+        title={tr("Confirmed domains")}
+        description={tr("Which domains genuinely belong to which party. This is the list the financial-document send block compares against.")}
+        action={<Button size="sm" onClick={() => setAdding(true)}>{tr("Confirm a domain")}</Button>}
       />
       {verified.length === 0 && !domains.loading && (
-        <Callout tone="warn" title="Nothing is confirmed yet.">
-          Until a party has at least one confirmed domain, the send block has
-          nothing to compare against and will not stop an invoice going to a
-          lookalike address.
+        <Callout tone="warn" title={tr("Nothing is confirmed yet.")}>
+          {tr("Until a party has at least one confirmed domain, the send block has nothing to compare against and will not stop an invoice going to a lookalike address.")}
         </Callout>
       )}
       <DataList
@@ -173,7 +171,7 @@ function Domains() {
         error={domains.error}
         loading={domains.loading}
         rowKey={(r) => r.party_verified_domain_id}
-        empty={{ title: "No domains recorded", hint: "Domains appear here as mail arrives, marked as seen. Confirming one is a separate, deliberate act." }}
+        empty={{ title: tr("No domains recorded"), hint: tr("Domains appear here as mail arrives, marked as seen. Confirming one is a separate, deliberate act.") }}
       />
       {adding && <VerifyDialog onClose={() => setAdding(false)} onSaved={domains.reload} />}
     </div>
@@ -188,17 +186,17 @@ function Bounces() {
   const bounces = useResource(() => api.listBounces(), []);
 
   const columns: Column<api.Bounce>[] = [
-    { key: "address", label: "Address", render: (r) => <span className="num">{r.address}</span> },
+    { key: "address", label: tr("Address"), render: (r) => <span className="num">{r.address}</span> },
     {
       key: "type",
-      label: "Kind",
+      label: tr("Kind"),
       render: (r) => <Pill tone={BOUNCE_TONE[r.bounce_type] || "mute"}>{r.bounce_type}</Pill>,
     },
-    { key: "count", label: "Times", render: (r) => r.bounce_count ?? 1 },
-    { key: "last", label: "Last", render: (r) => dateTimeFmt(r.last_bounced_at) },
+    { key: "count", label: tr("Times"), render: (r) => r.bounce_count ?? 1 },
+    { key: "last", label: tr("Last"), render: (r) => dateTimeFmt(r.last_bounced_at) },
     {
       key: "why",
-      label: "What the server said",
+      label: tr("What the server said"),
       render: (r) => (
         <span className="text-xs text-muted-foreground">{r.diagnostic || "—"}</span>
       ),
@@ -208,8 +206,8 @@ function Bounces() {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="Undeliverable addresses"
-        description="Addresses that bounced. The composer checks this list before a send, so a hard bounce is caught while there is still someone to ask about it."
+        title={tr("Undeliverable addresses")}
+        description={tr("Addresses that bounced. The composer checks this list before a send, so a hard bounce is caught while there is still someone to ask about it.")}
       />
       <DataList
         columns={columns}
@@ -217,7 +215,7 @@ function Bounces() {
         error={bounces.error}
         loading={bounces.loading}
         rowKey={(r) => r.email_bounce_id}
-        empty={{ title: "Nothing has bounced", hint: "Delivery failures are parsed out of the DSNs that arrive back and collected here." }}
+        empty={{ title: tr("Nothing has bounced"), hint: tr("Delivery failures are parsed out of the DSNs that arrive back and collected here.") }}
       />
     </div>
   );
@@ -232,8 +230,8 @@ function Archive() {
   return (
     <div className="space-y-3">
       <PageHeader
-        title="Archive integrity"
-        description="Every message is sealed into a hash chain as it arrives or leaves. This walks the chain and reports the first break, if there is one."
+        title={tr("Archive integrity")}
+        description={tr("Every message is sealed into a hash chain as it arrives or leaves. This walks the chain and reports the first break, if there is one.")}
       />
       <Button
         size="sm"
@@ -249,24 +247,21 @@ function Archive() {
           }
         }}
       >
-        {busy ? "Walking the chain…" : "Verify the archive"}
+        {busy ? tr("Walking the chain…") : tr("Verify the archive")}
       </Button>
 
       {result && result.ok && (
-        <Callout tone="ok" title="Intact.">
-          {result.checked} messages checked, every seal matches its predecessor.
+        <Callout tone="ok" title={tr("Intact.")}>
+          {result.checked} {tr("messages checked, every seal matches its predecessor.")}
         </Callout>
       )}
       {result && !result.ok && (
         // Said plainly. See the header — a break is usually concurrency, not
         // tampering, but the consequence for evidence is the same either way.
-        <Callout tone="bad" title="The chain breaks.">
-          {result.checked} messages checked. The first break is at{" "}
-          <span className="num">{result.broken_at || "an unknown row"}</span>.
-          This is most often two messages archived at the same moment rather
-          than anything malicious — but from that row forward the archive cannot
-          be relied on as evidence, and that should be looked at before anyone
-          needs it to be.
+        <Callout tone="bad" title={tr("The chain breaks.")}>
+          {result.checked} {tr("messages checked. The first break is at")}{" "}
+          <span className="num">{result.broken_at || tr("an unknown row")}</span>.{" "}
+          {tr("This is most often two messages archived at the same moment rather than anything malicious — but from that row forward the archive cannot be relied on as evidence, and that should be looked at before anyone needs it to be.")}
         </Callout>
       )}
     </div>

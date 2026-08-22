@@ -13,13 +13,19 @@ const archive = require("./archive-chain");
 const secureLinks = require("./secure-link.service");
 const workflow = require("./workflow.service");
 const threadRepo = require("../mail/thread.repo");
+// C-1/C-4. The four writes below (claim/assign/status/visibility) already did
+// their own `getThread` gate — the FN-2 lesson, applied to four of eleven
+// thread-scoped routes in this file. This is the same check, hoisted so the
+// other seven cannot be forgotten, and so a route added tomorrow is caught by
+// `tests/security/mail-route-visibility.test.js` rather than by an audit.
+const { requireVisibleThread } = require("../mail/visible");
 
 const M = "MOD-72";
 const router = express.Router();
 router.use(authMiddleware);
 const actor = (req) => req.user || { user_id: null };
 
-router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
@@ -48,7 +54,7 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
     }),
   })));
 
-router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ user_id: z.string().uuid() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
@@ -67,7 +73,7 @@ router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requireP
     }),
   })));
 
-router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ status: z.enum(["OPEN", "PENDING", "RESOLVED"]) }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {
@@ -87,7 +93,7 @@ router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requireP
     }),
   })));
 
-router.post("/threads/:id/snooze", requireFeature("mail.followup"), requirePermission(M, "edit"),
+router.post("/threads/:id/snooze", requireFeature("mail.followup"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ due_at: z.string(), note: z.string().max(500).optional() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => c.query(
@@ -97,7 +103,7 @@ router.post("/threads/:id/snooze", requireFeature("mail.followup"), requirePermi
     ).then((r) => r.rows[0])),
   })));
 
-router.post("/threads/:id/followup", requireFeature("mail.followup"), requirePermission(M, "edit"),
+router.post("/threads/:id/followup", requireFeature("mail.followup"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ due_at: z.string(), kind: z.enum(["NO_REPLY", "SEQUENCE_STEP"]).default("NO_REPLY"), note: z.string().max(500).optional() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => c.query(
@@ -109,7 +115,17 @@ router.post("/threads/:id/followup", requireFeature("mail.followup"), requirePer
 
 router.post("/secure-links", requireFeature("mail.secure_links"), requirePermission(M, "create"),
   body(z.object({
-    target_kind: z.enum(["VAULT_DOC", "GENERATED_PDF"]),
+    // H-5. `GENERATED_PDF` was accepted here and had no renderer behind it:
+    // `fetchTarget` returned a stub with no buffer, so the public download
+    // answered 404 "This link has expired or been revoked" — a false statement
+    // about a link that was perfectly valid — while still recording a view and
+    // incrementing view_count. An admin could hand a client a permanently
+    // broken link whose error message pointed at the wrong cause.
+    //
+    // Refused at MINT rather than at download, because that is where the
+    // operator is standing and where a 422 can say something useful. Restore
+    // the kind here on the day a renderer exists, not before.
+    target_kind: z.enum(["VAULT_DOC"]),
     target_ref: z.string().min(1).max(200),
     entity_ref: z.string().max(128).optional(),
     label: z.string().max(200).optional(),
@@ -142,13 +158,13 @@ router.post("/secure-links/:id/revoke", requireFeature("mail.secure_links"), req
  * theirs, and the composer says who and for how long. §9.2: advisory, never a
  * hard block, because a stale lock that stops a customer reply going out is
  * worse than a duplicated one. */
-router.post("/threads/:id/lock", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+router.post("/threads/:id/lock", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => workflow.takeLock(c, req.params.id, actor(req))),
   })));
 
-router.delete("/threads/:id/lock", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+router.delete("/threads/:id/lock", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"), requireVisibleThread(),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => workflow.releaseLock(c, req.params.id, actor(req))),
   })));
@@ -233,16 +249,37 @@ router.delete("/followup/:id", requireFeature("mail.followup"), requirePermissio
  * The escape valve that makes PRIVATE usable. Without it the only way to bring
  * a colleague in is to widen the thread to TEAM, and a visibility model whose
  * only granularity is "me" or "everyone" gets set to everyone. */
-router.get("/threads/:id/shares", requireFeature("mail.archive"), requirePermission(M, "view"),
-  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => workflow.listShares(c, req.params.id)) })));
+/* ── Per-thread sharing (§9.5) — C-1 ───────────────────────────────────────
+ *
+ * This was the programme's most serious defect, and it was three lines long.
+ *
+ * `email_thread_share` is a READ GRANT: the §9.5 predicate treats a share row
+ * as sight of a PRIVATE thread. `shareThread` inserted one for any thread id
+ * and any user id, with no check that the caller could see the thread and no
+ * check that they had any standing to hand it out. So any MOD-72 *edit* user
+ * could POST `{user_id: <themselves>}` against any thread id in the tenant and
+ * read a Private conversation on the next GET. Break-glass exists for exactly
+ * that access, is CEO-only, and writes an immutable-ledger row BEFORE it reads;
+ * `shareThread` was its unledgered twin, available to every operator.
+ *
+ * Both halves are now gated:
+ *   - `requireVisibleThread()` — you cannot share, unshare or enumerate the
+ *     shares of a thread you cannot yourself see. That alone closes the
+ *     self-grant, because an invisible thread 404s before the INSERT.
+ *   - the service additionally requires the caller be the thread's OWNER or a
+ *     current sharee, so a TEAM member cannot widen a colleague's PRIVATE
+ *     thread to someone the owner never chose.
+ */
+router.get("/threads/:id/shares", requireFeature("mail.archive"), requirePermission(M, "view"), requireVisibleThread(),
+  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => workflow.listShares(c, req.params.id, actor(req))) })));
 
-router.post("/threads/:id/share", requireFeature("mail.archive"), requirePermission(M, "edit"),
+router.post("/threads/:id/share", requireFeature("mail.archive"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ user_id: z.string().uuid() }).strict()),
   asyncHandler(async (req, res) => res.status(201).json({
     data: await req.identityDb((c) => workflow.shareThread(c, req.params.id, req.body.user_id, actor(req))),
   })));
 
-router.delete("/threads/:id/share/:userId", requireFeature("mail.archive"), requirePermission(M, "edit"),
+router.delete("/threads/:id/share/:userId", requireFeature("mail.archive"), requirePermission(M, "edit"), requireVisibleThread(),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => workflow.unshareThread(c, req.params.id, req.params.userId, actor(req))),
   })));
@@ -309,7 +346,7 @@ router.get("/secure-links/:id/views", requireFeature("mail.secure_links"), requi
     data: await req.identityDb((c) => secureLinks.views(c, req.params.id)),
   })));
 
-router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requirePermission(M, "edit"),
+router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requirePermission(M, "edit"), requireVisibleThread(),
   body(z.object({ visibility: z.enum(["PRIVATE", "TEAM", "COMPANY"]) }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb(async (c) => {

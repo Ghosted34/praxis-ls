@@ -77,8 +77,26 @@ export function TenantDetail() {
           })}>Run migrations</Button>
           <Button size="sm" variant="danger" onClick={() => run({
             title: `Wipe sandbox for '${t.slug}'?`, danger: true, confirmLabel: "Wipe sandbox",
-            body: <>Truncates the <b>sandbox</b> schema and re-seeds baseline reference data. Live data is untouched.</>,
-            action: () => platform.wipeSandbox(slug).then(() => { toast("Sandbox wiped"); reloadAll(); }),
+            // The old wording said "truncates … and re-seeds baseline reference
+            // data", which reads like a tidy-up. It is a DROP SCHEMA CASCADE:
+            // every row anyone put in the sandbox is destroyed and not
+            // recoverable from the nightly dump if it was created after 01:00
+            // UTC. Say so before the button, not in an incident review after.
+            body: <>
+              <b>Destroys everything in the sandbox schema</b> — every record anyone has created or
+              imported in TEST mode — and rebuilds it empty from the migrations and baseline seeds.
+              <br />Live data is untouched. This cannot be undone, and sandbox work created since
+              last night&rsquo;s backup is not recoverable.
+              <br />The wipe is recorded in the audit trail against your account.
+            </>,
+            action: () => platform.wipeSandbox(slug).then((r) => {
+              const res = r as { audited?: boolean } | null;
+              toast(res && res.audited === false
+                ? "Sandbox wiped — but the audit row FAILED to write, check the server logs"
+                : "Sandbox wiped (recorded in the audit trail)",
+                res && res.audited === false ? "bad" : "ok");
+              reloadAll();
+            }),
           })}>Wipe sandbox</Button>
           <Button size="sm" onClick={() => run({
             title: `Seed sandbox demo for '${t.slug}'?`, confirmLabel: "Seed sandbox",
@@ -246,23 +264,32 @@ function CapacityCard({ slug, db, onSaved }: { slug: string; db: TenantDatabase;
 
 function SandboxCard({ slug, t, onSaved }: { slug: string; t: TDetail; onSaved: () => void }) {
   const { toast, fail } = useToast();
-  const [days, setDays] = useState(String(t.sandbox_wipe_days ?? 14));
+  const [days, setDays] = useState(String(t.sandbox_wipe_days ?? 0));
   const [busy, setBusy] = useState(false);
   const save = () => {
+    // 0 is the default and means "never" — wipes are manual. Anything above 0
+    // hands a destructive job back to the cron, so it is worth typing on purpose.
     const n = parseInt(days, 10);
-    if (!n || n < 1) { toast("Enter a positive number of days", "bad"); return; }
+    if (isNaN(n) || n < 0 || n > 365) { toast("Enter 0 (never) or 1–365 days", "bad"); return; }
     setBusy(true);
-    platform.setSandbox(slug, n).then(() => { toast("Sandbox interval → " + n + " days"); onSaved(); }).catch(fail).finally(() => setBusy(false));
+    platform.setSandbox(slug, n)
+      .then(() => { toast(n === 0 ? "Auto-wipe off — wipes are manual" : "Sandbox auto-wipe → every " + n + " days"); onSaved(); })
+      .catch(fail).finally(() => setBusy(false));
   };
+  const auto = Number(t.sandbox_wipe_days ?? 0) > 0;
   return (
     <Card title="Sandbox & lifecycle">
       <dl className="kv">
         <dt>Auto-wipe every</dt>
         <dd className="row" style={{ gap: 8 }}>
-          <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(e.target.value)} style={{ width: 90 }} />
-          <span className="muted">days</span>
+          <input type="number" min={0} max={365} value={days} onChange={(e) => setDays(e.target.value)} style={{ width: 90 }} />
+          <span className="muted">days — 0 = never (manual only)</span>
           <Button size="sm" onClick={save} loading={busy}>Set</Button>
         </dd>
+        <dt>Wipe mode</dt>
+        <dd>{auto ? <Pill tone="warn">Automatic</Pill> : <Pill tone="mute">Manual</Pill>}</dd>
+        <dt>Last wiped</dt>
+        <dd>{t.last_sandbox_wipe_at ? fmtDateTime(t.last_sandbox_wipe_at as string) : <span className="muted">never recorded</span>}</dd>
         <dt>Live</dt><dd>{t.is_live ? <Pill tone="info">Yes</Pill> : <Pill tone="mute">No</Pill>}</dd>
         <dt>Created</dt><dd>{fmtDateTime(t.created_at)}</dd>
       </dl>

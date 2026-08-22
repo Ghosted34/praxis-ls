@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const STATUS: { value: api.WorkStatus; label: string }[] = [
@@ -83,6 +84,8 @@ export function TriageBar({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [snoozeOpen, setSnoozeOpen] = React.useState(false);
   const [customDue, setCustomDue] = React.useState("");
+  const [handOverOpen, setHandOverOpen] = React.useState(false);
+  const [assignee, setAssignee] = React.useState("");
 
   const id = thread.email_thread_id;
 
@@ -100,40 +103,77 @@ export function TriageBar({
       <div className="flex flex-wrap items-center gap-2">
         {/* Assignee first — see the header. */}
         {thread.assigned_to ? (
-          <Pill tone="blue">{thread.assigned_to_name || "Assigned"}</Pill>
+          <Pill tone="blue">{thread.assigned_to_name || tr("Assigned")}</Pill>
         ) : (
           <Button size="sm" disabled={busy !== null} onClick={() => run("claim", () => api.claimThread(id))}>
-            Claim this
+            {tr("Claim this")}
           </Button>
         )}
 
-        <Pill tone={STATUS_TONE[status]}>{STATUS.find((s) => s.value === status)?.label || status}</Pill>
+        <Pill tone={STATUS_TONE[status]}>{tr(STATUS.find((s) => s.value === status)?.label || status)}</Pill>
 
         <Select
           value={status}
-          aria-label="Work status"
+          aria-label={tr("Work status")}
           disabled={busy !== null}
           onChange={(e) => run("status", () => api.setWorkStatus(id, e.target.value as api.WorkStatus))}
           className="h-8 w-auto text-xs"
         >
           {STATUS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
+            <option key={s.value} value={s.value}>{tr(s.label)}</option>
           ))}
         </Select>
 
+        <Button size="sm" variant="outline" onClick={() => setHandOverOpen((v) => !v)}>
+          {thread.assigned_to ? tr("Hand over") : tr("Give it to someone")}
+        </Button>
+
         <Button size="sm" variant="outline" onClick={() => setSnoozeOpen((v) => !v)}>
-          Bring it back
+          {tr("Bring it back")}
         </Button>
       </div>
+
+      {/* §9.1: "a thread in a shared mailbox is unassigned until someone claims
+          it (OR A LEAD ASSIGNS IT)". Claim shipped; assign did not, so a lead
+          could only ask the person to go and claim it themselves, while the
+          route, the service and the client wrapper all sat there unreached.
+          Assigning over a live assignee is deliberately allowed: handing work
+          over IS taking it off somebody, and refusing would strand a thread on
+          whoever went on leave. */}
+      {handOverOpen && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const uid = assignee.trim();
+            if (!uid) return;
+            run("assign", () => api.assignThread(id, uid)).then(() => {
+              setAssignee("");
+              setHandOverOpen(false);
+            });
+          }}
+        >
+          <Input
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+            placeholder={tr("Colleague")}
+            aria-label={tr("Hand this conversation to")}
+            className="h-8 text-xs"
+          />
+          <Button size="sm" type="submit" disabled={busy !== null || !assignee.trim()}>
+            {tr("Hand over")}
+          </Button>
+        </form>
+      )}
 
       {/* The SLA, in the terms an operator cares about: is it late. */}
       {thread.sla_due_at && (
         <p className={overdue ? "text-xs font-medium text-[var(--bad)]" : "text-xs text-muted-foreground"}>
           {overdue
-            ? `A first reply was due ${dateTimeFmt(thread.sla_due_at)}.`
+            ? `${tr("A first reply was due")} ${dateTimeFmt(thread.sla_due_at)}.`
             : dueSoon
-              ? `A first reply is due within the hour — ${dateTimeFmt(thread.sla_due_at)}.`
-              : `A first reply is due ${dateTimeFmt(thread.sla_due_at)}.`}
+              ? `${tr("A first reply is due within the hour —")} ${dateTimeFmt(thread.sla_due_at)}.`
+              : `${tr("A first reply is due")} ${dateTimeFmt(thread.sla_due_at)}.`}
         </p>
       )}
 
@@ -141,8 +181,8 @@ export function TriageBar({
         // Names the person, so the second operator can ask rather than wait for
         // a lock they cannot see the end of.
         <p className="text-xs text-muted-foreground">
-          {thread.locked_by_name} is writing a reply
-          {thread.lock_expires_at ? <> until {dateTimeFmt(thread.lock_expires_at)}</> : null}.
+          {thread.locked_by_name} {tr("is writing a reply")}
+          {thread.lock_expires_at ? <> {tr("until")} {dateTimeFmt(thread.lock_expires_at)}</> : null}.
         </p>
       )}
 
@@ -161,7 +201,7 @@ export function TriageBar({
                     .then(() => setSnoozeOpen(false))
                 }
               >
-                {s.label}
+                {tr(s.label)}
               </Button>
             ))}
           </div>
@@ -170,7 +210,7 @@ export function TriageBar({
               type="datetime-local"
               value={customDue}
               onChange={(e) => setCustomDue(e.target.value)}
-              aria-label="Bring it back at"
+              aria-label={tr("Bring it back at")}
               className="h-8 text-xs"
             />
             <Button
@@ -181,11 +221,11 @@ export function TriageBar({
                   .then(() => setSnoozeOpen(false))
               }
             >
-              Set
+              {tr("Set")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            If they reply before then, this cancels itself.
+            {tr("If they reply before then, this cancels itself.")}
           </p>
         </div>
       )}
@@ -218,7 +258,7 @@ export function VisibilityControl({
     <div className="space-y-3">
     <div className="space-y-1">
       <label className="block text-xs font-medium text-muted-foreground" htmlFor={`vis-${threadId}`}>
-        Who can see this
+        {tr("Who can see this")}
       </label>
       <Select
         id={`vis-${threadId}`}
@@ -238,10 +278,10 @@ export function VisibilityControl({
         }}
       >
         {VISIBILITY.map((v) => (
-          <option key={v.value} value={v.value}>{v.label}</option>
+          <option key={v.value} value={v.value}>{tr(v.label)}</option>
         ))}
       </Select>
-      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      {note && <p className="text-xs text-muted-foreground">{tr(note)}</p>}
     </div>
 
     {/* Sharing is the EXCEPTION to the visibility rule, not a second way of
@@ -279,9 +319,9 @@ function ThreadShares({ threadId }: { threadId: string }) {
 
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">Shared with</p>
+      <p className="text-xs font-medium text-muted-foreground">{tr("Shared with")}</p>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Nobody outside the group above.</p>
+        <p className="text-xs text-muted-foreground">{tr("Nobody outside the group above.")}</p>
       ) : (
         <ul className="space-y-1">
           {rows.map((s) => (
@@ -293,7 +333,7 @@ function ThreadShares({ threadId }: { threadId: string }) {
                 disabled={busy}
                 onClick={() => run(() => api.unshareThread(threadId, s.user_id))}
               >
-                Remove
+                {tr("Remove")}
               </Button>
             </li>
           ))}
@@ -311,11 +351,11 @@ function ThreadShares({ threadId }: { threadId: string }) {
         <Input
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
-          placeholder="Colleague"
-          aria-label="Share with"
+          placeholder={tr("Colleague")}
+          aria-label={tr("Share with")}
           className="h-8 text-xs"
         />
-        <Button size="sm" type="submit" disabled={busy || !userId.trim()}>Share</Button>
+        <Button size="sm" type="submit" disabled={busy || !userId.trim()}>{tr("Share")}</Button>
       </form>
     </div>
   );

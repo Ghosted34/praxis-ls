@@ -228,6 +228,54 @@ async function putHolidays(client, rows = [], actor = {}) {
 
 /* ── Thread sharing (§9.5) ────────────────────────────────────────────────── */
 
+/* ── Per-thread sharing (§9.5) — C-1 ────────────────────────────────────────
+ *
+ * `email_thread_share` is not a convenience table. The §9.5 predicate reads a
+ * row in it as a READ GRANT on a PRIVATE thread, so whoever can write here can
+ * decide who sees private correspondence. Two things guard that now, and they
+ * guard different holes:
+ *
+ *   1. `requireVisibleThread()` on the route — you cannot act on a thread you
+ *      cannot see. That closes the self-grant outright: the caller who was
+ *      POSTing `{user_id: <themselves>}` against a Private thread they had no
+ *      sight of now gets a 404 before any statement runs.
+ *   2. `assertMaySteward` below — of the people who CAN see the thread, only
+ *      the owner or an existing sharee may change who else does. Without this,
+ *      the first person the owner shared with could re-share onward, and any
+ *      member of a shared mailbox could hand out a colleague's PRIVATE thread
+ *      that they could see only because it was TEAM.
+ *
+ * The COMPANY/TEAM case is deliberately permissive: a thread everyone can
+ * already read is not disclosed by a share row, so stewardship only bites where
+ * it means something.
+ */
+
+/**
+ * May this caller change who can see this thread?
+ *
+ * `req.mailThread` already proved they can SEE it; this is the narrower
+ * question. Answers NOT_FOUND rather than FORBIDDEN for the same reason every
+ * other refusal in this module does — a 403 here would confirm that a specific
+ * private thread exists and that the caller is merely not its steward.
+ */
+async function assertMaySteward(client, threadId, actor = {}) {
+  const userId = actor.user_id || null;
+  const { rows } = await client.query(
+    `SELECT t.visibility, c.owner_user_id,
+            EXISTS (SELECT 1 FROM email_thread_share s
+                     WHERE s.email_thread_id = t.email_thread_id AND s.user_id = $2) AS is_sharee
+       FROM email_thread t
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE t.email_thread_id = $1`,
+    [threadId, userId],
+  );
+  const t = rows[0];
+  if (!t) throw new AppError("NOT_FOUND", "conversation not found", 404);
+  if (t.visibility !== "PRIVATE") return t;           // nothing to steward
+  if (userId && (t.owner_user_id === userId || t.is_sharee === true)) return t;
+  throw new AppError("NOT_FOUND", "conversation not found", 404);
+}
+
 /**
  * Grant one named colleague sight of one Private thread.
  *
@@ -238,6 +286,7 @@ async function putHolidays(client, rows = [], actor = {}) {
  */
 async function shareThread(client, threadId, userId, actor = {}) {
   if (!userId) throw new AppError("VALIDATION_ERROR", "user_id is required", 422);
+  await assertMaySteward(client, threadId, actor);
   const { rows } = await client.query(
     `INSERT INTO email_thread_share (email_thread_id, user_id, granted_by)
      VALUES ($1,$2,$3)
@@ -253,7 +302,17 @@ async function shareThread(client, threadId, userId, actor = {}) {
   return rows[0];
 }
 
+/**
+ * Revoke a share.
+ *
+ * Marked `isSensitive` and no longer swallowing the ledger write, because
+ * removing a share also removes the trace of it: an attacker who granted
+ * themselves access and then unshared left a table in the state it started in.
+ * The ledger is what makes that recoverable, so a failure to write it is
+ * reported rather than ignored.
+ */
 async function unshareThread(client, threadId, userId, actor = {}) {
+  await assertMaySteward(client, threadId, actor);
   const { rows } = await client.query(
     `DELETE FROM email_thread_share WHERE email_thread_id = $1 AND user_id = $2 RETURNING *`,
     [threadId, userId],
@@ -261,18 +320,22 @@ async function unshareThread(client, threadId, userId, actor = {}) {
   await audit(client, {
     actorUserId: actor.user_id || null, action: "mail.thread.unshared",
     moduleKey: M, entityRef: `email_thread:${threadId}`,
-    before: rows[0] || null, after: { with: userId },
-  }).catch(() => { /* @silent:storage */ });
+    before: rows[0] || null, after: { with: userId }, isSensitive: true,
+  });
   return { removed: rows.length > 0 };
 }
 
-const listShares = (client, threadId) =>
-  client.query(
+/** Who has been let in. A disclosure in its own right — same stewardship rule. */
+const listShares = async (client, threadId, actor = {}) => {
+  await assertMaySteward(client, threadId, actor);
+  const { rows } = await client.query(
     `SELECT s.user_id, s.granted_at, u.full_name
        FROM email_thread_share s JOIN app_user u ON u.user_id = s.user_id
       WHERE s.email_thread_id = $1 ORDER BY s.granted_at`,
     [threadId],
-  ).then((r) => r.rows);
+  );
+  return rows;
+};
 
 /* ── Verified domains (§9.7) ──────────────────────────────────────────────── */
 
@@ -415,6 +478,16 @@ const listBounces = (client, { limit = 100, recipient = null, type = null } = {}
  * "x@y.cm has hard-bounced — the mailbox does not exist" before the send rather
  * than after the third attempt. Reads the CONTACT status rather than the bounce
  * log, because that is where the fact about the address lives.
+ *
+ * ── A CHECK THAT COULD NOT RUN IS NOT A CHECK THAT PASSED ───────────────────
+ *
+ * This used to end `.catch(() => [])`, which answers a failed query with the
+ * same empty list a clean one produces: every address fine, no way to tell the
+ * two apart. That is the inverse of §13.5's rule for anti-spoof verdicts — an
+ * absent verdict renders nothing rather than a green tick — and it is worse
+ * here, because the whole point of the endpoint is to say "do not send to
+ * this one". The error now propagates; the composer renders nothing when the
+ * check fails, and never blocks the send either way.
  */
 const addressStatus = (client, addresses = []) => {
   const list = [...new Set((addresses || []).filter(Boolean).map((a) => String(a).toLowerCase()))];
@@ -426,7 +499,7 @@ const addressStatus = (client, addresses = []) => {
      SELECT lower(email), email_status FROM supplier_contact
       WHERE lower(email) = ANY($1) AND email_status <> 'OK'`,
     [list],
-  ).then((r) => r.rows).catch(() => []);
+  ).then((r) => r.rows);
 };
 
 /* ── Follow-ups (§9.3) ────────────────────────────────────────────────────── */
@@ -464,7 +537,7 @@ module.exports = {
   takeLock, releaseLock,
   listPolicies, createPolicy, updatePolicy,
   getCalendar, putBusinessHours, putHolidays,
-  shareThread, unshareThread, listShares,
+  shareThread, unshareThread, listShares, assertMaySteward,
   listVerifiedDomains, verifyDomain, unverifyDomain,
   listBounces, addressStatus,
   cancelFollowup, listFollowups,

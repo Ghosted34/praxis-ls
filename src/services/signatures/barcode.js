@@ -77,7 +77,6 @@ async function rasterisePdf(buffer, { density = 300 } = {}) {
   try {
     const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
     const page = await doc.getPage(1);
-    const viewport1 = page.getViewport({ scale: 1 });
     const scale = density / 72;
     const viewport = page.getViewport({ scale });
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));

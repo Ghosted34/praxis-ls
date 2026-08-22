@@ -66,7 +66,6 @@ function presentIngest(row) {
 async function uniquePrintCode(client) {
   for (let i = 0; i < 8; i += 1) {
     const code = barcode.mintCode();
-    // eslint-disable-next-line no-await-in-loop -- uniqueness is the loop.
     if (!(await repo.getJobByCode(client, code))) return code;
   }
   throw new AppError("PRINT_CODE_EXHAUSTED", "Could not mint a unique print code.", 500);

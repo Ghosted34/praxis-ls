@@ -1,7 +1,5 @@
 "use strict";
 
-const path = require("path");
-
 function loadWith({ jobStatus = "PRINTED", duplicate = false } = {}) {
   jest.resetModules();
   const repo = {
@@ -83,8 +81,7 @@ function loadWith({ jobStatus = "PRINTED", duplicate = false } = {}) {
   }));
   jest.doMock("../../src/shared/config/settings", () => ({ getSetting: jest.fn().mockResolvedValue(7) }));
 
-  // eslint-disable-next-line global-require, import/no-dynamic-require
-  const service = require(path.resolve(__dirname, "../../src/modules/vault/signature_wet/signature_wet.service"));
+  const service = require("../../src/modules/vault/signature_wet/signature_wet.service");
   return { service, repo, sigRepo, requestRepo };
 }
 

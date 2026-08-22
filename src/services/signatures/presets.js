@@ -66,9 +66,23 @@ async function getPreset(client, code) {
   return rows[0] || null;
 }
 
-async function reasons(client) {
+/**
+ * The controlled reason vocabulary, filtered by what it is for.
+ *
+ * `kind` splits one catalogue into two lists (10784): 'SIGN' is the intent
+ * printed on the seal — *Approved for dispatch*, *Goods received* — and
+ * 'DECLINE' is why a counterparty refused. One table because it is one
+ * settings screen and one place a tenant renames a phrase; two kinds because
+ * offering "Goods received" as a decline reason would be nonsense.
+ *
+ * Defaults to SIGN so every existing caller keeps its meaning: the column was
+ * added with `DEFAULT 'SIGN'` and 10772's five rows carry it.
+ */
+async function reasons(client, { kind = "SIGN" } = {}) {
   const { rows } = await client.query(
-    "SELECT reason_code, label_en, label_fr FROM signature_reason WHERE is_active ORDER BY sort_order, reason_code",
+    "SELECT reason_code, label_en, label_fr, kind FROM signature_reason "
+      + "WHERE is_active AND kind = $1 ORDER BY sort_order, reason_code",
+    [kind === "DECLINE" ? "DECLINE" : "SIGN"],
   );
   return rows;
 }

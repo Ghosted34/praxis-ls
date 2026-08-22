@@ -56,11 +56,12 @@ async function kpis(client) {
 const MODE_EXPR = `COALESCE(
   (SELECT l.mode FROM dossier_itinerary_leg l
     WHERE l.dossier_id = d.dossier_id AND l.leg_type = 'MAIN_CARRIAGE'
-      AND l.mode IN ('AIR','SEA','LAND')
+      AND l.mode IN ('AIR','SEA','LAND','RAIL')
     ORDER BY l.seq LIMIT 1),
   CASE
     WHEN st.key ILIKE '%AIR%' THEN 'AIR'
     WHEN st.key ILIKE '%SEA%' THEN 'SEA'
+    WHEN st.key ILIKE '%RAIL%' OR st.key ILIKE '%TRAIN%' OR st.key ILIKE '%FERROVIAIRE%' THEN 'RAIL'
     WHEN st.key ILIKE '%TRANSIT%' OR st.key ILIKE '%INLAND%' THEN 'LAND'
     ELSE 'OTHER'
   END)`;
@@ -79,7 +80,7 @@ const MODE_EXPR = `COALESCE(
 const IS_MOVEMENT_EXPR = `(
   d.pol IS NOT NULL OR d.pod IS NOT NULL
   OR EXISTS (SELECT 1 FROM dossier_itinerary_leg l
-              WHERE l.dossier_id = d.dossier_id AND l.mode IN ('AIR','SEA','LAND'))
+              WHERE l.dossier_id = d.dossier_id AND l.mode IN ('AIR','SEA','LAND','RAIL'))
 )`;
 
 /**

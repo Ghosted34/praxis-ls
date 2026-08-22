@@ -10,7 +10,10 @@ FROM (VALUES
  ('INLAND_TRANSPORTATION','[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"INLAND_TRANSIT","mode":"LAND"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]'),
  ('END_TO_END_AIR_FREIGHT','[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"MAIN_CARRIAGE","mode":"AIR"},{"leg_type":"CUSTOMS","mode":"OTHER"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]'),
  ('END_TO_END_SEA_FREIGHT','[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"MAIN_CARRIAGE","mode":"SEA"},{"leg_type":"CUSTOMS","mode":"OTHER"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]'),
- ('PROJECT_CARGO','[{"leg_type":"MAIN_CARRIAGE","mode":"LAND","is_optional":true},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]')
+ ('PROJECT_CARGO','[{"leg_type":"MAIN_CARRIAGE","mode":"LAND","is_optional":true},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]'),
+ ('RAIL_TRANSPORTATION','[{"leg_type":"PICKUP","mode":"LAND","is_optional":true},{"leg_type":"MAIN_CARRIAGE","mode":"RAIL"},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]'),
+ ('RAIL_HINTERLAND_TRANSIT','[{"leg_type":"INLAND_TRANSIT","mode":"RAIL"},{"leg_type":"CUSTOMS","mode":"OTHER","is_optional":true},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]'),
+ ('END_TO_END_RAIL_FREIGHT','[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"MAIN_CARRIAGE","mode":"RAIL"},{"leg_type":"CUSTOMS","mode":"OTHER"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]')
 ) AS v(key, template) WHERE service_type.key = v.key AND service_type.itinerary_template = '[]'::jsonb;
 
 -- DOWN

@@ -176,6 +176,7 @@ export function buildMapModel(
     sea: 0,
     road: 0,
     air: 0,
+    rail: 0,
     other: 0,
   };
 

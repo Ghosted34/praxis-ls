@@ -146,6 +146,12 @@ describe("filters reach the database", () => {
     expect(sql).toContain("FROM dossier_itinerary_leg l");
     expect(sql).toContain("l.leg_type = 'MAIN_CARRIAGE'");
     expect(sql).not.toContain("'%PROJECT%'");
+
+    const cRail = fakeClient();
+    await repo.controlTower(cRail, { mode: "RAIL" });
+    const sqlRail = pageSql(cRail);
+    expect(sqlRail).toContain("FROM dossier_itinerary_leg l");
+    expect(cRail.state.params.some((p) => p.includes("RAIL"))).toBe(true);
   });
 
   test("the layer filter partitions movement from facility work", async () => {

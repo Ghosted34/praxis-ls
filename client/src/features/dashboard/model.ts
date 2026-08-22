@@ -32,7 +32,7 @@ export const numOrNull = (v: unknown): number | null =>
  * shipping lane on the screen a Monday meeting runs off. Those files now render
  * as facility activity instead of as a fabricated route.
  */
-export type ShipmentMode = "sea" | "road" | "air" | "other";
+export type ShipmentMode = "sea" | "road" | "air" | "rail" | "other";
 
 /** The server's mode vocabulary → ours. The server derives it from the
  *  itinerary's main carriage, falling back to the service-type key, so this is a
@@ -41,6 +41,7 @@ const MODE_FROM_SERVER: Record<string, ShipmentMode> = {
   SEA: "sea",
   AIR: "air",
   LAND: "road",
+  RAIL: "rail",
   OTHER: "other",
 };
 
@@ -70,9 +71,12 @@ export function shipmentMode(
   if (/WAREHOUS|CUSTOMS_BROKERAGE|BUSINESS_REPRESENTATION/.test(key))
     return "other";
   if (/AIR/.test(key)) return "air";
+  if (/RAIL|TRAIN|FERROVIAIRE/.test(key)) return "rail";
   if (/ROAD|TRANSIT|HINTERLAND|TRUCK|INLAND/.test(key)) return "road";
   if (/SEA|OCEAN|MARITIME/.test(key)) return "sea";
   if (/air|flight|mawb|cdg|airport/i.test(`${vessel} ${lane}`)) return "air";
+  if (/rail|train|wagon|camrail|gare/i.test(`${str(s.service ?? s.mode)} ${vessel} ${lane}`))
+    return "rail";
   if (
     /road|truck|corridor|transit/i.test(`${str(s.service ?? s.mode)} ${lane}`)
   )

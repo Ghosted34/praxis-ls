@@ -121,6 +121,7 @@
   --mode-sea: 40 148 94;
   --mode-air: 28 155 215;
   --mode-road: 224 122 26;
+  --mode-rail: 147 51 234;
   --ink: 16 30 52;
   /* 132 150 176 measured 3.01:1 on --card and 2.78:1 on --background — the
      single most-used failing token in the app (198 uses via .micro). Now
@@ -222,6 +223,7 @@
   --mode-sea: 74 190 133;
   --mode-air: 98 196 245;
   --mode-road: 247 158 66;
+  --mode-rail: 192 132 252;
 }
 
 @layer base {

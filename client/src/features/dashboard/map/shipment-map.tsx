@@ -76,6 +76,7 @@ export const LANE_STROKE: Record<ShipmentMode, string> = {
   sea: "rgb(var(--mode-sea))",
   air: "rgb(var(--mode-air))",
   road: "rgb(var(--mode-road))",
+  rail: "rgb(var(--mode-rail))",
   // A leg with no transport mode is an activity at a place, not a corridor. It
   // draws in the neutral ink so it never reads as one of the three modes in the
   // legend — and it has no lane to draw in the normal case anyway.
@@ -85,18 +86,21 @@ const LANE_DASH: Record<ShipmentMode, string> = {
   sea: "6 7",
   air: "3 6",
   road: "2 8",
+  rail: "5 4",
   other: "1 5",
 };
 const LANE_WIDTH: Record<ShipmentMode, number> = {
   sea: 2.2,
   air: 1.6,
   road: 2.6,
+  rail: 2.2,
   other: 1.4,
 };
 const LANE_ANIM: Record<ShipmentMode, string> = {
   sea: "animate-lane-sea",
   air: "animate-lane-air",
   road: "animate-lane-road",
+  rail: "animate-lane-rail",
   // No dash animation: nothing is travelling along it.
   other: "",
 };
@@ -138,7 +142,7 @@ const KIND_GLYPH: Record<string, string> = {
   SEAPORT: MODE_GLYPH.sea,
   AIRPORT: MODE_GLYPH.air,
   TERMINAL: MODE_GLYPH.other,
-  RAIL_TERMINAL: MODE_GLYPH.other,
+  RAIL_TERMINAL: MODE_GLYPH.rail,
   WAREHOUSE: MODE_GLYPH.other,
   // A gate: two posts and a bar.
   BORDER_POST: "M4.5 20V5h2v15z M17.5 20V5h2v15z M6.5 9h11v2.5h-11z",
@@ -244,7 +248,7 @@ export function ShipmentMap({
   );
   const order = React.useMemo(() => focusOrder(lanes), [lanes]);
 
-  const counts = model?.counts ?? { sea: 0, road: 0, air: 0, other: 0 };
+  const counts = model?.counts ?? { sea: 0, road: 0, air: 0, rail: 0, other: 0 };
   const laneCount = model?.lanes.length ?? 0;
   const fileCount = order.length;
 

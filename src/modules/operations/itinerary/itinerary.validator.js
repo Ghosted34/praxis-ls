@@ -19,7 +19,7 @@ const leg = z.object({
   seq: z.number().optional(),
   itinerary_leg_id: z.string().uuid().optional(),
   leg_type: z.enum(["PICKUP", "MAIN_CARRIAGE", "CUSTOMS", "INLAND_TRANSIT", "WAREHOUSE", "FINAL_DELIVERY", "OTHER"]),
-  mode: z.enum(["AIR", "SEA", "LAND", "OTHER"]).default("OTHER"),
+  mode: z.enum(["AIR", "SEA", "LAND", "RAIL", "OTHER"]).default("OTHER"),
   origin: z.string().trim().max(500).optional().nullable(),
   destination: z.string().trim().max(500).optional().nullable(),
   origin_place_id: z.string().uuid().optional().nullable(),

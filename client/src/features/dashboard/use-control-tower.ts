@@ -60,7 +60,7 @@ export type ControlTowerKpis = {
 };
 
 export type ControlTowerFilters = {
-  mode?: "AIR" | "SEA" | "LAND" | "OTHER";
+  mode?: "AIR" | "SEA" | "LAND" | "RAIL" | "OTHER";
   territory?: string;
   service_type_id?: string;
   date_field?: "created" | "updated" | "arrival" | "delivery";

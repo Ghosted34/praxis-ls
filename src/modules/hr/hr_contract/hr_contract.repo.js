@@ -97,4 +97,22 @@ module.exports = {
     );
     return rows;
   },
+
+  /**
+   * The corporate entity a contract numbers under. `hr_contract.entity_id` is
+   * nullable and older rows leave it unset, so fall back to the employee's —
+   * the same COALESCE the document template already does when it resolves the
+   * letterhead. Returns null when neither has one, and the caller then issues
+   * without a number rather than failing the transition.
+   */
+  async entityIdFor(client, { contractId, employeeId }) {
+    const { rows } = await client.query(
+      `SELECT COALESCE(hc.entity_id, e.entity_id) AS entity_id
+         FROM hr_contract hc
+         LEFT JOIN employee e ON e.employee_id = hc.employee_id
+        WHERE hc.hr_contract_id = $1 AND ($2::uuid IS NULL OR hc.employee_id = $2)`,
+      [contractId, employeeId || null],
+    );
+    return (rows[0] && rows[0].entity_id) || null;
+  },
 };

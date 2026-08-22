@@ -28,6 +28,7 @@ export function Integrations() {
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
           <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
           <BackupStorageCard row={byKey["storage.backup"]} onSaved={reload} />
+          <SignwellCard rows={byKey} onSaved={reload} />
           <AlertsCard rows={byKey} onSaved={reload} />
         </div>
       )}
@@ -427,6 +428,87 @@ function GeoapifyCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => 
       <Field label="API key" hint={<SecretHint row={row} label="key" />}>
         <input className="in" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="••••••••" />
       </Field>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+    </Card>
+  );
+}
+
+/* Certified signing (SignWell) ---------------------------------------------
+ * The platform's certified-signature account (SIGNATURE_ENGINEERING_GUIDE
+ * §7.2, §7.5). The free-tier allowance belongs to the platform account — the
+ * tenants consume envelopes against it — so the key sits here, deploy-wide,
+ * not in any tenant's settings. A tenant that brings its own account stores
+ * its key in ITS OWN integration secrets (key `qes_signwell`), which the
+ * backend prefers over this one; this card is the shared default.
+ *
+ * The pricing row is platform-tier on the same reasoning: a tenant cannot
+ * set the price the platform charges it, and the monthly quota is the
+ * platform's allowance, not a tenant's.
+ * ------------------------------------------------------------------------- */
+function SignwellCard({ rows, onSaved }: { rows: Record<string, PlatformSetting>; onSaved: () => void }) {
+  const keyRow = rows["qes.signwell"];
+  const priceRow = rows["qes.pricing"];
+  const p = (priceRow?.value || {}) as Record<string, string | number>;
+  const k = (keyRow?.value || {}) as Record<string, string>;
+  const { toast } = useToast();
+  const [secret, setSecret] = useState("");
+  const [base_url, setBaseUrl] = useState(k.base_url || "");
+  const [unit_cost, setUnitCost] = useState(p.unit_cost != null ? String(p.unit_cost) : "");
+  const [currency, setCurrency] = useState(String(p.currency || "XAF"));
+  const [monthly_quota, setMonthlyQuota] = useState(p.monthly_quota != null ? String(p.monthly_quota) : "25");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await platform.putSetting("qes", "signwell", {
+        value: { base_url: base_url.trim() || undefined },
+        secret: secret || undefined,
+      });
+      await platform.putSetting("qes", "pricing", {
+        value: {
+          unit_cost: unit_cost === "" ? 0 : Number(unit_cost),
+          currency: currency.trim().toUpperCase() || "XAF",
+          monthly_quota: monthly_quota === "" ? 0 : Number(monthly_quota),
+        },
+      });
+      toast("Certified signing saved");
+      setSecret("");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Certified signing (SignWell)" actions={<TestButton section="qes" keyName="signwell" />}>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+        The platform account behind the <strong>CERTIFIED</strong> signature card. Envelopes issued
+        on it consume the monthly allowance below; the quota watch alerts here at 80% and 95%.
+        Tenants with their own SignWell account keep its key in their own workspace, and the
+        backend prefers the tenant's key over this one.
+      </p>
+      <div className="form-grid" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr", marginTop: 12 }}>
+        <Field label="API key" hint={<SecretHint row={keyRow} label="key" />}>
+          <input className="in" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="••••••••" />
+        </Field>
+        <Field label="API base URL" hint="Blank for the public API. Set for a provider sandbox.">
+          <input className="in" value={base_url} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://www.signwell.com/api/v1" />
+        </Field>
+        <Field label="Unit cost (per envelope)" hint="What the platform bills a tenant per issued envelope. 0 until a rate is set.">
+          <input className="in" type="number" min="0" value={unit_cost} onChange={(e) => setUnitCost(e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Monthly envelope quota" hint="Fleet-wide allowance for the month. 0 disables the quota watch.">
+          <input className="in" type="number" min="0" value={monthly_quota} onChange={(e) => setMonthlyQuota(e.target.value)} placeholder="25" />
+        </Field>
+        <Field label="Currency">
+          <input className="in" value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="XAF" />
+        </Field>
+      </div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
       </div>

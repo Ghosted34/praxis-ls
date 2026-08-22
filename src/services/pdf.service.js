@@ -94,7 +94,28 @@ async function renderHtml(html) {
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    return await page.pdf({ format: "A4", printBackground: true });
+    // Buffer.from IS the fix (BAD_STORAGE_BUFFER, live 22 Aug 2026).
+    //
+    // Puppeteer 23 changed `page.pdf()` to resolve a **Uint8Array** where it
+    // used to resolve a Node Buffer. Every byte is identical and every
+    // downstream consumer that only reads bytes kept working — crypto's
+    // .update() takes a Uint8Array happily, so the content hash was computed
+    // fine — but `storage.put` requires a real Buffer, deliberately, and
+    // Buffer.isBuffer(uint8Array) is false. So every render reached the storage
+    // boundary and was rejected there with a 400: "Only binary buffers can be
+    // stored". Contracts, payslips, invoices — all of them, on every tenant.
+    //
+    // It was invisible for so long because the deploy preflight has ALWAYS
+    // wrapped it (scripts/ops/puppeteer-preflight.js:74). The preflight
+    // therefore rendered a valid PDF and reported ok:true on the very same
+    // container in which every real render was failing — a green check on a
+    // code path that differed from production by exactly this call.
+    //
+    // Not `Buffer.from(u8.buffer)`: a typed array can be a VIEW into a larger
+    // ArrayBuffer, and taking `.buffer` would grab the whole backing store
+    // (trailing slack and all) rather than the view. `Buffer.from(typedArray)`
+    // copies the view's own bytes, which is what we want.
+    return Buffer.from(await page.pdf({ format: "A4", printBackground: true }));
   } finally {
     await browser.close();
   }

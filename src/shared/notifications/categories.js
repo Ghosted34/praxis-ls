@@ -75,6 +75,13 @@ const DOMAIN_TO_CATEGORY = {
    * under System, next to cache invalidations.
    */
   document_signature: "compliance",
+  /*
+   * QES envelopes — the provider's half of a certified signature. Same bucket
+   * as the signing acts they surround: a tenant tuning notifications for
+   * "something happened to a signature" expects the envelope events there,
+   * not in System next to cache invalidations.
+   */
+  qes: "compliance",
 
   // system / misc
   ai: "system", comms: "system", dashboard: "system", dictionary_item: "system", notification: "system",

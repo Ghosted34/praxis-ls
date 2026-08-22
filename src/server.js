@@ -194,7 +194,20 @@ function buildApp() {
   // status, or how long it took — and no log line anywhere carried a tenant.
   // Mounted after requestIdMiddleware so every line shares that correlation id.
   app.use(buildAccessLog());
-  app.use(express.json({ limit: "2mb" }));
+  /**
+   * The `verify` callback stashes the UNTOUCHED bytes before body-parser
+   * parses them. Some routes need the raw text rather than the object:
+   * provider webhooks verify a signature over the delivered bytes, and a
+   * parser that normalises key order or encodings first would change what
+   * the signature covers — so the raw form must be captured HERE, where the
+   * global parser runs, because a route-level `express.text` behind it never
+   * runs: body-parser sets `req._body` once it has parsed, and every
+   * downstream body parser bails on that flag. (The QES webhook audit found
+   * exactly this: every genuine delivery was rejected 401 because the route
+   * only ever saw a parsed object.) `req.rawBody` is read by
+   * qes_public.controller and is null for non-JSON bodies.
+   */
+  app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }));
   app.use(express.urlencoded({ extended: true }));
 
   // OBS-E2: browser crash reports. Mounted before the tenant router so it needs

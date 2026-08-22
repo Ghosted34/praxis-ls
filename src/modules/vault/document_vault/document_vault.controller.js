@@ -22,12 +22,49 @@ const EXT_BY_MIME = Object.fromEntries(Object.entries(MIME_BY_EXT).map(([ext, mi
  * it. This prevents a PNG or JPEG from being sent to the browser as
  * `application/pdf`.
  */
+/**
+ * A FILENAME SOMEONE CAN FILE.
+ *
+ * This used to be `${doc_type}-${doc_id}.pdf`, so every download landed in the
+ * user's folder as `EMPLOYMENT_CONTRACT-3fa85f64-5717-4562-b3fc-2c963f66afa6.pdf`
+ * — a UUID no human recognises, on a document that HAS a reference printed
+ * inside it. Two of those in a downloads folder are indistinguishable without
+ * opening both.
+ *
+ * Order of preference, most meaningful first:
+ *   1. `doc_number` — the allocated reference. NOT YET carried onto the vault
+ *      row for generated documents; read here so the day `capture()` passes it
+ *      through, every filename improves with no further change.
+ *   2. `original_name` — what an UPLOADED file was called. A scan the user
+ *      named "Passport Amina.pdf" should come back as that, not as a UUID.
+ *   3. the id fragment — last resort, 8 characters.
+ *
+ * Never the full UUID. The doc type is title-cased and its underscores opened
+ * out, because the type is the first thing a person scans for.
+ *
+ * `safe()` is not cosmetic: this value goes into a `Content-Disposition`
+ * header, so a quote or a newline in a stored title could otherwise forge
+ * header structure. Anything outside the allow-list becomes a space, runs are
+ * collapsed, and the result is length-capped.
+ */
+function safe(part) {
+  return String(part || "")
+    .replace(/[^A-Za-z0-9 ._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
 function fileMeta(doc) {
   const pathExt = path.extname(String(doc.storage_path || "")).slice(1).toLowerCase();
   const contentType = MIME_BY_EXT[pathExt] || "application/octet-stream";
   const extension = EXT_BY_MIME[contentType] || pathExt || "bin";
-  const stem = String(doc.doc_type || "document").replace(/[^A-Za-z0-9_-]+/g, "_");
-  return { contentType, extension, filename: `${stem}-${doc.doc_id}.${extension}` };
+  const typeWords = safe(String(doc.doc_type || "document").replace(/_/g, " "));
+  const stem = typeWords ? typeWords.charAt(0).toUpperCase() + typeWords.slice(1).toLowerCase() : "Document";
+  const uploaded = doc.original_name ? String(doc.original_name).replace(/\.[A-Za-z0-9]{1,8}$/, "") : null;
+  const ref = safe(doc.doc_number || uploaded || String(doc.doc_id || "").slice(0, 8));
+  const filename = `${[stem, ref].filter(Boolean).join(" ")}.${extension}`.replace(/\s+/g, " ");
+  return { contentType, extension, filename };
 }
 
 module.exports = {

@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1422 |
-| Modules mounted | 129 |
+| Routes | 1434 |
+| Modules mounted | 132 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1422 mounted routes, grouped by path prefix.
+All 1434 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1501,6 +1501,7 @@ All 1422 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/public/portfolio/media/:id` | — |
 | GET | `/api/tenant/public/proposals/:token` | — |
 | GET | `/api/tenant/public/proposals/:token/pdf` | — |
+| POST | `/api/tenant/public/qes/:provider/webhook` | — |
 | GET | `/api/tenant/public/secure/:token` | — |
 | GET | `/api/tenant/public/secure/:token/download` | — |
 | GET | `/api/tenant/public/sign/:token` | — |
@@ -1744,9 +1745,20 @@ All 1422 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/signatures/:id` | — |
 | POST | `/api/tenant/signatures/:id/revoke` | — |
 | GET | `/api/tenant/signatures/:id/scans` | — |
+| POST | `/api/tenant/signatures/ingest` | — |
+| POST | `/api/tenant/signatures/ingest/:id/bind` | — |
+| POST | `/api/tenant/signatures/ingest/:id/decode` | — |
+| POST | `/api/tenant/signatures/ingest/:id/reject` | — |
+| GET | `/api/tenant/signatures/ingest/queue` | — |
 | POST | `/api/tenant/signatures/internal` | — |
 | GET | `/api/tenant/signatures/menu` | — |
 | GET | `/api/tenant/signatures/presets` | — |
+| POST | `/api/tenant/signatures/print-jobs` | — |
+| GET | `/api/tenant/signatures/print-jobs/:id/barcode` | — |
+| POST | `/api/tenant/signatures/print-jobs/:id/printed` | — |
+| POST | `/api/tenant/signatures/print-jobs/:id/reprint` | — |
+| GET | `/api/tenant/signatures/qes/quote` | — |
+| GET | `/api/tenant/signatures/qes/usage` | — |
 | GET | `/api/tenant/signatures/reasons` | — |
 | GET | `/api/tenant/signatures/stats` | — |
 

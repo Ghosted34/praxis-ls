@@ -26,13 +26,14 @@ const {
 const MIGRATION = path.join(__dirname, "..", "..", "migrations", "tenant", "0682_operation_reference.sql");
 
 describe("the shipped codes", () => {
-  it("cover the fourteen service types the taxonomy ships with", () => {
-    expect(Object.keys(DEFAULT_SERVICE_CODES)).toHaveLength(14);
+  it("cover the fifteen service types the taxonomy ships with", () => {
+    expect(Object.keys(DEFAULT_SERVICE_CODES)).toHaveLength(15);
     expect(DEFAULT_SERVICE_CODES.SEA_FREIGHT_IMPORT).toBe("SM");
     expect(DEFAULT_SERVICE_CODES.HINTERLAND_TRANSIT).toBe("HT");
     expect(DEFAULT_SERVICE_CODES.END_TO_END_SEA_FREIGHT).toBe("EF");
     expect(DEFAULT_SERVICE_CODES.RAIL_TRANSPORTATION).toBe("RT");
     expect(DEFAULT_SERVICE_CODES.RAIL_HINTERLAND_TRANSIT).toBe("RH");
+    expect(DEFAULT_SERVICE_CODES.END_TO_END_RAIL_FREIGHT).toBe("ER");
   });
 
   it("are all two legal characters and all distinct", () => {

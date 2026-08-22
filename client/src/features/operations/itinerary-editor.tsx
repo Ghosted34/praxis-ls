@@ -69,6 +69,7 @@ const MODE_LABEL: Record<api.LegMode, string> = {
   AIR: "Air",
   SEA: "Sea",
   LAND: "Land",
+  RAIL: "Rail",
   OTHER: "No transport",
 };
 

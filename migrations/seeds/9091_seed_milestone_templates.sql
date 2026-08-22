@@ -72,7 +72,8 @@ FROM (VALUES
     ('CUSTOMS_BROKERAGE',        7, 'WORKING_DAYS', false),
     ('PROJECT_CARGO',           45, 'WORKING_DAYS', false),
     ('RAIL_TRANSPORTATION',       8, 'WORKING_DAYS', false),
-    ('RAIL_HINTERLAND_TRANSIT', 15, 'WORKING_DAYS', false)
+    ('RAIL_HINTERLAND_TRANSIT', 15, 'WORKING_DAYS', false),
+    ('END_TO_END_RAIL_FREIGHT',  20, 'WORKING_DAYS', false)
 ) AS v(key, days, basis, open_ended)
 WHERE st.key = v.key AND st.default_duration_days IS NULL;
 
@@ -116,7 +117,7 @@ SELECT st.key, 'MAIN', st.default_duration_days
  WHERE st.key IN ('SEA_FREIGHT_IMPORT','SEA_FREIGHT_EXPORT','AIR_FREIGHT_IMPORT','AIR_FREIGHT_EXPORT',
                   'HINTERLAND_TRANSIT','INLAND_TRANSPORTATION','END_TO_END_AIR_FREIGHT',
                   'END_TO_END_SEA_FREIGHT','CUSTOMS_BROKERAGE','PROJECT_CARGO',
-                  'RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT')
+                  'RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT')
    AND st.default_duration_days IS NOT NULL
 ON CONFLICT DO NOTHING;
 
@@ -390,7 +391,23 @@ INSERT INTO _ms_stage (svc,seq,code,label_en,label_fr,weight,min_h,owner,anchor,
  ('RAIL_HINTERLAND_TRANSIT',11,'OFFLOADING','Offloading at rail terminal','Déchargement terminal ferroviaire',6,8,'TERMINAL',false,false,true,NULL,'MAIN',NULL,NULL),
  ('RAIL_HINTERLAND_TRANSIT',12,'DELIVERY','Delivery to consignee','Livraison au destinataire',8,8,'INTERNAL',false,true,true,'POD','MAIN',NULL,'delivery_note.created'),
  ('RAIL_HINTERLAND_TRANSIT',13,'T1_DISCHARGED','Transit discharged / bond released','Transit apuré / caution levée',5,24,'AUTHORITY',false,false,true,'BOND','MAIN',NULL,NULL),
- ('RAIL_HINTERLAND_TRANSIT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued')
+ ('RAIL_HINTERLAND_TRANSIT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued'),
+
+-- ── 15. END_TO_END_RAIL_FREIGHT — Fret Ferroviaire Porte-à-Porte ────────────
+ ('END_TO_END_RAIL_FREIGHT', 1,'BOOKING_REQUEST','Booking requested','Demande de réservation',4,4,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 2,'DOCS_VERIFIED','Shipping & transit documents verified','Documents vérifiés',5,8,'CLIENT',false,false,true,'BL','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 3,'CARGO_PICKUP','Cargo collected from shipper / farm','Enlèvement chez le client / expéditeur',6,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 4,'RAILHEAD_TRANSFER','Transfer to railhead & wagon loading','Acheminement gare et chargement',7,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 5,'CUSTOMS_SEALED','Customs sealed & departure clearance','Plombage et formalités de départ',5,6,'AUTHORITY',false,false,true,'DECLARATION','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 6,'TRAIN_DEPARTED','Train departed (ATD)','Train parti (ATD)',10,12,'CARRIER',true,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 7,'IN_RAIL_TRANSIT','In rail transit','Acheminement sur voie ferrée',14,24,'CARRIER',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 8,'BORDER_CROSSING','Border crossing / international transit','Passage frontière / transit',12,24,'AUTHORITY',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 9,'DEST_STATION_ARRIVED','Arrived destination railhead (ATA)','Arrivée gare destination (ATA)',10,12,'CARRIER',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',10,'DEST_CLEARANCE','Destination customs clearance','Dédouanement à destination',8,16,'AUTHORITY',false,false,true,'RELEASE_ORDER','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',11,'FINAL_HAULAGE','Final delivery haulage dispatched','Mise en livraison finale par camion',7,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',12,'DELIVERY','Delivery to consignee (POD)','Livraison finale au destinataire',6,8,'INTERNAL',false,true,true,'POD','MAIN',NULL,'delivery_note.created'),
+ ('END_TO_END_RAIL_FREIGHT',13,'EMPTY_RELEASE','Empty wagon / container returned','Restitution matériel / conteneur',3,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued')
 ON CONFLICT DO NOTHING;
 
 -- ── Guard: every chain segment must sum to exactly 100 ──────────────────────
@@ -544,7 +561,12 @@ SELECT st.service_type_id, a.seq, a.code, a.fr, a.en, a.vis, true
     -- Rail hinterland transit
     ('RAIL_HINTERLAND_TRANSIT',1,'BORDER_RAIL','Les contrôles transfrontaliers en gare frontière s''effectuent selon les horaires d''ouverture des deux administrations.','Cross-border rail inspections at border stations run on opening hours of both authorities.',true),
     ('RAIL_HINTERLAND_TRANSIT',2,'RAIL_CONVOY','Les trains de transit circulent en convoi cadencé selon les créneaux douaniers.','Transit trains operate in scheduled convoys on customs-allocated slots.',true),
-    ('RAIL_HINTERLAND_TRANSIT',3,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, insécurité du corridor, panne locomotive, grève.','Excluded: rail cut, border closure, corridor insecurity, locomotive failure, strike.',true)
+    ('RAIL_HINTERLAND_TRANSIT',3,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, insécurité du corridor, panne locomotive, grève.','Excluded: rail cut, border closure, corridor insecurity, locomotive failure, strike.',true),
+    -- End-to-end rail freight
+    ('END_TO_END_RAIL_FREIGHT',1,'ORIGIN_PICKUP','Les délais d''enlèvement supposent un accès carrossable au site de chargement et la mise à disposition effective de la marchandise.','Pickup lead times assume vehicle access to loading site and goods ready for handover.',true),
+    ('END_TO_END_RAIL_FREIGHT',2,'RAILWAY_TIMETABLE','Le transit ferroviaire s''exécute selon les sillons programmés de l''opérateur et les formalités aux gares de triage.','Rail transit runs on published operator train slots and yard marshalling schedules.',true),
+    ('END_TO_END_RAIL_FREIGHT',3,'CROSS_BORDER','Les délais de passage frontière et de dédouanement à destination dépendent des services douaniers des pays traversés.','Cross-border and destination clearance timings depend on customs authorities in transit countries.',true),
+    ('END_TO_END_RAIL_FREIGHT',4,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, intempéries exceptionnelles, insécurité du corridor, grève.','Excluded: rail cuts, border closures, extreme weather, corridor insecurity, strikes.',true)
   ) AS a(key, seq, code, fr, en, vis) ON a.key = st.key
 ON CONFLICT (service_type_id, code) DO NOTHING;
 

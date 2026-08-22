@@ -238,6 +238,7 @@ export function DashboardPage() {
           sea: data.lanes.filter((l) => l.mode === "sea").length,
           air: data.lanes.filter((l) => l.mode === "air").length,
           road: data.lanes.filter((l) => l.mode === "road").length,
+          rail: data.lanes.filter((l) => l.mode === "rail").length,
           other: data.lanes.filter((l) => l.mode === "other").length,
         }}
         stroke={LANE_STROKE}

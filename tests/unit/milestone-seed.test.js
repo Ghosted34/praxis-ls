@@ -26,7 +26,7 @@ const SEED = path.join(
   "9091_seed_milestone_templates.sql",
 );
 
-/** The 14 system service types 9080 seeds; each must ship a chain. */
+/** The 15 system service types 9080 seeds; each must ship a chain. */
 const SERVICES = [
   "SEA_FREIGHT_IMPORT",
   "SEA_FREIGHT_EXPORT",
@@ -42,6 +42,7 @@ const SERVICES = [
   "PROJECT_CARGO",
   "RAIL_TRANSPORTATION",
   "RAIL_HINTERLAND_TRANSIT",
+  "END_TO_END_RAIL_FREIGHT",
 ];
 
 const OWNER_TIERS = new Set([
@@ -91,7 +92,7 @@ describe("seeded milestone chains", () => {
   it("parses the seed at all", () => {
     // Guards the reader: if the regex stops matching, every assertion below
     // would pass vacuously against an empty list.
-    expect(all.length).toBe(196);
+    expect(all.length).toBe(210);
   });
 
   it.each(SERVICES)("%s ships exactly 14 stages", (svc) => {

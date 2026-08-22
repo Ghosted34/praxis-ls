@@ -123,6 +123,7 @@ const DEFAULT_SERVICE_CODES = {
   PROJECT_CARGO: "PC",
   RAIL_TRANSPORTATION: "RT",
   RAIL_HINTERLAND_TRANSIT: "RH",
+  END_TO_END_RAIL_FREIGHT: "ER",
 };
 
 /* ── The random core ───────────────────────────────────────────────────────── */

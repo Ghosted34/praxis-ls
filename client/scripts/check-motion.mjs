@@ -92,6 +92,7 @@ const INFINITE_OK = {
     "marching-ants stroke on a shipping lane — the motion IS direction of travel",
   "lane-road": "as above",
   "lane-air": "as above",
+  "lane-rail": "as above",
 };
 
 /**

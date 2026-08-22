@@ -1,9 +1,10 @@
 -- ============================================================================
--- 11743 — Seed Rail Transportation & Rail Hinterland Transit.
+-- 11743 — Seed Rail Transportation, Rail Hinterland Transit & End-to-End Rail Freight.
 --
 -- 1. Updates itinerary leg mode constraint to support RAIL.
--- 2. Seeds RAIL_TRANSPORTATION (Domestic Inland, code RT) and
---    RAIL_HINTERLAND_TRANSIT (Transit Hinterland, code RH) into service_type.
+-- 2. Seeds RAIL_TRANSPORTATION (Domestic Inland, code RT),
+--    RAIL_HINTERLAND_TRANSIT (Transit Hinterland, code RH), and
+--    END_TO_END_RAIL_FREIGHT (End-to-End International, code ER) into service_type.
 -- 3. Sets default durations, container capture toggles, and itinerary templates.
 -- 4. Seeds 14-stage standard milestone chains and published assumptions.
 -- 5. Seeds active v1 shipment detail field sets and fields.
@@ -45,6 +46,17 @@ INSERT INTO service_type (
   true, 'GROUPED',
   '[{"leg_type":"INLAND_TRANSIT","mode":"RAIL"},{"leg_type":"CUSTOMS","mode":"OTHER","is_optional":true},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]'::jsonb,
   'RH'
+),
+(
+  'END_TO_END_RAIL_FREIGHT',
+  'Fret Ferroviaire Porte-à-Porte',
+  'End-to-End Rail Freight',
+  'END_TO_END_INTERNATIONAL',
+  true, true,
+  20, 'WORKING_DAYS', false,
+  true, 'GROUPED',
+  '[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"MAIN_CARRIAGE","mode":"RAIL"},{"leg_type":"CUSTOMS","mode":"OTHER"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]'::jsonb,
+  'ER'
 )
 ON CONFLICT (key) DO UPDATE SET
   name_fr = EXCLUDED.name_fr,
@@ -61,7 +73,7 @@ ON CONFLICT (key) DO UPDATE SET
 INSERT INTO milestone_template (service_type_id, version, is_active, name, is_system, system_code, source_version)
 SELECT st.service_type_id, 1, true, 'Chaîne standard — ' || st.name_fr, true, st.key, 1
   FROM service_type st
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT')
+ WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
 ON CONFLICT (service_type_id, version) DO NOTHING;
 
 -- Milestone stages staging
@@ -113,7 +125,22 @@ INSERT INTO _tmp_rail_stages (svc,seq,code,label_en,label_fr,weight,min_h,owner,
  ('RAIL_HINTERLAND_TRANSIT',11,'OFFLOADING','Offloading at rail terminal','Déchargement terminal ferroviaire',6,8,'TERMINAL',false,false,true,NULL,'MAIN',NULL,NULL),
  ('RAIL_HINTERLAND_TRANSIT',12,'DELIVERY','Delivery to consignee','Livraison au destinataire',8,8,'INTERNAL',false,true,true,'POD','MAIN',NULL,'delivery_note.created'),
  ('RAIL_HINTERLAND_TRANSIT',13,'T1_DISCHARGED','Transit discharged / bond released','Transit apuré / caution levée',5,24,'AUTHORITY',false,false,true,'BOND','MAIN',NULL,NULL),
- ('RAIL_HINTERLAND_TRANSIT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued');
+ ('RAIL_HINTERLAND_TRANSIT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued'),
+
+ ('END_TO_END_RAIL_FREIGHT', 1,'BOOKING_REQUEST','Booking requested','Demande de réservation',4,4,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 2,'DOCS_VERIFIED','Shipping & transit documents verified','Documents vérifiés',5,8,'CLIENT',false,false,true,'BL','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 3,'CARGO_PICKUP','Cargo collected from shipper / farm','Enlèvement chez le client / expéditeur',6,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 4,'RAILHEAD_TRANSFER','Transfer to railhead & wagon loading','Acheminement gare et chargement',7,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 5,'CUSTOMS_SEALED','Customs sealed & departure clearance','Plombage et formalités de départ',5,6,'AUTHORITY',false,false,true,'DECLARATION','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 6,'TRAIN_DEPARTED','Train departed (ATD)','Train parti (ATD)',10,12,'CARRIER',true,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 7,'IN_RAIL_TRANSIT','In rail transit','Acheminement sur voie ferrée',14,24,'CARRIER',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 8,'BORDER_CROSSING','Border crossing / international transit','Passage frontière / transit',12,24,'AUTHORITY',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT', 9,'DEST_STATION_ARRIVED','Arrived destination railhead (ATA)','Arrivée gare destination (ATA)',10,12,'CARRIER',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',10,'DEST_CLEARANCE','Destination customs clearance','Dédouanement à destination',8,16,'AUTHORITY',false,false,true,'RELEASE_ORDER','MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',11,'FINAL_HAULAGE','Final delivery haulage dispatched','Mise en livraison finale par camion',7,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',12,'DELIVERY','Delivery to consignee (POD)','Livraison finale au destinataire',6,8,'INTERNAL',false,true,true,'POD','MAIN',NULL,'delivery_note.created'),
+ ('END_TO_END_RAIL_FREIGHT',13,'EMPTY_RELEASE','Empty wagon / container returned','Restitution matériel / conteneur',3,8,'INTERNAL',false,false,true,NULL,'MAIN',NULL,NULL),
+ ('END_TO_END_RAIL_FREIGHT',14,'FILE_CLOSED','Final invoice & file closed','Facture finale et dossier clos',3,8,'INTERNAL',false,false,false,NULL,'MAIN',NULL,'invoice.issued');
 
 INSERT INTO milestone_template_stage (
   milestone_template_id, seq, code, name_en, name_fr,
@@ -146,7 +173,11 @@ SELECT st.service_type_id, a.seq, a.code, a.fr, a.en, a.vis, true
     ('RAIL_TRANSPORTATION',4,'FORCE_MAJEURE','Exclus : déraillement, avarie de voie, rupture caténaire, grève des cheminots, intempéries exceptionnelles.','Excluded: derailment, track damage, overhead line failure, railway worker strike, exceptional weather.',true),
     ('RAIL_HINTERLAND_TRANSIT',1,'BORDER_RAIL','Les contrôles transfrontaliers en gare frontière s''effectuent selon les horaires d''ouverture des deux administrations.','Cross-border rail inspections at border stations run on opening hours of both authorities.',true),
     ('RAIL_HINTERLAND_TRANSIT',2,'RAIL_CONVOY','Les trains de transit circulent en convoi cadencé selon les créneaux douaniers.','Transit trains operate in scheduled convoys on customs-allocated slots.',true),
-    ('RAIL_HINTERLAND_TRANSIT',3,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, insécurité du corridor, panne locomotive, grève.','Excluded: rail cut, border closure, corridor insecurity, locomotive failure, strike.',true)
+    ('RAIL_HINTERLAND_TRANSIT',3,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, insécurité du corridor, panne locomotive, grève.','Excluded: rail cut, border closure, corridor insecurity, locomotive failure, strike.',true),
+    ('END_TO_END_RAIL_FREIGHT',1,'ORIGIN_PICKUP','Les délais d''enlèvement supposent un accès carrossable au site de chargement et la mise à disposition effective de la marchandise.','Pickup lead times assume vehicle access to loading site and goods ready for handover.',true),
+    ('END_TO_END_RAIL_FREIGHT',2,'RAILWAY_TIMETABLE','Le transit ferroviaire s''exécute selon les sillons programmés de l''opérateur et les formalités aux gares de triage.','Rail transit runs on published operator train slots and yard marshalling schedules.',true),
+    ('END_TO_END_RAIL_FREIGHT',3,'CROSS_BORDER','Les délais de passage frontière et de dédouanement à destination dépendent des services douaniers des pays traversés.','Cross-border and destination clearance timings depend on customs authorities in transit countries.',true),
+    ('END_TO_END_RAIL_FREIGHT',4,'FORCE_MAJEURE','Exclus : coupure de voie ferrée, fermeture de frontière, intempéries exceptionnelles, insécurité du corridor, grève.','Excluded: rail cuts, border closures, extreme weather, corridor insecurity, strikes.',true)
   ) AS a(key, seq, code, fr, en, vis) ON a.key = st.key
 ON CONFLICT (service_type_id, code) DO NOTHING;
 
@@ -154,7 +185,7 @@ ON CONFLICT (service_type_id, code) DO NOTHING;
 INSERT INTO service_type_field_set (service_type_id, version, is_active, name, is_system, source_version, published_at)
 SELECT st.service_type_id, 1, true, 'Détails standard — ' || st.name_fr, true, 1, now()
   FROM service_type st
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT')
+ WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
 ON CONFLICT (service_type_id, version) DO NOTHING;
 
 CREATE TEMP TABLE _tmp_rail_fields (
@@ -224,7 +255,32 @@ INSERT INTO _tmp_rail_fields (svc, group_code, group_fr, group_en, group_seq, se
   ('RAIL_HINTERLAND_TRANSIT','CARGO','Marchandise','Cargo',30,70,'marks_numbers','Marques & numéros','Marks & numbers','TEXT',false,'CARGO_MARKS','marks_numbers','HALF'),
   ('RAIL_HINTERLAND_TRANSIT','CUSTOMS','Transit & douane','Transit & customs',40,10,'transit_declaration','Déclaration de transit','Transit declaration','TEXT',false,'CUSTOMS_REF',NULL,'HALF'),
   ('RAIL_HINTERLAND_TRANSIT','CUSTOMS','Transit & douane','Transit & customs',40,20,'customs_regime','Régime douanier','Customs regime','SELECT',false,'CUSTOMS_REGIME','customs_regime','HALF'),
-  ('RAIL_HINTERLAND_TRANSIT','CUSTOMS','Transit & douane','Transit & customs',40,30,'incoterm','Incoterm','Incoterm','SELECT',false,'INCOTERM','incoterm','HALF');
+  ('RAIL_HINTERLAND_TRANSIT','CUSTOMS','Transit & douane','Transit & customs',40,30,'incoterm','Incoterm','Incoterm','SELECT',false,'INCOTERM','incoterm','HALF'),
+
+  ('END_TO_END_RAIL_FREIGHT','PICKUP','Pré-acheminement','Pre-carriage (pickup)',10,10,'place_receipt','Lieu d''enlèvement','Place of collection','GEO_PLACE',true,'COLLECTION','place_receipt','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','PICKUP','Pré-acheminement','Pre-carriage (pickup)',10,20,'pickup_transporter','Transporteur enlèvement','Pickup haulier','TEXT',false,NULL,NULL,'HALF'),
+  ('END_TO_END_RAIL_FREIGHT','PICKUP','Pré-acheminement','Pre-carriage (pickup)',10,30,'collection_date','Date d''enlèvement','Collection date','DATE',false,'DEPARTURE_DATE',NULL,'HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,10,'bl_number','Lettre de voiture ferroviaire (CIM/LVF)','Rail Consignment Note (CIM/Waybill)','TEXT',false,'TRANSPORT_REF','bl_mawb','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,20,'rail_operator','Opérateur ferroviaire','Railway operator','RATE_PROVIDER',false,'CARRIER','rate_provider_id','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,30,'train_no','№ de train / convoi','Train / convoy No','TEXT',false,'CONVEYANCE','vessel_flight','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,40,'wagon_nos','№ de wagon(s) / rame','Wagon / rake No(s)','TEXT',false,NULL,NULL,'HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,50,'pol','Gare de départ','Origin rail station','GEO_PLACE',true,'ORIGIN','pol','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,60,'pod','Gare d''arrivée / frontière','Destination rail station / border','GEO_PLACE',true,'ROUTE_VIA','pod','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,70,'eta','ETA en gare','ETA at railhead','DATE',false,'ARRIVAL_DATE','eta','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','TRANSPORT','Transport ferroviaire principal','Main rail transport',20,80,'ata','ATA en gare (arrivée réelle)','ATA at railhead (actual arrival)','DATE',false,'ARRIVAL_DATE','ata','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','DELIVERY','Livraison finale','Final delivery',30,10,'place_delivery','Lieu de livraison finale','Place of final delivery','GEO_PLACE',true,'DESTINATION','place_delivery','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','DELIVERY','Livraison finale','Final delivery',30,20,'delivery_transporter','Transporteur livraison finale','Final delivery haulier','TEXT',false,NULL,NULL,'HALF'),
+  ('END_TO_END_RAIL_FREIGHT','DELIVERY','Livraison finale','Final delivery',30,30,'estimated_delivery_date','Date de livraison estimée du projet','Estimated Project Delivery Date','DATE',false,'DELIVERY_DATE','promised_delivery_date','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,10,'commodity','Marchandise','Commodity','TEXT',true,'CARGO_DESC','commodity','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,20,'commodity_desc','Description détaillée','Detailed description','TEXTAREA',false,NULL,'commodity_desc','FULL'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,30,'gross_weight','Poids brut','Gross weight','NUMBER',false,'CARGO_WEIGHT','gross_weight','THIRD'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,40,'weight_unit','Unité','Unit','SELECT',false,NULL,'weight_unit','THIRD'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,50,'volume_cbm','Volume (m³)','Volume (CBM)','NUMBER',false,'CARGO_VOLUME','volume_cbm','THIRD'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,60,'package_count','Nombre de colis','Package count','INTEGER',false,'CARGO_PACKAGES','package_count','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','CARGO','Marchandise','Cargo',40,70,'marks_numbers','Marques & numéros','Marks & numbers','TEXT',false,'CARGO_MARKS','marks_numbers','HALF'),
+  ('END_TO_END_RAIL_FREIGHT','CUSTOMS','Douane & commerce','Customs & trade',50,10,'incoterm','Incoterm','Incoterm','SELECT',true,'INCOTERM','incoterm','THIRD'),
+  ('END_TO_END_RAIL_FREIGHT','CUSTOMS','Douane & commerce','Customs & trade',50,20,'customs_regime','Régime douanier','Customs regime','SELECT',false,'CUSTOMS_REGIME','customs_regime','THIRD'),
+  ('END_TO_END_RAIL_FREIGHT','CUSTOMS','Douane & commerce','Customs & trade',50,30,'declaration_no','№ de déclaration','Declaration No','TEXT',false,'CUSTOMS_REF',NULL,'THIRD');
 
 UPDATE _tmp_rail_fields SET options = '[
   {"value":"EXW","label_fr":"EXW — À l''usine","label_en":"EXW — Ex Works"},
@@ -274,17 +330,18 @@ JOIN service_type_field_set fs
 ON CONFLICT (service_type_field_set_id, key) DO NOTHING;
 
 -- ── 5. Financial dictionary applicability ───────────────────────────────────
--- Connect common lines and rail-specific charges to the two new services.
+-- Connect common lines and rail-specific charges to the three services.
 INSERT INTO service_type_dictionary_item (service_type_id, dictionary_item_id, tier, sort_order)
 SELECT st.service_type_id, di.dictionary_item_id, 'BASIC', 100
   FROM service_type st
   CROSS JOIN dictionary_item di
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT')
+ WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
    AND di.key IN (
      'DISBURSEMENT_COMMISSION','DOCUMENTATION_FEE','FILE_OPENING',
      'SERVICE_CHARGES','BANK_CHARGES','LOCAL_INSURANCE','STAMP',
      'TRANSPORT_AUTHORISATION','RAIL_FREIGHT','RAIL_TERMINAL_HANDLING',
-     'TRANSIT_TITLE_T1','BORDER_CROSSING_FORMALITIES','CUSTOMS_FORMALITIES'
+     'TRANSIT_TITLE_T1','BORDER_CROSSING_FORMALITIES','CUSTOMS_FORMALITIES',
+     'ORIGIN_CHARGES','CARGO_PICKUP','DELIVERY_AT_DESTINATION'
    )
 ON CONFLICT (service_type_id, dictionary_item_id) DO NOTHING;
 
@@ -292,10 +349,20 @@ INSERT INTO service_type_dictionary_item (service_type_id, dictionary_item_id, t
 SELECT st.service_type_id, di.dictionary_item_id, 'ADVANCED', 300
   FROM service_type st
   CROSS JOIN dictionary_item di
- WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT')
+ WHERE st.key IN ('RAIL_TRANSPORTATION', 'RAIL_HINTERLAND_TRANSIT', 'END_TO_END_RAIL_FREIGHT')
    AND di.key IN (
      'EXTRA_LEGAL_WORK','IMPORT_DECLARATION_FEE','BANK_CAUTION',
      'FACILITY_PAYMENT','RAIL_SHUNTING_FEE','WAGON_DEMURRAGE',
      'RAIL_ESCORT_FEE','RAIL_CORRIDOR_LEVY','CONVOY_SECURITY'
    )
 ON CONFLICT (service_type_id, dictionary_item_id) DO NOTHING;
+
+-- DOWN
+-- DELETE FROM service_type_dictionary_item WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'));
+-- DELETE FROM service_type_field WHERE service_type_field_set_id IN (SELECT service_type_field_set_id FROM service_type_field_set WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT')));
+-- DELETE FROM service_type_field_set WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'));
+-- DELETE FROM service_type_assumption WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'));
+-- DELETE FROM milestone_template_stage WHERE milestone_template_id IN (SELECT milestone_template_id FROM milestone_template WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT')));
+-- DELETE FROM milestone_template WHERE service_type_id IN (SELECT service_type_id FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT'));
+-- DELETE FROM service_type WHERE is_system AND key IN ('RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT','END_TO_END_RAIL_FREIGHT');
+

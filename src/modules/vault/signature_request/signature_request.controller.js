@@ -5,7 +5,7 @@ const mail = require("./signature_request.mail");
 const { asyncHandler } = require("../../../utils/errors");
 const { originForSlug } = require("../../../services/signatures/verify-link");
 
-const lang = (req) => (req.validatedQuery && req.validatedQuery.lang) || req.body.lang || "fr";
+const lang = (req) => (req.validatedQuery && req.validatedQuery.lang) || (req.body && req.body.lang) || "fr";
 
 /**
  * The host a signing link resolves on.
@@ -72,6 +72,22 @@ module.exports = {
       // the counterparty, which is the whole thing the peppered store prevents.
       return { party: out.party };
     });
+    res.json({ data });
+  }),
+
+  /**
+   * The Certificate of Completion for a finished chain.
+   *
+   * Generates it if the completion path could not — that path is best-effort
+   * against the SIGNATURE (a renderer hiccup must not lose an act that has
+   * legally happened), so this is where a missing certificate is recovered.
+   * Idempotent on request_id, so pressing it twice returns the same doc_id and
+   * the same bytes.
+   */
+  certificate: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.generateCertificate(c, {
+      id: req.params.id, origin: origin(req), language: lang(req),
+    }));
     res.json({ data });
   }),
 

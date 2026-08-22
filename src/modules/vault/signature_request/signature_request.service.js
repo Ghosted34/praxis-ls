@@ -628,6 +628,40 @@ async function dueReminders(client) {
   return out;
 }
 
+/**
+ * Re-mint the signing token for a party who is being nudged.
+ *
+ * ── A decision the guide left open, and why it lands here ──────────────────
+ * §6.8 says to remind a party after two days and again at five. It does not
+ * say what LINK the reminder carries, and there are only three answers:
+ *
+ *   1. Re-send the original token. Impossible, and deliberately so: the
+ *      plaintext is emailed once and never stored (§3.7) — only its HMAC is.
+ *      Storing it to make reminders convenient would undo the reason the sign
+ *      token is peppered while the verify code is not.
+ *   2. Send no link, just a nudge. Honest, and bad: the counterparty then has
+ *      to find a five-day-old email, which is most of why they had not signed.
+ *   3. Mint a fresh token and say so. This.
+ *
+ * Rotation is also the better security answer. A signing credential that has
+ * been sitting in an inbox for five days is exactly the one worth replacing,
+ * and the old link stops working the moment this runs — which is what the
+ * reminder email tells the reader, plainly, so a signer who still has the
+ * first message is not left wondering why it 404s.
+ *
+ * Returns null for a party who has settled since the sweep selected them.
+ */
+async function remintSignToken(client, { partyId, expiresAt }) {
+  const party = await repo.getParty(client, partyId);
+  if (!party || !["SENT", "VIEWED"].includes(party.status)) return null;
+  const { token, hmac } = tokens.mintSignToken();
+  const updated = await repo.updateParty(client, partyId, {
+    sign_token_hmac: hmac,
+    sign_expires_at: expiresAt || party.sign_expires_at,
+  });
+  return { token, party: updated };
+}
+
 /** Record that a nudge went out. The cap lives on the request, not the party. */
 async function recordReminder(client, { requestId, partyId, entityRef }) {
   const { rows } = await client.query(
@@ -681,7 +715,7 @@ async function expireOverdue(client) {
 
 module.exports = {
   create, get, list, dispatch, advance, decline, voidRequest,
-  generateCertificate, dueReminders, recordReminder, expireOverdue,
+  generateCertificate, dueReminders, remintSignToken, recordReminder, expireOverdue,
   assertUnamended, onAmendment, resolveAllowedPresets, presentParty,
   stepUpNeeded: (client, args) => sigService.stepUpNeeded(client, args),
   documentTotalXaf: (docType, doc) => sigService.documentTotalXaf(docType, doc),

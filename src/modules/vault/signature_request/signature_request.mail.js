@@ -117,4 +117,45 @@ function send(client, { to, subject, html, text, entityRef, documentVaultId = nu
   });
 }
 
-module.exports = { signingLinkEmail, otpEmail, send };
+/**
+ * The nudge.
+ *
+ * It says the earlier link has stopped working, because it has: the reminder
+ * mints a fresh token and the old one dies (see
+ * `signature_request.service.remintSignToken` for why). A signer who still has
+ * the first message and finds it dead deserves to have been told, and a reader
+ * who was not expecting any of this needs the sender named.
+ */
+function reminderEmail({ party, request, url, tenantName, language, nudge }) {
+  const lang = language === "en" ? "en" : "fr";
+  const doc = request.doc_type_label || request.doc_type;
+  const subject = t({
+    fr: `Rappel — signature en attente (${doc})`,
+    en: `Reminder — a signature is still outstanding (${doc})`,
+  }, lang);
+
+  const lines = t({
+    fr: [
+      `Bonjour ${party.full_name},`,
+      `${tenantName} attend toujours votre signature sur « ${doc} ».`,
+      "Ce message contient un NOUVEAU lien : celui que vous avez reçu précédemment ne fonctionne plus.",
+      nudge >= 2 ? "C'est notre dernier rappel." : "",
+      request.expires_at ? `La demande expire le ${new Date(request.expires_at).toLocaleDateString("fr-FR")}.` : "",
+    ],
+    en: [
+      `Hello ${party.full_name},`,
+      `${tenantName} is still waiting for your signature on “${doc}”.`,
+      "This message contains a NEW link — the one you were sent earlier no longer works.",
+      nudge >= 2 ? "This is our last reminder." : "",
+      request.expires_at ? `The request expires on ${new Date(request.expires_at).toLocaleDateString("en-GB")}.` : "",
+    ],
+  }, lang).filter(Boolean);
+
+  const html = shell(
+    lines.map((l) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.55">${esc(l)}</p>`).join("")
+    + button(url, t({ fr: "Ouvrir le document", en: "Open the document" }, lang)),
+  );
+  return { subject, html, text: `${lines.join("\n\n")}\n\n${url}` };
+}
+
+module.exports = { signingLinkEmail, otpEmail, reminderEmail, send };

@@ -48,6 +48,14 @@ const PROCESSORS = [
   // trigger to "an app scheduled-task or external cron", which was never part
   // of the repo, so a scheduled report only ran if somebody POSTed the route.
   { name: "scheduled-report-scheduler", concurrency: 1, handler: require("./handlers/scheduled-report-scheduler") },
+  /*
+   * Signing reminders (SIGNATURE_ENGINEERING_GUIDE §6.8). Two nudges per
+   * request, then silence. Concurrency 1 on both halves: the sweep sends
+   * outbound email and the cap is enforced in SQL, so parallelism would buy
+   * nothing and risk a burst against the sending domain.
+   */
+  { name: "signature-reminder", concurrency: 1, handler: require("./handlers/signature-reminder") },
+  { name: "signature-reminder-scheduler", concurrency: 1, handler: require("./handlers/signature-reminder-scheduler") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
@@ -472,6 +480,26 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: reportCron }, "scheduled-report scheduler registered");
+  }
+
+  /*
+   * Signing reminders — hourly, at :20, clear of the report tick.
+   *
+   * Hourly rather than daily because the rule is "two days, then five days",
+   * and a daily tick would make that mean "somewhere between two and three
+   * days, depending when the fleet cron fires". The sweep is an indexed range
+   * scan that returns nothing almost every hour.
+   */
+  const signatureCron = config.SIGNATURE_REMINDER_CRON;
+  if (!signatureCron) {
+    logger.info("signature reminder scheduler disabled (SIGNATURE_REMINDER_CRON empty)");
+  } else {
+    await enqueue("signature-reminder-scheduler", "tick", {}, {
+      repeat: { pattern: signatureCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: signatureCron }, "signature reminder scheduler registered");
   }
 
   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every

@@ -36,5 +36,13 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.post("/:id/dispatch", requirePermission(MODULE, "create"), validator.dispatchBody, controller.dispatch);
 router.post("/:id/void", requirePermission(MODULE, "delete"), validator.voidRequest, controller.void);
+/*
+ * The Certificate of Completion. `view`, not `create`: issuing it is
+ * idempotent and generates nothing new for a chain that already has one, so
+ * the authority it needs is the authority to READ the chain. Gating it on
+ * `create` would mean the person who has to hand the evidence to a lawyer
+ * needs permission to start new signature requests.
+ */
+router.post("/:id/certificate", requirePermission(MODULE, "view"), validator.dispatchBody, controller.certificate);
 
 module.exports = { basePath: "/signature-requests", feature: "signatures.external", router };

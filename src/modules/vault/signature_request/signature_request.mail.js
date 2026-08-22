@@ -27,8 +27,17 @@ const t = (pair, lang) => (lang === "en" ? pair.en : pair.fr);
 const esc = (s) => String(s === null || s === undefined ? "" : s)
   .replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/** A plain, legible frame. No images, no tracking pixel, no vendor mark. */
-const shell = (bodyHtml) => `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:'Segoe UI',Arial,sans-serif;color:#101e34">
+/**
+ * A plain, legible frame. No images, no tracking pixel, no vendor mark.
+ *
+ * The stacks are the ones the rest of the product's mail uses (portal_auth,
+ * notification.service), and they are from the SHIPPED font library rather than
+ * a system stack — `scripts/check-fonts.mjs` is the gate. A font name that
+ * resolves to nothing does not error; it substitutes, silently, and the OTP
+ * code is the one string in this file where substitution changes whether six
+ * digits are legible.
+ */
+const shell = (bodyHtml) => `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:Roboto,'Noto Sans',sans-serif;color:#101e34">
   <div style="max-width:560px;margin:0 auto;padding:28px 24px">${bodyHtml}</div>
 </body></html>`;
 
@@ -99,7 +108,7 @@ function otpEmail({ party, request, code, tenantName, language }) {
   const html = shell(
     `<p style="margin:0 0 8px;font-size:14px;line-height:1.55">${esc(`${t({ fr: "Bonjour", en: "Hello" }, lang)} ${party.full_name},`)}</p>`
     + `<p style="margin:0 0 20px;font-size:14px;line-height:1.55">${esc(lead)}</p>`
-    + `<p style="margin:0 0 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;letter-spacing:.28em;font-weight:700">${esc(code)}</p>`
+    + `<p style="margin:0 0 20px;font-family:'JetBrains Mono',monospace;font-size:34px;letter-spacing:.28em;font-weight:700">${esc(code)}</p>`
     + `<p style="margin:0;font-size:12.5px;line-height:1.5;color:#6b7a90">${esc(warn)}</p>`,
   );
   return { subject, html, text: `${lead}\n\n${code}\n\n${warn}` };

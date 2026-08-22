@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1407 |
-| Modules mounted | 127 |
+| Routes | 1419 |
+| Modules mounted | 129 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1407 mounted routes, grouped by path prefix.
+All 1419 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1500,6 +1500,12 @@ All 1407 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/public/proposals/:token/pdf` | — |
 | GET | `/api/tenant/public/secure/:token` | — |
 | GET | `/api/tenant/public/secure/:token/download` | — |
+| GET | `/api/tenant/public/sign/:token` | — |
+| POST | `/api/tenant/public/sign/:token/complete` | — |
+| POST | `/api/tenant/public/sign/:token/decline` | — |
+| GET | `/api/tenant/public/sign/:token/document` | — |
+| POST | `/api/tenant/public/sign/:token/otp` | — |
+| POST | `/api/tenant/public/sign/:token/verify` | — |
 | GET | `/api/tenant/public/tracking/:reference` | — |
 
 ### `tenant/purchase-orders`
@@ -1715,6 +1721,17 @@ All 1407 mounted routes, grouped by path prefix.
 | PUT | `/api/tenant/settings/:section/:key` | — |
 | POST | `/api/tenant/settings/integration_secret/:key/test` | — |
 | GET | `/api/tenant/settings/sections` | — |
+
+### `tenant/signature-requests`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/signature-requests/` | — |
+| POST | `/api/tenant/signature-requests/` | — |
+| GET | `/api/tenant/signature-requests/:id` | — |
+| POST | `/api/tenant/signature-requests/:id/certificate` | — |
+| POST | `/api/tenant/signature-requests/:id/dispatch` | — |
+| POST | `/api/tenant/signature-requests/:id/void` | — |
 
 ### `tenant/signatures`
 

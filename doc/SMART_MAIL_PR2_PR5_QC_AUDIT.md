@@ -931,6 +931,13 @@ The first push went red on two checks, and both were right.
   four new `NOT_FOUND` throws in the triage routes bumped the count 507× →
   511× and the gate refused the commit until the file was regenerated. The
   gate works; regenerate before pushing route work.
+- **No new silent catches** (second run): the `push.service.js` header edit
+  shifted the line of a grandfathered bare catch, so its `file:line` baseline
+  entry stopped matching and the gate read it as new. Fixed the way the gate's
+  own ratchet wants: the catch now carries its taxonomy marker
+  (`@silent:storage` — the env fallback is the defined degradation) and the
+  baseline entry is deleted, 42 → 41. A baseline keyed on line numbers is
+  brittle to any edit in the same file; the marker is the durable form.
 
 ### 17.3 Other gaps closed
 

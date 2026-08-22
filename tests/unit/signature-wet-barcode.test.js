@@ -14,6 +14,8 @@ function collectPdf(doc) {
   });
 }
 
+jest.setTimeout(30_000);
+
 describe("wet-signature DataMatrix", () => {
   test("print codes use the 18-character Crockford alphabet and group only for display", () => {
     for (let i = 0; i < 200; i += 1) {

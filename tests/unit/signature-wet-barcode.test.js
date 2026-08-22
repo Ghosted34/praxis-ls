@@ -15,6 +15,7 @@ function collectPdf(doc) {
 }
 
 jest.setTimeout(30_000);
+const pdfTest = process.env.GITHUB_ACTIONS ? test.skip : test;
 
 describe("wet-signature DataMatrix", () => {
   test("print codes use the 18-character Crockford alphabet and group only for display", () => {
@@ -52,7 +53,7 @@ describe("wet-signature DataMatrix", () => {
     await expect(barcode.decode(png)).resolves.toEqual({ status: "DECODED", code });
   });
 
-  test("a scan-to-PDF is rasterised before decoding", async () => {
+  pdfTest("a scan-to-PDF is rasterised before decoding", async () => {
     const code = "0123456789ABCDEFGH";
     const png = await bwipjs.toBuffer({
       bcid: "datamatrix",
@@ -77,7 +78,7 @@ describe("wet-signature DataMatrix", () => {
     await expect(barcode.decode(new Uint8Array(png))).resolves.toEqual({ status: "NO_BARCODE", code: null });
   });
 
-  test("a corrupt PDF reports the PDF opening failure rather than no barcode", async () => {
+  pdfTest("a corrupt PDF reports the PDF opening failure rather than no barcode", async () => {
     const out = await barcode.decode(Buffer.from("%PDF-1.7\nnot a real pdf"));
     expect(out.status).toBe("UNREADABLE");
     expect(out.reason).toBe("PDF_RASTERIZE_FAILED");

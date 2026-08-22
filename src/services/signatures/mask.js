@@ -55,14 +55,30 @@ function maskIp(ip) {
  * ("Mobile browser") rather than the string, which tells a reader what they
  * want to know — was this signed on a phone at the loading bay or on a desk —
  * without publishing a tracking identifier.
+ *
+ * BILINGUAL, because the public portal renders it and §3.14 is explicit that
+ * everything a counterparty reads is FR and EN. This returned English only, and
+ * the French portal read "Appareil · Mobile browser" — caught by rendering the
+ * page, not by reading it. FR is the default for the same reason as everywhere
+ * else in this programme: this is a Cameroonian product.
  */
-function coarseUserAgent(ua) {
+const DEVICE_WORDS = {
+  unknown: { fr: "Appareil inconnu", en: "Unknown device" },
+  tablet: { fr: "Navigateur sur tablette", en: "Tablet browser" },
+  mobile: { fr: "Navigateur mobile", en: "Mobile browser" },
+  automated: { fr: "Client automatisé", en: "Automated client" },
+  desktop: { fr: "Navigateur de bureau", en: "Desktop browser" },
+};
+
+function coarseUserAgent(ua, language = "en") {
   const s = String(ua || "").toLowerCase();
-  if (!s) return "Unknown device";
-  if (/\b(ipad|tablet)\b/.test(s)) return "Tablet browser";
-  if (/\b(mobi|android|iphone)\b/.test(s)) return "Mobile browser";
-  if (/\b(curl|wget|python|node|bot|crawler|spider)\b/.test(s)) return "Automated client";
-  return "Desktop browser";
+  const lang = String(language).toLowerCase().startsWith("fr") ? "fr" : "en";
+  const say = (key) => DEVICE_WORDS[key][lang];
+  if (!s) return say("unknown");
+  if (/\b(ipad|tablet)\b/.test(s)) return say("tablet");
+  if (/\b(mobi|android|iphone)\b/.test(s)) return say("mobile");
+  if (/\b(curl|wget|python|node|bot|crawler|spider)\b/.test(s)) return say("automated");
+  return say("desktop");
 }
 
-module.exports = { maskIp, coarseUserAgent };
+module.exports = { maskIp, coarseUserAgent, DEVICE_WORDS };

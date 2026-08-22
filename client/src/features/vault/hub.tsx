@@ -21,13 +21,13 @@ import { TabbedHub, HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { hubTabs } from "@/app/layout/areas";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { useList } from "@/lib/use-resource";
+import { useList, useResource, type Row } from "@/lib/use-resource";
+import { tenant } from "@/lib/api-client";
 import { num, dateFmt } from "@/lib/format";
 import { ReportsPage } from "./reports";
 import { ComplianceFlagsPage } from "./compliance-flags";
 import { DocumentsPage } from "./documents";
 import { SignaturesPage } from "./signatures";
-import { VerificationPage } from "./verification";
 
 const shell = pageShell.wide;
 
@@ -61,10 +61,23 @@ const docTone = (s?: string | null): Tone => {
   return "warn";
 };
 
+/** Signatures whose document has changed since, summed over the doc types. */
+function staleCount(stats: Row | null | undefined): number {
+  const rows = (stats?.stale_by_doc_type as { n?: number }[] | undefined) ?? [];
+  return rows.reduce((total, row) => total + Number(row.n ?? 0), 0);
+}
+
 function Overview() {
   const navigate = useNavigate();
   const docs = useList<Doc>("/documents");
   const flags = useList<Flag>("/compliance");
+  /*
+   * §5.6 — signature telemetry, thin and on purpose. It exists so a broken OTP
+   * path or a portal nobody can reach shows up as a metric before it shows up
+   * as a support ticket. `useResource`, not `useList`: /signatures/stats returns
+   * one aggregate object, not a collection.
+   */
+  const sigStats = useResource<Row>(() => tenant<Row>("/signatures/stats"), []);
 
   const allDocs = docs.rows || [];
   const allFlags = flags.rows || [];
@@ -128,6 +141,41 @@ function Overview() {
           label="Resolved flags"
           value={flags.error ? "—" : num(allFlags.length - open.length)}
           hint="Cleared by a reviewer"
+        />
+      </KpiRow>
+
+      {/* Signatures, one row. Rendered even when the read fails (a tenant
+          without the grant, or with the module off) — the tiles show "—" rather
+          than the row vanishing, so nobody concludes the feature does not
+          exist. */}
+      <KpiRow>
+        <KpiTile
+          label="Signatures"
+          value={sigStats.error ? "—" : num(Number(sigStats.data?.total ?? 0))}
+          hint={
+            sigStats.error
+              ? "No access"
+              : `${Number(sigStats.data?.last_30d ?? 0)} in the last 30 days`
+          }
+        />
+        <KpiTile
+          label="Revoked"
+          value={sigStats.error ? "—" : num(Number(sigStats.data?.revoked ?? 0))}
+          hint="Withdrawn after signing"
+        />
+        <KpiTile
+          label="No longer covering"
+          value={sigStats.error ? "—" : num(staleCount(sigStats.data))}
+          hint="Document changed after signing"
+        />
+        <KpiTile
+          label="Verifications"
+          value={sigStats.error ? "—" : num(Number(sigStats.data?.scans_30d ?? 0))}
+          hint={
+            sigStats.error
+              ? "No access"
+              : `${Number(sigStats.data?.new_ip_scans_30d ?? 0)} from a new network`
+          }
         />
       </KpiRow>
 
@@ -272,23 +320,31 @@ function Overview() {
         </Panel>
       </div>
 
+      {/* Replaced the "paste a hash" screen (guide §5.7, addition i). That
+          screen asked an operator to type a fingerprint into a box and told
+          them whether it matched — a mechanism this programme removes, and one
+          that never answered a question anybody had. The question people do
+          have is whether the counterparty ever checked the document, and that
+          lives on the signature itself now. */}
       <Panel
-        title="Verify a document"
-        subtitle="Hash lookup — tamper check against the stored DNA"
+        title="Verification portal"
+        subtitle="What a counterparty sees when they scan a document"
         action={
           <Button
             size="sm"
             variant="outline"
-            onClick={() => navigate("/vault/verification")}
+            onClick={() => window.open("/verify", "_blank", "noopener")}
           >
             Open
           </Button>
         }
       >
         <p className="text-sm text-muted-foreground">
-          Paste a content hash from a printed QR code to confirm the file in
-          hand matches what the vault stored. The scan endpoint is public, so a
-          counterparty can check a document without an account.
+          Every signed document is printed with a QR code and a twelve-character
+          code beneath it. Anyone holding the paper can check it without an
+          account — the page shows what was signed, by whom, and whether the
+          record has changed since. Who has checked a given document is on the
+          signature itself.
         </p>
       </Panel>
     </section>
@@ -299,7 +355,6 @@ const TABS = hubTabs("/vault", {
   overview: Overview,
   documents: DocumentsPage,
   signatures: SignaturesPage,
-  verification: VerificationPage,
   "compliance-flags": ComplianceFlagsPage,
   reports: ReportsPage,
 });

@@ -31,6 +31,9 @@ router.get("/reasons", requirePermission(MODULE, "view"), controller.reasons);
 router.get("/presets", requirePermission(MODULE, "view"), controller.presets);
 // After /menu and /stats: an :id route declared first would swallow both.
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
+// The verification history for one signature — the internal half of the public
+// portal, and what replaced the deleted "paste a hash" screen (guide §5.7).
+router.get("/:id/scans", requirePermission(MODULE, "view"), controller.scans);
 
 router.post("/internal", requirePermission(MODULE, "approve"), validator.signInternal, controller.sign);
 router.post("/:id/revoke", requirePermission(MODULE, "approve"), validator.revoke, controller.revoke);

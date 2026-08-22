@@ -17,18 +17,31 @@ const email = require("../../src/services/email.service");
 const storage = require("../../src/services/storage.service");
 const documents = require("../../src/services/documents/document.service");
 
-describe("pdf content hash + verify token", () => {
+describe("pdf content hash", () => {
   it("sha256 hex is stable for identical bytes", () => {
     const h1 = pdf.contentHash(Buffer.from("hello"));
     const h2 = pdf.contentHash(Buffer.from("hello"));
     expect(h1).toBe(h2);
     expect(h1).toMatch(/^[0-9a-f]{64}$/);
   });
-  it("verify token embeds entityRef + hash prefix", () => {
-    expect(pdf.verifyToken("invoice:1", "abcdef0123456789ff")).toBe(
-      "praxis://verify/invoice:1?h=abcdef0123456789",
-    );
+
+  it("no longer mints a custom-scheme verify token", () => {
+    /*
+     * This test used to assert the token's exact shape. The token is DELETED
+     * (SIGNATURE_ENGINEERING_GUIDE §5.2), and the assertion is inverted rather
+     * than removed so the deletion is pinned:
+     *
+     *   · the scheme resolved in no phone, scanner or browser, and it was
+     *     printed on the page as text under "Verify authenticity";
+     *   · the hash in it was over the RENDERED BYTES, which contain the QR — so
+     *     it could never have been printed on the document it described.
+     *
+     * The replacement is services/signatures/verify-link.js: a real https URL
+     * on the tenant's own host, carrying a code minted BEFORE the render.
+     */
+    expect(pdf.verifyToken).toBeUndefined();
   });
+
 });
 
 describe("invoice template", () => {
@@ -71,7 +84,10 @@ describe("renderAndStore", () => {
       }),
     );
     expect(r.content_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.verify).toContain("praxis://verify/invoice:inv1");
+    // No `verify` field: see "no longer mints a custom-scheme verify token".
+    // The verification block is threaded in BEFORE the render now, from the
+    // signature's own code, so it can be inside the bytes this hash covers.
+    expect(r.verify).toBeUndefined();
   });
 });
 

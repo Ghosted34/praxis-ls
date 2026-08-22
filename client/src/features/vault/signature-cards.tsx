@@ -43,12 +43,27 @@ export function SignatureCard({
   disabled,
   disabledReason,
   onSelect,
+  assuranceWords,
 }: {
   card: Pick<PresetCard, "preset_code" | "label" | "blurb" | "tier" | "assurance_level">;
   selected?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   onSelect?: (code: string) => void;
+  /**
+   * Plain-language assurance, already translated by the caller.
+   *
+   * `ASSURANCE_WORDS` is the STAFF app's vocabulary and is English-only, which
+   * is right for a screen behind a login and wrong for the public verification
+   * portal — §3.14 requires FR and EN for everything a counterparty reads, and
+   * the French portal rendered "Confirmed by a code sent to your email"
+   * underneath "Cachet numérique". Caught by rendering the page.
+   *
+   * The portal resolves the words server-side (where the tenant's language
+   * lives) and passes them in; every other caller keeps the vocab lookup, so
+   * this reuses the card rather than forking it.
+   */
+  assuranceWords?: string;
 }) {
   const interactive = !disabled && typeof onSelect === "function";
   return (
@@ -79,7 +94,8 @@ export function SignatureCard({
       <span className="text-xs text-muted-foreground">
         {disabled
           ? (disabledReason ?? "Not available")
-          : look(ASSURANCE_WORDS, card.assurance_level, card.assurance_level)}
+          : (assuranceWords
+            ?? look(ASSURANCE_WORDS, card.assurance_level, card.assurance_level))}
       </span>
     </button>
   );

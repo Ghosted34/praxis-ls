@@ -541,10 +541,24 @@ collision on merge — it is a **hard** gate, not a warning. `main`'s high-water
 | Range | PR |
 | --- | --- |
 | `10771`–`10774` | PR-1 — core schema, presets, policy seed, events ✅ |
-| `10775`–`10776` | PR-2 — scan log, portal events |
-| `10777`–`10780` | PR-3 — requests, parties, OTP, certificate doc type |
-| `10781`–`10783` | PR-4 — QES envelopes, usage ledger |
-| `10784`–`10787` | PR-5 — print jobs, ingestion queue, compliance rule |
+| ~~`10775`–`10776`~~ → `10779`–`10780` | PR-2 — scan log, portal wiring ✅ |
+| `10781`–`10784` | PR-3 — requests, parties, OTP, certificate doc type |
+| `10785`–`10787` | PR-4 — QES envelopes, usage ledger |
+| `10788`–`10791` | PR-5 — print jobs, ingestion queue, compliance rule |
+| seeds `9115` | PR-2 — the `signatures.*` platform feature catalogue ✅ |
+
+**PR-2 renumbered too, exactly as this section warns.** `10775`–`10778` were taken by the mail
+programme (`10775_mail_ai_feature_flag`, `10776_mail_ocr_flag`, `10777_send_point_auth_otp_unwired`,
+`10778_entity_legal_form_reference`) while PR-2 was being written. The high-water mark was re-checked
+against `main` immediately before the first migration file was created, which is the only reason this
+cost nothing. **PR-3 must do the same** — the ranges above are a plan, not a reservation.
+
+PR-2 also added a **platform seed**, which the original plan did not anticipate: a tenant
+`feature_state` row with no `platform.feature_catalogue` row is a feature nobody can switch on
+(`tests/security/feature-catalogue-coverage.test.js`, and 9114's header for how fifteen `mail.*`
+flags shipped unswitchable). Every later chapter that adds a `signatures.*` flag inherits that
+requirement — though PR-2 seeded all four ahead of time, so PR-3, PR-4 and PR-5 only have to flip a
+switch.
 
 > **Re-check the high-water mark immediately before writing a migration**, not when planning the PR.
 > Two programmes running concurrently will collide again otherwise, and the collision only surfaces
@@ -1090,11 +1104,30 @@ how the sender and the signer end up seeing different names for the same method.
 
 ---
 
-## 5. PR-2 — Verification portal
+## 5. PR-2 — Verification portal · **DELIVERED**
 
 **Ships:** a real QR on every rendered document, a public branded verification portal, per-doc-type
-live summaries, and the scan log with its notification and anomaly signal. This is the PR that
+as-signed summaries, and the scan log with its notification and anomaly signal. This is the PR that
 closes both structural defects from the questionnaire.
+
+### 5.0 What actually shipped, and what changed from this specification
+
+Five deviations, each with its reason. Everything else in this chapter shipped as written.
+
+| Spec | Shipped | Why |
+| --- | --- | --- |
+| `10744`/`10745` (then `10775`/`10776`) | `10779_signature_scan`, `10780_signature_portal` | Both reserved ranges were taken by the mail programme before this chapter was written. §3.9. |
+| `signature.scanned_new_ip`, `signature.scan_anomaly` | `document_signature.scanned_new_ip`, `document_signature.scan_anomaly` | The mail programme owns the `signature.*` event prefix for EMAIL signatures (10768). PR-1 already made this call for its four events (10774); splitting the namespace now would route half of one feature's events to the wrong notification bucket, since `categories.js` keys on the prefix. |
+| The summary registry sits beside `DOC_TYPES` in `document_vault.types.js` | `src/services/signatures/summary.js`, with a coverage test | The stated goal — a new signable type cannot be added without someone seeing the summary slot — is enforced harder by `tests/unit/signature-summary.test.js`, which fails when a type in `SIGNATURE_CEILING` has no resolver. The code sits next to `canonical.js` instead because that is the coupling that actually bites: these resolvers read the shape those builders produce. |
+| Six V1 resolvers | Eight — every signable type | `PROFORMA_ADVANCE` and `TRANSIT_ORDER` are signable, and the "unregistered type shows the verdict only" rule would otherwise have applied to two types that are perfectly summarisable. |
+| The seal is rendered into the PDF | Only the **foot's** verification block is | The seal needs a placement decision per template inside a hard 34mm budget on a one-page document, and it needs the named-party attribution that PR-3's signing session produces. The foot's block delivers §5.8 criterion 1 on every doc type at once with no per-template layout risk — and it shares one renderer with the seal (`kit.verifyBlock`), so PR-3 places the seal without a second QR implementation appearing. |
+
+**One PR-1 defect closed on the way.** `document_signature.service.loadDoc` called
+`template.service.loadRecord(client, { docType, entityRef })` behind a `typeof … === "function"`
+guard on a symbol that module did not export. The guard was therefore always false, every caller
+landed on the `NO_DOCUMENT_LOADER` throw, and nothing failed loudly because both read paths treat a
+failure to load as "cannot check". Signing over HTTP returned 422 and every status read degraded to
+`UNKNOWN` — which would have made the portal's content verdict permanently unanswerable.
 
 ### 5.1 Scope
 
@@ -2032,19 +2065,24 @@ flags per run, so reconciling a document clears its flag on the next scan with n
 | `10772_signature_presets.sql` | 1 ✅ | `signature_preset` + the four seeded cards, `signature_reason` |
 | `10773_signature_policy_seed.sql` | 1 ✅ | `signature_policy` settings seed per doc type |
 | `10774_document_signature_events.sql` | 1 ✅ | `document_signature.signed / revoked / amended / stale_detected` |
-| `10775_signature_scan.sql` | 2 | `signature_scan` |
-| `10776_signature_portal_events.sql` | 2 | `document_signature.scanned_new_ip / scan_anomaly` |
-| `10777_signature_request.sql` | 3 | `signature_request` + FK from `document_signature` |
-| `10778_signature_party.sql` | 3 | `signature_party` + the one-override index |
-| `10779_signature_otp.sql` | 3 | `signature_otp` |
-| `10780_signature_certificate_doctype.sql` | 3 | `SIGNATURE_CERTIFICATE` doc type + events |
-| `10781_qes_envelope.sql` | 4 | `qes_envelope` |
-| `10782_signature_usage_ledger.sql` | 4 | `signature_usage_ledger` |
-| `10783_qes_events.sql` | 4 | `qes.*` events |
-| `10784_signature_print_job.sql` | 5 | `signature_print_job` |
-| `10785_signature_ingest.sql` | 5 | `signature_ingest` |
-| `10786_signature_wet_events.sql` | 5 | `document_signature.printed / scanned_returned / reconciled / reconcile_review` |
-| `10787_signature_unreconciled_rule.sql` | 5 | the compliance rule row |
+| `10779_signature_scan.sql` | 2 ✅ | `signature_scan` |
+| `10780_signature_portal.sql` | 2 ✅ | `signatures.*` feature switches, `verify_base_url`, `document_signature.scanned_new_ip / scan_anomaly` |
+| `seeds/9115_seed_signature_features.sql` | 2 ✅ | `platform.feature_catalogue` rows for the four `signatures.*` flags, and their plan inclusion |
+| `10781_signature_request.sql` | 3 | `signature_request` + FK from `document_signature` |
+| `10782_signature_party.sql` | 3 | `signature_party` + the one-override index |
+| `10783_signature_otp.sql` | 3 | `signature_otp` |
+| `10784_signature_certificate_doctype.sql` | 3 | `SIGNATURE_CERTIFICATE` doc type + events |
+| `10785_qes_envelope.sql` | 4 | `qes_envelope` |
+| `10786_signature_usage_ledger.sql` | 4 | `signature_usage_ledger` |
+| `10787_qes_events.sql` | 4 | `qes.*` events |
+| `10788_signature_print_job.sql` | 5 | `signature_print_job` |
+| `10789_signature_ingest.sql` | 5 | `signature_ingest` |
+| `10790_signature_wet_events.sql` | 5 | `document_signature.printed / scanned_returned / reconciled / reconcile_review` |
+| `10791_signature_unreconciled_rule.sql` | 5 | the compliance rule row |
+
+> These numbers are a PLAN. Re-check `migrations/tenant/` and run
+> `node scripts/db/check-migration-numbers.js` immediately before writing each file — the range has
+> now been taken out from under this programme twice.
 
 ### 9.2 Endpoints
 
@@ -2067,7 +2105,7 @@ GET    /signatures/qes/quote              MOD-64 create
 POST   /signatures/ingest                 MOD-64 create
 GET    /signatures/ingest/queue           MOD-64 view
 POST   /signatures/ingest/:id/bind        MOD-64 approve
-GET    /document-verification/scans       MOD-66 view
+GET    /signatures/:id/scans              MOD-64 view   ← who verified this, when, from how many networks
 ```
 
 **Public** (no auth; token is the credential; rate-limited; `tenantDbIn("live")`):
@@ -2098,6 +2136,7 @@ POST   /public/qes/:provider/webhook
 | `notify_on_scan` | `false` | First-scan-from-new-IP notification (Q13) |
 | `scan_anomaly_threshold` | `25` | Scans per rolling hour before an anomaly event |
 | `scan_retention_days` | `400` | `signature_scan` pruning |
+| `verify_base_url` | `null` | Override the host a printed QR resolves on; `null` uses the host the render's request arrived on (§5.2) |
 | `reminder_days` | `[2, 5]` | Reminder schedule; `[]` disables |
 | `certificate_full_ip` | `false` | Unmask the IP on the Certificate of Completion (§3.13) |
 | `sign_reasons` | seeded | The controlled reason vocabulary the seal prints (§3.12) |

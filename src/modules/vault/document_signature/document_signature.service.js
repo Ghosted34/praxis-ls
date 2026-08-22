@@ -47,9 +47,18 @@ const methodWords = (level, lang) => (METHOD_WORDS[level] || METHOD_WORDS.SES)[l
 async function loadDoc(client, { docType, entityRef, doc = null }) {
   if (doc) return doc;
   const templateSvc = require("../../documents/template/template.service");
-  if (typeof templateSvc.loadRecord === "function") {
-    return templateSvc.loadRecord(client, { docType, entityRef });
-  }
+  // `loadRecord(client, docType, recordId)` — three positional arguments, and
+  // the record id, not the entity ref. This called it as
+  // `loadRecord(client, { docType, entityRef })` behind a
+  // `typeof … === "function"` guard on a symbol the module did not export, so
+  // the guard was always false and every caller landed on the throw below:
+  // signing over HTTP returned 422 NO_DOCUMENT_LOADER, and every status read
+  // degraded to UNKNOWN. Nothing failed loudly, because both callers treat a
+  // failure to load as "cannot check" rather than as an error — which is the
+  // right behaviour for a missing document and the wrong one for a wiring bug.
+  const recordId = String(entityRef || "").split(":").slice(1).join(":");
+  const rec = recordId ? await templateSvc.loadRecord(client, docType, recordId) : null;
+  if (rec && rec.data) return rec.data;
   throw new AppError(
     "NO_DOCUMENT_LOADER",
     `Cannot load '${docType}' for signing. Pass the document explicitly, or add a loader to the template registry.`,
@@ -137,7 +146,7 @@ function present(sig, status, { language = "fr", full = false } = {}) {
     revoked_at: sig.revoked_at,
     revoke_reason: sig.revoke_reason,
     ip: full ? sig.ip : maskIp(sig.ip),
-    device: coarseUserAgent(sig.user_agent),
+    device: coarseUserAgent(sig.user_agent, language),
     ...(full ? { content_payload: sig.content_payload, user_agent: sig.user_agent } : {}),
   };
 }
@@ -308,6 +317,56 @@ async function revoke(client, { id, reason, actor = {}, ip = null, language = "f
 /** Written back after the document is rendered and vaulted (PR-2 calls this). */
 const setArtifact = (client, args) => repo.setArtifact(client, args);
 
+/**
+ * Who verified this signature, when, and from how many distinct addresses.
+ *
+ * This is what replaced the deleted "paste a hash" screen (§5.7, addition i).
+ * That screen asked an operator to type a fingerprint into a box and told them
+ * whether it matched — a mechanism this programme removes, and one that never
+ * answered a question anybody actually had. The question they DO have is this
+ * one: has anyone checked the document I sent out, and from where?
+ *
+ * IPs are masked here as well as on the portal. §3.13 grants the full value to
+ * MOD-64 `view`, but as a DELIBERATE reveal that is itself audited — a list
+ * that renders forty full addresses by default is not that reveal, it is a
+ * standing disclosure nobody asked for.
+ */
+async function scans(client, signatureId, { language = "fr" } = {}) {
+  const sig = await repo.getById(client, signatureId);
+  if (!sig) throw new AppError("NOT_FOUND", "Signature not found", 404);
+  const [rows, totals] = await Promise.all([
+    repo.listScans(client, signatureId),
+    repo.scanSummary(client, signatureId),
+  ]);
+  return {
+    ...totals,
+    scans: rows.map((r) => ({
+      scan_id: r.scan_id,
+      scanned_at: r.scanned_at,
+      via: r.via,
+      is_new_ip: r.is_new_ip,
+      ip: maskIp(r.ip),
+      device: coarseUserAgent(r.user_agent, language),
+    })),
+  };
+}
+
+/**
+ * Retention sweep for `signature_scan` (§5.4). `ip` is personal data and
+ * `signature_policy.scan_retention_days` (default 400) is the tenant's answer
+ * for how long it may be held; the portal's privacy notice states that it is
+ * held at all. The immutable_ledger copy is governed by its own rules and is
+ * NOT touched.
+ *
+ * Returns the row count so a run that deleted nothing is distinguishable from
+ * one that never ran.
+ */
+async function pruneScans(client) {
+  const days = Number(await getSetting(client, "signature_policy", "scan_retention_days", 400));
+  if (!Number.isFinite(days) || days <= 0) return 0;
+  return repo.pruneScans(client, days);
+}
+
 const stats = (client) => repo.stats(client);
 
 /** Is the internal step-up OTP required for this document? (Q9 = C, PR-3.) */
@@ -321,6 +380,10 @@ async function stepUpRequired(client, { totalXaf }) {
 
 module.exports = {
   listByRef, get, menu, reasons, signInternal, revoke, setArtifact, stats,
+  scans, pruneScans,
   presets: presetCatalogue,
-  statusOf, present, methodWords, stepUpRequired, loadDoc,
+  // Exported for the public portal, which detects the same amendment from the
+  // other side of the wall and must raise the same flag. One detector, two
+  // entry points — two would drift.
+  statusOf, present, methodWords, stepUpRequired, loadDoc, onAmendmentDetected,
 };

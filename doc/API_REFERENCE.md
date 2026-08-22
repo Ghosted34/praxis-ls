@@ -666,13 +666,6 @@ All 1407 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/document-templates/:docType/preview` | — |
 | GET | `/api/tenant/document-templates/:docType/records` | — |
 
-### `tenant/document-verification`
-
-| Method | Path | Body validated |
-|---|---|---|
-| GET | `/api/tenant/document-verification/scan` | yes |
-| GET | `/api/tenant/document-verification/verify` | yes |
-
 ### `tenant/documents`
 
 | Method | Path | Body validated |
@@ -1730,6 +1723,7 @@ All 1407 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/signatures/` | — |
 | GET | `/api/tenant/signatures/:id` | — |
 | POST | `/api/tenant/signatures/:id/revoke` | — |
+| GET | `/api/tenant/signatures/:id/scans` | — |
 | POST | `/api/tenant/signatures/internal` | — |
 | GET | `/api/tenant/signatures/menu` | — |
 | GET | `/api/tenant/signatures/presets` | — |
@@ -2038,6 +2032,12 @@ All 1407 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/users/:id/password` | — |
 | POST | `/api/tenant/users/:id/status` | — |
 | GET | `/api/tenant/users/employees` | — |
+
+### `tenant/v`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/v/:code` | yes |
 
 ### `tenant/vacancies`
 

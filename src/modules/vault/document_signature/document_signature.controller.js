@@ -52,6 +52,11 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.reasons(c)) });
   }),
 
+  /** Who verified this signature, when, and from how many distinct addresses. */
+  scans: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.scans(c, req.params.id, { language: lang(req) })) });
+  }),
+
   stats: asyncHandler(async (req, res) => {
     res.json({ data: await req.tenantDb((c) => service.stats(c)) });
   }),

@@ -36,6 +36,26 @@ async function geoapify(cfg) {
 }
 
 /**
+ * SignWell (certified signatures, SIGNATURE_ENGINEERING_GUIDE §7.2): one
+ * read-only GET /me with the X-Api-Key header. It proves the key
+ * authenticates, and returns the account name and plan tier — the one thing
+ * a wrong key's error never says, which is WHICH account the key is for.
+ */
+async function signwell(cfg) {
+  let base = String(cfg.base_url || "https://www.signwell.com/api/v1");
+  while (base.endsWith("/")) base = base.slice(0, -1);
+  const { data } = await axios.get(`${base}/me`, {
+    headers: { "X-Api-Key": cfg.api_key, Accept: "application/json" }, timeout: 15000,
+  });
+  const account = (data && (data.account || data.workspace)) || {};
+  return {
+    account: account.name || null,
+    plan_tier: account.plan_tier || null,
+    note: "key authenticates — envelopes issued on the platform account",
+  };
+}
+
+/**
  * SMTP (system-email fallback): nodemailer verify() — opens a connection, runs
  * EHLO/AUTH, sends nothing. Auth is optional (some relays use IP allowlists).
  */
@@ -229,4 +249,4 @@ async function alertEmail(cfg) {
   return { message_id: r.message_id, note: "test email sent — check it arrives, and check the spam folder" };
 }
 
-module.exports = { s3, geoapify, smtp, vapid, alertWebhook, alertEmail, backupStorage };
+module.exports = { s3, geoapify, smtp, vapid, signwell, alertWebhook, alertEmail, backupStorage };

@@ -564,6 +564,17 @@ switch.
 > Two programmes running concurrently will collide again otherwise, and the collision only surfaces
 > at merge time.
 
+> **The numbering gate cannot see a cross-branch double renumber (learned on PR-4's merge).**
+> `check-migration-numbers.js` protects against collisions *within* a tree — and each branch is
+> internally consistent, so when two branches both fix the same collision by renumbering the same
+> file to *different* numbers (`11743` → `11748` on this branch, `11743` → `12743` on `main`),
+> the gate reports OK on both sides and the merge leaves the migration in the tree twice, under
+> two numbers — applying it to every tenant twice. Git's rename/rename resolution is silent
+> about it, `--ours`/`--theirs` on the directory keeps both filenames, and a reflexive
+> `git add .` ships the duplicate. When you renumber a collided file, say so in the commit so the
+> other side sees it before merge. The durable fix — a check that each migration's content hash
+> appears exactly once across `migrations/` — is a follow-up, not part of this programme.
+
 House rules that apply (`doc/BUILD_CONVENTIONS.md`): every file idempotent and re-runnable, additive
 where possible, `-- VERIFY` block at the foot with the queries a deployer runs to confirm the
 migration landed.
@@ -1678,10 +1689,48 @@ email teaches people to filter you. Reminders stop on any settlement and on requ
 
 ---
 
-## 7. PR-4 — Tier 3: the QES adapter and billing
+## 7. PR-4 — Tier 3: the QES adapter and billing · **DELIVERED**
 
 **Ships:** the provider-agnostic interface, the SignWell adapter, envelope lifecycle, evidence
 mirroring, metering and rebilling. **SignWell only** — no DocuSign code (Q14).
+
+### 7.0 What actually shipped, and what changed from this specification
+
+Ten deviations, each with its reason. Everything else in this chapter shipped as written.
+
+| Spec | Shipped | Why |
+| --- | --- | --- |
+| The webhook reads the raw body at the route (route-level `express.text`) | The raw bytes are stashed by the GLOBAL `express.json` in `server.js`, via its `verify` callback (`req.rawBody`); the controller reads `rawBody` first, then a string `req.body`, and refuses anything else | A route-level body parser behind the global one never runs: body-parser sets `req._body` once it has parsed, and every downstream parser bails on that flag. The audit proved the consequence — every genuine `application/json` delivery 401'd, because the route only ever saw a parsed object. The fix had to live where the parsing actually happens, and the route header now says so. Proven by `tests/unit/qes-webhook-stack.test.js`, which goes through `buildApp()` and was watched fail first. |
+| Credentials cached per tenant via the ambient request context | The tenant is named EXPLICITLY by the caller (`providerConfig(client, key, { tenant })`); the ambient context is a request-path convenience, and a call that names no tenant computes but does not cache | Workers have no request context. The shared `"_"` fallback let the first tenant polled populate a slot every other tenant in the same 5-minute window then read: one tenant's key answering another tenant's question, `credential_source` wrong on the audit rows, and other tenants' envelopes unable to advance. A slot that cannot identify its tenant is a miss, never a shared seat. |
+| (none — a case the spec left open) | On a handoff charge failure, the provider's document is cancelled AND no ledger row is written; the envelope goes `FAILED` so the advised retry is possible immediately | §7.4 step 7 ("the provider consumed the quota whatever we do. Do not add a refund path") governs the voiding of a DISPATCHED envelope that already carries its row — that path is untouched. This one is different: the transaction that writes `provider_ref` rolled back, so step 3's own rule ("charge on issue, and only on issue") wrote nothing, and the document is cancelled — nobody can use it. Billing a tenant for an envelope nobody can use is the worse error direction; if the provider charges for the created-then-cancelled document, the platform account that holds the key absorbs it. The `FAILED` transition matters too: the row was inserted before the `BEGIN` and survives the rollback as `CREATING` — an in-flight state that `uq_qes_active_party` covers — so without it the "please try again" message was a lie for the next hour. |
+| `10750`–`10752` (re-planned `10785`–`10787`) | `10785`–`10787`, as planned in §3.9/§9.1 | Re-checked the high-water mark immediately before the first file, per §3.9; the range had not been taken this time. |
+| `qes_envelope` without a party | `party_id` added, plus `uq_qes_active_party` | A request can carry SEVERAL certified parties (the one override, Q7, plus the chain around it). Without the link the webhook cannot name the party it settles, and "one in-flight envelope per party" is unenforceable. The index is the database half of the rule; the service check is the friendly 409. |
+| Four `qes.*` events | Five — `qes.envelope_declined` added | The spec's own schema gives the envelope a DECLINED state, and a terminal state with no event is a chain that declined with no notification to the creator. |
+| Credentials in the `integration_secret` section | Two doors, in that order: the tenant's `integration_secret` key `qes_signwell`, then the platform vault `qes.signwell` | §7.2 names the tenant section — and a tenant that bought its own account must use it. But §7.5's free tier belongs to the Praxis account, and a deploy-wide account lives in the deploy-wide vault (INTEGRATION_PLAN §two). Tenant first, so a rotated platform key cannot silently move a tenant's billing. Neither door is `.env` (BUILD_CONVENTIONS §7). |
+| Webhook route gated on `signatures.qes` | `feature: null` on the webhook module | The flag gates the ACTION — the handoff, the menu — not the RECEIPT of an event about an envelope started when the flag was on. Gate the webhook and a mid-flight flag flip turns the provider's retries into a 403 storm while the poll settles the envelope in silence. The security is the signature, the limiter and the tenant-scoped lookup. |
+| Webhook id location unstated | Tenant setting `qes.webhook` (per-tenant `webhook_id` + `callback_url`) | The id is the HMAC key for that tenant's webhooks: it must live in the tenant database, never the platform vault, never `.env`. A setting row keeps the settings hub away from it (the hub reads the sections it is told to) and the id is re-derivable by `GET /hooks` if lost. |
+| The wire format "verified at implementation time" | Verified against developers.signwell.com (docs updated 2026-04-29 / 2026-07-27); the adapter tests pin the request shapes | `X-Api-Key` header, `POST /documents/` (base64 file, `signing_order`, `metadata`), `GET /documents/{id}/completed_pdf?audit_page=true|false` — the **audit certificate is the completed PDF with the Audit & Lock page appended**, and the signed document is the same endpoint with the page off. Webhook scheme: HMAC-SHA256 over `event.type + "@" + event.time`, keyed by the webhook id, compared to `event.hash` — a freshness window on `event.time` (15 min) is added because the scheme alone accepts a replayed capture forever. |
+
+**One PR-3 defect found and closed on the way.** The public `/complete` passed no mailer to the
+chain advance, so after a counterparty signed, the next party was marked SENT with a token minted
+and nowhere delivered — and the tenant's "send next link" button could not find them, because it
+looks for PENDING parties. The chain advanced and stopped, silently, at the second signature.
+`signature_public.controller` now injects a dispatcher of the same shape the internal dispatch
+uses. The QES path needs the same fix intrinsically: a webhook has no operator to press the
+button, so the next link goes out by email on the provider's completion.
+
+**The handoff sits before the OTP requirement.** §6.6 puts the certified card's verification on
+the provider ("which does its own identity check"), and the code now matches the sentence:
+`/complete` routes CERTIFIED to the provider before the digital cards' OTP check. The wiring test
+asserts the order, so it cannot drift back — and the sign page no longer asks a certified signer
+for a code the card exists to replace.
+
+**The dispatch confirmation awaits its surface.** The client has no request-creation form yet
+(PR-3 shipped the chain panel and the signing page; creation is still to come), so the §7.4 step 1
+modal has nothing to hang on. `GET /signatures/qes/quote` ships the pre-flight contract it needs —
+flag state, configuration, the doc-type ceiling, the one informational line — and the Settings
+panel (§3.11 panel 4) ships its read-only usage view. No monetary figure anywhere: the rate is the
+platform's number, and the tenant sees its own count and nothing more (§7.5).
 
 ### 7.1 Scope
 
@@ -2136,6 +2185,7 @@ POST   /signature-requests/:id/dispatch    MOD-64 create
 POST   /signature-requests/:id/parties     MOD-64 edit      ← the one override
 POST   /signature-requests/:id/void        MOD-64 delete
 GET    /signatures/qes/quote              MOD-64 create
+GET    /signatures/qes/usage              MOD-64 view   ← the tenant's own monthly count (§3.11 panel 4)
 POST   /signatures/ingest                 MOD-64 create
 GET    /signatures/ingest/queue           MOD-64 view
 POST   /signatures/ingest/:id/bind        MOD-64 approve

@@ -1,6 +1,7 @@
 "use strict";
 
 const service = require("./signature_public.service");
+const mail = require("../signature_request/signature_request.mail");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { originForSlug } = require("../../../services/signatures/verify-link");
 
@@ -33,6 +34,34 @@ const wire = (req) => ({ ip: req.ip, userAgent: req.get("user-agent") || null })
 /** The host the certificate's verification link should point at. */
 const origin = (req) =>
   (req.tenant && req.tenant.slug ? originForSlug(req.tenant.slug) : `${req.protocol}://${req.get("host")}`);
+
+/**
+ * The mailer handed to the chain advance on an EXTERNAL completion.
+ *
+ * PR-4 found this missing and it mattered: `advance` dispatches the next
+ * party's link only through a `sendEmail` it is given, and this controller
+ * gave it none — so after a counterparty signed, the next party in the chain
+ * was marked SENT with a token minted and nowhere delivered, and the tenant's
+ * "send next link" button could not find them, because it looks for PENDING
+ * parties. The chain advanced and stopped, silently, at the second signature.
+ *
+ * Same dispatcher shape as the internal dispatch (signature_request
+ * controller): the plaintext token goes into exactly one email and nowhere
+ * else, and the host is the tenant's own — the link must resolve on the
+ * domain the request arrived on.
+ */
+const chainMailer = (req, client) => async ({ party, request, token, language }) => {
+  const url = `${origin(req)}/sign/${encodeURIComponent(token)}`;
+  const { subject, html, text } = mail.signingLinkEmail({
+    party, request, url,
+    tenantName: (req.tenant && req.tenant.name) || "",
+    language,
+  });
+  await mail.send(client, {
+    to: party.email, subject, html, text,
+    entityRef: request.entity_ref, sendPoint: "signature.request",
+  });
+};
 
 module.exports = {
   resolve: asyncHandler(async (req, res) => {
@@ -68,6 +97,10 @@ module.exports = {
       partyRole: b.party_role === undefined ? null : b.party_role,
       lang: lang(req),
       origin: origin(req),
+      slug: (req.tenant && req.tenant.slug) || null,
+      // The next party's link, when the chain advances on this signature.
+      // See chainMailer for why this used to be missing.
+      sendEmail: chainMailer(req, c),
       ...wire(req),
     }));
     res.status(201).json({ data });

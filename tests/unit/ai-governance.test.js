@@ -1,12 +1,12 @@
 "use strict";
 const {
-  estimateCostXaf,
+  estimateCostNative,
   capState,
   canUse,
 } = require("../../src/modules/ai/governance/governance.rules");
 
 describe("AI governance rules", () => {
-  test("estimateCostXaf from tokens + audio × vendor rate", () => {
+  test("estimateCostNative from tokens + audio × vendor rate", () => {
     const vendor = {
       cost_per_1k_input_tokens: 2,
       cost_per_1k_output_tokens: 4,
@@ -14,7 +14,7 @@ describe("AI governance rules", () => {
     };
     // 2000 in => 2*2=4; 1000 out => 1*4=4; 120s=2min => 2*10=20; total 28
     expect(
-      estimateCostXaf({
+      estimateCostNative({
         inputTokens: 2000,
         outputTokens: 1000,
         audioSeconds: 120,

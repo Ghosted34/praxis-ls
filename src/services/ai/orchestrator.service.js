@@ -1172,7 +1172,7 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
     // its XAF cost is derived from the vendor's per-token rate (spend caps).
     await governance.recordUsage(client, {
       userId: user.user_id, featureKey: feature, conversationId: conversationId || null,
-      provider: res.provider, callType,
+      provider: res.provider, model: res.model || null, callType,
       inputTokens: u.prompt_tokens || 0, outputTokens: u.completion_tokens || 0,
       wasSuccessful: true,
     });
@@ -1323,6 +1323,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   let finalToolCalls = [];
   let finalUsage = {};
   let provider = null;
+  let model = null;
 
   for await (const chunk of llm.chatStream({ client, messages, tools: offered.map(toOpenAiTool), onDelta: (d) => { fullText += d; } })) {
     if (!chunk.done) {
@@ -1332,9 +1333,10 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       finalToolCalls = chunk.toolCalls || [];
       finalUsage = chunk.usage || {};
       provider = chunk.provider;
+      model = chunk.model || model;
     }
   }
-  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider }, feature });
+  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider, model }, feature });
 
   // ── Anti-stall (non-streaming, same as ask) ──
   let nudged = false;
@@ -1486,12 +1488,13 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
         finalText = chunk.text || finalText;
         finalPassUsage = chunk.usage || {};
         provider = chunk.provider || provider;
+        model = chunk.model || model;
       }
     }
     await recordUsage(client, {
       user,
       conversationId: history.conversationId,
-      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider },
+      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider, model },
       feature,
     });
     answer = finalText.trim();

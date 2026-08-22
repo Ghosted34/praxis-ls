@@ -99,6 +99,16 @@ Multi-step reads chain freely; **no write executes without confirmation.**
 
 - **EMV toggle** per tenant: `feature_state` — `ai.assistant` (UI), `ai.assistant.backend` (server actions), `ai.vectorization` (recall). Off → nothing runs.
 - **Spend caps**: per-tenant / per-feature (`ai_budget_period`, `ai_usage_ledger`); soft cap warns, hard cap blocks.
+- **What a call costs**: `governance.recordUsage` prices every metered call as
+  tokens (or audio minutes) × the rates on that vendor's `ai_vendor_credential`
+  row, in the vendor's own currency (`cost_native` / `cost_native_currency`),
+  then converts it once into the tenant's base currency through MOD-08's
+  `fx_rate_daily` for `cost_xaf` — the column budget caps read. Two consequences
+  worth knowing: a vendor whose rates are still 0 meters every call at zero
+  (AI Control → Vendors flags it "Not priced"), and a currency with no FX rate
+  on file leaves `cost_xaf` at 0 with the true figure preserved in
+  `cost_native` — never the raw foreign amount passed through, which would
+  understate spend by the size of the rate.
 - **PII/financial redaction** before any external model call or embed.
 - **Provider routing**: DeepSeek → Gemini fallback; Gemini for vision; Groq for voice; embeddings via OpenAI-compatible endpoint. Keys per tenant where billing separates; discovery keys treated as compromised and rotated.
 - **Auditability**: every executed AI write is on the immutable ledger with `source = ai.action.<key>`; every call is on the usage ledger.

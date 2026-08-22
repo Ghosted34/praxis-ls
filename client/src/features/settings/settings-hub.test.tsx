@@ -143,6 +143,26 @@ describe("the settings hub offers only the editors you can open", () => {
     expect(screen.getByText("IAM & Security")).toBeInTheDocument();
   });
 
+  it("keeps the five hidden cards off the grid, whatever the user may open", () => {
+    // The unresolved shell is the right fixture for a UI-only hide: `canOpen`
+    // passes EVERYTHING through until the permissions read lands, so anything
+    // missing from this grid is missing because of HIDDEN_CARDS and not
+    // because of a grant. It also pins that a hidden card does not flash onto
+    // the grid for the first second of a login.
+    mount(<SettingsHub />, shell([], false));
+    for (const label of [
+      "Business Setup",
+      "Business Policies",
+      "Payment Gateways",
+      "Custom Fields",
+      "Factory Languages",
+    ])
+      expect(screen.queryByText(label)).toBeNull();
+    // Their neighbours in the same sections are untouched.
+    expect(screen.getByText("Bank Accounts")).toBeInTheDocument();
+    expect(screen.getByText("Pipeline Stages")).toBeInTheDocument();
+  });
+
   it("is axe-clean once filtered", async () => {
     const { container } = mount(<SettingsHub />, shell(WAREHOUSE));
     expect(await axe(container)).toHaveNoViolations();

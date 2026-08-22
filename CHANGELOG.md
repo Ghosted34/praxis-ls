@@ -24,6 +24,21 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Certified signatures (Signature Programme PR-4, Tier 3).** The `CERTIFIED` card is live end
+  to end: a counterparty who picks it is handed to the provider (SignWell, the only V1 adapter,
+  behind a provider-agnostic interface) which verifies their identity and emails them its own
+  secure link; on the provider's completion — webhook or the 30-minute poll backstop — the signed
+  PDF and the provider's audit certificate are mirrored into the vault, one `QES`/`PROVIDER`
+  signature is written with the provider's bytes as the artifact hash, and the chain advances with
+  the next link emailed. Envelopes are metered in `signature_usage_ledger` (migrations
+  `10785`–`10787`), charged in the same transaction as the provider reference so a provider
+  failure is never billable, and the platform quota watch alerts at 80% / 95% of the monthly
+  allowance, once per threshold per month. The webhook is signature-verified on the raw body
+  (constant-time, replay-windowed) and idempotent — a replayed event writes one signature, not
+  two. Platform Console → Integrations gains the SignWell account + pricing; Settings →
+  Signatures gains the read-only "Certified signatures" panel (provider state, this tenant's
+  monthly count, no figure). A request being voided cancels its in-flight envelopes; the ledger
+  row stays, because the provider consumed the quota whatever we do.
 - **Attendance now follows the entity's working calendar, and says what it
   actually knows about a punch's location.** Expected working days resolve
   employee override → the entity's working calendar (its own, or the inherited
@@ -255,6 +270,14 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The external signing chain no longer stops silently at the second signature.** The public
+  `/complete` passed no mailer to the chain advance, so after a counterparty signed, the next
+  party was marked `SENT` with a token minted and nowhere delivered — and the tenant's "send next
+  link" button could not find them, because it looks for `PENDING` parties. The chain advanced and
+  stopped, silently, at the second signature. `signature_public.controller` now injects the same
+  dispatcher the internal dispatch uses, so the next link goes out by email on every external
+  completion (and it must, for the QES path, where a webhook has no operator to press the button).
+  Found and closed on the way during PR-4; the QES wiring tests pin it.
 - **Silent-catch ratchet after #228.** Adding lines to `explainSendError` moved
   three grandfathered empty catches in `mail.service.js` off
   `doc/silent-catch-baseline.json` (`file:line`), so `build-test` failed on

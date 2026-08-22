@@ -496,7 +496,21 @@ async function decline(client, { request, party, reason, actor = {} }) {
   return settled;
 }
 
-/** Void a request the sender no longer wants. Signatures already taken survive. */
+/**
+ * Void a request the sender no longer wants. Signatures already taken survive.
+ *
+ * In-flight certified envelopes are cancelled with the request (guide §7.4
+ * step 7): the provider's document and its signable link go, and the ledger
+ * row stays — non-refundable once issued, because the provider consumed the
+ * quota whatever we do. Best-effort on purpose: a provider that will not take
+ * the cancel must not hold the void hostage, and the poll backstop reports
+ * whatever mismatch remains.
+ *
+ * Lazy require: the qes service requires THIS service (the chain advance it
+ * triggers goes through here), and a top-level cycle would leave one side's
+ * exports undefined at load time — the same load-order trap the certificate
+ * renderer below already avoids.
+ */
 async function voidRequest(client, { id, reason = null, actor = {} }) {
   const request = await repo.getRequest(client, id);
   if (!request) throw new AppError("NOT_FOUND", "Signature request not found", 404);
@@ -506,6 +520,15 @@ async function voidRequest(client, { id, reason = null, actor = {} }) {
     throw new AppError("NOT_VOIDABLE", `A ${request.status} request cannot be voided.`, 409,
       { status: request.status });
   }
+
+  try {
+    const qesService = require("../qes/qes.service");
+    await qesService.cancelForRequest(client, { requestId: id, actor });
+  } catch (err) {
+    // The void already happened; the envelopes are the alarm, not the finding.
+    logger.warn({ err: err && err.message, request_id: id }, "could not cancel QES envelopes on void");
+  }
+
   await audit(client, {
     actorUserId: actor.user_id || null, action: "document_signature.voided", moduleKey: events.MODULE,
     entityRef: request.entity_ref, after: { request_id: id, reason },

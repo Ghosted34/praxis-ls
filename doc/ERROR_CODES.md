@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (478)
+## All codes (487)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -180,6 +180,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
+| `ENVELOPE_IN_FLIGHT` | 409 | 1× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
@@ -272,8 +273,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 529× | — |
-| `NOT_IMPLEMENTED` | 501 | 2× | — |
+| `NOT_FOUND` | 404, 422 | 530× | — |
+| `NOT_IMPLEMENTED` | 501 | 1× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -282,7 +283,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_PRICED_BY_QUOTATION` | — | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_QUERIED` | 422 | 1× | — |
-| `NOT_READY` | 409 | 2× | — |
+| `NOT_READY` | 409 | 3× | — |
 | `NOT_RELEASED` | 422 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
 | `NOT_SENT` | 422 | 1× | — |
@@ -306,6 +307,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_COUNTERPART` | 422 | 1× | — |
 | `NO_CUSTODIAN` | 422 | 2× | — |
 | `NO_DISBURSEMENT_ACCOUNT` | 422 | 1× | — |
+| `NO_DOCUMENT` | 409 | 1× | — |
 | `NO_DOCUMENT_LOADER` | — | 1× | — |
 | `NO_DOC_TYPE` | 422 | 3× | — |
 | `NO_DOSSIER` | 422 | 1× | — |
@@ -314,6 +316,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_EMPLOYEE` | 400, 422 | 4× | — |
 | `NO_ENTITY` | 422 | 1× | — |
 | `NO_ENTITY_REF` | 422 | 7× | — |
+| `NO_ENVELOPE` | 409 | 4× | — |
 | `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
@@ -325,7 +328,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
 | `NO_ORIGIN` | 422 | 1× | — |
 | `NO_PARENT` | 422 | 1× | — |
-| `NO_PARTIES` | 422 | 1× | — |
+| `NO_PARTIES` | 422 | 2× | — |
 | `NO_PERIOD` | 404, 422 | 2× | — |
 | `NO_POSTING_RULE` | 422 | 1× | — |
 | `NO_RATE` | 404, 422 | 2× | — |
@@ -393,6 +396,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
+| `QES_CANCEL_REFUSED` | 409 | 1× | — |
+| `QES_LEDGER_FAILED` | 500 | 1× | — |
+| `QES_NOT_CONFIGURED` | 409 | 4× | — |
+| `QES_PROVIDER_ERROR` | 502 | 2× | — |
+| `QES_PROVIDER_UNSUPPORTED` | 422 | 1× | — |
 | `REASON_REQUIRED` | 422 | 7× | — |
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
@@ -492,11 +500,12 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_TREASURY_ACCOUNT` | 404 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
+| `UNVERIFIED` | 401 | 2× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 217× | — |
+| `VALIDATION_ERROR` | 422 | 219× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

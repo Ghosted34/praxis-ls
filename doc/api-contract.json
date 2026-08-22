@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 129,
-  "route_count": 1422,
+  "modules_mounted": 131,
+  "route_count": 1425,
   "tiers": {
-    "public": 40,
+    "public": 41,
     "self-scoped": 83,
-    "gated": 1299
+    "gated": 1301
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3550,6 +3550,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/signatures/presets": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/qes/quote": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/qes/usage": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7264,6 +7276,12 @@
       "tier": "public"
     },
     "POST /api/tenant/public/intake/quote-requests": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "POST /api/tenant/public/qes/:provider/webhook": {
       "auth": false,
       "rbac": false,
       "validated": false,

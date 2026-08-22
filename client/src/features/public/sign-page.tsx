@@ -115,6 +115,11 @@ const COPY = {
     done: "Signé. Merci.",
     doneNote:
       "Une copie et un certificat d'exécution sont envoyés à l'expéditeur. Vous pouvez fermer cette page.",
+    certified: "Envoyé pour signature certifiée.",
+    certifiedNote:
+      "Le prestataire de certification vous enverra un lien sécurisé. Votre identité y sera vérifiée ; cette demande se clôture à sa confirmation. Vous pouvez fermer cette page.",
+    certifiedCardNote:
+      "Le prestataire de certification vérifie votre identité : aucun code n'est nécessaire ici.",
     declined: "Refus enregistré.",
     declinedNote: "L'expéditeur en a été informé avec le motif que vous avez indiqué.",
     unavailable: "Ce lien de signature n'est pas valide",
@@ -154,6 +159,11 @@ const COPY = {
     done: "Signed. Thank you.",
     doneNote:
       "A copy and a certificate of completion go to the sender. You can close this page.",
+    certified: "Sent for certified signature.",
+    certifiedNote:
+      "The certification provider will email you a secure link. Your identity is verified there, and this request settles on their confirmation. You can close this page.",
+    certifiedCardNote:
+      "The certification provider verifies your identity: no code is needed here.",
     declined: "Decline recorded.",
     declinedNote: "The sender has been told, with the reason you gave.",
     unavailable: "This signing link is not valid",
@@ -183,7 +193,7 @@ export function SignPage() {
   const [gone, setGone] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [outcome, setOutcome] = React.useState<"SIGNED" | "DECLINED" | null>(null);
+  const [outcome, setOutcome] = React.useState<"SIGNED" | "CERTIFIED" | "DECLINED" | null>(null);
 
   const [name, setName] = React.useState("");
   const [role, setRole] = React.useState("");
@@ -252,21 +262,27 @@ export function SignPage() {
 
   const sign = () =>
     act(async () => {
-      await tenant(`/public/sign/${encodeURIComponent(token)}/complete`, {
-        method: "POST",
-        // No `email` anywhere in this body. See rule 1 in the header — the API
-        // rejects one rather than ignoring it, and there is no control here
-        // that could produce it.
-        body: {
-          preset_code: preset,
-          full_name: name.trim(),
-          party_role: role.trim(),
-          ...(mark ? { mark_image_b64: mark } : {}),
-          lang,
+      const r = await tenant<{ certified?: boolean }>(
+        `/public/sign/${encodeURIComponent(token)}/complete`,
+        {
+          method: "POST",
+          // No `email` anywhere in this body. See rule 1 in the header — the API
+          // rejects one rather than ignoring it, and there is no control here
+          // that could produce it.
+          body: {
+            preset_code: preset,
+            full_name: name.trim(),
+            party_role: role.trim(),
+            ...(mark ? { mark_image_b64: mark } : {}),
+            lang,
+          },
+          auth: false,
         },
-        auth: false,
-      });
-      setOutcome("SIGNED");
+      );
+      // The certified card settles on the provider's side, not here — the
+      // answer is "sent", with the provider's email as the next step, and the
+      // outcome page says so instead of "signed" (which it is not, yet).
+      setOutcome(r && r.certified ? "CERTIFIED" : "SIGNED");
     });
 
   const decline = () =>
@@ -281,7 +297,13 @@ export function SignPage() {
 
   const chosen = data?.menu.cards.find((k) => k.preset_code === preset) || null;
   const needsMark = chosen?.visual_mark === "DRAWN";
-  const canSign = Boolean(verified && preset && name.trim() && (!needsMark || mark) && !busy);
+  // The certified card is verified by the provider, not by a code — so the
+  // code is a requirement for the digital cards and a non-starter for it
+  // (guide §6.6: CERTIFIED "does its own identity check").
+  const chosenIsCertified = chosen?.assurance_level === "QES";
+  const canSign = Boolean(
+    preset && name.trim() && (chosenIsCertified || verified) && (!needsMark || mark) && !busy,
+  );
 
   if (gone) {
     return (
@@ -300,10 +322,13 @@ export function SignPage() {
     );
   }
   if (outcome) {
+    const title = outcome === "SIGNED" ? c.done : outcome === "CERTIFIED" ? c.certified : c.declined;
+    const note =
+      outcome === "SIGNED" ? c.doneNote : outcome === "CERTIFIED" ? c.certifiedNote : c.declinedNote;
     return (
       <Frame brandName={brand.branding.name} title={c.title}>
-        <Callout tone={outcome === "SIGNED" ? "ok" : "warn"} title={outcome === "SIGNED" ? c.done : c.declined}>
-          {outcome === "SIGNED" ? c.doneNote : c.declinedNote}
+        <Callout tone={outcome === "DECLINED" ? "warn" : "ok"} title={title}>
+          {note}
         </Callout>
       </Frame>
     );
@@ -357,55 +382,62 @@ export function SignPage() {
         </Field>
       </section>
 
-      {/* Rule 4 — nothing signs without this. */}
       <section className="mt-6 space-y-3">
-        {!data.otp || !verified ? (
-          <>
-            {data.otp ? (
-              <p className="text-sm">
-                {c.codeSent} <span className="font-mono">{data.otp.sent_to}</span>
-              </p>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant={data.otp ? "outline" : "default"} onClick={sendCode} loading={busy}>
-                {data.otp ? c.resend : c.sendCode}
-              </Button>
-              {data.otp && data.otp.resends_remaining === 0 ? (
-                <span className="text-xs text-muted-foreground">{data.otp.cooldown_until ?? ""}</span>
-              ) : null}
-            </div>
-            {data.otp ? (
-              <Field label={c.codeLabel}>
-                <OtpInput value={code} onChange={setCode} onComplete={checkCode} />
-                <div className="mt-2 flex items-center gap-3">
-                  <Button onClick={checkCode} loading={busy} disabled={code.length !== 6}>
-                    {c.verify}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {data.otp.attempts_remaining} {c.attemptsLeft}
-                  </span>
-                </div>
-              </Field>
-            ) : null}
-          </>
-        ) : (
-          <Callout tone="ok" title={c.verified}>{data.signer.email_masked}</Callout>
-        )}
+        <h2 className="text-title font-semibold">{c.method}</h2>
+        {/* Rule 3 — the vault's own grid, blocked cards included.
+            Above the code on purpose: the CERTIFIED card proves the signer
+            through the provider, not a code, so the method must be reachable
+            without one (guide §6.6). */}
+        <SignatureCardGrid menu={data.menu} value={preset} onChange={setPreset} />
+        {needsMark ? (
+          <div>
+            <p className="text-sm text-muted-foreground">{c.drawNote}</p>
+            <SignaturePad onChange={setMark} clearLabel={c.clear} />
+          </div>
+        ) : null}
       </section>
 
-      {verified ? (
+      {chosenIsCertified ? (
+        <Callout tone="info" className="mt-6">
+          {c.certifiedCardNote}
+        </Callout>
+      ) : (
+        /* Rule 4 — nothing digital signs without the code. */
         <section className="mt-6 space-y-3">
-          <h2 className="text-title font-semibold">{c.method}</h2>
-          {/* Rule 3 — the vault's own grid, blocked cards included. */}
-          <SignatureCardGrid menu={data.menu} value={preset} onChange={setPreset} />
-          {needsMark ? (
-            <div>
-              <p className="text-sm text-muted-foreground">{c.drawNote}</p>
-              <SignaturePad onChange={setMark} clearLabel={c.clear} />
-            </div>
-          ) : null}
+          {!data.otp || !verified ? (
+            <>
+              {data.otp ? (
+                <p className="text-sm">
+                  {c.codeSent} <span className="font-mono">{data.otp.sent_to}</span>
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={data.otp ? "outline" : "default"} onClick={sendCode} loading={busy}>
+                  {data.otp ? c.resend : c.sendCode}
+                </Button>
+                {data.otp && data.otp.resends_remaining === 0 ? (
+                  <span className="text-xs text-muted-foreground">{data.otp.cooldown_until ?? ""}</span>
+                ) : null}
+              </div>
+              {data.otp ? (
+                <Field label={c.codeLabel}>
+                  <OtpInput value={code} onChange={setCode} onComplete={checkCode} />
+                  <div className="mt-2 flex items-center gap-3">
+                    <Button onClick={checkCode} loading={busy} disabled={code.length !== 6}>
+                      {c.verify}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {data.otp.attempts_remaining} {c.attemptsLeft}
+                    </span>
+                  </div>
+                </Field>
+              ) : null}
+            </>
+          ) : (
+            <Callout tone="ok" title={c.verified}>{data.signer.email_masked}</Callout>
+          )}
         </section>
-      ) : null}
+      )}
 
       {error ? <Callout tone="bad" className="mt-4">{error}</Callout> : null}
 

@@ -381,6 +381,19 @@ const Schema = z.object({
    */
   SIGNATURE_REMINDER_CRON: z.string().default("20 * * * *"),
   /*
+   * QES poll backstop (SIGNATURE_ENGINEERING_GUIDE §7.4 step 6). Every
+   * thirty minutes, asking the provider where each tenant's open envelopes
+   * are. The interval is the worst-case lateness of a completion whose
+   * webhook was lost. Empty disables it — which means a lost webhook stalls
+   * a chain until a human looks, so the worker warns when it is.
+   */
+  QES_POLL_CRON: z.string().default("*/30 * * * *"),
+  // QES quota watch (§7.5): daily at 06:00 UTC, counting the fleet's issued
+  // envelopes against the platform's monthly allowance. Wall-clock cron for
+  // the reason the FX sync uses one — the monthly allowance is a calendar
+  // fact, and an interval-based repeat drifts off it after every restart.
+  QES_QUOTA_CRON: z.string().default("0 6 * * *"),
+  /*
    * Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
    * tenant honouring each tenant's sandbox_wipe_days.
    *

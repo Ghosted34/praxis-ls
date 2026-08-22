@@ -205,11 +205,44 @@ describe("§6.6 — completion cannot bypass verification", () => {
     expect(guard).toBeLessThan(otpCheck);
   });
 
-  test("PR-4 and PR-5's cards are refused rather than half-written", () => {
+  test("the certified card is handed to the provider, which does the identity check", () => {
+    // PR-4 replaced the 501: CERTIFIED no longer verifies by OTP — the
+    // provider verifies the person, and §6.6 puts that handoff BEFORE the
+    // OTP requirement on purpose. The branch must exist, it must call the
+    // qes service, and the database exemption (ck_sig_external_verified
+    // above) is what lets the resulting row carry no OTP challenge.
     const src = code(publicService);
     expect(src).toMatch(/assurance_level === "QES"/);
+    expect(src).toMatch(/qes\.service/);
+    expect(src).toMatch(/handoff/);
+  });
+
+  test("the certified handoff sits before the OTP requirement, on purpose", () => {
+    // If the OTP check ran first, a certified signer would need a code the
+    // card exists to replace. Order in the source is the assertion: the QES
+    // BRANCH (anchored on the `if`, so an earlier mention in a comment cannot
+    // stand in for it) must come before the OTP_REQUIRED throw.
+    const src = code(publicService);
+    const qesAt = src.indexOf('if (card.assurance_level === "QES")');
+    expect(qesAt).toBeGreaterThan(0);
+    expect(qesAt).toBeLessThan(src.indexOf("OTP_REQUIRED"));
+  });
+
+  test("the paper card is still PR-5's, and is refused rather than half-written", () => {
+    const src = code(publicService);
     expect(src).toMatch(/assurance_level === "WET"/);
     expect(src).toMatch(/NOT_IMPLEMENTED/);
+  });
+
+  test("the digital cards still require the verified code bound to this payload", () => {
+    // What PR-4 moved is the CERTIFIED card, not the rule: STAMP and DRAWN
+    // still verify an OTP first, with no threshold and no setting that
+    // disables it. The requirement must sit AFTER the two card branches —
+    // which is also what keeps the WET refusal (still PR-5's) in front of it.
+    const src = code(publicService);
+    const otpAt = src.indexOf("OTP_REQUIRED");
+    expect(otpAt).toBeGreaterThan(0);
+    expect(otpAt).toBeGreaterThan(src.indexOf('if (card.assurance_level === "WET")'));
   });
 });
 

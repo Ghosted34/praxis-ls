@@ -2,6 +2,7 @@
 
 const service = require("./signature_public.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { originForSlug } = require("../../../services/signatures/verify-link");
 
 /**
  * ⚠ EVERY HANDLER READS THROUGH `req.tenantDbIn("live", …)`, NEVER `req.tenantDb`.
@@ -28,6 +29,10 @@ const lang = (req) => (req.body && req.body.lang) || req.validatedQuery.lang || 
  * rate-limit key with a forged X-Forwarded-For.
  */
 const wire = (req) => ({ ip: req.ip, userAgent: req.get("user-agent") || null });
+
+/** The host the certificate's verification link should point at. */
+const origin = (req) =>
+  (req.tenant && req.tenant.slug ? originForSlug(req.tenant.slug) : `${req.protocol}://${req.get("host")}`);
 
 module.exports = {
   resolve: asyncHandler(async (req, res) => {
@@ -62,6 +67,7 @@ module.exports = {
       fullName: b.full_name || null,
       partyRole: b.party_role === undefined ? null : b.party_role,
       lang: lang(req),
+      origin: origin(req),
       ...wire(req),
     }));
     res.status(201).json({ data });

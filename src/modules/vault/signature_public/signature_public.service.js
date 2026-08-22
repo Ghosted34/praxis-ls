@@ -270,7 +270,7 @@ async function complete(client, opts) {
   const {
     token, presetCode, signReason = null, markImageB64 = null,
     fullName = null, partyRole = null,
-    ip = null, userAgent = null, lang = "fr", sendEmail = null,
+    ip = null, userAgent = null, lang = "fr", sendEmail = null, origin = null,
   } = opts;
   const language = langOf(lang);
 
@@ -380,8 +380,37 @@ async function complete(client, opts) {
     request, party: settled, sendEmail, language,
   });
 
+  /*
+   * The certificate, on the final signature (§6.7).
+   *
+   * In the request path, not a queued job, and deliberately: with no PAdES
+   * seal this document IS the evidentiary case, so a queue that is down means
+   * a completed chain with no evidence and nobody watching for it. It is
+   * idempotent on request_id, so a retry is free.
+   *
+   * Best-effort against the SIGNATURE, though — the signature row is written
+   * and the chain is complete by this point, and failing the counterparty's
+   * request because a PDF renderer hiccuped would lose an act that has already
+   * legally happened. A missing certificate is recoverable by re-running
+   * generateCertificate; a lost signature is not.
+   */
+  let certificate = null;
+  if (advanced.completed === true) {
+    try {
+      certificate = await requestService.generateCertificate(client, {
+        id: request.request_id, origin, language,
+      });
+    } catch (err) {
+      logger.error(
+        { err: err && err.message, request_id: request.request_id },
+        "certificate of completion could not be generated — re-run signature_request.generateCertificate",
+      );
+    }
+  }
+
   return {
     signed: true,
+    certificate_doc_id: certificate ? certificate.doc_id : null,
     verify_code: tokens.formatCode(row.verify_code),
     completed: advanced.completed === true,
   };

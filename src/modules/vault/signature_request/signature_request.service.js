@@ -43,6 +43,8 @@ const otpService = require("../../../services/signatures/otp");
 const { signaturePolicyFor } = require("../document_vault/document_vault.types");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
+const certificate = require("../../../services/signatures/certificate");
+const verifyLink = require("../../../services/signatures/verify-link");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
 
@@ -512,56 +514,177 @@ async function voidRequest(client, { id, reason = null, actor = {} }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Internal step-up (Q9 = C, §6.5)
+// The Certificate of Completion (§6.7)
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Does this internal signature need an emailed code as well as a session?
+ * Generate the certificate for a completed chain — ONCE.
  *
- * Default OFF. §1.5(b) is explicit about why: a dispatcher signing forty
- * delivery notes a day would do forty OTP round-trips, and a control that
- * painful gets switched off — which is how the predecessor system lost its OTP
- * in the first place. Setting the threshold to zero makes the product
- * universal-OTP with no other change.
+ * ⚠ IDEMPOTENT ON `request_id`, AND THAT IS NOT AN OPTIMISATION.
+ *
+ * A regenerated certificate produces different bytes (Puppeteer stamps
+ * /CreationDate) and therefore a different artifact hash, so two "copies" of
+ * one certificate would disagree about their own fingerprint — and a reader
+ * comparing them would be right to conclude one had been tampered with. The
+ * existing vault row is returned instead.
+ *
+ * The advisory lock is what makes that true under concurrency: the final
+ * party's `/complete` and a retried job can arrive together, and without it
+ * both would see `certificate_doc_id IS NULL`.
  */
-async function stepUpRequired(client, { docType, doc }) {
-  const enabled = await getSetting(client, "signature_policy", "stepup_enabled", false);
-  if (enabled !== true) return false;
-  const threshold = await getSetting(client, "signature_policy", "stepup_threshold_xaf", null);
-  if (threshold === null || threshold === undefined) return false;
-  const total = documentTotalXaf(docType, doc);
-  return total !== null && total >= Number(threshold);
+async function generateCertificate(client, { id, origin = null, language = "fr" }) {
+  await repo.lockRequest(client, id);
+
+  const request = await repo.getRequest(client, id);
+  if (!request) throw new AppError("NOT_FOUND", "Signature request not found", 404);
+  if (request.certificate_doc_id) {
+    return { doc_id: request.certificate_doc_id, already: true };
+  }
+  if (request.status !== "COMPLETED") {
+    throw new AppError(
+      "NOT_COMPLETED",
+      "A certificate is issued when every party has signed.",
+      409,
+      { status: request.status },
+    );
+  }
+
+  const [parties, signatures, otps, ledger] = await Promise.all([
+    repo.listParties(client, id),
+    sigRepo.listByRef(client, request.entity_ref),
+    repo.otpsForRequest(client, id),
+    repo.ledgerForRequest(client, request.entity_ref),
+  ]);
+
+  const templateSvc = require("../../documents/template/template.service");
+  const entity = await entityForCertificate(client);
+  const baseUrl = await verifyLink.baseUrl(client, { origin });
+
+  const data = await certificate.build(client, {
+    request, parties, signatures, otps, ledger, entity, language, baseUrl,
+  });
+
+  // Rendered through the SAME pipeline as every other document, so it is
+  // captured, hashed and downloadable like one. An evidence document outside
+  // the vault would be the only document here with no trail of its own.
+  const out = await templateSvc.renderPdfFromData(client, {
+    docType: "SIGNATURE_CERTIFICATE", data, entityId: null, actor: {},
+  });
+
+  await repo.updateRequest(client, id, { certificate_doc_id: out.doc_id });
+
+  await emitEvent(client, {
+    eventTypeKey: events.CERTIFICATE_ISSUED, moduleKey: events.MODULE, entityRef: request.entity_ref,
+    actorUserId: null,
+    payload: { request_id: id, doc_id: out.doc_id, artifact_hash: out.content_hash },
+  });
+  await audit(client, {
+    actorUserId: null, action: events.CERTIFICATE_ISSUED, moduleKey: events.MODULE,
+    entityRef: request.entity_ref,
+    after: { request_id: id, doc_id: out.doc_id, artifact_hash: out.content_hash },
+  });
+
+  return { doc_id: out.doc_id, artifact_hash: out.content_hash, already: false };
+}
+
+/** The tenant's own legal block, for §6.7 item 7. */
+async function entityForCertificate(client) {
+  const { rows } = await client.query(
+    "SELECT legal_name, rccm, niu, address FROM corporate_entity ORDER BY created_at LIMIT 1",
+  );
+  return rows[0] || null;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Reminders (§6.8)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Who is owed a nudge right now.
+ *
+ * Two per request, then silence — *"a third email teaches people to filter
+ * you"*. The schedule is a setting (`reminder_days`, default `[2, 5]`) and an
+ * empty array disables it, so a tenant that finds it intrusive turns it off
+ * rather than asking us to.
+ */
+async function dueReminders(client) {
+  const days = await getSetting(client, "signature_policy", "reminder_days", [2, 5]);
+  if (!Array.isArray(days) || !days.length) return [];
+
+  const seen = new Set();
+  const out = [];
+  // Ascending, so a party overdue on BOTH thresholds is nudged once for the
+  // earlier one rather than twice in the same sweep.
+  for (const d of [...days].map(Number).filter(Number.isFinite).sort((a, b) => a - b)) {
+    // eslint-disable-next-line no-await-in-loop -- one query per threshold, and
+    // there are two; running them concurrently would let the same party match
+    // both before `seen` could exclude it.
+    for (const row of await repo.partiesDueReminder(client, d)) {
+      if (seen.has(row.party_id)) continue;
+      seen.add(row.party_id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+/** Record that a nudge went out. The cap lives on the request, not the party. */
+async function recordReminder(client, { requestId, partyId, entityRef }) {
+  const { rows } = await client.query(
+    `UPDATE signature_request
+        SET reminder_count = LEAST(reminder_count + 1, 2), last_reminder_at = now()
+      WHERE request_id = $1 AND reminder_count < 2
+      RETURNING request_id, reminder_count`,
+    [requestId],
+  );
+  if (!rows[0]) return null;
+  await emitEvent(client, {
+    eventTypeKey: events.REMINDED, moduleKey: events.MODULE, entityRef,
+    actorUserId: null, payload: { request_id: requestId, party_id: partyId, nudge: rows[0].reminder_count },
+  });
+  return rows[0];
 }
 
 /**
- * The figure the threshold compares against.
+ * Expire requests past their date.
  *
- * Read from the canonical payload rather than from the raw record, so it is
- * the same number the signature attests to. A doc type with no money in its
- * payload (a delivery note, a transit order) returns null and never steps up —
- * which is right: the threshold is about value at risk, and a waybill has none
- * on its face.
+ * Separate from the reminder sweep on purpose: a request expires whether or
+ * not anybody was ever reminded, and folding the two would make an expiry
+ * depend on a notification setting.
  */
-function documentTotalXaf(docType, doc) {
-  try {
-    const payload = canonical.canonical(docType, doc);
-    if (payload.totals && Number.isFinite(Number(payload.totals.total_ttc))) {
-      return Number(payload.totals.total_ttc);
-    }
-    if (Number.isFinite(Number(payload.gross_salary))) return Number(payload.gross_salary);
-    return null;
-  } catch {
-    /* @silent:parse — a doc type with no canonical builder cannot be signed at
-       all, and signInternal rejects it with NO_CANONICAL_PAYLOAD long before
-       the threshold matters. */
+async function expireOverdue(client) {
+  const { rows } = await client.query(
+    `UPDATE signature_request
+        SET status = 'EXPIRED'
+      WHERE status IN ('SENT','PARTIALLY_SIGNED')
+        AND expires_at IS NOT NULL AND expires_at < now()
+      RETURNING request_id, entity_ref`,
+  );
+  for (const r of rows) {
+    // eslint-disable-next-line no-await-in-loop -- a handful of rows per sweep,
+    // and each event is independent.
+    await emitEvent(client, {
+      eventTypeKey: events.EXPIRED, moduleKey: events.MODULE, entityRef: r.entity_ref,
+      actorUserId: null, payload: { request_id: r.request_id },
+    }).catch(() => { /* @silent:storage — the state change is the part that must
+      not fail; the event is the announcement. */ });
   }
-  return null;
+  return rows.length;
 }
+
+/*
+ * The internal step-up (Q9 = C, §6.5) lives in document_signature.service, next
+ * to the signing choke point it guards. A second copy here would be a second
+ * place for the threshold to drift; it is re-exported below so a caller holding
+ * a request does not have to know which module owns the rule.
+ */
 
 module.exports = {
   create, get, list, dispatch, advance, decline, voidRequest,
+  generateCertificate, dueReminders, recordReminder, expireOverdue,
   assertUnamended, onAmendment, resolveAllowedPresets, presentParty,
-  stepUpRequired, documentTotalXaf,
+  stepUpNeeded: (client, args) => sigService.stepUpNeeded(client, args),
+  documentTotalXaf: (docType, doc) => sigService.documentTotalXaf(docType, doc),
   DEFAULT_EXPIRY_DAYS,
   // Re-exported so the public signing module has one import for the whole
   // aggregate rather than reaching past this service into its repo.

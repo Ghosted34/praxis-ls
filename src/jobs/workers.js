@@ -56,6 +56,7 @@ const PROCESSORS = [
    */
   { name: "signature-reminder", concurrency: 1, handler: require("./handlers/signature-reminder") },
   { name: "signature-reminder-scheduler", concurrency: 1, handler: require("./handlers/signature-reminder-scheduler") },
+  { name: "signature-ingest-decode", concurrency: 1, handler: require("./handlers/signature-ingest-decode") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },

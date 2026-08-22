@@ -117,6 +117,16 @@ async function reprint(client, { id, actor = {} }) {
   if (["VOIDED", "REJECTED"].includes(prior.status)) {
     throw new AppError("NOT_REPRINTABLE", `A ${prior.status} print job cannot be reprinted.`, 409);
   }
+  const liveDoc = await sigService.loadDoc(client, { docType: prior.doc_type, entityRef: prior.entity_ref });
+  const { hash } = canonical.build(prior.doc_type, liveDoc);
+  if (hash !== prior.content_hash) {
+    throw new AppError(
+      "DOCUMENT_AMENDED",
+      "This document changed since the paper-signature copy was issued. Reissue the signature request instead of reprinting it.",
+      409,
+      { print_job_id: prior.print_job_id },
+    );
+  }
   const root = prior.reprint_of || prior.print_job_id;
   const n = await repo.latestReprintNo(client, root);
   const job = await repo.insertJob(client, {
@@ -125,7 +135,7 @@ async function reprint(client, { id, actor = {} }) {
     entity_ref: prior.entity_ref,
     doc_type: prior.doc_type,
     document_vault_id: prior.document_vault_id,
-    content_hash: prior.content_hash,
+    content_hash: hash,
     print_code: await uniquePrintCode(client),
     reprint_of: root,
     reprint_no: n + 1,
@@ -142,8 +152,20 @@ async function barcodeFor(client, id) {
   const job = await repo.getJob(client, id);
   if (!job) throw new AppError("NOT_FOUND", "Print job not found", 404);
   const svg = await barcode.generateSvg(job.print_code);
-  await repo.markPrinted(client, id);
   return { ...presentJob(job), svg, code: job.print_code };
+}
+
+async function markPrinted(client, { id, actor = {} }) {
+  const job = await repo.markPrinted(client, id);
+  if (!job) throw new AppError("NOT_FOUND", "Print job not found", 404);
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: events.PRINTED,
+    moduleKey: events.MODULE,
+    entityRef: job.entity_ref,
+    after: { print_job_id: job.print_job_id, status: job.status },
+  });
+  return presentJob(job);
 }
 
 async function ingest(client, opts) {
@@ -177,7 +199,15 @@ async function ingest(client, opts) {
   return presentIngest(ingestRow);
 }
 
+function decodeNote(decoded) {
+  if (!decoded || decoded.status === "NO_BARCODE") return "No DataMatrix barcode was found.";
+  if (decoded.reason === "PDF_RASTERIZE_FAILED") return "This PDF could not be opened for barcode decoding.";
+  if (decoded.reason === "EMPTY_INPUT") return "The uploaded file was empty.";
+  return "The returned scan could not be opened or decoded reliably.";
+}
+
 async function decodeAndReconcile(client, { ingestId, actor = {}, docTypeHint = null } = {}) {
+  await repo.lockIngest(client, ingestId);
   const ingestRow = await repo.getIngest(client, ingestId);
   if (!ingestRow) throw new AppError("NOT_FOUND", "Signature ingest row not found", 404);
   const { buffer } = await vaultService.fetchBytes(client, ingestRow.document_vault_id);
@@ -187,7 +217,7 @@ async function decodeAndReconcile(client, { ingestId, actor = {}, docTypeHint = 
     const row = await repo.updateIngest(client, ingestId, {
       decode_status: decoded.status,
       match_status: "REVIEW",
-      match_notes: decoded.status === "NO_BARCODE" ? "No DataMatrix barcode was found." : "The DataMatrix could not be decoded reliably.",
+      match_notes: decodeNote(decoded),
       processed_at: new Date(),
     });
     await emitEvent(client, {
@@ -203,8 +233,12 @@ async function decodeAndReconcile(client, { ingestId, actor = {}, docTypeHint = 
 }
 
 async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint = null }) {
-  const job = await repo.getJobByCode(client, code);
+  let job = await repo.getJobByCode(client, code);
   const failures = [];
+  if (job) {
+    await repo.lockJob(client, job.print_job_id);
+    job = await repo.getJob(client, job.print_job_id);
+  }
   if (!job) failures.push("PRINT_JOB_NOT_FOUND");
   if (job && !["ISSUED", "PRINTED"].includes(job.status)) failures.push("PRINT_JOB_NOT_OPEN");
   if (job && docTypeHint && job.doc_type !== docTypeHint) failures.push("DOC_TYPE_MISMATCH");
@@ -215,9 +249,23 @@ async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint 
     failures.push("REQUEST_NOT_WAITING_FOR_SIGNATURE");
   }
   if (job && await repo.hasReconciledScan(client, job.print_job_id)) failures.push("ALREADY_RECONCILED");
+  if (job && request && ["SENT", "PARTIALLY_SIGNED"].includes(request.status)) {
+    try {
+      const requestService = require("../signature_request/signature_request.service");
+      const liveDoc = await requestService.assertUnamended(client, request);
+      const { hash } = canonical.build(job.doc_type, liveDoc);
+      if (hash !== job.content_hash) failures.push("PRINTED_PAYLOAD_AMENDED");
+    } catch (err) {
+      failures.push(err && err.code === "DOCUMENT_AMENDED" ? "DOCUMENT_AMENDED" : "DOCUMENT_UNREADABLE");
+    }
+  }
 
   if (failures.length) {
-    if (job) await repo.transitionJob(client, job.print_job_id, "REVIEW", { scan_vault_id: ingestRow.document_vault_id });
+    if (job && ["ISSUED", "PRINTED"].includes(job.status)) {
+      await repo.transitionJob(client, job.print_job_id, "REVIEW", ["ISSUED", "PRINTED"], {
+        scan_vault_id: ingestRow.document_vault_id,
+      });
+    }
     const row = await repo.updateIngest(client, ingestRow.ingest_id, {
       decoded_code: code,
       decode_status: "DECODED",
@@ -235,6 +283,21 @@ async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint 
     return presentIngest(row);
   }
 
+  const notes = docTypeHint
+    ? "Corroborated: open print job, document type hint, waiting request, no prior reconciliation, unchanged payload."
+    : "Corroborated: open print job, waiting request, no prior reconciliation, unchanged payload. Document type could not be derived from the scan.";
+  return finalizeReconciliation(client, {
+    ingestRow,
+    job,
+    request,
+    actor,
+    matchStatus: "AUTO",
+    matchNotes: notes,
+    decodedCode: code,
+  });
+}
+
+async function finalizeReconciliation(client, { ingestRow, job, request, actor = {}, matchStatus, matchNotes, decodedCode = null }) {
   const signer = await signerForWet(client, job, request);
   const sig = await sigRepo.insert(client, {
     entity_ref: job.entity_ref,
@@ -242,7 +305,11 @@ async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint 
     document_vault_id: ingestRow.document_vault_id,
     payload_version: 1,
     content_hash: job.content_hash,
-    content_payload: JSON.stringify({ print_job_id: job.print_job_id, print_code: job.print_code }),
+    content_payload: JSON.stringify({
+      print_job_id: job.print_job_id,
+      print_code: job.print_code,
+      reconciliation: matchStatus,
+    }),
     artifact_hash: null,
     assurance_level: "WET",
     visual_mark: "INK",
@@ -261,16 +328,16 @@ async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint 
   const actorId = await resolveActorId(client, actor.user_id).catch(() => null);
   const settled = await settleWetParty(client, { job, request, actor });
 
-  await repo.transitionJob(client, job.print_job_id, "RECONCILED", {
+  await repo.transitionJob(client, job.print_job_id, "RECONCILED", ["ISSUED", "PRINTED", "REVIEW"], {
     scan_vault_id: ingestRow.document_vault_id,
     reconciled_by: actorId,
   });
   const row = await repo.updateIngest(client, ingestRow.ingest_id, {
-    decoded_code: code,
-    decode_status: "DECODED",
+    decoded_code: decodedCode || job.print_code,
+    decode_status: decodedCode ? "DECODED" : ingestRow.decode_status,
     print_job_id: job.print_job_id,
-    match_status: "AUTO",
-    match_notes: "All four corroborating checks passed.",
+    match_status: matchStatus,
+    match_notes: matchNotes,
     processed_at: new Date(),
   });
 
@@ -281,13 +348,14 @@ async function reconcileCode(client, { ingestRow, code, actor = {}, docTypeHint 
       ingest_id: row.ingest_id,
       print_job_id: job.print_job_id,
       signature_id: sig.signature_id,
+      reconciliation: matchStatus,
       request_completed: settled.completed,
     },
   });
   await audit(client, {
     actorUserId: actor.user_id || null, action: events.RECONCILED, moduleKey: events.MODULE,
     entityRef: job.entity_ref,
-    after: { ingest_id: row.ingest_id, print_job_id: job.print_job_id, signature_id: sig.signature_id },
+    after: { ingest_id: row.ingest_id, print_job_id: job.print_job_id, signature_id: sig.signature_id, reconciliation: matchStatus },
   });
 
   return { ...presentIngest(row), signature_id: sig.signature_id, verify_code: tokens.formatCode(sig.verify_code) };
@@ -364,19 +432,33 @@ async function signerForWet(client, job, request) {
 
 async function bind(client, { ingestId, printJobId, actor = {} }) {
   const ingestRow = await repo.getIngest(client, ingestId);
-  const job = await repo.getJob(client, printJobId);
+  let job = await repo.getJob(client, printJobId);
   if (!ingestRow || !job) throw new AppError("NOT_FOUND", "Ingest row or print job not found", 404);
-  const row = await repo.updateIngest(client, ingestId, {
-    print_job_id: job.print_job_id,
-    match_status: "MANUAL",
-    match_notes: "Bound by operator.",
-    processed_at: new Date(),
+  await repo.lockJob(client, job.print_job_id);
+  job = await repo.getJob(client, printJobId);
+  if (!job) throw new AppError("NOT_FOUND", "Print job not found", 404);
+  if (!["ISSUED", "PRINTED", "REVIEW"].includes(job.status)) {
+    throw new AppError("NOT_BINDABLE", `A ${job.status} print job cannot be bound.`, 409,
+      { print_job_id: printJobId, status: job.status });
+  }
+  if (await repo.hasReconciledScan(client, job.print_job_id)) {
+    throw new AppError("ALREADY_RECONCILED", "This print job has already been reconciled.", 409,
+      { print_job_id: printJobId });
+  }
+  const request = job.request_id ? await requestRepo.getRequest(client, job.request_id) : null;
+  if (request && ["SENT", "PARTIALLY_SIGNED"].includes(request.status)) {
+    const requestService = require("../signature_request/signature_request.service");
+    await requestService.assertUnamended(client, request);
+  }
+  return finalizeReconciliation(client, {
+    ingestRow,
+    job,
+    request,
+    actor,
+    matchStatus: "MANUAL",
+    matchNotes: "Bound by operator after review.",
+    decodedCode: ingestRow.decoded_code || job.print_code,
   });
-  await audit(client, {
-    actorUserId: actor.user_id || null, action: events.RECONCILED, moduleKey: events.MODULE,
-    entityRef: job.entity_ref, after: { ingest_id: ingestId, print_job_id: printJobId, manual: true },
-  });
-  return presentIngest(row);
 }
 
 async function reject(client, { ingestId, reason, actor = {} }) {
@@ -386,6 +468,11 @@ async function reject(client, { ingestId, reason, actor = {} }) {
     processed_at: new Date(),
   });
   if (!row) throw new AppError("NOT_FOUND", "Signature ingest row not found", 404);
+  if (row.print_job_id) {
+    await repo.transitionJob(client, row.print_job_id, "REJECTED", ["ISSUED", "PRINTED", "REVIEW"], {
+      scan_vault_id: row.document_vault_id,
+    });
+  }
   await audit(client, {
     actorUserId: actor.user_id || null, action: events.RECONCILE_REVIEW, moduleKey: events.MODULE,
     entityRef: "document_vault:" + row.document_vault_id, after: { ingest_id: ingestId, rejected: true, reason },
@@ -407,6 +494,6 @@ async function unreconciledOffenders(client) {
 }
 
 module.exports = {
-  issue, reprint, barcodeFor, ingest, decodeAndReconcile, bind, reject, queue,
+  issue, reprint, barcodeFor, markPrinted, ingest, decodeAndReconcile, bind, reject, queue,
   unreconciledOffenders, presentJob, presentIngest,
 };

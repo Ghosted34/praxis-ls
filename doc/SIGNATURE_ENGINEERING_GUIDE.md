@@ -1848,10 +1848,19 @@ panel (§3.11).
 **Ships:** a discreet DataMatrix on printed documents, three inbound routes, server-side barcode
 decoding, corroborated auto-reconciliation, and an unreconciled-after-N-days compliance rule.
 
-**Delivered in this PR:** `10788`–`10791`, the DataMatrix generator/decoder, the wet-signature
-print-job and ingest APIs, auto/manual review queue primitives, and the RED
-`signature.wet_unreconciled` checker rule. PR-4 is proceeding in parallel, so this PR deliberately
-uses only the wet-signature migration range and does not touch the QES provider files.
+**Delivered in this PR:** `10788`–`10792`, the DataMatrix generator/decoder, the wet-signature
+print-job and ingest APIs, queued decode worker, auto/manual review queue, the RED
+`signature.wet_unreconciled` checker rule, and the policy migration that enables `PRINT_SIGN` for
+paper-capable document types. PR-4 is proceeding in parallel, so this PR deliberately uses only the
+wet-signature migration range and does not touch the QES provider files.
+
+**Deviations recorded after the PR-5 remediation audit:**
+
+| Guide task | Delivered | Deviation / reason |
+| --- | --- | --- |
+| §8.5 email-in hook | Not in this PR | Smart Mail can call `services/signatures/barcode.decode(buffer)`, but wiring that mailbox path would couple PR-5 to the separate mail ingestion surface. The decode service is exported and documented for that follow-up. |
+| §8.5 mobile capture | Same API, no separate screen | The endpoint accepts `source = 'MOBILE'`; the camera affordance belongs on the document-detail PWA surface and is tracked separately from the server reconciliation model. |
+| §8.4 device spike | Synthetic ladder committed | Real warehouse-device samples are still required before raising auto-reconciliation confidence. The committed ladder records the current floor: 300 dpi, 200 dpi office scan and 200 dpi/3° phone pass; 150 dpi/5° phone and fax-grade 150 dpi fail and queue for review. |
 
 Per the questionnaire's §1.4, this is **not** a fallback path. It is the one where the chain of
 custody is weakest and it gets a first-class state machine.
@@ -2102,7 +2111,8 @@ flags per run, so reconciling a document clears its flag on the next scan with n
 | `10788_signature_print_job.sql` | 5 | `signature_print_job` |
 | `10789_signature_ingest.sql` | 5 | `signature_ingest` |
 | `10790_signature_wet_events.sql` | 5 | `document_signature.printed / scanned_returned / reconciled / reconcile_review` |
-| `10791_signature_unreconciled_rule.sql` | 5 | the compliance rule row |
+| `10791_signature_unreconciled_rule.sql` | 5 | the unreconciled scan index/default |
+| `10792_signature_wet_policy.sql` | 5 | appends `PRINT_SIGN` to paper-capable doc-type menus |
 
 > These numbers are a PLAN. Re-check `migrations/tenant/` and run
 > `node scripts/db/check-migration-numbers.js` immediately before writing each file — the range has

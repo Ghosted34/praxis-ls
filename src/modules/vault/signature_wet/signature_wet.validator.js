@@ -23,6 +23,8 @@ const decode = body(z.object({
   doc_type_hint: z.string().min(1).max(80).optional().nullable(),
 }).strict());
 
+const empty = body(z.object({}).strict());
+
 const bind = body(z.object({
   print_job_id: z.string().uuid(),
 }).strict());
@@ -35,4 +37,4 @@ const listQuery = query(z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 }).strict());
 
-module.exports = { issue, ingest, decode, bind, reject, listQuery };
+module.exports = { issue, ingest, decode, bind, reject, listQuery, empty };

@@ -9,6 +9,14 @@ const INGEST_COLS = "ingest_id, source, source_ref, document_vault_id, decoded_c
 const insertJob = (client, data) => insertOne(client, "signature_print_job", data);
 const insertIngest = (client, data) => insertOne(client, "signature_ingest", data);
 
+function lockIngest(client, ingestId) {
+  return client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["signature:ingest:" + ingestId]);
+}
+
+function lockJob(client, jobId) {
+  return client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["signature:print-job:" + jobId]);
+}
+
 async function getJob(client, id) {
   const { rows } = await client.query(`SELECT ${JOB_COLS} FROM signature_print_job WHERE print_job_id = $1`, [id]);
   return rows[0] || null;
@@ -26,6 +34,17 @@ async function openJobForParty(client, partyId) {
       WHERE party_id = $1 AND status IN ('ISSUED','PRINTED','REVIEW')
       ORDER BY created_at DESC LIMIT 1`,
     [partyId],
+  );
+  return rows[0] || null;
+}
+
+async function openJobForEntity(client, entityRef) {
+  if (!entityRef) return null;
+  const { rows } = await client.query(
+    `SELECT ${JOB_COLS} FROM signature_print_job
+      WHERE entity_ref = $1 AND status IN ('ISSUED','PRINTED')
+      ORDER BY created_at DESC LIMIT 1`,
+    [entityRef],
   );
   return rows[0] || null;
 }
@@ -50,23 +69,23 @@ async function markPrinted(client, id) {
   return rows[0] || null;
 }
 
-async function transitionJob(client, id, status, extra = {}) {
+async function transitionJob(client, id, status, expected, extra = {}) {
   const fields = ["status = $2", "updated_at = now()"];
   const values = [id, status];
-  if (extra.scan_vault_id !== undefined) { values.push(extra.scan_vault_id); fields.push(`scan_vault_id = $${values.length}`); }
+  if (extra.scan_vault_id !== undefined) {
+    values.push(extra.scan_vault_id);
+    fields.push(status === "RECONCILED"
+      ? `scan_vault_id = $${values.length}`
+      : `scan_vault_id = COALESCE(scan_vault_id, $${values.length})`);
+  }
   if (extra.reconciled_by !== undefined) { values.push(extra.reconciled_by); fields.push(`reconciled_by = $${values.length}`); }
   if (status === "RECONCILED") fields.push("reconciled_at = COALESCE(reconciled_at, now())");
+  values.push(expected);
   const { rows } = await client.query(
-    `UPDATE signature_print_job SET ${fields.join(", ")} WHERE print_job_id = $1 RETURNING ${JOB_COLS}`,
+    `UPDATE signature_print_job SET ${fields.join(", ")}
+      WHERE print_job_id = $1 AND status = ANY($${values.length})
+      RETURNING ${JOB_COLS}`,
     values,
-  );
-  return rows[0] || null;
-}
-
-async function findSignatureForJob(client, jobId) {
-  const { rows } = await client.query(
-    "SELECT signature_id FROM document_signature WHERE assurance_level = 'WET' AND visual_mark = 'INK' AND signature_request_id = (SELECT request_id FROM signature_print_job WHERE print_job_id = $1) AND document_vault_id = (SELECT scan_vault_id FROM signature_print_job WHERE print_job_id = $1) LIMIT 1",
-    [jobId],
   );
   return rows[0] || null;
 }
@@ -110,25 +129,38 @@ async function listQueue(client, { limit = 100 } = {}) {
 
 async function hasReconciledScan(client, jobId) {
   const { rows } = await client.query(
-    "SELECT 1 FROM signature_print_job WHERE print_job_id = $1 AND status = 'RECONCILED' LIMIT 1",
+    `SELECT 1
+       FROM signature_ingest i
+      WHERE i.print_job_id = $1 AND i.match_status IN ('AUTO','MANUAL')
+      UNION ALL
+     SELECT 1
+       FROM document_signature s
+       JOIN signature_print_job j ON j.request_id = s.signature_request_id
+      WHERE j.print_job_id = $1
+        AND s.assurance_level = 'WET'
+        AND s.visual_mark = 'INK'
+      LIMIT 1`,
     [jobId],
   );
   return Boolean(rows[0]);
 }
 
 async function unreconciled(client, days) {
-  const { rows } = await client.query(
+  const { rows } = await listComplete(
+    client,
     `SELECT ${JOB_COLS}
        FROM signature_print_job
       WHERE status IN ('ISSUED','PRINTED')
-        AND created_at < now() - ($1::int * interval '1 day')`,
+        AND created_at < now() - ($1::int * interval '1 day')
+      ORDER BY created_at`,
     [days],
+    { label: "Unreconciled wet-signature print jobs", ceiling: 5000 },
   );
   return rows;
 }
 
 module.exports = {
-  insertJob, getJob, getJobByCode, openJobForParty, latestReprintNo, markPrinted, transitionJob,
-  insertIngest, getIngest, updateIngest, listQueue, hasReconciledScan,
-  findSignatureForJob, unreconciled,
+  insertJob, getJob, getJobByCode, openJobForParty, openJobForEntity, latestReprintNo, markPrinted, transitionJob,
+  insertIngest, lockIngest, lockJob, getIngest, updateIngest, listQueue, hasReconciledScan,
+  unreconciled,
 };

@@ -1,7 +1,9 @@
 "use strict";
 
 const service = require("./signature_wet.service");
+const { enqueue } = require("../../../jobs/queue-producer");
 const { asyncHandler } = require("../../../utils/errors");
+const { logger } = require("../../../config/logger");
 
 const actor = (req) => req.user || {};
 const slug = (req) => (req.tenant && req.tenant.slug) || (req.context && req.context.tenantSlug) || "tenant";
@@ -29,6 +31,10 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.barcodeFor(c, req.params.id)) });
   }),
 
+  markPrinted: asyncHandler(async (req, res) => {
+    res.json({ data: await req.tenantDb((c) => service.markPrinted(c, { id: req.params.id, actor: actor(req) })) });
+  }),
+
   ingest: asyncHandler(async (req, res) => {
     const data = await req.tenantDb((c) => service.ingest(c, {
       source: req.body.source,
@@ -37,6 +43,16 @@ module.exports = {
       actor: actor(req),
       slug: slug(req),
     }));
+    if (req.tenant) {
+      enqueue("signature-ingest-decode", "decode", {
+        tenantMeta: req.tenant,
+        env: req.get("x-praxis-env") === "sandbox" ? "sandbox" : "live",
+        ingestId: data.ingest_id,
+        actor: actor(req),
+      }, { jobId: `signature-ingest-decode:${data.ingest_id}` }).catch((err) => {
+        logger.warn({ err: err && err.message, ingest_id: data.ingest_id }, "signature ingest decode could not be enqueued");
+      });
+    }
     res.status(201).json({ data });
   }),
 

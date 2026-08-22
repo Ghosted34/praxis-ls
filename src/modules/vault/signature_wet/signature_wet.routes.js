@@ -14,7 +14,8 @@ router.use(authMiddleware);
 
 router.post("/print-jobs", requirePermission(MODULE, "create"), validator.issue, controller.issue);
 router.get("/print-jobs/:id/barcode", requirePermission(MODULE, "view"), controller.barcode);
-router.post("/print-jobs/:id/reprint", requirePermission(MODULE, "create"), controller.reprint);
+router.post("/print-jobs/:id/printed", requirePermission(MODULE, "create"), validator.empty, controller.markPrinted);
+router.post("/print-jobs/:id/reprint", requirePermission(MODULE, "create"), validator.empty, controller.reprint);
 
 router.post("/ingest", requirePermission(MODULE, "create"), validator.ingest, controller.ingest);
 router.get("/ingest/queue", requirePermission(MODULE, "view"), validator.listQuery, controller.queue);

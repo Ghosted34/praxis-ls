@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 130,
-  "route_count": 1427,
+  "route_count": 1428,
   "tiers": {
     "public": 40,
     "self-scoped": 83,
-    "gated": 1304
+    "gated": 1305
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -7672,6 +7672,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/signatures/print-jobs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs/:id/printed": {
       "auth": true,
       "rbac": true,
       "validated": false,

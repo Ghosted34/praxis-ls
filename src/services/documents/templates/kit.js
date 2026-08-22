@@ -238,9 +238,9 @@ function shell(title, bodyHtml, cfg = {}) {
        than the verification QR: bottom-left, 40% grey, 12mm square, 5pt code.
        The padding is the quiet zone; without it a mathematically valid symbol
        can be unreadable after a photocopy. */
-    .wet-code { width: 16mm; text-align: center; break-inside: avoid; page-break-inside: avoid; }
-    .wet-code .dm { width: 12mm; height: 12mm; padding: 2mm; display: flex; align-items: center; justify-content: center; }
-    .wet-code .dm svg { width: 12mm; height: 12mm; display: block; filter: grayscale(1); opacity: 0.4; }
+    .wet-code { width: 24mm; text-align: left; break-inside: avoid; page-break-inside: avoid; flex: none; }
+    .wet-code .dm { width: 12mm; height: 12mm; padding: 2mm; box-sizing: content-box; display: flex; align-items: center; justify-content: center; }
+    .wet-code .dm svg { width: 12mm; height: 12mm; display: block; }
     .wet-code .cap { font-family: ${c.monoFont}; font-size: 5pt; line-height: 1.1; color: #666; white-space: nowrap; }
     .wet-code .copy { font-family: ${c.font}; font-size: 5pt; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
     .sig { display: flex; gap: 40px; margin-top: 30px; }
@@ -573,10 +573,11 @@ function footer(entity = {}, cfg = {}, verify) {
   const custom = cfg.footer_text ? `<div>${esc(cfg.footer_text)}</div>` : "";
   const v = verify && typeof verify === "object" && verify.code ? verify : null;
   const host = v ? String(v.url || "").replace(/^https?:\/\//i, "").split("/")[0] : "";
+  const wet = cfg.wet_print && cfg.show && cfg.show.qr ? printBarcode(cfg.wet_print, cfg) : "";
   const block = v && cfg.show && cfg.show.qr
     ? `<div class="foot-vfy">${verifyBlock({ ...v, showHint: true, hintUrl: host }, cfg)}</div>`
     : "";
-  return `<div class="foot"><div class="foot-legal">${legal}${custom}</div>${block}</div>`;
+  return `<div class="foot">${wet}<div class="foot-legal">${legal}${custom}</div>${block}</div>`;
 }
 
 module.exports = {

@@ -19,6 +19,7 @@ jest.mock("../../src/modules/mail/mail/thread.repo");
 jest.mock("../../src/modules/mail/mail/mail.repo");
 jest.mock("../../src/modules/mail/mail/access", () => ({
   assertCanRead: jest.fn(async () => true),
+  roleFor: jest.fn(async () => "AGENT"),
 }));
 jest.mock("../../src/shared/events/emit", () => ({
   resolveActorId: async (c, id) => id || null,
@@ -57,7 +58,10 @@ beforeEach(() => {
   repo.ensureCanonicalFolder.mockResolvedValue({ email_folder_id: "fold-ARCHIVE", canonical: "ARCHIVE" });
   repo.applyLabel.mockResolvedValue(true);
   repo.listThreads.mockResolvedValue([]);
+  repo.listFolders.mockResolvedValue([]);
+  repo.streamUnread.mockResolvedValue({ HUMAN: 0, SYSTEM: 0 });
   access.assertCanRead.mockResolvedValue(true);
+  access.roleFor.mockResolvedValue("AGENT");
   mailRepo.getConnection.mockResolvedValue({ email_connection_id: "conn-1", status: "CONNECTED" });
   // The adapter the service reaches for when it propagates to the mail server.
   //
@@ -300,5 +304,25 @@ describe("list and get", () => {
     // A 403 confirms the conversation exists. For mail, that is itself a leak.
     repo.getThread.mockResolvedValue(null);
     await expect(service.get({}, ME, "thr-x")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("P1A-2: folder rail is mailbox-scoped", () => {
+  test("a mailbox the caller cannot open returns an empty rail, not its folders", async () => {
+    access.roleFor.mockResolvedValue(null);
+    repo.listFolders.mockResolvedValue([{ canonical: "INBOX" }]);
+    const out = await service.folders({}, ME, "conn-secret");
+    expect(out).toEqual({ folders: [], streams: { HUMAN: 0, SYSTEM: 0 } });
+    expect(repo.listFolders).not.toHaveBeenCalled();
+  });
+
+  test("a mailbox the caller can open is listed", async () => {
+    access.roleFor.mockResolvedValue("VIEWER");
+    repo.listFolders.mockResolvedValue([{ canonical: "INBOX" }]);
+    repo.streamUnread.mockResolvedValue({ HUMAN: 2, SYSTEM: 0 });
+    const out = await service.folders({}, ME, "conn-1");
+    expect(repo.listFolders).toHaveBeenCalledWith({}, "conn-1", "user-1");
+    expect(out.folders).toEqual([{ canonical: "INBOX" }]);
+    expect(out.streams.HUMAN).toBe(2);
   });
 });

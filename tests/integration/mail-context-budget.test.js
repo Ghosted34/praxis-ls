@@ -95,7 +95,7 @@ describe("statement budget", () => {
 
   test("opening a tab costs its own query and nothing else", async () => {
     const c = recorder([{ match: /FROM invoice/, rows: [] }]);
-    await context.tab(c, "client:c-1", "money", { userId: "u-1" });
+    await context.tab(c, "client:c-1", "money", { userId: "u-1", user: { is_ceo: true } });
     // §7.9 criterion 7: "Opening the Money tab issues its own single query; not
     // opening it costs nothing."
     expect(c.count()).toBe(1);
@@ -126,11 +126,11 @@ describe("the warm call does not go to the database at all", () => {
   test("tabs are cached independently of the overview", async () => {
     await context.overview(recorder(ANSWERS), "client:c-1", { userId: "u-1" });
     const t = recorder([{ match: /FROM invoice/, rows: [] }]);
-    await context.tab(t, "client:c-1", "money", { userId: "u-1" });
+    await context.tab(t, "client:c-1", "money", { userId: "u-1", user: { is_ceo: true } });
     expect(t.count()).toBe(1); // the overview's cache entry is not a money hit
 
     const warm = recorder([{ match: /FROM invoice/, rows: [] }]);
-    await context.tab(warm, "client:c-1", "money", { userId: "u-1" });
+    await context.tab(warm, "client:c-1", "money", { userId: "u-1", user: { is_ceo: true } });
     expect(warm.count()).toBe(0);
   });
 
@@ -208,6 +208,35 @@ describe("it does not become party-360 (§3.6 MUST NOT)", () => {
     const c = recorder([]);
     const out = await context.tab(c, "client:c-1", "interactions", {});
     expect(out.rows).toEqual([]);
+    expect(c.count()).toBe(0);
+  });
+
+  test("P3-1: a mail-only caller does not see client financials", async () => {
+    const c = recorder(ANSWERS);
+    const out = await context.overview(c, "client:c-1", { userId: "u-1" });
+    expect(out.overview.financials_withheld).toBe(true);
+    expect(out.overview.outstanding_xaf).toBeNull();
+    expect(out.overview.credit_limit).toBeNull();
+    expect(out.overview.credit_headroom).toBeNull();
+    // getGrants with no role_ids returns [] without querying — budget intact.
+    expect(c.count()).toBeLessThanOrEqual(6);
+  });
+
+  test("P3-1: a CEO (or receivables-granted user) sees the numbers", async () => {
+    const c = recorder(ANSWERS);
+    const out = await context.overview(c, "client:c-1", {
+      userId: "u-1", user: { user_id: "u-1", is_ceo: true },
+    });
+    expect(out.overview.financials_withheld).toBe(false);
+    expect(out.overview.outstanding_xaf).toBe(12_000_000);
+    expect(out.overview.credit_limit).toBe(50_000_000);
+  });
+
+  test("P3-1: the Money tab withholds without querying invoices", async () => {
+    const c = recorder([{ match: /FROM invoice/, rows: [{ invoice_id: "i-1" }] }]);
+    const out = await context.tab(c, "client:c-1", "money", { userId: "u-1" });
+    expect(out.withheld).toBe(true);
+    expect(out.invoices).toEqual([]);
     expect(c.count()).toBe(0);
   });
 

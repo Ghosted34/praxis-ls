@@ -28,6 +28,33 @@ const { AppError } = require("../../../utils/errors");
 const cache = require("./context-cache");
 const visibility = require("../triage/visibility");
 const { tabQuery } = require("./context-tabs");
+const identityCache = require("../../../shared/cache/identity-cache");
+
+/**
+ * P3-1. The drawer used to show client financials (outstanding, overdue,
+ * credit limit, headroom) to any MOD-72 view user. The AI grounding layer
+ * re-checks per-source module RBAC; the drawer did not. Receivables (MOD-56)
+ * is the owning module for those numbers — same key the AI whitelist uses
+ * for payment status.
+ *
+ * Fail closed: a missing user, a missing grant, or a grant lookup that
+ * throws all withhold the numbers. `getGrants` with an empty role set
+ * returns [] without querying, so the overview budget does not grow for
+ * callers that have not passed a principal.
+ */
+async function maySeeFinancials(client, user) {
+  if (!user) return false;
+  if (user.is_ceo === true) return true;
+  try {
+    const grants = await identityCache.getGrants(client, {
+      role_ids: user.role_ids || [],
+      module: "MOD-56",
+    });
+    return grants.some((g) => g.can_read === true);
+  } catch {
+    return false;
+  }
+}
 
 function parseRef(entityRef) {
   const m = String(entityRef || "").match(/^([a-z_]+):([A-Za-z0-9-]+)$/);
@@ -43,7 +70,7 @@ async function overview(client, entityRef, opts = {}) {
   if (hit) return { ...hit, cached: true };
 
   let data;
-  if (kind === "client") data = await clientOverview(client, id, userId);
+  if (kind === "client") data = await clientOverview(client, id, userId, opts.user || null);
   else if (kind === "dossier") data = await dossierOverview(client, id);
   else if (kind === "supplier") data = await supplierOverview(client, id);
   else data = { kind: kind.toUpperCase(), header: { ref: id }, overview: {}, tabs_available: [] };
@@ -52,7 +79,7 @@ async function overview(client, entityRef, opts = {}) {
   return { ...data, cached: false };
 }
 
-async function clientOverview(client, id, userId = null) {
+async function clientOverview(client, id, userId = null, user = null) {
   const { rows } = await client.query(
     `SELECT client_id, name, ref, is_vip, preferred_language, payment_terms_days, credit_limit,
             cached_receivables AS outstanding_xaf, cached_overdue AS overdue_xaf
@@ -94,15 +121,18 @@ async function clientOverview(client, id, userId = null) {
     ).then((r) => r.rows[0] || {}).catch(() => ({}))
     : {};
 
+  const money = await maySeeFinancials(client, user);
   return {
     kind: "CLIENT",
     header: { name: c.name, ref: c.ref, is_vip: c.is_vip, language: c.preferred_language },
     overview: {
-      outstanding_xaf: c.outstanding_xaf, overdue_xaf: c.overdue_xaf,
-      credit_limit: c.credit_limit,
-      credit_headroom: c.credit_limit !== null && c.credit_limit !== undefined
+      outstanding_xaf: money ? c.outstanding_xaf : null,
+      overdue_xaf: money ? c.overdue_xaf : null,
+      credit_limit: money ? c.credit_limit : null,
+      credit_headroom: money && c.credit_limit !== null && c.credit_limit !== undefined
         ? Number(c.credit_limit) - Number(c.outstanding_xaf || 0)
         : null,
+      financials_withheld: !money,
       payment_terms_days: c.payment_terms_days,
       open_dossiers: Number(extra.open_dossiers || 0),
       open_quotes: Number(extra.open_quotes || 0),
@@ -151,9 +181,9 @@ async function tab(client, entityRef, tabName, opts = {}) {
   const userId = opts.userId || null;
   const hit = await cache.get(entityRef, tabName, userId);
   if (hit) return { ...hit, cached: true };
-  const data = await tabQuery(client, kind, id, tabName, userId);
+  const data = await tabQuery(client, kind, id, tabName, userId, opts.user || null);
   await cache.set(entityRef, tabName, userId, data);
   return { ...data, cached: false };
 }
 
-module.exports = { overview, tab, tabQuery, parseRef, invalidate: cache.invalidate };
+module.exports = { overview, tab, tabQuery, parseRef, maySeeFinancials, invalidate: cache.invalidate };

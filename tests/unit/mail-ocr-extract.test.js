@@ -318,7 +318,14 @@ describe("confidence is coverage, and failure is data", () => {
 /* ── Review ───────────────────────────────────────────────────────────────── */
 
 describe("review is where a human's reading wins", () => {
-  const reviewed = [{ match: /UPDATE attachment_extraction/, rows: [{ attachment_extraction_id: "x-1", status: "REVIEWED" }] }];
+  // C-4. review/dismiss now resolve the extraction to its thread and apply
+  // §9.5 before they write. A fixture that only answers the UPDATE 404s on
+  // the gate and never reaches the write.
+  const visible = { match: /FROM attachment_extraction e/, rows: [{ attachment_extraction_id: "x-1" }] };
+  const reviewed = [
+    visible,
+    { match: /UPDATE attachment_extraction/, rows: [{ attachment_extraction_id: "x-1", status: "REVIEWED" }] },
+  ];
 
   test("corrected fields overwrite the machine's", async () => {
     const c = fakeClient(reviewed);
@@ -346,11 +353,18 @@ describe("review is where a human's reading wins", () => {
   });
 
   test("reviewing twice is refused", async () => {
-    await expect(ocr.review(fakeClient(), "x-1", {}, ME)).rejects.toMatchObject({ status: 409 });
+    await expect(ocr.review(fakeClient([visible]), "x-1", {}, ME)).rejects.toMatchObject({ status: 409 });
+  });
+
+  test("an extraction on a thread the caller cannot see is a 404", async () => {
+    await expect(ocr.review(fakeClient(), "x-1", {}, ME)).rejects.toMatchObject({ status: 404 });
   });
 
   test("dismissing keeps the row so it is not re-extracted", async () => {
-    const c = fakeClient([{ match: /SET status = 'DISMISSED'/, rows: [{ status: "DISMISSED" }] }]);
+    const c = fakeClient([
+      visible,
+      { match: /SET status = 'DISMISSED'/, rows: [{ status: "DISMISSED" }] },
+    ]);
     await ocr.dismiss(c, "x-1", ME);
     const q = c.written(/SET status = 'DISMISSED'/)[0];
     // An UPDATE, not a DELETE. Keeping the row is what stops the same

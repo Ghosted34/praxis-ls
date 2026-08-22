@@ -132,7 +132,7 @@ describe("the SLA sweep writes due dates and raises breaches once", () => {
   test("does nothing at all when no policy is configured", async () => {
     const c = fakeClient();
     const out = await sla.sweep(c);
-    expect(out).toEqual({ policies: 0, dated: 0, breached: 0 });
+    expect(out).toEqual({ policies: 0, dated: 0, breached: 0, resolution_breached: 0 });
     expect(c.written(/UPDATE email_thread/)).toHaveLength(0);
   });
 
@@ -193,6 +193,35 @@ describe("the SLA sweep writes due dates and raises breaches once", () => {
     // Without this, a five-minute sweep pages the lead every five minutes about
     // one overdue thread, and the alert gets muted within a day.
     expect(c.written(/SET sla_breached_at/)[0].text).toMatch(/sla_breached_at IS NULL/);
+  });
+
+  test("P5-1: undated threads are claimed oldest-first, not in planner order", async () => {
+    const c = fakeClient([POLICY, { match: /FROM business_hours/, rows: HOURS }]);
+    await sla.sweep(c);
+    const q = c.written(/t\.first_response_due_at IS NULL/)[0];
+    expect(q.text).toMatch(/ORDER BY t\.first_message_at ASC NULLS LAST/);
+    expect(q.text).toMatch(/LIMIT 500/);
+  });
+
+  test("P5-1: a resolution-due breach notifies independently of first-response", async () => {
+    notify.notify.mockClear();
+    const c = fakeClient([
+      POLICY,
+      { match: /FROM business_hours/, rows: HOURS },
+      {
+        match: /SET resolution_breached_at/,
+        rows: [{ email_thread_id: "t-res", email_connection_id: "c1", subject: "Still open", assigned_user_id: "u-agent" }],
+      },
+      { match: /FROM email_connection_member/, rows: [{ user_id: "u-lead" }] },
+    ]);
+    const out = await sla.sweep(c);
+    expect(out.resolution_breached).toBe(1);
+    expect(notify.notify).toHaveBeenCalled();
+    const titles = notify.notify.mock.calls.map((call) => call[1].title);
+    expect(titles).toContain("Resolution SLA missed");
+    const keys = notify.notify.mock.calls.map((call) => call[1].dedupeKey);
+    expect(keys.some((k) => /^SLA_RESOLUTION:email_thread:t-res:/.test(k))).toBe(true);
+    expect(c.written(/SET resolution_breached_at/)[0].text).toMatch(/resolution_breached_at IS NULL/);
   });
 
   test("a policy edit clears computed dates so the next sweep re-applies it", async () => {

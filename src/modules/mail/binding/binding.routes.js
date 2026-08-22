@@ -51,17 +51,22 @@ router.delete("/threads/:id/bind", requireFeature("mail.binding"), requirePermis
 router.post("/suggestions/accept-batch", requireFeature("mail.binding"), requirePermission(M, "edit"),
   body(z.object({ thread_ids: z.array(z.string().uuid()).min(1).max(200), min_confidence: z.coerce.number().min(0).max(1).optional() }).strict()),
   restrictThreadIdsBody("thread_ids"),
-  asyncHandler(async (req, res) => {
-    const out = req.body.thread_ids.length
-      ? await req.identityDb((c) => binding.acceptBatch(c, { threadIds: req.body.thread_ids, minConfidence: req.body.min_confidence, actor: actor(req) }))
-      : { accepted: 0, results: [] };
-    res.json({ data: { ...out, not_visible: req.mailThreadIdsDropped || 0 } });
-  }));
+  // One expression, no interior semicolon: check-write-route-validators.js
+  // captures the middleware chain as `[^;]*`, so a `const out = …;` inside the
+  // handler made the regex miss `body(` and flag this (validated) route.
+  asyncHandler(async (req, res) => res.json({
+    data: {
+      ...(req.body.thread_ids.length
+        ? await req.identityDb((c) => binding.acceptBatch(c, { threadIds: req.body.thread_ids, minConfidence: req.body.min_confidence, actor: actor(req) }))
+        : { accepted: 0, results: [] }),
+      not_visible: req.mailThreadIdsDropped || 0,
+    },
+  })));
 
 router.get("/context", requireFeature("mail.binding"), requirePermission(M, "view"),
-  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.overview(c, req.query.entity_ref, { userId: actor(req).user_id })) })));
+  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.overview(c, req.query.entity_ref, { userId: actor(req).user_id, user: req.user })) })));
 router.get("/context/:tab", requireFeature("mail.binding"), requirePermission(M, "view"),
-  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.tab(c, req.query.entity_ref, req.params.tab, { userId: actor(req).user_id })) })));
+  asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.tab(c, req.query.entity_ref, req.params.tab, { userId: actor(req).user_id, user: req.user })) })));
 
 /* Every card that applies to this thread, with its readiness — ONE query, so
  * the reading pane draws the whole strip without spending the §3.6 budget. */

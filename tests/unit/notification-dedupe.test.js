@@ -121,6 +121,46 @@ describe("the window is time-bounded, not permanent", () => {
   });
 });
 
+describe("P5-2: Redis SET NX is the fleet-wide claim", () => {
+  test("a second replica that shares Redis is suppressed even with an empty local map", async () => {
+    const store = new Map();
+    const redis = {
+      set: jest.fn(async (key, _v, nx, _ex, _ttl) => {
+        expect(nx).toBe("NX");
+        if (store.has(key)) return null;
+        store.set(key, "1");
+        return "OK";
+      }),
+    };
+    jest.resetModules();
+    jest.doMock("../../src/config/redis", () => ({ getClient: () => redis }));
+    jest.doMock("../../src/modules/notification/notification.repo", () => ({
+      insertForUser: (...a) => mockInsertForUser(...a),
+      insertForUsers: jest.fn(async () => 0),
+      isChannelEnabled: (...a) => mockIsChannelEnabled(...a),
+      preferencesFor: jest.fn(async () => new Map()),
+      activeEmailsFor: jest.fn(async () => new Map()),
+    }));
+    jest.doMock("../../src/shared/push/push.service", () => ({
+      sendToUser: (...a) => mockPushSend(...a),
+      getPublicKey: jest.fn(async () => "vapid-pub"),
+    }));
+    jest.doMock("../../src/services/email.service", () => ({ send: jest.fn(async () => ({})) }));
+
+    const fresh = require("../../src/modules/notification/notification.service");
+    const first = await fresh.notify(DB, base({ dedupeKey: "MENTION:note-r:u-1" }));
+    // Simulate another process: empty local map, same Redis.
+    fresh.recentDedupe.clear();
+    const second = await fresh.notify(DB, base({ dedupeKey: "MENTION:note-r:u-1" }));
+    expect(first).toBeTruthy();
+    expect(second).toBeNull();
+    expect(redis.set).toHaveBeenCalledWith(
+      "notify:dedupe:MENTION:note-r:u-1", "1", "NX", "EX", 60,
+    );
+    jest.resetModules();
+  });
+});
+
 describe("the rule lives in the service (§7.4 MUST)", () => {
   test("callers pass a key; none of them implements the window itself", () => {
     const fs = require("fs");

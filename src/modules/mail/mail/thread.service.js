@@ -227,6 +227,13 @@ async function applyLabel(client, actor, threadId, labelId, on = true) {
  * where the numbers disagree.
  */
 async function folders(client, actor, connectionId) {
+  // P1A-2. The repo now applies `accessible`; this is the named refusal so a
+  // caller who picks a mailbox they do not hold gets an empty rail rather
+  // than a 403 that confirms the mailbox exists.
+  if (connectionId) {
+    const role = await access.roleFor(client, connectionId, actor.user_id);
+    if (!role) return { folders: [], streams: { HUMAN: 0, SYSTEM: 0 } };
+  }
   const [list, streams] = await Promise.all([
     repo.listFolders(client, connectionId || null, actor.user_id),
     repo.streamUnread(client, actor.user_id, connectionId || null),

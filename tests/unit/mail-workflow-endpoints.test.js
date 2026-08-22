@@ -179,32 +179,48 @@ describe("the business calendar is edited as a week", () => {
 /* ── Thread sharing ───────────────────────────────────────────────────────── */
 
 describe("sharing one Private thread with one colleague", () => {
+  // C-1. `assertMaySteward` now runs before any share write. The caller is
+  // the mailbox owner of a PRIVATE thread, which is the only person who may
+  // hand one out.
+  const steward = {
+    match: /SELECT t\.visibility, c\.owner_user_id/,
+    rows: [{ visibility: "PRIVATE", owner_user_id: "u-me", is_sharee: false }],
+  };
   const shared = { match: /INSERT INTO email_thread_share/, rows: [{ email_thread_id: "t-1", user_id: "u-marie" }] };
 
   test("it is recorded with who granted it", async () => {
-    const c = fakeClient([shared]);
+    const c = fakeClient([steward, shared]);
     await workflow.shareThread(c, "t-1", "u-marie", ME);
     expect(c.written(/INSERT INTO email_thread_share/)[0].params).toEqual(["t-1", "u-marie", "u-me"]);
   });
 
   test("it is audited as sensitive — a share is a disclosure", async () => {
-    await workflow.shareThread(fakeClient([shared]), "t-1", "u-marie", ME);
+    await workflow.shareThread(fakeClient([steward, shared]), "t-1", "u-marie", ME);
     expect(audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "mail.thread.shared", isSensitive: true,
     }));
   });
 
   test("re-sharing is idempotent rather than an error", async () => {
-    const c = fakeClient([shared]);
+    const c = fakeClient([steward, shared]);
     await workflow.shareThread(c, "t-1", "u-marie", ME);
     expect(c.written(/INSERT INTO email_thread_share/)[0].text).toMatch(/ON CONFLICT/);
   });
 
   test("withdrawing is audited too", async () => {
-    await workflow.unshareThread(fakeClient(), "t-1", "u-marie", ME);
+    await workflow.unshareThread(fakeClient([steward]), "t-1", "u-marie", ME);
     expect(audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "mail.thread.unshared",
     }));
+  });
+
+  test("a mailbox member who is not the owner cannot hand a Private thread out", async () => {
+    const c = fakeClient([{
+      match: /SELECT t\.visibility, c\.owner_user_id/,
+      rows: [{ visibility: "PRIVATE", owner_user_id: "u-owner", is_sharee: false }],
+    }]);
+    await expect(workflow.shareThread(c, "t-1", "u-marie", ME)).rejects.toMatchObject({ status: 404 });
+    expect(c.written(/INSERT INTO email_thread_share/)).toHaveLength(0);
   });
 
   test("sharing with nobody is refused", async () => {

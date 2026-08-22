@@ -438,8 +438,13 @@ const seedStateForMembers = (client, messageId, connectionId) =>
 
 /* ── Folders ──────────────────────────────────────────────────────────────── */
 
-const listFolders = (client, connectionId, userId = null) =>
-  client.query(
+const listFolders = (client, connectionId, userId = null) => {
+  // P1A-2. A connection_id with no accessible-connection check enumerated
+  // folder names and message counts for any mailbox in the tenant. Fail
+  // closed: no caller, or no mailbox, is an empty rail — not a tenant-wide
+  // listing and not a 403 that confirms the mailbox exists.
+  if (!userId || !connectionId) return Promise.resolve([]);
+  return client.query(
     // `unread_count`, spelled the same as in listThreads. The rail and the list
     // show the same number and the client should not have to remember which
     // endpoint calls it what.
@@ -456,10 +461,12 @@ const listFolders = (client, connectionId, userId = null) =>
                                  WHERE s.email_message_id = m.email_message_id AND s.user_id = $2 AND s.is_read))::int AS unread_count
        FROM email_folder f
       WHERE f.email_connection_id = $1
+        AND f.email_connection_id IN ${accessible(2)}
       ORDER BY COALESCE(array_position(ARRAY['INBOX','SENT','DRAFTS','ARCHIVE','SPAM','TRASH'], f.canonical), 99),
                f.display_name, f.provider_path`,
     [connectionId, userId],
   ).then((r) => r.rows);
+};
 
 /**
  * Unread conversations per stream, for the rail's People / Notices counts.

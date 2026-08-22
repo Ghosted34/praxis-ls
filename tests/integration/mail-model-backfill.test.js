@@ -59,7 +59,7 @@ const MIGRATION_10731 = path.resolve(
   __dirname, "..", "..", "migrations", "tenant", "10731_mail_thread_message.sql",
 );
 const MIGRATION_11743 = path.resolve(
-  __dirname, "..", "..", "migrations", "tenant", "11743_email_thread_participants_repair.sql",
+  __dirname, "..", "..", "migrations", "tenant", "11745_email_thread_participants_repair.sql",
 );
 
 /* Fixed ids so an assertion can name the row it is talking about. */

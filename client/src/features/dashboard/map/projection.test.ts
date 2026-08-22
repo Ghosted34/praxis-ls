@@ -64,7 +64,7 @@ describe("buildMapModel", () => {
     // `other` is a real mode now — the files that move nothing (warehousing,
     // brokerage, representation) used to fall through to the sea default and be
     // drawn as shipping lanes. Zero here, because none of these three is one.
-    expect(m.counts).toEqual({ sea: 1, air: 1, road: 1, other: 0 });
+    expect(m.counts).toEqual({ sea: 1, air: 1, road: 1, rail: 0, other: 0 });
   });
 
   it("de-duplicates a port that several lanes share", () => {

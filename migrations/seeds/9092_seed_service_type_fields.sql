@@ -108,7 +108,9 @@ INSERT INTO _stf_profile (svc, profile) VALUES
   ('WAREHOUSING','WAREHOUSE'),
   ('BUSINESS_REPRESENTATION','REPRESENTATION'),
   ('CUSTOMS_BROKERAGE','CUSTOMS'),
-  ('PROJECT_CARGO','PROJECT');
+  ('PROJECT_CARGO','PROJECT'),
+  ('RAIL_TRANSPORTATION','RAIL'),
+  ('RAIL_HINTERLAND_TRANSIT','RAIL_HINTERLAND');
 
 CREATE TEMP TABLE _stf_group (
   profile text NOT NULL, code text NOT NULL,
@@ -144,7 +146,16 @@ INSERT INTO _stf_group (profile, code, label_fr, label_en, seq) VALUES
 
   ('PROJECT','TRANSPORT','Transport','Transport',10),
   ('PROJECT','CARGO','Colis hors gabarit','Out-of-gauge cargo',20),
-  ('PROJECT','CUSTOMS','Douane & commerce','Customs & trade',30);
+  ('PROJECT','CUSTOMS','Douane & commerce','Customs & trade',30),
+
+  ('RAIL','TRANSPORT','Transport ferroviaire','Rail transport',10),
+  ('RAIL','CARGO','Marchandise','Cargo',20),
+  ('RAIL','CUSTOMS','Douane & commerce','Customs & trade',30),
+
+  ('RAIL_HINTERLAND','TRANSPORT','Segment ferroviaire','Rail leg',10),
+  ('RAIL_HINTERLAND','ROAD','Livraison terminale','Final delivery leg',20),
+  ('RAIL_HINTERLAND','CARGO','Marchandise','Cargo',30),
+  ('RAIL_HINTERLAND','CUSTOMS','Transit & douane','Transit & customs',40);
 
 CREATE TEMP TABLE _stf_field (
   profile     text NOT NULL,
@@ -346,7 +357,54 @@ INSERT INTO _stf_field (profile, group_code, seq, key, label_fr, label_en, data_
   ('PROJECT','CARGO',120,'marks_numbers','Marques & numéros','Marks & numbers','TEXT',false,'CARGO_MARKS','marks_numbers','HALF'),
   ('PROJECT','CUSTOMS',10,'incoterm','Incoterm','Incoterm','SELECT',true,'INCOTERM','incoterm','THIRD'),
   ('PROJECT','CUSTOMS',20,'customs_regime','Régime douanier','Customs regime','SELECT',false,'CUSTOMS_REGIME','customs_regime','THIRD'),
-  ('PROJECT','CUSTOMS',30,'declaration_no','№ de déclaration','Declaration No','TEXT',false,'CUSTOMS_REF',NULL,'THIRD');
+  ('PROJECT','CUSTOMS',30,'declaration_no','№ de déclaration','Declaration No','TEXT',false,'CUSTOMS_REF',NULL,'THIRD'),
+
+  -- ── RAIL ────────────────────────────────────────────────────────────────────
+  ('RAIL','TRANSPORT',10,'bl_number','Lettre de voiture ferroviaire (CIM/LVF)','Rail Consignment Note (CIM/Waybill)','TEXT',false,'TRANSPORT_REF','bl_mawb','HALF'),
+  ('RAIL','TRANSPORT',20,'rail_operator','Opérateur ferroviaire','Railway operator','RATE_PROVIDER',false,'CARRIER','rate_provider_id','HALF'),
+  ('RAIL','TRANSPORT',30,'train_no','№ de train / convoi','Train / convoy No','TEXT',false,'CONVEYANCE','vessel_flight','HALF'),
+  ('RAIL','TRANSPORT',40,'wagon_nos','№ de wagon(s) / rame','Wagon / rake No(s)','TEXT',false,NULL,NULL,'HALF'),
+  ('RAIL','TRANSPORT',50,'pol','Gare / terminal de départ','Origin rail terminal / station','GEO_PLACE',true,'ORIGIN','pol','HALF'),
+  ('RAIL','TRANSPORT',60,'pod','Gare / terminal d''arrivée','Destination rail terminal / station','GEO_PLACE',true,'DESTINATION','pod','HALF'),
+  ('RAIL','TRANSPORT',70,'siding_branch','Embranchement particulier (ITE)','Private siding / industrial spur','TEXT',false,NULL,NULL,'HALF'),
+  ('RAIL','TRANSPORT',80,'eta','ETA en gare','ETA at rail terminal','DATE',false,'ARRIVAL_DATE','eta','HALF'),
+  ('RAIL','TRANSPORT',90,'ata','ATA en gare (arrivée réelle)','ATA at rail terminal (actual arrival)','DATE',false,'ARRIVAL_DATE','ata','HALF'),
+  ('RAIL','TRANSPORT',100,'estimated_delivery_date','Date de livraison estimée du projet','Estimated Project Delivery Date','DATE',false,'DELIVERY_DATE','promised_delivery_date','HALF'),
+  ('RAIL','TRANSPORT',110,'place_delivery','Lieu de livraison finale','Place of final delivery','GEO_PLACE',false,'FINAL_DELIVERY','place_delivery','HALF'),
+  ('RAIL','CARGO',10,'commodity','Marchandise','Commodity','TEXT',true,'CARGO_DESC','commodity','HALF'),
+  ('RAIL','CARGO',20,'commodity_desc','Description détaillée','Detailed description','TEXTAREA',false,NULL,'commodity_desc','FULL'),
+  ('RAIL','CARGO',30,'gross_weight','Poids brut','Gross weight','NUMBER',false,'CARGO_WEIGHT','gross_weight','THIRD'),
+  ('RAIL','CARGO',40,'weight_unit','Unité','Unit','SELECT',false,NULL,'weight_unit','THIRD'),
+  ('RAIL','CARGO',50,'volume_cbm','Volume (m³)','Volume (CBM)','NUMBER',false,'CARGO_VOLUME','volume_cbm','THIRD'),
+  ('RAIL','CARGO',60,'package_count','Nombre de colis','Package count','INTEGER',false,'CARGO_PACKAGES','package_count','HALF'),
+  ('RAIL','CARGO',70,'marks_numbers','Marques & numéros','Marks & numbers','TEXT',false,'CARGO_MARKS','marks_numbers','HALF'),
+  ('RAIL','CUSTOMS',10,'incoterm','Incoterm','Incoterm','SELECT',true,'INCOTERM','incoterm','THIRD'),
+  ('RAIL','CUSTOMS',20,'customs_regime','Régime douanier','Customs regime','SELECT',false,'CUSTOMS_REGIME','customs_regime','THIRD'),
+  ('RAIL','CUSTOMS',30,'declaration_no','№ de déclaration','Declaration No','TEXT',false,'CUSTOMS_REF',NULL,'THIRD'),
+
+  -- ── RAIL HINTERLAND ─────────────────────────────────────────────────────────
+  ('RAIL_HINTERLAND','TRANSPORT',10,'bl_number','Lettre de voiture ferroviaire (CIM/LVF)','Rail Consignment Note (CIM/Waybill)','TEXT',false,'TRANSPORT_REF','bl_mawb','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',20,'rail_operator','Opérateur ferroviaire','Railway operator','RATE_PROVIDER',false,'CARRIER','rate_provider_id','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',30,'train_no','№ de train / convoi','Train / convoy No','TEXT',false,'CONVEYANCE','vessel_flight','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',40,'wagon_nos','№ de wagon(s) / rame','Wagon / rake No(s)','TEXT',false,NULL,NULL,'HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',50,'pol','Gare de départ','Origin rail station','GEO_PLACE',true,'ORIGIN','pol','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',60,'border_station','Gare / poste frontière','Border rail post / station','GEO_PLACE',false,'ROUTE_VIA',NULL,'HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',70,'entry_terminal','Gare / terminal d''entrée pays enclavé','Destination border railhead','GEO_PLACE',true,'ROUTE_VIA','pod','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',80,'eta','ETA gare frontière / terminal','ETA at railhead','DATE',false,'ARRIVAL_DATE','eta','HALF'),
+  ('RAIL_HINTERLAND','TRANSPORT',90,'ata','ATA gare frontière / terminal','ATA at railhead','DATE',false,'ARRIVAL_DATE','ata','HALF'),
+  ('RAIL_HINTERLAND','ROAD',10,'final_destination','Destination finale','Final destination','GEO_PLACE',true,'DESTINATION','place_delivery','HALF'),
+  ('RAIL_HINTERLAND','ROAD',20,'transporter','Transporteur routier / acheminement','Road haulier (final leg)','TEXT',false,NULL,NULL,'HALF'),
+  ('RAIL_HINTERLAND','ROAD',30,'estimated_delivery_date','Date de livraison estimée du projet','Estimated Project Delivery Date','DATE',false,'DELIVERY_DATE','promised_delivery_date','HALF'),
+  ('RAIL_HINTERLAND','CARGO',10,'commodity','Marchandise','Commodity','TEXT',true,'CARGO_DESC','commodity','HALF'),
+  ('RAIL_HINTERLAND','CARGO',20,'commodity_desc','Description détaillée','Detailed description','TEXTAREA',false,NULL,'commodity_desc','FULL'),
+  ('RAIL_HINTERLAND','CARGO',30,'gross_weight','Poids brut','Gross weight','NUMBER',false,'CARGO_WEIGHT','gross_weight','THIRD'),
+  ('RAIL_HINTERLAND','CARGO',40,'weight_unit','Unité','Unit','SELECT',false,NULL,'weight_unit','THIRD'),
+  ('RAIL_HINTERLAND','CARGO',50,'volume_cbm','Volume (m³)','Volume (CBM)','NUMBER',false,'CARGO_VOLUME','volume_cbm','THIRD'),
+  ('RAIL_HINTERLAND','CARGO',60,'package_count','Nombre de colis','Package count','INTEGER',false,'CARGO_PACKAGES','package_count','HALF'),
+  ('RAIL_HINTERLAND','CARGO',70,'marks_numbers','Marques & numéros','Marks & numbers','TEXT',false,'CARGO_MARKS','marks_numbers','HALF'),
+  ('RAIL_HINTERLAND','CUSTOMS',10,'transit_declaration','Déclaration de transit','Transit declaration','TEXT',false,'CUSTOMS_REF',NULL,'HALF'),
+  ('RAIL_HINTERLAND','CUSTOMS',20,'customs_regime','Régime douanier','Customs regime','SELECT',false,'CUSTOMS_REGIME','customs_regime','HALF'),
+  ('RAIL_HINTERLAND','CUSTOMS',30,'incoterm','Incoterm','Incoterm','SELECT',false,'INCOTERM','incoterm','HALF');
 
 -- ── Option lists, written once and applied by key ───────────────────────────
 -- Repeating an eleven-element Incoterm array in eight places is eight chances
@@ -417,12 +475,13 @@ UPDATE _stf_field SET validation = '{"min":0,"max":3650}'::jsonb
 UPDATE _stf_field SET client_vis = true WHERE key IN (
   'bl_number','mawb','hawb','waybill_no','transport_doc_ref',
   'vessel_name','flight_no','shipping_line','airline','carrier',
-  'pol','pod','origin_airport','dest_airport','entry_port',
+  'rail_operator','train_no','wagon_nos','siding_branch',
+  'pol','pod','origin_airport','dest_airport','entry_port','border_station','entry_terminal',
   'place_receipt','place_delivery','final_destination',
-  'eta','ata','collection_date','corridor_delivery_eta',
+  'eta','ata','collection_date','corridor_delivery_eta','estimated_delivery_date',
   'commodity','package_count','piece_count','gross_weight','weight_unit','volume_cbm',
   'warehouse_location','bonded_status','stock_in_date','expected_stock_out',
-  'declaration_no','customs_regime','incoterm',
+  'declaration_no','transit_declaration','customs_regime','incoterm',
   'mandate_start','mandate_end','scope_summary'
 );
 
@@ -571,7 +630,8 @@ UPDATE service_type
    SET captures_containers = true, container_detail_mode = 'GROUPED'
  WHERE key IN (
    'SEA_FREIGHT_IMPORT','SEA_FREIGHT_EXPORT','END_TO_END_SEA_FREIGHT',
-   'HINTERLAND_TRANSIT','INLAND_TRANSPORTATION','CUSTOMS_BROKERAGE','PROJECT_CARGO'
+   'HINTERLAND_TRANSIT','INLAND_TRANSPORTATION','CUSTOMS_BROKERAGE','PROJECT_CARGO',
+   'RAIL_TRANSPORTATION','RAIL_HINTERLAND_TRANSIT'
  );
 
 -- DOWN

@@ -33,6 +33,7 @@ const MODES = [
   { value: "AIR", label: "Air" },
   { value: "SEA", label: "Sea" },
   { value: "LAND", label: "Land" },
+  { value: "RAIL", label: "Rail" },
   // A real answer, not a catch-all: warehousing, brokerage and business
   // representation move nothing, and the server derives this from the file's
   // itinerary rather than guessing from the service-type name.

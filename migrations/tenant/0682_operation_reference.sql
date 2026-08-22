@@ -156,7 +156,9 @@ DECLARE
     'END_TO_END_SEA_FREIGHT',  'EF',
     'BUSINESS_REPRESENTATION', 'BR',
     'CUSTOMS_BROKERAGE',       'CB',
-    'PROJECT_CARGO',           'PC'
+    'PROJECT_CARGO',           'PC',
+    'RAIL_TRANSPORTATION',     'RT',
+    'RAIL_HINTERLAND_TRANSIT', 'RH'
   );
 BEGIN
   FOR r IN

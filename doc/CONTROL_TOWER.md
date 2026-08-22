@@ -83,13 +83,14 @@ header say 12 above a list of 3.
 
 ## Colour and shape
 
-Three modes, three fixed hues, from three declared tokens:
+Four modes, four fixed hues, from four declared tokens:
 
 | Mode | Colour | Token         |
 | ---- | ------ | ------------- |
 | Sea  | Green  | `--mode-sea`  |
 | Air  | Blue   | `--mode-air`  |
 | Road | Orange | `--mode-road` |
+| Rail | Purple | `--mode-rail` |
 
 They are their own tokens rather than borrowed ones, and that is a fix. Sea was
 `--brand-blue-bright` and air was `--brand-blue` — the same hue two steps apart,
@@ -104,7 +105,7 @@ on.
 
 | Marker                          | Shows                    | Vocabulary                                                                                                      |
 | ------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| The one **travelling** the lane | What the cargo is _on_   | Ship / plane / truck, by mode, turned along the path so it also shows direction                                 |
+| The one **travelling** the lane | What the cargo is _on_   | Ship / plane / truck / train, by mode, turned along the path so it also shows direction                         |
 | The **fixed endpoint**          | What kind of place it is | Ship for a seaport, plane for an airport, rooftops for a city, warehouse for a terminal, gate for a border post |
 
 A port is a port whichever leg touches it, and a port that ends a sea leg and starts

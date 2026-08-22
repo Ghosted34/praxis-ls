@@ -241,6 +241,7 @@ export default {
         "lane-sea": "lane-dash 2.4s linear infinite",
         "lane-road": "lane-dash 1.6s linear infinite",
         "lane-air": "lane-dash 3s linear infinite",
+        "lane-rail": "lane-dash 2s linear infinite",
       },
     },
   },

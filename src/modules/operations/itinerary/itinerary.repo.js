@@ -5,7 +5,7 @@
 "use strict";
 
 const LEG_TYPES = new Set(["PICKUP", "MAIN_CARRIAGE", "CUSTOMS", "INLAND_TRANSIT", "WAREHOUSE", "FINAL_DELIVERY", "OTHER"]);
-const MODES = new Set(["AIR", "SEA", "LAND", "OTHER"]);
+const MODES = new Set(["AIR", "SEA", "LAND", "RAIL", "OTHER"]);
 const STATUSES = new Set(["PLANNED", "IN_PROGRESS", "COMPLETED", "BLOCKED", "CANCELLED"]);
 const SOURCES = new Set(["TEMPLATE", "MANUAL"]);
 

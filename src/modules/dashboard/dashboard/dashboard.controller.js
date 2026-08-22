@@ -9,7 +9,7 @@ module.exports = {
     const allowed = new Set(["created", "updated", "arrival", "delivery"]);
     // Enumerated rather than passed through: both go into a SQL predicate, and an
     // unrecognised value must mean "no filter" rather than reaching the repo.
-    const modes = new Set(["AIR", "SEA", "LAND", "OTHER"]);
+    const modes = new Set(["AIR", "SEA", "LAND", "RAIL", "OTHER"]);
     const layers = new Set(["MOVEMENT", "ACTIVITY"]);
     const verifications = new Set(["VERIFIED", "UNVERIFIED"]);
     const pick = (value, set) => {

@@ -121,6 +121,8 @@ const DEFAULT_SERVICE_CODES = {
   BUSINESS_REPRESENTATION: "BR",
   CUSTOMS_BROKERAGE: "CB",
   PROJECT_CARGO: "PC",
+  RAIL_TRANSPORTATION: "RT",
+  RAIL_HINTERLAND_TRANSIT: "RH",
 };
 
 /* ── The random core ───────────────────────────────────────────────────────── */

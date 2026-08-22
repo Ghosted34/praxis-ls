@@ -28,6 +28,8 @@ export const MODE_GLYPH: Record<ShipmentMode, string> = {
   air: "M12 2.2l2 7.3 8.3 3.2v2l-8.3-1.6-1 5.2 3 2.2v1.5l-4-1.3-4 1.3v-1.5l3-2.2-1-5.2-8.3 1.6v-2l8.3-3.2z",
   // A cab, a box body and two wheels — the silhouette, not a technical drawing.
   road: "M2 8h11v8H2z M13.5 10.5h3.5l3 3.5v2h-6.5z M6.5 15.5a2 2 0 104 0 2 2 0 10-4 0 M15 15.5a2 2 0 104 0 2 2 0 10-4 0",
+  // A train locomotive front with windshield, headlights and track base.
+  rail: "M6 3h12a2 2 0 012 2v11a2 2 0 01-2 2l1.5 2v1h-2.5l-1.5-2H8.5l-1.5 2H4.5v-1l1.5-2a2 2 0 01-2-2V5a2 2 0 012-2zm1.5 3v4h9V6h-9zm1.5 7a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm6 0a1.5 1.5 0 100 3 1.5 1.5 0 000-3z",
   /**
    * A building, for the files that move nothing.
    *
@@ -71,6 +73,16 @@ export const MODE_ICON: Record<ShipmentMode, (p: IP) => React.JSX.Element> = {
       <circle cx="16" cy="16" r="2" />
     </>,
   ),
+  rail: mi(
+    <>
+      <rect x="4" y="3" width="16" height="13" rx="2" />
+      <path d="M4 11h16" />
+      <path d="M12 3v8" />
+      <circle cx="8" cy="13.5" r="1" />
+      <circle cx="16" cy="13.5" r="1" />
+      <path d="M6 19l-2 2M18 19l2 2M8 19h8" />
+    </>,
+  ),
   other: mi(
     <>
       <path d="M3 20V9l9-5 9 5v11" />
@@ -84,5 +96,6 @@ export const MODE_LABEL: Record<ShipmentMode, string> = {
   sea: "Sea",
   air: "Air",
   road: "Road corridor",
+  rail: "Rail corridor",
   other: "No transport",
 };

@@ -17,7 +17,7 @@ import { MODE_ICON, MODE_LABEL } from "../mode-icons";
 import type { ShipmentMode } from "../model";
 
 /** The modes that draw a route. `other` is a facility, listed separately. */
-const ROUTE_MODES: ShipmentMode[] = ["sea", "air", "road"];
+const ROUTE_MODES: ShipmentMode[] = ["sea", "air", "road", "rail"];
 
 export function MapLegend({
   counts,

@@ -6,6 +6,11 @@ const { insertOne } = require("../../../shared/db/query-helpers");
 // a user never sees two differently-worded versions of the same warning.
 const { proofMessage } = require("../../master/financial_dictionary/financial_dictionary.rules");
 
+async function signatureWetUnreconciled(client) {
+  const wet = require("../signature_wet/signature_wet.service");
+  return wet.unreconciledOffenders(client);
+}
+
 const SCANS = {
   "cost_entry.missing_proof": async (client) => {
     const { rows } = await client.query(
@@ -29,6 +34,8 @@ const SCANS = {
     const { rows } = await client.query("SELECT line_id, entry_id FROM journal_line WHERE is_disbursement = true AND tax_code_id IS NOT NULL");
     return rows.map((r) => ({ entity_ref: "journal_line:" + r.line_id, message: "Disbursement line carries a tax code (entry " + r.entry_id + ")" }));
   },
+
+  "signature.wet_unreconciled": signatureWetUnreconciled,
 
   /* ── Dictionary-driven proof obligations (MOD-05 §Q4) ─────────────────────
    * The batch counterpart of the inline raise in
@@ -90,6 +97,7 @@ const scan = (client, ruleKey) => {
     case "procurement.unmatched": return SCANS["procurement.unmatched"](client);
     case "regie.aged_unjustified": return SCANS["regie.aged_unjustified"](client);
     case "disbursement.tax_violation": return SCANS["disbursement.tax_violation"](client);
+    case "signature.wet_unreconciled": return SCANS["signature.wet_unreconciled"](client);
     case "dictionary.proof_missing.cash_request": return SCANS["dictionary.proof_missing.cash_request"](client);
     case "dictionary.proof_missing.cost_entry": return SCANS["dictionary.proof_missing.cost_entry"](client);
     default: return Promise.resolve([]);

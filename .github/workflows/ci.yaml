@@ -1272,6 +1272,60 @@ jobs:
             exit 1
           fi
 
+      - name: The PDF raster stack resolves inside the image
+        # SIGNATURE_ENGINEERING_GUIDE §8.4 step 1 — a returned scan that arrives
+        # as a PDF (which is what an office copier produces) is rasterised
+        # before it is decoded. Three things make this worth its own step
+        # rather than trusting the unit suite:
+        #
+        #   1. The modules are required LAZILY, inside rasterisePdf, so a
+        #      missing one does not stop the container booting. The liveness
+        #      check above would pass on an image that cannot read a single
+        #      returned scan.
+        #   2. That lazy require sits in a try/catch that reports
+        #      PDF_RASTERIZE_FAILED — which reads like a damaged fax, not like
+        #      an absent dependency. Nobody is watching per-scan messages.
+        #   3. The image is built with `npm install --omit=dev`, so this is the
+        #      only place the pruned tree is exercised. The raster unit tests
+        #      are skipped under GITHUB_ACTIONS (they cost ~6s each), and even
+        #      unskipped they would run against the dev tree, which proves
+        #      nothing about what ships.
+        #
+        # Resolution only, no rasterising: the question here is "did these
+        # survive the install", and it is answered in milliseconds. Same
+        # stderr-plus-marker convention as the mount probe above, for the same
+        # reason — the captured blob is not reliably a single JSON document.
+        run: |
+          set -euo pipefail
+
+          out=$(docker exec -w /app praxis-ci node -e "
+            const wanted = ['pdfjs-dist/legacy/build/pdf.js', '@napi-rs/canvas', 'canvas'];
+            const missing = [];
+            for (const m of wanted) {
+              try { require.resolve(m); } catch (err) { missing.push({ module: m, error: err.code || err.message }); }
+            }
+            console.warn('PDF_RASTER_REPORT ' + JSON.stringify({ checked: wanted.length, missing }));
+          " 2>&1)
+          echo "$out"
+
+          # `|| true` because grep exits 1 on no match and `set -e` would abort
+          # before the explicit, more useful error below.
+          report=$(printf '%s\n' "$out" | grep -o 'PDF_RASTER_REPORT .*' | tail -1 | cut -d' ' -f2- || true)
+
+          # No report is its own failure, and a different one: the probe never
+          # ran. Reading that as "nothing missing" is how a broken assertion
+          # passes for months.
+          if [ -z "$report" ]; then
+            echo "::error::The PDF raster report never came back — the probe itself failed. Output above."
+            exit 1
+          fi
+
+          if [ "$(printf '%s' "$report" | jq '.missing | length')" != "0" ]; then
+            echo "::error::The PDF raster stack is missing from the built image — every returned scan that arrives as a PDF would fail decode with PDF_RASTERIZE_FAILED."
+            printf '%s' "$report" | jq .missing
+            exit 1
+          fi
+
       - name: Container logs and teardown
         if: always()
         run: |

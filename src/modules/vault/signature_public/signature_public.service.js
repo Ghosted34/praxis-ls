@@ -334,7 +334,25 @@ async function complete(client, opts) {
   }
   const card = presets.assertAllowed(menu, presetCode);
 
-  // RULE 2 — no threshold, no setting, no exception.
+  // PRINT_SIGN is settled by returned-paper reconciliation, not by an email OTP
+  // act. The signing link is still the credential that lets the counterparty
+  // choose paper, but no document_signature row exists until the physical copy
+  // comes back and passes §8.6's corroborating checks.
+  if (card.assurance_level === "WET") {
+    const wet = require("../signature_wet/signature_wet.service");
+    const job = await wet.issue(client, {
+      requestId: request.request_id,
+      partyId: party.party_id,
+      entityRef: request.entity_ref,
+      docType: request.doc_type,
+      documentVaultId: request.document_vault_id || null,
+      doc: liveDoc,
+      actor: {},
+    });
+    return { paper: true, print_job: job, completed: false };
+  }
+
+  // RULE 2 — no threshold, no setting, no exception for digital external acts.
   const challenge = await repo.latestOtp(client, { partyId: party.party_id });
   const verified = challenge
     && challenge.verified_at
@@ -349,15 +367,10 @@ async function complete(client, opts) {
     );
   }
 
-  // PR-4 and PR-5 own these two cards. Until then they are offered disabled by
-  // the menu, and a caller that submits one anyway gets a straight answer
-  // rather than a half-written signature.
+  // PR-4 owns QES. Until then the menu offers it disabled, and a caller that
+  // submits one anyway gets a straight answer rather than a half-written row.
   if (card.assurance_level === "QES") {
     throw new AppError("NOT_IMPLEMENTED", "Certified signatures are not switched on yet.", 501,
-      { preset_code: presetCode });
-  }
-  if (card.assurance_level === "WET") {
-    throw new AppError("NOT_IMPLEMENTED", "Signing on paper is not switched on yet.", 501,
       { preset_code: presetCode });
   }
 

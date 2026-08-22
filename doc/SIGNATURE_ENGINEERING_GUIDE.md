@@ -1843,10 +1843,15 @@ panel (§3.11).
 
 ---
 
-## 8. PR-5 — Tier 4: the wet signature and reconciliation
+## 8. PR-5 — Tier 4: the wet signature and reconciliation · **DELIVERED**
 
 **Ships:** a discreet DataMatrix on printed documents, three inbound routes, server-side barcode
 decoding, corroborated auto-reconciliation, and an unreconciled-after-N-days compliance rule.
+
+**Delivered in this PR:** `10788`–`10791`, the DataMatrix generator/decoder, the wet-signature
+print-job and ingest APIs, auto/manual review queue primitives, and the RED
+`signature.wet_unreconciled` checker rule. PR-4 is proceeding in parallel, so this PR deliberately
+uses only the wet-signature migration range and does not touch the QES provider files.
 
 Per the questionnaire's §1.4, this is **not** a fallback path. It is the one where the chain of
 custody is weakest and it gets a first-class state machine.

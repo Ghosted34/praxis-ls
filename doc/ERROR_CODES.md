@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (477)
+## All codes (479)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -53,7 +53,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `ALREADY_REVOKED` | 409 | 2× | — |
 | `ALREADY_SENT` | 409 | 2× | — |
-| `ALREADY_SETTLED` | 409 | 2× | — |
+| `ALREADY_SETTLED` | 409 | 3× | — |
 | `ALREADY_SIGNED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
@@ -271,8 +271,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 521× | — |
-| `NOT_IMPLEMENTED` | 501 | 2× | — |
+| `NOT_FOUND` | 404, 422 | 526× | — |
+| `NOT_IMPLEMENTED` | 501 | 1× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -283,6 +283,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_QUERIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 2× | — |
 | `NOT_RELEASED` | 422 | 1× | — |
+| `NOT_REPRINTABLE` | 409 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
 | `NOT_SENT` | 422 | 1× | — |
 | `NOT_SIGNABLE` | 422 | 1× | — |
@@ -306,13 +307,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_CUSTODIAN` | 422 | 2× | — |
 | `NO_DISBURSEMENT_ACCOUNT` | 422 | 1× | — |
 | `NO_DOCUMENT_LOADER` | — | 1× | — |
-| `NO_DOC_TYPE` | 422 | 3× | — |
+| `NO_DOC_TYPE` | 422 | 4× | — |
 | `NO_DOSSIER` | 422 | 1× | — |
 | `NO_EFFECTIVE_CODE` | 422 | 1× | — |
 | `NO_EFFECTIVE_TAX` | 422 | 1× | — |
 | `NO_EMPLOYEE` | 400, 422 | 4× | — |
 | `NO_ENTITY` | 422 | 1× | — |
-| `NO_ENTITY_REF` | 422 | 7× | — |
+| `NO_ENTITY_REF` | 422 | 8× | — |
 | `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
 | `NO_FIELD_SET` | 422 | 1× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
@@ -385,6 +386,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PREFIX_IN_USE` | 422 | 1× | — |
 | `PREFIX_TAKEN` | 422 | 1× | — |
 | `PRESET_NOT_ALLOWED` | 422 | 2× | — |
+| `PRINT_CODE_EXHAUSTED` | 500 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROOF_REQUIRED` | 422 | 1× | — |
 | `PROTECTED` | 422 | 1× | — |

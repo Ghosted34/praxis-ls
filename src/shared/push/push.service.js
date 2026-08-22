@@ -38,7 +38,9 @@ async function resolveVapid() {
       subject = r.value && r.value.subject;
     }
   } catch {
-    // platform store unavailable → env fallback
+    /* @silent:storage — the platform store is unreachable; the env fallback
+       below is the defined degradation, and the caller never needs to know
+       which source supplied the keypair. */
   }
   return {
     publicKey: publicKey || config.VAPID_PUBLIC_KEY || null,

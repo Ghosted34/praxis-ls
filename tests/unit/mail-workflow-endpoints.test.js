@@ -291,6 +291,17 @@ describe("bounces the composer can warn about", () => {
     expect(await workflow.addressStatus(c, [])).toEqual([]);
     expect(c.calls).toHaveLength(0);
   });
+
+  test("A CHECK THAT COULD NOT RUN DOES NOT REPORT A CLEAN LIST", async () => {
+    // This used to end `.catch(() => [])`, so a failed query and a clean
+    // recipient list produced the identical answer — on the one endpoint whose
+    // whole job is to say "do not send to this address". §13.5's rule for
+    // anti-spoof verdicts applies verbatim here: an absent verdict renders
+    // nothing, never a green tick. The composer treats a rejection as "not
+    // checked" and shows nothing, and never blocks the send either way.
+    const broken = { query: async () => { throw new Error("relation does not exist"); } };
+    await expect(workflow.addressStatus(broken, ["a@b.cm"])).rejects.toThrow(/relation does not exist/);
+  });
 });
 
 /* ── Follow-ups ───────────────────────────────────────────────────────────── */

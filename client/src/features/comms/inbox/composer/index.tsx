@@ -46,6 +46,8 @@ import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
 import { GuardrailBar } from "../work/guardrails";
 import { useGuardrails } from "../work/use-guardrails";
+import { useThreadLock } from "../work/use-thread-lock";
+import { useRecipientHealth } from "../work/use-recipient-health";
 import { SchedulePicker } from "../work/schedule";
 import { schedulePayload, type ScheduleChoice } from "../work/schedule-payload";
 import { newIdempotencyKey, rememberSend, forgetSend } from "./offline-queue";
@@ -173,6 +175,19 @@ export function Composer({
     subject,
     to: splitAddresses(to),
     attachments: (tray?.attachments || []).map((a) => ({ filename: a.filename || undefined })),
+  });
+
+  /* ── §9.2 · the soft lock, and §9.8 · the recipients ──────────────────────
+   *
+   * Both were built end to end and reached by nobody. The lock is taken for as
+   * long as this component is mounted on a thread, which is what "opening the
+   * composer takes a two-minute lock" means; the recipient check runs whenever
+   * the To/Cc list settles. Neither can stop a send — one is advice about a
+   * colleague, the other advice about an address, and the person at the
+   * keyboard may have a reason for both. */
+  const { heldByOther } = useThreadLock({ threadId, enabled: !!threadId });
+  const recipients = useRecipientHealth({
+    addresses: [...splitAddresses(to), ...splitAddresses(cc)],
   });
 
   /* ── Autosave ───────────────────────────────────────────────────────────── */
@@ -502,6 +517,39 @@ export function Composer({
       </div>
 
       <AttachmentTray tray={tray} onRemove={detach} onSecureLink={sendAsSecureLink} busy={busy} />
+
+      {/* §9.2. Named, and never a block: the second person can go and ask
+          rather than wait out a lock whose end they cannot see. "Continue
+          anyway" is not a button because nothing is stopping them. */}
+      {heldByOther && (
+        <div role="status" className="border-t border-border bg-warning/10 px-3 py-2 text-xs">
+          <p>
+            {heldByOther.locked_by_name || "A colleague"} started replying to this conversation
+            {heldByOther.seconds_remaining ? " a moment ago" : ""}. You can carry on — this is a
+            heads-up, not a lock on the reply.
+          </p>
+        </div>
+      )}
+
+      {/* §9.8. The end of "we emailed the invoice three times": the address is
+          named, with what is known about it, while there is still somebody to
+          ask for a better one. Nothing is disabled — a person may be sending to
+          a mailbox they have just been told is fixed. */}
+      {(recipients.hard.length > 0 || recipients.soft.length > 0) && (
+        <div role="status" className="border-t border-border bg-warning/10 px-3 py-2 text-xs">
+          {recipients.hard.map((r) => (
+            <p key={r.email}>
+              <strong>{r.email}</strong> has hard-bounced — the mailbox does not exist. Sending
+              again will not reach anyone.
+            </p>
+          ))}
+          {recipients.soft.map((r) => (
+            <p key={r.email}>
+              <strong>{r.email}</strong> has been failing — mail to it may not arrive.
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Warnings from the SERVER's serializer — the same code that will produce
           the message — so they are about what will actually be sent. */}

@@ -415,6 +415,16 @@ const listBounces = (client, { limit = 100, recipient = null, type = null } = {}
  * "x@y.cm has hard-bounced — the mailbox does not exist" before the send rather
  * than after the third attempt. Reads the CONTACT status rather than the bounce
  * log, because that is where the fact about the address lives.
+ *
+ * ── A CHECK THAT COULD NOT RUN IS NOT A CHECK THAT PASSED ───────────────────
+ *
+ * This used to end `.catch(() => [])`, which answers a failed query with the
+ * same empty list a clean one produces: every address fine, no way to tell the
+ * two apart. That is the inverse of §13.5's rule for anti-spoof verdicts — an
+ * absent verdict renders nothing rather than a green tick — and it is worse
+ * here, because the whole point of the endpoint is to say "do not send to
+ * this one". The error now propagates; the composer renders nothing when the
+ * check fails, and never blocks the send either way.
  */
 const addressStatus = (client, addresses = []) => {
   const list = [...new Set((addresses || []).filter(Boolean).map((a) => String(a).toLowerCase()))];
@@ -426,7 +436,7 @@ const addressStatus = (client, addresses = []) => {
      SELECT lower(email), email_status FROM supplier_contact
       WHERE lower(email) = ANY($1) AND email_status <> 'OK'`,
     [list],
-  ).then((r) => r.rows).catch(() => []);
+  ).then((r) => r.rows);
 };
 
 /* ── Follow-ups (§9.3) ────────────────────────────────────────────────────── */

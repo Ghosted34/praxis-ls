@@ -83,6 +83,8 @@ export function TriageBar({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [snoozeOpen, setSnoozeOpen] = React.useState(false);
   const [customDue, setCustomDue] = React.useState("");
+  const [handOverOpen, setHandOverOpen] = React.useState(false);
+  const [assignee, setAssignee] = React.useState("");
 
   const id = thread.email_thread_id;
 
@@ -121,10 +123,47 @@ export function TriageBar({
           ))}
         </Select>
 
+        <Button size="sm" variant="outline" onClick={() => setHandOverOpen((v) => !v)}>
+          {thread.assigned_to ? "Hand over" : "Give it to someone"}
+        </Button>
+
         <Button size="sm" variant="outline" onClick={() => setSnoozeOpen((v) => !v)}>
           Bring it back
         </Button>
       </div>
+
+      {/* §9.1: "a thread in a shared mailbox is unassigned until someone claims
+          it (OR A LEAD ASSIGNS IT)". Claim shipped; assign did not, so a lead
+          could only ask the person to go and claim it themselves, while the
+          route, the service and the client wrapper all sat there unreached.
+          Assigning over a live assignee is deliberately allowed: handing work
+          over IS taking it off somebody, and refusing would strand a thread on
+          whoever went on leave. */}
+      {handOverOpen && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const uid = assignee.trim();
+            if (!uid) return;
+            run("assign", () => api.assignThread(id, uid)).then(() => {
+              setAssignee("");
+              setHandOverOpen(false);
+            });
+          }}
+        >
+          <Input
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+            placeholder="Colleague"
+            aria-label="Hand this conversation to"
+            className="h-8 text-xs"
+          />
+          <Button size="sm" type="submit" disabled={busy !== null || !assignee.trim()}>
+            Hand over
+          </Button>
+        </form>
+      )}
 
       {/* The SLA, in the terms an operator cares about: is it late. */}
       {thread.sla_due_at && (

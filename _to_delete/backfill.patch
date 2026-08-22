@@ -1,0 +1,833 @@
+diff --git a/.github/workflows/ci.yaml b/.github/workflows/ci.yaml
+index da44a63..5a21d26 100644
+--- a/.github/workflows/ci.yaml
++++ b/.github/workflows/ci.yaml
+@@ -784,6 +784,24 @@ jobs:
+             exit 1
+           fi
+ 
++          # THE BACKFILL SUITE BY NAME, not just "something ran".
++          #
++          # The aggregate check above is satisfied by any one suite. This job's
++          # whole history is that a DB-backed suite can self-skip while the run
++          # goes green — and mail-model-backfill is the most skippable of them
++          # all: it is the ONLY test of 10731, the migration that moved every
++          # existing message into email_thread / email_message /
++          # email_message_state. If DATABASE_URL stops reaching it, the thing
++          # that stops being tested is a one-way data migration.
++          backfill=$(jq '[.testResults[]
++                          | select(.name | endswith("mail-model-backfill.test.js"))
++                          | .assertionResults[] | select(.status=="passed")] | length' /tmp/integration.json)
++          echo "mail-model-backfill: $backfill assertion(s)"
++          if [ "$backfill" -lt 10 ]; then
++            echo "::error::tests/integration/mail-model-backfill.test.js did not run (or shrank). It self-skips without DATABASE_URL, and it is the only test 10731's backfill has."
++            exit 1
++          fi
++
+   security:
+     runs-on: ubuntu-latest
+     steps:
+diff --git a/migrations/tenant/11743_email_thread_participants_repair.sql b/migrations/tenant/11743_email_thread_participants_repair.sql
+new file mode 100644
+index 0000000..e25273d
+--- /dev/null
++++ b/migrations/tenant/11743_email_thread_participants_repair.sql
+@@ -0,0 +1,67 @@
++-- §5.9 — 10731's backfill split the recipients on the MESSAGE and not on the
++-- THREAD, so a conversation with two recipients has one participant that is
++-- both of them, and neither of them.
++--
++-- ── WHAT 10731 DID ──────────────────────────────────────────────────────────
++--
++-- The pre-10731 table held recipients as one `citext` scalar, comma-joined.
++-- Its backfill handles that correctly for `email_message`:
++--
++--   string_to_array(b.to_address::text, ', ')::citext[]
++--
++-- and does not, four lines earlier, for `email_thread.participants`:
++--
++--   ARRAY(SELECT DISTINCT x FROM unnest(
++--           array_agg(b.from_address) || array_agg(COALESCE(b.to_address,'')::citext)
++--         ) AS x WHERE x <> '')
++--
++-- So a legacy row addressed to "client@maersk.cm, ops@maersk.cm" produced a
++-- thread whose participants are
++--
++--   {client@maersk.cm, "client@maersk.cm, ops@maersk.cm", billing@smartls.cm}
++--
++-- — an element that is not an address, and a real correspondent
++-- (ops@maersk.cm) that appears nowhere in the set. Verified against a real
++-- Postgres, not read off the SQL; `tests/integration/mail-model-backfill.test.js`
++-- is the test that found it and now pins it.
++--
++-- ── WHY IT MATTERS BEYOND LOOKING WRONG ─────────────────────────────────────
++--
++-- `participants` is the thread's own recipient set, and three things read it:
++-- the thread list renders it, `binding/cards/_facts.js` hands it to the
++-- assistant as grounded fact, and `binding/convert.service.js` takes
++-- `participants[0]` as the address to create a client or lead FROM when the
++-- thread has no `from_address`. That last one is the sharp end: converting such
++-- a thread would mint a party whose e-mail is the string
++-- "client@maersk.cm, ops@maersk.cm", which no duplicate check will ever match
++-- and no message will ever reach.
++--
++-- Message-level `to_address` is correct throughout and is what search indexes,
++-- so nothing here touches it.
++--
++-- ── WHY A REPAIR AND NOT AN EDIT TO 10731 ───────────────────────────────────
++--
++-- 10731 is applied. The migrator keys its ledger on filename and verifies the
++-- recorded sha256 (`contentDrift`), so editing an applied file does not re-run
++-- it and does raise drift on every tenant that has it. And it would fix
++-- nothing: on a fresh tenant the backfill's `legacy_exists` guard means that
++-- expression never runs at all. The only tenants carrying the defect are the
++-- ones that had mail before 10731, and this is what reaches them.
++--
++-- IDEMPOTENT by construction: after one run no element contains a comma, so the
++-- WHERE matches nothing and the second run updates zero rows.
++UPDATE email_thread t
++   SET participants = ARRAY(
++         SELECT DISTINCT btrim(part)::citext
++           FROM unnest(t.participants) AS p,
++                LATERAL regexp_split_to_table(p::text, '\s*,\s*') AS part
++          WHERE btrim(part) <> ''
++       )
++ WHERE EXISTS (SELECT 1 FROM unnest(t.participants) AS p WHERE p::text LIKE '%,%');
++
++-- DOWN
++--   Not reversible, and deliberately so: the pre-repair value is a corrupted
++--   encoding of the same information, so "restoring" it would mean re-joining
++--   addresses that were never meant to be one string. The rows this touches are
++--   identifiable after the fact by nothing — which is the point, they now look
++--   like every correctly-ingested thread.
+diff --git a/tests/integration/mail-model-backfill.test.js b/tests/integration/mail-model-backfill.test.js
+new file mode 100644
+index 0000000..8b2e920
+--- /dev/null
++++ b/tests/integration/mail-model-backfill.test.js
+@@ -0,0 +1,317 @@
++"use strict";
++/**
++ * 10731's BACKFILL, against a real Postgres — §5.9's `mail-model-backfill.test.js`.
++ *
++ * ── WHY THIS WAS THE LAST ONE MISSING ───────────────────────────────────────
++ *
++ * §5.9 names this file and it did not exist. The fifth sweep triaged ten
++ * named-but-absent test files and nine turned out to be naming mismatches
++ * covered in substance elsewhere; this was the one real gap, and it is the
++ * least testable of the ten, which is presumably why. It needs a database, and
++ * CI's `migrations` job provisions a tenant FROM NOTHING — where the backfill's
++ * own `legacy_exists` guard makes it a no-op. A tenant with no legacy mail
++ * cannot exercise the code that moves legacy mail.
++ *
++ * ── HOW IT GETS A LEGACY WORLD TO MIGRATE ───────────────────────────────────
++ *
++ * It rebuilds one, inside a transaction it never commits. Two renames put the
++ * schema back the way it stood the moment 10731 ran:
++ *
++ *   · `email_attachment.email_message_id` → `email_inbound_id` (10737 renamed
++ *     it AFTER 10731, and 10731's backfill reads the old name — which is
++ *     incidentally why re-applying that file on a modern tenant would fail if
++ *     the guard ever let it through);
++ *   · `email_inbound_legacy` → `email_inbound` (the table 10731 renames away;
++ *     it is empty on a provisioned tenant, so nothing real moves).
++ *
++ * Then it inserts the four shapes of legacy row that matter, re-applies the
++ * migration file verbatim, asserts, and ROLLS BACK. DDL is transactional in
++ * Postgres, so the tenant database is byte-identical afterwards — which is what
++ * makes this safe to run in the same `--runInBand` pass as every other
++ * integration suite.
++ *
++ * ── WHAT IT IS ACTUALLY FOR ─────────────────────────────────────────────────
++ *
++ * Not "does the SQL parse". The backfill makes five claims a reader has to take
++ * on trust, each of which quietly breaks something specific if it is wrong:
++ *
++ *   1. ids are PRESERVED — the whole reason `email_attachment` needed a
++ *      re-pointed foreign key rather than a data migration, and the reason an
++ *      id a client was holding still resolves;
++ *   2. messages sharing a thread key become ONE conversation, with the
++ *      timestamps and the count that implies;
++ *   3. a message with no thread key is its own conversation, keyed so it
++ *      cannot collide;
++ *   4. read state, which belonged to nobody in particular, becomes the
++ *      connection OWNER's;
++ *   5. `entity_ref` survives, taken from the most recent message that had one.
++ *
++ * It found a sixth thing that is not a claim but a defect — see the
++ * participants block below and `migrations/tenant/11743`.
++ */
++const hasDb = !!process.env.DATABASE_URL;
++const d = hasDb ? describe : describe.skip;
++
++const fs = require("fs");
++const path = require("path");
++
++const MIGRATION_10731 = path.resolve(
++  __dirname, "..", "..", "migrations", "tenant", "10731_mail_thread_message.sql",
++);
++const MIGRATION_11743 = path.resolve(
++  __dirname, "..", "..", "migrations", "tenant", "11743_email_thread_participants_repair.sql",
++);
++
++/* Fixed ids so an assertion can name the row it is talking about. */
++const OWNER = "11111111-1111-1111-1111-111111111111";
++const CONN = "22222222-2222-2222-2222-222222222222";
++const M1 = "aaaaaaaa-0000-0000-0000-000000000001"; // inbound, read, attachment
++const M2 = "aaaaaaaa-0000-0000-0000-000000000002"; // outbound reply, two recipients
++const M3 = "aaaaaaaa-0000-0000-0000-000000000003"; // no thread key, has a Message-Id
++const M4 = "aaaaaaaa-0000-0000-0000-000000000004"; // no thread key, no Message-Id
++
++d("10731 · the message-model backfill (real Postgres)", () => {
++  let pool;
++  let c;
++
++  beforeAll(async () => {
++    const { Pool } = require("pg");
++    pool = new Pool({ connectionString: process.env.DATABASE_URL });
++    c = await pool.connect();
++    await c.query("BEGIN");
++
++    // ── Put the schema back to the eve of 10731 ────────────────────────────
++    await c.query(`
++      ALTER TABLE email_attachment DROP CONSTRAINT IF EXISTS email_attachment_message_fk;
++      ALTER TABLE email_attachment RENAME COLUMN email_message_id TO email_inbound_id;
++      ALTER TABLE email_inbound_legacy RENAME TO email_inbound;
++    `);
++
++    // ── A mailbox with an owner, which is what read state attaches to ──────
++    await c.query(
++      `INSERT INTO app_user (user_id, email, full_name, password_hash)
++       VALUES ($1, 'owner@smartls.cm', 'Marie Owner', 'not-a-hash')`,
++      [OWNER],
++    );
++    await c.query(
++      `INSERT INTO email_connection (email_connection_id, email_address, owner_user_id, status)
++       VALUES ($1, 'billing@smartls.cm', $2, 'CONNECTED')`,
++      [CONN, OWNER],
++    );
++
++    // ── The four shapes of legacy row ──────────────────────────────────────
++    //
++    // M1/M2 share a thread key: the merge case. M2 carries TWO recipients in
++    // the single comma-joined citext the old table used, which is the shape the
++    // participants defect lives on. M3 has no thread key but a Message-Id; M4
++    // has neither and must fall back to its own id.
++    await c.query(
++      `INSERT INTO email_inbound
++         (email_inbound_id, email_connection_id, thread_key, external_message_id,
++          message_id_header, direction, from_address, to_address, subject, body_text,
++          is_read, received_at, entity_ref, sent_via, origin_user_id)
++       VALUES
++         ($1, $5, 'T-1', 'X-1', '<m1@maersk.cm>', 'IN',
++          'client@maersk.cm', 'billing@smartls.cm', 'Bill of lading', 'Please find attached.',
++          true,  now() - interval '3 hours', NULL, NULL, NULL),
++         ($2, $5, 'T-1', 'X-2', '<m2@smartls.cm>', 'OUT',
++          'billing@smartls.cm', 'client@maersk.cm, ops@maersk.cm', 'Re: Bill of lading', 'Received.',
++          false, now() - interval '1 hour', 'client:123', 'PRAXIS', $6),
++         ($3, $5, NULL, 'X-3', '<m3@new.cm>', 'IN',
++          'lead@new.cm', 'billing@smartls.cm', 'Quote request', 'What would this cost?',
++          false, now() - interval '2 hours', NULL, NULL, NULL),
++         ($4, $5, NULL, NULL, NULL, 'IN',
++          'odd@nowhere.cm', 'billing@smartls.cm', 'No identifiers at all', NULL,
++          false, now() - interval '30 minutes', NULL, NULL, NULL)`,
++      [M1, M2, M3, M4, CONN, OWNER],
++    );
++
++    // An attachment on M1, so `has_attachment` has something to be true about.
++    // The FK was dropped above, deliberately: the backfill re-points it, and it
++    // cannot reference a message row that the backfill has not created yet.
++    await c.query(
++      `INSERT INTO email_attachment (email_inbound_id, filename, content_type, size_bytes)
++       VALUES ($1, 'bl-2026-0311.pdf', 'application/pdf', 88123)`,
++      [M1],
++    );
++
++    // ── Run the migration under test, verbatim ─────────────────────────────
++    await c.query(fs.readFileSync(MIGRATION_10731, "utf8"));
++  }, 60_000);
++
++  afterAll(async () => {
++    if (c) {
++      await c.query("ROLLBACK");
++      c.release();
++    }
++    if (pool) await pool.end();
++  });
++
++  const threads = async () =>
++    (await c.query(
++      `SELECT thread_key, subject, message_count, has_attachment, entity_ref,
++              first_message_at, last_message_at, participants::text[] AS participants
++         FROM email_thread WHERE email_connection_id = $1
++        ORDER BY first_message_at`,
++      [CONN],
++    )).rows;
++
++  const messages = async () =>
++    (await c.query(
++      `SELECT email_message_id, folder, direction, to_address::text[] AS to_address,
++              subject, origin_user_id, email_thread_id, received_at
++         FROM email_message WHERE email_connection_id = $1
++        ORDER BY received_at`,
++      [CONN],
++    )).rows;
++
++  /* ── Claim 1 · ids are preserved ───────────────────────────────────────── */
++
++  it("KEEPS EVERY MESSAGE ID — the claim the attachment re-point rests on", async () => {
++    // 10731: "Every existing message keeps its id ... which means
++    // email_attachment needs no data change (only a re-pointed foreign key),
++    // entity_refs already recorded on the AI timeline stay valid, and any id a
++    // client happens to be holding still resolves."
++    const ids = (await messages()).map((m) => m.email_message_id).sort();
++    expect(ids).toEqual([M1, M2, M3, M4].sort());
++  });
++
++  it("re-points the attachment rather than moving it", async () => {
++    const { rows } = await c.query(
++      `SELECT a.filename, m.subject
++         FROM email_attachment a
++         JOIN email_message m ON m.email_message_id = a.email_inbound_id
++        WHERE a.email_inbound_id = $1`,
++      [M1],
++    );
++    expect(rows).toHaveLength(1);
++    expect(rows[0].subject).toBe("Bill of lading");
++  });
++
++  /* ── Claim 2 · one thread key, one conversation ────────────────────────── */
++
++  it("folds two messages on one thread key into a single conversation", async () => {
++    const t = (await threads()).find((x) => x.thread_key === "T-1");
++    expect(t).toBeTruthy();
++    expect(t.message_count).toBe(2);
++    expect(t.has_attachment).toBe(true);
++    // The subject is the EARLIEST message's, not the last writer's — otherwise
++    // every conversation is eventually called "Re: Re: Re:".
++    expect(t.subject).toBe("Bill of lading");
++    expect(new Date(t.first_message_at).getTime())
++      .toBeLessThan(new Date(t.last_message_at).getTime());
++  });
++
++  it("carries the most recent entity_ref across, and does not invent one", async () => {
++    const all = await threads();
++    expect(all.find((x) => x.thread_key === "T-1").entity_ref).toBe("client:123");
++    expect(all.find((x) => x.thread_key === "X-3").entity_ref).toBeNull();
++  });
++
++  /* ── Claim 3 · no thread key means its own conversation ────────────────── */
++
++  it("gives an unthreaded message its own conversation, keyed so it cannot collide", async () => {
++    const keys = (await threads()).map((t) => t.thread_key).sort();
++    // Message-Id where there is one, the row's own id where there is not.
++    expect(keys).toEqual(["T-1", "X-3", M4].sort());
++    expect(await threads()).toHaveLength(3);
++  });
++
++  /* ── Claim 4 · read state becomes the owner's ──────────────────────────── */
++
++  it("ATTACHES READ STATE TO THE MAILBOX OWNER — it belonged to nobody before", async () => {
++    const { rows } = await c.query(
++      `SELECT email_message_id, user_id, is_read, read_at
++         FROM email_message_state WHERE user_id = $1 ORDER BY email_message_id`,
++      [OWNER],
++    );
++    expect(rows).toHaveLength(4);
++    const read = rows.find((r) => r.email_message_id === M1);
++    expect(read.is_read).toBe(true);
++    // read_at is the receipt time — the old table had no separate one, and
++    // inventing `now()` would date every historic message to the migration.
++    expect(read.read_at).not.toBeNull();
++    expect(rows.filter((r) => r.is_read)).toHaveLength(1);
++    expect(rows.find((r) => r.email_message_id === M2).read_at).toBeNull();
++  });
++
++  /* ── Direction becomes a folder ────────────────────────────────────────── */
++
++  it("files outbound as SENT and everything else as INBOX", async () => {
++    const byId = Object.fromEntries((await messages()).map((m) => [m.email_message_id, m]));
++    expect(byId[M2].folder).toBe("SENT");
++    expect(byId[M1].folder).toBe("INBOX");
++    // origin_user_id survives, or every shared-mailbox send becomes anonymous
++    // retroactively — 10731's own comment on that column.
++    expect(byId[M2].origin_user_id).toBe(OWNER);
++    expect(byId[M1].origin_user_id).toBeNull();
++  });
++
++  it("splits the comma-joined recipients into a real array on the message", async () => {
++    const byId = Object.fromEntries((await messages()).map((m) => [m.email_message_id, m]));
++    expect(byId[M2].to_address).toEqual(["client@maersk.cm", "ops@maersk.cm"]);
++    expect(byId[M1].to_address).toEqual(["billing@smartls.cm"]);
++  });
++
++  /* ── The defect this test found ────────────────────────────────────────── */
++
++  describe("participants — the one the message path got right and the thread path did not", () => {
++    it("10731 LEAVES A PARTICIPANT THAT IS TWO ADDRESSES AND NEITHER", async () => {
++      // Pinned as it is, not as it should be, because this is the state every
++      // tenant that had mail before 10731 is now carrying. `string_to_array`
++      // appears in the message INSERT four lines below the thread INSERT that
++      // does not use it.
++      const t = (await threads()).find((x) => x.thread_key === "T-1");
++      expect(t.participants).toContain("client@maersk.cm, ops@maersk.cm");
++      expect(t.participants).not.toContain("ops@maersk.cm");
++    });
++
++    it("11743 REPAIRS IT, and a second run changes nothing", async () => {
++      const repair = fs.readFileSync(MIGRATION_11743, "utf8");
++      await c.query(repair);
++
++      const after = (await threads()).find((x) => x.thread_key === "T-1");
++      expect([...after.participants].sort())
++        .toEqual(["billing@smartls.cm", "client@maersk.cm", "ops@maersk.cm"]);
++
++      // Idempotent by construction: nothing contains a comma any more, so the
++      // WHERE matches nothing. A repair that is not re-runnable is a repair
++      // nobody dares run twice.
++      await c.query(repair);
++      const again = (await threads()).find((x) => x.thread_key === "T-1");
++      expect([...again.participants].sort()).toEqual([...after.participants].sort());
++    });
++
++    it("leaves a thread whose participants were already clean alone", async () => {
++      const t = (await threads()).find((x) => x.thread_key === "X-3");
++      expect([...t.participants].sort()).toEqual(["billing@smartls.cm", "lead@new.cm"]);
++    });
++  });
++
++  /* ── Re-running the backfill ───────────────────────────────────────────── */
++
++  it("RE-APPLYING THE MIGRATION MOVES NOTHING — the guard, not luck", async () => {
++    // The rename at the end of the block means `email_inbound` no longer
++    // exists, so `legacy_exists` is false and the whole body returns early.
++    // That is also the only reason the file is safe to re-apply at all: its
++    // backfill still reads `email_attachment.email_inbound_id`, a column 10737
++    // renamed away, and those statements are never planned because the RETURN
++    // happens first.
++    const before = await threads();
++    await c.query(fs.readFileSync(MIGRATION_10731, "utf8"));
++    const after = await threads();
++    expect(after).toHaveLength(before.length);
++    expect((await messages())).toHaveLength(4);
++  });
++
++  it("renames the old table away rather than dropping it", async () => {
++    const { rows } = await c.query(
++      `SELECT table_name FROM information_schema.tables
++        WHERE table_schema = current_schema()
++          AND table_name IN ('email_inbound', 'email_inbound_legacy')`,
++    );
++    const names = rows.map((r) => r.table_name);
++    expect(names).toContain("email_inbound_legacy");
++    expect(names).not.toContain("email_inbound");
++  });
++});
+diff --git a/tests/security/mail-test-manifest.test.js b/tests/security/mail-test-manifest.test.js
+new file mode 100644
+index 0000000..83916d3
+--- /dev/null
++++ b/tests/security/mail-test-manifest.test.js
+@@ -0,0 +1,171 @@
++"use strict";
++/**
++ * EVERY TEST FILE THE GUIDE NAMES EXISTS, OR SAYS WHERE IT WENT.
++ *
++ * ── WHY THIS IS A GATE AND NOT A CHECKLIST ──────────────────────────────────
++ *
++ * `SMART_MAIL_ENGINEERING_GUIDE.md` names about thirty test files by filename —
++ * §3.7's table and each chapter's own test plan. Nothing enforced them, and the
++ * cost of that came due twice:
++ *
++ *   · §17 (fourth sweep) found `mail-search.test.js` and
++ *     `mail-shared-inbox.test.js` had never been written. Both chapters read as
++ *     complete without them, and writing them turned up two production defects
++ *     — a search operator that silently did nothing, and four triage writes
++ *     leaking through `RETURNING *`.
++ *   · §18 (fifth sweep) asked the same question of the WHOLE guide and found
++ *     ten more absent filenames. Nine were naming mismatches — the behaviour is
++ *     covered, under another name — and one, `mail-model-backfill.test.js`, was
++ *     a real gap on the migration that moved every existing message into the
++ *     new three-table model.
++ *
++ * Nine false alarms and one real one, indistinguishable by reading. That is the
++ * whole argument for this file: the expensive part was never writing the tests,
++ * it was working out which of the ten mattered, and doing it twice.
++ *
++ * ── THE TWO WAYS TO SATISFY IT ──────────────────────────────────────────────
++ *
++ * Write the file, or map the name to the file that covers it. A mapping is a
++ * claim someone made once and it is checked: the target must exist. What the
++ * gate refuses is the third option — a name in the plan of record that
++ * corresponds to nothing, which reads as a gap for as long as nobody checks.
++ */
++const fs = require("fs");
++const path = require("path");
++
++const ROOT = path.resolve(__dirname, "..", "..");
++const GUIDE = path.join(ROOT, "doc", "SMART_MAIL_ENGINEERING_GUIDE.md");
++
++/**
++ * Names the guide uses that are covered somewhere else, and where.
++ *
++ * Each was verified by reading the target, not by matching the subject line.
++ * Adding a row here is a statement that the behaviour the guide asked for is
++ * actually asserted in the file named — if it is not, this map is the lie
++ * rather than the guide.
++ */
++const COVERED_ELSEWHERE = {
++  // §5.9's split-inbox classifier: the known-party override, a tenant regex
++  // that throws, the unknown-sender residue.
++  "mail-stream.test.js": "tests/unit/mail-threading.test.js",
++  // The mini-language parser, end to end into the SQL that reaches the driver.
++  "mail-search-parse.test.js": "tests/integration/mail-search.test.js",
++  // The undo race, the idempotency key, the retry plan.
++  "mail-send-queue.test.js": "tests/unit/mail-outbox.test.js",
++  // §7's claim verbatim: ingest writes a suggestion and never sets entity_ref
++  // while auto-accept is off.
++  "mail-binding.test.js": "tests/unit/mail-binding-suggest-only.test.js",
++  // §3.7's outbound-HTML row — 61 tests including the 102 KB clip threshold and
++  // the plain-text part. Recorded in the audit at §11.2.
++  "mail-html-serializer.test.js": "tests/unit/mail-compose.test.js",
++  // The notes panel and its mention pre-flight are one component and one test.
++  "notes-tab.test.tsx": "client/src/features/comms/inbox/work/notes.test.tsx",
++  "mention-picker.test.tsx": "client/src/features/comms/inbox/work/notes.test.tsx",
++  // The drawer is rendered and asserted inside the work-rail suite.
++  "dossier-drawer.test.tsx": "client/src/features/comms/inbox/work/work.test.tsx",
++  // The signature screen goes through the per-screen sweep, which renders it in
++  // all four states and runs axe over each.
++  "signature-profile.test.tsx": "client/src/features/screens.axe.test.tsx",
++};
++
++/** Every `*.test.js|ts|tsx` filename the guide mentions. */
++function namedInGuide() {
++  const md = fs.readFileSync(GUIDE, "utf8");
++  const found = new Set();
++  // `tsx` BEFORE `ts`: alternation is first-match-wins, so `js|ts|tsx` clips
++  // every `.tsx` name to `.ts` and then reports four client tests as missing
++  // that are named right there in the guide. The first draft of this file did
++  // exactly that, which is a small demonstration of why the gate exists.
++  const re = /[A-Za-z0-9_.-]+\.(?:test|spec)\.(?:tsx|ts|js)\b/g;
++  let m;
++  while ((m = re.exec(md))) found.add(m[0]);
++  return [...found].sort();
++}
++
++/** Basenames present anywhere under tests/ or client/src/. */
++function inTree() {
++  const seen = new Map();
++  const walk = (dir) => {
++    if (!fs.existsSync(dir)) return;
++    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++      const p = path.join(dir, e.name);
++      if (e.isDirectory()) {
++        if (e.name === "node_modules") continue;
++        walk(p);
++      } else if (/\.(test|spec)\.(js|ts|tsx)$/.test(e.name)) {
++        seen.set(e.name, path.relative(ROOT, p).replace(/\\/g, "/"));
++      }
++    }
++  };
++  walk(path.join(ROOT, "tests"));
++  walk(path.join(ROOT, "client", "src"));
++  return seen;
++}
++
++const NAMED = namedInGuide();
++const TREE = inTree();
++
++describe("the guide's test plan is a manifest, not a wish", () => {
++  test("the guide still names a plausible number of test files", () => {
++    // If the scrape ever silently matches nothing, every assertion below
++    // passes vacuously — which is the failure mode this whole file is about.
++    expect(NAMED.length).toBeGreaterThan(20);
++  });
++
++  test("EVERY NAMED TEST FILE EXISTS, OR IS MAPPED TO THE ONE THAT COVERS IT", () => {
++    const unaccounted = NAMED.filter(
++      (n) => !TREE.has(n) && !Object.hasOwn(COVERED_ELSEWHERE, n),
++    );
++    expect(unaccounted).toEqual([]);
++  });
++
++  test("every mapping points at a file that is really there", () => {
++    const broken = Object.entries(COVERED_ELSEWHERE)
++      .filter(([, target]) => !fs.existsSync(path.join(ROOT, target)))
++      .map(([name, target]) => `${name} -> ${target}`);
++    expect(broken).toEqual([]);
++  });
++
++  test("nothing is mapped that has since been written under its own name", () => {
++    // A mapping that outlives its reason sends the next reader to the wrong
++    // file. If someone writes `mail-stream.test.js`, the row must go.
++    const stale = Object.keys(COVERED_ELSEWHERE).filter((n) => TREE.has(n));
++    expect(stale).toEqual([]);
++  });
++
++  test("nothing is mapped that the guide no longer names", () => {
++    const orphaned = Object.keys(COVERED_ELSEWHERE).filter((n) => !NAMED.includes(n));
++    expect(orphaned).toEqual([]);
++  });
++
++  test("the mapping list can only shrink", () => {
++    // Same ratchet as every other allowance in this directory: it exists so
++    // names get reconciled, not so new plans can be written against files that
++    // will not be created.
++    expect(Object.keys(COVERED_ELSEWHERE)).toHaveLength(9);
++  });
++});
++
++describe("the one that was a real gap", () => {
++  test("10731's backfill has a test, and it is DB-backed", () => {
++    // §5.9 named `mail-model-backfill.test.js` and it did not exist — the only
++    // one of the ten §18 triaged that was not a naming mismatch. It is the sole
++    // test of the migration that moved every existing message into
++    // email_thread / email_message / email_message_state.
++    const file = path.join(ROOT, "tests/integration/mail-model-backfill.test.js");
++    expect(fs.existsSync(file)).toBe(true);
++    const src = fs.readFileSync(file, "utf8");
++    // It must self-skip rather than pass without a database — a green run on a
++    // machine with no DB would put this straight back where it was.
++    expect(src).toMatch(/process\.env\.DATABASE_URL/);
++    expect(src).toMatch(/describe\.skip/);
++    // And it must roll back: it runs in the same pass as every other
++    // integration suite, against the tenant DB they all share.
++    expect(src).toMatch(/ROLLBACK/);
++  });
++
++  test("CI fails if that suite silently stops running", () => {
++    const ci = fs.readFileSync(path.join(ROOT, ".github/workflows/ci.yaml"), "utf8");
++    expect(ci).toMatch(/mail-model-backfill\.test\.js/);
++  });
++});
+--- a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
++++ b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+@@ -1160,3 +1160,130 @@
+ also stands at 112, so this pass spent none of the ratchet.
+ 
+ Database: unchanged from §16.4 — nothing here has been run against one.
++
++---
++
++## 19. Closing §18.5 — the backfill test, and what writing it found
++
++§18.5 left one item open: `mail-model-backfill.test.js`, named by §5.9 and never
++written, on 10731 — the migration that moved every existing message into
++`email_thread` / `email_message` / `email_message_state`. It is now written, it
++runs against a real Postgres, and it found a defect in the migration it tests.
++
++### 19.1 How a fresh tenant gets a legacy world to migrate
++
++The reason this was the hard one: the backfill only runs where there is legacy
++mail, and CI provisions a tenant **from nothing**, where 10731's own
++`legacy_exists` guard makes the whole block a no-op. A tenant with no legacy
++mail cannot exercise the code that moves legacy mail.
++
++So the test rebuilds one, inside a transaction it never commits. Two renames put
++the schema back to the eve of 10731 — `email_attachment.email_message_id` back
++to `email_inbound_id` (10737 renamed it **after** 10731, and 10731's backfill
++still reads the old name), and `email_inbound_legacy` back to `email_inbound`,
++which is empty on a provisioned tenant so nothing real moves. Four legacy rows
++go in, the migration file is re-applied verbatim, the assertions run, and the
++whole thing rolls back. DDL is transactional in Postgres, so the tenant database
++is byte-identical afterwards — which is what makes it safe in the same
++`--runInBand` pass as every other integration suite.
++
++It pins the five claims 10731 asks a reader to take on trust: ids are preserved
++(the reason `email_attachment` needed a re-pointed foreign key rather than a
++data migration, and the reason an id a client is holding still resolves);
++messages sharing a thread key become one conversation with the count and
++timestamps that implies; a message with no thread key becomes its own,
++keyed so it cannot collide; read state, which belonged to nobody in particular,
++becomes the connection **owner's**; and `entity_ref` survives from the most
++recent message that carried one.
++
++### 19.2 The defect: recipients split on the message and not on the thread
++
++The pre-10731 table held recipients as one comma-joined `citext` scalar. The
++backfill handles that correctly for the message —
++
++```sql
++string_to_array(b.to_address::text, ', ')::citext[]
++```
++
++— and does not, four lines earlier, for the thread:
++
++```sql
++ARRAY(SELECT DISTINCT x FROM unnest(
++        array_agg(b.from_address) || array_agg(COALESCE(b.to_address,'')::citext)
++      ) AS x WHERE x <> '')
++```
++
++Run against a real database rather than read, a legacy row addressed to
++`"client@maersk.cm, ops@maersk.cm"` produces:
++
++```
++participants = {client@maersk.cm, "client@maersk.cm, ops@maersk.cm", billing@smartls.cm}
++```
++
++One element that is not an address, and a real correspondent — `ops@maersk.cm` —
++that appears nowhere in the thread's participant set. Same author, same
++statement, two lines apart: handled in one place and not the other.
++
++**Why it matters past looking wrong.** Three things read `participants`: the
++thread list renders it, `binding/cards/_facts.js` hands it to the assistant as
++grounded fact, and `binding/convert.service.js` takes `participants[0]` as the
++address to create a client or lead **from** when the thread has no
++`from_address`. That last one is the sharp end — converting such a thread mints
++a party whose e-mail is the string `"client@maersk.cm, ops@maersk.cm"`, which no
++duplicate check will match and no message will ever reach. Message-level
++`to_address` is correct throughout and is what search indexes, so search is
++unaffected.
++
++**Scope.** Only tenants that had mail before 10731. On a fresh tenant the
++expression never runs at all.
++
++### 19.3 Why a repair migration and not a fix to 10731
++
++`11743_email_thread_participants_repair.sql` splits any participant element
++containing a comma, de-duplicates, and is idempotent by construction — after one
++run nothing contains a comma, so the second run matches no rows.
++
++Editing 10731 was considered and is wrong twice over. The migrator keys its
++ledger on filename and verifies the recorded `sha256` through `contentDrift`, so
++editing an applied file does not re-run it and **does** raise drift on every
++tenant that has it. And it would fix nothing: the only tenants carrying the
++defect are the ones that already applied it.
++
++The DOWN is declared as deliberately non-reversible, and says why: the
++pre-repair value is a corrupted encoding of the same information, so restoring
++it would mean re-joining addresses that were never one string.
++
++### 19.4 Two gates, because the finding was cheap and the search for it was not
++
++**`tests/security/mail-test-manifest.test.js`.** The guide names ~30 test files.
++§17 found two missing; §18 found ten more, of which nine were naming mismatches
++and one was real — and the expensive part was never writing the tests, it was
++working out which of the ten mattered, twice. The gate now requires every named
++file either to exist or to be mapped to the file that covers it, with the
++mapping's target checked, stale mappings refused, and the list capped at nine so
++it can only shrink. Its first draft matched `(?:js|ts|tsx)` and clipped every
++`.tsx` name to `.ts`, reporting four client tests as missing that the guide
++names plainly — which is a small live demonstration of the thing it is for.
++
++**CI asserts the backfill suite by name.** The integration step already refused
++a run where nothing asserted, but that check is satisfied by any one suite. This
++one is the most skippable of them all — it self-skips without `DATABASE_URL`,
++and it is the only test 10731 has — so the job now counts its assertions
++specifically and fails if they disappear.
++
++### 19.5 Verification
++
++Backend: **5,439 tests across 349 suites**, 0 failures, with the backfill suite
++among the twelve that self-skip when no `DATABASE_URL` is present — which is the
++correct number to quote for `npm test` on a machine with no database. Lint 0
++errors (68 warnings against a budget of 136). Migration numbering, reversibility,
++idempotency, destructive-statement, column and citext gates all OK; API docs in
++sync; contract and response-contract clean; silent-catch 0 new.
++
++**And, for the first time in this programme, against a database.** A local
++PostgreSQL 16 with pgvector, the full tenant set applied — 241 migrations and 26
++seeds — then the whole `tests/integration` folder run the way the CI job runs
++it: **17 suites, 187 assertions, 0 failures**, `mail-imap` skipped as designed.
++§16.4's "no database was available at any point in this work" no longer holds
++for the migration path: 10731 has now actually moved rows, and the participants
++finding came out of watching it do so rather than out of reading the SQL.
+--- a/doc/SMART_MAIL_FIELD_NOTES.md
++++ b/doc/SMART_MAIL_FIELD_NOTES.md
+@@ -10,6 +10,95 @@
+ 
+ ---
+ 
++## FN-4 · 2026-08-22 · The backfill split the recipients on the message and not on the thread
++
++**Severity:** every conversation that arrived with two recipients before 10731
++carries a participant that is both addresses joined by a comma — and is missing
++the second correspondent entirely. **Found by:** writing the test §5.9 named and
++nobody had written, and running it against a real Postgres.
++**Fixed in:** migration 11743, in the same pass.
++
++### The shape
++
++The pre-10731 table held recipients as one comma-joined `citext`. 10731's
++backfill splits it correctly into the message:
++
++```sql
++string_to_array(b.to_address::text, ', ')::citext[]
++```
++
++and does not, four lines earlier, into the thread:
++
++```sql
++ARRAY(SELECT DISTINCT x FROM unnest(
++        array_agg(b.from_address) || array_agg(COALESCE(b.to_address,'')::citext)
++      ) AS x WHERE x <> '')
++```
++
++So `participants` ends up as
++
++```
++{client@maersk.cm, "client@maersk.cm, ops@maersk.cm", billing@smartls.cm}
++```
++
++Same author, same statement about the same column, two lines apart, handled in
++one place and not the other. Reading the SQL, both lines look like they are
++doing the obvious thing. **Running it is what tells them apart** — which is the
++entire argument for the test, and the reason the defect survived four sweeps
++that each read this file.
++
++### Why it is not cosmetic
++
++`participants` is the thread's own recipient set and three things read it: the
++thread list renders it, `binding/cards/_facts.js` feeds it to the assistant as
++grounded fact, and `binding/convert.service.js` takes `participants[0]` as the
++address to create a client or lead FROM when the thread has no `from_address`.
++That last one mints a party whose e-mail is the string
++`"client@maersk.cm, ops@maersk.cm"` — an address no duplicate check will match
++and no message will reach. Message-level `to_address` is right throughout, and
++that is what search indexes, so search is unaffected.
++
++### The thing worth internalising
++
++**A migration you cannot re-run is a migration nobody has watched work.**
++10731's backfill only executes where legacy mail exists, and CI provisions a
++tenant from nothing — so its `legacy_exists` guard made the whole block a no-op
++in the one place it could have been exercised. Four gates read that file; none
++of them could run it.
++
++The way in was to rebuild the legacy world inside a transaction that never
++commits: rename `email_attachment.email_message_id` back to `email_inbound_id`
++(10737 renamed it AFTER 10731, and the backfill still reads the old name),
++rename `email_inbound_legacy` back to `email_inbound`, insert the four shapes of
++legacy row, re-apply the file verbatim, assert, ROLLBACK. DDL is transactional
++in Postgres, so the tenant database is byte-identical afterwards and it is safe
++in the same pass as every other integration suite.
++
++Also worth keeping: **the fix is a new migration, never an edit.** The migrator
++keys its ledger on filename and verifies the recorded `sha256`, so editing an
++applied file does not re-run it and does raise drift on every tenant carrying
++it — and the only tenants with the defect are the ones that already applied it.
++
++### What now prevents it
++
++1. `tests/integration/mail-model-backfill.test.js` — the five claims 10731 asks
++   a reader to take on trust, each asserted against rows that actually moved:
++   ids preserved, one thread key one conversation, an unthreaded message keyed
++   on itself, read state landing on the mailbox owner, `entity_ref` carried from
++   the most recent message that had one. It self-skips without `DATABASE_URL`
++   rather than passing without a database.
++2. `migrations/tenant/11743_email_thread_participants_repair.sql`, idempotent by
++   construction and with a DOWN that says why it is deliberately not reversible.
++3. CI counts that suite's assertions **by name**. The existing "the integration
++   suites asserted nothing" check is satisfied by any one suite, and this is the
++   most skippable of them — it is the only test 10731 has.
++4. `tests/security/mail-test-manifest.test.js` — every test file the guide names
++   must exist or be mapped to the one that covers it. §17 found two missing and
++   §18 found ten more, nine of them naming mismatches; the expensive part was
++   never writing the tests but working out which of the ten mattered, twice.
++
++---
++
+ ## FN-3 · 2026-08-22 · Three finished features that no screen could reach
+ 
+ **Severity:** a collision warning that could not fire, a pre-send safety check

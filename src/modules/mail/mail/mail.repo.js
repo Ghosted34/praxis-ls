@@ -233,9 +233,22 @@ async function findClientByEmail(client, email) {
     [email],
   )).rows[0] || null;
 }
-async function setEntityRef(client, inboundId, entityRef) {
-  await client.query("UPDATE email_inbound SET entity_ref = $2 WHERE email_inbound_id = $1", [inboundId, entityRef]);
-}
+/*
+ * `setEntityRef` was here, and it wrote to `email_inbound` — the table 10731
+ * RENAMED to `email_inbound_legacy`. That migration's own header names the
+ * three writers the rename obliged it to rewrite ("`insertInbound`,
+ * `markInboundRead`, `setEntityRef` ... all rewritten in this change"); this
+ * one was not. It threw for nobody across four PRs only because nothing ever
+ * called it: the binding layer that would naturally have reached for it was
+ * built in `binding/` against `email_thread` instead.
+ *
+ * Removed rather than repointed. A binding belongs to the conversation, not to
+ * each message in it, and `binding.service` already writes it there.
+ *
+ * `check-query-columns` now FAILS on a query naming a table a migration
+ * renamed away, where it used to mark the name opaque and never look at it
+ * again. That silence is the only reason this survived.
+ */
 /** Match any of the candidate tokens against a dossier's unique ref (e.g. SLAS-2026-0001). */
 async function findDossierByRefs(client, refs) {
   if (!refs || !refs.length) return null;

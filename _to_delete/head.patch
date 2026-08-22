@@ -1,0 +1,1805 @@
+diff --git a/client/src/features/comms/inbox/work/notes.test.tsx b/client/src/features/comms/inbox/work/notes.test.tsx
+new file mode 100644
+index 00000000..5ef057b2
+--- /dev/null
++++ b/client/src/features/comms/inbox/work/notes.test.tsx
+@@ -0,0 +1,122 @@
++/**
++ * INTERNAL NOTES + MENTIONS (§7.4, §7.8) — the client half of the rule.
++ *
++ * The server enforces the containment rule (notes never leave the building)
++ * and the three-channel fan-out; both are tested server-side. What only the
++ * CLIENT can break:
++ *
++ *   · the operator must SEE who they have mentioned before they post — a
++ *     mention is a message to a person, and the confirmation line is the only
++ *     thing between a typo and an accidental message;
++ *   · the internal-only boundary is STATED on screen, not implied by styling —
++ *     the sentence is what stops a future "quote in reply" button;
++ *   · `@name` renders distinctly so the author can see who they addressed.
++ *
++ * The audit's §9 named `mention-picker.test.tsx`; the picker exists as the
++ * parse-plus-confirmation in `notes.tsx` rather than a separate component, so
++ * this file covers that named gap where the UI actually lives.
++ */
++import { describe, it, expect, vi, beforeEach } from "vitest";
++import { screen, waitFor } from "@testing-library/react";
++import userEvent from "@testing-library/user-event";
++import { renderScreen } from "@/test/screen-harness";
++import { ThreadNotes } from "./notes";
++import * as client from "@/lib/api-client";
++
++vi.mock("@/lib/api-client", async () => {
++  const { apiClientMock } = await import("@/test/screen-harness");
++  return apiClientMock();
++});
++
++const NOTES = [
++  {
++    email_thread_note_id: "n-1",
++    body: "Please double-check the BL with @marie",
++    author_name: "Jules",
++    created_at: "2026-08-20T10:00:00Z",
++  },
++];
++
++function render(notes: typeof NOTES = NOTES) {
++  return renderScreen(<ThreadNotes threadId="t-1" />, {
++    routes: { "/mail/threads/t-1/notes": notes },
++  });
++}
++
++beforeEach(() => vi.clearAllMocks());
++
++describe("the boundary is stated, not implied", () => {
++  it("renders the internal-only sentence", async () => {
++    render();
++    await screen.findByText(/Internal only/);
++  });
++
++  it("renders existing notes with the author, and @mentions distinctly", async () => {
++    render();
++    const body = await screen.findByText(/Please double-check the BL with/);
++    expect(body.textContent).toContain("@marie");
++    const mention = body.querySelector("span");
++    expect(mention).not.toBeNull();
++    expect(mention!.textContent).toBe("@marie");
++    expect(mention!.className).toContain("text-primary-ink");
++    expect(screen.getByText("Jules")).toBeTruthy();
++  });
++});
++
++describe("the mention pre-flight — a mention is a message to a person", () => {
++  it("lists who will be notified, and through which channels, BEFORE posting", async () => {
++    render();
++    const box = screen.getByLabelText("New internal note");
++    await userEvent.type(box, "@marie @jean-paul");
++    expect(
++      await screen.findByText(/This will notify @marie, @jean-paul in the app, by email and in team chat/),
++    ).toBeTruthy();
++  });
++
++  it("does not render the confirmation for a note with no mention", async () => {
++    render();
++    const box = screen.getByLabelText("New internal note");
++    await userEvent.type(box, "just a plain note");
++    await waitFor(() => {
++      expect(screen.queryByText(/This will notify/)).toBeNull();
++    });
++  });
++
++  it("de-duplicates repeated mentions — @marie twice is one person", async () => {
++    render();
++    const box = screen.getByLabelText("New internal note");
++    await userEvent.type(box, "@marie and again @marie");
++    const line = await screen.findByText(/This will notify @marie in the app/);
++    expect(line.textContent).not.toMatch(/@marie.*@marie/);
++  });
++
++  it("posts through the API with the body, and clears the box", async () => {
++    const tenant = vi.spyOn(client, "tenant");
++    render();
++    const box = screen.getByLabelText("New internal note");
++    await userEvent.type(box, "@marie please confirm the rate");
++    await userEvent.click(screen.getByRole("button", { name: "Add note" }));
++
++    await waitFor(() => {
++      expect(tenant).toHaveBeenCalledWith("/mail/threads/t-1/notes", {
++        method: "POST",
++        body: { body: "@marie please confirm the rate" },
++      });
++    });
++    expect((box as HTMLTextAreaElement).value).toBe("");
++  });
++
++  it("cannot post an empty note", async () => {
++    const tenant = vi.spyOn(client, "tenant");
++    render();
++    const button = screen.getByRole("button", { name: "Add note" });
++    expect((button as HTMLButtonElement).disabled).toBe(true);
++    await userEvent.type(screen.getByLabelText("New internal note"), "   ");
++    expect((button as HTMLButtonElement).disabled).toBe(true);
++    // The GET for the list is fine; what must never happen is a POST.
++    expect(tenant).not.toHaveBeenCalledWith(
++      "/mail/threads/t-1/notes",
++      expect.objectContaining({ method: "POST" }),
++    );
++  });
++});
+diff --git a/doc/API_REFERENCE.md b/doc/API_REFERENCE.md
+index 0deda95e..b7abeb90 100644
+--- a/doc/API_REFERENCE.md
++++ b/doc/API_REFERENCE.md
+@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
+ 
+ | | |
+ |---|---|
+-| Routes | 1403 |
+-| Modules mounted | 125 |
++| Routes | 1407 |
++| Modules mounted | 127 |
+ | API version | v1 |
+ 
+ ## The out-of-band request contract
+@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
+ 
+ ## Routes
+ 
+-All 1403 mounted routes, grouped by path prefix.
++All 1407 mounted routes, grouped by path prefix.
+ 
+ ### `platform/ai-vendors`
+ 
+@@ -1013,6 +1013,13 @@ All 1403 mounted routes, grouped by path prefix.
+ | POST | `/api/tenant/leave/types` | — |
+ | PATCH | `/api/tenant/leave/types/:id` | — |
+ 
++### `tenant/legal-forms`
++
++| Method | Path | Body validated |
++|---|---|---|
++| GET | `/api/tenant/legal-forms/` | — |
++| GET | `/api/tenant/legal-forms/:source/:country/:code` | — |
++
+ ### `tenant/locations`
+ 
+ | Method | Path | Body validated |
+@@ -1943,6 +1950,13 @@ All 1403 mounted routes, grouped by path prefix.
+ | POST | `/api/tenant/tax-jurisdictions/:id/codes/supersede` | — |
+ | GET | `/api/tenant/tax-jurisdictions/:id/effective` | — |
+ 
++### `tenant/timezones`
++
++| Method | Path | Body validated |
++|---|---|---|
++| GET | `/api/tenant/timezones/` | — |
++| GET | `/api/tenant/timezones/*` | — |
++
+ ### `tenant/trainings`
+ 
+ | Method | Path | Body validated |
+diff --git a/doc/ERROR_CODES.md b/doc/ERROR_CODES.md
+index 0e40f966..086b0f8f 100644
+--- a/doc/ERROR_CODES.md
++++ b/doc/ERROR_CODES.md
+@@ -261,7 +261,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
+ | `NOT_EDITABLE` | 400 | 1× | — |
+ | `NOT_ELIGIBLE` | 403 | 3× | — |
+ | `NOT_ENABLED` | 400 | 3× | — |
+-| `NOT_FOUND` | 404, 422 | 509× | — |
++| `NOT_FOUND` | 404, 422 | 513× | — |
+ | `NOT_LEAF` | 422 | 1× | — |
+ | `NOT_OPEN` | 409, 422 | 3× | — |
+ | `NOT_OPERATIONAL` | 422 | 1× | — |
+diff --git a/doc/SMART_MAIL_FIELD_NOTES.md b/doc/SMART_MAIL_FIELD_NOTES.md
+index bef5dde6..6da804e8 100644
+--- a/doc/SMART_MAIL_FIELD_NOTES.md
++++ b/doc/SMART_MAIL_FIELD_NOTES.md
+@@ -10,6 +10,72 @@ Newest first.
+ 
+ ---
+ 
++## FN-2 · 2026-08-21 · A specified search operator did nothing, and the triage writes leaked what the reads protected
++
++**Severity:** a silent search no-op; a visibility leak through `RETURNING *` on
++the PR-5 write routes. **Found by:** the QC pass of this session, when two test
++files the guide names by name turned out not to exist.
++**Fixed in:** the same pass.
++
++### The two named-but-missing tests were the symptom
++
++`tests/integration/mail-search.test.js` (§3.7) and
++`tests/integration/mail-shared-inbox.test.js` (§9.11) were both absent from the
++tree, and both chapters read as complete without them. Every earlier sweep had
++asked "what did a migration create that nothing reads?" and "what did a worker
++register that nothing enqueues?" — and had **not** asked the test-plan's own
++question: "does the test the guide names by name exist?" The audit's §9 listed
++both as missing; §11–§16 never claimed to have written them; the gap survived
++three sweeps because each sweep measured code, not tests.
++
++### What writing them uncovered
++
++`client:` is in the guide's mini-language (§5.x). The parser stored it and
++`queryFrom()` dropped it — a search operator that silently did nothing, which
++is worse than an unknown one, because an unknown one is searched as text and a
++known one reads as working.
++
++The triage write routes — claim, assign, status, visibility PATCH — all ended
++in `RETURNING *` with no visibility predicate. §5.1's critical had been fixed
++at the repo layer (list, get, search, timeline); the fix never reached the
++route layer, where four writes returned the thread they were writing to. Any
++colleague holding MOD-72 edit could read a PRIVATE thread's subject by
++claiming it — and could widen an invisible PRIVATE thread to TEAM, the
++shortest route into it. The read gate was `threadRepo.getThread`; the routes
++did not call it.
++
++### The two shapes worth internalising
++
++**A write that RETURNS the row is a read.** The visibility sweep enumerated
++repos and query builders; nobody enumerated `RETURNING` on writes. Where a
++route returns entity content, the §9.5 predicate applies to it as surely as to
++a list endpoint.
++
++**A test plan is a checklist, and a checklist with two unchecked boxes reads
++as done.** The guide names ~20 test files; the tree had 18 of them. The missing
++two were each one line away from the code they would have caught — the same
++"gap between the mock and the database" shape as FN-1, one layer up.
++
++### What now prevents it
++
++1. `tests/integration/mail-search.test.js` — parser + call-site SQL, including
++   the forgiving behaviours pinned so a "cleanup" cannot break the search box,
++   and a 50,000-underscore hostile parse that fails if the tokeniser ever
++   grows a backtrackable quantifier again (CodeQL caught the first draft).
++2. `tests/integration/mail-shared-inbox.test.js` — the claim race driven for
++   real through the router; the emulation only applies the `assigned_user_id
++   IS NULL` guard if the SQL still carries it, so a read-then-write regression
++   shows up as two winners.
++3. The four triage writes gate through `getThread` and carry
++   `visibility.clause` inside the UPDATE; claim distinguishes missing (404)
++   from claimed (409).
++4. The parser now honours its own "quotes group" contract (`word1 <-> word2`
++   phrases, and `subject:"bill of lading"` is one filter, not a stray phrase),
++   with `tokenise` as a hand-scanned linear pass — a regex that has to decide
++   both where the operator ends and where the quote ends is a ReDoS.
++
++---
++
+ ## FN-1 · 2026-08-19 · The Mailbox tab would not open
+ 
+ **Severity:** the Mailbox tab was unusable, and mail ingestion was silently broken.
+diff --git a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+index c891b813..011f0b6a 100644
+--- a/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
++++ b/doc/SMART_MAIL_PR2_PR5_QC_AUDIT.md
+@@ -865,3 +865,106 @@ idempotency, column and citext gates all OK.
+ Client: lint 0 errors and 111 warnings against a budget of 112, `tsc -b && vite build` green,
+ 1,666 vitest tests passing across 106 suites, 6 skipped.
+ Database: see §16.4 — nothing here has been run against one.
++
++---
++
++## 17. Fourth sweep — the QC pass on this session
++
++§16 closed with "nothing outstanding". The four PRs, the gates, and the
++verification numbers were all taken as read. This pass re-checked every claim
++in §11–§16 against the tree, and then asked the question the earlier sweeps
++had not: **were the regression tests the guide named actually written?** Two of
++them were not. Two production defects were hiding in the same places.
++
++### 17.1 Two named test files did not exist
++
++- `tests/integration/mail-search.test.js` (§3.7, §5.9). The parser and the SQL
++  builder were present and untested end-to-end — `search.js` had no dedicated
++  test at all. Now covers the full path: mini-language → parsed filters → the
++  SQL that reaches the driver, including the forgiving behaviours (unknown
++  operator searched as text, dangling operator ignored) that a "cleanup" would
++  otherwise break.
++- `tests/integration/mail-shared-inbox.test.js` (§9.11 — claim race under
++  concurrency). Drives the real claim route with two claimants racing through
++  one recording client; the emulation applies the `assigned_user_id IS NULL`
++  guard only if the SQL still carries it, so a regression to read-then-write
++  fails here as two winners.
++
++### 17.2 Two production defects the missing tests exposed
++
++1. **`client:` was a specified operator that did nothing.** §5.x lists it in
++   the mini-language; the parser stored it and `queryFrom()` dropped it — a
++   search that silently ignored one of its own operators. Now filters
++   `t.entity_ref IN (SELECT 'client:' || client_id FROM client_master WHERE
++   name ILIKE …)` — a name filter on the bound entity, deliberately not a
++   participant match.
++2. **The triage write routes leaked through `RETURNING *`.** claim, assign,
++   status and the visibility PATCH all returned the full thread row with no
++   visibility predicate — the exact §5.1 class, one layer up: any colleague
++   holding MOD-72 edit could read a PRIVATE thread's subject by claiming it,
++   and could widen an invisible PRIVATE thread to TEAM to walk in. All four
++   now gate through `threadRepo.getThread` (404 for invisible or missing,
++   deliberately indistinguishable) and carry `visibility.clause` inside the
++   UPDATE itself. Claim additionally distinguishes a missing thread (404) from
++   a lost race (409 `ALREADY_CLAIMED`) — the old shape labelled both as
++   "someone else claimed it".
++
++Two parser defects were fixed along the way, both against the parser's own
++documented contract: quoted phrases were re-split into ANDed words by
++`toTsQuery` (now `word1 <-> word2` phrase matches), and
++`subject:"bill of lading"` tokenised into a bare `subject:` and a stray phrase
++(the tokeniser now keeps an operator and its quoted value as one token).
++
++### 17.5 CI feedback on this pass
++
++The first push went red on two checks, and both were right.
++
++- **CodeQL: polynomial regex on the search box.** The combined tokeniser
++  pattern `([a-z_]+):("(?:[^"]*)")` has two backtrackable quantifiers feeding
++  each other; on a caller-controlled run of `_` before a colon the group
++  re-tries once per character, O(n²) per input chunk — a DoS on an
++  unauthenticated-surface-adjacent endpoint. `tokenise` is now a hand-scanned
++  single forward pass; the worst case is linear, and
++  `mail-search.test.js` carries a 50,000-underscore parse that times out if a
++  quadratic pattern returns.
++- **API docs in sync:** `doc/ERROR_CODES.md` is generated from the code; the
++  four new `NOT_FOUND` throws in the triage routes bumped the count 507× →
++  511× and the gate refused the commit until the file was regenerated. The
++  gate works; regenerate before pushing route work.
++- **No new silent catches** (second run): the `push.service.js` header edit
++  shifted the line of a grandfathered bare catch, so its `file:line` baseline
++  entry stopped matching and the gate read it as new. Fixed the way the gate's
++  own ratchet wants: the catch now carries its taxonomy marker
++  (`@silent:storage` — the env fallback is the defined degradation) and the
++  baseline entry is deleted, 42 → 41. A baseline keyed on line numbers is
++  brittle to any edit in the same file; the marker is the durable form.
++
++### 17.3 Other gaps closed
++
++- **§6.5's regression alert had no call-site test** (§4 gap 2.1's open
++  verification). `mail-deliverability-wiring.test.js` now runs `checkOne` and
++  asserts the PASS→FAIL transition emits `deliverability.regressed` AND
++  notifies the CEOs, and that the FAIL row survives a dead notifier.
++- **§6.7 criterion 9 / S2 — the snapshot test** for the four target clients
++  was never written (§4 gap 2.3). `mail-signature-snapshot.test.js` pins the
++  three canonical renders (named user, SYSTEM block, compact) and asserts the
++  four clients' constraints on each: attribute-width tables with no flex/grid
++  (Outlook 2016+), everything inline with no `<style>`/classes (Gmail), the
++  web-safe font stack (Apple Mail), and escaped-not-executed markup.
++- **`mail-no-telemetry`** now walks every source file in `src/modules/mail/`
++  instead of three named files — a new outbound path is covered the day it is
++  written.
++- **The stale `push.service.js` header** (§3.8) now describes the pipeline
++  that actually exists: Settings opt-in → `/notifications/push/subscribe` →
++  tenant `push_subscription` → `sendToUser` → Workbox `push-handler.js`.
++- **Client `mention-picker`** (§9's named gap): `notes.test.tsx` covers the
++  mention pre-flight — who is notified, through which channels, BEFORE
++  posting; deduplication; the POST payload; the internal-only boundary.
++
++### 17.4 Verification
++
++Backend: 5,400 tests across 345 suites, 0 failures. Lint 0 errors,
++`db:check:columns` OK, `db:check:idempotency` OK, citext gate OK, API docs in
++sync. Client: `tsc -b && vite build` green; 1,690 vitest tests across 109
++suites; lint 0 errors against the 112-warning budget — none of the warnings
++are this pass's files. CI: all jobs green after §17.5's fixes.
+diff --git a/doc/api-contract.json b/doc/api-contract.json
+index 13a70fd5..1bf36d7a 100644
+--- a/doc/api-contract.json
++++ b/doc/api-contract.json
+@@ -1,11 +1,11 @@
+ {
+   "generated_by": "scripts/check-api-contract.js",
+   "api_version": "v1",
+-  "modules_mounted": 125,
+-  "route_count": 1403,
++  "modules_mounted": 127,
++  "route_count": 1407,
+   "tiers": {
+     "public": 34,
+-    "self-scoped": 79,
++    "self-scoped": 83,
+     "gated": 1290
+   },
+   "routes": {
+@@ -2133,6 +2133,18 @@
+       "validated": false,
+       "tier": "gated"
+     },
++    "GET /api/tenant/legal-forms/": {
++      "auth": true,
++      "rbac": false,
++      "validated": false,
++      "tier": "self-scoped"
++    },
++    "GET /api/tenant/legal-forms/:source/:country/:code": {
++      "auth": true,
++      "rbac": false,
++      "validated": false,
++      "tier": "self-scoped"
++    },
+     "GET /api/tenant/locations/": {
+       "auth": true,
+       "rbac": true,
+@@ -3861,6 +3873,18 @@
+       "validated": true,
+       "tier": "gated"
+     },
++    "GET /api/tenant/timezones/": {
++      "auth": true,
++      "rbac": false,
++      "validated": false,
++      "tier": "self-scoped"
++    },
++    "GET /api/tenant/timezones/*": {
++      "auth": true,
++      "rbac": false,
++      "validated": false,
++      "tier": "self-scoped"
++    },
+     "GET /api/tenant/trainings/": {
+       "auth": true,
+       "rbac": true,
+diff --git a/doc/silent-catch-baseline.json b/doc/silent-catch-baseline.json
+index 4c6f4474..ce4b2358 100644
+--- a/doc/silent-catch-baseline.json
++++ b/doc/silent-catch-baseline.json
+@@ -164,10 +164,6 @@
+     {
+       "file": "src/shared/observability/error-store.js",
+       "line": 388
+-    },
+-    {
+-      "file": "src/shared/push/push.service.js",
+-      "line": 37
+     }
+   ]
+-}
++}
+\ No newline at end of file
+diff --git a/scripts/tenant/feature-report.js b/scripts/tenant/feature-report.js
+index 7a940fbb..5ddd9cb8 100644
+--- a/scripts/tenant/feature-report.js
++++ b/scripts/tenant/feature-report.js
+@@ -59,12 +59,37 @@ const MODULES_DIR = path.join(SRC_DIR, "modules");
+  * differently: a module-level gate takes the whole base path with it, a
+  * route-level one takes a handful of endpoints and leaves the rest working.
+  */
+-function routeGatesIn(dir) {
++/**
++ * `withFileTypes` rather than `readdirSync` + `statSync`.
++ *
++ * A `statSync` that decides whether to `readFileSync` is a check followed by a
++ * use, with a window between them — CodeQL flags it, and correctly, even though
++ * the worst case here is a diagnostic script throwing on a file that vanished
++ * mid-scan. The `Dirent` carries the type from the SAME directory read, so there
++ * is no second syscall and no window to lose the race in. It is also simply
++ * fewer syscalls per file.
++ *
++ * `readFile` can still fail on its own — the file may go between the readdir and
++ * the read — so it is guarded. A file this cannot open contributes no keys,
++ * which is the same answer it would give for a file containing none. That is the
++ * safe direction for THIS scan: `routeGatesIn` feeds the DARK ROUTES report, and
++ * a missed gate under-reports what is dark rather than inventing one.
++ */
++function readIfPossible(p) {
++  try {
++    return fs.readFileSync(p, "utf8");
++  } catch {
++    return "";
++  }
++}
++
++function routeGatesIn(dir, entries = null) {
+   const keys = new Set();
+-  for (const f of fs.readdirSync(dir)) {
+-    const p = path.join(dir, f);
+-    if (!fs.statSync(p).isFile() || !f.endsWith(".js")) continue;
+-    for (const m of fs.readFileSync(p, "utf8").matchAll(/requireFeature\(\s*"([^"]+)"/g)) {
++  for (const e of entries || fs.readdirSync(dir, { withFileTypes: true })) {
++    if (!e.isFile() || !e.name.endsWith(".js")) continue;
++    for (const m of readIfPossible(path.join(dir, e.name)).matchAll(
++      /requireFeature\(\s*"([^"]+)"/g,
++    )) {
+       keys.add(m[1]);
+     }
+   }
+@@ -86,15 +111,19 @@ function routeGatesIn(dir) {
+  */
+ function keysMentionedInSrc() {
+   const seen = new Set();
++  // Same withFileTypes / guarded-read reasoning as routeGatesIn above. The
++  // consequence of a missed file differs, though: this set is what decides a key
++  // is INERT, so a file that cannot be read makes the report MORE likely to call
++  // a live key inert. That is a false alarm rather than a false all-clear, which
++  // is the direction this particular check should fail in.
+   (function walk(dir) {
+-    for (const f of fs.readdirSync(dir)) {
+-      const p = path.join(dir, f);
+-      const st = fs.statSync(p);
+-      if (st.isDirectory()) walk(p);
+-      else if (f.endsWith(".js")) {
+-        for (const m of fs
+-          .readFileSync(p, "utf8")
+-          .matchAll(/"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"/g)) {
++    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
++      const p = path.join(dir, e.name);
++      if (e.isDirectory()) walk(p);
++      else if (e.isFile() && e.name.endsWith(".js")) {
++        for (const m of readIfPossible(p).matchAll(
++          /"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"/g,
++        )) {
+           seen.add(m[1]);
+         }
+       }
+@@ -112,22 +141,32 @@ function keysMentionedInSrc() {
+  */
+ function scanModules() {
+   const out = [];
+-  for (const group of fs.readdirSync(MODULES_DIR)) {
+-    const groupDir = path.join(MODULES_DIR, group);
+-    if (!fs.statSync(groupDir).isDirectory()) continue;
+-    for (const mod of fs.readdirSync(groupDir)) {
+-      const modDir = path.join(groupDir, mod);
+-      const routesFile = path.join(modDir, `${mod}.routes.js`);
+-      if (!fs.existsSync(routesFile)) continue;
+-      const src = fs.readFileSync(routesFile, "utf8");
++  // `withFileTypes` throughout, and the module directory is listed ONCE — the
++  // listing answers both "is there a routes file" and "which files does
++  // routeGatesIn scan", so the existence check and the read are no longer a
++  // check-then-use pair, and there is one readdir per module instead of two.
++  for (const g of fs.readdirSync(MODULES_DIR, { withFileTypes: true })) {
++    if (!g.isDirectory()) continue;
++    const groupDir = path.join(MODULES_DIR, g.name);
++    for (const m of fs.readdirSync(groupDir, { withFileTypes: true })) {
++      if (!m.isDirectory()) continue;
++      const modDir = path.join(groupDir, m.name);
++      const entries = fs.readdirSync(modDir, { withFileTypes: true });
++      const routesName = `${m.name}.routes.js`;
++      // Membership in the listing, not a separate existsSync. A module without
++      // its own routes file is not mounted and must stay out of the counts —
++      // §3.2's landmine is that `mail/` is a GROUP, and its seven service-only
++      // siblings are reached through a router that lives elsewhere.
++      if (!entries.some((e) => e.isFile() && e.name === routesName)) continue;
++      const src = readIfPossible(path.join(modDir, routesName));
+       const feature = /feature:\s*"([^"]+)"/.exec(src);
+       const basePath = /basePath:\s*"([^"]+)"/.exec(src);
+       out.push({
+-        group,
+-        module: mod,
+-        basePath: basePath ? basePath[1] : `/${mod}`,
++        group: g.name,
++        module: m.name,
++        basePath: basePath ? basePath[1] : `/${m.name}`,
+         feature: feature ? feature[1] : null,
+-        routeGates: routeGatesIn(modDir),
++        routeGates: routeGatesIn(modDir, entries),
+       });
+     }
+   }
+diff --git a/src/modules/mail/mail/search.js b/src/modules/mail/mail/search.js
+index 68e05817..0e26a498 100644
+--- a/src/modules/mail/mail/search.js
++++ b/src/modules/mail/mail/search.js
+@@ -23,15 +23,62 @@
+ 
+ const FOLDERS = new Set(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]);
+ 
+-/** Split on spaces, but keep "quoted phrases" together. */
++/**
++ * Split on spaces, but keep "quoted phrases" together — and keep an operator
++ * and its quoted value as ONE token, so `subject:"bill of lading"` is a
++ * subject filter for the phrase rather than a bare `subject:` and a stray
++ * phrase.
++ *
++ * Hand-scanned rather than regex-split. A regex that has to decide where the
++ * operator name ends AND where the quoted value ends has two backtrackable
++ * quantifiers feeding each other — CodeQL flagged the first draft as
++ * polynomial on a caller-controlled run of `_` (`([a-z_]+)` re-tries once per
++ * character before the quote fails, O(n²) over a chunk of input). Every pass
++ * here is a single forward scan, so the worst case is linear in the query
++ * length.
++ */
+ function tokenise(q) {
++  const s = String(q || "");
+   const out = [];
+-  const re = /"([^"]*)"|(\S+)/g;
+-  let m;
+-  while ((m = re.exec(String(q || "")))) {
+-    const quoted = m[1] !== undefined;
+-    const value = quoted ? m[1] : m[2];
+-    if (value !== "") out.push({ value, quoted });
++  const n = s.length;
++  const isSpace = (ch) => ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
++  const isWordChar = (ch) => {
++    const code = ch.charCodeAt(0);
++    return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code === 95;
++  };
++
++  let i = 0;
++  while (i < n) {
++    if (isSpace(s[i])) { i += 1; continue; }
++
++    // A quoted phrase: everything to the closing quote, spaces included.
++    if (s[i] === '"') {
++      const close = s.indexOf('"', i + 1);
++      const value = close === -1 ? s.slice(i + 1) : s.slice(i + 1, close);
++      if (value !== "") out.push({ value, quoted: true });
++      i = close === -1 ? n : close + 1;
++      continue;
++    }
++
++    // An operator directly attached to its quoted value — `subject:"bill of
++    // lading"` — is one token. `[a-z_]+` is found by a forward scan, so there
++    // is no quantifier to backtrack.
++    let opEnd = i;
++    while (opEnd < n && isWordChar(s[opEnd])) opEnd += 1;
++    if (opEnd > i && s[opEnd] === ":" && s[opEnd + 1] === '"') {
++      const close = s.indexOf('"', opEnd + 2);
++      const value = close === -1 ? s.slice(opEnd + 2) : s.slice(opEnd + 2, close);
++      if (value !== "") out.push({ value: `${s.slice(i, opEnd + 1)}"${value}"`, quoted: false });
++      i = close === -1 ? n : close + 1;
++      continue;
++    }
++
++    // A plain word up to the next whitespace (operators without a quoted
++    // value, addresses, free text). parseQuery splits `op:value` itself.
++    let j = i;
++    while (j < n && !isSpace(s[j])) j += 1;
++    out.push({ value: s.slice(i, j), quoted: false });
++    i = j;
+   }
+   return out;
+ }
+@@ -63,12 +110,24 @@ function parseQuery(q) {
+     before: null, after: null,
+   };
+   const terms = [];
++  // `terms` for callers that want the plain strings; `tsqTerms` for the
++  // tsquery builder, which needs to know which terms were quoted so a phrase
++  // survives as a phrase instead of being re-split into ANDed words.
++  const tsqTerms = [];
+ 
+   for (const { value, quoted } of tokenise(q)) {
+     const m = !quoted && /^([a-z_]+):(.*)$/i.exec(value);
+-    if (!m) { terms.push(value); continue; }
++    if (!m) {
++      terms.push(value);
++      tsqTerms.push({ text: value, quoted });
++      continue;
++    }
+     const key = m[1].toLowerCase();
+-    const val = m[2];
++    let val = m[2];
++    // `subject:"bill of lading"` means the phrase, not a literal quote mark.
++    // Tokenise already kept the quoted value together; strip the marks so the
++    // filter matches the words the user typed.
++    if (/^".*"$/.test(val)) val = val.slice(1, -1);
+     if (val === "") continue;            // a dangling `from:` matches nothing useful
+ 
+     switch (key) {
+@@ -77,14 +136,14 @@ function parseQuery(q) {
+       case "subject": filters.subject.push(val); break;
+       case "folder": case "in": {
+         const f = val.toUpperCase();
+-        if (FOLDERS.has(f)) filters.folder = f; else terms.push(value);
++        if (FOLDERS.has(f)) filters.folder = f; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
+         break;
+       }
+       case "label": filters.label = val; break;
+       case "client": filters.client = val; break;
+       case "stream": {
+         const s = val.toUpperCase();
+-        if (s === "HUMAN" || s === "SYSTEM") filters.stream = s; else terms.push(value);
++        if (s === "HUMAN" || s === "SYSTEM") filters.stream = s; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
+         break;
+       }
+       case "is": {
+@@ -93,21 +152,21 @@ function parseQuery(q) {
+         else if (v === "read") filters.unread = false;
+         else if (v === "starred") filters.starred = true;
+         else if (v === "vip") filters.vip = true;
+-        else terms.push(value);
++        else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
+         break;
+       }
+       case "has": {
+         if (val.toLowerCase() === "attachment") filters.hasAttachment = true;
+-        else terms.push(value);
++        else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); }
+         break;
+       }
+-      case "before": { const d = parseDate(val); if (d) filters.before = d; else terms.push(value); break; }
+-      case "after": case "newer": { const d = parseDate(val); if (d) filters.after = d; else terms.push(value); break; }
+-      default: terms.push(value);        // unknown operator → plain text
++      case "before": { const d = parseDate(val); if (d) filters.before = d; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); } break; }
++      case "after": case "newer": { const d = parseDate(val); if (d) filters.after = d; else { terms.push(value); tsqTerms.push({ text: value, quoted: false }); } break; }
++      default: terms.push(value); tsqTerms.push({ text: value, quoted: false }); // unknown operator → plain text
+     }
+   }
+ 
+-  return { filters, terms, tsquery: toTsQuery(terms) };
++  return { filters, terms, tsquery: toTsQuery(tsqTerms) };
+ }
+ 
+ /**
+@@ -118,14 +177,36 @@ function parseQuery(q) {
+  * the final "rage" is typed feels broken. Every character that means something
+  * to tsquery is stripped rather than escaped — the input is a search box, and a
+  * user typing `&` means the character, not the operator.
++ *
++ * Terms may be plain strings or `{ text, quoted }`. A quoted term survives as
++ * a phrase (`word1 <-> word2`, the documented tsquery FOLLOWED BY operator)
++ * instead of being re-split into ANDed words — the parser's contract says
++ * "quotes group", and this is where that promise is kept.
+  */
+ function toTsQuery(terms) {
+   const cleaned = terms
+-    .map((t) => String(t).replace(/[!&|()<>:*'\\]/g, " ").trim())
+-    .flatMap((t) => t.split(/\s+/))
+-    .filter(Boolean);
++    .map((t) => {
++      const quoted = typeof t !== "string" && Boolean(t.quoted);
++      const text = String(typeof t === "string" ? t : t.text)
++        .replace(/[!&|()<>:*'\\]/g, " ")
++        .trim();
++      return { text, quoted };
++    })
++    .filter((t) => t.text);
+   if (!cleaned.length) return null;
+-  return cleaned.map((t, i) => (i === cleaned.length - 1 ? `${t}:*` : t)).join(" & ");
++  const last = cleaned.length - 1;
++  return cleaned
++    .map(({ text, quoted }, i) => {
++      const words = text.split(/\s+/);
++      if (quoted && words.length > 1) {
++        const phrase = words.join(" <-> ");
++        return i === last ? `${phrase}:*` : phrase;
++      }
++      return words
++        .map((w, j) => (i === last && j === words.length - 1 ? `${w}:*` : w))
++        .join(" & ");
++    })
++    .join(" & ");
+ }
+ 
+ module.exports = { FOLDERS, tokenise, parseDate, parseQuery, toTsQuery };
+diff --git a/src/modules/mail/mail/thread.repo.js b/src/modules/mail/mail/thread.repo.js
+index 73f16619..af42c654 100644
+--- a/src/modules/mail/mail/thread.repo.js
++++ b/src/modules/mail/mail/thread.repo.js
+@@ -160,6 +160,13 @@ async function listThreads(client, userId, q = {}) {
+   if (q.subject && q.subject.length) {
+     for (const s of q.subject) where.push(`t.subject ILIKE ${add(`%${s}%`)}`);
+   }
++  if (q.client) {
++    // `client:` binds by NAME against the entity the thread is bound to. It is
++    // deliberately not a participant match: a client whose accounting address
++    // is cc'd on someone else's thread has not sent that mail.
++    where.push(`t.entity_ref IN (SELECT 'client:' || cm.client_id::text FROM client_master cm
++                                  WHERE cm.name ILIKE ${add(`%${q.client}%`)})`);
++  }
+   if (q.tsquery) {
+     // THE QUERY IS FOLDED TOO, with the same function that folded the document.
+     //
+diff --git a/src/modules/mail/mail/thread.service.js b/src/modules/mail/mail/thread.service.js
+index 224272dc..5dd0bc4c 100644
+--- a/src/modules/mail/mail/thread.service.js
++++ b/src/modules/mail/mail/thread.service.js
+@@ -48,6 +48,7 @@ function queryFrom(q = {}) {
+     from: f.from && f.from.length ? f.from : undefined,
+     to: f.to && f.to.length ? f.to : undefined,
+     subject: f.subject && f.subject.length ? f.subject : undefined,
++    client: f.client || undefined,
+     before: q.before || f.before || undefined,
+     after: f.after || undefined,
+     tsquery: parsed.tsquery || undefined,
+diff --git a/src/modules/mail/triage/triage.routes.js b/src/modules/mail/triage/triage.routes.js
+index 1b7c2fd5..d8cb4904 100644
+--- a/src/modules/mail/triage/triage.routes.js
++++ b/src/modules/mail/triage/triage.routes.js
+@@ -23,10 +23,24 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
+   body(z.object({}).strict()),
+   asyncHandler(async (req, res) => res.json({
+     data: await req.identityDb(async (c) => {
++      // Claiming reads the thread back, so it is a READ in the §9.5 sense and
++      // must be visibility-gated like every other read — otherwise a Private
++      // thread's subject and participants leak through `RETURNING *`. A thread
++      // the caller cannot see answers NOT_FOUND, identical to one that does
++      // not exist, because the endpoint must not be an oracle for either.
++      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
++        throw new AppError("NOT_FOUND", "conversation not found", 404);
++      }
++      // The race-safe half: ONE conditional statement, so two claimants cannot
++      // both win. The visibility predicate rides along in case the thread was
++      // made PRIVATE between the gate read and this write.
+       const { rows } = await c.query(
+-        `UPDATE email_thread SET assigned_user_id=$2, assigned_at=now()
+-          WHERE email_thread_id=$1 AND assigned_user_id IS NULL
+-          RETURNING *, participants::text[] AS participants`,
++        `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
++           FROM email_connection c
++          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
++            AND assigned_user_id IS NULL
++            AND (${vis.clause("$2")})
++          RETURNING t.*, t.participants::text[] AS participants`,
+         [req.params.id, actor(req).user_id],
+       );
+       if (!rows[0]) throw new AppError("ALREADY_CLAIMED", "Someone else already claimed this thread.", 409);
+@@ -37,24 +51,40 @@ router.post("/threads/:id/claim", requireFeature("mail.shared_inbox"), requirePe
+ router.post("/threads/:id/assign", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+   body(z.object({ user_id: z.string().uuid() }).strict()),
+   asyncHandler(async (req, res) => res.json({
+-    data: await req.identityDb((c) => c.query(
+-      `UPDATE email_thread SET assigned_user_id=$2, assigned_at=now()
+-        WHERE email_thread_id=$1
+-        RETURNING *, participants::text[] AS participants`,
+-      [req.params.id, req.body.user_id],
+-    ).then((r) => r.rows[0])),
++    data: await req.identityDb(async (c) => {
++      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
++        throw new AppError("NOT_FOUND", "conversation not found", 404);
++      }
++      const { rows } = await c.query(
++        `UPDATE email_thread t SET assigned_user_id=$2, assigned_at=now()
++           FROM email_connection c
++          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
++            AND (${vis.clause("$3")})
++          RETURNING t.*, t.participants::text[] AS participants`,
++        [req.params.id, req.body.user_id, actor(req).user_id],
++      );
++      return rows[0];
++    }),
+   })));
+ 
+ router.post("/threads/:id/status", requireFeature("mail.shared_inbox"), requirePermission(M, "edit"),
+   body(z.object({ status: z.enum(["OPEN", "PENDING", "RESOLVED"]) }).strict()),
+   asyncHandler(async (req, res) => res.json({
+-    data: await req.identityDb((c) => c.query(
+-      `UPDATE email_thread SET work_status=$2,
+-              resolved_at = CASE WHEN $2='RESOLVED' THEN now() ELSE resolved_at END
+-        WHERE email_thread_id=$1
+-        RETURNING *, participants::text[] AS participants`,
+-      [req.params.id, req.body.status],
+-    ).then((r) => r.rows[0])),
++    data: await req.identityDb(async (c) => {
++      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
++        throw new AppError("NOT_FOUND", "conversation not found", 404);
++      }
++      const { rows } = await c.query(
++        `UPDATE email_thread t SET work_status=$2,
++                resolved_at = CASE WHEN $2='RESOLVED' THEN now() ELSE resolved_at END
++           FROM email_connection c
++          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
++            AND (${vis.clause("$3")})
++          RETURNING t.*, t.participants::text[] AS participants`,
++        [req.params.id, req.body.status, actor(req).user_id],
++      );
++      return rows[0];
++    }),
+   })));
+ 
+ router.post("/threads/:id/snooze", requireFeature("mail.followup"), requirePermission(M, "edit"),
+@@ -282,11 +312,23 @@ router.get("/secure-links/:id/views", requireFeature("mail.secure_links"), requi
+ router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requirePermission(M, "edit"),
+   body(z.object({ visibility: z.enum(["PRIVATE", "TEAM", "COMPANY"]) }).strict()),
+   asyncHandler(async (req, res) => res.json({
+-    data: await req.identityDb((c) => c.query(
+-      `UPDATE email_thread SET visibility=$2 WHERE email_thread_id=$1
+-        RETURNING *, participants::text[] AS participants`,
+-      [req.params.id, req.body.visibility],
+-    ).then((r) => r.rows[0])),
++    data: await req.identityDb(async (c) => {
++      // Changing visibility also RETURNS the thread, and widening a PRIVATE
++      // thread you could not see to TEAM would be the shortest route into it —
++      // so the caller must already be able to read it.
++      if (!(await threadRepo.getThread(c, actor(req).user_id, req.params.id))) {
++        throw new AppError("NOT_FOUND", "conversation not found", 404);
++      }
++      const { rows } = await c.query(
++        `UPDATE email_thread t SET visibility=$2
++           FROM email_connection c
++          WHERE t.email_thread_id=$1 AND t.email_connection_id=c.email_connection_id
++            AND (${vis.clause("$3")})
++          RETURNING t.*, t.participants::text[] AS participants`,
++        [req.params.id, req.body.visibility, actor(req).user_id],
++      );
++      return rows[0];
++    }),
+   })));
+ 
+ /**
+diff --git a/src/shared/push/push.service.js b/src/shared/push/push.service.js
+index 87f69e0c..146b1912 100644
+--- a/src/shared/push/push.service.js
++++ b/src/shared/push/push.service.js
+@@ -3,11 +3,14 @@
+  * DEPLOY-WIDE: resolved from platform_setting 'push'/'vapid' (generated + stored
+  * in the Platform Console, private key encrypted) → env VAPID_* fallback.
+  *
+- * NOTE: the push DELIVERY pipeline is only partially built. This sends to rows in
+- * shared.push_subscription, but that table + the client registration flow +
+- * service worker are NOT yet implemented — so sendToUser degrades cleanly
+- * (returns { sent: 0, reason }) until they exist. `web-push` is lazily required
+- * and must be installed (`npm i web-push`).
++ * The delivery pipeline is complete end to end: the Settings opt-in
++ * (`client/src/components/pwa/push-opt-in.tsx`) subscribes the browser with the
++ * public VAPID key and POSTs to /notifications/push/subscribe, which writes the
++ * tenant `push_subscription` table; sendToUser reads that table and pushes via
++ * `web-push` (lazily required); the Workbox service worker imports
++ * `client/public/push-handler.js` to display the notification. Where any piece
++ * is absent (no keypair, table not provisioned), sendToUser degrades cleanly
++ * ({ sent: 0, reason }) rather than throwing into the notification path.
+  */
+ "use strict";
+ 
+@@ -35,7 +38,9 @@ async function resolveVapid() {
+       subject = r.value && r.value.subject;
+     }
+   } catch {
+-    // platform store unavailable → env fallback
++    /* @silent:storage — the platform store is unreachable; the env fallback
++       below is the defined degradation, and the caller never needs to know
++       which source supplied the keypair. */
+   }
+   return {
+     publicKey: publicKey || config.VAPID_PUBLIC_KEY || null,
+diff --git a/tests/integration/mail-search.test.js b/tests/integration/mail-search.test.js
+new file mode 100644
+index 00000000..e9b37508
+--- /dev/null
++++ b/tests/integration/mail-search.test.js
+@@ -0,0 +1,252 @@
++/**
++ * SEARCH CORRECTNESS (§3.7, §5.9) — FTS finds by subject, body and participant,
++ * and respects folder and visibility filters.
++ *
++ * §3.7's acceptance is "FTS finds by subject, body, participant; respects
++ * folder and visibility filters", and §5.9's is the search
++ * `from:maersk has:attachment folder:INBOX demurrage` returning the right
++ * threads. The parser (`mail/search.js`) and the SQL builder
++ * (`thread.repo.listThreads`) were both present and untested against the real
++ * query a search box produces — the one named test file for the feature did
++ * not exist. This file covers the full path: mini-language string → parsed
++ * filters → the SQL that reaches the driver.
++ *
++ * The mini-language is deliberately forgiving (an unknown operator is searched
++ * as text), so the parser assertions pin the forgiving behaviour too — a
++ * "correction" that makes `foo:bar` throw would break the box for real users.
++ */
++"use strict";
++
++const search = require("../../src/modules/mail/mail/search");
++const threads = require("../../src/modules/mail/mail/thread.service");
++
++/** Records every statement instead of running it. */
++function recorder() {
++  const calls = [];
++  return {
++    calls,
++    query: async (text, params) => {
++      calls.push({ text, params });
++      return { rows: [] };
++    },
++    sql: () => calls.map((c) => c.text).join("\n---\n"),
++    last: () => calls[calls.length - 1],
++  };
++}
++
++const ACTOR = { user_id: "u-1" };
++
++/* ── The mini-language ─────────────────────────────────────────────────────── */
++
++describe("the search mini-language parses", () => {
++  test("free text becomes a tsquery with prefix matching on the last word", () => {
++    const p = search.parseQuery("demur");
++    expect(p.tsquery).toBe("demur:*");
++    const two = search.parseQuery("port charges");
++    expect(two.tsquery).toBe("port & charges:*");
++  });
++
++  test("tsquery metacharacters are stripped, not escaped, so & means the character", () => {
++    const p = search.parseQuery("A & B");
++    expect(p.tsquery).toBe("A & B:*");
++    expect(() => search.parseQuery("a:b'c")).not.toThrow();
++  });
++
++  test("quoted phrases group into a phrase match, not ANDed words", () => {
++    // "Quotes group" is the parser's own contract; the tsquery form of a
++    // phrase is the documented FOLLOWED BY operator.
++    const p = search.parseQuery('"invoice 42" status');
++    expect(p.tsquery).toBe("invoice <-> 42 & status:*");
++    const last = search.parseQuery('"bill of lading"');
++    expect(last.tsquery).toBe("bill <-> of <-> lading:*");
++  });
++
++  test("a quoted operator value is the phrase, not a literal quote mark", () => {
++    const p = search.parseQuery('subject:"bill of lading"');
++    expect(p.filters.subject).toEqual(["bill of lading"]);
++    expect(p.tsquery).toBeNull();
++  });
++
++  test("from:/to:/subject: land in their filters, lowercased for addresses", () => {
++    const p = search.parseQuery("from:Maersk@x.cm to:ops@y.cm subject:BL");
++    expect(p.filters.from).toEqual(["maersk@x.cm"]);
++    expect(p.filters.to).toEqual(["ops@y.cm"]);
++    expect(p.filters.subject).toEqual(["BL"]);
++    expect(p.tsquery).toBeNull();
++  });
++
++  test("folder:/in: recognise the six canonical folders and nothing else", () => {
++    expect(search.parseQuery("folder:INBOX").filters.folder).toBe("INBOX");
++    expect(search.parseQuery("in:archive").filters.folder).toBe("ARCHIVE");
++    // An unknown folder is not refused — it is searched as text, and the colon
++    // is stripped so `folder:promotions` finds either word.
++    expect(search.parseQuery("folder:promotions").filters.folder).toBeNull();
++    expect(search.parseQuery("folder:promotions").tsquery).toBe("folder & promotions:*");
++  });
++
++  test("client:, label:, stream:, is:, has:, before:, after: parse", () => {
++    expect(search.parseQuery("client:MAERSK").filters.client).toBe("MAERSK");
++    expect(search.parseQuery("label:urgent").filters.label).toBe("urgent");
++    expect(search.parseQuery("stream:human").filters.stream).toBe("HUMAN");
++    const is = search.parseQuery("is:unread").filters;
++    expect(is.unread).toBe(true);
++    expect(search.parseQuery("is:read").filters.unread).toBe(false);
++    expect(search.parseQuery("is:starred").filters.starred).toBe(true);
++    expect(search.parseQuery("is:vip").filters.vip).toBe(true);
++    expect(search.parseQuery("has:attachment").filters.hasAttachment).toBe(true);
++    expect(search.parseQuery("after:7d").filters.after).toBeInstanceOf(Date);
++    expect(search.parseQuery("before:2026-08-19").filters.before).toBeInstanceOf(Date);
++  });
++
++  test("a dangling operator is ignored rather than matching everything", () => {
++    const p = search.parseQuery("demurrage from:");
++    expect(p.filters.from).toEqual([]);
++    expect(p.tsquery).toBe("demurrage:*");
++  });
++
++  test("an unknown operator is searched as text — forgiving, never an error", () => {
++    const p = search.parseQuery("foo:bar");
++    expect(p.tsquery).toBe("foo & bar:*");
++    expect(p.filters.from).toEqual([]);
++  });
++
++  test("a nonsense date is searched as text, not thrown away or thrown", () => {
++    const p = search.parseQuery("before:next tuesday");
++    expect(p.filters.before).toBeNull();
++    expect(p.tsquery).toContain("tuesday:*");
++  });
++
++  test("a hostile run of underscores parses instantly, as a dangling operator", () => {
++    // CodeQL flagged the first tokeniser draft for a polynomial regex: on
++    // `____…____:` the `[a-z_]+` group backtracked once per character, O(n²)
++    // over a string the caller controls. With a linear tokeniser this parse
++    // completes in milliseconds; a reintroduction of the quadratic pattern
++    // blows the suite timeout rather than quietly shipping a DoS.
++    const hostile = `${"_".repeat(50000)}:`;
++    const started = Date.now();
++    const p = search.parseQuery(hostile);
++    expect(Date.now() - started).toBeLessThan(1000);
++    expect(p.filters.from).toEqual([]);
++    expect(p.tsquery).toBeNull();
++  });
++});
++
++/* ── The call site: the query the driver receives ──────────────────────────── */
++
++describe("the search box reaches the list query (§5.9)", () => {
++  test("from:maersk has:attachment folder:INBOX demurrage — every operator lands", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "from:maersk has:attachment folder:INBOX demurrage" });
++
++    const sql = c.sql();
++    // The free-text remainder → FTS over search_tsv (subject A + participants B
++    // + body C, per migration 10733), folded the same way the document was.
++    expect(sql).toMatch(/search_tsv @@ to_tsquery\('simple', unaccent_safe\(\$\d+\)\)/);
++    // The participant half of §3.7: from/to are separate, scoped subqueries.
++    expect(sql).toMatch(/m3\.from_address::text ILIKE ANY/);
++    expect(sql).toMatch(/t\.has_attachment/);
++    expect(sql).toMatch(/m2\.folder = \$\d+/);
++    expect(c.last().params).toContain("INBOX");
++    expect(c.last().params).toContain("demurrage:*");
++    // `from:` is an ARRAY parameter for ILIKE ANY — several addresses may be
++    // quoted with several from: operators.
++    expect(c.last().params).toContainEqual(["%maersk%"]);
++  });
++
++  test("a free-text search finds participants — to: and from: both match", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "from:ops@maersk.cm" });
++    const sql = c.sql();
++    expect(sql).toMatch(/m3\.from_address::text ILIKE ANY \(\$\d+\)/);
++    expect(c.last().params).toContainEqual(["%ops@maersk.cm%"]);
++
++    const c2 = recorder();
++    await threads.list(c2, ACTOR, { q: "to:billing@co.cm" });
++    expect(c2.sql()).toMatch(/array_to_string\(m4\.to_address::text\[\], ' '\) ILIKE ANY/);
++    expect(c2.last().params).toContainEqual(["%billing@co.cm%"]);
++  });
++
++  test("client:MAERSK filters on the bound entity, not on participants", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "client:MAERSK" });
++    const sql = c.sql();
++    expect(sql).toMatch(/t\.entity_ref IN \(SELECT 'client:' \|\| cm\.client_id::text FROM client_master cm/);
++    expect(sql).toMatch(/cm\.name ILIKE \$\d+/);
++    expect(c.last().params).toContain("%MAERSK%");
++    // A name filter is not a participant filter: being cc'd on someone else's
++    // thread does not make it the client's.
++    expect(sql).not.toMatch(/m3\.from_address/);
++  });
++
++  test("unread, starred, label, before and after reach the query", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, {
++      q: "is:unread is:starred label:urgent before:2026-08-19 after:2026-08-01",
++    });
++    const sql = c.sql();
++    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM email_message_state s6/);
++    expect(sql).toMatch(/s8\.is_starred/);
++    expect(sql).toMatch(/l\.name = \$\d+/);
++    expect(sql).toMatch(/t\.last_message_at < \$\d+/);
++    expect(sql).toMatch(/t\.last_message_at > \$\d+/);
++    expect(c.last().params).toContain("urgent");
++  });
++
++  test("subject: goes to the thread subject, and entity_ref stays a URL filter", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: 'subject:"bill of lading"', entity_ref: "client:c-1" });
++    const sql = c.sql();
++    expect(sql).toMatch(/t\.subject ILIKE \$\d+/);
++    expect(sql).toMatch(/t\.entity_ref = \$\d+/);
++    expect(c.last().params).toContain("%bill of lading%");
++    expect(c.last().params).toContain("client:c-1");
++  });
++
++  test("an unquoted subject: takes one word; the rest is free text, as typed", async () => {
++    // Gmail-like: `subject:bill of lading` filters the subject on `bill` and
++    // searches the rest as words. A phrase needs quotes — pinned here so the
++    // forgiving single-word behaviour is a decision, not an accident.
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "subject:bill of lading" });
++    expect(c.sql()).toMatch(/t\.subject ILIKE \$\d+/);
++    expect(c.last().params).toContain("%bill%");
++    expect(c.last().params).toContain("of & lading:*");
++  });
++
++  test("the list keeps the visibility predicate while searching", async () => {
++    // §3.7's second half: "respects folder AND visibility filters". The
++    // visibility predicate is asserted against the same builder in
++    // mail-visibility-wiring; here we assert the two travel together on the
++    // search path specifically.
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "demurrage folder:SPAM" });
++    const sql = c.sql();
++    expect(sql).toMatch(/t\.visibility = 'COMPANY'/);
++    expect(sql).toMatch(/email_thread_share/);
++    expect(sql).toMatch(/m2\.folder = \$\d+/);
++    expect(c.last().params).toContain("SPAM");
++  });
++
++  test("the limit is clamped to 200 and ordered vip-first, newest-first", async () => {
++    const c = recorder();
++    await threads.list(c, ACTOR, { q: "demurrage", limit: 99999 });
++    const sql = c.sql();
++    expect(sql).toMatch(/LIMIT \$\d+/);
++    expect(c.last().params).toContain(200);
++    expect(sql).toMatch(/ORDER BY t\.is_vip DESC, t\.last_message_at DESC/);
++  });
++
++  test("the cited example returns a row list shape, not raw SQL output", async () => {
++    // §5.9 acceptance: the query returns THREADS. The recorder stands in for
++    // the database; the row contract here is participants-as-array — the
++    // FN-1 shape — because this query crosses the driver boundary.
++    const c = {
++      query: async () => ({
++        rows: [{ email_thread_id: "t1", participants: ["ops@maersk.cm"], subject: "Demurrage" }],
++      }),
++    };
++    const rows = await threads.list(c, ACTOR, { q: "from:maersk has:attachment folder:INBOX demurrage" });
++    expect(rows).toHaveLength(1);
++    expect(Array.isArray(rows[0].participants)).toBe(true);
++  });
++});
+diff --git a/tests/integration/mail-shared-inbox.test.js b/tests/integration/mail-shared-inbox.test.js
+new file mode 100644
+index 00000000..98bd53e9
+--- /dev/null
++++ b/tests/integration/mail-shared-inbox.test.js
+@@ -0,0 +1,228 @@
++/**
++ * THE SHARED INBOX (§9.1, §9.9, §9.11) — claim race under concurrency, and the
++ * triage writes that read back.
++ *
++ * §9.11 asks for one integration test: "claim race under concurrency". The
++ * claim endpoint is a single conditional UPDATE — `WHERE assigned_user_id IS
++ * NULL` — so the database, not the application, decides the winner. A test
++ * that called the SQL once would test nothing about the race; this file drives
++ * the real route with two claimants racing through the same recording client,
++ * whose emulation applies the guard the SQL text actually carries. If the
++ * guard is ever dropped, the emulation treats the update as unconditional and
++ * BOTH claimants win — which fails here, before a user ever sees two agents
++ * answering one customer.
++ *
++ * The second half guards the read half of the write: claim / assign / status /
++ * visibility all RETURN the thread, so they are reads in the §9.5 sense. Each
++ * must be gated by the caller's ability to see the thread — a Private thread's
++ * subject must not leak through `RETURNING *` to a colleague who could never
++ * open it, and a thread you cannot see must not be one you can widen to TEAM.
++ */
++"use strict";
++
++const express = require("express");
++const request = require("supertest");
++
++jest.mock("../../src/middleware/auth", () => ({
++  authMiddleware: (req, _res, next) => {
++    req.user = { user_id: req.headers["x-user-id"] || null };
++    next();
++  },
++}));
++jest.mock("../../src/middleware/rbac", () => ({
++  requirePermission: () => (_req, _res, next) => next(),
++  requireCeo: () => (_req, _res, next) => next(),
++}));
++jest.mock("../../src/middleware/feature-gate", () => ({
++  requireFeature: () => (_req, _res, next) => next(),
++}));
++jest.mock("../../src/shared/http/validate", () => ({
++  body: () => (_req, _res, next) => next(),
++}));
++jest.mock("../../src/shared/events/emit", () => ({
++  audit: jest.fn(async () => ({})),
++  emitEvent: jest.fn(async () => ({})),
++}));
++
++const { router } = require("../../src/modules/mail/triage/triage.routes");
++
++/**
++ * A recording stand-in for the tenant database. It emulates, for the four
++ * statements this suite exercises, what the real schema would do:
++ *   · getThread's head query applies the visibility rule keyed on the caller;
++ *   · the claim UPDATE applies `assigned_user_id IS NULL` — but ONLY when the
++ *     SQL still carries it, so a regression to read-then-write shows up here
++ *     as two winners instead of one;
++ *   · assign / status / visibility apply unconditionally, as their SQL does.
++ */
++function sharedClient({ visibleTo = new Set(["u-owner"]) } = {}) {
++  const calls = [];
++  const assigned = new Map();
++  const threads = new Map([
++    ["t-1", { subject: "Invoice follow-up", visibility: "TEAM" }],
++    ["t-private", { subject: "Salary negotiation", visibility: "PRIVATE" }],
++  ]);
++  return {
++    calls,
++    written: (re) => calls.filter((c) => re.test(c.text)),
++    query: async (text, params) => {
++      calls.push({ text, params });
++      const sql = text.trim().replace(/\s+/g, " ");
++      if (sql.startsWith("SELECT t.*")) {
++        // getThread head — the visibility-gated read the routes must consult.
++        const [userId, threadId] = params;
++        const th = threads.get(threadId);
++        if (!th || !visibleTo.has(userId)) return { rows: [] };
++        return {
++          rows: [{ email_thread_id: threadId, subject: th.subject, participants: [], visibility: th.visibility }],
++        };
++      }
++      if (/FROM email_message m/.test(sql)) return { rows: [] };
++      if (/UPDATE email_thread t SET assigned_user_id/.test(sql)) {
++        const threadId = params[0];
++        if (!threads.has(threadId)) return { rows: [] };
++        if (/assigned_user_id IS NULL/.test(sql) && assigned.has(threadId)) return { rows: [] };
++        assigned.set(threadId, params[1]);
++        return {
++          rows: [{ email_thread_id: threadId, assigned_user_id: params[1], subject: threads.get(threadId).subject, participants: [] }],
++        };
++      }
++      if (/UPDATE email_thread t SET work_status/.test(sql)) {
++        const threadId = params[0];
++        if (!threads.has(threadId)) return { rows: [] };
++        return {
++          rows: [{ email_thread_id: threadId, work_status: params[1], subject: threads.get(threadId).subject, participants: [] }],
++        };
++      }
++      if (/UPDATE email_thread t SET visibility=/.test(sql)) {
++        const threadId = params[0];
++        if (!threads.has(threadId)) return { rows: [] };
++        threads.get(threadId).visibility = params[1];
++        return {
++          rows: [{ email_thread_id: threadId, visibility: params[1], subject: threads.get(threadId).subject, participants: [] }],
++        };
++      }
++      return { rows: [] };
++    },
++  };
++}
++
++function appWith(client) {
++  const app = express();
++  app.use(express.json());
++  app.use((req, _res, next) => {
++    req.identityDb = async (fn) => fn(client);
++    next();
++  });
++  app.use(router);
++  app.use((err, _req, res, _next) => res.status(err.status || 500).json({ code: err.code, message: err.message }));
++  return app;
++}
++
++// supertest's Test only exposes `.set` once a verb is chosen, so the verb is
++// selected first and the actor header rides on the chained request.
++const as = (client, id) => ({
++  post: (path) => request(appWith(client)).post(path).set("x-user-id", id),
++  patch: (path) => request(appWith(client)).patch(path).set("x-user-id", id),
++});
++
++/* ── The claim race ───────────────────────────────────────────────────────── */
++
++describe("two agents claim the same thread at once", () => {
++  const client = sharedClient({ visibleTo: new Set(["u-marie", "u-jules", "u-owner"]) });
++
++  test("exactly one wins; the loser hears ALREADY_CLAIMED, not a silent overwrite", async () => {
++    const [a, b] = await Promise.all([
++      as(client, "u-marie").post("/threads/t-1/claim"),
++      as(client, "u-jules").post("/threads/t-1/claim"),
++    ]);
++    const statuses = [a.status, b.status].sort();
++    expect(statuses).toEqual([200, 409]);
++    const winner = a.status === 200 ? a : b;
++    const loser = a.status === 200 ? b : a;
++    expect(winner.body.data.assigned_user_id).toMatch(/^u-(marie|jules)$/);
++    expect(loser.body.code).toBe("ALREADY_CLAIMED");
++  });
++
++  test("the race is won by a conditional UPDATE, not a read-then-write", () => {
++    // The mechanism the race depends on lives in the SQL itself: one statement
++    // whose WHERE carries the "still unclaimed" guard. A read-then-write —
++    // SELECT the row, check, then UPDATE — would let both claimants win, and
++    // every claim UPDATE must carry the guard.
++    const claims = client.written(/UPDATE email_thread t SET assigned_user_id/);
++    expect(claims.length).toBeGreaterThanOrEqual(2);
++    for (const c of claims) expect(c.text).toMatch(/assigned_user_id IS NULL/);
++    // And no claim path pre-read the row with a bare SELECT of the assignment —
++    // the only read is the visibility-gated getThread.
++    const bareReads = client.written(/SELECT .*assigned_user_id/);
++    expect(bareReads).toHaveLength(0);
++  });
++
++  test("the claim response crosses the citext boundary as an array (FN-1)", () => {
++    // The route must keep casting participants to ::text[] on the way out; the
++    // raw driver value is a Postgres array literal string.
++    const claims = client.written(/UPDATE email_thread t SET assigned_user_id/);
++    for (const c of claims) expect(c.text).toMatch(/participants::text\[\] AS participants/);
++  });
++});
++
++/* ── Claim is a read, and reads are visibility-gated (§9.5) ───────────────── */
++
++describe("the triage writes that RETURN the thread are visibility-gated", () => {
++  test("claim on a thread the caller cannot see is a 404 and writes nothing", async () => {
++    const client = sharedClient();
++    const res = await as(client, "u-intruder").post("/threads/t-private/claim");
++    expect(res.status).toBe(404);
++    expect(client.written(/UPDATE email_thread/)).toHaveLength(0);
++  });
++
++  test("claim on a thread that does not exist is a 404, not ALREADY_CLAIMED", async () => {
++    const client = sharedClient();
++    const res = await as(client, "u-owner").post("/threads/t-missing/claim");
++    expect(res.status).toBe(404);
++  });
++
++  test("the claim UPDATE itself carries the visibility predicate", async () => {
++    const client = sharedClient({ visibleTo: new Set(["u-owner", "u-marie"]) });
++    await as(client, "u-marie").post("/threads/t-1/claim");
++    const sql = client.written(/UPDATE email_thread t SET assigned_user_id/)[0].text;
++    expect(sql).toMatch(/t\.visibility = 'COMPANY'/);
++    expect(sql).toMatch(/email_thread_share/);
++    expect(sql).toMatch(/c\.owner_user_id/);
++  });
++
++  test("assign is gated the same way — an invisible thread answers 404", async () => {
++    const client = sharedClient();
++    const res = await as(client, "u-intruder").post("/threads/t-private/assign").send({ user_id: "u-marie" });
++    expect(res.status).toBe(404);
++    expect(client.written(/UPDATE email_thread/)).toHaveLength(0);
++  });
++
++  test("assign overwrites the existing assignee for a caller who can see it", async () => {
++    const client = sharedClient();
++    const res = await as(client, "u-owner").post("/threads/t-1/assign").send({ user_id: "u-marie" });
++    expect(res.status).toBe(200);
++    expect(res.body.data.assigned_user_id).toBe("u-marie");
++  });
++
++  test("status is gated the same way and sets the work status", async () => {
++    const client = sharedClient();
++    const no = await as(client, "u-intruder").post("/threads/t-private/status").send({ status: "RESOLVED" });
++    expect(no.status).toBe(404);
++
++    const yes = await as(client, "u-owner").post("/threads/t-1/status").send({ status: "RESOLVED" });
++    expect(yes.status).toBe(200);
++    expect(yes.body.data.work_status).toBe("RESOLVED");
++  });
++
++  test("visibility cannot be widened by someone who cannot already see the thread", async () => {
++    const client = sharedClient();
++    const no = await as(client, "u-intruder").patch("/threads/t-private/visibility").send({ visibility: "TEAM" });
++    expect(no.status).toBe(404);
++    expect(client.written(/UPDATE email_thread t SET visibility=/)).toHaveLength(0);
++
++    const yes = await as(client, "u-owner").patch("/threads/t-private/visibility").send({ visibility: "TEAM" });
++    expect(yes.status).toBe(200);
++    expect(yes.body.data.visibility).toBe("TEAM");
++  });
++});
+diff --git a/tests/security/mail-no-telemetry.test.js b/tests/security/mail-no-telemetry.test.js
+index 46623273..914f3688 100644
+--- a/tests/security/mail-no-telemetry.test.js
++++ b/tests/security/mail-no-telemetry.test.js
+@@ -2,28 +2,49 @@
+ const fs = require("fs");
+ const path = require("path");
+ 
+-function walk(dir) {
+-  const out = [];
++/**
++ * NO TELEMETRY, ANYWHERE IN THE MAIL MODULE.
++ *
++ * §5.x / Q32: read/open tracking pixels and click-tracking link rewriting are
++ * OUT. The first version of this test grepped three files by name — which
++ * would stay green while a fourth outbound path (a new provider, a new
++ * template, a signature variant) silently grew a pixel. The gate now walks
++ * every source file in `src/modules/mail/`, so a new outbound path is covered
++ * the day it is written, without anyone remembering to add it to a list.
++ */
++const MAIL_ROOT = path.resolve(__dirname, "../../src/modules/mail");
++
++function walk(dir, acc = []) {
+   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+     const p = path.join(dir, e.name);
+-    if (e.isDirectory()) out.push(...walk(p));
+-    else if (/\.(js|ts|tsx)$/.test(e.name)) out.push(p);
++    if (e.isDirectory()) walk(p, acc);
++    else if (/\.(js|ts|tsx)$/.test(e.name)) acc.push(p);
+   }
+-  return out;
++  return acc;
+ }
+ 
+-describe("no tracking pixel, no link rewriting", () => {
+-  test("outbound mail paths do not inject a tracking pixel or rewrite hrefs", () => {
+-    const files = [
+-      path.resolve(__dirname, "../../src/modules/mail/mail/compose.js"),
+-      path.resolve(__dirname, "../../src/modules/mail/mail/outbox.service.js"),
+-      path.resolve(__dirname, "../../src/modules/mail/signature/signature.html.js"),
+-    ];
+-    for (const f of files) {
+-      const src = fs.readFileSync(f, "utf8");
+-      expect(src).not.toMatch(/tracking[_-]?pixel/i);
+-      expect(src).not.toMatch(/open[_-]?rate/i);
+-      expect(src).not.toMatch(/rewrite(Link|Href)/i);
+-    }
++const FILES = walk(MAIL_ROOT);
++
++// The three markers a tracking feature cannot avoid writing, in the spellings
++// the codebase has used. Kept deliberately narrow so that a prohibition
++// comment does not trip it; kept as a regex so `tracking_pixel` and
++// `tracking-pixel` are both caught.
++const BANNED = [/tracking[_-]?pixel/i, /open[_-]?rate/i, /rewrite(Link|Href)/i];
++
++describe("no tracking pixel, no link rewriting — in any outbound mail path", () => {
++  test("the gate is walking the module, not an empty directory", () => {
++    expect(FILES.length).toBeGreaterThan(30);
++    expect(FILES).toContain(path.join(MAIL_ROOT, "mail", "compose.js"));
++    expect(FILES).toContain(path.join(MAIL_ROOT, "signature", "signature.html.js"));
+   });
++
++  test.each(FILES.map((f) => [path.relative(MAIL_ROOT, f), f]))(
++    "%s contains no pixel, open-rate or link-rewrite markers",
++    (_rel, file) => {
++      const src = fs.readFileSync(file, "utf8");
++      for (const re of BANNED) {
++        expect(src).not.toMatch(re);
++      }
++    },
++  );
+ });
+diff --git a/tests/unit/__snapshots__/mail-signature-snapshot.test.js.snap b/tests/unit/__snapshots__/mail-signature-snapshot.test.js.snap
+new file mode 100644
+index 00000000..1ba83d97
+--- /dev/null
++++ b/tests/unit/__snapshots__/mail-signature-snapshot.test.js.snap
+@@ -0,0 +1,21 @@
++// Jest Snapshot v1, https://goo.gl/fbAQLP
++
++exports[`snapshot of the canonical renders a SYSTEM block — corporate identity, no person's mobile 1`] = `
++"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;max-width:650px">
++  <tr><td style="padding:12px 16px;vertical-align:top"><div style="font-weight:bold;color:#0f4c81;font-size:16px;line-height:22px">Billing</div><div style="color:#6b7280;font-size:12px;line-height:18px">Billing</div><div style="color:#374151;font-size:12px;line-height:18px;margin-top:8px">billing@praxis-ls.cm</div><div style="color:#111827;font-size:12px;line-height:18px;margin-top:8px">Praxis LS SA</div><div style="color:#6b7280;font-size:12px;line-height:18px">Rue Joffre, Akwa, Douala</div><div style="color:#6b7280;font-size:12px;line-height:18px">+237 2 33 41 20 20 · https://www.praxis-ls.cm</div><div style="color:#6b7280;font-size:11px;line-height:16px;margin-top:6px">SA · RCCM CM-DLA-2020-B-12345 · NIU P052000123456T</div><div style="color:#9ca3af;font-size:10px;line-height:14px;margin-top:8px">This message is confidential and intended for the named recipient only.</div></td></tr>
++  <tr><td colspan="2" style="background:#0f4c81;color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:11px;letter-spacing:0.04em;padding:8px 12px;text-align:center">Your supply chain, mastered</td></tr>
++</table>"
++`;
++
++exports[`snapshot of the canonical renders a named user, classic layout, with accents and both phones 1`] = `
++"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;max-width:650px">
++  <tr><td style="padding:12px 16px;vertical-align:top"><div style="font-weight:bold;color:#0f4c81;font-size:16px;line-height:22px">Élodie Kamga</div><div style="color:#111827;font-size:13px;line-height:18px">Directrice des opérations</div><div style="color:#6b7280;font-size:12px;line-height:18px">Freight &amp; Logistics</div><div style="color:#374151;font-size:12px;line-height:18px;margin-top:8px">Tél. +237 2 33 41 20 20 · Port. +237 6 55 12 34 56 · elodie.kamga@praxis-ls.cm</div><div style="color:#111827;font-size:12px;line-height:18px;margin-top:8px">Praxis LS SA</div><div style="color:#6b7280;font-size:12px;line-height:18px">Rue Joffre, Akwa, Douala</div><div style="color:#6b7280;font-size:12px;line-height:18px">+237 2 33 41 20 20 · https://www.praxis-ls.cm</div><div style="color:#6b7280;font-size:11px;line-height:16px;margin-top:6px">SA · RCCM CM-DLA-2020-B-12345 · NIU P052000123456T</div><div style="color:#9ca3af;font-size:10px;line-height:14px;margin-top:8px">This message is confidential and intended for the named recipient only.</div></td></tr>
++  <tr><td colspan="2" style="background:#0f4c81;color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:11px;letter-spacing:0.04em;padding:8px 12px;text-align:center">Your supply chain, mastered</td></tr>
++</table>"
++`;
++
++exports[`snapshot of the canonical renders the compact layout 1`] = `
++"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;font-size:13px;color:#111827;max-width:650px">
++  <tr><td style="padding:0"><div style="font-weight:bold;color:#0f4c81;font-size:14px;line-height:20px">Jean-Paul Nkoa · Commercial senior</div><div style="color:#374151;line-height:18px;margin-top:2px">Tél. +237 2 33 41 20 20 · Port. +237 6 55 12 34 56 · elodie.kamga@praxis-ls.cm</div><div style="color:#6b7280;line-height:18px;margin-top:2px">Praxis LS SA · https://www.praxis-ls.cm</div></td></tr>
++</table>"
++`;
+diff --git a/tests/unit/mail-deliverability-wiring.test.js b/tests/unit/mail-deliverability-wiring.test.js
+new file mode 100644
+index 00000000..00cb0005
+--- /dev/null
++++ b/tests/unit/mail-deliverability-wiring.test.js
+@@ -0,0 +1,116 @@
++/**
++ * THE DELIVERABILITY REGRESSION ALERT ACTUALLY FIRES (§6.5).
++ *
++ * `mail-deliverability.test.js` proves the `regression()` predicate is right.
++ * For the whole of the PR-2 merge that was the only thing tested: the service
++ * wrote the FAIL row and the alert depended on a transition check that the
++ * tests never ran at the call site. A PASS→FAIL transition must emit
++ * `deliverability.regressed` AND notify MOD-70 (the CEOs) — a regression row
++ * with no notification is the version where DNS broke a week ago and nobody
++ * was told. This file runs `checkOne` for real (with the network leaves
++ * mocked) and asserts on what it emits.
++ */
++"use strict";
++
++const dnsPromises = require("dns").promises;
++
++jest.mock("../../src/modules/mail/mail/dns-check", () => ({
++  checkDomain: jest.fn(async () => ({ mx: { ok: true }, spf: { ok: true }, dkim: { ok: true } })),
++}));
++jest.mock("../../src/modules/mail/deliverability/ptr", () => ({
++  checkPtr: jest.fn(async () => ({ ok: true })),
++}));
++jest.mock("../../src/modules/mail/deliverability/rbl", () => ({
++  checkRbl: jest.fn(async () => ({ ok: true })),
++  hostsFrom: jest.fn(() => ["zen.spamhaus.org"]),
++}));
++jest.mock("../../src/modules/mail/deliverability/deliverability.repo", () => ({
++  previous: jest.fn(async () => ({ verdict: "PASS", checked_at: new Date("2026-08-18T10:00:00Z") })),
++  insertCheck: jest.fn(async (_c, row) => row),
++  sendingDomains: jest.fn(async () => ["maersk.cm"]),
++  sendingIp: jest.fn(async () => null),
++}));
++jest.mock("../../src/modules/notification/notification.service", () => ({
++  notifyMany: jest.fn(async () => ({})),
++}));
++jest.mock("../../src/shared/events/emit", () => ({
++  emitEvent: jest.fn(async () => ({})),
++  audit: jest.fn(async () => ({})),
++}));
++
++const { checkPtr } = require("../../src/modules/mail/deliverability/ptr");
++const repo = require("../../src/modules/mail/deliverability/deliverability.repo");
++const { emitEvent } = require("../../src/shared/events/emit");
++const notify = require("../../src/modules/notification/notification.service");
++const svc = require("../../src/modules/mail/deliverability/deliverability.service");
++
++/** A tenant client that knows only the CEO lookup. */
++const client = {
++  query: jest.fn(async (text) => {
++    if (/FROM app_user/.test(text)) return { rows: [{ user_id: "u-ceo" }] };
++    return { rows: [] };
++  }),
++};
++
++beforeEach(() => {
++  jest.clearAllMocks();
++  jest.spyOn(dnsPromises, "resolveTxt").mockResolvedValue([["v=DMARC1; p=reject; rua=mailto:postmaster@maersk.cm"]]);
++  checkPtr.mockResolvedValue({ ok: true });
++  repo.previous.mockResolvedValue({ verdict: "PASS", checked_at: new Date("2026-08-18T10:00:00Z") });
++});
++
++afterAll(() => jest.restoreAllMocks());
++
++describe("a PASS → FAIL transition", () => {
++  beforeEach(() => {
++    checkPtr.mockResolvedValue({ ok: false, hint: "PTR mismatch — banner says mail.maersk.cm, reverse says an ISP pool." });
++  });
++
++  test("emits deliverability.regressed with the transition in the payload", async () => {
++    const out = await svc.checkOne(client, "maersk.cm", { ip: "203.0.113.7" });
++
++    expect(out.regressions).toEqual([
++      expect.objectContaining({ domain: "maersk.cm", record: "PTR", from: "PASS", to: "FAIL" }),
++    ]);
++    expect(emitEvent).toHaveBeenCalledWith(
++      client,
++      expect.objectContaining({
++        eventTypeKey: "deliverability.regressed",
++        moduleKey: "MOD-70",
++        entityRef: "domain:maersk.cm",
++      }),
++    );
++  });
++
++  test("notifies the CEOs — a stored row with no notification is a silent outage", async () => {
++    await svc.checkOne(client, "maersk.cm", { ip: "203.0.113.7" });
++    expect(notify.notifyMany).toHaveBeenCalledWith(
++      client,
++      ["u-ceo"],
++      expect.objectContaining({
++        eventTypeKey: "deliverability.regressed",
++        priority: "HIGH",
++        title: expect.stringContaining("maersk.cm"),
++      }),
++    );
++  });
++
++  test("the FAIL row is still stored and the check still returns when the notifier is down", async () => {
++    notify.notifyMany.mockRejectedValueOnce(new Error("notification service down"));
++    const out = await svc.checkOne(client, "maersk.cm", { ip: "203.0.113.7" });
++    // §6.5: the stored FAIL is the record; the alert is amplification. Losing
++    // the alert must not lose the evidence.
++    expect(out.checks).toContainEqual(expect.objectContaining({ record: "PTR", verdict: "FAIL" }));
++    expect(repo.insertCheck).toHaveBeenCalled();
++  });
++});
++
++describe("a check that did not regress", () => {
++  test("emits nothing — FAIL→FAIL and PASS→PASS are not regressions", async () => {
++    repo.previous.mockResolvedValue({ verdict: "FAIL", checked_at: new Date("2026-08-18T10:00:00Z") });
++    const out = await svc.checkOne(client, "maersk.cm", { ip: "203.0.113.7" });
++    expect(out.regressions).toEqual([]);
++    expect(emitEvent).not.toHaveBeenCalled();
++    expect(notify.notifyMany).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/unit/mail-signature-snapshot.test.js b/tests/unit/mail-signature-snapshot.test.js
+new file mode 100644
+index 00000000..b014ac82
+--- /dev/null
++++ b/tests/unit/mail-signature-snapshot.test.js
+@@ -0,0 +1,144 @@
++/**
++ * SIGNATURE HTML SNAPSHOTS (§6.7 criterion 9, task S2).
++ *
++ * Criterion 9: "The signature HTML renders correctly in Outlook 2016+, Gmail
++ * web and Apple Mail (snapshot test)." No mail client runs in CI; what a
++ * snapshot CAN pin is the exact markup those clients' constraints force:
++ * presentational tables with a width attribute (Outlook desktop, which strips
++ * CSS widths), every style inline (Gmail, which strips `<style>`), a web-safe
++ * font stack (Apple Mail renders system fonts), and no flex/grid anywhere
++ * (Outlook 2016's Word engine ignores them). The four constraint assertions
++ * below are the rule; the snapshot is the tripwire — any change to the
++ * renderer's output must be reviewed against the same four clients, which is
++ * exactly the review criterion 9 asks for.
++ *
++ * The models are hand-built rather than resolved from the database so the
++ * snapshot is deterministic — no timestamps, no ids, no user rows. They carry
++ * the shape `signature.resolve` produces (`person_line`, `contact_line`,
++ * `legal_line`), because that is what the renderer actually reads.
++ */
++"use strict";
++
++const { render } = require("../../src/modules/mail/signature/signature.html");
++
++const NAMED_USER = {
++  language: "en",
++  system: false,
++  kind: "classic",
++  width_px: 650,
++  brand_color: "#0f4c81",
++  accent_color: "#c9a227",
++  show_logo: false,
++  show_motto_bar: true,
++  show_legal: true,
++  person: {
++    full_name: "Élodie Kamga",
++    job_title: "Directrice des opérations",
++    department: "Freight & Logistics",
++    person_line: "Élodie Kamga",
++  },
++  contact: {
++    email: "elodie.kamga@praxis-ls.cm",
++    phone_mobile: "+237 6 55 12 34 56",
++    phone_desk: "+237 2 33 41 20 20",
++    contact_line: "Tél. +237 2 33 41 20 20 · Port. +237 6 55 12 34 56 · elodie.kamga@praxis-ls.cm",
++  },
++  company: {
++    legal_name: "Praxis LS SA",
++    address_line: "Rue Joffre, Akwa, Douala",
++    phone: "+237 2 33 41 20 20",
++    website: "https://www.praxis-ls.cm",
++    legal_line: "SA · RCCM CM-DLA-2020-B-12345 · NIU P052000123456T",
++    motto: "Your supply chain, mastered",
++    confidentiality: "This message is confidential and intended for the named recipient only.",
++  },
++};
++
++const SYSTEM_BLOCK = {
++  ...NAMED_USER,
++  system: true,
++  person: { full_name: null, job_title: null, department: "Billing", person_line: null },
++  contact: {
++    email: "billing@praxis-ls.cm",
++    phone_mobile: null,
++    phone_desk: null,
++    contact_line: "billing@praxis-ls.cm",
++  },
++};
++
++const COMPACT = {
++  ...NAMED_USER,
++  kind: "compact",
++  person: {
++    full_name: "Jean-Paul Nkoa",
++    job_title: "Commercial senior",
++    department: "Sales",
++    person_line: "Jean-Paul Nkoa",
++  },
++};
++
++describe("snapshot of the canonical renders", () => {
++  test("a named user, classic layout, with accents and both phones", () => {
++    expect(render(NAMED_USER)).toMatchSnapshot();
++  });
++
++  test("a SYSTEM block — corporate identity, no person's mobile", () => {
++    expect(render(SYSTEM_BLOCK)).toMatchSnapshot();
++  });
++
++  test("the compact layout", () => {
++    expect(render(COMPACT)).toMatchSnapshot();
++  });
++});
++
++describe("the four target clients' constraints, on every canonical render", () => {
++  const renders = {
++    "named user": render(NAMED_USER),
++    system: render(SYSTEM_BLOCK),
++    compact: render(COMPACT),
++  };
++
++  test.each(Object.entries(renders))("%s — Outlook 2016+: table layout with a width attribute, no flex/grid", (_n, html) => {
++    // Word's HTML engine ignores CSS widths and every modern layout property;
++    // the signature is a presentational table whose width is an ATTRIBUTE.
++    expect(html).toMatch(/<table/);
++    expect(html).toMatch(/<table[^>]*width="650"/);
++    expect(html).not.toMatch(/display:\s*flex/);
++    expect(html).not.toMatch(/display:\s*grid/);
++  });
++
++  test.each(Object.entries(renders))("%s — Gmail web: everything inline, no <style>, no classes", (_n, html) => {
++    // Gmail strips <style> blocks and class attributes; every declaration must
++    // ride on the element itself.
++    expect(html).not.toMatch(/<style/i);
++    expect(html).not.toMatch(/class="/);
++    const styled = html.match(/<[a-z]+[^>]*style="/g) || [];
++    expect(styled.length).toBeGreaterThan(0);
++  });
++
++  test.each(Object.entries(renders))("%s — Apple Mail: web-safe font stack", (_n, html) => {
++    expect(html).toMatch(/Arial, Helvetica, sans-serif/);
++  });
++
++  test.each(Object.entries(renders))("%s — markup is escaped, not executed", (_n, _html) => {
++    // A signature whose model contains markup must render the characters, not
++    // the markup — every client interprets this the same way, and a renderer
++    // that does not is an injection surface in every outbound mail. This is
++    // also the place that proves the snapshot above renders the PERSON, and
++    // not a stray literal.
++    const hostile = render({
++      ...NAMED_USER,
++      person: { ...NAMED_USER.person, person_line: "<img src=x onerror=alert(1)>" },
++    });
++    expect(hostile).not.toMatch(/<img src=x/);
++    expect(hostile).toContain("&lt;img");
++  });
++
++  test("each canonical render contains its own person", () => {
++    expect(render(NAMED_USER)).toContain("Élodie Kamga");
++    expect(render(COMPACT)).toContain("Jean-Paul Nkoa");
++    // The SYSTEM block carries no person — the corporate identity replaces it.
++    expect(render(SYSTEM_BLOCK)).toContain("Billing");
++    expect(render(SYSTEM_BLOCK)).not.toContain("Élodie");
++  });
++});

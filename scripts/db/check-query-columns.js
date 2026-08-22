@@ -130,8 +130,24 @@ function buildCatalogue() {
   const opaque = new Set();
   /** schema names, so `platform.tenant` reads as a relation, not a column */
   const schemas = new Set(["public", "pg_catalog", "information_schema"]);
+  /**
+   * Tables a migration RENAMED AWAY or DROPPED: name -> why.
+   *
+   * These are not "shapes we cannot reason about" — they are relations that no
+   * longer exist, and a query naming one throws at runtime. Marking them opaque
+   * (which is all this script used to do for a rename) silences the check
+   * exactly where it should be loudest, and that silence is how
+   * `mail.repo.setEntityRef` kept an `UPDATE email_inbound` for four PRs after
+   * 10731 renamed the table to `email_inbound_legacy`. It survived because
+   * nothing called it; the day someone did, it would have thrown.
+   *
+   * Cleared if a later migration re-creates or re-renames the name, so a
+   * rename-out-and-back is not a finding.
+   */
+  const gone = new Map();
   const markOpaque = (t) => opaque.add(t);
   const ensure = (t) => {
+    gone.delete(t);
     if (!tables.has(t)) tables.set(t, new Set());
     return tables.get(t);
   };
@@ -192,10 +208,21 @@ function buildCatalogue() {
         cols.delete(a[1].toLowerCase());
         cols.add(a[2].toLowerCase());
       }
-      // `ALTER TABLE x RENAME TO y` moves a shape we then stop tracking.
-      if (/RENAME\s+TO\s+/i.test(body) && !/RENAME\s+COLUMN/i.test(body)) {
+      // `ALTER TABLE x RENAME TO y` moves a shape we then stop tracking — and
+      // leaves NOTHING at the old name. Opaque for columns, gone for tables.
+      const renTo = body.match(/RENAME\s+TO\s+"?([a-z_][a-z0-9_]*)"?/i);
+      if (renTo && !/RENAME\s+COLUMN/i.test(body)) {
         markOpaque(name);
+        const to = renTo[1].toLowerCase();
+        gone.set(name, `renamed to ${to} by ${path.basename(file)}`);
+        gone.delete(to);
       }
+    }
+
+    // `DROP TABLE x` — the same statement about existence, said outright.
+    const dropRe = /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_.]*)/gi;
+    while ((m = dropRe.exec(sql))) {
+      gone.set(m[1].toLowerCase(), `dropped by ${path.basename(file)}`);
     }
 
     // DDL inside EXECUTE '...' / EXECUTE format(...). The ALTER pass above
@@ -233,7 +260,7 @@ function buildCatalogue() {
   // A table we only ever saw referenced, never defined, has no column list and
   // must not produce findings.
   for (const [t, cols] of tables) if (cols.size === 0) markOpaque(t);
-  return { tables, opaque, schemas };
+  return { tables, opaque, schemas, gone };
 }
 
 /* ── 2. SQL strings inside the JS ──────────────────────────────────────────
@@ -366,6 +393,34 @@ function checkSql(sql, cat) {
   return findings;
 }
 
+/**
+ * Does this statement name a relation that no longer exists?
+ *
+ * Deliberately separate from `checkSql`: that pass only ever inspects
+ * `alias.column` pairs, so a statement with no qualified reference —
+ * `UPDATE email_inbound SET entity_ref = $2 WHERE email_inbound_id = $1` — is
+ * invisible to it however wrong the table is. Existence is the cheaper and
+ * more serious question, and it is asked of the bare statement text.
+ */
+const FROM_CLAUSE =
+  /\b(?:FROM|JOIN|UPDATE(?:\s+ONLY)?|INSERT\s+INTO|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+(?:ONLY\s+)?"?([a-z_][a-z0-9_.]*)"?/gi;
+
+function checkTables(sql, cat) {
+  if (!cat.gone || !cat.gone.size) return [];
+  const findings = [];
+  const seen = new Set();
+  let m;
+  FROM_CLAUSE.lastIndex = 0;
+  while ((m = FROM_CLAUSE.exec(sql))) {
+    const table = m[1].toLowerCase();
+    if (!cat.gone.has(table)) continue;
+    if (seen.has(table)) continue;
+    seen.add(table);
+    findings.push({ ref: table, table, column: null, gone: cat.gone.get(table), candidates: [] });
+  }
+  return findings;
+}
+
 /** Nearest existing column names, so the report says what to write instead. */
 function suggest(col, cols) {
   const all = [...cols];
@@ -434,7 +489,7 @@ function main() {
     const code = fs.readFileSync(file, "utf8");
     if (!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/i.test(code)) continue;
     for (const { text, index } of extractSqlStrings(code)) {
-      for (const f of checkSql(text, cat)) {
+      for (const f of [...checkTables(text, cat), ...checkSql(text, cat)]) {
         findings.push({
           file: path.relative(ROOT, file).replace(/\\/g, "/"),
           line: lineOf(code, index),
@@ -482,10 +537,14 @@ function main() {
         (held ? ` (${held} grandfathered).` : "."),
     );
   } else {
-    console.error(`check-query-columns: ${shown.length} unresolved column reference(s)\n`);
+    console.error(`check-query-columns: ${shown.length} unresolved reference(s)\n`);
     for (const f of shown) {
-      const hint = f.candidates.length ? `  did you mean: ${f.candidates.join(", ")}` : "";
       const mark = baseline.has(`${f.file}|${f.ref}`) ? " [grandfathered]" : "";
+      if (f.gone) {
+        console.error(`  ${f.file}:${f.line}  ${f.table}  — this table no longer exists: ${f.gone}${mark}`);
+        continue;
+      }
+      const hint = f.candidates.length ? `  did you mean: ${f.candidates.join(", ")}` : "";
       console.error(
         `  ${f.file}:${f.line}  ${f.ref}  — ${f.table} has no column "${f.column}"${hint}${mark}`,
       );
@@ -500,4 +559,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { buildCatalogue, extractSqlStrings, resolveAliases, checkSql };
+module.exports = { buildCatalogue, extractSqlStrings, resolveAliases, checkSql, checkTables };

@@ -369,6 +369,17 @@ const Schema = z.object({
   // every other scheduler puts on the hour. Empty disables it;
   // POST /reports/scheduled/run-due still runs a tenant's due reports on demand.
   SCHEDULED_REPORT_CRON: z.string().default("5 * * * *"),
+  /*
+   * Signing reminders (SIGNATURE_ENGINEERING_GUIDE §6.8). Hourly at :20 —
+   * clear of the report tick at :05, because both fan out one job per tenant
+   * and a shared minute would double the burst for no benefit.
+   *
+   * Hourly rather than daily because the rule is "two days, then five days":
+   * a daily tick would make that mean "somewhere between two and three days,
+   * depending when the fleet cron fires". Empty disables it, like every other
+   * cron here.
+   */
+  SIGNATURE_REMINDER_CRON: z.string().default("20 * * * *"),
   // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
   // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
   // working day and clear of the 01:00 fleet backup.

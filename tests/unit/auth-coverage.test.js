@@ -46,6 +46,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "Secure download links are intentionally reachable without an account; lookup is by minted token only, every refusal is a uniform 404, and the route is rate-limited.",
   ],
   [
+    "vault/signature_public",
+    "The public signing page. A counterparty with no account, on a phone, holding a link IS the feature; the token is a peppered 32-byte credential emailed once and never stored, every refusal is a uniform 404, the read is pinned to live, and every route is rate-limited — keyed on the TOKEN rather than the IP, so a signatory behind a corporate NAT is not throttled by a colleague (SIGNATURE_ENGINEERING_GUIDE §6.4, §6.6).",
+  ],
+  [
     "vault/document_verification",
     "The verification portal a printed QR resolves to. A stranger holding a document checking it WITHOUT an account is the entire feature; lookup is by the printed code only, every refusal is a uniform 404 that cannot distinguish malformed from never-existed, the read is pinned to live, and the route is rate-limited — which, since the code is 2^60 and stored in plaintext, is the sole defence against enumeration (SIGNATURE_ENGINEERING_GUIDE §3.7, §5.4).",
   ],

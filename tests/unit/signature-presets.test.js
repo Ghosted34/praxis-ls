@@ -41,7 +41,12 @@ describe("the eligibility funnel — §3.4", () => {
     const client = makeClient({ allowed: ["STAMP", "PRINT_SIGN"], flagsOn: ["signatures.wet"] });
     const menu = await presets.resolveMenu(client, { docType: "EMPLOYMENT_CONTRACT" });
     expect(menu.cards.map((c) => c.preset_code)).toEqual(["STAMP"]);
-    expect(menu.blocked).toContainEqual({ preset_code: "PRINT_SIGN", reason: "NOT_AVAILABLE_FOR_DOC_TYPE" });
+    // `objectContaining`, because a blocked entry also carries the tenant's own
+    // label and the reason IN WORDS — resolved server-side so the public signing
+    // page can explain itself in the reader's language (§3.14).
+    expect(menu.blocked).toContainEqual(expect.objectContaining({
+      preset_code: "PRINT_SIGN", reason: "NOT_AVAILABLE_FOR_DOC_TYPE",
+    }));
   });
 
   test("a card whose feature flag is off is BLOCKED WITH A REASON, not hidden", async () => {
@@ -50,7 +55,9 @@ describe("the eligibility funnel — §3.4", () => {
     const client = makeClient({ allowed: ["STAMP", "PRINT_SIGN"] }); // signatures.wet off
     const menu = await presets.resolveMenu(client, { docType: "DELIVERY_NOTE" });
     expect(menu.cards.map((c) => c.preset_code)).toEqual(["STAMP"]);
-    expect(menu.blocked).toContainEqual({ preset_code: "PRINT_SIGN", reason: "FEATURE_OFF", feature: "signatures.wet" });
+    expect(menu.blocked).toContainEqual(expect.objectContaining({
+      preset_code: "PRINT_SIGN", reason: "FEATURE_OFF", feature: "signatures.wet",
+    }));
   });
 
   test("level 3: requireCertified collapses the menu to CERTIFIED alone", async () => {
@@ -64,7 +71,9 @@ describe("the eligibility funnel — §3.4", () => {
     const client = makeClient({ allowed: ["STAMP", "DRAWN", "PRINT_SIGN"], flagsOn: ["signatures.wet"] });
     const menu = await presets.resolveMenu(client, { docType: "DELIVERY_NOTE", allowPaper: false });
     expect(menu.cards.map((c) => c.preset_code)).toEqual(["STAMP", "DRAWN"]);
-    expect(menu.blocked).toContainEqual({ preset_code: "PRINT_SIGN", reason: "PAPER_NOT_ALLOWED" });
+    expect(menu.blocked).toContainEqual(expect.objectContaining({
+      preset_code: "PRINT_SIGN", reason: "PAPER_NOT_ALLOWED",
+    }));
   });
 
   test("requireCertified with no certified card fails AT DISPATCH, not at signing", async () => {

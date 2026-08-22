@@ -74,6 +74,9 @@ const PublicProposalPage = lazyNamed(() => import("@/features/sales/public-propo
 // printed QR resolves to, `/verify` is the manual-entry form for someone
 // reading the code off the page (or down a phone line).
 const VerifyPage = lazyNamed(() => import("@/features/public/verify-page"), "VerifyPage");
+// The public signing page. `/sign/:token`, and short for the same reason `/v`
+// is: the link is read off a phone screen and occasionally typed.
+const SignPage = lazyNamed(() => import("@/features/public/sign-page"), "SignPage");
 const CareersPage = lazyNamed(
   () => import("@/features/careers/careers-page"),
   "CareersPage",
@@ -503,6 +506,17 @@ export function App() {
             while firing authenticated requests on mount. */}
             <Route path="/v/:code" element={<VerifyPage />} />
             <Route path="/verify" element={<VerifyPage />} />
+
+            {/* The signing page. Outside RequireAuth and outside AppShell like
+            the portal: the counterparty is a stranger on a phone with no
+            account, and the shell would put a LIVE/TEST toggle and a copilot in
+            front of them while firing authenticated requests on mount.
+
+            The token in the URL is the party's minted signing credential and
+            the ONLY thing the endpoint accepts — never an internal id, because
+            ids appear in staff URLs and logs and accepting one here would make
+            every internal identifier a signing credential. */}
+            <Route path="/sign/:token" element={<SignPage />} />
 
             {/* Old public slugs → /public/* (links already in circulation). */}
             <Route path="/track" element={<OldPathRedirect />} />

@@ -232,3 +232,117 @@ export const SCENES: Scene[] = [
     },
   },
 ];
+
+
+/* ── The signing page (guide §6.6) ──────────────────────────────────────────
+ *
+ * Same harness, different component. The states worth photographing are the
+ * ones whose COPY carries a rule: the masked address a signer cannot change,
+ * the claimed-name wording, and the drawn-mark pad.
+ */
+export type SignScene = { id: string; token: string; caption: string; status: number; body: unknown };
+
+const menu = {
+  cards: [
+    { preset_code: "STAMP", label: "Digital stamp", blurb: "Your name and role, applied as a printed seal.", tier: "1", assurance_level: "AES_OTP", assurance_words: "Confirmed by a code sent to your email", visual_mark: "STAMP" },
+    { preset_code: "DRAWN", label: "Draw your signature", blurb: "Sign with your finger or a stylus.", tier: "2", assurance_level: "AES_OTP", assurance_words: "Confirmed by a code sent to your email", visual_mark: "DRAWN" },
+  ],
+  blocked: [
+    { preset_code: "CERTIFIED", label: "Certified signature", reason: "FEATURE_OFF", reason_words: "Not switched on for this workspace yet" },
+    { preset_code: "PRINT_SIGN", label: "Print and sign", reason: "PAPER_NOT_ALLOWED", reason_words: "The sender did not allow signing on paper" },
+  ],
+  default: "STAMP",
+};
+
+const declineReasons = [
+  { reason_code: "DECLINE_FIGURES_WRONG", label: "The figures are not what we agreed" },
+  { reason_code: "DECLINE_NOT_AUTHORISED", label: "I am not authorised to sign this" },
+];
+
+const signBase = {
+  language: "en",
+  status: "SENT",
+  request: { doc_type: "FINAL_INVOICE", doc_type_label: "Invoice", message: "Please countersign so we can release the container.", expires_at: "2026-03-25T00:00:00.000Z", sequence_no: 2, party_count: 2 },
+  signer: { full_name: "Aïssatou Njoya", party_role: "Procurement Manager", email_masked: "a••••@cimencam.cm", party_kind: "COUNTERPARTY" },
+  as_requested: {
+    doc_type: "FINAL_INVOICE", title: "Invoice",
+    fields: [
+      { key: "number", label: "Reference", value: "FCT-2026-0001" },
+      { key: "party", label: "Counterparty", value: "CIMENCAM SA" },
+      { key: "total_ttc", label: "Total incl. tax", value: "1 607 900 XAF" },
+      { key: "line_count", label: "Line items", value: "3" },
+    ],
+    detail: null,
+  },
+  menu,
+  decline_reasons: declineReasons,
+  otp: null,
+};
+
+export const SIGN_SCENES: SignScene[] = [
+  {
+    id: "sign-start", token: "tok-start-0000000000000000000000",
+    caption: "Before the code — the address is masked and read-only",
+    status: 200, body: signBase,
+  },
+  {
+    id: "sign-code", token: "tok-code-00000000000000000000000",
+    caption: "Code sent — six digits, attempts remaining shown",
+    status: 200,
+    body: {
+      ...signBase,
+      otp: { sent_to: "a••••@cimencam.cm", expires_at: "2026-03-11T09:20:00.000Z", attempts_remaining: 5, resends_remaining: 3, cooldown_until: null, verified_at: null },
+    },
+  },
+  {
+    id: "sign-verified", token: "tok-verified-000000000000000000",
+    caption: "Verified — the cards appear, blocked ones disabled with a reason",
+    status: 200,
+    body: {
+      ...signBase,
+      otp: { sent_to: "a••••@cimencam.cm", expires_at: "2026-03-11T09:20:00.000Z", attempts_remaining: 5, resends_remaining: 2, cooldown_until: null, verified_at: "2026-03-11T09:11:30.000Z" },
+    },
+  },
+  {
+    id: "sign-fr", token: "tok-fr-000000000000000000000000",
+    caption: "Français — le défaut du produit",
+    status: 200,
+    body: {
+      ...signBase,
+      language: "fr",
+      request: { ...signBase.request, doc_type_label: "Facture", message: "Merci de contresigner pour que nous puissions libérer le conteneur." },
+      // The service resolves these per language; the fixture stands in for it.
+      menu: {
+        ...menu,
+        blocked: [
+          { preset_code: "CERTIFIED", label: "Signature certifiée", reason: "FEATURE_OFF", reason_words: "Pas encore activé pour cet espace de travail" },
+          { preset_code: "PRINT_SIGN", label: "Imprimer et signer", reason: "PAPER_NOT_ALLOWED", reason_words: "L'expéditeur n'a pas autorisé la signature sur papier" },
+        ],
+        cards: [
+          { preset_code: "STAMP", label: "Cachet numérique", blurb: "Votre nom et votre fonction, apposés comme un cachet.", tier: "1", assurance_level: "AES_OTP", assurance_words: "Confirmé par un code envoyé à votre e-mail", visual_mark: "STAMP" },
+          { preset_code: "DRAWN", label: "Dessiner ma signature", blurb: "Signez avec le doigt ou un stylet.", tier: "2", assurance_level: "AES_OTP", assurance_words: "Confirmé par un code envoyé à votre e-mail", visual_mark: "DRAWN" },
+        ],
+      },
+      as_requested: {
+        doc_type: "FINAL_INVOICE", title: "Facture",
+        fields: [
+          { key: "number", label: "Numéro", value: "FCT-2026-0001" },
+          { key: "party", label: "Client", value: "CIMENCAM SA" },
+          { key: "total_ttc", label: "Total TTC", value: "1 607 900 XAF" },
+          { key: "line_count", label: "Lignes", value: "3" },
+        ],
+        detail: null,
+      },
+      decline_reasons: [
+        { reason_code: "DECLINE_FIGURES_WRONG", label: "Les montants ne correspondent pas à ce qui a été convenu" },
+        { reason_code: "DECLINE_NOT_AUTHORISED", label: "Je ne suis pas habilité à signer ce document" },
+      ],
+      otp: { sent_to: "a••••@cimencam.cm", expires_at: "2026-03-11T09:20:00.000Z", attempts_remaining: 5, resends_remaining: 2, cooldown_until: null, verified_at: "2026-03-11T09:11:30.000Z" },
+    },
+  },
+  {
+    id: "sign-gone", token: "tok-gone-00000000000000000000000",
+    caption: "An expired or already-used link — one answer, whatever the cause",
+    status: 404, body: { error: { code: "NOT_FOUND", message: "This signing link is not valid." } },
+  },
+];

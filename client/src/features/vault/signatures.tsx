@@ -349,6 +349,115 @@ function ScansModal({
   );
 }
 
+/**
+ * The signing chains open over a document (guide §6).
+ *
+ * Sits beside the signatures rather than replacing them, because they answer
+ * different questions: the table below says who HAS signed, and this says who
+ * was ASKED and where the chain has got to. A request that is `PARTIALLY_SIGNED`
+ * with one signature on the document is the normal mid-chain state, and the two
+ * views together are what make that legible.
+ */
+function ChainPanel({ entityRef, onChanged }: { entityRef: string; onChanged: () => void }) {
+  const { rows, error, errorCode } = useList(
+    entityRef ? `/signature-requests?entity_ref=${encodeURIComponent(entityRef)}` : null,
+  );
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [failed, setFailed] = React.useState<string | null>(null);
+
+  const run = async (id: string, path: string) => {
+    setBusy(id);
+    setFailed(null);
+    try {
+      await tenant(`/signature-requests/${encodeURIComponent(id)}/${path}`, { method: "POST", body: {} });
+      onChanged();
+    } catch (e) {
+      setFailed(errMsg(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // A tenant without `signatures.external` has no chains and should not be
+  // shown a broken panel — external signing is a separate switch from the
+  // portal (guide §3.5).
+  if (isGated(errorCode)) return null;
+  if (error) return <ErrorState message={error} />;
+  if (rows === null) return <SkeletonTable />;
+  if (!rows.length) return null;
+
+  return (
+    <div className="mb-5">
+      <h2 className="mb-2 text-title font-semibold">{tr("Signature requests")}</h2>
+      {failed ? <ErrorState message={failed} /> : null}
+      <Table>
+        <THead>
+          <TR>
+            <TH>{tr("Status")}</TH>
+            <TH>{tr("Signed")}</TH>
+            <TH>{tr("Created")}</TH>
+            <TH>{tr("Expires")}</TH>
+            <TH />
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((r) => {
+            const id = String(r.request_id);
+            const open = ["DRAFT", "SENT", "PARTIALLY_SIGNED"].includes(String(r.status));
+            return (
+              <TR key={id}>
+                <TD className="text-sm">
+                  <StatusPill status={String(r.status).replace(/_/g, " ")} tone={requestTone(r.status)} />
+                </TD>
+                <TD className="text-sm">
+                  {String(r.signed_count ?? 0)} / {String(r.party_count ?? 0)}
+                </TD>
+                <TD className="text-sm">{dateFmt(r.created_at)}</TD>
+                <TD className="text-sm">{r.expires_at ? dateFmt(r.expires_at) : "—"}</TD>
+                <TD className="space-x-1 text-right">
+                  {open ? (
+                    <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "dispatch")}>
+                      {tr("Send next link")}
+                    </Button>
+                  ) : null}
+                  {String(r.status) === "COMPLETED" ? (
+                    <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "certificate")}>
+                      {tr("Certificate")}
+                    </Button>
+                  ) : null}
+                  {open ? (
+                    <Button size="sm" variant="ghost" loading={busy === id} onClick={() => run(id, "void")}>
+                      {tr("Void")}
+                    </Button>
+                  ) : null}
+                </TD>
+              </TR>
+            );
+          })}
+        </TBody>
+      </Table>
+    </div>
+  );
+}
+
+/** Tone for a request status. Unknown input is neutral, never a crash. */
+function requestTone(status: unknown): "ok" | "warn" | "bad" | "mute" {
+  const map: Record<string, "ok" | "warn" | "bad" | "mute"> = Object.assign(
+    Object.create(null) as Record<string, "ok" | "warn" | "bad" | "mute">,
+    {
+      COMPLETED: "ok",
+      SENT: "warn",
+      PARTIALLY_SIGNED: "warn",
+      DRAFT: "mute",
+      DECLINED: "bad",
+      AMENDED: "bad",
+      EXPIRED: "bad",
+      VOIDED: "mute",
+    },
+  );
+  return typeof status === "string" && Object.prototype.hasOwnProperty.call(map, status) ? map[status] : "mute";
+}
+
 export function SignaturesPage() {
   const [refInput, setRefInput] = React.useState("");
   const [typeInput, setTypeInput] = React.useState("");
@@ -416,6 +525,8 @@ export function SignaturesPage() {
         <SkeletonTable />
       ) : (
         <>
+          <ChainPanel entityRef={activeRef} onChanged={reload} />
+
           {amended.length > 0 ? (
             <Callout tone="bad" title={tr("This document changed after it was signed")}>
               {amended.length === 1 ? "A signature" : `${amended.length} signatures`} on{" "}

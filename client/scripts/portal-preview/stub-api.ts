@@ -6,7 +6,7 @@
  * VerifyPage puts on the wire — so six independent pages render on one canvas
  * without the component knowing it is in a harness.
  */
-import { SCENES } from "./scenes";
+import { SCENES, SIGN_SCENES } from "./scenes";
 
 class StubApiError extends Error {
   status: number;
@@ -18,7 +18,19 @@ class StubApiError extends Error {
 }
 
 export async function tenant<T>(path: string): Promise<T> {
-  const code = decodeURIComponent(String(path).split("/v/")[1] || "").split("?")[0];
+  const url = String(path);
+
+  // The signing page: /public/sign/:token, keyed on the token for the same
+  // reason the portal is keyed on the code — it is the only thing the
+  // component puts on the wire.
+  if (url.includes("/public/sign/")) {
+    const token = decodeURIComponent(url.split("/public/sign/")[1] || "").split(/[?/]/)[0];
+    const scene = SIGN_SCENES.find((s) => s.token === token);
+    if (!scene || scene.status !== 200) throw new StubApiError(404, "This signing link is not valid.");
+    return scene.body as T;
+  }
+
+  const code = decodeURIComponent(url.split("/v/")[1] || "").split("?")[0];
   const scene = SCENES.find((s) => s.code === code);
   if (!scene || scene.status !== 200) throw new StubApiError(404, "No verification matches that code.");
   return scene.body as T;

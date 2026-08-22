@@ -1108,6 +1108,168 @@ function dsfBuild(data, cfg, entity, verify) {
   return k.shell("DSF", sections.join(""), cfg);
 }
 
+/* ── The Certificate of Completion (SIGNATURE_ENGINEERING_GUIDE §6.7) ────────
+ *
+ * Written as a function rather than inline in TEMPLATES because it is the one
+ * document in the registry whose CONTENT is an argument about evidence rather
+ * than a business record — it has seven mandated sections, in a mandated
+ * order, and each one is there because a dispute would ask for it.
+ *
+ * Two things it does that no other template does:
+ *
+ *   · It prints the FULL hashes. Everywhere else in this programme a digest is
+ *     truncated to sixteen and labelled (§3.12), because an unlabelled
+ *     fragment invites a reader to think it is the whole thing. Here the whole
+ *     thing is the point: a reader is meant to be able to recompute it.
+ *   · It carries NO verification block of its own. The certificate is not a
+ *     signed document — it is the evidence ABOUT one — and printing a QR that
+ *     resolved to the certificate itself would be a circle. It prints the
+ *     SUBJECT document's code instead, in §6.7 item 6.
+ */
+function certificateBuild(d, cfg, entity) {
+  const L = cfg.language === "en" ? "en" : "fr";
+  const T = (fr, en) => k.t({ fr, en }, cfg.language);
+  const rows = (pairs) => `<table class="items" style="width:100%"><tbody>${pairs
+    .filter((p) => p && p[1] !== null && p[1] !== undefined && p[1] !== "")
+    .map(([label, value, mono]) => `<tr><td style="width:38%;color:#6B7A90">${k.esc(label)}</td><td${mono ? ' style="font-family:monospace;word-break:break-all"' : ""}>${k.esc(value)}</td></tr>`)
+    .join("")}</tbody></table>`;
+
+  const when = (s) => (s && s.utc ? `${s.local || s.utc}${s.local ? ` (${s.utc})` : ""}` : "");
+
+  const body = [
+    k.head(entity, { fr: "Certificat d'exécution", en: "Certificate of completion" },
+      String(d.request_id || "").slice(0, 8).toUpperCase(),
+      [[{ fr: "Terminé le", en: "Completed" }, when(d.completed_at)],
+        [{ fr: "Signatures", en: "Signatures" }, `${d.chain.signed} / ${d.chain.of}`]], cfg),
+
+    // 1. Document identity.
+    k.section({ fr: "1. Le document", en: "1. The document" }, rows([
+      [T("Type", "Type"), d.document.doc_type],
+      [T("Référence", "Reference"), d.document.reference],
+      [T("Référence interne", "Internal reference"), d.document.entity_ref],
+      [T("Version du format", "Payload version"), String(d.document.payload_version)],
+      [T("Empreinte du contenu", "Content hash"), d.document.content_hash, true],
+      [T("Empreinte du fichier", "Artifact hash"), d.document.artifact_hash, true],
+    ]), cfg),
+
+    d.document.as_signed
+      ? k.section({ fr: "1b. Le document tel que signé", en: "1b. The document as signed" },
+        rows(d.document.as_signed.fields.map((f) => [f.label, f.value])), cfg)
+      : "",
+
+    // 2. Every party, with the provenance of their address.
+    k.section({ fr: "2. Les parties", en: "2. The parties" },
+      d.parties.map((p) => `<div class="box" style="margin-bottom:8px">${rows([
+        [T("Ordre", "Order"), `${p.sequence_no} — ${p.party_kind}`],
+        [T("Nom", "Name"), [p.full_name, p.party_role].filter(Boolean).join(" · ")],
+        [T("Adresse", "Address"), p.email],
+        [T("Origine de l'adresse", "Provenance of the address"), p.source_words],
+        [T("Saisie par", "Entered by"), p.override_by],
+        [T("Motif de la saisie", "Reason given"), p.override_reason],
+        [T("Statut", "Status"), p.status],
+        [T("Motif du refus", "Decline reason"), p.decline_reason],
+        [T("Envoyé", "Sent"), when(p.sent_at)],
+        [T("Consulté", "Viewed"), when(p.viewed_at)],
+        [T("Réglé", "Settled"), when(p.settled_at)],
+      ])}</div>`).join(""), cfg),
+
+    // 3. Every signing act — the evidence ACTUALLY collected.
+    k.section({ fr: "3. Les actes de signature", en: "3. The signing acts" },
+      d.acts.map((a) => `<div class="box" style="margin-bottom:8px">${rows([
+        [T("Signataire", "Signer"), [a.signer_name, a.signer_role].filter(Boolean).join(" · ")],
+        [T("Pour", "On behalf of"), a.party],
+        [T("Identité", "Identity"), a.identity_words],
+        [T("Méthode retenue", "Method offered"), a.preset_code],
+        [T("Preuve recueillie", "Evidence collected"), a.assurance_level],
+        [T("Motif", "Reason"), a.sign_reason],
+        [T("Signé", "Signed"), when(a.signed_at)],
+        [a.ip_masked ? T("Réseau (masqué)", "Network (masked)") : T("Adresse IP", "IP address"), a.ip],
+        [T("Appareil", "Device"), a.device],
+        [T("Empreinte signée", "Hash signed"), a.content_hash, true],
+        [T("Code de vérification", "Verification code"), a.verify_code],
+      ])}</div>`).join(""), cfg),
+
+    // 4. The identity proof. The part a dispute turns on.
+    k.section({ fr: "4. Preuve d'identité (codes e-mail)", en: "4. Identity proof (email codes)" },
+      d.challenges.length
+        ? d.challenges.map((c) => `<div class="box" style="margin-bottom:8px">${rows([
+          [T("Partie", "Party"), c.party_name],
+          [T("Envoyé à", "Sent to"), c.sent_to],
+          [T("Envoyé", "Sent"), when(c.sent_at)],
+          [T("Vérifié", "Verified"), when(c.verified_at)],
+          [T("Tentatives", "Attempts"), String(c.attempts)],
+          [T("Renvois", "Resends"), String(c.resends)],
+          [T("Lié à l'empreinte", "Bound to hash"), c.bound_to_content_hash, true],
+        ])}</div>`).join("")
+        : `<div class="box">${k.esc(T("Aucun code n'a été requis pour cette chaîne.", "No emailed code was required for this chain."))}</div>`, cfg),
+
+    // 5. The timeline, with correlation ids.
+    k.section({ fr: "5. Journal des événements", en: "5. Event timeline" },
+      k.lineTable(
+        [{ key: "at", label: { fr: "Horodatage", en: "Timestamp" } },
+          { key: "action", label: { fr: "Événement", en: "Event" } },
+          { key: "actor", label: { fr: "Acteur", en: "Actor" } },
+          { key: "request_id", label: { fr: "Corrélation", en: "Correlation" } }],
+        d.timeline.map((e) => ({ at: when(e.at), action: e.action, actor: e.actor || "—", request_id: e.request_id || "—" })),
+        cfg,
+      ), cfg),
+
+    // 6. How to re-check it independently, a decade from now.
+    d.verification
+      ? k.section({ fr: "6. Vérification indépendante", en: "6. Independent verification" }, rows([
+        [T("Page de vérification", "Verification page"), d.verification.url],
+        [T("Code", "Code"), d.verification.code],
+        [T("Comment faire", "How"), d.verification.instructions],
+      ]), cfg)
+      : "",
+
+    // 7. Who issued it.
+    d.issuer
+      ? k.section({ fr: "7. Émetteur", en: "7. Issuer" }, rows([
+        [T("Raison sociale", "Legal name"), d.issuer.legal_name],
+        ["RCCM", d.issuer.rccm],
+        ["NIU", d.issuer.niu],
+        [T("Adresse", "Address"), d.issuer.address],
+      ]), cfg)
+      : "",
+
+    `<p class="muted" style="margin-top:14px;font-size:9.5px">${k.esc(T(
+      `Document généré le ${when(d.generated_at)}. Il est produit une seule fois et archivé ; une régénération produirait un fichier différent.`,
+      `Generated ${when(d.generated_at)}. Produced once and archived — a regenerated copy would be a different file.`,
+    ))}</p>`,
+    // No verify block: see the header. `null` rather than an omitted argument
+    // so a reader sees the decision rather than an oversight.
+    k.footer(entity, cfg, null),
+  ].join("");
+
+  return k.shell(`Certificate ${String(d.request_id || "").slice(0, 8)}`, body, { ...cfg, language: L });
+}
+
+TEMPLATES.SIGNATURE_CERTIFICATE = {
+  docType: "SIGNATURE_CERTIFICATE",
+  title: { fr: "Certificat d'exécution", en: "Certificate of completion" },
+  module: "vault/signature_request",
+  fields: ["evidence sections (fixed)"],
+  build: certificateBuild,
+  sampleData: {
+    request_id: "3f9c1a20-0000-0000-0000-000000000000",
+    language: "en",
+    completed_at: { utc: "2026-03-11 09:14:02 UTC", local: "11 Mar 2026, 10:14:02 WAT" },
+    generated_at: { utc: "2026-03-11 09:14:05 UTC", local: "11 Mar 2026, 10:14:05 WAT" },
+    chain: { signed: 2, of: 2 },
+    document: {
+      doc_type: "FINAL_INVOICE", reference: "FCT-2026-0001", entity_ref: "final_invoice:abc",
+      payload_version: 1,
+      content_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      artifact_hash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      as_signed: { doc_type: "FINAL_INVOICE", title: "Invoice", fields: [{ key: "number", label: "Reference", value: "FCT-2026-0001" }], detail: null },
+    },
+    parties: [], acts: [], challenges: [], timeline: [],
+    verification: { url: "https://smartls.praxisls.com/v/A4B7K92MXQ1P", code: "A4B7-K92M-XQ1P", instructions: "Enter this code on the issuer's verification page." },
+    issuer: { legal_name: "SMART LOGISTICS SARL", rccm: "RC/DLA/2019/B/1234", niu: "M011912345678K", address: "Bonanjo, Douala" },
+  },
+};
+
 TEMPLATES.VAT_RETURN.build = vatReturnBuild;
 TEMPLATES.VAT_RETURN.fields = ["official TVA layout"];
 TEMPLATES.CNPS_DECLARATION.build = cnpsBuild;

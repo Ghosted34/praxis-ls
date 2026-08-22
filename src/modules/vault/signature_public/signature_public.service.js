@@ -62,6 +62,24 @@ const notFound = () => new AppError("NOT_FOUND", "This signing link is not valid
 const langOf = (v) => (String(v || "").toLowerCase().startsWith("en") ? "en" : "fr");
 
 /**
+ * A doc type as a person would say it, from the template registry's own
+ * bilingual title. Falls back to the code humanised — never to the raw enum,
+ * because a fallback that shows `FINAL_INVOICE` is the defect this exists to
+ * remove.
+ */
+function docTypeLabel(docType, language) {
+  try {
+    const registry = require("../../../services/documents/templates/registry");
+    const tpl = registry.get(docType);
+    if (tpl && tpl.title) return language === "en" ? tpl.title.en : tpl.title.fr;
+  } catch {
+    /* @silent:parse — an unregistered doc type has no title to resolve; the
+       humanised code below is a better answer than failing the page. */
+  }
+  return String(docType || "").toLowerCase().replace(/_/g, " ").replace(/^./, (m) => m.toUpperCase());
+}
+
+/**
  * Resolve a presented token to its party and request.
  *
  * By HMAC over the pepper candidates — the plaintext was emailed once and
@@ -188,6 +206,16 @@ async function resolve(client, { token, lang = "fr", markViewed = true }) {
     status: party.status,
     request: {
       doc_type: request.doc_type,
+      /*
+       * The doc type in words. §3.12's rule — "MUST NOT print engineering
+       * vocabulary" — is written about the seal, but it is the same reader:
+       * a counterparty asked to sign `FINAL_INVOICE` is being shown an enum,
+       * and a document a court reads should not need a glossary.
+       *
+       * Resolved from the template registry's own bilingual title, so a doc
+       * type renamed there is renamed here too.
+       */
+      doc_type_label: docTypeLabel(request.doc_type, language),
       message: request.message,
       expires_at: request.expires_at,
       sequence_no: party.sequence_no,

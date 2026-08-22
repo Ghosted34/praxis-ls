@@ -51,6 +51,9 @@ type Payload = {
   status: string;
   request: {
     doc_type: string;
+    /* In words, resolved server-side — never the raw enum on a page a
+       counterparty reads (§3.12). */
+    doc_type_label: string;
     message: string | null;
     expires_at: string | null;
     sequence_no: number;
@@ -309,7 +312,7 @@ export function SignPage() {
   return (
     <Frame brandName={brand.branding.name} title={c.title}>
       <p className="text-sm text-muted-foreground">
-        {data.request.doc_type} · {data.request.sequence_no} {c.of} {data.request.party_count}
+        {data.request.doc_type_label} · {data.request.sequence_no} {c.of} {data.request.party_count}
       </p>
       {data.request.message ? (
         <p className="mt-3 rounded-lg border border-border p-3 text-sm">{data.request.message}</p>

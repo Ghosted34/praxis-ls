@@ -363,6 +363,9 @@ async function resolve(client, { code, via = "QR", ip = null, userAgent = null, 
       blurb: language === "en" ? preset.blurb_en : preset.blurb_fr,
       tier: preset.tier_label || null,
       assurance_level: preset.assurance_level,
+      // Same source as the signing menu's cards, so the two surfaces cannot
+      // disagree about how an assurance level is worded.
+      assurance_words: presets.assuranceWords(preset.assurance_level, language),
       visual_mark: preset.visual_mark,
     }
     : null;

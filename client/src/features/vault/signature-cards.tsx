@@ -21,6 +21,18 @@ export type PresetCard = {
   blurb?: string | null;
   tier?: string | null;
   assurance_level: string;
+  /**
+   * The evidence in words, resolved SERVER-SIDE (services/signatures/presets.js).
+   *
+   * `ASSURANCE_WORDS` below is the staff app's vocabulary and is English-only,
+   * which is right for a screen behind a login and wrong for the public signing
+   * page and the verification portal — §3.14 requires FR and EN for everything
+   * a counterparty reads. The French signing page rendered "Confirmed by a code
+   * sent to your email" under "Cachet numérique" until this field existed.
+   *
+   * Optional so the staff surfaces keep working unchanged; when present it wins.
+   */
+  assurance_words?: string | null;
   visual_mark: string;
 };
 
@@ -28,6 +40,18 @@ export type BlockedCard = {
   preset_code: string;
   reason: string;
   feature?: string;
+  /**
+   * The tenant's own label and the reason IN WORDS, resolved server-side
+   * (services/signatures/presets.js).
+   *
+   * Without these the grid humanised `preset_code` — so a tenant that renamed
+   * "Print sign" saw the rename on the cards it offers and the raw code on the
+   * ones it does not — and looked the reason up in an English-only map, which
+   * put "The sender did not allow signing on paper" on the French signing
+   * page. Optional so staff surfaces on the old shape keep working.
+   */
+  label?: string | null;
+  reason_words?: string | null;
 };
 
 export type SignatureMenu = {
@@ -45,7 +69,7 @@ export function SignatureCard({
   onSelect,
   assuranceWords,
 }: {
-  card: Pick<PresetCard, "preset_code" | "label" | "blurb" | "tier" | "assurance_level">;
+  card: Pick<PresetCard, "preset_code" | "label" | "blurb" | "tier" | "assurance_level" | "assurance_words">;
   selected?: boolean;
   disabled?: boolean;
   disabledReason?: string;
@@ -95,6 +119,7 @@ export function SignatureCard({
         {disabled
           ? (disabledReason ?? "Not available")
           : (assuranceWords
+            ?? card.assurance_words
             ?? look(ASSURANCE_WORDS, card.assurance_level, card.assurance_level))}
       </span>
     </button>
@@ -140,16 +165,20 @@ export function SignatureCardGrid({
                 key={b.preset_code}
                 card={{
                   preset_code: b.preset_code,
-                  label: b.preset_code
-                    .toLowerCase()
-                    .replace(/_/g, " ")
-                    .replace(/^./, (m) => m.toUpperCase()),
+                  label:
+                    b.label
+                    ?? b.preset_code
+                      .toLowerCase()
+                      .replace(/_/g, " ")
+                      .replace(/^./, (m) => m.toUpperCase()),
                   blurb: null,
                   tier: null,
                   assurance_level: "",
                 }}
                 disabled
-                disabledReason={look(BLOCKED_REASON, b.reason, "Not available")}
+                disabledReason={
+                  b.reason_words ?? look(BLOCKED_REASON, b.reason, "Not available")
+                }
               />
             ))}
         </div>

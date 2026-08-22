@@ -105,6 +105,55 @@ async function flagsOn(client, keys) {
  * reason rather than hiding them: a counterparty told "you can sign by hand"
  * should see why that option is greyed out, not wonder whether the page broke.
  */
+/**
+ * Plain language for the evidence a card collects. Never the enum: a document
+ * a court reads should not need a glossary (§3.12).
+ *
+ * A Map, not an object literal: `level` comes off a database row whose value
+ * originated in a request body, and `WORDS["constructor"]` on a plain literal
+ * is a truthy, callable value that sails past a `|| fallback`.
+ */
+const ASSURANCE_WORDS = new Map(Object.entries({
+  SES: { fr: "Signé depuis votre compte", en: "Signed from your account" },
+  AES_OTP: { fr: "Confirmé par un code envoyé à votre e-mail", en: "Confirmed by a code sent to your email" },
+  QES: { fr: "Identité vérifiée par un prestataire indépendant", en: "Identity checked by an independent provider" },
+  WET: { fr: "Signé à la main, puis rapproché de ce dossier", en: "Signed by hand, then matched back to this record" },
+}));
+
+/**
+ * Why a card is not on offer, in words.
+ *
+ * Blocked cards are shown DISABLED rather than hidden: a counterparty told
+ * "you can sign this by hand" needs to see why that option is greyed out, not
+ * wonder whether the page is broken — and an administrator needs to know
+ * whether the switch is theirs to flip or fixed in the product. That is only
+ * true if the explanation is in a language they read.
+ *
+ * A Map for the same reason as the words above: `reason` is a string that
+ * reaches the client from a server-side branch, and a plain literal resolves
+ * "constructor" to something truthy.
+ */
+const BLOCKED_WORDS = new Map(Object.entries({
+  NOT_AVAILABLE_FOR_DOC_TYPE: { fr: "Indisponible pour ce type de document", en: "Not available for this kind of document" },
+  FEATURE_OFF: { fr: "Pas encore activé pour cet espace de travail", en: "Not switched on for this workspace yet" },
+  NOT_ENABLED_BY_TENANT: { fr: "Désactivé dans Paramètres → Signatures", en: "Turned off at Settings → Signatures" },
+  CERTIFIED_REQUIRED: { fr: "L'expéditeur exige une signature certifiée", en: "The sender required a certified signature" },
+  PAPER_NOT_ALLOWED: { fr: "L'expéditeur n'a pas autorisé la signature sur papier", en: "The sender did not allow signing on paper" },
+  NOT_IN_MENU: { fr: "Indisponible pour ce document", en: "Not available for this document" },
+}));
+
+function blockedWords(reason, language) {
+  const pair = BLOCKED_WORDS.get(String(reason || ""));
+  if (!pair) return language === "en" ? "Not available" : "Indisponible";
+  return language === "en" ? pair.en : pair.fr;
+}
+
+function assuranceWords(level, language) {
+  const pair = ASSURANCE_WORDS.get(String(level || ""));
+  if (!pair) return "";
+  return language === "en" ? pair.en : pair.fr;
+}
+
 async function resolveMenu(client, { docType, requireCertified = false, allowPaper = true, language = "fr" } = {}) {
   // Required lazily: document_vault.types requires utils/errors, and a top-level
   // cycle through this module would leave AppError undefined at load time.
@@ -122,27 +171,42 @@ async function resolveMenu(client, { docType, requireCertified = false, allowPap
   const blocked = [];
   const cards = [];
 
+  /*
+   * A blocked entry carries the tenant's OWN label and the reason in words,
+   * resolved here. The client used to humanise `preset_code` ("Print sign")
+   * and look the reason up in an English-only map — so a tenant that renamed a
+   * card saw the rename on the cards it offers and the raw code on the ones it
+   * does not, and the French signing page explained itself in English.
+   */
+  const block = (p, reason, extra = {}) => blocked.push({
+    preset_code: p.preset_code,
+    label: language === "en" ? p.label_en : p.label_fr,
+    reason,
+    reason_words: blockedWords(reason, language),
+    ...extra,
+  });
+
   for (const p of all) {
     const ceilingKey = CEILING_CARD[p.preset_code];
     if (ceilingKey && !ceiling[ceilingKey]) {
-      blocked.push({ preset_code: p.preset_code, reason: "NOT_AVAILABLE_FOR_DOC_TYPE" });
+      block(p, "NOT_AVAILABLE_FOR_DOC_TYPE");
       continue;
     }
     const flag = CARD_FLAG[p.preset_code];
     if (flag && !on.has(flag)) {
-      blocked.push({ preset_code: p.preset_code, reason: "FEATURE_OFF", feature: flag });
+      block(p, "FEATURE_OFF", { feature: flag });
       continue;
     }
     if (!allowed.includes(p.preset_code)) {
-      blocked.push({ preset_code: p.preset_code, reason: "NOT_ENABLED_BY_TENANT" });
+      block(p, "NOT_ENABLED_BY_TENANT");
       continue;
     }
     if (requireCertified && p.preset_code !== "CERTIFIED") {
-      blocked.push({ preset_code: p.preset_code, reason: "CERTIFIED_REQUIRED" });
+      block(p, "CERTIFIED_REQUIRED");
       continue;
     }
     if (!allowPaper && p.preset_code === "PRINT_SIGN") {
-      blocked.push({ preset_code: p.preset_code, reason: "PAPER_NOT_ALLOWED" });
+      block(p, "PAPER_NOT_ALLOWED");
       continue;
     }
     cards.push({
@@ -151,6 +215,21 @@ async function resolveMenu(client, { docType, requireCertified = false, allowPap
       blurb: language === "en" ? p.blurb_en : p.blurb_fr,
       tier: p.tier_label,
       assurance_level: p.assurance_level,
+      /*
+       * The evidence, in words, resolved HERE rather than on the client.
+       *
+       * The card component's own vocabulary (`signature-vocab.ts`) is the
+       * STAFF app's and is English-only — right for a screen behind a login,
+       * wrong for the public signing page and the verification portal, where
+       * §3.14 requires FR and EN for everything a counterparty reads. The
+       * French signing page rendered "Confirmed by a code sent to your email"
+       * under "Cachet numérique" until this shipped; caught by rendering it.
+       *
+       * Sending it with the card means the three surfaces that render this
+       * catalogue cannot disagree about the wording, which is the same reason
+       * there is one catalogue and not four copies of a label.
+       */
+      assurance_words: assuranceWords(p.assurance_level, language),
       visual_mark: p.visual_mark,
     });
   }
@@ -202,4 +281,4 @@ function assertAllowed(menu, presetCode) {
   return menu.cards.find((c) => c.preset_code === presetCode);
 }
 
-module.exports = { catalogue, getPreset, reasons, resolveMenu, assertAllowed, CARD_FLAG, CEILING_CARD };
+module.exports = { catalogue, getPreset, reasons, resolveMenu, assertAllowed, assuranceWords, blockedWords, CARD_FLAG, CEILING_CARD };

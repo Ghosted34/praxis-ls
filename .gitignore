@@ -96,3 +96,8 @@ platform-console/vite.config.js
 platform-console/vite.config.d.ts
 test-failures.txt
 client/test-errors.txt
+
+# Built output of the verification-portal render harness
+# (scripts/dev/render-portal.js). The harness SOURCE is committed; its bundle is
+# rebuilt on every run and is several hundred kilobytes of noise in a diff.
+client/scripts/portal-preview/dist/

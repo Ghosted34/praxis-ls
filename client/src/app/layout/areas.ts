@@ -248,7 +248,6 @@ export const AREAS: Area[] = [
       { key: "overview", label: "Overview" },
       { key: "documents", label: "Documents" },
       { key: "signatures", label: "Signatures" },
-      { key: "verification", label: "Verification" },
       { key: "compliance-flags", label: "Compliance flags" },
       { key: "reports", label: "Reports" },
     ],

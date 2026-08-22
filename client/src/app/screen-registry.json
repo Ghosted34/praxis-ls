@@ -1414,17 +1414,6 @@
       ]
     },
     {
-      "id": "vault_verification",
-      "title": "Verification",
-      "route": "/vault/verification",
-      "area": "vault",
-      "module_key": "MOD-66",
-      "purpose": "QR verification of an issued document.",
-      "actions": [
-        "verify_document"
-      ]
-    },
-    {
       "id": "vault_compliance",
       "title": "Compliance flags",
       "route": "/vault/compliance-flags",

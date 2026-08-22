@@ -25,6 +25,15 @@ export default tseslint.config(
       "node_modules",
       "playwright-report",
       "test-results",
+      /*
+       * The verification-portal render harness (scripts/dev/render-portal.js
+       * builds it, nothing else imports it). Its files legitimately break the
+       * Fast Refresh rule — a mount script that renders six components and
+       * exports none — and Fast Refresh is meaningless for a bundle that is
+       * built once and screenshotted. Linting it would trade three real
+       * warnings' worth of budget for a rule that cannot apply.
+       */
+      "scripts/portal-preview",
     ],
   },
   {

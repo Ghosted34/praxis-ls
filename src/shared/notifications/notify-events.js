@@ -59,6 +59,21 @@ const NOTIFIABLE = {
   // ── Compliance & documents ──
   "compliance_flag.raised": { action: "view", title: "Compliance flag raised", priority: "HIGH" },
   "document.signed": { action: "view", title: "Document signed" },
+  /*
+   * Verification-portal signals (guide §5.5).
+   *
+   * `scanned_new_ip` is emitted ONLY when the tenant has switched
+   * signature_policy.notify_on_scan on — the gate is in the portal service, not
+   * here, because it is a tenant setting rather than a property of the event.
+   * For a tenant issuing hundreds of delivery notes this would otherwise be
+   * noise, and a channel that is noise gets muted wholesale.
+   *
+   * `scan_anomaly` is HIGH and is not subject to that toggle: one signature
+   * verified more than the threshold allows in a rolling hour is either under
+   * audit or being shopped around, and both are worth knowing either way.
+   */
+  "document_signature.scanned_new_ip": { action: "view", title: "Document verified from a new address" },
+  "document_signature.scan_anomaly": { action: "view", title: "Unusual verification activity", priority: "HIGH" },
 
   // ── HR lifecycle ──
   "leave_allowance.decided": { action: "view", title: "Leave request decided" },

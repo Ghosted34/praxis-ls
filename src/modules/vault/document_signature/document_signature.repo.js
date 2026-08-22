@@ -109,6 +109,79 @@ function raiseAmendmentFlag(client, { entityRef, message }) {
   );
 }
 
+// ── signature_scan (10779) ─────────────────────────────────────────────────
+//
+// The scan log lives in THIS repo, not the portal's, because a scan is a child
+// of a signature: FK'd to it, cascade-deleted with it, and meaningless without
+// it. The portal module reads through here rather than writing its own SQL, so
+// "the only place with SQL for document_signature" stays true of its children
+// too (doc/CONVENTIONS.md).
+
+const SCAN_COLS = "scan_id, signature_id, scanned_at, ip, user_agent, referrer, via, is_new_ip";
+
+/**
+ * Has this address verified this signature before?
+ *
+ * A null IP answers `true` — "not new" — on purpose. The alternative is to
+ * treat every unknown address as a first sighting, which would fire a new-IP
+ * notification on every scan from a client we cannot place. A control that
+ * cries wolf gets switched off, and this one is off by default already.
+ */
+async function scanSeenFromIp(client, signatureId, ip) {
+  if (!ip) return true;
+  const { rows } = await client.query(
+    "SELECT 1 FROM signature_scan WHERE signature_id = $1 AND ip = $2::inet LIMIT 1",
+    [signatureId, ip],
+  );
+  return Boolean(rows[0]);
+}
+
+function insertScan(client, data) {
+  return insertOne(client, "signature_scan", data);
+}
+
+/** Scans on one signature inside a rolling window. Feeds the anomaly signal. */
+async function countScansInWindow(client, signatureId, minutes) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS n FROM signature_scan "
+      + "WHERE signature_id = $1 AND scanned_at > now() - ($2::int * interval '1 minute')",
+    [signatureId, minutes],
+  );
+  return rows[0].n;
+}
+
+/** The internal "who scanned this" tab. Newest first; IPs masked by the caller. */
+async function listScans(client, signatureId, limit = 200) {
+  const { rows } = await client.query(
+    `SELECT ${SCAN_COLS} FROM signature_scan WHERE signature_id = $1 ORDER BY scanned_at DESC LIMIT $2`,
+    [signatureId, Math.min(Number(limit) || 200, 1000)],
+  );
+  return rows;
+}
+
+/** Counts for the header of that tab: how many, from how many places, when last. */
+async function scanSummary(client, signatureId) {
+  const { rows } = await client.query(
+    "SELECT count(*)::int AS total, count(DISTINCT ip)::int AS distinct_ips, max(scanned_at) AS last_scan_at "
+      + "FROM signature_scan WHERE signature_id = $1",
+    [signatureId],
+  );
+  return rows[0];
+}
+
+/**
+ * Retention sweep. `ip` is personal data and signature_policy.scan_retention_days
+ * (default 400) is the tenant's answer for how long it may be held. The
+ * immutable_ledger copy is governed by its own rules and is NOT touched here.
+ */
+async function pruneScans(client, days) {
+  const { rowCount } = await client.query(
+    "DELETE FROM signature_scan WHERE scanned_at < now() - ($1::int * interval '1 day')",
+    [days],
+  );
+  return rowCount;
+}
+
 /** Aggregates for the vault stats card. One round-trip, not five. */
 async function stats(client) {
   const { rows } = await client.query(`
@@ -121,10 +194,34 @@ async function stats(client) {
   const { rows: byPreset } = await client.query(`
     SELECT COALESCE(preset_code, 'UNKNOWN') AS preset_code, count(*)::int AS n
       FROM document_signature GROUP BY 1 ORDER BY 2 DESC`);
-  return { ...rows[0], by_preset: byPreset };
+  const { rows: byDocType } = await client.query(`
+    SELECT doc_type, count(*)::int AS n
+      FROM document_signature GROUP BY 1 ORDER BY 2 DESC`);
+  /*
+   * Stale count by doc type. Read off the OPEN compliance flags rather than by
+   * recomputing every canonical hash: the flag is raised the first time a read
+   * detects the amendment (document_signature.service.onAmendmentDetected), so
+   * it is already the tenant's own record of "signatures that no longer cover
+   * their document". Recomputing here would mean loading every signed record
+   * in the tenant to render one card.
+   *
+   * entity_ref is `<doc_type lowercased>:<record id>`, so the type is the part
+   * before the first colon — upper-cased back to the doc_type vocabulary.
+   */
+  const { rows: stale } = await client.query(`
+    SELECT upper(split_part(entity_ref, ':', 1)) AS doc_type, count(*)::int AS n
+      FROM compliance_flag
+     WHERE rule_key = 'signature.amended_after_signing' AND resolved_at IS NULL
+     GROUP BY 1 ORDER BY 2 DESC`);
+  const { rows: scans } = await client.query(`
+    SELECT count(*)::int AS scans_30d,
+           count(*) FILTER (WHERE is_new_ip)::int AS new_ip_scans_30d
+      FROM signature_scan WHERE scanned_at > now() - interval '30 days'`);
+  return { ...rows[0], ...scans[0], by_preset: byPreset, by_doc_type: byDocType, stale_by_doc_type: stale };
 }
 
 module.exports = {
   insert, getById, getByVerifyCode, listByRef, countActive, revoke, setArtifact,
   lockForAmendment, amendmentFlagExists, raiseAmendmentFlag, stats,
+  scanSeenFromIp, insertScan, countScansInWindow, listScans, scanSummary, pruneScans,
 };

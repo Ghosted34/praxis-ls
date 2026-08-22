@@ -59,10 +59,27 @@ function contentHash(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-/** QR-encodable verification token. */
-function verifyToken(entityRef, hash) {
-  return "praxis://verify/" + entityRef + "?h=" + String(hash).slice(0, 16);
-}
+/*
+ * `verifyToken()` used to live here. It returned a "praxis" custom-scheme URI
+ * carrying an entity_ref and the first 16 hex of the RENDERED-BYTES hash, and
+ * that string was printed on the page under "Verify authenticity", set as
+ * the X-Praxis-Verify response header, and encoded into nothing at all — there
+ * was no QR image anywhere in the product.
+ *
+ * It is deleted rather than fixed, for two reasons (guide §5.2):
+ *
+ *   1. That scheme is not one any phone, scanner or browser resolves. It
+ *      promised a reader their document was checkable and handed them a token
+ *      no tool on earth accepts.
+ *   2. The hash in it was over the rendered bytes — which contain the QR — so
+ *      it could never have been printed on the document it described. That
+ *      circularity is the structural defect the canonical CONTENT hash exists
+ *      to remove (services/signatures/canonical.js).
+ *
+ * The replacement is `services/signatures/verify-link.js`: a real https URL on
+ * the tenant's own host, carrying a verify code minted BEFORE the render, with
+ * the QR drawn into the page by `kit.verifyBlock`.
+ */
 
 /** Render HTML to a PDF Buffer. Chromium comes from PUPPETEER_EXECUTABLE_PATH. */
 async function renderHtml(html) {
@@ -85,7 +102,7 @@ async function renderHtml(html) {
 
 /**
  * Render → store → capture. `key` is the storage key (tenant-namespaced by the
- * caller). Returns { key, public_url, doc_id, content_hash, verify }. `render` is
+ * caller). Returns { key, public_url, doc_id, content_hash }. `render` is
  * injectable for tests.
  *
  * `doc_id` is the document_vault row created for the bytes — the only handle a
@@ -98,7 +115,7 @@ async function renderAndStore(client, { html, key, entityRef, docType, render = 
   const hash = contentHash(buffer);
   const stored = await storage.put(buffer, { key, contentType: "application/pdf" });
   const doc = await documents.capture(client, { entityRef, docType, storagePath: stored.key, contentHash: hash, status: "VERIFIED" });
-  return { key: stored.key, public_url: stored.public_url, doc_id: doc.doc_id, content_hash: hash, verify: verifyToken(entityRef, hash) };
+  return { key: stored.key, public_url: stored.public_url, doc_id: doc.doc_id, content_hash: hash };
 }
 
 // ── Template-driven rendering (GAP_FIXES_PLAN §5.1) ───────────────────────────
@@ -175,6 +192,6 @@ async function renderDocType(client, { docType, data = {}, entityRef, key, rende
 }
 
 module.exports = {
-  contentHash, verifyToken, renderHtml, renderAndStore,
+  contentHash, renderHtml, renderAndStore,
   renderDocType, interpolate, cssVarsBlock, buildHtml,
 };

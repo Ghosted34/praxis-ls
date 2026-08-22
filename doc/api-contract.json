@@ -1569,18 +1569,6 @@
       "validated": false,
       "tier": "self-scoped"
     },
-    "GET /api/tenant/document-verification/scan": {
-      "auth": false,
-      "rbac": false,
-      "validated": true,
-      "tier": "public"
-    },
-    "GET /api/tenant/document-verification/verify": {
-      "auth": true,
-      "rbac": true,
-      "validated": true,
-      "tier": "gated"
-    },
     "GET /api/tenant/documents/": {
       "auth": true,
       "rbac": true,
@@ -3513,6 +3501,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/signatures/:id/scans": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/signatures/menu": {
       "auth": true,
       "rbac": true,
@@ -4010,6 +4004,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/v/:code": {
+      "auth": false,
+      "rbac": false,
+      "validated": true,
+      "tier": "public"
     },
     "GET /api/tenant/vacancies/": {
       "auth": true,

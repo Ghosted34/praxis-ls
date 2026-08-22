@@ -70,6 +70,10 @@ const PortalApp = lazyNamed(
 const PublicTrackingPage = lazyNamed(() => import("@/features/operations/public-tracking"), "PublicTrackingPage");
 const PublicPortfolioPage = lazyNamed(() => import("@/features/sales/public-portfolio"), "PublicPortfolioPage");
 const PublicProposalPage = lazyNamed(() => import("@/features/sales/public-proposal"), "PublicProposalPage");
+// The verification portal. Two routes, one component: `/v/:code` is what a
+// printed QR resolves to, `/verify` is the manual-entry form for someone
+// reading the code off the page (or down a phone line).
+const VerifyPage = lazyNamed(() => import("@/features/public/verify-page"), "VerifyPage");
 const CareersPage = lazyNamed(
   () => import("@/features/careers/careers-page"),
   "CareersPage",
@@ -479,6 +483,27 @@ export function App() {
               path="/public/careers/:token"
               element={<CareersPage />}
             />
+            {/* The verification portal. Deliberately NOT under `/public/*`,
+            which every other stranger-facing surface uses — and the exception
+            is measured, not stylistic. This path is printed inside a QR that
+            has 22mm to live in and has to survive a photocopier and a phone
+            camera in a badly-lit warehouse. At `/v/{12-char code}` the URL is
+            40 characters and the symbol needs 33 modules — 0.67mm each; under
+            a `/public/verify/` prefix it is 52 characters, which costs a whole
+            QR version and drops to 0.59mm, and the original long-token design
+            sat at 0.49mm, right on the threshold a phone needs before anything
+            touched it (SIGNATURE_ENGINEERING_GUIDE §3.7).
+
+            Lengthening this path degrades a printed artefact that cannot be
+            re-issued, so it does not move to match a naming convention.
+
+            Outside RequireAuth and outside AppShell like the rest: the visitor
+            is a customs officer or an accounts clerk with no account, and the
+            shell would put a LIVE/TEST toggle and a copilot in front of them
+            while firing authenticated requests on mount. */}
+            <Route path="/v/:code" element={<VerifyPage />} />
+            <Route path="/verify" element={<VerifyPage />} />
+
             {/* Old public slugs → /public/* (links already in circulation). */}
             <Route path="/track" element={<OldPathRedirect />} />
             <Route path="/portfolio" element={<OldPathRedirect />} />

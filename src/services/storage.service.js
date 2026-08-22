@@ -162,8 +162,38 @@ function localPath(key) {
   return full;
 }
 
+/**
+ * Normalise storable bytes to a Buffer, or return null if this is not binary.
+ *
+ * WHY THIS EXISTS. `put` used to demand `Buffer.isBuffer` and nothing else.
+ * That is the right INTENT — a caller handing us a string has skipped every
+ * size check upstream — but it was implemented as an identity test against one
+ * concrete class, and the ecosystem moved: Puppeteer 23 began returning a
+ * `Uint8Array` from `page.pdf()`, and every generated document in the product
+ * started failing at this line with a 400 (BAD_STORAGE_BUFFER) despite being
+ * perfectly good bytes.
+ *
+ * A Uint8Array IS binary, has a real byteLength, and cannot smuggle a string
+ * past the size cap — which is everything the guard was actually protecting.
+ * So the test is now "is this binary?" rather than "is this the exact class
+ * Node happened to give us in 2024", while a string is still refused outright.
+ *
+ * Strings stay rejected on purpose: `Buffer.from("...")` would silently succeed
+ * and write a text file, which is the failure this guard was written to stop.
+ */
+function toStorageBuffer(value) {
+  if (Buffer.isBuffer(value)) return value;
+  // Any typed-array view (Uint8Array from page.pdf, sharp, fetch, …).
+  // NOT `value.buffer` — a view may cover part of a larger ArrayBuffer, and
+  // taking the backing store would write the slack bytes too. `Buffer.from` on
+  // the view copies exactly the view's own bytes.
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) return Buffer.from(value);
+  if (value instanceof ArrayBuffer) return Buffer.from(new Uint8Array(value));
+  return null;
+}
+
 const local = {
-  async put(buffer, { key, contentType }) {
+  async put(input, { key, contentType }) {
     // The buffer is network-supplied (uploads, PDF renders). The KEY is the
     // attacker-controlled half and is fully validated below; the BYTES are
     // bounded here so a hostile upload can never grow a file on disk without
@@ -171,9 +201,16 @@ const local = {
     // `localPath` (charset allow-list + resolved-path containment). A Buffer
     // is required — a caller handing us a string would have skipped every
     // size check upstream.
-    if (!Buffer.isBuffer(buffer)) {
-      throw new AppError("BAD_STORAGE_BUFFER", "Only binary buffers can be stored", 400);
+    const buffer = toStorageBuffer(input);
+    if (!buffer) {
+      throw new AppError(
+        "BAD_STORAGE_BUFFER",
+        `Only binary buffers can be stored (received ${input === null ? "null" : typeof input === "object" ? (input.constructor && input.constructor.name) || "object" : typeof input})`,
+        400,
+      );
     }
+    // Size is checked on the NORMALISED buffer, so a typed array cannot arrive
+    // by a route that skips the cap.
     if (buffer.length > MAX_BYTES) {
       throw new AppError("STORAGE_LIMIT", `File exceeds the ${MAX_BYTES} byte storage limit`, 413);
     }
@@ -231,7 +268,14 @@ async function streamToBuffer(body) {
 }
 
 const s3 = {
-  async put(buffer, { key, contentType }) {
+  async put(input, { key, contentType }) {
+    // Normalised for the same reason as the local driver, and so `size` below
+    // is the real byte count whatever shape the caller passed. The S3 SDK
+    // accepts a typed array, so S3 tenants never saw the BAD_STORAGE_BUFFER
+    // failure — which is exactly why both drivers should agree here rather
+    // than differing by which one happens to be tolerant.
+    const buffer = toStorageBuffer(input);
+    if (!buffer) throw new AppError("BAD_STORAGE_BUFFER", "Only binary buffers can be stored", 400);
      
     const { PutObjectCommand } = require("@aws-sdk/client-s3");
     const cfg = await resolveS3();
@@ -278,6 +322,10 @@ const impl = DRIVER === "s3" ? s3 : local;
 
 module.exports = {
   put: impl.put,
+  // Exported for the regression test: the guard that broke every generated
+  // document deserves one that pins the CONTRACT (binary in, Buffer out)
+  // rather than one concrete class.
+  toStorageBuffer,
   get: impl.get,
   delete: impl.delete,
   signedUrl: impl.signedUrl,

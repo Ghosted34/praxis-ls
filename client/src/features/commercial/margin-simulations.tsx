@@ -225,12 +225,12 @@ function MarginSimForm({
   // free-text box — the column is char(3) REFERENCES currency(code), so a
   // typo used to surface as a raw FK violation (SS4).
   const currencies = useResource(() => listCurrencies(), []);
+  // Code in `label`, name in `hint` — Radix clones ItemText into the closed
+  // trigger, so a name in the label wraps the collapsed control (it did exactly
+  // that on the extra-charge rail). The picker still names the currency.
   const currencyOptions = (currencies.data || [])
     .filter((c) => c.is_active !== false)
-    .map((c) => ({
-      value: c.code,
-      label: c.name ? `${c.code} — ${c.name}` : c.code,
-    }));
+    .map((c) => ({ value: c.code, label: c.code, hint: c.name || undefined }));
 
   // Header context: the file, and the costing to price from.
   const { rows: dossiers } = useList<Dossier>("/operations");

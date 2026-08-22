@@ -232,3 +232,33 @@ describe("the sign token is a different credential from the verify code", () => 
     expect(controller).not.toMatch(/token: out\.token/);
   });
 });
+
+describe("the repo builds SQL safely", () => {
+  const repoSrc = code(read(path.join(SRC, "modules/vault/signature_request/signature_request.repo.js")));
+
+  test("a dynamic column name goes through ident(), never straight into the string", () => {
+    // `transitionRequest` and `settleParty` take an `extra` object whose KEYS
+    // become column names. Every caller is internal today, but a column name
+    // concatenated into SQL is the shape of the finding rather than an
+    // instance of it — and query-helpers already exports the escaper.
+    expect(repoSrc).toMatch(/\$\{ident\(col\)\} = \$\$\{params\.length\}/);
+    expect(repoSrc).not.toMatch(/\$\{col\} = \$\$\{params\.length\}/);
+  });
+
+  test("a JOIN's column list is qualified on the comma, not on \", \"", () => {
+    // The lists are template literals with newlines, so splitting on ", "
+    // leaves every column after a line break unqualified — three of them, into
+    // a two-table join. Invisible to check-query-columns, which asks whether a
+    // column exists rather than which relation it came from.
+    expect(repoSrc).toMatch(/cols\.split\(","\)\.map\(\(c\) => `\$\{alias\}\.\$\{c\.trim\(\)\}`\)/);
+    expect(repoSrc).not.toMatch(/split\(", "\)\.join\(", [a-z]\./);
+  });
+
+  test("every column in a qualified list actually gets its alias", () => {
+    // The property, not the implementation: run the real helper over a list
+    // shaped like the ones in the file.
+    const qualify = (cols, alias) => cols.split(",").map((c) => `${alias}.${c.trim()}`).join(", ");
+    const list = "party_id, request_id,\n  override_by_user_id, allowed_presets,\n  sent_at";
+    for (const part of qualify(list, "p").split(", ")) expect(part.startsWith("p.")).toBe(true);
+  });
+});

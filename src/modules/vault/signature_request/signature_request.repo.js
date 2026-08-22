@@ -14,7 +14,7 @@
  */
 "use strict";
 
-const { insertOne, updateOne } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, ident } = require("../../../shared/db/query-helpers");
 
 const REQ_COLS = `request_id, entity_ref, doc_type, document_vault_id, payload_version,
   content_hash, allowed_presets, status, message, expires_at, completed_at,
@@ -27,6 +27,23 @@ const PARTY_COLS = `party_id, request_id, sequence_no, party_kind, source, sourc
 
 const OTP_COLS = `otp_id, party_id, user_id, entity_ref, content_hash, sent_to,
   code_hash, attempts, resends, expires_at, cooldown_until, verified_at, created_at`;
+
+/**
+ * The same column list, qualified for a JOIN.
+ *
+ * ⚠ SPLIT ON THE COMMA, NOT ON ", ".
+ *
+ * The first version did `COLS.split(", ").join(", p.")`, and the lists above
+ * are template literals with newlines — so every column that happened to fall
+ * after a line break kept its separator as ",\n  " and never got the prefix.
+ * Three of them (`override_by_user_id`, `allowed_presets`, `sent_at`) went out
+ * unqualified into a query that joins two tables. That is an ambiguous-column
+ * error waiting for the day one of those names is added to the other table,
+ * and it is invisible to check-query-columns, which asks whether a column
+ * exists rather than which relation it came from.
+ */
+const qualify = (cols, alias) =>
+  cols.split(",").map((c) => `${alias}.${c.trim()}`).join(", ");
 
 // ── requests ───────────────────────────────────────────────────────────────
 
@@ -70,7 +87,11 @@ async function transitionRequest(client, id, status, expected, extra = {}) {
   const params = [id, status];
   for (const [col, value] of Object.entries(extra)) {
     params.push(value);
-    sets.push(`${col} = $${params.length}`);
+    // `ident()`, not raw interpolation. Every caller of `extra` is internal
+    // today, but a column name concatenated into SQL is the shape of the
+    // finding rather than an instance of it — and the helper that already
+    // exists for this is one import away.
+    sets.push(`${ident(col)} = $${params.length}`);
   }
   params.push(expected);
   const { rows } = await client.query(
@@ -153,7 +174,7 @@ async function settleParty(client, id, status, extra = {}) {
   const params = [id, status];
   for (const [col, value] of Object.entries(extra)) {
     params.push(value);
-    sets.push(`${col} = $${params.length}`);
+    sets.push(`${ident(col)} = $${params.length}`);
   }
   const { rows } = await client.query(
     `UPDATE signature_party SET ${sets.join(", ")}
@@ -167,7 +188,7 @@ async function settleParty(client, id, status, extra = {}) {
 /** Parties still owed a nudge. Feeds the reminder scheduler (§6.8). */
 async function partiesDueReminder(client, days) {
   const { rows } = await client.query(
-    `SELECT p.${PARTY_COLS.split(", ").join(", p.")}, r.request_id AS req_id, r.doc_type, r.entity_ref, r.reminder_count
+    `SELECT ${qualify(PARTY_COLS, "p")}, r.request_id AS req_id, r.doc_type, r.entity_ref, r.reminder_count
        FROM signature_party p
        JOIN signature_request r ON r.request_id = p.request_id
       WHERE p.status IN ('SENT','VIEWED')
@@ -245,7 +266,7 @@ async function markOtpVerified(client, otpId) {
 /** Every challenge behind a request's signatures. The certificate prints these. */
 async function otpsForRequest(client, requestId) {
   const { rows } = await client.query(
-    `SELECT o.${OTP_COLS.split(", ").join(", o.")}, p.full_name, p.sequence_no
+    `SELECT ${qualify(OTP_COLS, "o")}, p.full_name, p.sequence_no
        FROM signature_otp o
        JOIN signature_party p ON p.party_id = o.party_id
       WHERE p.request_id = $1

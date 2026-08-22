@@ -1,3 +1,30 @@
+-- ── RENUMBERED 11743 → 11745 (2026-08-22) ──────────────────────────────────
+--
+-- This file and `11743_seed_rail_transportation.sql` both landed as 11743 from
+-- two parallel streams, which `scripts/db/check-migration-numbers.js` fails the
+-- build on: the migrator keys its ledger on FILENAME and sorts alphabetically,
+-- so two files sharing a number apply in whatever order their descriptive
+-- suffixes happen to sort — an accident, not a decision.
+--
+-- THIS file moved rather than the rail seed, for one reason: `11744` opens with
+-- "11743 added the three rail service_type rows" and backfills them. The rail
+-- seed must stay below its own backfill. This repair, by contrast, is a
+-- self-contained data fix over `email_thread` that depends only on 10731 having
+-- run; nothing orders against it, so it is the half that can move for free.
+-- Note that it already applied AFTER the rail seed under the old alphabetical
+-- tie-break, so the relative order of the two is unchanged by this move.
+--
+-- SAFETY OF THE RENAME. The standing rule is "never renumber a migration that
+-- has already run" — because the ledger keys on filename, a rename makes the
+-- migrator treat this as a new file and apply it again. That is safe here, and
+-- only here, because the statement below is idempotent by construction (see the
+-- last paragraph of the original header): after one run no participant element
+-- contains a comma, so the WHERE matches nothing and the re-run updates zero
+-- rows. The old `11743_…` ledger row stays behind pointing at a filename that no
+-- longer exists; `migrator.contentDrift` skips rows whose file is absent, so it
+-- reports nothing and no fleet status is affected.
+-- ───────────────────────────────────────────────────────────────────────────
+
 -- §5.9 — 10731's backfill split the recipients on the MESSAGE and not on the
 -- THREAD, so a conversation with two recipients has one participant that is
 -- both of them, and neither of them.

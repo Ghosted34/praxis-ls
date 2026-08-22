@@ -35,6 +35,7 @@ import { Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
 import { useResource } from "@/lib/use-resource";
+import { tr } from "@/lib/i18n";
 import { reportActionError } from "@/lib/action-error";
 import * as api from "@/lib/mail-api";
 import { useComposerEditor, type JSONContent } from "./use-editor";
@@ -83,7 +84,7 @@ const splitAddresses = (s: string) =>
 const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(String(r.result || ""));
-  r.onerror = () => reject(new Error(`Could not read ${file.name}`));
+  r.onerror = () => reject(new Error(`${tr("Could not read")} ${file.name}`));
   r.readAsDataURL(file);
 });
 
@@ -140,7 +141,7 @@ export function Composer({
   draftIdRef.current = draftId;
 
   const editor = useComposerEditor({
-    placeholder: "Write your message — type / to insert from the system",
+    placeholder: tr("Write your message — type / to insert from the system"),
     onChange: (doc) => {
       docRef.current = doc;
       dirtyRef.current.body_json = doc;
@@ -264,7 +265,7 @@ export function Composer({
     } catch (err) {
       // Shown in the composer rather than the global banner: it is about the
       // file the person just picked and belongs next to the tray.
-      setError((err as { message?: string })?.message || "That file could not be attached.");
+      setError((err as { message?: string })?.message || tr("That file could not be attached."));
     } finally {
       setBusy(false);
     }
@@ -347,13 +348,13 @@ export function Composer({
         days: 7,
       });
       const url = link.url || (link.token ? `${window.location.origin}/s/${link.token}` : "");
-      if (!url) throw new Error("The link came back without an address.");
+      if (!url) throw new Error(tr("The link came back without an address."));
       editor
         ?.chain()
         .focus("end")
         .insertContent(
-          `<p>${a.filename || "Document"}: <a href="${url}">${url}</a> ` +
-          `<em>(expires ${new Date(link.expires_at).toLocaleDateString()})</em></p>`,
+          `<p>${a.filename || tr("Document")}: <a href="${url}">${url}</a> ` +
+          `<em>(${tr("expires")} ${new Date(link.expires_at).toLocaleDateString()})</em></p>`,
         )
         .run();
       await detach(a.email_attachment_id);
@@ -369,7 +370,7 @@ export function Composer({
   async function send() {
     setError(null);
     const recipients = splitAddresses(to);
-    if (!recipients.length) { setError("Add at least one recipient."); return; }
+    if (!recipients.length) { setError(tr("Add at least one recipient.")); return; }
 
     setBusy(true);
     // Minted ONCE per message: a replay, a retry and a second tab all carry this
@@ -407,9 +408,9 @@ export function Composer({
       if (status === undefined || status === 0) {
         // No answer at all — the network, not a refusal. Keep it and replay.
         await rememberSend({ idempotency_key: key, body, queued_at: Date.now(), attempts: 1 });
-        setError("You appear to be offline. This will send when the connection comes back.");
+        setError(tr("You appear to be offline. This will send when the connection comes back."));
       } else {
-        setError((err as { message?: string })?.message || "That message could not be sent.");
+        setError((err as { message?: string })?.message || tr("That message could not be sent."));
       }
     } finally {
       setBusy(false);
@@ -436,11 +437,11 @@ export function Composer({
   return (
     <section
       className="flex min-h-0 flex-col rounded-xl border border-border bg-card"
-      aria-label="Compose a message"
+      aria-label={tr("Compose a message")}
     >
       <header className="space-y-1.5 border-b border-border px-3 py-2">
         {mailboxes.length > 1 && (
-          <Field label="From">
+          <Field label={tr("From")}>
             <Select
               value={from}
               onChange={(e) => setField("email_connection_id", e.target.value, setFrom as never)}
@@ -453,7 +454,7 @@ export function Composer({
           </Field>
         )}
         <div className="flex items-center gap-2">
-          <label htmlFor="composer-to" className="w-10 shrink-0 text-xs text-muted-foreground">To</label>
+          <label htmlFor="composer-to" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("To")}</label>
           <Input
             id="composer-to"
             value={to}
@@ -467,13 +468,13 @@ export function Composer({
               onClick={() => setShowCc(true)}
               className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
             >
-              Cc
+              {tr("Cc")}
             </button>
           )}
         </div>
         {showCc && (
           <div className="flex items-center gap-2">
-            <label htmlFor="composer-cc" className="w-10 shrink-0 text-xs text-muted-foreground">Cc</label>
+            <label htmlFor="composer-cc" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("Cc")}</label>
             <Input
               id="composer-cc"
               value={cc}
@@ -483,7 +484,7 @@ export function Composer({
           </div>
         )}
         <div className="flex items-center gap-2">
-          <label htmlFor="composer-subject" className="w-10 shrink-0 text-xs text-muted-foreground">Subject</label>
+          <label htmlFor="composer-subject" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("Subject")}</label>
           <Input
             id="composer-subject"
             value={subject}
@@ -524,9 +525,7 @@ export function Composer({
       {heldByOther && (
         <div role="status" className="border-t border-border bg-warning/10 px-3 py-2 text-xs">
           <p>
-            {heldByOther.locked_by_name || "A colleague"} started replying to this conversation
-            {heldByOther.seconds_remaining ? " a moment ago" : ""}. You can carry on — this is a
-            heads-up, not a lock on the reply.
+            {`${heldByOther.locked_by_name || tr("A colleague")} ${tr("started replying to this conversation")}${heldByOther.seconds_remaining ? ` ${tr("a moment ago")}` : ""}. ${tr("You can carry on — this is a heads-up, not a lock on the reply.")}`}
           </p>
         </div>
       )}
@@ -539,13 +538,12 @@ export function Composer({
         <div role="status" className="border-t border-border bg-warning/10 px-3 py-2 text-xs">
           {recipients.hard.map((r) => (
             <p key={r.email}>
-              <strong>{r.email}</strong> has hard-bounced — the mailbox does not exist. Sending
-              again will not reach anyone.
+              <strong>{r.email}</strong> {tr("has hard-bounced — the mailbox does not exist. Sending again will not reach anyone.")}
             </p>
           ))}
           {recipients.soft.map((r) => (
             <p key={r.email}>
-              <strong>{r.email}</strong> has been failing — mail to it may not arrive.
+              <strong>{r.email}</strong> {tr("has been failing — mail to it may not arrive.")}
             </p>
           ))}
         </div>
@@ -575,15 +573,15 @@ export function Composer({
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
         <Button size="sm" onClick={send} disabled={!canSend} loading={busy}>
-          {schedule.kind === "NOW" ? "Send" : "Schedule"}
+          {schedule.kind === "NOW" ? tr("Send") : tr("Schedule")}
         </Button>
         <AttachButton onFiles={attach} disabled={busy} />
         <SchedulePicker value={schedule} onChange={setSchedule} />
         {slots["composer.footer.left"]}
         <span className="ml-auto flex items-center gap-2">
           {slots["composer.footer.right"]}
-          {savedAt && <Pill tone="mute">Draft saved</Pill>}
-          {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>}
+          {savedAt && <Pill tone="mute">{tr("Draft saved")}</Pill>}
+          {onClose && <Button size="sm" variant="ghost" onClick={onClose}>{tr("Close")}</Button>}
         </span>
       </footer>
 
@@ -605,8 +603,7 @@ export function Composer({
 
       {queued && queued.undo_seconds === 0 && (
         <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground" role="status">
-          Scheduled for {new Date(queued.release_at).toLocaleString()}. You can
-          cancel it from the outbox until then.
+          {`${tr("Scheduled for")} ${new Date(queued.release_at).toLocaleString()}. ${tr("You can cancel it from the outbox until then.")}`}
         </div>
       )}
     </section>

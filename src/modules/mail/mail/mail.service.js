@@ -69,7 +69,9 @@ function cleanHtml(html) {
 // ── Original read-only view ──
 const listIdentities = (client) => repo.listIdentities(client);
 const listSent = (client, q = {}) => repo.listSentLog(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id });
-const listInbox = (client, q = {}) => repo.listInbox(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id });
+// C-3: `userId` threads through to the repo, which scopes the list by it.
+const listInbox = (client, q = {}) =>
+  repo.listInbox(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id, userId: q.userId || null });
 const updateIdentity = (client, id, fields) => repo.updateIdentity(client, id, fields);
 async function upsertIdentity(client, d) {
   const identity = await repo.upsertIdentity(client, d);

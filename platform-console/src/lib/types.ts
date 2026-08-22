@@ -35,7 +35,9 @@ export interface TenantListRow {
   display_name: string;
   status: TenantStatus;
   is_live: boolean;
+  /** 0 = never auto-wipe (wipes are manual). >0 = auto-wipe cadence in days. */
   sandbox_wipe_days: number | null;
+  last_sandbox_wipe_at: string | null;
   plan: string | null;
   db_name: string | null;
   capacity_tier: string | null;
@@ -65,7 +67,9 @@ export interface TenantDetail {
   legal_name?: string;
   status: TenantStatus;
   is_live: boolean;
+  /** 0 = never auto-wipe (wipes are manual). >0 = auto-wipe cadence in days. */
   sandbox_wipe_days: number | null;
+  last_sandbox_wipe_at?: string | null;
   plan_code?: string | null;
   country_code?: string | null;
   created_at?: string | null;

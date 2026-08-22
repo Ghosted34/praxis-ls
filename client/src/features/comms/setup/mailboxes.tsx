@@ -30,6 +30,7 @@ import { DataList, PageHeader, type Column } from "@/components/data-list";
 import { EmployeePicker } from "@/components/employee-picker";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import * as api from "@/lib/mail-api";
@@ -109,14 +110,14 @@ function CreateSharedModal({
       open
       onClose={onClose}
       size="lg"
-      title={slot ? `Set up ${slot.label_en}` : "Set up a shared mailbox"}
-      description={slot?.description_en || "A team address several people work together."}
+      title={slot ? `${tr("Set up")} ${slot.label_en}` : tr("Set up a shared mailbox")}
+      description={slot?.description_en || tr("A team address several people work together.")}
     >
       <form className="space-y-3" onSubmit={submit}>
         <Field
-          label="Address"
+          label={tr("Address")}
           required
-          hint={slot ? `Usually ${slot.suggested_local_part}@yourcompany.cm` : undefined}
+          hint={slot ? `${tr("Usually")} ${slot.suggested_local_part}@yourcompany.cm` : undefined}
         >
           <div className="flex gap-2">
             <Input
@@ -126,25 +127,25 @@ function CreateSharedModal({
               type="email"
             />
             <Button type="button" variant="outline" onClick={preset} disabled={!f.email_address || busy}>
-              cPanel settings
+              {tr("cPanel settings")}
             </Button>
           </div>
         </Field>
         {note && <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-sm">{note}</div>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Display name"><Input value={f.display_name} onChange={set("display_name")} /></Field>
-          <Field label="Department"><Input value={f.department} onChange={set("department")} placeholder="Finance" /></Field>
-          <Field label="IMAP host" required><Input value={f.imap_host} onChange={set("imap_host")} /></Field>
-          <Field label="IMAP port" required><Input value={String(f.imap_port)} onChange={set("imap_port")} inputMode="numeric" /></Field>
-          <Field label="SMTP host" required><Input value={f.smtp_host} onChange={set("smtp_host")} /></Field>
-          <Field label="SMTP port" required><Input value={String(f.smtp_port)} onChange={set("smtp_port")} inputMode="numeric" /></Field>
-          <Field label="Username" required hint="On cPanel, the full address."><Input value={f.auth_user} onChange={set("auth_user")} /></Field>
-          <Field label="Password" required><Input value={f.password} onChange={set("password")} type="password" autoComplete="off" /></Field>
+          <Field label={tr("Display name")}><Input value={f.display_name} onChange={set("display_name")} /></Field>
+          <Field label={tr("Department")}><Input value={f.department} onChange={set("department")} placeholder={tr("Finance")} /></Field>
+          <Field label={tr("IMAP host")} required><Input value={f.imap_host} onChange={set("imap_host")} /></Field>
+          <Field label={tr("IMAP port")} required><Input value={String(f.imap_port)} onChange={set("imap_port")} inputMode="numeric" /></Field>
+          <Field label={tr("SMTP host")} required><Input value={f.smtp_host} onChange={set("smtp_host")} /></Field>
+          <Field label={tr("SMTP port")} required><Input value={String(f.smtp_port)} onChange={set("smtp_port")} inputMode="numeric" /></Field>
+          <Field label={tr("Username")} required hint={tr("On cPanel, the full address.")}><Input value={f.auth_user} onChange={set("auth_user")} /></Field>
+          <Field label={tr("Password")} required><Input value={f.password} onChange={set("password")} type="password" autoComplete="off" /></Field>
         </div>
         {error != null && (<><ErrorState message={errMsg(error)} /><SmtpErrorGuide err={error} /></>)}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Create and test</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
+          <Button type="submit" loading={busy} disabled={busy}>{tr("Create and test")}</Button>
         </div>
       </form>
     </Modal>
@@ -184,21 +185,21 @@ function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () 
       open
       onClose={onClose}
       size="lg"
-      title={`Who can work ${mailbox.email_address}`}
-      description="Reading a team's mail and sending as it are different rights."
+      title={`${tr("Who can work")} ${mailbox.email_address}`}
+      description={tr("Reading a team's mail and sending as it are different rights.")}
     >
       <div className="space-y-4">
-        <Field label="Access level for the next person you add">
+        <Field label={tr("Access level for the next person you add")}>
           <Select value={role} onChange={(e) => setRole(e.target.value as api.MemberRole)}>
             {(Object.keys(ROLE_LABEL) as api.MemberRole[]).map((r) => (
-              <option key={r} value={r}>{ROLE_LABEL[r]} — {ROLE_HINT[r]}</option>
+              <option key={r} value={r}>{tr(ROLE_LABEL[r])} — {tr(ROLE_HINT[r])}</option>
             ))}
           </Select>
         </Field>
 
         <EmployeePicker
-          label="Add someone"
-          placeholder="Search by name or job title…"
+          label={tr("Add someone")}
+          placeholder={tr("Search by name or job title…")}
           exclude={chosen}
           disabled={busy}
           onPick={(e) => add(e.employee_id)}
@@ -209,7 +210,8 @@ function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () 
 
         <div>
           <div className="micro mb-1">
-            {(members.data || []).length} {(members.data || []).length === 1 ? "person" : "people"} with access
+            {(members.data || []).length}{" "}
+            {(members.data || []).length === 1 ? tr("person") : tr("people")} {tr("with access")}
           </div>
           <ul className="divide-y divide-border rounded-lg border border-border">
             {(members.data || []).map((m) => (
@@ -221,16 +223,16 @@ function MembersModal({ mailbox, onClose }: { mailbox: api.Mailbox; onClose: () 
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Pill tone={m.member_role === "VIEWER" ? "mute" : "blue"}>{ROLE_LABEL[m.member_role]}</Pill>
+                  <Pill tone={m.member_role === "VIEWER" ? "mute" : "blue"}>{tr(ROLE_LABEL[m.member_role])}</Pill>
                   <Button type="button" variant="outline" onClick={() => remove(m.user_id)} disabled={busy}>
-                    Remove
+                    {tr("Remove")}
                   </Button>
                 </div>
               </li>
             ))}
             {!members.loading && (members.data || []).length === 0 && (
               <li className="px-3 py-4 text-center text-sm text-muted-foreground">
-                Nobody has been added yet. Only the owner can see this mailbox.
+                {tr("Nobody has been added yet. Only the owner can see this mailbox.")}
               </li>
             )}
           </ul>
@@ -272,33 +274,32 @@ function LimitsModal({ mailbox, onClose, onDone }: { mailbox: api.Mailbox; onClo
     <Modal
       open
       onClose={onClose}
-      title={`Limits for ${mailbox.email_address}`}
-      description="Leave a field empty to use the company default."
+      title={`${tr("Limits for")} ${mailbox.email_address}`}
+      description={tr("Leave a field empty to use the company default.")}
     >
       <form className="space-y-3" onSubmit={submit}>
         <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-sm">
-          Most shared hosts, cPanel included, <strong>suspend</strong> a mailbox that sends more than
-          its hourly allowance. Praxis holds anything over the limit for the next hour and tells the
-          sender when it will go, rather than letting the host cut the mailbox off.
+          {tr("Most shared hosts, cPanel included,")} <strong>{tr("suspend")}</strong>{" "}
+          {tr("a mailbox that sends more than its hourly allowance. Praxis holds anything over the limit for the next hour and tells the sender when it will go, rather than letting the host cut the mailbox off.")}
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Per hour" hint={eff ? `Company default ${eff.send_limit_hourly}` : undefined}>
+          <Field label={tr("Per hour")} hint={eff ? `${tr("Company default")} ${eff.send_limit_hourly}` : undefined}>
             <Input value={String(f.send_limit_hourly)} inputMode="numeric"
               onChange={(e) => setF((s) => ({ ...s, send_limit_hourly: e.target.value }))} />
           </Field>
-          <Field label="Per day" hint={eff ? `Company default ${eff.send_limit_daily}` : undefined}>
+          <Field label={tr("Per day")} hint={eff ? `${tr("Company default")} ${eff.send_limit_daily}` : undefined}>
             <Input value={String(f.send_limit_daily)} inputMode="numeric"
               onChange={(e) => setF((s) => ({ ...s, send_limit_daily: e.target.value }))} />
           </Field>
-          <Field label="History to sync (days)" hint={eff ? `Company default ${eff.sync_depth_days}` : undefined}>
+          <Field label={tr("History to sync (days)")} hint={eff ? `${tr("Company default")} ${eff.sync_depth_days}` : undefined}>
             <Input value={String(f.sync_depth_days)} inputMode="numeric"
               onChange={(e) => setF((s) => ({ ...s, sync_depth_days: e.target.value }))} />
           </Field>
         </div>
         {error != null && <ErrorState message={errMsg(error)} />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Save</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
+          <Button type="submit" loading={busy} disabled={busy}>{tr("Save")}</Button>
         </div>
       </form>
     </Modal>
@@ -326,25 +327,23 @@ function HandoverModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Hand over ${mailbox.email_address}`}
-      description="Turns one person's mailbox into a team one.">
+    <Modal open onClose={onClose} title={`${tr("Hand over")} ${mailbox.email_address}`}
+      description={tr("Turns one person's mailbox into a team one.")}>
       <form className="space-y-3" onSubmit={submit}>
         <div className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/5 px-3 py-2 text-sm">
-          This takes <strong>{mailbox.owner_name || "one person"}</strong>&apos;s correspondence and makes it
-          visible to a team. It is the right thing when somebody leaves and a colleague has to answer
-          their clients, and the wrong thing to do by accident — so it is recorded on the audit trail
-          with your name against it.
+          {tr("This takes")} <strong>{mailbox.owner_name || tr("one person")}</strong>&apos;s{" "}
+          {tr("correspondence and makes it visible to a team. It is the right thing when somebody leaves and a colleague has to answer their clients, and the wrong thing to do by accident — so it is recorded on the audit trail with your name against it.")}
         </div>
-        <Field label="Team address it becomes" hint="Optional. Leave empty for a shared mailbox with no catalogue slot.">
+        <Field label={tr("Team address it becomes")} hint={tr("Optional. Leave empty for a shared mailbox with no catalogue slot.")}>
           <Select value={key} onChange={(e) => setKey(e.target.value)}>
-            <option value="">— none —</option>
+            <option value="">{tr("— none —")}</option>
             {free.map((c) => <option key={c.catalogue_key} value={c.catalogue_key}>{c.label_en}</option>)}
           </Select>
         </Field>
         {error != null && <ErrorState message={errMsg(error)} />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Hand it over</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
+          <Button type="submit" loading={busy} disabled={busy}>{tr("Hand it over")}</Button>
         </div>
       </form>
     </Modal>
@@ -372,36 +371,36 @@ export function MailboxesTab() {
 
   const columns: Column<api.Mailbox & Record<string, unknown>>[] = [
     {
-      key: "email_address", label: "Address",
+      key: "email_address", label: tr("Address"),
       render: (m) => (
         <div className="min-w-0">
           <div className="num truncate text-sm">{m.email_address}</div>
           <div className="micro truncate text-muted-foreground">
-            {m.kind === "PERSONAL" ? m.owner_name || "personal" : m.catalogue_label || "shared"}
+            {m.kind === "PERSONAL" ? m.owner_name || tr("personal") : m.catalogue_label || tr("shared")}
           </div>
         </div>
       ),
     },
-    { key: "kind", label: "Kind", render: (m) => <Pill tone={m.kind === "PERSONAL" ? "mute" : "blue"}>{m.kind}</Pill> },
-    { key: "status", label: "Status", render: (m) => <Pill tone={statusTone(m.status)}>{m.status}</Pill> },
-    { key: "health", label: "Health", render: (m) => <HealthPill health={m.health} /> },
+    { key: "kind", label: tr("Kind"), render: (m) => <Pill tone={m.kind === "PERSONAL" ? "mute" : "blue"}>{m.kind}</Pill> },
+    { key: "status", label: tr("Status"), render: (m) => <Pill tone={statusTone(m.status)}>{m.status}</Pill> },
+    { key: "health", label: tr("Health"), render: (m) => <HealthPill health={m.health} /> },
     {
-      key: "member_count", label: "People",
+      key: "member_count", label: tr("People"),
       render: (m) => (m.kind === "PERSONAL" ? <span className="text-muted-foreground">—</span> : <span className="num">{m.member_count ?? 0}</span>),
     },
-    { key: "last_success_at", label: "Last sync", render: (m) => <span className="num">{m.last_success_at ? dateFmt(m.last_success_at) : "—"}</span> },
+    { key: "last_success_at", label: tr("Last sync"), render: (m) => <span className="num">{m.last_success_at ? dateFmt(m.last_success_at) : "—"}</span> },
     {
       key: "_a", label: "",
       render: (m) => (
         <div className="flex flex-wrap justify-end gap-1">
           {m.kind !== "PERSONAL" && (
-            <Button type="button" variant="outline" onClick={() => setMembers(m)}>People</Button>
+            <Button type="button" variant="outline" onClick={() => setMembers(m)}>{tr("People")}</Button>
           )}
           {m.kind === "PERSONAL" && (
-            <Button type="button" variant="outline" onClick={() => setHandover(m)}>Hand over</Button>
+            <Button type="button" variant="outline" onClick={() => setHandover(m)}>{tr("Hand over")}</Button>
           )}
-          <Button type="button" variant="outline" onClick={() => setLimits(m)}>Limits</Button>
-          <Button type="button" variant="outline" onClick={() => archive(m)}>Retire</Button>
+          <Button type="button" variant="outline" onClick={() => setLimits(m)}>{tr("Limits")}</Button>
+          <Button type="button" variant="outline" onClick={() => archive(m)}>{tr("Retire")}</Button>
         </div>
       ),
     },
@@ -412,19 +411,18 @@ export function MailboxesTab() {
   return (
     <section className="space-y-5">
       <PageHeader
-        title="Mailboxes"
-        description="Every mailbox in the company — the personal ones people connect themselves, and the team addresses you set up for them."
-        action={<Button onClick={() => setCreating(null)}>New shared mailbox</Button>}
+        title={tr("Mailboxes")}
+        description={tr("Every mailbox in the company — the personal ones people connect themselves, and the team addresses you set up for them.")}
+        action={<Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>}
       />
 
       {error != null && <ErrorState message={errMsg(error)} />}
 
       {unfilled.length > 0 && (
         <div className="rounded-xl border border-border p-4">
-          <div className="text-sm font-medium">Team addresses not set up yet</div>
+          <div className="text-sm font-medium">{tr("Team addresses not set up yet")}</div>
           <p className="micro mt-1 text-muted-foreground">
-            These are the addresses a logistics business normally runs. Set one up and the parts of
-            the product that belong to it can send from it.
+            {tr("These are the addresses a logistics business normally runs. Set one up and the parts of the product that belong to it can send from it.")}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {unfilled.map((c) => (
@@ -450,9 +448,9 @@ export function MailboxesTab() {
         loading={boxes.loading}
         rowKey={(m) => m.email_connection_id}
         empty={{
-          title: "No mailboxes yet",
-          hint: "People connect their own from the My mailbox tab. Team addresses are set up here.",
-          action: <Button onClick={() => setCreating(null)}>New shared mailbox</Button>,
+          title: tr("No mailboxes yet"),
+          hint: tr("People connect their own from the My mailbox tab. Team addresses are set up here."),
+          action: <Button onClick={() => setCreating(null)}>{tr("New shared mailbox")}</Button>,
         }}
       />
 

@@ -41,6 +41,7 @@
 import { Callout } from "@/components/ui/callout";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Textarea } from "@/components/ui/textarea";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const VERDICT: Record<api.AuthVerdict, { tone: Tone; label: string; why: string }> = {
@@ -88,14 +89,14 @@ export function VerdictBanner({
   if (verdict === "UNVERIFIED") {
     return (
       <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-        {v.label}. {v.why}
+        {tr(v.label)}. {tr(v.why)}
       </p>
     );
   }
 
   return (
-    <Callout tone={verdict === "SUSPICIOUS" ? "warn" : "bad"} title={v.label}>
-      {v.why}
+    <Callout tone={verdict === "SUSPICIOUS" ? "warn" : "bad"} title={tr(v.label)}>
+      {tr(v.why)}
       {detail ? <> {detail}</> : null}
     </Callout>
   );
@@ -105,7 +106,7 @@ export function VerdictBanner({
 export function VerdictPill({ verdict }: { verdict?: api.AuthVerdict | null }) {
   if (!verdict || verdict === "VERIFIED") return null;
   const v = VERDICT[verdict];
-  return v ? <Pill tone={v.tone}>{v.label}</Pill> : null;
+  return v ? <Pill tone={v.tone}>{tr(v.label)}</Pill> : null;
 }
 
 /**
@@ -132,7 +133,7 @@ export function GuardrailBar({
   return (
     <div className="space-y-2">
       {blocks.map((b) => (
-        <Callout key={b.code} tone="bad" title="This send is blocked.">
+        <Callout key={b.code} tone="bad" title={tr("This send is blocked.")}>
           {b.message}
         </Callout>
       ))}
@@ -140,25 +141,24 @@ export function GuardrailBar({
       {blocks.length > 0 && (
         <label className="block space-y-1">
           <span className="text-xs font-medium">
-            Why are you sending it anyway?
+            {tr("Why are you sending it anyway?")}
           </span>
           {/* Said before they type, not after. A sentence that outlives the
               mailbox is one the writer should know is permanent. */}
           <span className="block text-xs text-muted-foreground">
-            This is written to the permanent audit ledger with your name on it,
-            and cannot be edited or removed afterwards.
+            {tr("This is written to the permanent audit ledger with your name on it, and cannot be edited or removed afterwards.")}
           </span>
           <Textarea
             value={overrideReason}
             onChange={(e) => onOverrideChange(e.target.value)}
             rows={2}
-            placeholder="e.g. Confirmed this address by phone with Thierry this morning."
-            aria-label="Override reason"
+            placeholder={tr("e.g. Confirmed this address by phone with Thierry this morning.")}
+            aria-label={tr("Override reason")}
             className="text-sm"
           />
           {overrideReason.trim().length > 0 && overrideReason.trim().length < 10 && (
             <span className="block text-xs text-muted-foreground">
-              A sentence, please — this is a record of a decision.
+              {tr("A sentence, please — this is a record of a decision.")}
             </span>
           )}
         </label>

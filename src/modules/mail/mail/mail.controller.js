@@ -8,7 +8,8 @@ const outbox = require("./outbox.service");
 const attachments = require("./attachment.service");
 const commands = require("./commands.service");
 const { cpanelPreset } = require("./autodiscover");
-const { asyncHandler } = require("../../../utils/errors");
+const { asyncHandler, AppError } = require("../../../utils/errors");
+const documentVault = require("../../vault/document_vault/document_vault.service");
 const { config } = require("../../../config/env");
 const actor = (req) => req.user || { user_id: null };
 // Mail is LIVE-ONLY, on purpose. A mailbox connection holds real credentials and
@@ -54,7 +55,12 @@ module.exports = {
   // ── Read-only view (original) ──
   senders: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listIdentities(c)) })),
   sent: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listSent(c, req.query)) })),
-  inbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listInbox(c, req.query)) })),
+  // C-3: the caller is passed because `listInbox` scopes by them. Without it the
+  // repo returns an empty list by design — failing closed, because a default of
+  // "no user" on this query is exactly what the finding was.
+  inbox: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.listInbox(c, { ...req.query, userId: actor(req).user_id })),
+  })),
   updateSender: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateIdentity(c, req.params.id, req.body || {})) })),
   upsertSender: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.upsertIdentity(c, req.body || {})) })),
   archiveSender: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.archiveIdentity(c, req.params.id)) })),
@@ -171,6 +177,39 @@ module.exports = {
   threadStream: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.setStream(c, actor(req), req.params.id, req.body.stream)) })),
   threadLabel: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.applyLabel(c, actor(req), req.params.id, req.body.label_id, req.body.on !== false)) })),
   threadBulk: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.bulk(c, actor(req), req.body)) })),
+
+  /* ── H-1: deletion ────────────────────────────────────────────────────── */
+  threadDelete: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => threads.remove(c, actor(req), req.params.id)),
+  })),
+  folderEmpty: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => threads.emptyFolder(c, actor(req), req.body.folder)),
+  })),
+
+  /**
+   * ── H-2: open an inbound attachment ───────────────────────────────────────
+   *
+   * `requireVisibleAttachment` has already proved the caller may see the
+   * conversation this file arrived on and parked the row on `req.mailAttachment`,
+   * so this streams rather than re-deciding. The bytes live in the vault like
+   * every other file in the product; mail stores a reference, not a copy.
+   *
+   * `attachment` rather than `inline` disposition, and `nosniff`: an inbound
+   * attachment is by definition a file a stranger chose, and rendering an
+   * untrusted text/html in the app's own origin is how a mail client becomes an
+   * XSS vector. The user downloads it and opens it in the thing that owns that
+   * file type.
+   */
+  downloadAttachment: asyncHandler(async (req, res) => {
+    const att = req.mailAttachment;
+    if (!att || !att.vault_id) throw new AppError("NOT_FOUND", "attachment not found", 404);
+    const { buffer } = await req.identityDb((c) => documentVault.fetchBytes(c, att.vault_id));
+    const filename = String(att.filename || "attachment").replace(/[\r\n"]/g, "");
+    res.setHeader("Content-Type", att.content_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(buffer);
+  }),
   mailFolders: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.folders(c, actor(req), req.query.connection_id)) })),
   mailLabels: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => threads.labels(c, actor(req))) })),
   createLabel: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => threads.createLabel(c, actor(req), req.body)) })),

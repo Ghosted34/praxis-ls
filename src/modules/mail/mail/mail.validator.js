@@ -169,7 +169,11 @@ const schemas = {
   // is a business one.
   threadBulk: z.object({
     ids: z.array(z.string().uuid()).min(1).max(500),
-    op: z.enum(["read", "unread", "star", "unstar", "move", "label", "unlabel"]),
+    // H-1: `delete` was absent from this list and from the whole module — there
+    // was no deletion path anywhere, so Trash accumulated forever and §9.6's
+    // "deletion of an archived message is blocked in the service layer" was
+    // vacuous. The block is real now; see thread.service.remove.
+    op: z.enum(["read", "unread", "star", "unstar", "move", "label", "unlabel", "delete"]),
     folder: z.enum(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]).optional(),
     label_id: z.string().uuid().optional(),
   }).refine((v) => v.op !== "move" || Boolean(v.folder), { message: "move needs a folder" })
@@ -177,6 +181,13 @@ const schemas = {
 
   threadMove: z.object({
     folder: z.enum(["INBOX", "SENT", "DRAFTS", "SPAM", "ARCHIVE", "TRASH"]),
+  }),
+
+  // H-1. Only TRASH and SPAM, enumerated here as well as in the service:
+  // "empty INBOX" is not a feature anyone asked for and is precisely the sort
+  // of thing that reaches production as a mistyped parameter.
+  folderEmpty: z.object({
+    folder: z.enum(["TRASH", "SPAM"]),
   }),
 
   threadFlag: z.object({ on: z.coerce.boolean().default(true) }),
@@ -342,6 +353,7 @@ module.exports = {
   handover: mw("handover"), mailboxLimits: mw("mailboxLimits"),
   tenantMailSettings: mw("tenantMailSettings"), sendPointBinding: mw("sendPointBinding"),
   threadBulk: mw("threadBulk"), threadMove: mw("threadMove"), threadFlag: mw("threadFlag"),
+  folderEmpty: mw("folderEmpty"),
   threadStream: mw("threadStream"), label: mw("label"), labelApply: mw("labelApply"),
   draft: mw("draft"), send: mw("send"),
   attachmentUpload: mw("attachmentUpload"), attachmentFromVault: mw("attachmentFromVault"),

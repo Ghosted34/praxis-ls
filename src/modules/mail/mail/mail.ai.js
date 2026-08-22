@@ -21,12 +21,19 @@ module.exports = {
   writes: [
     {
       key: "send_mail", service: service.send, schema: validator.schemas.send,
-      permission: { module: "MOD-64", action: "create" }, confirm: true,
+      // H-4. This declared MOD-64 create while the HTTP send path requires
+      // MOD-72 create, and the orchestrator enforces exactly what is declared —
+      // so the two send paths checked DIFFERENT MODULES. A chat-permitted user
+      // who was not a mail user could send mail through the copilot, and a mail
+      // user without chat create could not. §3.4 is explicit: "Mail is MOD-72 …
+      // They are separate rights and must stay separate." The reads below were
+      // already MOD-72; only the writes had drifted.
+      permission: { module: "MOD-72", action: "create" }, confirm: true,
       describe: "Send an email from a connected mailbox (connectionId, to, subject, html/text).",
     },
     {
       key: "reply_mail", service: service.reply, schema: validator.schemas.aiReply,
-      permission: { module: "MOD-64", action: "create" }, confirm: true,
+      permission: { module: "MOD-72", action: "create" }, confirm: true,
       describe: "Reply in-thread to a received message (connectionId, inboundId, html/text) — keeps provider threading.",
     },
   ],

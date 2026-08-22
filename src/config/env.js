@@ -380,10 +380,24 @@ const Schema = z.object({
    * cron here.
    */
   SIGNATURE_REMINDER_CRON: z.string().default("20 * * * *"),
-  // Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
-  // tenant honouring each tenant's sandbox_wipe_days. 03:30 UTC — outside the
-  // working day and clear of the 01:00 fleet backup.
-  SANDBOX_WIPE_CRON: z.string().default("30 3 * * *"),
+  /*
+   * Sandbox auto-wipe (G3, PRD §5.5): daily tick that enqueues a rebuild per
+   * tenant honouring each tenant's sandbox_wipe_days.
+   *
+   * DEFAULT IS EMPTY = DISABLED (2026-08-22). It used to be "30 3 * * *", and
+   * a tenant lost a night's sandbox work to it at 03:30 UTC with nothing in the
+   * console to explain why. Three defects compounded: 0101 shipped
+   * `last_sandbox_wipe_at` with no backfill (NULL reads as "wipe now"), the
+   * stamp that would have cleared it hung on a missing connect(), and no wipe
+   * of any kind wrote an audit row. Wipes are MANUAL from now on — the console
+   * button and `scripts/db/sandbox-wipe.js --slug=…`, both audited.
+   *
+   * The scheduler itself is intact and honours every tenant's interval. A
+   * deployment that genuinely wants the cadence back sets this to a cron
+   * pattern AND sets sandbox_wipe_days > 0 on the tenants that want it — two
+   * deliberate acts, not one forgotten default.
+   */
+  SANDBOX_WIPE_CRON: z.string().default(""),
   // God-Mode PIN rotation (G24): weekly, Monday 06:00 UTC — the legacy's
   // cadence, so a destructive credential is never standing for more than a
   // week.

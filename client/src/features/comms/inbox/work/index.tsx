@@ -25,6 +25,7 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import { tr } from "@/lib/i18n";
 import { BindingChip } from "./binding";
 import { DossierDrawer } from "./dossier-drawer";
 import { ActionCards } from "./action-cards";
@@ -92,7 +93,7 @@ export function WorkRail({
 
       {!bound && (
         <Button size="sm" variant="outline" onClick={() => setConverting(true)}>
-          Turn this into a record
+          {tr("Turn this into a record")}
         </Button>
       )}
 
@@ -111,7 +112,7 @@ export function WorkRail({
                 disabled ? "cursor-not-allowed text-muted-foreground/60" : "hover:bg-muted",
               )}
             >
-              <span>{s.label}</span>
+              <span>{tr(s.label)}</span>
               <span aria-hidden>{isOpen ? "−" : "+"}</span>
             </button>
             {/* Disabled sections say WHY, in the place the reason belongs. A
@@ -119,7 +120,7 @@ export function WorkRail({
                 whole chapter refusing. */}
             {disabled && (
               <p className="px-1 text-xs text-muted-foreground">
-                Link this thread to a client or a file first.
+                {tr("Link this thread to a client or a file first.")}
               </p>
             )}
             {isOpen && !disabled && (

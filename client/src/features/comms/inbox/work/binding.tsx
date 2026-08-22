@@ -37,6 +37,7 @@ import { LoadingRow } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { humanizeRef } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /**
@@ -48,9 +49,9 @@ import * as api from "@/lib/mail-api";
  * actually offers.
  */
 function confidenceBand(c: number): { label: string; tone: Tone } {
-  if (c >= 0.85) return { label: "Strong match", tone: "ok" };
-  if (c >= 0.6) return { label: "Likely", tone: "warn" };
-  return { label: "Weak", tone: "mute" };
+  if (c >= 0.85) return { label: tr("Strong match"), tone: "ok" };
+  if (c >= 0.6) return { label: tr("Likely"), tone: "warn" };
+  return { label: tr("Weak"), tone: "mute" };
 }
 
 /** The signal keys the server emits, in words an operator can act on. */
@@ -64,7 +65,8 @@ const SIGNAL_TEXT: Record<string, string> = {
   PARTICIPANT: "someone on this thread",
   THREAD_HISTORY: "an earlier message in this thread",
 };
-const signalText = (s: string) => SIGNAL_TEXT[s] || s.toLowerCase().replace(/_/g, " ");
+const signalText = (s: string) =>
+  (SIGNAL_TEXT[s] ? tr(SIGNAL_TEXT[s]) : s.toLowerCase().replace(/_/g, " "));
 
 export function BindingChip({
   threadId,
@@ -99,7 +101,7 @@ export function BindingChip({
   }
 
   return (
-    <section className="space-y-2" aria-label="What this thread is about">
+    <section className="space-y-2" aria-label={tr("What this thread is about")}>
       {entityRef ? (
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -115,17 +117,16 @@ export function BindingChip({
             disabled={busy === "unbind"}
             onClick={() => run("unbind", () => api.unbindThread(threadId))}
           >
-            Not this one
+            {tr("Not this one")}
           </Button>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          This thread is not linked to a record yet, so the drawer, the action
-          cards and the assistant have nothing to work from.
+          {tr("This thread is not linked to a record yet, so the drawer, the action cards and the assistant have nothing to work from.")}
         </p>
       )}
 
-      {suggestions.loading && <LoadingRow label="Looking for a match…" />}
+      {suggestions.loading && <LoadingRow label={tr("Looking for a match…")} />}
 
       {open.length > 0 && (
         <ul className="space-y-1.5">
@@ -146,7 +147,7 @@ export function BindingChip({
                     the operator how sure the machine is, not why — and "why"
                     is the only thing that lets them disagree with it. */}
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Matched on {signalText(s.signal)}
+                  {tr("Matched on")} {signalText(s.signal)}
                   {s.matched_text ? (
                     <>
                       {" — "}
@@ -163,7 +164,7 @@ export function BindingChip({
                         api.acceptSuggestion(threadId, s.email_binding_suggestion_id))
                     }
                   >
-                    Link it
+                    {tr("Link it")}
                   </Button>
                   <Button
                     size="sm"
@@ -174,7 +175,7 @@ export function BindingChip({
                         api.rejectSuggestion(threadId, s.email_binding_suggestion_id))
                     }
                   >
-                    No
+                    {tr("No")}
                   </Button>
                 </div>
               </li>
@@ -200,19 +201,19 @@ export function BindingChip({
             value={manual}
             onChange={(e) => setManual(e.target.value)}
             placeholder="client:… or dossier:…"
-            aria-label="Record reference"
+            aria-label={tr("Record reference")}
             className="h-8 text-xs"
           />
           <Button size="sm" type="submit" disabled={busy === "manual" || !manual.trim()}>
-            Link
+            {tr("Link")}
           </Button>
           <Button size="sm" variant="ghost" type="button" onClick={() => setShowManual(false)}>
-            Cancel
+            {tr("Cancel")}
           </Button>
         </form>
       ) : (
         <Button size="sm" variant="ghost" onClick={() => setShowManual(true)}>
-          {entityRef ? "Link to something else" : "Link it myself"}
+          {entityRef ? tr("Link to something else") : tr("Link it myself")}
         </Button>
       )}
     </section>

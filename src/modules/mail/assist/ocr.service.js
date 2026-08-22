@@ -41,6 +41,7 @@ const vault = require("../../vault/document_vault/document_vault.service");
 const vision = require("../../../services/ai/vision.service");
 const platformVendors = require("../../../services/platform/ai-vendor.service");
 const governance = require("../../ai/governance/governance.service");
+const threadRepo = require("../mail/thread.repo");
 
 const MODULE = "MOD-72";
 const FEATURE = "mail_ai";
@@ -236,18 +237,59 @@ async function extract(client, { attachmentId, force = false } = {}, user = null
 }
 
 /** What is waiting to be reviewed, newest first. */
-async function listPending(client, { limit = 50 } = {}) {
+/**
+ * The pending queue — C-4.
+ *
+ * This listed every EXTRACTED row in the tenant, with the thread subject
+ * attached, to any MOD-72 view user. It is a list of what has already been sent
+ * to a third-party vision vendor, so an unscoped version discloses both the
+ * documents and the conversations they came from.
+ *
+ * Now filtered by the same §9.5 predicate as every other list. `userId` is
+ * required rather than defaulted: a caller that forgets it gets NOTHING rather
+ * than everything, because the failure mode of this particular query is what
+ * the finding was.
+ */
+async function listPending(client, { limit = 50, userId = null } = {}) {
+  if (!userId) return [];
   const { rows } = await client.query(
     `SELECT e.*, a.filename, a.email_message_id, m.email_thread_id, m.subject
        FROM attachment_extraction e
        JOIN email_attachment a ON a.email_attachment_id = e.email_attachment_id
-       LEFT JOIN email_message m ON m.email_message_id = a.email_message_id
+       JOIN email_message m ON m.email_message_id = a.email_message_id
+       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
       WHERE e.status = 'EXTRACTED'
+        AND t.email_connection_id IN ${threadRepo.accessible(2)}
+        AND ${require("../triage/visibility").clause("$2")}
       ORDER BY e.created_at DESC
       LIMIT $1`,
-    [limit],
+    [limit, userId],
   );
   return rows;
+}
+
+/**
+ * An extraction is addressed by its own id on review/dismiss, so the thread
+ * predicate has to be reached through its attachment. Refuses with NOT_FOUND,
+ * like every other visibility refusal in the module.
+ */
+async function assertExtractionVisible(client, extractionId, user) {
+  const userId = (user && user.user_id) || null;
+  const { rows } = await client.query(
+    `SELECT e.attachment_extraction_id
+       FROM attachment_extraction e
+       JOIN email_attachment a ON a.email_attachment_id = e.email_attachment_id
+       JOIN email_message m ON m.email_message_id = a.email_message_id
+       JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+       JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+      WHERE e.attachment_extraction_id = $1
+        AND t.email_connection_id IN ${threadRepo.accessible(2)}
+        AND ${require("../triage/visibility").clause("$2")}`,
+    [extractionId, userId],
+  );
+  if (!rows[0]) throw new AppError("NOT_FOUND", "extraction not found", 404);
+  return rows[0];
 }
 
 /** Everything extracted from one message's attachments — the reading pane strip. */
@@ -273,6 +315,7 @@ async function listForMessage(client, messageId) {
  * module's form with these fields prefilled, and the record is created there.
  */
 async function review(client, extractionId, { fields = null } = {}, user = null) {
+  await assertExtractionVisible(client, extractionId, user);
   const { rows } = await client.query(
     `UPDATE attachment_extraction
         SET status = 'REVIEWED',
@@ -297,6 +340,7 @@ async function review(client, extractionId, { fields = null } = {}, user = null)
 /** Dismiss: this is not a document we want staged. The row stays, so it is not
  *  re-extracted and so "how often is this wrong" remains answerable. */
 async function dismiss(client, extractionId, user = null) {
+  await assertExtractionVisible(client, extractionId, user);
   const { rows } = await client.query(
     `UPDATE attachment_extraction
         SET status = 'DISMISSED', reviewed_by = $2, reviewed_at = now()

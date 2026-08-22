@@ -33,6 +33,7 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { LoadingRow } from "@/components/ui/states";
+import { tr } from "@/lib/i18n";
 import type { CommandDescriptor } from "@/lib/mail-api";
 
 const LISTBOX_ID = "slash-menu";
@@ -103,13 +104,13 @@ export function SlashMenu({
     <div
       id={LISTBOX_ID}
       role="listbox"
-      aria-label="Insert from the system"
+      aria-label={tr("Insert from the system")}
       className="absolute bottom-full left-2 z-20 mb-1 max-h-72 w-80 overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
     >
-      {loading && <LoadingRow label="Loading commands…" />}
+      {loading && <LoadingRow label={tr("Loading commands…")} />}
       {!loading && matches.length === 0 && (
         <p className="px-3 py-2 text-sm text-muted-foreground">
-          No command matches “{query}”.
+          {tr("No command matches")} “{query}”.
         </p>
       )}
       {matches.map((c, i) => (

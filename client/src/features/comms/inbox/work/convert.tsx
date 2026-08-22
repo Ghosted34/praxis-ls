@@ -36,6 +36,7 @@ import { Select } from "@/components/ui/modal";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { reportActionError } from "@/lib/action-error";
 import { fieldLabel, smartCell } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const TARGETS: { value: api.ConvertTarget; label: string }[] = [
@@ -81,7 +82,7 @@ export function ConvertDialog({
     api
       .convertPreview(threadId, target)
       .then((p) => { if (live) setPreview(p); })
-      .catch((err) => { if (live) setError((err as { message?: string })?.message || "Could not preview that."); })
+      .catch((err) => { if (live) setError((err as { message?: string })?.message || tr("Could not preview that.")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [threadId, target]);
@@ -104,7 +105,7 @@ export function ConvertDialog({
   const createButton = preview ? (
     <Link to={createHref(preview)} onClick={onClose}>
       <Button size="sm" variant={attachFirst ? "outline" : "default"}>
-        Create a new one
+        {tr("Create a new one")}
       </Button>
     </Link>
   ) : null;
@@ -114,35 +115,34 @@ export function ConvertDialog({
       open
       onClose={onClose}
       size="lg"
-      title="Turn this into a record"
-      description="This opens the owning module with the details filled in. Nothing is created until you save it there."
+      title={tr("Turn this into a record")}
+      description={tr("This opens the owning module with the details filled in. Nothing is created until you save it there.")}
     >
       <div className="space-y-3">
         <Select
           value={target}
           onChange={(e) => setTarget(e.target.value as api.ConvertTarget)}
-          aria-label="What this should become"
+          aria-label={tr("What this should become")}
         >
           {TARGETS.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+            <option key={t.value} value={t.value}>{tr(t.label)}</option>
           ))}
         </Select>
 
-        {loading && <LoadingRow label="Reading the thread…" />}
+        {loading && <LoadingRow label={tr("Reading the thread…")} />}
         {error && <ErrorState message={error} />}
 
         {preview && !loading && (
           <>
             <p className="text-xs text-muted-foreground">
-              Created in <span className="font-medium">{preview.target_module}</span>, under that
-              module's rights and numbering.
+              {tr("Created in")} <span className="font-medium">{preview.target_module}</span>, {tr("under that module's rights and numbering.")}
             </p>
 
             {/* Duplicates FIRST when the server says so. The order is the
                 control — see the header. */}
             {attachFirst && preview.duplicates.length > 0 && (
-              <Callout tone="warn" title="This may already exist.">
-                {preview.hint || "Attach this email to the existing record instead of making another."}
+              <Callout tone="warn" title={tr("This may already exist.")}>
+                {preview.hint || tr("Attach this email to the existing record instead of making another.")}
               </Callout>
             )}
 
@@ -156,7 +156,7 @@ export function ConvertDialog({
                     <span className="flex items-center gap-2 text-sm">
                       {d.name || d.id}
                       {typeof d.score === "number" && (
-                        <Pill tone={d.score >= 85 ? "ok" : "warn"}>{Math.round(d.score)}% match</Pill>
+                        <Pill tone={d.score >= 85 ? "ok" : "warn"}>{`${Math.round(d.score)}% ${tr("match")}`}</Pill>
                       )}
                     </span>
                     <Button
@@ -164,7 +164,7 @@ export function ConvertDialog({
                       variant={attachFirst ? "default" : "outline"}
                       onClick={() => attach(d.id)}
                     >
-                      Attach to this
+                      {tr("Attach to this")}
                     </Button>
                   </li>
                 ))}
@@ -173,7 +173,7 @@ export function ConvertDialog({
 
             <div className="rounded-lg border border-border px-3 py-2">
               <p className="mb-1 text-xs font-medium text-muted-foreground">
-                What will be filled in
+                {tr("What will be filled in")}
               </p>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 {Object.entries(preview.prefill || {})
@@ -188,7 +188,7 @@ export function ConvertDialog({
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
               {createButton}
             </div>
           </>

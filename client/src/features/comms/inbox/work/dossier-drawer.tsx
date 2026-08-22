@@ -37,6 +37,7 @@ import { TabsRoot } from "@/components/ui/tabs";
 import { ErrorState, LoadingRow, EmptyState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { humanizeRef, smartCell, fieldLabel } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const TAB_LABEL: Record<api.ContextTab, string> = {
@@ -63,7 +64,7 @@ const HIDDEN = /(^|_)(id|ref_id|uuid)$/;
 
 function TabTable({ rows }: { rows: unknown[] }) {
   const objects = rows.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === "object");
-  if (!objects.length) return <EmptyState title="Nothing here yet" />;
+  if (!objects.length) return <EmptyState title={tr("Nothing here yet")} />;
   const cols = Object.keys(objects[0]).filter((k) => !HIDDEN.test(k));
 
   return (
@@ -110,18 +111,17 @@ function TabTable({ rows }: { rows: unknown[] }) {
 function TabBody({ entityRef, tab }: { entityRef: string; tab: api.ContextTab }) {
   const res = useResource(() => api.mailContextTab(entityRef, tab), [entityRef, tab]);
 
-  if (res.loading) return <LoadingRow label={`Opening ${TAB_LABEL[tab]}…`} />;
+  if (res.loading) return <LoadingRow label={`${tr("Opening")} ${tr(TAB_LABEL[tab])}…`} />;
   if (res.error) return <ErrorState message={res.error} />;
   const data = res.data;
-  if (!data) return <EmptyState title="Nothing to show" />;
+  if (!data) return <EmptyState title={tr("Nothing to show")} />;
 
   // See the header: this is a different answer from an empty list, and it says
   // so. The alternative reads as a claim about the party.
   if (data.not_built) {
     return (
       <p className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
-        {TAB_LABEL[tab]} is not built for this kind of record yet. This is not
-        the same as it being empty — nothing has been checked.
+        {tr(TAB_LABEL[tab])} {tr("is not built for this kind of record yet. This is not the same as it being empty — nothing has been checked.")}
       </p>
     );
   }
@@ -155,7 +155,7 @@ export function DossierDrawer({ entityRef }: { entityRef: string }) {
   // the previous record's Money tab against the new record's header.
   React.useEffect(() => { setTab(null); }, [entityRef]);
 
-  if (ctx.loading) return <LoadingRow label="Opening the record…" />;
+  if (ctx.loading) return <LoadingRow label={tr("Opening the record…")} />;
   if (ctx.error) return <ErrorState message={ctx.error} />;
   const data = ctx.data;
   if (!data) return null;
@@ -164,7 +164,7 @@ export function DossierDrawer({ entityRef }: { entityRef: string }) {
   const current = tab && available.includes(tab) ? tab : available[0] || null;
 
   return (
-    <section className="space-y-3" aria-label="The linked record">
+    <section className="space-y-3" aria-label={tr("The linked record")}>
       <header className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold">
@@ -184,9 +184,9 @@ export function DossierDrawer({ entityRef }: { entityRef: string }) {
       {available.length > 0 && current && (
         <TabsRoot value={current} onValueChange={(v) => setTab(v as api.ContextTab)}>
           <TabList
-            label="Record detail"
+            label={tr("Record detail")}
             className="mb-2"
-            tabs={available.map((t) => ({ value: t, label: TAB_LABEL[t] }))}
+            tabs={available.map((t) => ({ value: t, label: tr(TAB_LABEL[t]) }))}
           />
           {/* Only the OPEN tab is mounted, which is what makes the lazy call
               lazy — rendering all six and hiding five would fetch all six. */}

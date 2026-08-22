@@ -42,6 +42,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { ErpBlock } from "./erp-block";
+import { tr } from "@/lib/i18n";
 
 export function useComposerEditor({
   initial,
@@ -74,7 +75,7 @@ export function useComposerEditor({
           HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
         }),
         Image.configure({ inline: false, allowBase64: false }),
-        Placeholder.configure({ placeholder: placeholder || "Write your message…" }),
+        Placeholder.configure({ placeholder: placeholder || tr("Write your message…") }),
         CharacterCount,
         TextStyle,
         Color,
@@ -96,7 +97,7 @@ export function useComposerEditor({
           // black hole to a screen reader.
           role: "textbox",
           "aria-multiline": "true",
-          "aria-label": "Message body",
+          "aria-label": tr("Message body"),
         },
       },
     },

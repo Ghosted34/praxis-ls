@@ -29,6 +29,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { PageHeader } from "@/components/data-list";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const GROUP_LABEL: Record<string, string> = {
@@ -95,13 +96,13 @@ function BindModal({
           {point.resolved.why}
         </div>
         <Field
-          label="Send this from"
-          hint="Leave unset to inherit the section sender, then the Praxis system sender."
+          label={tr("Send this from")}
+          hint={tr("Leave unset to inherit the section sender, then the Praxis system sender.")}
         >
           <Select value={choice} onChange={(e) => setChoice(e.target.value)}>
-            <option value="">— not set: inherit —</option>
+            <option value="">{tr("— not set: inherit —")}</option>
             {senders.length > 0 && (
-              <optgroup label="System sender identities">
+              <optgroup label={tr("System sender identities")}>
                 {senders.map((s) => (
                   <option key={s.email_identity_id} value={`identity:${s.email_identity_id}`}>
                     {s.from_address} ({s.purpose})
@@ -110,7 +111,7 @@ function BindModal({
               </optgroup>
             )}
             {mailboxes.length > 0 && (
-              <optgroup label="Connected mailboxes">
+              <optgroup label={tr("Connected mailboxes")}>
                 {mailboxes.map((m) => (
                   <option key={m.email_connection_id} value={`mailbox:${m.email_connection_id}`}>
                     {m.email_address}
@@ -123,14 +124,13 @@ function BindModal({
         </Field>
         {!point.is_wired && (
           <p className="micro text-muted-foreground">
-            Nothing in the product sends through this yet. Setting it now means it is already right
-            when that part is built.
+            {tr("Nothing in the product sends through this yet. Setting it now means it is already right when that part is built.")}
           </p>
         )}
         {error != null && <ErrorState message={errMsg(error)} />}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy}>Save</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{tr("Cancel")}</Button>
+          <Button type="submit" loading={busy} disabled={busy}>{tr("Save")}</Button>
         </div>
       </form>
     </Modal>
@@ -150,28 +150,26 @@ export function SendPointsTab() {
   return (
     <section className="space-y-5">
       <PageHeader
-        title="Send points"
-        description="Every place the product sends mail, and which address each one goes out from."
+        title={tr("Send points")}
+        description={tr("Every place the product sends mail, and which address each one goes out from.")}
       />
 
       {points.error && <ErrorState message={points.error} />}
 
       <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-sm">
-        A send point with no sender of its own falls back — first to the section sender for its
-        purpose, then to the company&apos;s shared SMTP, then to the Praxis system sender. Nothing
-        ever fails to send because a send point is unset.
+        {tr("A send point with no sender of its own falls back — first to the section sender for its purpose, then to the company's shared SMTP, then to the Praxis system sender. Nothing ever fails to send because a send point is unset.")}
         {unconfigured > 0 && (
           <>
             {" "}
-            <strong>{unconfigured}</strong> of the send points the product actually uses are still on
-            the fallback.
+            <strong>{unconfigured}</strong>{" "}
+            {tr("of the send points the product actually uses are still on the fallback.")}
           </>
         )}
       </div>
 
       {groups.map((g) => (
         <div key={g}>
-          <h3 className="text-sm font-medium">{GROUP_LABEL[g] || g}</h3>
+          <h3 className="text-sm font-medium">{GROUP_LABEL[g] ? tr(GROUP_LABEL[g]) : g}</h3>
           <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
             {rows.filter((r) => r.group_key === g).map((r) => (
               <li key={r.send_point_key} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
@@ -179,8 +177,8 @@ export function SendPointsTab() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm">{r.label_en}</span>
                     {!r.is_wired && (
-                      <span title="Declared for routing, but nothing in the product sends through it yet.">
-                        <Pill tone="mute">not used yet</Pill>
+                      <span title={tr("Declared for routing, but nothing in the product sends through it yet.")}>
+                        <Pill tone="mute">{tr("not used yet")}</Pill>
                       </span>
                     )}
                   </div>
@@ -188,9 +186,9 @@ export function SendPointsTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Pill tone={SOURCE_TONE[r.resolved.source] || "mute"}>
-                    {SOURCE_LABEL[r.resolved.source] || r.resolved.source}
+                    {SOURCE_LABEL[r.resolved.source] ? tr(SOURCE_LABEL[r.resolved.source]) : r.resolved.source}
                   </Pill>
-                  <Button type="button" variant="outline" onClick={() => setEditing(r)}>Change</Button>
+                  <Button type="button" variant="outline" onClick={() => setEditing(r)}>{tr("Change")}</Button>
                 </div>
               </li>
             ))}

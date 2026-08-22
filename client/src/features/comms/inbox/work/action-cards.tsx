@@ -38,6 +38,7 @@ import { Pill } from "@/components/ui/pill";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { fieldLabel, smartCell } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /**
@@ -68,10 +69,10 @@ function Card({ card, language }: { card: api.ActionCard; language: "en" | "fr" 
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{label}</span>
           {card.ready ? (
-            <Pill tone="ok">Ready</Pill>
+            <Pill tone="ok">{tr("Ready")}</Pill>
           ) : (
             <Pill tone="warn">
-              Needs {card.missing.length} {card.missing.length === 1 ? "thing" : "things"}
+              {`${tr("Needs")} ${card.missing.length} ${card.missing.length === 1 ? tr("thing") : tr("things")}`}
             </Pill>
           )}
         </div>
@@ -94,7 +95,7 @@ function Card({ card, language }: { card: api.ActionCard; language: "en" | "fr" 
             aria-expanded={open}
             className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
           >
-            {open ? "Hide what is missing" : `What is missing?`}
+            {open ? tr("Hide what is missing") : tr("What is missing?")}
           </button>
           {open && (
             <ul className="mt-1.5 space-y-1">
@@ -115,7 +116,7 @@ function Card({ card, language }: { card: api.ActionCard; language: "en" | "fr" 
 
       {card.ready && Object.keys(card.prefill || {}).length > 0 && (
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          Prefilled:{" "}
+          {tr("Prefilled:")}{" "}
           {Object.entries(card.prefill)
             .slice(0, 4)
             .map(([k, v]) => `${fieldLabel(k)} ${smartCell(v)}`)
@@ -135,29 +136,27 @@ export function ActionCards({
 }) {
   const res = useResource(() => api.listCards(threadId), [threadId]);
 
-  if (res.loading) return <LoadingRow label="Working out what you could do…" />;
+  if (res.loading) return <LoadingRow label={tr("Working out what you could do…")} />;
   if (res.error) return <ErrorState message={res.error} />;
 
   const cards = (res.data?.cards || []).filter((c) => c.read_only !== false);
   if (!cards.length) {
     return (
       <p className="text-xs text-muted-foreground">
-        Nothing to start from this thread yet — link it to a client or a file
-        first.
+        {tr("Nothing to start from this thread yet — link it to a client or a file first.")}
       </p>
     );
   }
 
   return (
-    <section aria-label="Things you can start from this email">
+    <section aria-label={tr("Things you can start from this email")}>
       <ul className="space-y-1.5">
         {cards.map((c) => (
           <Card key={c.card} card={c} language={language} />
         ))}
       </ul>
       <p className="mt-2 text-xs text-muted-foreground">
-        Each of these opens the module that owns the document. Nothing is
-        created from here.
+        {tr("Each of these opens the module that owns the document. Nothing is created from here.")}
       </p>
     </section>
   );

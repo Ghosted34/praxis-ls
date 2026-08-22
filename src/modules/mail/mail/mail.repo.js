@@ -3,6 +3,12 @@
  *  enriched inbound/thread store (0480/0481). All SQL lives here. */
 "use strict";
 const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
+// C-3. `accessible` and the §9.5 clause, imported rather than re-written: a
+// second copy of either predicate is the leak this module has already paid for
+// once. `thread.repo` requires only query-helpers and `triage/visibility`, so
+// there is no cycle back to this file.
+const threadRepo = require("./thread.repo");
+const visibility = require("../triage/visibility");
 
 async function listIdentities(client) {
   const { rows } = await client.query(
@@ -44,27 +50,53 @@ async function listSentLog(client, { limit = 100, offset = 0, identityId = null 
 }
 
 /**
- * The legacy flat inbox view (GET /mail/inbox), kept working over the new store.
+ * The legacy flat inbox view (GET /mail/inbox) — C-3.
  *
- * It predates threads and returns messages, not conversations, so it reads
- * email_message directly. `is_read` here is "read by ANYONE", which is the old
- * semantics — honest for a legacy endpoint, and the reason the thread list does
- * not use this query. New surfaces use thread.repo.
+ * ── WHAT THIS WAS ───────────────────────────────────────────────────────────
+ *
+ * `WHERE m.direction = 'IN'`. That was the whole scope. No user, no mailbox, no
+ * thread visibility — so any MOD-72 *view* user listed EVERY inbound message of
+ * EVERY mailbox in the tenant, and the live "Message log" tab rendered it. The
+ * `is_read` column was `EXISTS(state WHERE is_read)` with no `user_id`, which is
+ * the mailbox-wide read flag the PR-1A rework existed to delete, resurrected on
+ * the surface the rework did not touch.
+ *
+ * The old header called the shared read flag "honest for a legacy endpoint".
+ * That was a fair description of the read-state semantics and not of the
+ * missing scope, and the second thing hid behind the first.
+ *
+ * ── WHAT IT IS NOW ──────────────────────────────────────────────────────────
+ *
+ * The same flat message shape — the endpoint's contract is unchanged and the
+ * client keeps working — over the same two predicates every other read uses:
+ * `accessible` for the mailbox and `vis` for the thread. `is_read` is now the
+ * CALLER's state, matching the rest of the product.
+ *
+ * `userId` is required rather than defaulted, and a call without one returns
+ * nothing. A default of "no user" on this particular query is what the finding
+ * was; failing closed makes the omission visible as an empty list rather than
+ * as a tenant-wide disclosure.
  */
-async function listInbox(client, { limit = 100, offset = 0, identityId = null } = {}) {
-  const params = [Math.min(Math.max(Number(limit) || 100, 1), 500), Number(offset) || 0];
+async function listInbox(client, { limit = 100, offset = 0, identityId = null, userId = null } = {}) {
+  if (!userId) return [];
+  const params = [Math.min(Math.max(Number(limit) || 100, 1), 500), Number(offset) || 0, userId];
   let where = "WHERE m.direction = 'IN'";
   if (identityId) { params.push(identityId); where += ` AND m.email_identity_id = $${params.length}`; }
   const { rows } = await client.query(
     "SELECT m.email_message_id AS email_inbound_id, m.email_identity_id, m.from_address, " +
       "array_to_string(m.to_address::text[], ', ') AS to_address, m.subject, m.body_preview, " +
-      "t.entity_ref, EXISTS (SELECT 1 FROM email_message_state s " +
-      "  WHERE s.email_message_id = m.email_message_id AND s.is_read) AS is_read, " +
+      "t.entity_ref, COALESCE(s.is_read, false) AS is_read, " +
       "m.received_at, i.purpose " +
       "FROM email_message m " +
       "JOIN email_thread t ON t.email_thread_id = m.email_thread_id " +
+      "JOIN email_connection c ON c.email_connection_id = t.email_connection_id " +
+      "LEFT JOIN email_message_state s " +
+      "  ON s.email_message_id = m.email_message_id AND s.user_id = $3 " +
       "LEFT JOIN email_identity i ON i.email_identity_id = m.email_identity_id " +
-      where + " ORDER BY m.received_at DESC LIMIT $1 OFFSET $2",
+      where +
+      ` AND t.email_connection_id IN ${threadRepo.accessible(3)}` +
+      ` AND ${visibility.clause("$3")}` +
+      " ORDER BY m.received_at DESC LIMIT $1 OFFSET $2",
     params,
   );
   return rows;

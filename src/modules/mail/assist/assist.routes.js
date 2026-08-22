@@ -28,6 +28,30 @@ const { body, params } = require("../../../shared/http/validate");
 const service = require("./assist.service");
 const ocr = require("./ocr.service");
 const semantic = require("./semantic.service");
+/*
+ * C-4, this chapter's contribution. `assist.service.threadContext` and
+ * `threadMessages` query `email_thread` / `email_message` BY ID with no §9.5
+ * predicate, so a caller who knew (or guessed from a deep link) a thread id
+ * could POST /assist/draft and receive a generated reply built from a PRIVATE
+ * thread's transcript plus the ERP facts of its bound entity — and /assist/
+ * summary additionally WROTE that transcript-derived text into
+ * `email_thread_summary`, where the same unscoped SELECT served it back on
+ * every later call.
+ *
+ * The OCR route was worse in kind: it resolved an arbitrary attachment id, read
+ * the vault bytes and sent them to an external VISION vendor. An ungated id
+ * there did not merely disclose a private thread's file, it exported it to a
+ * third party — a supplier invoice's bank details leaving the building.
+ *
+ * The route's own header (note 1 above) is about grounding RBAC, which was
+ * correctly implemented. The visibility question was simply never asked of
+ * these routes; these three middlewares ask it.
+ */
+const {
+  requireVisibleThreadBody,
+  requireVisibleMessage,
+  requireVisibleAttachment,
+} = require("../mail/visible");
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -55,6 +79,7 @@ router.post("/assist/compose", requirePermission("MOD-72", "view"),
     draft: z.string().max(20000).optional(),
     language: z.enum(["en", "fr"]).optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id", { optional: true }),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.compose(c, req.body, actor(req))),
   })));
@@ -66,6 +91,7 @@ router.post("/assist/draft", requirePermission("MOD-72", "view"),
     tone: TONE.optional(),
     instruction: z.string().max(2000).optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.draft(c, {
       threadId: req.body.thread_id,
@@ -82,6 +108,7 @@ router.post("/assist/rewrite", requirePermission("MOD-72", "view"),
     action: ACTION,
     language: z.enum(["en", "fr"]).optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id", { optional: true }),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.rewrite(c, {
       threadId: req.body.thread_id, text: req.body.text,
@@ -96,6 +123,7 @@ router.post("/assist/translate", requirePermission("MOD-72", "view"),
     to: z.enum(["en", "fr"]),
     language: z.enum(["en", "fr"]).optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id", { optional: true }),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.translate(c, {
       threadId: req.body.thread_id, text: req.body.text,
@@ -114,6 +142,7 @@ router.post("/assist/summary", requirePermission("MOD-72", "view"),
     language: z.enum(["en", "fr"]).optional(),
     force: z.boolean().optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.summary(c, {
       threadId: req.body.thread_id, language: req.body.language, force: req.body.force,
@@ -134,6 +163,7 @@ router.post("/assist/voice", requirePermission("MOD-72", "view"),
     tone: TONE.optional(),
     language: z.enum(["en", "fr"]).optional(),
   }).strict()),
+  requireVisibleThreadBody("thread_id", { optional: true }),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.voice(c, {
       threadId: req.body.thread_id, transcript: req.body.transcript,
@@ -196,18 +226,26 @@ const requireOcr = requireFeature("mail.ocr");
 
 router.post("/assist/ocr/:attachmentId", requireOcr, requirePermission("MOD-72", "view"),
   body(z.object({ force: z.boolean().optional() }).strict()),
+  requireVisibleAttachment("attachmentId"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.extract(c, {
       attachmentId: req.params.attachmentId, force: req.body.force,
     }, actor(req))),
   })));
 
+/* Tenant-wide before C-4: this is a list of what has ALREADY been sent to the
+ * vision vendor, keyed to attachments, and it named threads the caller could
+ * not open. It is now filtered by the same §9.5 predicate as everything else —
+ * in the service, because a middleware cannot narrow a list it does not build. */
 router.get("/assist/ocr/pending", requireOcr, requirePermission("MOD-72", "view"),
   asyncHandler(async (req, res) => res.json({
-    data: await req.identityDb((c) => ocr.listPending(c, { limit: Number(req.query.limit) || 50 })),
+    data: await req.identityDb((c) => ocr.listPending(c, {
+      limit: Number(req.query.limit) || 50,
+      userId: (req.user && req.user.user_id) || null,
+    })),
   })));
 
-router.get("/messages/:id/extractions", requireOcr, requirePermission("MOD-72", "view"),
+router.get("/messages/:id/extractions", requireOcr, requirePermission("MOD-72", "view"), requireVisibleMessage("id"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.listForMessage(c, req.params.id)),
   })));

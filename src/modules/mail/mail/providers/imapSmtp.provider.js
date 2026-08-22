@@ -45,7 +45,11 @@ class ImapSmtpProvider {
 
   capabilities() {
     // SMTP does not file sent copies for us → engine/adapter must APPEND them.
-    return { ...baseCapabilities(), appendSent: true, folders: true, folderMove: true, serverFlags: true };
+    return {
+      ...baseCapabilities(),
+      appendSent: true, folders: true, folderMove: true, serverFlags: true,
+      serverDelete: true,
+    };
   }
 
   _imapClient() {
@@ -112,7 +116,10 @@ class ImapSmtpProvider {
           return box;
         }
       } catch {
-        /* try next candidate */
+        /* @silent:storage this candidate folder name is not the server's — the
+           loop's whole job is to try the next one. A server that fails EVERY
+           candidate returns null, and the caller treats that as "no Sent copy",
+           which is the honest outcome. */
       }
     }
     return null;
@@ -158,9 +165,12 @@ class ImapSmtpProvider {
       await imap.connect();
       await this._appendSent(imap, raw);
     } catch {
-      /* Sent-append is best effort */
+      /* @silent:storage the message HAS BEEN SENT by the time this runs. Failing
+         the call here would tell the user their mail did not go out when it
+         did — a far worse error than a missing Sent copy, which the next IMAP
+         sync reconciles anyway. */
     } finally {
-      if (imap) { try { await imap.logout(); } catch { /* noop */ } }
+      if (imap) { try { await imap.logout(); } catch { /* @silent:teardown the connection is being discarded either way */ } }
     }
 
     const threadKey = (msg.references && msg.references[0]) || msg.inReplyTo || messageId;
@@ -178,6 +188,32 @@ class ImapSmtpProvider {
     } finally {
       lock.release();
       try { await imap.logout(); } catch { /* @silent:teardown the move already committed */ }
+    }
+  }
+
+  /**
+   * Expunge a message for good (H-1).
+   *
+   * `messageDelete` sets \Deleted and expunges in one step. The folder is the
+   * one the message is filed in — deleting by Message-ID against the wrong
+   * mailbox silently matches nothing, so the caller passes the folder it read
+   * the message from rather than assuming INBOX.
+   *
+   * A message the server no longer has is not an error: the user asked for it
+   * to be gone and it is gone. `messageDelete` answers false in that case and
+   * this reports it rather than throwing, because the local rows are already
+   * removed and a throw here would only produce a scary log for a success.
+   */
+  async deleteMessage(externalMessageId, fromPath) {
+    const imap = this._imapClient();
+    await imap.connect();
+    const lock = await imap.getMailboxLock(fromPath || "INBOX");
+    try {
+      const ok = await imap.messageDelete({ header: { "message-id": externalMessageId } });
+      return { deleted: ok === true };
+    } finally {
+      lock.release();
+      try { await imap.logout(); } catch { /* @silent:teardown the expunge already committed */ }
     }
   }
 

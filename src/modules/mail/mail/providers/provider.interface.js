@@ -35,6 +35,12 @@ function baseCapabilities() {
     serverFlags: false,   // \Seen \Flagged \Answered are server-side     (IMAP: yes)
     serverDrafts: false,  // can APPEND to Drafts        (not used in this programme)
     serverSearch: false,  // provider-side search              (we use Postgres FTS)
+    // Can EXPUNGE a message from the mailbox for good           (IMAP: yes).
+    // Added for H-1: without it a message deleted in Praxis is still on the
+    // server and returns on the next sync, which reads to the user as the
+    // delete having silently failed. An adapter that answers false is simply
+    // skipped by `propagateToServer`, and the local rows are still removed.
+    serverDelete: false,
   };
 }
 
@@ -60,6 +66,8 @@ const EmailProvider = {
   async fetchSince(/* cursor */) { throw new Error("fetchSince() not implemented"); },
   async getMessage(/* externalMessageId */) { throw new Error("getMessage() not implemented"); },
   async markAsRead(/* externalMessageId */) { throw new Error("markAsRead() not implemented"); },
+  // Only called when capabilities().serverDelete is true.
+  async deleteMessage(/* externalMessageId, fromPath */) { throw new Error("deleteMessage() not implemented"); },
 
   // Push lifecycle (Phase 2 providers only)
   async subscribe() { return null; },

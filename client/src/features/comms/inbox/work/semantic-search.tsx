@@ -31,6 +31,7 @@ import { Pill } from "@/components/ui/pill";
 import { LoadingRow, EmptyState } from "@/components/ui/states";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt, humanizeRef } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 export function SemanticResults({
@@ -57,24 +58,24 @@ export function SemanticResults({
     return () => { live = false; };
   }, [query]);
 
-  if (busy && !data) return <LoadingRow label="Searching by meaning…" />;
+  if (busy && !data) return <LoadingRow label={tr("Searching by meaning…")} />;
   if (!data) return null;
 
   return (
     <div className="space-y-2 rounded-xl border border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          Conversations that read like “{data.query}”
+          {tr("Conversations that read like")} “{data.query}”
         </p>
         <Button size="sm" variant="ghost" onClick={onClear}>
-          Back to keyword search
+          {tr("Back to keyword search")}
         </Button>
       </div>
 
       {data.hits.length === 0 ? (
         <EmptyState
-          title="Nothing came close"
-          hint="Search by meaning only finds conversations that have been indexed. If this mailbox was connected recently, give the first sync time."
+          title={tr("Nothing came close")}
+          hint={tr("Search by meaning only finds conversations that have been indexed. If this mailbox was connected recently, give the first sync time.")}
         />
       ) : (
         <ul className="space-y-1">
@@ -87,7 +88,7 @@ export function SemanticResults({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">
-                    {h.subject || "(no subject)"}
+                    {h.subject || tr("(no subject)")}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {h.entity_ref ? `${humanizeRef(h.entity_ref)} · ` : ""}
@@ -107,7 +108,7 @@ export function SemanticResults({
         // See the header: a count, deliberately. It leaks nothing and it stops
         // correct filtering from looking like a broken feature.
         <p className="text-xs text-muted-foreground">
-          {data.withheld} more matched conversations you do not have access to.
+          {data.withheld} {tr("more matched conversations you do not have access to.")}
         </p>
       )}
     </div>

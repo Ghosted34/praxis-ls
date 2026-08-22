@@ -16,6 +16,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
+import { tr } from "@/lib/i18n";
 
 export function UndoSendToast({
   releaseAt,
@@ -62,28 +63,28 @@ export function UndoSendToast({
       {state === "held" && (
         <>
           <span className="text-sm">
-            {left > 0 ? `Sending in ${left}s` : "Sending…"}
+            {left > 0 ? `${tr("Sending in")} ${left}s` : tr("Sending…")}
           </span>
-          <Button size="sm" variant="outline" onClick={onUndo}>Undo</Button>
+          <Button size="sm" variant="outline" onClick={onUndo}>{tr("Undo")}</Button>
         </>
       )}
-      {state === "cancelling" && <span className="text-sm text-muted-foreground">Stopping…</span>}
+      {state === "cancelling" && <span className="text-sm text-muted-foreground">{tr("Stopping…")}</span>}
       {state === "cancelled" && (
         <>
-          <Pill tone="warn">Not sent</Pill>
-          <span className="text-sm">Back in your drafts.</span>
+          <Pill tone="warn">{tr("Not sent")}</Pill>
+          <span className="text-sm">{tr("Back in your drafts.")}</span>
         </>
       )}
       {state === "gone" && (
         <>
-          <Pill tone="ok">Sent</Pill>
-          <span className="text-sm">{error || "Too late to undo — it has already left."}</span>
+          <Pill tone="ok">{tr("Sent")}</Pill>
+          <span className="text-sm">{error || tr("Too late to undo — it has already left.")}</span>
         </>
       )}
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss"
+        aria-label={tr("Dismiss")}
         className="ml-auto rounded px-1 text-muted-foreground hover:text-foreground"
       >
         ×

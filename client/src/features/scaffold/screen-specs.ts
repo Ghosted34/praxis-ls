@@ -886,25 +886,6 @@ export const SPECS: ScreenSpec[] = [
     actions: ["Request signature"],
   },
   {
-    path: "vault/verification",
-    area: "Vault",
-    title: "Document verification",
-    purpose:
-      "QR/hash tamper check for issued documents. Backend module is incomplete (repo/validator missing).",
-    module: "vault/document_verification",
-    status: "partial",
-    columns: ["Doc ID", "Entity ref", "Hash", "Result", "Checked"],
-    actions: ["Verify document"],
-    ai: [
-      {
-        label: "Verify document",
-        kind: "assist",
-        describe:
-          "Verify a document by doc_id/entity_ref + hash (QR tamper check).",
-      },
-    ],
-  },
-  {
     path: "vault/compliance-flags",
     area: "Vault",
     title: "Compliance flags",

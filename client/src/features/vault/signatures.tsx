@@ -242,6 +242,113 @@ function RevokeForm({
   );
 }
 
+/**
+ * Who has verified this signature, when, and from how many distinct addresses.
+ *
+ * This is the internal half of the public portal, and it is what replaced the
+ * deleted "paste a hash" screen (guide §5.7, addition i). That screen asked an
+ * operator to type a fingerprint into a box; this one answers the question they
+ * actually have — did the counterparty ever check the document I sent them?
+ *
+ * Addresses are MASKED here as well as on the portal. §3.13 grants MOD-64
+ * `view` the full value, but as a deliberate reveal that is itself audited — a
+ * list rendering forty full addresses on open is not that reveal, it is a
+ * standing disclosure nobody asked for. The masking happens server-side, so
+ * this component never receives one.
+ */
+function ScansModal({
+  signature,
+  onClose,
+}: {
+  signature: Row | null;
+  onClose: () => void;
+}) {
+  const id = signature ? String(signature.signature_id) : null;
+  const [data, setData] = React.useState<Row | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!id) {
+      setData(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    tenant<Row>(`/signatures/${encodeURIComponent(id)}/scans`)
+      .then((r) => {
+        if (!cancelled) setData(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const scans = (data?.scans as Row[] | undefined) ?? [];
+
+  return (
+    <Modal
+      open={Boolean(signature)}
+      onClose={onClose}
+      title={tr("Verifications")}
+      description="Every time someone scanned this document's QR code or typed its verification code."
+      size="lg"
+    >
+      {error ? (
+        <ErrorState message={error} />
+      ) : data === null ? (
+        <SkeletonTable />
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {String(data.total ?? 0)} verification
+            {Number(data.total ?? 0) === 1 ? "" : "s"} from{" "}
+            {String(data.distinct_ips ?? 0)} distinct network
+            {Number(data.distinct_ips ?? 0) === 1 ? "" : "s"}
+            {data.last_scan_at ? `, last ${dateFmt(data.last_scan_at)}` : ""}.
+          </p>
+          {scans.length === 0 ? (
+            <EmptyState
+              title={tr("Nobody has verified this yet")}
+              hint="A verification is recorded the first time someone scans the printed QR code or types the code beneath it."
+            />
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>{tr("When")}</TH>
+                  <TH>{tr("How")}</TH>
+                  <TH>{tr("Network")}</TH>
+                  <TH>{tr("Device")}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {scans.map((r) => (
+                  <TR key={String(r.scan_id)}>
+                    <TD className="text-sm">{dateFmt(r.scanned_at)}</TD>
+                    <TD className="text-sm">
+                      {r.via === "CODE" ? "Typed code" : "Scanned QR"}
+                      {r.is_new_ip ? (
+                        <span className="block text-xs text-muted-foreground">
+                          First time from this network
+                        </span>
+                      ) : null}
+                    </TD>
+                    <TD className="font-mono text-xs">{cell(r.ip)}</TD>
+                    <TD className="text-sm">{cell(r.device)}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
 export function SignaturesPage() {
   const [refInput, setRefInput] = React.useState("");
   const [typeInput, setTypeInput] = React.useState("");
@@ -253,6 +360,7 @@ export function SignaturesPage() {
   );
   const [signOpen, setSignOpen] = React.useState(false);
   const [revoking, setRevoking] = React.useState<Row | null>(null);
+  const [scanning, setScanning] = React.useState<Row | null>(null);
   const gated = isGated(errorCode);
 
   const amended = (rows ?? []).filter((r) => r.status === "AMENDED");
@@ -387,6 +495,9 @@ export function SignaturesPage() {
                     <TD className="text-sm">{dateFmt(r.signed_at)}</TD>
                     <TD className="font-mono text-xs">{cell(r.verify_code)}</TD>
                     <TD className="text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setScanning(r)}>
+                        {tr("Verifications")}
+                      </Button>
                       {r.revoked_at ? null : (
                         <Button size="sm" variant="ghost" onClick={() => setRevoking(r)}>
                           {tr("Revoke")}
@@ -408,6 +519,7 @@ export function SignaturesPage() {
         onClose={() => setSignOpen(false)}
         onSaved={reload}
       />
+      <ScansModal signature={scanning} onClose={() => setScanning(null)} />
       <RevokeForm
         open={Boolean(revoking)}
         signature={revoking}

@@ -67,6 +67,14 @@ const DOMAIN_TO_CATEGORY = {
 
   // compliance & documents
   compliance_flag: "compliance", document: "compliance", document_vault: "compliance", vault: "compliance",
+  /*
+   * DOCUMENT signatures — somebody attesting to an invoice — not the mail
+   * programme's `signature.*`, which is the sign-off block on an outgoing
+   * message and lands in "system" where it belongs. The two share a word and
+   * nothing else; without this row every scan notification would file itself
+   * under System, next to cache invalidations.
+   */
+  document_signature: "compliance",
 
   // system / misc
   ai: "system", comms: "system", dashboard: "system", dictionary_item: "system", notification: "system",

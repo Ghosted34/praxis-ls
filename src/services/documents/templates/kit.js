@@ -221,14 +221,25 @@ function shell(title, bodyHtml, cfg = {}) {
     .totals tr.grand td { border-top: 2px solid ${c.accent}; font-weight: 700; font-size: 13px; }
     .section-t { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: ${c.muted}; margin: 18px 0 4px; }
     .box { border: 1px solid ${c.line}; border-radius: 8px; padding: 10px 12px; font-size: 11px; }
-    .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid ${c.line}; font-size: 9.5px; color: ${c.muted}; }
+    /* The foot carries the legal block on the left and — only when the document
+       actually has a signature — the verification block on the right. flex, not
+       a float: the legal line is variable-length and must be allowed to wrap
+       beside the QR rather than under it. */
+    .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid ${c.line}; font-size: 9.5px; color: ${c.muted}; display: flex; gap: 6mm; align-items: flex-start; justify-content: space-between; }
+    .foot .foot-legal { flex: 1; min-width: 0; }
+    .foot .foot-vfy { flex: none; width: 30mm; }
+    /* 20mm here against the seal's 22mm: the footer symbol is a convenience for
+       a document whose seal is elsewhere on the page (or on another page), and
+       the foot has less height to give. Still 0.6mm per module at this payload
+       length — above the 0.5mm a phone camera needs at arm's length (§3.7). */
+    .foot .foot-vfy svg { width: 20mm; height: 20mm; margin: 0 auto; }
+    .foot .foot-vfy .hint { font-size: 7px; line-height: 1.3; margin-top: 0.8mm; }
     .sig { display: flex; gap: 40px; margin-top: 30px; }
     .sig .b { flex: 1; }
     .sig .sig-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: ${c.muted}; }
     .sig .ln { border-top: 1px solid ${c.ink}; margin-top: 34px; padding-top: 3px; font-size: 10px; }
     .wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
     .wm span { font-size: 96px; font-weight: 800; color: ${c.accent}; opacity: 0.08; transform: rotate(-24deg); letter-spacing: 0.1em; }
-    .qr { margin-top: 8px; font-size: 9px; color: ${c.muted}; }
 
     /* ── The electronic seal (SIGNATURE_ENGINEERING_GUIDE §3.12) ────────────
        Sized in millimetres, not pixels: this block has a hard 34mm height
@@ -268,10 +279,16 @@ function shell(title, bodyHtml, cfg = {}) {
        #4b5563 is the lightest grey that survives a second-generation photocopy. */
     .seal .ev { margin-top: auto; padding-top: 1mm; font-family: ${c.monoFont};
                 font-size: 5.5pt; color: #4b5563; line-height: 1.45; }
-    .seal .vfy { width: 22mm; text-align: center; flex: none; }
-    .seal .vfy svg { display: block; width: 22mm; height: 22mm; }
-    .seal .vfy .code { font-family: ${c.monoFont}; font-size: 5.5pt; letter-spacing: 0.02em;
-                       color: #4b5563; margin-top: 0.8mm; white-space: nowrap; }
+    /* The verification block, shared by the seal and the foot (kit.verifyBlock).
+       Declared once and narrowed per home below, so the two can never drift
+       into printing the same code at two different sizes. */
+    .vfy { width: 22mm; text-align: center; flex: none; }
+    .vfy svg { display: block; width: 22mm; height: 22mm; }
+    /* white-space: nowrap on the code — "A4B7-K92M-XQ1P" breaking across two
+       lines at a hyphen reads as two different codes to someone typing it. */
+    .vfy .code { font-family: ${c.monoFont}; font-size: 5.5pt; letter-spacing: 0.02em;
+                 color: #4b5563; margin-top: 0.8mm; white-space: nowrap; }
+    .vfy .hint { font-family: ${c.font}; color: #4b5563; }
     @media print { .wm span { opacity: 0.08; } }`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="doc">${cfg.watermark ? watermark(cfg.watermark) : ""}${bodyHtml}</div></body></html>`;
 }
@@ -417,8 +434,47 @@ function sealBlock(sig = {}, cfg = {}) {
     ${identity}
     <div class="ev">${esc(sig.signedAt)} · ${esc(sig.method)}<br>${esc(sig.docRef || "")}${hashFragment}</div>
   </div>
-  <div class="vfy">${sig.qrSvg || ""}<div class="code">${esc(formatVerifyCode(sig.code))}</div></div>
+  ${verifyBlock({ code: sig.code, qrSvg: sig.qrSvg }, c)}
 </div>`;
+}
+
+/**
+ * The verification block — a QR and, beneath it, the same code in type
+ * (doc/SIGNATURE_ENGINEERING_GUIDE.md §5.2).
+ *
+ * ── One element, two homes ─────────────────────────────────────────────────
+ * `sealBlock` puts it in the seal's right-hand column; `footer` puts it at the
+ * foot of a document that carries a signature. They must render the SAME
+ * symbol at the same size from the same code, so there is one function rather
+ * than two pieces of markup that agree today.
+ *
+ * ── Inline SVG, never a data-URI <img> ─────────────────────────────────────
+ * Puppeteer rasterises inline SVG at print resolution, so the modules land on
+ * exact device pixels instead of being resampled from a bitmap — which is the
+ * difference between a symbol that survives a photocopier and one that does
+ * not. It also costs no extra request, so nothing depends on the renderer's
+ * CSP or on a network the render host may not have.
+ *
+ * ── What it does NOT print ─────────────────────────────────────────────────
+ * The URL. It is 40 characters of `https://…/v/…` that nobody types and that
+ * would double the block's height for no reader benefit — the QR carries it
+ * for a camera and the code carries it for a human. A short instruction line
+ * is printed instead, so someone holding paper knows the code is typable and
+ * where.
+ *
+ * @param {object} v
+ * @param {string} v.code   verify_code, any spelling — grouped for print here
+ * @param {string} v.qrSvg  inline SVG from services/signatures/qr.js
+ * @param {boolean} [v.showHint] print the "verify at …" line (footer only)
+ * @param {string} [v.hintUrl] the host to type, shown with the hint
+ */
+function verifyBlock(v = {}, cfg = {}) {
+  if (!v || !v.code) return "";
+  const lang = (cfg && cfg.language) || defaults().language;
+  const hint = v.showHint
+    ? `<div class="hint">${t({ fr: "Vérifiez ce document sur", en: "Verify this document at" }, lang)} ${esc(v.hintUrl || "")}</div>`
+    : "";
+  return `<div class="vfy">${v.qrSvg || ""}<div class="code">${esc(formatVerifyCode(v.code))}</div>${hint}</div>`;
 }
 
 /** `A4B7K92MXQ1P` → `A4B7-K92M-XQ1P`. Duplicated from services/signatures/tokens
@@ -467,16 +523,38 @@ function watermarkFor(client, configured) {
   return env === "sandbox" ? "TEST SANDBOX" : configured || "";
 }
 
+/**
+ * The document foot: the tenant's legal block, its own footer copy, and — when
+ * the document carries a signature — the verification block.
+ *
+ * ⚠ `verify` IS AN OBJECT, NOT A STRING. It was a string, and the string was
+ *   a "praxis" custom-scheme URI carrying an entity_ref — a scheme no phone
+ *   resolves, printed as text under the words "Verify authenticity", with no
+ *   hash in it and nothing at the other end. It told a reader their document
+ *   was verifiable and gave them no way to verify it, which is worse than
+ *   printing nothing.
+ *
+ *   A non-object is ignored rather than printed, so a caller that has not been
+ *   migrated renders a document with no verification block instead of putting
+ *   a machine token in front of a customer. The custom-scheme grep in guide
+ *   §5.8 criterion 2 returns nothing, and this guard is what keeps it that way.
+ *
+ * @param {object} [verify] { url, code, qrSvg } from services/signatures/verify-link.js
+ */
 function footer(entity = {}, cfg = {}, verify) {
   const legal = [entity.legal_name, entity.rccm ? `RCCM ${entity.rccm}` : null, entity.niu ? `NIU ${entity.niu}` : null, entity.address].filter(Boolean).map(esc).join(" · ");
   const custom = cfg.footer_text ? `<div>${esc(cfg.footer_text)}</div>` : "";
-  const qr = verify && cfg.show && cfg.show.qr ? `<div class="qr">${t({ fr: "Vérifier l'authenticité", en: "Verify authenticity" }, cfg.language)}: ${esc(verify)}</div>` : "";
-  return `<div class="foot">${legal}${custom}${qr}</div>`;
+  const v = verify && typeof verify === "object" && verify.code ? verify : null;
+  const host = v ? String(v.url || "").replace(/^https?:\/\//i, "").split("/")[0] : "";
+  const block = v && cfg.show && cfg.show.qr
+    ? `<div class="foot-vfy">${verifyBlock({ ...v, showHint: true, hintUrl: host }, cfg)}</div>`
+    : "";
+  return `<div class="foot"><div class="foot-legal">${legal}${custom}</div>${block}</div>`;
 }
 
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, signerBlock,
-  sealBlock, formatVerifyCode, watermark, watermarkFor, footer,
+  sealBlock, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
 };

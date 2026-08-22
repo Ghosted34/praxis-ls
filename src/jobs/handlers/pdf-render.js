@@ -12,7 +12,12 @@ module.exports = async function pdfRender(job) {
   if (!tenantMeta) throw new Error("pdf job needs tenantMeta");
   if (docType && recordId && !html) {
     const templateSvc = require("../../modules/documents/template/template.service");
-    return registry.withTenantConnection(tenantMeta, env, (c) => templateSvc.generate(c, { docType, recordId, entityId }));
+    // The worker has no request, so the QR's host comes from the tenant's own
+    // slug. Without it a background render would fall back to the apex, which
+    // resolves no tenant — and the wrong host cannot be corrected once printed.
+    const { originForSlug } = require("../../services/signatures/verify-link");
+    const origin = originForSlug(tenantMeta.slug);
+    return registry.withTenantConnection(tenantMeta, env, (c) => templateSvc.generate(c, { docType, recordId, entityId, origin }));
   }
   if (!html || !entityRef) throw new Error("pdf job needs html + entityRef");
   return registry.withTenantConnection(tenantMeta, env, (c) => pdf.renderAndStore(c, { html, key, entityRef, docType }));

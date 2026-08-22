@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (453)
+## All codes (451)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -261,7 +261,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 513× | — |
+| `NOT_FOUND` | 404, 422 | 515× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -303,7 +303,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_FIELD_SET` | 422 | 1× | — |
 | `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
-| `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
 | `NO_LINES` | 422 | 9× | — |
 | `NO_MODULE` | 422 | 2× | — |
@@ -322,7 +321,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
 | `NO_SIGNED_COPY` | 422 | 2× | — |
-| `NO_TARGET` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 5× | — |

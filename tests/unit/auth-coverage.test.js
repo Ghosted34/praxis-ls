@@ -45,6 +45,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "mail/public_secure",
     "Secure download links are intentionally reachable without an account; lookup is by minted token only, every refusal is a uniform 404, and the route is rate-limited.",
   ],
+  [
+    "vault/document_verification",
+    "The verification portal a printed QR resolves to. A stranger holding a document checking it WITHOUT an account is the entire feature; lookup is by the printed code only, every refusal is a uniform 404 that cannot distinguish malformed from never-existed, the read is pinned to live, and the route is rate-limited — which, since the code is 2^60 and stored in plaintext, is the sole defence against enumeration (SIGNATURE_ENGINEERING_GUIDE §3.7, §5.4).",
+  ],
 ]);
 
 /**
@@ -140,9 +144,6 @@ describe("every tenant module router is authenticated (no anonymous surface)", (
   it.each(modules.filter((m) => !PUBLIC_BY_DESIGN.has(m.name)))(
     "%s carries authMiddleware",
     ({ _, def }) => {
-      // document-verification /scan is intentionally reachable, but that module
-      // ALSO gates /verify, so authMiddleware is present on the router and it
-      // needs no exception here.
       expect(hasAuth(def.router)).toBe(true);
     },
   );

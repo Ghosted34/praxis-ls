@@ -12,6 +12,7 @@ const kit = require("../../../services/documents/templates/kit");
 const pdf = require("../../../services/pdf.service");
 const storage = require("../../../services/storage.service");
 const emailSvc = require("../../../services/email.service");
+const verifyLink = require("../../../services/signatures/verify-link");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -46,7 +47,10 @@ async function resolveLogo(ref) {
       const ext = (key.split(".").pop() || "png").toLowerCase();
       return `data:${LOGO_MIME[ext] || "image/png"};base64,${buf.toString("base64")}`;
     }
-  } catch { /* fall through to the raw ref */ }
+  } catch { /* @silent:storage — a logo the storage backend cannot hand back must
+    not stop a document rendering. Falling through to the raw ref gives the
+    renderer a URL to try; a missing letterhead is a cosmetic loss, a failed
+    invoice render is not. */ }
   return ref;
 }
 
@@ -955,8 +959,51 @@ async function resolveRecipient(client, docType, recordId) {
   return null;
 }
 
+/**
+ * The signatures a rendered document should carry a QR for, newest first.
+ *
+ * Revoked rows are excluded: the portal keeps answering "revoked" for a PDF
+ * printed before the revocation (that is the whole point of not deleting the
+ * row), but a document rendered AFTER it must not advertise a credential the
+ * tenant has withdrawn.
+ */
+async function activeSignatures(client, entityRef) {
+  if (!entityRef) return [];
+  try {
+    const sigRepo = require("../../vault/document_signature/document_signature.repo");
+    const rows = await sigRepo.listByRef(client, entityRef);
+    return rows.filter((r) => !r.revoked_at);
+  } catch (err) {
+    // Best-effort by design: a document must still render when the signature
+    // table cannot be read. It renders WITHOUT a QR, which is honest — an
+    // unverifiable document showing no verification block is correct, and is
+    // the failure this whole chapter exists to stop pretending otherwise.
+    logger.warn({ err: err && err.message, entity_ref: entityRef }, "could not resolve signatures for render");
+    return [];
+  }
+}
+
+/**
+ * The verification block for a document, or null when it carries no signature.
+ *
+ * An UNSIGNED document gets no QR. That is deliberate and it is the honest
+ * answer: there is nothing to verify, so printing a symbol that resolves to a
+ * 404 would teach readers that the tenant's QRs do not work — which costs more
+ * than the blank space saves.
+ */
+async function verifyBlockFor(client, { entityRef, origin = null, signatures = null }) {
+  const rows = signatures || (await activeSignatures(client, entityRef));
+  if (!rows.length) return null;
+  try {
+    return await verifyLink.verifyContext(client, { code: rows[0].verify_code, origin });
+  } catch (err) {
+    logger.warn({ err: err && err.message, entity_ref: entityRef }, "verification block could not be rendered");
+    return null;
+  }
+}
+
 /** Live preview → HTML (no PDF). Real record when recordId + a loader exist, else sample. */
-async function preview(client, { docType, entityId, recordId, config }) {
+async function preview(client, { docType, entityId, recordId, config, origin = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   let data = tpl.sampleData;
@@ -967,8 +1014,15 @@ async function preview(client, { docType, entityId, recordId, config }) {
     if (rec) { data = rec.data; ent = ent || rec.entity_id; real = true; }
   }
   const { cfg, entity } = await resolveCfg(client, docType, ent, config);
+  // A preview of a SIGNED record shows the real block, so what the user sees is
+  // what prints. A preview of an unsigned one (or of the sample data) shows
+  // none — the previous code passed a synthetic `…:preview` token here, which
+  // put a verification promise on a document that had nothing behind it.
+  const verify = real && recordId
+    ? await verifyBlockFor(client, { entityRef: `${docType.toLowerCase()}:${recordId}`, origin })
+    : null;
   return {
-    html: tpl.build(data, cfg, entity, `praxis://verify/${docType.toLowerCase()}:preview`),
+    html: tpl.build(data, cfg, entity, verify),
     sample: !real,
     data, // structured data for the native (app-themed) detail view
     title: tpl.title,
@@ -978,8 +1032,22 @@ async function preview(client, { docType, entityId, recordId, config }) {
   };
 }
 
-/** Render a real, immutable, vaulted PDF (SHA-256 + QR) for a record. */
-async function generate(client, { docType, entityId, recordId, actor }) {
+/**
+ * Render a real, immutable, vaulted PDF for a record.
+ *
+ * ── The ordering that makes verification possible ──────────────────────────
+ * The verify code is minted at SIGNING time (PR-1), so it exists before this
+ * function runs and can be printed into the bytes. The artifact hash is the
+ * sha256 of those bytes and therefore only exists afterwards, so it is written
+ * BACK onto the signature rows once the render has landed. Two hashes, two
+ * moments — and neither one has to be inside the document it describes, which
+ * is the circularity that made every previous Praxis PDF unverifiable
+ * (services/signatures/canonical.js).
+ *
+ * `origin` is the host the QR should resolve on. The HTTP path passes the
+ * request's own host; the worker passes the tenant's. See verify-link.js.
+ */
+async function generate(client, { docType, entityId, recordId, actor, origin = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const rec = recordId ? await loadRecord(client, docType, recordId) : null;
@@ -990,8 +1058,34 @@ async function generate(client, { docType, entityId, recordId, actor }) {
   const key = `documents/${docType}/${recordId || "adhoc"}-${Date.now()}.pdf`;
   // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
   cfg.watermark = kit.watermarkFor(client, cfg.watermark);
-  const html = tpl.build(data, cfg, entity, `praxis://verify/${entityRef}`);
-  return pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
+  const signatures = await activeSignatures(client, entityRef);
+  const verify = await verifyBlockFor(client, { entityRef, origin, signatures });
+  const html = tpl.build(data, cfg, entity, verify);
+  const out = await pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
+  await recordArtifact(client, signatures, out);
+  return out;
+}
+
+/**
+ * Write the rendered artifact back onto every signature the document carries.
+ *
+ * Best-effort: the PDF exists and is vaulted by the time this runs, so a
+ * failure here must not lose it. The consequence of a miss is narrow and
+ * self-healing — the portal reports the artifact verdict as "not recorded"
+ * rather than wrongly, and the next render fills it in.
+ */
+async function recordArtifact(client, signatures, out) {
+  if (!signatures || !signatures.length || !out) return;
+  const sigRepo = require("../../vault/document_signature/document_signature.repo");
+  for (const sig of signatures) {
+    try {
+      await sigRepo.setArtifact(client, {
+        id: sig.signature_id, documentVaultId: out.doc_id, artifactHash: out.content_hash,
+      });
+    } catch (err) {
+      logger.warn({ err: err && err.message, signature_id: sig.signature_id }, "artifact hash write-back failed");
+    }
+  }
 }
 
 /** Render a branded PDF from already-computed data (reports / tax filings, which
@@ -1006,7 +1100,10 @@ async function renderPdfFromData(client, { docType, data, entityId, actor }) {
   const key = `documents/${docType}/${stamp}.pdf`;
   // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
   cfg.watermark = kit.watermarkFor(client, cfg.watermark);
-  const html = tpl.build(data, cfg, entity, `praxis://verify/${entityRef}`);
+  // No verification block: this path renders from computed data under a
+  // timestamped ref that no signature can point at. A report is not a signed
+  // document, and printing a QR on one would resolve to nothing.
+  const html = tpl.build(data, cfg, entity, null);
   return pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
 }
 
@@ -1014,12 +1111,12 @@ async function renderPdfFromData(client, { docType, data, entityId, actor }) {
  *  inline HTML if the render fails), then vault a PDF copy (best-effort) and
  *  audit. `to` is resolved from the record where possible (e.g. a proposal's
  *  lead) and otherwise supplied by the caller. */
-async function send(client, { docType, entityId, recordId, to, subject, actor = {} }) {
+async function send(client, { docType, entityId, recordId, to, subject, actor = {}, origin = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const recipient = to || (await resolveRecipient(client, docType, recordId));
   if (!recipient) throw new AppError("NO_RECIPIENT", "recipient email 'to' is required", 422);
-  const { html } = await preview(client, { docType, entityId, recordId });
+  const { html } = await preview(client, { docType, entityId, recordId, origin });
   const title = (tpl.title && (tpl.title.en || tpl.title.fr)) || docType;
 
   // Attach the rendered PDF so the recipient gets a real document, not just an
@@ -1086,4 +1183,8 @@ function contractArticles(bodyMd) {
 
 module.exports = {
   // Exported for the test that pins it — see tests/unit/contract-draft.
-  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send };
+  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send,
+  // Exported for document_signature.service, which needs the SAME record shape
+  // the templates render from — hashing anything else would attest to a
+  // projection of the document rather than the document (guide §3.6).
+  loadRecord };

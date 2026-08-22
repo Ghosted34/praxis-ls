@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1403 |
-| Modules mounted | 125 |
+| Routes | 1407 |
+| Modules mounted | 127 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1403 mounted routes, grouped by path prefix.
+All 1407 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1013,6 +1013,13 @@ All 1403 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/leave/types` | — |
 | PATCH | `/api/tenant/leave/types/:id` | — |
 
+### `tenant/legal-forms`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/legal-forms/` | — |
+| GET | `/api/tenant/legal-forms/:source/:country/:code` | — |
+
 ### `tenant/locations`
 
 | Method | Path | Body validated |
@@ -1942,6 +1949,13 @@ All 1403 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/tax-jurisdictions/:id/codes` | — |
 | POST | `/api/tenant/tax-jurisdictions/:id/codes/supersede` | — |
 | GET | `/api/tenant/tax-jurisdictions/:id/effective` | — |
+
+### `tenant/timezones`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/timezones/` | — |
+| GET | `/api/tenant/timezones/*` | — |
 
 ### `tenant/trainings`
 

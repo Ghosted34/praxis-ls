@@ -1,0 +1,21 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`snapshot of the canonical renders a SYSTEM block — corporate identity, no person's mobile 1`] = `
+"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;max-width:650px">
+  <tr><td style="padding:12px 16px;vertical-align:top"><div style="font-weight:bold;color:#0f4c81;font-size:16px;line-height:22px">Billing</div><div style="color:#6b7280;font-size:12px;line-height:18px">Billing</div><div style="color:#374151;font-size:12px;line-height:18px;margin-top:8px">billing@praxis-ls.cm</div><div style="color:#111827;font-size:12px;line-height:18px;margin-top:8px">Praxis LS SA</div><div style="color:#6b7280;font-size:12px;line-height:18px">Rue Joffre, Akwa, Douala</div><div style="color:#6b7280;font-size:12px;line-height:18px">+237 2 33 41 20 20 · https://www.praxis-ls.cm</div><div style="color:#6b7280;font-size:11px;line-height:16px;margin-top:6px">SA · RCCM CM-DLA-2020-B-12345 · NIU P052000123456T</div><div style="color:#9ca3af;font-size:10px;line-height:14px;margin-top:8px">This message is confidential and intended for the named recipient only.</div></td></tr>
+  <tr><td colspan="2" style="background:#0f4c81;color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:11px;letter-spacing:0.04em;padding:8px 12px;text-align:center">Your supply chain, mastered</td></tr>
+</table>"
+`;
+
+exports[`snapshot of the canonical renders a named user, classic layout, with accents and both phones 1`] = `
+"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;max-width:650px">
+  <tr><td style="padding:12px 16px;vertical-align:top"><div style="font-weight:bold;color:#0f4c81;font-size:16px;line-height:22px">Élodie Kamga</div><div style="color:#111827;font-size:13px;line-height:18px">Directrice des opérations</div><div style="color:#6b7280;font-size:12px;line-height:18px">Freight &amp; Logistics</div><div style="color:#374151;font-size:12px;line-height:18px;margin-top:8px">Tél. +237 2 33 41 20 20 · Port. +237 6 55 12 34 56 · elodie.kamga@praxis-ls.cm</div><div style="color:#111827;font-size:12px;line-height:18px;margin-top:8px">Praxis LS SA</div><div style="color:#6b7280;font-size:12px;line-height:18px">Rue Joffre, Akwa, Douala</div><div style="color:#6b7280;font-size:12px;line-height:18px">+237 2 33 41 20 20 · https://www.praxis-ls.cm</div><div style="color:#6b7280;font-size:11px;line-height:16px;margin-top:6px">SA · RCCM CM-DLA-2020-B-12345 · NIU P052000123456T</div><div style="color:#9ca3af;font-size:10px;line-height:14px;margin-top:8px">This message is confidential and intended for the named recipient only.</div></td></tr>
+  <tr><td colspan="2" style="background:#0f4c81;color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:11px;letter-spacing:0.04em;padding:8px 12px;text-align:center">Your supply chain, mastered</td></tr>
+</table>"
+`;
+
+exports[`snapshot of the canonical renders the compact layout 1`] = `
+"<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="650" style="width:650px;border-collapse:collapse;font-family:Arial, Helvetica, sans-serif;font-size:13px;color:#111827;max-width:650px">
+  <tr><td style="padding:0"><div style="font-weight:bold;color:#0f4c81;font-size:14px;line-height:20px">Jean-Paul Nkoa · Commercial senior</div><div style="color:#374151;line-height:18px;margin-top:2px">Tél. +237 2 33 41 20 20 · Port. +237 6 55 12 34 56 · elodie.kamga@praxis-ls.cm</div><div style="color:#6b7280;line-height:18px;margin-top:2px">Praxis LS SA · https://www.praxis-ls.cm</div></td></tr>
+</table>"
+`;

@@ -3,11 +3,14 @@
  * DEPLOY-WIDE: resolved from platform_setting 'push'/'vapid' (generated + stored
  * in the Platform Console, private key encrypted) → env VAPID_* fallback.
  *
- * NOTE: the push DELIVERY pipeline is only partially built. This sends to rows in
- * shared.push_subscription, but that table + the client registration flow +
- * service worker are NOT yet implemented — so sendToUser degrades cleanly
- * (returns { sent: 0, reason }) until they exist. `web-push` is lazily required
- * and must be installed (`npm i web-push`).
+ * The delivery pipeline is complete end to end: the Settings opt-in
+ * (`client/src/components/pwa/push-opt-in.tsx`) subscribes the browser with the
+ * public VAPID key and POSTs to /notifications/push/subscribe, which writes the
+ * tenant `push_subscription` table; sendToUser reads that table and pushes via
+ * `web-push` (lazily required); the Workbox service worker imports
+ * `client/public/push-handler.js` to display the notification. Where any piece
+ * is absent (no keypair, table not provisioned), sendToUser degrades cleanly
+ * ({ sent: 0, reason }) rather than throwing into the notification path.
  */
 "use strict";
 
@@ -35,7 +38,9 @@ async function resolveVapid() {
       subject = r.value && r.value.subject;
     }
   } catch {
-    // platform store unavailable → env fallback
+    /* @silent:storage — the platform store is unreachable; the env fallback
+       below is the defined degradation, and the caller never needs to know
+       which source supplied the keypair. */
   }
   return {
     publicKey: publicKey || config.VAPID_PUBLIC_KEY || null,

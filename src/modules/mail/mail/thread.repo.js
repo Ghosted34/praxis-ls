@@ -160,6 +160,13 @@ async function listThreads(client, userId, q = {}) {
   if (q.subject && q.subject.length) {
     for (const s of q.subject) where.push(`t.subject ILIKE ${add(`%${s}%`)}`);
   }
+  if (q.client) {
+    // `client:` binds by NAME against the entity the thread is bound to. It is
+    // deliberately not a participant match: a client whose accounting address
+    // is cc'd on someone else's thread has not sent that mail.
+    where.push(`t.entity_ref IN (SELECT 'client:' || cm.client_id::text FROM client_master cm
+                                  WHERE cm.name ILIKE ${add(`%${q.client}%`)})`);
+  }
   if (q.tsquery) {
     // THE QUERY IS FOLDED TOO, with the same function that folded the document.
     //

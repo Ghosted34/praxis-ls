@@ -164,10 +164,6 @@
     {
       "file": "src/shared/observability/error-store.js",
       "line": 388
-    },
-    {
-      "file": "src/shared/push/push.service.js",
-      "line": 37
     }
   ]
 }

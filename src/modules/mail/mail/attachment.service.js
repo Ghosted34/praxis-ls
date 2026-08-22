@@ -113,14 +113,31 @@ async function upload(client, actor, input = {}) {
  * Attach a file the tenant already holds. The internal document picker.
  *
  * Nothing is copied: the same `vault_id` is referenced a second time. The
- * caller's right to it is the vault's decision — `getByRef`/`get` apply the
- * module's own confidentiality rules, so a document somebody may not open is
- * one they may not attach either.
+ * caller's right to it is the vault's decision — `assertDocumentAccess` applies
+ * the module's own confidentiality rules, so a document somebody may not open
+ * is one they may not attach either. That sentence was in this comment before
+ * C-2 and was not true of the code beneath it; it is now.
  */
 async function fromVault(client, actor, input = {}) {
   const draft = await assertOwnDraft(client, actor, input.email_draft_id);
 
-  const doc = await documentVault.get(client, input.vault_id, { actor });
+  // C-2. This used to be `documentVault.get(client, input.vault_id, { actor })`
+  // — a bare id lookup, passing an `actor` the function does not take, under a
+  // comment asserting that `get` applies the vault's confidentiality rules. It
+  // did not: the rule lived in an express middleware on the vault's own router
+  // and nothing outside that router could reach it. So any MOD-72 *create* user
+  // could attach ANY document in the tenant vault — HR files, other clients'
+  // contracts, bank documents — to a draft and send it outside the company.
+  //
+  // `assertDocumentAccess` is that rule, moved into the vault service so it has
+  // more than one caller. Mail is pinned to live by `req.identityDb`, so the
+  // document row and the RBAC grants are both reachable on this one client.
+  //
+  // It throws PERMISSION_DENIED (403) when the caller may not read the
+  // document, and returns null when there is no such document — so a document
+  // the caller cannot see is refused, not silently attached, and a bad id is
+  // still an honest 404.
+  const doc = await documentVault.assertDocumentAccess(client, client, input.vault_id, actor, "view");
   if (!doc) throw new AppError("NOT_FOUND", "document not found", 404);
 
   const bytes = Number(doc.size_bytes || doc.bytes || 0);

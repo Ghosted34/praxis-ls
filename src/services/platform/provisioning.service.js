@@ -723,9 +723,26 @@ async function fleetSchemaStatus() {
  * than being briefly absent. That is the correct trade: a sandbox that is
  * unavailable for thirty seconds is an inconvenience, and a sandbox that has
  * silently ceased to exist is an incident.
+ *
+ * AUDIT (2026-08-22 incident). Every successful rebuild now writes ONE
+ * `sandbox.wiped` row into platform.platform_audit and stamps
+ * `last_sandbox_wipe_at`, whoever asked for it. Before this, a
+ * `DROP SCHEMA … CASCADE` was the only destructive platform action that left
+ * no trace anywhere an operator can read: a tenant lost a night's sandbox data
+ * and the console could not say whether a person, the cron or a deploy box had
+ * done it. `source` is how the row answers that, so callers pass one:
+ *
+ *   console   — the platform-console button (carries actorId + ip)
+ *   scheduler — the sandbox-wipe worker (no actor; a machine did it)
+ *   cli       — scripts/db/sandbox-wipe.js on a deploy box
+ *   api       — anything else calling the service directly (the default)
  */
+const WIPE_SOURCES = new Set(["console", "scheduler", "cli", "api"]);
+
 async function wipeSandbox(input) {
   const slug = input.slug;
+  const source = WIPE_SOURCES.has(input.source) ? input.source : "api";
+  const startedAt = Date.now();
   const cli = m.client(m.tenantDbName(slug), { superuser: true });
   await cli.connect();
   try {
@@ -792,19 +809,118 @@ async function wipeSandbox(input) {
     await cli.end();
   }
   await projectFeatures(slug);
-  return { slug };
+  const recorded = await recordSandboxWipe({
+    slug,
+    source,
+    actorId: input.actorId || null,
+    ip: input.ip || null,
+    durationMs: Date.now() - startedAt,
+  });
+  return { slug, source, audited: recorded.audited };
 }
 
 /**
- * Record that a tenant's sandbox was rebuilt just now. The auto-wipe scheduler
- * (G3, PRD §5.5) reads `tenant.sandbox_wipe_days` and skips tenants whose
- * `last_sandbox_wipe_at` is newer than that window — without this stamp the
- * daily tick would rebuild every sandbox every day.
+ * Stamp + audit one completed rebuild. Runs AFTER the tenant transaction has
+ * committed, so it only ever describes a wipe that actually happened.
+ *
+ * The stamp is what stops the scheduler (G3, PRD §5.5) rebuilding the same
+ * sandbox on the next tick; it lives here rather than in the worker so that a
+ * manual console wipe also resets the window — the old split meant a person
+ * could rebuild a sandbox by hand and the cron would rebuild it again hours
+ * later, having never been told.
+ *
+ * A failure to write the audit row does NOT fail the call. The destructive
+ * work is already committed and cannot be undone by throwing; what a thrown
+ * error would buy is an operator retrying a DROP SCHEMA on a sandbox somebody
+ * may have re-seeded in the meantime. So the failure is logged at error level
+ * and reported back as `audited: false`, which the console surfaces — loud, but
+ * not destructive.
+ */
+/** `platform_audit.ip` is `inet`: a malformed value (a comma-joined
+ *  X-Forwarded-For from a misconfigured proxy, say) would make the INSERT throw
+ *  and cost us the whole audit row over a field nobody needs. Drop it instead. */
+function safeInet(v) {
+  const s = String(v || "").trim();
+  if (!s) return null;
+  return /^[0-9a-fA-F:.]+$/.test(s) && s.length <= 45 ? s : null;
+}
+
+async function recordSandboxWipe(input) {
+  const { slug, source, actorId, durationMs } = input;
+  const ip = safeInet(input.ip);
+  const pf = m.client(config.DB_NAME, { superuser: true });
+  try {
+    await pf.connect();
+    const { rows } = await pf.query(
+      "SELECT tenant_id, sandbox_wipe_days, last_sandbox_wipe_at FROM platform.tenant WHERE slug = $1",
+      [slug],
+    );
+    const t = rows[0] || {};
+    await pf.query(
+      "UPDATE platform.tenant SET last_sandbox_wipe_at = now() WHERE slug = $1",
+      [slug],
+    );
+    await pf.query(
+      "INSERT INTO platform.platform_audit (actor_id, tenant_id, action, entity_ref, payload, ip) " +
+        "VALUES ($1,$2,'sandbox.wiped',$3,$4,$5)",
+      [
+        actorId || null,
+        t.tenant_id || null,
+        slug,
+        {
+          source,
+          // What the tenant's schedule was AT THE MOMENT OF THE WIPE. Read
+          // before the stamp, because "previous_wipe_at: null" is the single
+          // most diagnostic field there is: it means the scheduler treated the
+          // tenant as never-wiped and fired outside its own window.
+          sandbox_wipe_days: t.sandbox_wipe_days ?? null,
+          previous_wipe_at: t.last_sandbox_wipe_at || null,
+          duration_ms: durationMs,
+        },
+        ip || null,
+      ],
+    );
+    logger.info({ slug, source, actorId, durationMs }, "sandbox wiped (audited)");
+    return { audited: true };
+  } catch (err) {
+    logger.error(
+      { slug, source, actorId, err },
+      "sandbox was rebuilt but the audit row could NOT be written — the wipe is unattributed",
+    );
+    return { audited: false };
+  } finally {
+    try {
+      await pf.end();
+    } catch {
+      /* @silent:storage|parse|teardown */
+      /* connection already gone; the wipe itself already succeeded */
+    }
+  }
+}
+
+/**
+ * Record that a tenant's sandbox was rebuilt just now.
+ *
+ * Kept as a named export because it is the stamp half of `recordSandboxWipe`
+ * and callers outside this module may still reach for it. `wipeSandbox` no
+ * longer needs it — it stamps and audits in one place.
+ *
+ * THE MISSING `connect()` (2026-08-22). This function used to query the client
+ * without connecting it. `migrator.client()` returns a bare `pg.Client`, and
+ * pg 8 does not error on a query issued before connect — `_pulseQueryQueue`
+ * returns early while `readyForQuery` is false, so the query sits in the queue
+ * and THE PROMISE NEVER SETTLES. The stamp therefore never happened: the wipe
+ * worker hung after a successful rebuild, the job stalled and was retried, and
+ * `last_sandbox_wipe_at` stayed NULL — which the scheduler reads as "never
+ * wiped → wipe now". That is the loop that rebuilt a tenant's sandbox EVERY
+ * night at 03:30 UTC instead of every 14 days, and it is why the 14-day setting
+ * appeared to be ignored.
  */
 async function stampSandboxWipe(input) {
   const { slug } = input;
   const pf = m.client(config.DB_NAME, { superuser: true });
   try {
+    await pf.connect();
     await pf.query(
       "UPDATE platform.tenant SET last_sandbox_wipe_at = now() WHERE slug = $1",
       [slug],
@@ -958,5 +1074,6 @@ module.exports = {
   createAdmin,
   listTenantSlugs,
   stampSandboxWipe,
+  recordSandboxWipe,
   seedSandboxDemo,
 };

@@ -40,16 +40,43 @@ async function render(model, scale = 1, shot = defaultShot) {
   return { buffer: buf, ...d, html: fragment, text: html.textContent(model) };
 }
 
+/**
+ * P2-1. One Chromium, many screenshots.
+ *
+ * `defaultShot` used to `launch` → `screenshot` → `close` on every call. PNG
+ * download is user-initiated so that was acceptable at one-at-a-time, but a
+ * manager regenerating a team's signatures pays a multi-second launch per
+ * person and the machine runs unbounded Chrome processes. A reused browser
+ * is the robust form; a disconnected one is dropped so the next call launches
+ * a fresh instance rather than writing into a dead handle.
+ *
+ * Tests never reach this: they inject `shot`.
+ */
+let browserPromise = null;
+
+async function getBrowser() {
+  if (!browserPromise) {
+    const puppeteer = require("puppeteer");
+    const { config } = require("../../../config/env");
+    browserPromise = puppeteer.launch({
+      headless: true,
+      executablePath: config.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    }).then((browser) => {
+      browser.on("disconnected", () => { browserPromise = null; });
+      return browser;
+    }).catch((err) => {
+      browserPromise = null;
+      throw err;
+    });
+  }
+  return browserPromise;
+}
+
 async function defaultShot(pageHtml, d) {
-  const puppeteer = require("puppeteer");
-  const { config } = require("../../../config/env");
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: config.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await getBrowser();
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.setViewport({
       width: d.cssWidth,
       height: d.cssHeight,
@@ -58,8 +85,21 @@ async function defaultShot(pageHtml, d) {
     await page.setContent(pageHtml, { waitUntil: "networkidle0" });
     return await page.screenshot({ type: "png", omitBackground: false });
   } finally {
-    await browser.close();
+    await page.close().catch(() => { /* @silent:teardown the next shot opens a new page */ });
   }
 }
 
-module.exports = { render, dimensions, wrap, BASE_W, BASE_H };
+/** Test / shutdown hook — never required for a render. */
+async function closeBrowser() {
+  const pending = browserPromise;
+  browserPromise = null;
+  if (!pending) return;
+  try {
+    const browser = await pending;
+    await browser.close();
+  } catch {
+    /* @silent:teardown browser already disconnected */
+  }
+}
+
+module.exports = { render, dimensions, wrap, BASE_W, BASE_H, closeBrowser, getBrowser };

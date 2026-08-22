@@ -6,8 +6,10 @@
 -- 10773 seeded every signable doc type with STAMP/DRAWN only, using
 -- ON CONFLICT DO NOTHING so tenant edits survive replays. Now PR-5 has shipped,
 -- append PRINT_SIGN for the doc types whose product ceiling allows paper. This
--- is an UPDATE, not a replacement: tenants keep their chosen default and any
--- extra cards they have already enabled.
+-- deliberately omits EMPLOYMENT_CONTRACT: its ceiling has allowsWet=false,
+-- because HR contracts need account/QES evidence rather than a paper-return
+-- workflow. This is an UPDATE, not a replacement: tenants keep their chosen
+-- default and any extra cards they have already enabled.
 --
 -- Idempotent. Re-runnable.
 -- ============================================================================

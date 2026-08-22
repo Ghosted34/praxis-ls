@@ -24,7 +24,7 @@ const access = require("./access");
 const search = require("./search");
 const events = require("./mail.events");
 const { AppError } = require("../../../utils/errors");
-const { emitEvent } = require("../../../shared/events/emit");
+const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 
 const MODULE = "MOD-72";
@@ -165,6 +165,7 @@ async function bulk(client, actor, { ids = [], op, folder = null, label_id = nul
         case "move": await move(client, actor, id, folder); break;
         case "label": await repo.applyLabel(client, actor.user_id, id, label_id, true); break;
         case "unlabel": await repo.applyLabel(client, actor.user_id, id, label_id, false); break;
+        case "delete": await remove(client, actor, id); break;
         default: throw new AppError("VALIDATION_ERROR", `unknown bulk op '${op}'`, 422);
       }
       done.push(id);
@@ -226,6 +227,13 @@ async function applyLabel(client, actor, threadId, labelId, on = true) {
  * where the numbers disagree.
  */
 async function folders(client, actor, connectionId) {
+  // P1A-2. The repo now applies `accessible`; this is the named refusal so a
+  // caller who picks a mailbox they do not hold gets an empty rail rather
+  // than a 403 that confirms the mailbox exists.
+  if (connectionId) {
+    const role = await access.roleFor(client, connectionId, actor.user_id);
+    if (!role) return { folders: [], streams: { HUMAN: 0, SYSTEM: 0 } };
+  }
   const [list, streams] = await Promise.all([
     repo.listFolders(client, connectionId || null, actor.user_id),
     repo.streamUnread(client, actor.user_id, connectionId || null),
@@ -238,9 +246,174 @@ const deleteLabel = (client, actor, id) => repo.deleteLabel(client, actor.user_i
 const timeline = (client, actor, { entity_ref, client_id, limit } = {}) =>
   repo.timelineByEntity(client, entity_ref || `client:${client_id}`, { limit, userId: actor && actor.user_id });
 
+/* ── Deletion (H-1) ────────────────────────────────────────────────────────
+ *
+ * There was no deletion path anywhere in this module. The bulk verb list ran
+ * read/unread/star/unstar/move/label/unlabel, Trash accumulated forever, the
+ * provider's Trash was never emptied, and §9.6's promise that "deletion of an
+ * archived message is blocked in the service layer" was vacuous — nothing could
+ * delete anything, so nothing needed blocking.
+ *
+ * The shape below makes that promise real rather than removing it:
+ *
+ *  - A SEALED message is never deleted. `email_archive` covers its body hash and
+ *    its attachment hashes, and the chain is a linked list — removing a link
+ *    breaks verification for every message after it, which is the one thing the
+ *    archive exists to prevent. The database enforces this too (the archive's FK
+ *    to `email_message` has no ON DELETE), but relying on a 23503 would surface
+ *    as a 500 and tell the user nothing.
+ *  - A BLOCKED attempt is ledgered, not silently skipped. "I tried to delete
+ *    correspondence that is under retention" is exactly the event a retention
+ *    control exists to record, and it is more interesting than the successes.
+ *  - Deletion is per-caller-visible. The predicate rides inside the DELETE, not
+ *    only on the route gate, so a thread made PRIVATE between the two is
+ *    refused by the statement.
+ *  - The provider is told, best-effort. A message deleted here and left on the
+ *    IMAP server comes back on the next sync, which reads as the product
+ *    ignoring the user.
+ */
+
+/** Messages this caller may see on the thread, with the sealed ones identified. */
+async function deletionPlan(client, actor, threadId) {
+  const thread = await repo.headIfVisible(client, actor.user_id, threadId);
+  if (!thread) throw new AppError("NOT_FOUND", "conversation not found", 404);
+  const full = await repo.getThread(client, actor.user_id, threadId);
+  const ids = ((full && full.messages) || []).map((m) => m.email_message_id);
+  const sealed = ids.length ? await repo.archivedMessageIds(client, ids) : [];
+  return { thread, full, ids, sealed };
+}
+
+/**
+ * Delete one conversation. Returns what was removed and what was retained,
+ * because "some of this is under retention and stays" is a fact the user has to
+ * be told rather than a detail to hide behind a success toast.
+ */
+async function remove(client, actor, threadId) {
+  const { thread, full, ids, sealed } = await deletionPlan(client, actor, threadId);
+
+  if (sealed.length) {
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: "mail.message.delete_blocked",
+      moduleKey: MODULE,
+      entityRef: ref(threadId),
+      isSensitive: true,
+      metadata: { sealed: sealed.length, of: ids.length, reason: "archived_under_retention" },
+    }).catch(() => { /* @silent:storage the refusal below is the outcome */ });
+  }
+
+  const deleted = await repo.deleteThreadMessages(client, actor.user_id, threadId, { skipIds: sealed });
+
+  // Nothing was deletable and something was there: say so, with the reason.
+  if (!deleted.length && sealed.length) {
+    throw new AppError(
+      "ARCHIVED_RETENTION",
+      sealed.length === ids.length
+        ? "Every message on this conversation is sealed into the compliance archive and cannot be deleted."
+        : "The messages on this conversation are sealed into the compliance archive and cannot be deleted.",
+      409,
+    );
+  }
+
+  // Only when the thread is genuinely empty. A thread row removed while sealed
+  // messages still hang off it would orphan them from their own conversation —
+  // and the archive FK would refuse the cascade anyway, as a 500.
+  let threadRemoved = false;
+  if (!sealed.length) {
+    const gone = await client.query(
+      `DELETE FROM email_thread t
+        WHERE t.email_thread_id = $1
+          AND NOT EXISTS (SELECT 1 FROM email_message m WHERE m.email_thread_id = t.email_thread_id)
+        RETURNING t.email_thread_id`,
+      [threadId],
+    );
+    threadRemoved = gone.rows.length > 0;
+  }
+
+  await propagateToServer(
+    client,
+    { ...full, messages: deleted },
+    (adapter, m) => adapter.deleteMessage(m.external_message_id, m.provider_folder),
+    "serverDelete",
+  ).catch((err) => {
+    logger.debug({ err, thread_id: threadId }, "[mail] provider delete skipped");
+    return null;
+  });
+
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: "mail.thread.deleted",
+    moduleKey: MODULE,
+    entityRef: ref(threadId),
+    isSensitive: true,
+    before: { subject: thread.subject, messages: ids.length },
+    metadata: { deleted: deleted.length, retained_archived: sealed.length, thread_removed: threadRemoved },
+  }).catch(() => { /* @silent:storage the delete is the outcome */ });
+
+  await emitEvent(client, {
+    eventTypeKey: "email.thread.deleted", moduleKey: MODULE, entityRef: ref(threadId),
+    actorUserId: actor.user_id || null,
+    payload: { deleted: deleted.length, retained_archived: sealed.length },
+  }).catch(() => { /* @silent:storage */ });
+
+  return {
+    email_thread_id: threadId,
+    deleted: deleted.length,
+    retained_archived: sealed.length,
+    thread_removed: threadRemoved,
+  };
+}
+
+/**
+ * Empty a folder — the "Empty Trash" the product did not have.
+ *
+ * Restricted to TRASH and SPAM by name. "Empty INBOX" is not a feature anyone
+ * asked for and is the sort of thing that reaches production as a typo'd
+ * parameter; an allow-list costs nothing and removes the class.
+ */
+const EMPTIABLE = new Set(["TRASH", "SPAM"]);
+
+async function emptyFolder(client, actor, folder) {
+  const target = String(folder || "").toUpperCase();
+  if (!EMPTIABLE.has(target)) {
+    throw new AppError("VALIDATION_ERROR", "Only Trash and Spam can be emptied.", 422);
+  }
+  const rows = await repo.messagesInFolder(client, actor.user_id, target);
+  const threadIds = [...new Set(rows.map((r) => r.email_thread_id))];
+
+  let deleted = 0;
+  let retained = 0;
+  const failed = [];
+  for (const id of threadIds) {
+    try {
+      const out = await remove(client, actor, id);
+      deleted += out.deleted;
+      retained += out.retained_archived;
+    } catch (err) {
+      // One thread under retention must not abort the other 400. The count of
+      // what stayed is reported; the archive's refusal is not a failure of the
+      // operation, it is the operation working.
+      if (err.code === "ARCHIVED_RETENTION") retained += 1;
+      else failed.push({ email_thread_id: id, error: err.message });
+    }
+  }
+
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: "mail.folder.emptied",
+    moduleKey: MODULE,
+    entityRef: `email_folder:${target}`,
+    isSensitive: true,
+    metadata: { folder: target, threads: threadIds.length, deleted, retained_archived: retained },
+  }).catch(() => { /* @silent:storage */ });
+
+  return { folder: target, threads: threadIds.length, deleted, retained_archived: retained, failed };
+}
+
 module.exports = {
   MODULE, queryFrom, list, get, markRead, star, move, bulk, setStream, applyLabel,
   folders, labels, createLabel, deleteLabel, timeline,
+  remove, emptyFolder,
   // Exported for the capability gate's test — it is the one place that decides
   // whether an operation reaches the mail server at all (§3.5).
   propagateToServer,

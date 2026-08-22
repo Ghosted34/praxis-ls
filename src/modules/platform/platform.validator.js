@@ -57,7 +57,9 @@ const schemas = {
   }),
   feature: z.object({ state: onoff }),
   capacity: z.object({ tier: z.enum(["S", "M", "L", "XL"]) }),
-  sandbox: z.object({ days: z.number().int().positive().max(365) }),
+  // 0 = never auto-wipe (0102). `.positive()` here was the last thing keeping
+  // the scheduler's own documented opt-out unreachable.
+  sandbox: z.object({ days: z.number().int().min(0).max(365) }),
   ticketStatus: z.object({
     status: z.enum(["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"]),
   }),

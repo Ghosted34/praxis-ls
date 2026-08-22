@@ -150,8 +150,18 @@ const setSandbox = asyncHandler(async (req, res) =>
   }),
 );
 
+// The actor and the IP are passed so the `sandbox.wiped` audit row can name a
+// person. A console wipe is the one path where "who" is knowable, and it is the
+// path an operator will be asked about after a tenant loses sandbox data.
 const wipeSandbox = asyncHandler(async (req, res) =>
-  res.json({ data: await provisioning.wipeSandbox({ slug: req.params.slug }) }),
+  res.json({
+    data: await provisioning.wipeSandbox({
+      slug: req.params.slug,
+      actorId: actor(req),
+      source: "console",
+      ip: req.ip || null,
+    }),
+  }),
 );
 const seedSandboxDemo = asyncHandler(async (req, res) =>
   res.json({ data: await provisioning.seedSandboxDemo({ slug: req.params.slug }) }),

@@ -31,6 +31,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { tr } from "@/lib/i18n";
 // The choice type and the payload function live in `schedule-payload.ts` — a
 // module exporting both a component and a plain function loses fast refresh for
 // the component. See that file's header.
@@ -59,16 +60,16 @@ export function SchedulePicker({
         {value.kind !== "NOW" && (
           <span className="text-xs text-muted-foreground">
             {value.kind === "MORNING"
-              ? `Going out at 09:00 in ${recipientTimezone || "their timezone"}`
-              : `Going out ${new Date(value.iso).toLocaleString()}`}
+              ? `${tr("Going out at 09:00 in")} ${recipientTimezone || tr("their timezone")}`
+              : `${tr("Going out")} ${new Date(value.iso).toLocaleString()}`}
           </span>
         )}
         <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-          {value.kind === "NOW" ? "Send later" : "Change"}
+          {value.kind === "NOW" ? tr("Send later") : tr("Change")}
         </Button>
         {value.kind !== "NOW" && (
           <Button size="sm" variant="ghost" onClick={() => onChange({ kind: "NOW" })}>
-            Send now instead
+            {tr("Send now instead")}
           </Button>
         )}
       </div>
@@ -79,12 +80,12 @@ export function SchedulePicker({
     <div className="space-y-2 rounded-lg border border-border bg-card/40 px-3 py-2">
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs">
-          <span className="block text-muted-foreground">At a time</span>
+          <span className="block text-muted-foreground">{tr("At a time")}</span>
           <Input
             type="datetime-local"
             value={at}
             onChange={(e) => setAt(e.target.value)}
-            aria-label="Send at"
+            aria-label={tr("Send at")}
             className="mt-0.5 h-8 text-xs"
           />
         </label>
@@ -93,7 +94,7 @@ export function SchedulePicker({
           disabled={!at}
           onClick={() => { onChange({ kind: "AT", iso: toIso(at) }); setOpen(false); }}
         >
-          Schedule
+          {tr("Schedule")}
         </Button>
       </div>
 
@@ -109,17 +110,17 @@ export function SchedulePicker({
           variant="outline"
           onClick={() => { onChange({ kind: "MORNING" }); setOpen(false); }}
         >
-          Their morning (09:00)
+          {tr("Their morning (09:00)")}
         </Button>
         <p className="mt-1 text-xs text-muted-foreground">
           {recipientTimezone
-            ? `09:00 in ${recipientTimezone}, on their next working morning.`
-            : "09:00 where they are. If we have no timezone on file for them, the send is refused and says so — we will not guess one."}
+            ? `${tr("09:00 in")} ${recipientTimezone}, ${tr("on their next working morning.")}`
+            : tr("09:00 where they are. If we have no timezone on file for them, the send is refused and says so — we will not guess one.")}
         </p>
       </div>
 
       <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-        Cancel
+        {tr("Cancel")}
       </Button>
     </div>
   );

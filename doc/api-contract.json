@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 130,
-  "route_count": 1428,
+  "route_count": 1431,
   "tiers": {
     "public": 40,
     "self-scoped": 83,
-    "gated": 1305
+    "gated": 1308
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -334,6 +334,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/mail/send-points/:key": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/mail/threads/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2158,6 +2164,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/mail/assist/ocr/pending": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/attachments/:attachmentId/download": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6526,6 +6538,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/drafts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/folders/empty": {
       "auth": true,
       "rbac": true,
       "validated": false,

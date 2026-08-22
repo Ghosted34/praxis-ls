@@ -31,6 +31,7 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { useResource } from "@/lib/use-resource";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { MyMailboxTab } from "./my-mailbox";
 import { MailboxesTab } from "./mailboxes";
@@ -92,14 +93,14 @@ export function CommsSetupPage() {
       {visible.length > 1 && (
         <nav
           className="flex flex-wrap items-end gap-1 border-b border-border"
-          aria-label="Email setup sections"
+          aria-label={tr("Email setup sections")}
         >
           {visible.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              title={t.hint}
+              title={tr(t.hint)}
               aria-current={tab === t.key ? "page" : undefined}
               className={cn(
                 "-mb-px border-b-2 px-3 pb-2 pt-1 text-sm font-medium transition-colors",
@@ -108,7 +109,7 @@ export function CommsSetupPage() {
                   : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
               )}
             >
-              {t.label}
+              {tr(t.label)}
             </button>
           ))}
         </nav>

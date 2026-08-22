@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState, LoadingRow } from "@/components/ui/states";
 import { fmtRelative } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import type { BulkOp, MailFolder, Thread } from "@/lib/mail-api";
 
 /** The star, as a button rather than an icon with a click handler on a span. */
@@ -39,7 +40,7 @@ function Star({
     <button
       type="button"
       aria-pressed={on}
-      aria-label={on ? `Unstar ${subject}` : `Star ${subject}`}
+      aria-label={on ? `${tr("Unstar")} ${subject}` : `${tr("Star")} ${subject}`}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -95,7 +96,7 @@ export function ThreadRow({
   onStar: (on: boolean) => void;
 }) {
   const unread = thread.unread_count > 0;
-  const subject = thread.subject || "(no subject)";
+  const subject = thread.subject || tr("(no subject)");
   return (
     <li>
       <div
@@ -108,7 +109,7 @@ export function ThreadRow({
           <Checkbox
             checked={selected}
             onCheckedChange={onSelect}
-            label={<span className="sr-only">Select {subject}</span>}
+            label={<span className="sr-only">{tr("Select")} {subject}</span>}
           />
         </div>
         <Star on={thread.is_starred} onToggle={() => onStar(!thread.is_starred)} subject={subject} />
@@ -151,13 +152,13 @@ export function ThreadRow({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {thread.is_vip && <Pill tone="warn">VIP</Pill>}
-            {thread.has_attachment && <Pill tone="mute">Attachment</Pill>}
+            {thread.has_attachment && <Pill tone="mute">{tr("Attachment")}</Pill>}
             {thread.entity_ref && <Pill tone="blue">{thread.entity_ref}</Pill>}
             {/* The classifier's reason on hover: a verdict a person cannot
                 interrogate is one they will not trust. */}
             {thread.stream === "SYSTEM" && (
               <span title={thread.stream_reason || undefined}>
-                <Pill tone="mute">Notice</Pill>
+                <Pill tone="mute">{tr("Notice")}</Pill>
               </span>
             )}
           </div>
@@ -222,12 +223,12 @@ export function ThreadList({
         <Checkbox
           checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
           onCheckedChange={toggleAll}
-          label={<span className="sr-only">Select all conversations</span>}
+          label={<span className="sr-only">{tr("Select all conversations")}</span>}
         />
         {selected.size > 0 ? (
           <>
             <span className="num text-xs text-muted-foreground">
-              {selected.size} selected
+              {selected.size} {tr("selected")}
             </span>
             {BULK.map((b) => (
               <Button
@@ -237,14 +238,14 @@ export function ThreadList({
                 disabled={bulkBusy}
                 onClick={() => onBulk(b.op, b.folder)}
               >
-                {b.label}
+                {tr(b.label)}
               </Button>
             ))}
           </>
         ) : (
           <span className="num text-xs text-muted-foreground">
             {threads.length}
-            {hasMore ? "+" : ""} conversation{threads.length === 1 ? "" : "s"}
+            {hasMore ? "+" : ""} {threads.length === 1 ? tr("conversation") : tr("conversations")}
           </span>
         )}
       </div>
@@ -255,8 +256,8 @@ export function ThreadList({
           role="status"
           className="border-b border-border bg-warning/10 px-3 py-2 text-xs text-foreground"
         >
-          {bulkFailures.length} conversation{bulkFailures.length === 1 ? "" : "s"} could not be
-          updated: {bulkFailures.map((f) => f.error).join("; ")}
+          {bulkFailures.length} {bulkFailures.length === 1 ? tr("conversation") : tr("conversations")}{" "}
+          {tr("could not be updated:")} {bulkFailures.map((f) => f.error).join("; ")}
         </div>
       )}
 
@@ -272,16 +273,16 @@ export function ThreadList({
             onStar={(on) => onStar(t, on)}
           />
         ))}
-        {loading && <LoadingRow label="Loading conversations…" />}
+        {loading && <LoadingRow label={tr("Loading conversations…")} />}
         {!loading && !error && threads.length === 0 && (
           <li className="p-4">
-            <EmptyState title="Nothing here" hint={emptyHint} />
+            <EmptyState title={tr("Nothing here")} hint={emptyHint} />
           </li>
         )}
         {hasMore && !loading && (
           <li className="p-3 text-center">
             <Button size="sm" variant="outline" onClick={onLoadMore}>
-              Load older
+              {tr("Load older")}
             </Button>
           </li>
         )}

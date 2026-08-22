@@ -36,6 +36,7 @@ import { Select } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingRow } from "@/components/ui/states";
 import { reportActionError } from "@/lib/action-error";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const TONES: { value: api.AssistTone; label: string }[] = [
@@ -67,7 +68,7 @@ export function DraftProvenance({ draft }: { draft: api.AssistDraft }) {
     <div className="space-y-1.5">
       {sources.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Grounded in{" "}
+          {tr("Grounded in")}{" "}
           {sources.map((s, i) => (
             <React.Fragment key={s.key}>
               {i > 0 ? " · " : ""}
@@ -82,7 +83,7 @@ export function DraftProvenance({ draft }: { draft: api.AssistDraft }) {
         // Named rather than dropped. "The draft is thinner because you cannot
         // read invoices" is actionable; a quietly shorter draft is not.
         <p className="text-xs text-muted-foreground">
-          Not used:{" "}
+          {tr("Not used:")}{" "}
           {withheld.map((w, i) => (
             <React.Fragment key={w.key}>
               {i > 0 ? " · " : ""}
@@ -93,16 +94,15 @@ export function DraftProvenance({ draft }: { draft: api.AssistDraft }) {
       )}
 
       {fence && !fence.ok && (
-        <Callout tone="warn" title="Check these before you send.">
-          Nothing in the record supports{" "}
-          <span className="num font-medium">{fence.violations.join(", ")}</span>. The
-          assistant wrote them anyway — either correct them or delete them.
+        <Callout tone="warn" title={tr("Check these before you send.")}>
+          {tr("Nothing in the record supports")}{" "}
+          <span className="num font-medium">{fence.violations.join(", ")}</span>. {tr("The assistant wrote them anyway — either correct them or delete them.")}
         </Callout>
       )}
 
       {draft.protected_terms_restored && draft.protected_terms_restored.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Put back after rewriting:{" "}
+          {tr("Put back after rewriting:")}{" "}
           <span className="num">{draft.protected_terms_restored.join(", ")}</span>
         </p>
       )}
@@ -159,11 +159,11 @@ export function AssistToolbar({
         <Select
           value={tone}
           onChange={(e) => setTone(e.target.value as api.AssistTone)}
-          aria-label="Tone"
+          aria-label={tr("Tone")}
           className="h-8 w-auto text-xs"
         >
           {TONES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+            <option key={t.value} value={t.value}>{tr(t.label)}</option>
           ))}
         </Select>
 
@@ -173,7 +173,7 @@ export function AssistToolbar({
             disabled={busy !== null}
             onClick={() => run("draft", () => api.assistDraft({ thread_id: threadId, tone, language }))}
           >
-            {busy === "draft" ? "Drafting…" : "Draft a reply"}
+            {busy === "draft" ? tr("Drafting…") : tr("Draft a reply")}
           </Button>
         )}
 
@@ -187,7 +187,7 @@ export function AssistToolbar({
             }))
           }
         >
-          {busy === "compose" ? "Writing…" : hasText() ? "Rewrite in this tone" : "Write it for me"}
+          {busy === "compose" ? tr("Writing…") : hasText() ? tr("Rewrite in this tone") : tr("Write it for me")}
         </Button>
 
         {ACTIONS.map((a) => (
@@ -202,7 +202,7 @@ export function AssistToolbar({
               }))
             }
           >
-            {busy === a.value ? "…" : a.label}
+            {busy === a.value ? "…" : tr(a.label)}
           </Button>
         ))}
 
@@ -223,7 +223,7 @@ export function AssistToolbar({
         ))}
 
         <Button size="sm" variant="ghost" onClick={() => setShowVoice((v) => !v)}>
-          Dictate
+          {tr("Dictate")}
         </Button>
       </div>
 
@@ -233,8 +233,8 @@ export function AssistToolbar({
             value={dictation}
             onChange={(e) => setDictation(e.target.value)}
             rows={3}
-            placeholder="Say what you want to tell them, then turn it into an email."
-            aria-label="Dictation"
+            placeholder={tr("Say what you want to tell them, then turn it into an email.")}
+            aria-label={tr("Dictation")}
             className="text-sm"
           />
           <Button
@@ -246,7 +246,7 @@ export function AssistToolbar({
               })).then(() => setDictation(""))
             }
           >
-            {busy === "voice" ? "Turning it into an email…" : "Make it an email"}
+            {busy === "voice" ? tr("Turning it into an email…") : tr("Make it an email")}
           </Button>
         </div>
       )}
@@ -258,8 +258,7 @@ export function AssistToolbar({
       )}
       {result && <DraftProvenance draft={result} />}
       <p className="text-xs text-muted-foreground">
-        Everything here lands in the composer. Nothing is sent, and nothing is
-        written to a record.
+        {tr("Everything here lands in the composer. Nothing is sent, and nothing is written to a record.")}
       </p>
     </div>
   );
@@ -294,11 +293,11 @@ export function ThreadSummary({ threadId }: { threadId: string }) {
   if (!asked) {
     return (
       <Button size="sm" variant="outline" onClick={() => load(false)}>
-        Summarise this thread
+        {tr("Summarise this thread")}
       </Button>
     );
   }
-  if (busy && !data) return <LoadingRow label="Reading the thread…" />;
+  if (busy && !data) return <LoadingRow label={tr("Reading the thread…")} />;
   if (!data) return null;
 
   if (data.not_needed) {
@@ -308,25 +307,24 @@ export function ThreadSummary({ threadId }: { threadId: string }) {
   return (
     <div className="space-y-1.5 rounded-lg border border-border bg-card/40 px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Summary</span>
-        {data.cached && <Pill tone="mute">Saved</Pill>}
+        <span className="text-xs font-medium text-muted-foreground">{tr("Summary")}</span>
+        {data.cached && <Pill tone="mute">{tr("Saved")}</Pill>}
         {/* Visible staleness, so refreshing is the operator's decision rather
             than something we do — and bill for — on every open. */}
         {data.stale_by ? (
           <Pill tone="warn">
-            {data.stale_by} newer {data.stale_by === 1 ? "message" : "messages"}
+            {`${data.stale_by} ${data.stale_by === 1 ? tr("newer message") : tr("newer messages")}`}
           </Pill>
         ) : null}
       </div>
       <p className="whitespace-pre-wrap text-sm">{data.summary}</p>
       {data.needs_review && (
         <p className="text-xs text-muted-foreground">
-          Some figures in this summary are not in the record — read it against
-          the thread.
+          {tr("Some figures in this summary are not in the record — read it against the thread.")}
         </p>
       )}
       <Button size="sm" variant="ghost" disabled={busy} onClick={() => load(true)}>
-        {busy ? "Rewriting…" : "Rewrite it"}
+        {busy ? tr("Rewriting…") : tr("Rewrite it")}
       </Button>
     </div>
   );

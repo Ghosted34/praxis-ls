@@ -26,6 +26,7 @@
  */
 import * as React from "react";
 import { pageShell } from "@/lib/layout";
+import { tr } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/states";
@@ -43,12 +44,12 @@ const PAGE = 50;
 
 /** What an empty list means depends on why it is empty. Say the right thing. */
 function emptyHintFor(sel: RailSelection, query: string): string {
-  if (query.trim()) return `Nothing matches “${query.trim()}”. Try fewer words, or drop an operator like from: or has:.`;
-  if (sel.label) return `Nothing carries the label “${sel.label}” yet.`;
-  if (sel.stream === "SYSTEM") return "No automated mail — carrier notices and system reports will collect here.";
-  if (sel.stream === "HUMAN") return "No mail from people yet.";
-  if (sel.folder === "SENT") return "Nothing sent from this mailbox yet.";
-  return "This folder is empty. If a mailbox was just connected, give the first sync a moment.";
+  if (query.trim()) return `${tr("Nothing matches")} “${query.trim()}”. ${tr("Try fewer words, or drop an operator like from: or has:.")}`;
+  if (sel.label) return `${tr("Nothing carries the label")} “${sel.label}” ${tr("yet.")}`;
+  if (sel.stream === "SYSTEM") return tr("No automated mail — carrier notices and system reports will collect here.");
+  if (sel.stream === "HUMAN") return tr("No mail from people yet.");
+  if (sel.folder === "SENT") return tr("Nothing sent from this mailbox yet.");
+  return tr("This folder is empty. If a mailbox was just connected, give the first sync a moment.");
 }
 
 export function InboxPage() {
@@ -201,10 +202,10 @@ export function InboxPage() {
     return (
       <div className={pageShell.wide}>
         <ErrorState
-          message="No mailbox is connected to your account yet."
+          message={tr("No mailbox is connected to your account yet.")}
           action={
             <Button size="sm" onClick={() => { window.location.href = "/comms/setup"; }}>
-              Set up my mailbox
+              {tr("Set up my mailbox")}
             </Button>
           }
         />
@@ -242,11 +243,11 @@ export function InboxPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search — try from:maersk has:attachment demurrage"
-            aria-label="Search mail"
+            placeholder={tr("Search — try from:maersk has:attachment demurrage")}
+            aria-label={tr("Search mail")}
           />
           <Button type="submit" variant="outline" size="sm">
-            Search
+            {tr("Search")}
           </Button>
           <Button
             type="button"
@@ -254,9 +255,9 @@ export function InboxPage() {
             size="sm"
             disabled={query.trim().length < 2}
             onClick={() => { setMeaning(query); setApplied(""); }}
-            title="Find conversations that read like this, even if they do not use these words"
+            title={tr("Find conversations that read like this, even if they do not use these words")}
           >
-            By meaning
+            {tr("By meaning")}
           </Button>
           {applied && (
             <Button
@@ -269,7 +270,7 @@ export function InboxPage() {
                 setMeaning("");
               }}
             >
-              Clear
+              {tr("Clear")}
             </Button>
           )}
         </form>
@@ -284,7 +285,7 @@ export function InboxPage() {
 
         <SplitPane
           storageKey="comms.inbox"
-          label="Conversation list width"
+          label={tr("Conversation list width")}
           defaultSize={380}
           min={280}
           max={620}

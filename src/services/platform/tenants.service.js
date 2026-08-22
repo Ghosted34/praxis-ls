@@ -44,6 +44,9 @@ function list() {
   return withPlatform(async (pf) => {
     const { rows } = await pf.query(
       "SELECT t.slug, t.display_name, t.status, t.is_live, t.sandbox_wipe_days, " +
+        // Surfaced because the console could not answer "when was this sandbox
+        // last rebuilt?" — the column existed and never left the database.
+        "t.last_sandbox_wipe_at, " +
         "p.code AS plan, td.db_name, td.capacity_tier, td.region, td.tenant_owned, " +
         "s.host AS subdomain, " +
         "(SELECT count(*) FROM platform.tenant_feature_override o WHERE o.tenant_id=t.tenant_id) AS overrides " +
@@ -153,7 +156,12 @@ function setSandboxInterval(slug, days, actorId) {
       "UPDATE platform.tenant SET sandbox_wipe_days=$2 WHERE tenant_id=$1",
       [id, days],
     );
-    await audit(pf, actorId, id, "tenant.sandbox_interval_set", slug, { days });
+    // 0 = never auto-wipe (0102). The scheduler already handled it; the CHECK
+    // constraint made it unstorable, so the documented opt-out did not exist.
+    await audit(pf, actorId, id, "tenant.sandbox_interval_set", slug, {
+      days,
+      auto_wipe: days > 0,
+    });
     return { slug, sandbox_wipe_days: days };
   });
 }

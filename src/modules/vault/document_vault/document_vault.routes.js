@@ -5,8 +5,6 @@ const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
 const { AppError } = require("../../../utils/errors");
-const identityCache = require("../../../shared/cache/identity-cache");
-const { moduleKeyForDocType } = require("./document_vault.types");
 const controller = require("./document_vault.controller");
 const service = require("./document_vault.service");
 const validator = require("./document_vault.validator");
@@ -46,33 +44,17 @@ function requireDocumentPermission(action) {
     if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
     if (req.user.is_ceo) return next();
 
-    const doc = await req.tenantDb((c) => service.get(c, req.params.id));
-    // Not found is the controller's answer to give, with its own shape. Let it
-    // through rather than inventing a 404 here — and note this deliberately
-    // does NOT leak existence through the authorisation path.
-    if (!doc) return next();
-
-    const owning = moduleKeyForDocType(doc.doc_type);
-    const column = action === "edit" ? "can_update" : "can_read";
-    const roleIds = req.user.role_ids || [];
-
-    const allowed = await req.identityDb(async (c) => {
-      for (const moduleKey of [owning, MODULE]) {
-        // Sequential on purpose: two grants at most, and the first hit short-
-        // circuits, so the common case is one cache read rather than two.
-        const grants = await identityCache.getGrants(c, { role_ids: roleIds, module: moduleKey });
-        if (grants.some((g) => g[column] === true)) return true;
-      }
-      return false;
-    });
-
-    if (!allowed) {
-      throw new AppError(
-        "PERMISSION_DENIED",
-        `No permission to read this document (${doc.doc_type || "untyped"} — needs ${owning})`,
-        403,
-      );
-    }
+    // C-2: the decision itself now lives in the SERVICE
+    // (`service.assertDocumentAccess`), so callers outside this router — mail's
+    // attach-from-vault, principally — get the same rule instead of reaching
+    // past it to a bare `service.get`. This middleware is the HTTP shape of it.
+    //
+    // Not found is still the controller's answer to give, with its own shape:
+    // `assertDocumentAccess` returns null rather than throwing, so this
+    // deliberately does NOT leak existence through the authorisation path.
+    await req.tenantDb((docClient) =>
+      req.identityDb((identityClient) =>
+        service.assertDocumentAccess(docClient, identityClient, req.params.id, req.user, action)));
     return next();
   };
 }

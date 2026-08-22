@@ -32,6 +32,7 @@ import { LoadingRow, ErrorState, EmptyState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt } from "@/lib/format";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /** Renders `@name` distinctly so the author can see who they addressed. */
@@ -80,25 +81,24 @@ export function ThreadNotes({ threadId }: { threadId: string }) {
   }
 
   return (
-    <section aria-label="Internal notes" className="space-y-2">
+    <section aria-label={tr("Internal notes")} className="space-y-2">
       {/* Stated, not implied. See the header — this sentence is what stops the
           next person adding a "quote in reply" button here. */}
       <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-        Internal only. Notes are never quoted into a reply or a forward, and the
-        assistant cannot read them.
+        {tr("Internal only. Notes are never quoted into a reply or a forward, and the assistant cannot read them.")}
       </p>
 
-      {notes.loading && <LoadingRow label="Loading notes…" />}
+      {notes.loading && <LoadingRow label={tr("Loading notes…")} />}
       {notes.error && <ErrorState message={notes.error} />}
       {!notes.loading && !notes.error && live.length === 0 && (
-        <EmptyState title="No notes yet" />
+        <EmptyState title={tr("No notes yet")} />
       )}
 
       <ul className="space-y-1.5">
         {live.map((n) => (
           <li key={n.email_thread_note_id} className="rounded-lg border border-dashed border-border px-3 py-2">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs font-medium">{n.author_name || "Someone"}</span>
+              <span className="text-xs font-medium">{n.author_name || tr("Someone")}</span>
               <span className="num text-xs text-muted-foreground">{dateTimeFmt(n.created_at)}</span>
             </div>
             <NoteBody body={n.body} />
@@ -111,20 +111,19 @@ export function ThreadNotes({ threadId }: { threadId: string }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
-          placeholder="Add a note for the team. Use @name to reach someone."
-          aria-label="New internal note"
+          placeholder={tr("Add a note for the team. Use @name to reach someone.")}
+          aria-label={tr("New internal note")}
           className="text-sm"
         />
         {mentions.length > 0 && (
           // Shown BEFORE posting: a mention is a message to a person, and
           // sending one by accident is a small cost you cannot take back.
           <p className="text-xs text-muted-foreground">
-            This will notify {mentions.join(", ")} in the app, by email and in
-            team chat.
+            {tr("This will notify")} {mentions.join(", ")} {tr("in the app, by email and in team chat.")}
           </p>
         )}
         <Button size="sm" onClick={post} disabled={busy || !draft.trim()}>
-          Add note
+          {tr("Add note")}
         </Button>
       </div>
     </section>

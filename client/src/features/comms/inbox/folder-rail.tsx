@@ -21,6 +21,7 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/pill";
 import { Field, Select } from "@/components/ui/modal";
+import { tr } from "@/lib/i18n";
 import type { Folder, Label, MailFolder, MailStream, Mailbox } from "@/lib/mail-api";
 
 export type RailSelection = {
@@ -39,6 +40,12 @@ const FOLDER_LABEL: Record<MailFolder, string> = {
   SPAM: "Spam",
   TRASH: "Trash",
 };
+
+/** The canonical name, translated; anything else is the server's own text. */
+function folderLabel(f: Folder): string {
+  const canonical = FOLDER_LABEL[f.canonical as MailFolder];
+  return canonical ? tr(canonical) : (f.display_name ?? f.provider_path);
+}
 
 function RailButton({
   active,
@@ -107,17 +114,17 @@ export function FolderRail({
     canonical.find((f) => f.canonical === "INBOX")?.unread_count ?? 0;
 
   return (
-    <nav aria-label="Mail folders" className="space-y-1">
+    <nav aria-label={tr("Mail folders")} className="space-y-1">
       {/* A person with one mailbox should not be asked to choose it. */}
       {mailboxes.length > 1 && (
-        <Field label="Mailbox">
+        <Field label={tr("Mailbox")}>
           <Select
             value={selection.connectionId ?? ""}
             onChange={(e) =>
               set({ connectionId: e.target.value || undefined, label: undefined })
             }
           >
-            <option value="">All my mailboxes</option>
+            <option value="">{tr("All my mailboxes")}</option>
             {mailboxes.map((m) => (
               <option key={m.email_connection_id} value={m.email_connection_id}>
                 {m.email_address}
@@ -127,30 +134,30 @@ export function FolderRail({
         </Field>
       )}
 
-      <Heading>Triage</Heading>
+      <Heading>{tr("Triage")}</Heading>
       <RailButton
         active={selection.stream === "HUMAN"}
         onClick={() => set({ stream: "HUMAN", folder: "INBOX", label: undefined })}
         count={humanUnread}
       >
-        People
+        {tr("People")}
       </RailButton>
       <RailButton
         active={selection.stream === "SYSTEM"}
         onClick={() => set({ stream: "SYSTEM", folder: "INBOX", label: undefined })}
         count={systemUnread}
       >
-        Notices
+        {tr("Notices")}
       </RailButton>
       <RailButton
         active={!selection.stream && selection.folder === "INBOX" && !selection.label}
         onClick={() => set({ stream: undefined, folder: "INBOX", label: undefined })}
         count={inboxUnread}
       >
-        Everything
+        {tr("Everything")}
       </RailButton>
 
-      <Heading>Folders</Heading>
+      <Heading>{tr("Folders")}</Heading>
       {canonical.map((f) => (
         <RailButton
           key={f.email_folder_id}
@@ -161,20 +168,20 @@ export function FolderRail({
           count={f.unread_count}
           indent
         >
-          {FOLDER_LABEL[f.canonical as MailFolder] ?? f.display_name ?? f.provider_path}
+          {folderLabel(f)}
         </RailButton>
       ))}
       {canonical.length === 0 && (
         // Not an error. A mailbox that has never synced has no folders yet, and
         // saying so is more useful than an empty gap the user has to interpret.
         <p className="px-2.5 text-xs text-muted-foreground">
-          No folders yet — sync the mailbox to discover them.
+          {tr("No folders yet — sync the mailbox to discover them.")}
         </p>
       )}
 
       {labels.length > 0 && (
         <>
-          <Heading>My labels</Heading>
+          <Heading>{tr("My labels")}</Heading>
           {labels.map((l) => (
             <RailButton
               key={l.email_label_id}
@@ -193,7 +200,7 @@ export function FolderRail({
           log: the user is looking at a list that is quietly incomplete. */}
       {folders.some((f) => f.last_error) && (
         <div className="mt-4 px-2.5">
-          <Pill tone="warn">Some folders did not sync</Pill>
+          <Pill tone="warn">{tr("Some folders did not sync")}</Pill>
           <p className="mt-1 text-xs text-muted-foreground">
             {folders
               .filter((f) => f.last_error)

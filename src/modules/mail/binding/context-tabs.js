@@ -160,11 +160,18 @@ const rows = (client, sql, params) =>
  * not exist yet — a supplier has no quotations tab, and saying "none" would be
  * a claim about the supplier rather than about the software.
  */
-async function tabQuery(client, kind, id, tabName, userId) {
+async function tabQuery(client, kind, id, tabName, userId, user = null) {
   const ref = `${kind}:${id}`;
 
   switch (`${tabName}:${kind}`) {
     case "money:client": {
+      // P3-1. The Money tab is the same leak as the overview numbers, just
+      // more of it. Withhold without running the invoice query so a mail-only
+      // user does not even confirm how many open invoices exist.
+      const { maySeeFinancials } = require("./mail-context.service");
+      if (!(await maySeeFinancials(client, user))) {
+        return { tab: "money", kind, invoices: [], aging: {}, withheld: true };
+      }
       const invoices = await rows(client, CLIENT_MONEY, [id]);
       // Bucketed in JS from the single query rather than a second GROUP BY —
       // the rows are already here and there are at most a hundred of them.

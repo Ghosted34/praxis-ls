@@ -968,3 +968,322 @@ Backend: 5,400 tests across 345 suites, 0 failures. Lint 0 errors,
 sync. Client: `tsc -b && vite build` green; 1,690 vitest tests across 109
 suites; lint 0 errors against the 112-warning budget — none of the warnings
 are this pass's files. CI: all jobs green after §17.5's fixes.
+
+---
+
+## 18. Fifth sweep — the last mile
+
+Four sweeps produced four gates, one per kind of declaration that can go
+unread: tables, workers and event types, send points, feature flags. This pass
+started by re-running the previous section's claims against the tree — they
+hold, and §18.6 gives the numbers — and then asked what those four gates have
+in common.
+
+**They all ask their question of `src/`.** None of them can see the client. And
+the last mile of three features was missing there: complete schema, complete
+service, a route, a client wrapper with the right URL, and no screen that calls
+it. Each one is the §14.1 shape — a layer that invites a decision and ignores it
+— moved one step further out, where it is harder to see because everything it
+depends on is present and green.
+
+### 18.1 Three features were reachable from a terminal and nowhere else
+
+**The soft lock could only ever hold zero rows.** `email_thread_lock`,
+`workflow.takeLock` / `releaseLock`, `POST` and `DELETE /mail/threads/:id/lock`,
+the `locked_by_name` join in `thread.repo`, the client wrappers, and the "Marie
+is writing a reply" bar in `triage.tsx` all shipped. Nothing called `take`. So
+the table was permanently empty, and the collision warning — the entire point of
+§9.2, in a chapter whose stated purpose is that "two people answering the same
+client is the failure a shared mailbox exists to prevent, and it is silent" —
+was structurally incapable of firing. `triage.tsx`'s own header says "opening
+the composer takes a two-minute lock". `mail-orphan-sweep` was green the whole
+time and correctly so: the table IS referenced by a line of `src/`, which is the
+only question it asks.
+
+The composer now takes the lock while it is mounted on a thread, renews on a
+30-second heartbeat — four renewals inside the server's 120-second lease, so a
+slow request or a closed laptop loses the lock rather than double-booking it —
+and releases on close instead of waiting the lease out, because the common case
+for a second person opening a thread is that the first just decided not to
+reply. A 403 on a tenant without `mail.shared_inbox` renders as nobody holding
+it, never as an error: an advisory lock that raises on a tenant that did not buy
+the feature is worse than no lock.
+
+**The composer never checked a recipient.** `POST /mail/bounces/check` is gated
+`requireFeature("mail.composer")` — a route whose own gate names the single
+surface it exists for — under a header reading "what the composer calls before a
+send". No caller. §9.8's promise is a loop: parse the DSN, correlate by
+Message-ID, mark the contact, "and a `HARD_FAILED` address is warned about in
+the composer before the next send. This ends the 'we emailed the invoice three
+times' failure permanently." Everything but the last clause was built.
+
+Worse than the gap: the Trust tab tells the operator, on screen, that "the
+composer checks this list before a send". §15.2 found the mirror of this — a
+caption promising a feature that had already shipped — and called it "worse than
+never promising it". A caption asserting a safety check that does not run is the
+same error with the sign flipped, and the person reading it is deciding whether
+to send.
+
+The check now runs on the settled To *and* Cc list, names the address and what
+is known about it, and disables nothing: §7.3's rule, applied here. Somebody may
+be sending to a mailbox they have just been told is fixed.
+
+**A lead could not hand a thread over.** §9.1: "unassigned until someone claims
+it (or a lead assigns it)". Claim shipped. `POST /threads/:id/assign`, the
+service and `assignThread` all existed and were reached by nothing, so a lead's
+only move was to ask the person to go and claim it themselves. The triage bar
+now offers it — over a live assignee on purpose, because handing work over *is*
+taking it off somebody, and refusing would strand a thread on whoever went on
+leave.
+
+### 18.2 A writer against a table that no longer exists
+
+`mail.repo.setEntityRef` ran `UPDATE email_inbound SET entity_ref = …`.
+Migration 10731 **renamed `email_inbound` to `email_inbound_legacy`** and
+deliberately left no compatibility view — its header explains why at length, and
+names the three writers the rename obliged it to rewrite: "`insertInbound`,
+`markInboundRead`, `setEntityRef` … all rewritten in this change." This one was
+not. It threw for nobody across four PRs because nothing called it: the binding
+layer that would naturally have reached for it was built in `binding/` against
+`email_thread` instead. Removed rather than repointed — a binding belongs to the
+conversation, not to each message in it.
+
+**The gate was looking away, by design.** `check-query-columns` treats
+`ALTER TABLE x RENAME TO y` by marking `x` *opaque*: a shape it can no longer
+reason about, and therefore never checks again. That is right for columns and
+exactly wrong for existence. A renamed-away table is not unknown, it is **gone**,
+and every query naming it is dead on the first call. The script now tracks
+renamed-away and dropped tables separately and fails on any statement that names
+one, cleared if a later migration re-creates the name. Two other properties made
+this invisible: the column pass only ever inspects `alias.column` pairs, so a
+statement with no qualified reference is beneath its notice however wrong the
+table is; and nothing called the function, so no test could reach it. Run
+against the tree, the new pass produces exactly one finding — this one — and no
+false positives across 348 tables.
+
+### 18.3 Two client types that had never met a response
+
+Both on the wrappers nobody called, which is the point:
+
+* `ThreadLock` declared a `taken: boolean` the server has never sent, and
+  omitted `held_by_me` / `held_by_other` / `seconds_remaining`, which it always
+  does. A consumer would have read `undefined` and rendered nothing.
+* `releaseThreadLock` was typed as returning a lock. It returns `{ released }`.
+* `checkAddresses` declared `Record<string, {...}>`; `workflow.addressStatus`
+  returns rows.
+
+A type is only as true as its first caller. These three are now the server's
+actual shapes, and the wiring test holds the server side to them.
+
+### 18.4 A check that could not run reported a clean list
+
+`addressStatus` ended `.catch(() => [])`. An empty array is also what a clean
+recipient list produces, so a broken query and "every address is fine" were the
+same answer — on the one endpoint whose entire job is to say *do not send to
+this address*. This is §13.5's anti-spoof rule inverted: an absent verdict
+renders nothing rather than a green tick, because "we did not check" is not
+"this is fine". The catch is gone; the composer renders nothing when the check
+fails and never blocks the send either way.
+
+`check-silent-catch` could not see it — the scanner reads `catch {}` blocks, not
+`.catch()` handlers on a promise chain. Recorded here rather than widened: a
+repo-wide sweep of promise `.catch()` arms is its own ratchet and its own
+review.
+
+### 18.5 The named-test audit, repeated
+
+§17 asked "were the regression tests the guide names actually written?" and
+found two missing. Asked of the whole guide rather than the two chapters in
+hand, the answer is ten absent filenames — and nine of them are naming
+mismatches, each covered in substance somewhere else:
+
+| Named in the guide | Actually covered by |
+| --- | --- |
+| `mail-stream.test.js` | `mail-threading.test.js` — the classifier, the known-party override, a rule that throws |
+| `mail-search-parse.test.js` | `mail-search.test.js` (§17.1) |
+| `mail-send-queue.test.js` | `mail-outbox.test.js` — the undo race, the idempotency key, the retry plan |
+| `mail-binding.test.js` | `mail-binding-suggest-only.test.js` — the §7 claim verbatim |
+| `mail-html-serializer.test.js` | `mail-compose.test.js` (already recorded in §11.2) |
+| `notes-tab.test.tsx`, `mention-picker.test.tsx` | `work/notes.test.tsx` |
+| `dossier-drawer.test.tsx` | `work/work.test.tsx` |
+| `signature-profile.test.tsx` | `screens.axe.test.tsx`, which renders the screen in all four states |
+
+**One is a real gap and is not closed here:** `mail-model-backfill.test.js`
+(§5.9 — "backfill correctness + view parity"). The view half is moot — 10731
+deliberately ships no compatibility view, and says why — but the backfill itself
+is untested, and it is the migration that moved every existing message into
+`email_thread` / `email_message` / `email_message_state`. It cannot be tested
+without a database, and the CI `migrations` job provisions a tenant *from
+nothing*, where the backfill's `legacy_exists` guard makes it a no-op. Closing
+it means seeding `email_inbound` rows before 10731 runs and asserting the
+grouping, the id preservation and the read-state attribution. That is a CI
+harness change, not a test file, and it is the honest remaining item.
+
+The general lesson is the cheaper half: **a test plan written as filenames
+cannot be checked by reading it.** Nine of these ten reads as a gap and is not
+one; the tenth reads the same and is. Either the guide should name behaviours
+and let the files fall where they fall, or the filenames should be treated as a
+manifest and enforced. Naming files and then not enforcing them costs two sweeps
+of re-deriving which is which.
+
+### 18.6 The gate now standing
+
+`tests/security/mail-client-api-wiring.test.js` asks the four sweeps' question
+of the client: every value exported from `mail-api.ts` / `mail-api-work.ts` must
+be called from a screen. The grandfathered list is the 23 wrappers this sweep
+found with no caller — each with a one-line reason, most of them endpoints
+honestly ahead of their screen or superseded by the 10731 thread model — and it
+is capped, so it can shrink and cannot grow.
+
+The sweep is deliberately generous about what counts as a call, and the file
+says so: a hook under `features/` counts as a caller, so a wrapper reached only
+by a hook that no component mounts would still pass. That is the exact shape
+§9.2 failed in, which is why the three restored call sites are additionally
+asserted **by name** — the composer calls `useThreadLock` and
+`useRecipientHealth`, the triage bar calls `assignThread` — alongside the Trust
+tab's sentence, pinned to the caller that makes it true.
+
+Five sweeps, five gates, one per kind of declaration: tables, workers and
+events, send points, feature flags, and now client callers.
+
+### 18.7 Verification
+
+Backend: **5,431 tests across 348 suites**, 0 failures. Lint 0 errors (68
+warnings against a budget of 136). `check-query-columns` OK — 348 tables, and
+the new renamed-away pass clean after the one fix. `db:check:idempotency` OK,
+citext gate OK, migration numbering and reversibility OK, API docs in sync, API
+contract 1,407 routes with no removals or weakened gates, response-contract
+clean, silent-catch 0 new.
+
+Client: `tsc -b` green; **1,719 vitest tests across 113 files**; lint 0 errors
+and 112 warnings — measured against the pristine tree at the same commit, which
+also stands at 112, so this pass spent none of the ratchet.
+
+Database: unchanged from §16.4 — nothing here has been run against one.
+
+---
+
+## 19. Closing §18.5 — the backfill test, and what writing it found
+
+§18.5 left one item open: `mail-model-backfill.test.js`, named by §5.9 and never
+written, on 10731 — the migration that moved every existing message into
+`email_thread` / `email_message` / `email_message_state`. It is now written, it
+runs against a real Postgres, and it found a defect in the migration it tests.
+
+### 19.1 How a fresh tenant gets a legacy world to migrate
+
+The reason this was the hard one: the backfill only runs where there is legacy
+mail, and CI provisions a tenant **from nothing**, where 10731's own
+`legacy_exists` guard makes the whole block a no-op. A tenant with no legacy
+mail cannot exercise the code that moves legacy mail.
+
+So the test rebuilds one, inside a transaction it never commits. Two renames put
+the schema back to the eve of 10731 — `email_attachment.email_message_id` back
+to `email_inbound_id` (10737 renamed it **after** 10731, and 10731's backfill
+still reads the old name), and `email_inbound_legacy` back to `email_inbound`,
+which is empty on a provisioned tenant so nothing real moves. Four legacy rows
+go in, the migration file is re-applied verbatim, the assertions run, and the
+whole thing rolls back. DDL is transactional in Postgres, so the tenant database
+is byte-identical afterwards — which is what makes it safe in the same
+`--runInBand` pass as every other integration suite.
+
+It pins the five claims 10731 asks a reader to take on trust: ids are preserved
+(the reason `email_attachment` needed a re-pointed foreign key rather than a
+data migration, and the reason an id a client is holding still resolves);
+messages sharing a thread key become one conversation with the count and
+timestamps that implies; a message with no thread key becomes its own,
+keyed so it cannot collide; read state, which belonged to nobody in particular,
+becomes the connection **owner's**; and `entity_ref` survives from the most
+recent message that carried one.
+
+### 19.2 The defect: recipients split on the message and not on the thread
+
+The pre-10731 table held recipients as one comma-joined `citext` scalar. The
+backfill handles that correctly for the message —
+
+```sql
+string_to_array(b.to_address::text, ', ')::citext[]
+```
+
+— and does not, four lines earlier, for the thread:
+
+```sql
+ARRAY(SELECT DISTINCT x FROM unnest(
+        array_agg(b.from_address) || array_agg(COALESCE(b.to_address,'')::citext)
+      ) AS x WHERE x <> '')
+```
+
+Run against a real database rather than read, a legacy row addressed to
+`"client@maersk.cm, ops@maersk.cm"` produces:
+
+```
+participants = {client@maersk.cm, "client@maersk.cm, ops@maersk.cm", billing@smartls.cm}
+```
+
+One element that is not an address, and a real correspondent — `ops@maersk.cm` —
+that appears nowhere in the thread's participant set. Same author, same
+statement, two lines apart: handled in one place and not the other.
+
+**Why it matters past looking wrong.** Three things read `participants`: the
+thread list renders it, `binding/cards/_facts.js` hands it to the assistant as
+grounded fact, and `binding/convert.service.js` takes `participants[0]` as the
+address to create a client or lead **from** when the thread has no
+`from_address`. That last one is the sharp end — converting such a thread mints
+a party whose e-mail is the string `"client@maersk.cm, ops@maersk.cm"`, which no
+duplicate check will match and no message will ever reach. Message-level
+`to_address` is correct throughout and is what search indexes, so search is
+unaffected.
+
+**Scope.** Only tenants that had mail before 10731. On a fresh tenant the
+expression never runs at all.
+
+### 19.3 Why a repair migration and not a fix to 10731
+
+`11743_email_thread_participants_repair.sql` splits any participant element
+containing a comma, de-duplicates, and is idempotent by construction — after one
+run nothing contains a comma, so the second run matches no rows.
+
+Editing 10731 was considered and is wrong twice over. The migrator keys its
+ledger on filename and verifies the recorded `sha256` through `contentDrift`, so
+editing an applied file does not re-run it and **does** raise drift on every
+tenant that has it. And it would fix nothing: the only tenants carrying the
+defect are the ones that already applied it.
+
+The DOWN is declared as deliberately non-reversible, and says why: the
+pre-repair value is a corrupted encoding of the same information, so restoring
+it would mean re-joining addresses that were never one string.
+
+### 19.4 Two gates, because the finding was cheap and the search for it was not
+
+**`tests/security/mail-test-manifest.test.js`.** The guide names ~30 test files.
+§17 found two missing; §18 found ten more, of which nine were naming mismatches
+and one was real — and the expensive part was never writing the tests, it was
+working out which of the ten mattered, twice. The gate now requires every named
+file either to exist or to be mapped to the file that covers it, with the
+mapping's target checked, stale mappings refused, and the list capped at nine so
+it can only shrink. Its first draft matched `(?:js|ts|tsx)` and clipped every
+`.tsx` name to `.ts`, reporting four client tests as missing that the guide
+names plainly — which is a small live demonstration of the thing it is for.
+
+**CI asserts the backfill suite by name.** The integration step already refused
+a run where nothing asserted, but that check is satisfied by any one suite. This
+one is the most skippable of them all — it self-skips without `DATABASE_URL`,
+and it is the only test 10731 has — so the job now counts its assertions
+specifically and fails if they disappear.
+
+### 19.5 Verification
+
+Backend: **5,439 tests across 349 suites**, 0 failures, with the backfill suite
+among the twelve that self-skip when no `DATABASE_URL` is present — which is the
+correct number to quote for `npm test` on a machine with no database. Lint 0
+errors (68 warnings against a budget of 136). Migration numbering, reversibility,
+idempotency, destructive-statement, column and citext gates all OK; API docs in
+sync; contract and response-contract clean; silent-catch 0 new.
+
+**And, for the first time in this programme, against a database.** A local
+PostgreSQL 16 with pgvector, the full tenant set applied — 241 migrations and 26
+seeds — then the whole `tests/integration` folder run the way the CI job runs
+it: **17 suites, 187 assertions, 0 failures**, `mail-imap` skipped as designed.
+§16.4's "no database was available at any point in this work" no longer holds
+for the migration path: 10731 has now actually moved rows, and the participants
+finding came out of watching it do so rather than out of reading the SQL.

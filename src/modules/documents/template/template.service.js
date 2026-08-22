@@ -155,7 +155,7 @@ const SIMPLE = {
   COSTING: { table: "costing", pk: "costing_id", label: "doc_number" },
   REGIE_ADVANCE: { table: "regie_advance", pk: "regie_advance_id", label: null },
   WORK_ORDER: { table: "work_order", pk: "work_order_id", label: null },
-  EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: null },
+  EMPLOYMENT_CONTRACT: { table: "hr_contract", pk: "hr_contract_id", label: "doc_number" },
   SOP_DOCUMENT: { table: "sop_document", pk: "sop_document_id", label: "title" },
   DELIVERY_NOTE: { table: "delivery_note", pk: "delivery_note_id", label: "doc_number" },
   TRANSIT_ORDER: { table: "transit_order", pk: "transit_order_id", label: "ot_number" },
@@ -787,7 +787,10 @@ async function loadRecord(client, docType, recordId) {
     return {
       entity_id: c.entity_id,
       data: {
-        number: String(c.hr_contract_id).slice(0, 8),
+        // The tenant's allocated CTR number (11743). The id fragment stays as
+        // the fallback ONLY for contracts issued before numbering existed —
+        // it is a last resort, not the design.
+        number: c.doc_number || String(c.hr_contract_id).slice(0, 8),
         status: c.status,
         kind: c.kind,
         effective_on: c.effective_on,

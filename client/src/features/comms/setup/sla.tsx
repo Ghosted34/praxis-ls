@@ -35,6 +35,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
+import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -43,8 +44,8 @@ const DAY_KEY = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 /** Minutes → the sentence a person would say. */
 function humanMinutes(m?: number | null): string {
   if (m === null || m === undefined) return "—";
-  if (m < 60) return `${m} minutes`;
-  if (m % 60 === 0) return `${m / 60} ${m / 60 === 1 ? "hour" : "hours"}`;
+  if (m < 60) return `${m} ${tr("minutes")}`;
+  if (m % 60 === 0) return `${m / 60} ${m / 60 === 1 ? tr("hour") : tr("hours")}`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
@@ -86,34 +87,33 @@ function PolicyDialog({
   }
 
   return (
-    <Modal open onClose={onClose} title={policy ? "Edit response target" : "New response target"}>
+    <Modal open onClose={onClose} title={policy ? tr("Edit response target") : tr("New response target")}>
       <div className="space-y-3">
-        <Field label="Name" hint="What this covers — “Client enquiries”, “Supplier chasers”.">
+        <Field label={tr("Name")} hint={tr("What this covers — “Client enquiries”, “Supplier chasers”.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="First reply within (minutes)" hint="Counted in working hours, not clock hours.">
+        <Field label={tr("First reply within (minutes)")} hint={tr("Counted in working hours, not clock hours.")}>
           <Input type="number" min={1} value={first} onChange={(e) => setFirst(e.target.value)} />
         </Field>
-        <Field label="Resolved within (minutes)">
+        <Field label={tr("Resolved within (minutes)")}>
           <Input type="number" min={1} value={resolve} onChange={(e) => setResolve(e.target.value)} />
         </Field>
-        <Field label="Active">
+        <Field label={tr("Active")}>
           <Select value={active ? "yes" : "no"} onChange={(e) => setActive(e.target.value === "yes")}>
-            <option value="yes">Measuring</option>
-            <option value="no">Paused</option>
+            <option value="yes">{tr("Measuring")}</option>
+            <option value="no">{tr("Paused")}</option>
           </Select>
         </Field>
 
         {/* Surprising, and true. Better said here than discovered from a breach
             alert that starts or stops firing for no visible reason. */}
-        <Callout tone="info" title="This applies to conversations already open.">
-          Saving clears the computed deadlines, and the next sweep re-applies
-          them — so threads in the queue get the new target, not the old one.
+        <Callout tone="info" title={tr("This applies to conversations already open.")}>
+          {tr("Saving clears the computed deadlines, and the next sweep re-applies them — so threads in the queue get the new target, not the old one.")}
         </Callout>
 
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={save} disabled={busy || !name.trim()}>Save</Button>
+          <Button size="sm" variant="ghost" onClick={onClose}>{tr("Cancel")}</Button>
+          <Button size="sm" onClick={save} disabled={busy || !name.trim()}>{tr("Save")}</Button>
         </div>
       </div>
     </Modal>
@@ -148,10 +148,10 @@ function WorkingHours({ initial, onSaved }: { initial: Hours; onSaved: () => voi
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
-            <th className="py-1 font-medium">Day</th>
-            <th className="py-1 font-medium">Opens</th>
-            <th className="py-1 font-medium">Closes</th>
-            <th className="py-1 font-medium">Closed</th>
+            <th className="py-1 font-medium">{tr("Day")}</th>
+            <th className="py-1 font-medium">{tr("Opens")}</th>
+            <th className="py-1 font-medium">{tr("Closes")}</th>
+            <th className="py-1 font-medium">{tr("Closed")}</th>
           </tr>
         </thead>
         <tbody>
@@ -160,13 +160,13 @@ function WorkingHours({ initial, onSaved }: { initial: Hours; onSaved: () => voi
             const row = hours[key] || {};
             return (
               <tr key={key} className="border-t border-border/50">
-                <td className="py-1.5">{label}</td>
+                <td className="py-1.5">{tr(label)}</td>
                 <td className="py-1.5">
                   <Input
                     type="time"
                     value={row.open || ""}
                     disabled={row.closed}
-                    aria-label={`${label} opens`}
+                    aria-label={`${tr(label)} ${tr("opens")}`}
                     onChange={(e) => set(key, { open: e.target.value })}
                     className="h-8 w-28 text-xs"
                   />
@@ -176,7 +176,7 @@ function WorkingHours({ initial, onSaved }: { initial: Hours; onSaved: () => voi
                     type="time"
                     value={row.close || ""}
                     disabled={row.closed}
-                    aria-label={`${label} closes`}
+                    aria-label={`${tr(label)} ${tr("closes")}`}
                     onChange={(e) => set(key, { close: e.target.value })}
                     className="h-8 w-28 text-xs"
                   />
@@ -185,7 +185,7 @@ function WorkingHours({ initial, onSaved }: { initial: Hours; onSaved: () => voi
                   <input
                     type="checkbox"
                     checked={Boolean(row.closed)}
-                    aria-label={`${label} closed`}
+                    aria-label={`${tr(label)} ${tr("closed")}`}
                     onChange={(e) => set(key, { closed: e.target.checked })}
                   />
                 </td>
@@ -194,7 +194,7 @@ function WorkingHours({ initial, onSaved }: { initial: Hours; onSaved: () => voi
           })}
         </tbody>
       </table>
-      <Button size="sm" onClick={save} disabled={busy}>Save hours</Button>
+      <Button size="sm" onClick={save} disabled={busy}>{tr("Save hours")}</Button>
     </div>
   );
 }
@@ -230,8 +230,7 @@ function Holidays({
     <div className="space-y-2">
       {rows.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No holidays set. Response targets will count public holidays as
-          working days.
+          {tr("No holidays set. Response targets will count public holidays as working days.")}
         </p>
       )}
       <ul className="space-y-1">
@@ -247,7 +246,7 @@ function Holidays({
               disabled={busy}
               onClick={() => save(rows.filter((r) => r.on_date !== h.on_date))}
             >
-              Remove
+              {tr("Remove")}
             </Button>
           </li>
         ))}
@@ -256,13 +255,13 @@ function Holidays({
         <Input
           type="date"
           value={date}
-          aria-label="Holiday date"
+          aria-label={tr("Holiday date")}
           onChange={(e) => setDate(e.target.value)}
           className="h-8 w-40 text-xs"
         />
         <Input
           value={label}
-          aria-label="Holiday name"
+          aria-label={tr("Holiday name")}
           placeholder="Fête du Travail"
           onChange={(e) => setLabel(e.target.value)}
           className="h-8 text-xs"
@@ -276,7 +275,7 @@ function Holidays({
             setLabel("");
           }}
         >
-          Add
+          {tr("Add")}
         </Button>
       </div>
     </div>
@@ -292,27 +291,27 @@ export function SlaTab() {
   const [creating, setCreating] = React.useState(false);
 
   const columns: Column<api.SlaPolicy>[] = [
-    { key: "name", label: "Target", render: (r) => r.name },
+    { key: "name", label: tr("Target"), render: (r) => r.name },
     {
       key: "first",
-      label: "First reply",
+      label: tr("First reply"),
       render: (r) => humanMinutes(r.first_response_minutes),
     },
     {
       key: "resolution",
-      label: "Resolved",
+      label: tr("Resolved"),
       render: (r) => humanMinutes(r.resolution_minutes),
     },
     {
       key: "state",
-      label: "State",
-      render: (r) => <Pill tone={r.is_active ? "ok" : "mute"}>{r.is_active ? "Measuring" : "Paused"}</Pill>,
+      label: tr("State"),
+      render: (r) => <Pill tone={r.is_active ? "ok" : "mute"}>{r.is_active ? tr("Measuring") : tr("Paused")}</Pill>,
     },
     {
       key: "_a",
       label: "",
       render: (r) => (
-        <Button size="sm" variant="outline" onClick={() => setEditing(r)}>Edit</Button>
+        <Button size="sm" variant="outline" onClick={() => setEditing(r)}>{tr("Edit")}</Button>
       ),
     },
   ];
@@ -321,9 +320,9 @@ export function SlaTab() {
     <div className="space-y-6">
       <div className="space-y-4">
         <PageHeader
-          title="Response times"
-          description="How long a first reply is allowed to take. Counted in working hours, so the calendar below is half the answer."
-          action={<Button size="sm" onClick={() => setCreating(true)}>New target</Button>}
+          title={tr("Response times")}
+          description={tr("How long a first reply is allowed to take. Counted in working hours, so the calendar below is half the answer.")}
+          action={<Button size="sm" onClick={() => setCreating(true)}>{tr("New target")}</Button>}
         />
         <DataList
           columns={columns}
@@ -332,21 +331,21 @@ export function SlaTab() {
           loading={policies.loading}
           rowKey={(r) => r.mail_sla_policy_id}
           empty={{
-            title: "No response targets",
+            title: tr("No response targets"),
             // Not a nag. A tenant that does not measure response times is a
             // valid tenant.
-            hint: "Nothing is measured until you set one, and that is a fine way to run a mailbox.",
-            action: <Button size="sm" onClick={() => setCreating(true)}>New target</Button>,
+            hint: tr("Nothing is measured until you set one, and that is a fine way to run a mailbox."),
+            action: <Button size="sm" onClick={() => setCreating(true)}>{tr("New target")}</Button>,
           }}
         />
       </div>
 
       <div className="space-y-3">
         <PageHeader
-          title="Working hours"
-          description="“Four hours” starting at 17:00 on a Friday should mean Monday morning, not Friday evening."
+          title={tr("Working hours")}
+          description={tr("“Four hours” starting at 17:00 on a Friday should mean Monday morning, not Friday evening.")}
         />
-        {calendar.loading && <LoadingRow label="Loading the calendar…" />}
+        {calendar.loading && <LoadingRow label={tr("Loading the calendar…")} />}
         {calendar.error && <ErrorState message={calendar.error} />}
         {calendar.data && (
           <>
@@ -355,7 +354,7 @@ export function SlaTab() {
               onSaved={calendar.reload}
             />
             <div className="pt-2">
-              <h3 className="mb-1 text-sm font-semibold">Public holidays</h3>
+              <h3 className="mb-1 text-sm font-semibold">{tr("Public holidays")}</h3>
               <Holidays initial={calendar.data.holidays || []} onSaved={calendar.reload} />
             </div>
           </>

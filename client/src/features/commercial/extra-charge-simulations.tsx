@@ -19,9 +19,17 @@
  * display that is roughly 30 charge lines visible at once against the 8 a modal
  * managed. Every band is a real `lg`/`xl`/`2xl` decision, never `sm:`-and-stop.
  *
- * NO MODAL. The previous version computed inside a dialog, which capped the
- * result at the dialog's height and hid the saved list behind it. Simulation is
- * the primary work of this screen, so it is the page.
+ * THE WORKBENCH IS A DIALOG AGAIN (owner's call, 22 Aug 2026) — and the
+ * objection that moved it out is answered rather than overruled. It was made
+ * a page because a dialog "capped the result at the dialog's height and hid the
+ * saved list behind it". The height half stands, so the dialog is `size="wide"`
+ * (the rail keeps a real results column beside it), the charge table keeps its
+ * own internal scroll, and the dialog scrolls its body — nothing is truncated.
+ *
+ * The other half was wrong about what an operator arrives to do. It is not
+ * simulating; it is checking what has already been estimated against which
+ * file. So the SAVED LIST is the page and the workbench opens on demand, which
+ * also gives the screen an honest empty state and a single obvious first action.
  */
 
 import * as React from "react";
@@ -364,12 +372,21 @@ export function ExtraChargeSimulationsPage() {
   // hardcoded three-item list — when the treasurer adds or deactivates a
   // currency the dropdown moves with it (SS4).
   const currencies = useResource(() => listCurrencies(), []);
+  /**
+   * MISALIGNED CURRENCY SELECTOR (22 Aug). The label was `${code} — ${name}`,
+   * so the trigger read "XAF — CFA Franc BEAC" in a ~120px column of a 3-up row
+   * and wrapped to three lines, pushing the control out of its field.
+   *
+   * Fixed with the kit's own answer rather than a width hack: `Select`'s `hint`
+   * is documented as "shown only in the open list… Radix clones ItemText into
+   * the closed trigger, so a hint placed in `label` would follow the selection
+   * into the collapsed control and turn a one-line field into two" — which is
+   * precisely what was happening. Code in `label`, name in `hint`: the picker
+   * still names the currency, the trigger shows "XAF".
+   */
   const currencyOptions = (currencies.data || [])
     .filter((c) => c.is_active !== false)
-    .map((c) => ({
-      value: c.code,
-      label: c.name ? `${c.code} — ${c.name}` : c.code,
-    }));
+    .map((c) => ({ value: c.code, label: c.code, hint: c.name || undefined }));
 
   // Inputs. The legacy's defaults: 11 free days (billing opens on day 12) and a
   // 14-day yard trigger — both editable, because a shipping line's contract can
@@ -432,6 +449,8 @@ export function ExtraChargeSimulationsPage() {
    * register filled with near-identical simulations of the same file.
    */
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  /** The workbench dialog. Closed on arrival — the saved list is the page. */
+  const [workbenchOpen, setWorkbenchOpen] = React.useState(false);
 
   const body = React.useCallback(
     (): Record<string, unknown> => ({
@@ -509,6 +528,10 @@ export function ExtraChargeSimulationsPage() {
       );
       setSavedNote(editingId ? "Simulation updated." : "Simulation saved.");
       setEditingId(null);
+      // Back to the list: it is the page, and the row just written is the
+      // confirmation. Leaving the dialog open invites a second save of the
+      // same estimate.
+      setWorkbenchOpen(false);
       reload();
       window.setTimeout(() => setSavedNote(null), 4000);
     } catch (e) {
@@ -516,6 +539,27 @@ export function ExtraChargeSimulationsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /**
+   * Open an EMPTY workbench. Explicitly resets every input: the dialog now
+   * outlives the estimate it was opened for, so without this a "new"
+   * simulation would silently inherit the last one's dates and container list
+   * — the sort of thing that is only noticed after it has been saved.
+   */
+  function startNew() {
+    setEditingId(null);
+    setDossierId("");
+    setDossierLabel(null);
+    setContainers("");
+    setAta("");
+    setGateOut("");
+    setEmptyReturn("");
+    setShippingLine("");
+    setComputed(null);
+    setError(null);
+    setSavedNote(null);
+    setWorkbenchOpen(true);
   }
 
   /** Load a saved simulation's inputs into the workbench. `asEdit` decides
@@ -537,6 +581,7 @@ export function ExtraChargeSimulationsPage() {
     }
     setEditingId(asEdit ? String(s.extra_charge_simulation_id) : null);
     setSelected(null);
+    setWorkbenchOpen(true);
   }
 
   // The ribbon command must be a STABLE array — republishing it on every
@@ -546,14 +591,22 @@ export function ExtraChargeSimulationsPage() {
   // `save` and post an empty simulation.
   const saveRef = React.useRef(save);
   saveRef.current = save;
+  // The ribbon now offers NEW SIMULATION, not Save. Save belongs to the dialog
+  // and only makes sense while it is open with something computed in it; a
+  // ribbon "Save simulation" sitting over a list of saved simulations would
+  // save whatever the last form state happened to be. Same stable-array and
+  // ref discipline as before — the array identity must not change per
+  // keystroke or the registry effect re-runs against a live-previewing screen.
+  const newRef = React.useRef(startNew);
+  newRef.current = startNew;
   useRibbonCommands(
     React.useMemo(
       () => [
         {
-          key: "save",
-          label: "Save simulation",
+          key: "new",
+          label: "New simulation",
           primary: true,
-          onSelect: () => void saveRef.current(),
+          onSelect: () => newRef.current(),
         },
       ],
       [],
@@ -681,20 +734,58 @@ export function ExtraChargeSimulationsPage() {
         title="Extra-charge simulator"
         description="Demurrage, storage, yard occupancy, plugging and detention across a container list — an estimate, with no accounting entries."
         action={
-          // The ribbon carries this on desktop — see useRibbonCommands above.
-          <Button
-            className="md:hidden"
-            onClick={save}
-            loading={saving}
-            disabled={!computed || computed.total_ttc === 0}
-          >
-            Save simulation
-          </Button>
+          <Button onClick={() => startNew()}>{tr("New simulation")}</Button>
         }
       />
       <HubTabs />
 
-      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[400px_minmax(0,1fr)] 2xl:grid-cols-[440px_minmax(0,1fr)]">
+      {/* ── Saved simulations ARE the page now. Arriving here shows what has
+             been estimated against which file; a new estimate is a deliberate act. ── */}
+      <div className="mt-4">
+        <Panel
+          title="Saved simulations"
+          subtitle="Each row keeps the tariff it was computed with — click one to open it"
+          className="p-4"
+        >
+          <DataList
+            columns={savedCols}
+            rows={saved}
+            error={listError}
+            loading={saved === null}
+            density="compact"
+            sticky
+            maxHeight="640px"
+            rowKey={(r, i) => String(r.extra_charge_simulation_id ?? i)}
+            onRowClick={(r) => setSelected(r)}
+            empty={{
+              title: "No simulations saved yet",
+              hint: "Start one with New simulation — a container list, an ATA and a gate-out date are all it needs.",
+            }}
+          />
+        </Panel>
+      </div>
+
+      {/* ── THE WORKBENCH, now in a dialog (owner's call, 22 Aug 2026). ─────
+             The note at the top of this file argued for a full page AGAINST a
+             dialog, because a dialog caps the result height and hides the saved
+             list behind it. The height half of that is still true, so it is
+             answered rather than ignored: `size="wide"` keeps the 400px rail
+             beside a real results column, the charge table keeps its own
+             internal scroll, and the dialog scrolls its body — the estimate is
+             never truncated.
+
+             The other half no longer holds. Simulating is not the first thing
+             an operator does on arriving; seeing what has already been
+             estimated is. So the saved list IS the page, and starting a new
+             estimate is a deliberate act rather than the default state. ── */}
+      <Modal
+        open={workbenchOpen}
+        onClose={() => setWorkbenchOpen(false)}
+        title={editingId ? tr("Edit simulation") : tr("New simulation")}
+        description="Demurrage, storage, yard occupancy, plugging and detention across a container list — an estimate, with no accounting entries."
+        size="wide"
+      >
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
         {/* ── Input rail. Sticky from xl, where there is height to spend. ── */}
         <div className="xl:sticky xl:top-2 xl:self-start">
           <Panel
@@ -831,7 +922,18 @@ export function ExtraChargeSimulationsPage() {
                 </p>
               )}
 
-              <div className="hidden justify-end md:flex">
+              {/* Always visible now. This was `hidden md:flex` because the
+                  page header carried a phone-only Save; that header button is
+                  now "New simulation", so hiding this one below `md` would
+                  leave a phone with no way to save at all. */}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setWorkbenchOpen(false)}
+                  disabled={saving}
+                >
+                  {tr("Cancel")}
+                </Button>
                 <Button
                   onClick={save}
                   loading={saving}
@@ -1048,32 +1150,8 @@ export function ExtraChargeSimulationsPage() {
           </Panel>
         </div>
       </div>
+      </Modal>
 
-      {/* ── Saved simulations. Full width under the workbench: it is history,
-             not a working surface, so it does not compete for the rail. ── */}
-      <div className="mt-4">
-        <Panel
-          title="Saved simulations"
-          subtitle="Each row keeps the tariff it was computed with"
-          className="p-4"
-        >
-          <DataList
-            columns={savedCols}
-            rows={saved}
-            error={listError}
-            loading={saved === null}
-            density="compact"
-            sticky
-            maxHeight="420px"
-            rowKey={(r, i) => String(r.extra_charge_simulation_id ?? i)}
-            onRowClick={(r) => setSelected(r)}
-            empty={{
-              title: "No simulations saved yet",
-              hint: "Compute one above, then save it to keep the estimate against the file.",
-            }}
-          />
-        </Panel>
-      </div>
 
       {/* §3.2 — a saved simulation opens and re-applies: they are saved to be
           reused, not to sit as inert rows. */}

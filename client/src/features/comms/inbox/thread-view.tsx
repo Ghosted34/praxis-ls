@@ -29,7 +29,9 @@ import { Pill } from "@/components/ui/pill";
 import { Select } from "@/components/ui/modal";
 import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { dateTimeFmt } from "@/lib/format";
-import type { Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
+import { tr } from "@/lib/i18n";
+import type { Attachment, Label, MailFolder, MailStream, Message, ThreadDetail } from "@/lib/mail-api";
+import { downloadAttachment, listMsgAttachments } from "@/lib/mail-api";
 import { SignatureSlot } from "./composer/signature-slot";
 import { WorkRail } from "./work";
 import { VerdictBanner, VerdictPill } from "./work/guardrails";
@@ -44,7 +46,82 @@ function originNote(m: Message): string | null {
   if (m.direction !== "OUT") return null;
   const via = String(m.sent_via || "").toUpperCase();
   if (!via || via === "PRAXIS") return null;
-  return "Sent from another device";
+  return tr("Sent from another device");
+}
+
+/** Bytes → the shortest honest string. Attachment sizes are the one number in
+ *  this pane a person compares at a glance ("is that the 12 MB scan?"). */
+function sizeLabel(bytes?: number | null): string {
+  const n = Number(bytes || 0);
+  if (!n) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The attachment strip (audit H-2).
+ *
+ * Before this, `has_attachment` rendered a pill reading "Attachment" and that
+ * was the entire feature: the product could tell you a bill of lading had
+ * arrived and could not show it to you. Acceptance criterion 8 was half met —
+ * storage and hashing yes, retrieval no.
+ *
+ * Fetched lazily, per message, only when the message is expanded and only when
+ * it actually has one. A thread of forty messages must not fire forty requests
+ * to draw a pane where thirty-nine of them are collapsed.
+ *
+ * A failure renders as a readable line rather than an empty space, because the
+ * empty space is indistinguishable from "this message has no attachments" —
+ * and that is the state the user has already been living with.
+ */
+function AttachmentStrip({ messageId }: { messageId: string }) {
+  const [rows, setRows] = React.useState<Attachment[] | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let live = true;
+    listMsgAttachments(messageId)
+      .then((r) => { if (live) setRows(r || []); })
+      .catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [messageId]);
+
+  if (failed) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {tr("Could not load the attachments on this message.")}
+      </p>
+    );
+  }
+  if (!rows) return <LoadingRow />;
+  if (!rows.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rows.map((a) => {
+        const size = sizeLabel(a.size_bytes);
+        return (
+          <Button
+            key={a.email_attachment_id}
+            size="sm"
+            variant="outline"
+            disabled={busy === a.email_attachment_id}
+            onClick={() => {
+              setBusy(a.email_attachment_id);
+              downloadAttachment(a.email_attachment_id, a.filename)
+                .catch(() => setFailed(true))
+                .finally(() => setBusy(null));
+            }}
+          >
+            <span className="truncate max-w-[16rem]">{a.filename || tr("Attachment")}</span>
+            {size && <span className="num ml-1.5 text-xs text-muted-foreground">{size}</span>}
+          </Button>
+        );
+      })}
+    </div>
+  );
 }
 
 function MessageBlock({
@@ -62,8 +139,8 @@ function MessageBlock({
   const cc = Array.isArray(message.cc_address) ? message.cc_address : [];
   const who =
     message.direction === "OUT"
-      ? `To ${to.join(", ") || "—"}`
-      : `From ${message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}`;
+      ? `${tr("To")} ${to.join(", ") || "—"}`
+      : `${tr("From")} ${message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}`;
 
   return (
     <article
@@ -95,16 +172,22 @@ function MessageBlock({
         <div className="space-y-2 border-t border-border px-3 py-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <Pill tone={message.direction === "OUT" ? "blue" : "mute"}>
-              {message.direction === "OUT" ? "Sent" : "Received"}
+              {message.direction === "OUT" ? tr("Sent") : tr("Received")}
             </Pill>
             <Pill tone="mute">{message.folder}</Pill>
             {origin && <Pill tone="warn">{origin}</Pill>}
-            {message.has_attachment && <Pill tone="mute">Attachment</Pill>}
+            {/* The pill stays as the at-a-glance marker; the strip below is the
+                part that was missing (H-2). */}
+            {message.has_attachment && <Pill tone="mute">{tr("Attachment")}</Pill>}
             {/* §9.7. Absent verdict renders nothing — see the type. A green
                 tick for "we did not check" would be the worst of the three
                 possible outputs. */}
             <VerdictPill verdict={message.auth_verdict} />
           </div>
+
+          {message.has_attachment && (
+            <AttachmentStrip messageId={message.email_message_id} />
+          )}
 
           <VerdictBanner
             verdict={message.auth_verdict}
@@ -116,7 +199,7 @@ function MessageBlock({
           />
           {cc.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Cc: <span className="num">{cc.join(", ")}</span>
+              {tr("Cc")}: <span className="num">{cc.join(", ")}</span>
             </p>
           )}
           {message.body_html ? (
@@ -127,7 +210,7 @@ function MessageBlock({
             />
           ) : (
             <div className="whitespace-pre-wrap text-sm">
-              {message.body_text || message.body_preview || "(no content)"}
+              {message.body_text || message.body_preview || tr("(no content)")}
             </div>
           )}
 
@@ -181,13 +264,12 @@ export function ThreadView({
   React.useEffect(() => { setReplying(false); }, [thread?.email_thread_id]);
 
   if (error) return <ErrorState message={error} />;
-  if (loading && !thread) return <LoadingRow label="Opening conversation…" />;
+  if (loading && !thread) return <LoadingRow label={tr("Opening conversation…")} />;
   if (!thread) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center">
         <p className="max-w-reading text-sm text-muted-foreground">
-          Choose a conversation to read it. Everything here is scoped to you —
-          what you have read, what you have starred, and the labels you made.
+          {tr("Choose a conversation to read it. Everything here is scoped to you — what you have read, what you have starred, and the labels you made.")}
         </p>
       </div>
     );
@@ -206,10 +288,10 @@ export function ThreadView({
       <header className="space-y-2 border-b border-border px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-base font-semibold">
-            {thread.subject || "(no subject)"}
+            {thread.subject || tr("(no subject)")}
           </h2>
           <Button size="sm" variant="ghost" onClick={onClose} className="lg:hidden">
-            Close
+            {tr("Close")}
           </Button>
         </div>
         <p className="num text-xs text-muted-foreground">
@@ -221,7 +303,7 @@ export function ThreadView({
             distrust; a reason without a way to correct it is worse. */}
         {thread.stream === "SYSTEM" && thread.stream_reason && (
           <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-            Filed as a notice: {thread.stream_reason}
+            {tr("Filed as a notice:")} {thread.stream_reason}
           </p>
         )}
 
@@ -232,19 +314,19 @@ export function ThreadView({
             disabled={busy}
             onClick={() => onToggleRead(thread.unread_count > 0)}
           >
-            {thread.unread_count > 0 ? "Mark read" : "Mark unread"}
+            {thread.unread_count > 0 ? tr("Mark read") : tr("Mark unread")}
           </Button>
           <Select
-            aria-label="Move to folder"
+            aria-label={tr("Move to folder")}
             value=""
             disabled={busy}
             onChange={(e) => e.target.value && onMove(e.target.value as MailFolder)}
             className="h-8 w-auto text-xs"
           >
-            <option value="">Move to…</option>
+            <option value="">{tr("Move to…")}</option>
             {MOVE_TO.map((f) => (
               <option key={f} value={f}>
-                {f.charAt(0) + f.slice(1).toLowerCase()}
+                {tr(f.charAt(0) + f.slice(1).toLowerCase())}
               </option>
             ))}
           </Select>
@@ -254,17 +336,17 @@ export function ThreadView({
             disabled={busy}
             onClick={() => onStream(thread.stream === "SYSTEM" ? "HUMAN" : "SYSTEM")}
           >
-            {thread.stream === "SYSTEM" ? "This is a person" : "This is a notice"}
+            {thread.stream === "SYSTEM" ? tr("This is a person") : tr("This is a notice")}
           </Button>
           {labels.length > 0 && (
             <Select
-              aria-label="Add a label"
+              aria-label={tr("Add a label")}
               value=""
               disabled={busy}
               onChange={(e) => e.target.value && onLabel(e.target.value)}
               className="h-8 w-auto text-xs"
             >
-              <option value="">Label…</option>
+              <option value="">{tr("Label…")}</option>
               {labels.map((l) => (
                 <option key={l.email_label_id} value={l.email_label_id}>
                   {l.name}
@@ -300,7 +382,7 @@ export function ThreadView({
           writing — see the isEditorPackage note in vite.config.ts. */}
       <footer className="border-t border-border px-4 py-3">
         {replying ? (
-          <React.Suspense fallback={<LoadingRow label="Opening the composer…" />}>
+          <React.Suspense fallback={<LoadingRow label={tr("Opening the composer…")} />}>
             <Composer
               connectionId={thread.email_connection_id}
               threadId={thread.email_thread_id}
@@ -317,7 +399,7 @@ export function ThreadView({
             />
           </React.Suspense>
         ) : (
-          <Button size="sm" onClick={() => setReplying(true)}>Reply</Button>
+          <Button size="sm" onClick={() => setReplying(true)}>{tr("Reply")}</Button>
         )}
       </footer>
     </div>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { platform } from "@/lib/api";
 import type { Plan, TenantListRow } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
+import { fmtDate } from "@/lib/format";
 import { Button, Empty, Field, Loading, Modal, PageHeader, Pill, StatusPill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
@@ -56,7 +57,12 @@ export function Tenants() {
                     <td>{r.plan ? <Pill tone="mute">{r.plan}</Pill> : "—"}</td>
                     <td><StatusPill status={r.status} isLive={r.is_live} /></td>
                     <td>{r.capacity_tier ? <code className="tag">{r.capacity_tier}</code> : "—"}</td>
-                    <td className="dim">{r.sandbox_wipe_days != null ? r.sandbox_wipe_days + " days" : "—"}</td>
+                    <td className="dim">
+                      {r.sandbox_wipe_days ? <>every {r.sandbox_wipe_days} days</> : <Pill tone="mute">Manual</Pill>}
+                      <div className="mono muted" style={{ fontSize: 11 }}>
+                        {r.last_sandbox_wipe_at ? "last " + fmtDate(r.last_sandbox_wipe_at) : "never wiped"}
+                      </div>
+                    </td>
                     <td className="dim">{r.overrides || 0}</td>
                   </tr>
                 ))}

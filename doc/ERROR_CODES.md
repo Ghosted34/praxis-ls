@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (481)
+## All codes (482)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -57,10 +57,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_SETTLED` | 409 | 3× | — |
 | `ALREADY_SIGNED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
+| `ARCHIVED_RETENTION` | 409 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
 | `ATTACHMENT_TOO_LARGE` | — | 1× | — |
 | `AUDIO_TOO_LARGE` | 413 | 1× | — |
-| `AUTH_REQUIRED` | 401 | 14× | — |
+| `AUTH_REQUIRED` | 401 | 15× | — |
 | `AWAITING_DECISION` | — | 1× | — |
 | `BAD_ACTION` | 422 | 4× | — |
 | `BAD_AMOUNT` | 422 | 14× | `INVALID_AMOUNT` |
@@ -108,7 +109,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_STAGE` | 422 | 2× | — |
 | `BAD_STATE` | 400, 409, 422 | 38× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
-| `BAD_STORAGE_BUFFER` | 400 | 1× | — |
+| `BAD_STORAGE_BUFFER` | 400 | 2× | — |
 | `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TARGET` | 422 | 1× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
@@ -273,7 +274,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 528× | — |
+| `NOT_FOUND` | 404, 422 | 536× | — |
 | `NOT_IMPLEMENTED` | 501 | 1× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
@@ -499,7 +500,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 216× | — |
+| `VALIDATION_ERROR` | 422 | 217× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

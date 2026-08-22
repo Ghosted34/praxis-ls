@@ -128,6 +128,11 @@ async function listQueue(client, { limit = 100 } = {}) {
 }
 
 async function hasReconciledScan(client, jobId) {
+  // The signature arm is intentionally request-wide. Reprints share the same
+  // signing party/request; if one copy has already been reconciled, another
+  // returned copy must go to review rather than silently becoming a second wet
+  // signature. Both copies remain attributable through signature_print_job, but
+  // check 4 treats the second return as an operator decision.
   const { rows } = await client.query(
     `SELECT 1
        FROM signature_ingest i

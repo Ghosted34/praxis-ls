@@ -4,9 +4,20 @@
  * Thin wrapper over provisioning.wipeSandbox (which drops ONLY the `sandbox`
  * schema — the live schema is unreachable from this path by construction: the
  * DROP/CREATE statements name `sandbox` literally and the tracked migration
- * scope is `sandbox`/`sandbox-seed`). After a successful rebuild the platform
- * tenant row is stamped with last_sandbox_wipe_at so the scheduler does not
- * wipe again inside the tenant's `sandbox_wipe_days` window.
+ * scope is `sandbox`/`sandbox-seed`).
+ *
+ * NOTE (2026-08-22). This handler used to call `stampSandboxWipe` itself, as a
+ * second step after the wipe. Two problems came out of that split:
+ *
+ *   1. The stamp hung — a missing `connect()`, see provisioning.service — so
+ *      the job never completed, was retried, and `last_sandbox_wipe_at` stayed
+ *      NULL. The scheduler reads NULL as "never wiped → wipe now", so the
+ *      tenant was rebuilt nightly instead of on its interval.
+ *   2. Only this path stamped. A manual wipe from the console did not, so the
+ *      cron would rebuild a hand-rebuilt sandbox again hours later.
+ *
+ * Both are fixed by folding the stamp (and the new `sandbox.wiped` audit row)
+ * into `wipeSandbox` itself, where every caller gets it.
  *
  * Job data: { tenantMeta } — the registry row for the tenant.
  */
@@ -22,8 +33,7 @@ module.exports = async function sandboxWipe(job) {
     logger.info({ slug: meta.slug }, "sandbox wipe skipped — tenant has no sandbox schema");
     return { slug: meta.slug, skipped: true };
   }
-  await svc.wipeSandbox({ slug: meta.slug });
-  await svc.stampSandboxWipe({ slug: meta.slug });
-  logger.info({ slug: meta.slug }, "sandbox rebuilt by scheduler");
-  return { slug: meta.slug, wiped: true };
+  const out = await svc.wipeSandbox({ slug: meta.slug, source: "scheduler" });
+  logger.info({ slug: meta.slug, audited: out.audited }, "sandbox rebuilt by scheduler");
+  return { slug: meta.slug, wiped: true, audited: out.audited };
 };

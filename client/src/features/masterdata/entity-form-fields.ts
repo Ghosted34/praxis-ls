@@ -35,6 +35,9 @@ export const EMPTY_VALUES: EntityFormValues = {
   legal_name: "",
   trading_name: "",
   legal_form: "",
+  legal_form_code: "",
+  legal_form_source: "",
+  legal_form_jurisdiction: "",
   country_code: "",
   industry: "",
   website: "",
@@ -88,6 +91,9 @@ export function entityFormBody(v: EntityFormValues): Record<string, unknown> {
     legal_name: v.legal_name.trim(),
     trading_name: text(v.trading_name),
     legal_form: text(v.legal_form),
+    legal_form_code: text(v.legal_form_code),
+    legal_form_source: text(v.legal_form_source),
+    legal_form_jurisdiction: text(v.legal_form_jurisdiction),
     country_code: v.country_code || undefined,
     industry: text(v.industry),
     website: text(v.website),
@@ -131,14 +137,13 @@ export function entityFormBody(v: EntityFormValues): Record<string, unknown> {
 }
 
 /**
- * Keys bound to an `<input type="date">`, which renders ONLY `YYYY-MM-DD`.
+ * Keys bound to the day-first `DateField`.
  *
- * `String(raw)` is right for every other column and wrong for these: a date that
- * reached the form as a timestamp left the control blank while the form state
- * still held the timestamp, so re-opening an entity showed no incorporation date
- * and Save posted the unrenderable value back for the API to reject. Named
- * explicitly rather than sniffed from the value, so a text field that happens to
- * contain something date-shaped is never rewritten.
+ * The control displays `dd/mm/yyyy` but its value contract remains ISO
+ * `YYYY-MM-DD`. `String(raw)` is therefore wrong for a legacy timestamp: it
+ * would leave the visible control blank and Save would post an unrenderable
+ * value back to the API. Named explicitly rather than sniffed from the value, so
+ * a text field that happens to contain something date-shaped is never rewritten.
  */
 const DATE_KEYS = new Set(["incorporation_date", "dissolution_date"]);
 

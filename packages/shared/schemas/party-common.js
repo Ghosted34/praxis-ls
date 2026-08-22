@@ -28,6 +28,7 @@ const {
   currency,
   optionalDate,
   optionalPercent,
+  optionalTimezone,
   blankToUndefined,
 } = require("./common");
 
@@ -66,7 +67,7 @@ const contactShape = {
   language: blankToUndefined(
     z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
   ),
-  timezone: optionalText,
+  timezone: optionalTimezone,
   portal_access: z.boolean().optional(),
   is_active: z.boolean().optional(),
 };

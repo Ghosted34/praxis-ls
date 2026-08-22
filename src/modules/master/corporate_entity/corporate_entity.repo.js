@@ -15,7 +15,8 @@ const { insertOne, getById, page, updateOne } = require("../../../shared/db/quer
  */
 const WRITABLE = [
   // identity
-  "legal_name", "trading_name", "legal_form", "niu", "rccm", "country_code", "address",
+  "legal_name", "trading_name", "legal_form", "legal_form_code", "legal_form_source",
+  "legal_form_jurisdiction", "niu", "rccm", "country_code", "address",
   "incorporation_date", "incorporation_country", "incorporation_place", "dissolution_date",
   "share_capital", "share_capital_currency", "share_capital_paid_up",
   "description", "industry", "website", "email", "phone", "headcount", "timezone",

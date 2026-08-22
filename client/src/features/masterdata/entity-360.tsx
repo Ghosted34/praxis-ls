@@ -39,6 +39,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { TimezonePicker } from "@/components/timezone-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
 import {
   SCAN_ACCEPT,
@@ -47,7 +48,7 @@ import {
 } from "@/lib/vault-file";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, enumLabel, toDateInput } from "@/lib/format";
+import { money, num, dateDmy, enumLabel, toDateInput } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
@@ -207,6 +208,7 @@ type FieldSpec = {
     | "date"
     | "email"
     | "country"
+    | "timezone"
     | "checkbox"
     | "select"
     | "textarea"
@@ -478,6 +480,12 @@ function ChildModal({
                     <SmartCountryPicker
                       value={(values[f.key] as string) || ""}
                       onChange={(c) => set(f.key, c)}
+                      label={f.label}
+                    />
+                  ) : f.type === "timezone" ? (
+                    <TimezonePicker
+                      value={(values[f.key] as string) || ""}
+                      onChange={(timezone) => set(f.key, timezone)}
                       label={f.label}
                     />
                   ) : f.type === "select" ? (
@@ -786,7 +794,7 @@ const contactFields = (): FieldSpec[] => [
   {
     key: "timezone",
     label: "Timezone",
-    placeholder: "Africa/Douala",
+    type: "timezone",
     hint: "So a call is not scheduled at 3 a.m. their time.",
   },
   { key: "is_primary", label: "Primary contact", type: "checkbox" },
@@ -1261,7 +1269,7 @@ export function EntityDossier({
                 </Pill>{" "}
                 {x.kind}{" "}
                 {x.number ? <span className="num">{x.number}</span> : null} —{" "}
-                {dateFmt(x.expires_on)}
+                {dateDmy(x.expires_on)}
               </li>
             ))}
           </ul>
@@ -1328,7 +1336,7 @@ export function EntityDossier({
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Legal form">{e.legal_form}</Detail>
               <Detail label="Incorporated">
-                {e.incorporation_date ? dateFmt(e.incorporation_date) : null}
+                {e.incorporation_date ? dateDmy(e.incorporation_date) : null}
               </Detail>
               <Detail label="Place">{e.incorporation_place}</Detail>
               <Detail label={tr("Country")}>{e.incorporation_country}</Detail>
@@ -1346,7 +1354,7 @@ export function EntityDossier({
                   : null}
               </Detail>
               {e.dissolution_date && (
-                <Detail label="Dissolved">{dateFmt(e.dissolution_date)}</Detail>
+                <Detail label="Dissolved">{dateDmy(e.dissolution_date)}</Detail>
               )}
             </dl>
           </Section>
@@ -1516,8 +1524,8 @@ export function EntityDossier({
                   <span className="num">{r.number || "—"}</span>
                 </Td>
                 <Td>{r.issuing_authority || "—"}</Td>
-                <Td>{r.issued_on ? dateFmt(r.issued_on) : "—"}</Td>
-                <Td>{r.expires_on ? dateFmt(r.expires_on) : "—"}</Td>
+                <Td>{r.issued_on ? dateDmy(r.issued_on) : "—"}</Td>
+                <Td>{r.expires_on ? dateDmy(r.expires_on) : "—"}</Td>
                 <Td r>
                   <Button
                     size="sm"
@@ -1652,7 +1660,7 @@ export function EntityDossier({
                   <Td>
                     {t.deregistered_on ? (
                       <Pill tone="mute">
-                        Ended {dateFmt(t.deregistered_on)}
+                        Ended {dateDmy(t.deregistered_on)}
                       </Pill>
                     ) : (
                       <Pill tone={t.is_active === false ? "mute" : "ok"}>
@@ -1726,7 +1734,7 @@ export function EntityDossier({
                     ) : null}
                   </Td>
                   <Td>{o.period_code || "—"}</Td>
-                  <Td>{dateFmt(o.due_on)}</Td>
+                  <Td>{dateDmy(o.due_on)}</Td>
                   <Td>
                     <Pill
                       tone={
@@ -1758,21 +1766,26 @@ export function EntityDossier({
       {tab === "Renewals" && (
         <Section
           title="Renewals"
-          description={`Everything on this entity that has expired or is approaching expiry, as of ${dateFmt(renewalsView.as_of)}. Nothing here blocks anything — these are recommendations for a person to act on.`}
+          description={`Everything on this entity that has expired or is approaching expiry, as of ${dateDmy(renewalsView.as_of)}. Nothing here blocks anything — these are recommendations for a person to act on.`}
           action={
             <div className="flex flex-wrap items-end gap-2">
               {/* Forward, to plan a renewal run; back, to answer "what had already
                   lapsed at the audit date". The endpoint took as_of from the
                   start and the screen never offered one. */}
-              <label className="space-y-1 text-sm">
-                <span className="micro text-muted-foreground">{tr("As of")}</span>
-                <Input
-                  type="date"
+              <div className="space-y-1 text-sm">
+                <span
+                  id="renewal-as-of-label"
+                  className="micro block text-muted-foreground"
+                >
+                  {tr("As of")}
+                </span>
+                <DateField
                   value={renewalAsOf}
-                  onChange={(ev) => setRenewalAsOf(ev.target.value)}
+                  onChange={setRenewalAsOf}
                   className="w-40"
+                  aria-labelledby="renewal-as-of-label"
                 />
-              </label>
+              </div>
               {renewalAsOf && (
                 <Button
                   size="sm"
@@ -1816,7 +1829,7 @@ export function EntityDossier({
                 </Td>
                 <Td>{enumLabel(i.kind)}</Td>
                 <Td>{i.country_code || "—"}</Td>
-                <Td>{dateFmt(i.expires_on)}</Td>
+                <Td>{dateDmy(i.expires_on)}</Td>
                 <Td r>
                   {i.days_remaining != null ? num(i.days_remaining) : "—"}
                 </Td>
@@ -1860,22 +1873,27 @@ export function EntityDossier({
 
           <Section
             title="Shareholding"
-            description={`Reconciled as of ${dateFmt(capView.as_of)}. Warnings never block saving — a partly-recorded cap table is normal during onboarding.`}
+            description={`Reconciled as of ${dateDmy(capView.as_of)}. Warnings never block saving — a partly-recorded cap table is normal during onboarding.`}
             action={
               <div className="flex flex-wrap items-end gap-2">
                 {/* GET /cap-table?as_of= has always existed and the assistant's
                     own tool passes a date; the screen only ever got today's
                     snapshot out of the /360 bundle. "Who held what when the
                     accounts were signed" is the question this table is asked. */}
-                <label className="space-y-1 text-sm">
-                  <span className="micro text-muted-foreground">{tr("As of")}</span>
-                  <Input
-                    type="date"
+                <div className="space-y-1 text-sm">
+                  <span
+                    id="cap-table-as-of-label"
+                    className="micro block text-muted-foreground"
+                  >
+                    {tr("As of")}
+                  </span>
+                  <DateField
                     value={capAsOf}
-                    onChange={(ev) => setCapAsOf(ev.target.value)}
+                    onChange={setCapAsOf}
                     className="w-40"
+                    aria-labelledby="cap-table-as-of-label"
                   />
-                </label>
+                </div>
                 {capAsOf && (
                   <Button
                     size="sm"
@@ -1992,11 +2010,11 @@ export function EntityDossier({
                         : "—"}
                     </Td>
                     <Td>
-                      {p.effective_from ? dateFmt(p.effective_from) : "—"}
+                      {p.effective_from ? dateDmy(p.effective_from) : "—"}
                       {p.effective_to ? (
                         <span className="micro text-muted-foreground">
                           {" "}
-                          → {dateFmt(p.effective_to)}
+                          → {dateDmy(p.effective_to)}
                         </span>
                       ) : null}
                     </Td>
@@ -2105,8 +2123,8 @@ export function EntityDossier({
                       </div>
                     )}
                   </Td>
-                  <Td>{p.effective_from ? dateFmt(p.effective_from) : "—"}</Td>
-                  <Td>{p.effective_to ? dateFmt(p.effective_to) : "—"}</Td>
+                  <Td>{p.effective_from ? dateDmy(p.effective_from) : "—"}</Td>
+                  <Td>{p.effective_to ? dateDmy(p.effective_to) : "—"}</Td>
                   <Td r>
                     <Button
                       size="sm"
@@ -2465,7 +2483,7 @@ export function EntityDossier({
                     {s.closed_on ? (
                       <>
                         {" "}
-                        <Pill tone="mute">Closed {dateFmt(s.closed_on)}</Pill>
+                        <Pill tone="mute">Closed {dateDmy(s.closed_on)}</Pill>
                       </>
                     ) : s.is_active === false ? (
                       <>
@@ -2901,7 +2919,7 @@ function DocumentsTab({
               <span className="num">{doc.document_number || "—"}</span>
             </Td>
             <Td>{doc.country_code || "—"}</Td>
-            <Td>{doc.expires_on ? dateFmt(doc.expires_on) : "—"}</Td>
+            <Td>{doc.expires_on ? dateDmy(doc.expires_on) : "—"}</Td>
             <Td>
               <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>
                 {enumLabel(doc.scan_status)}

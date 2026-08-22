@@ -7,6 +7,7 @@
  * no opinion at all, which is exactly the split the audit's F12 describes.
  */
 const { z } = require("zod");
+const timezones = require("../data/timezones");
 
 /** A UUID primary key. */
 const uuid = z.string().uuid("Must be a valid id.");
@@ -83,6 +84,21 @@ const blankToUndefined = (schema) =>
 /** An optional trimmed string, `""` → undefined. */
 const optionalText = blankToUndefined(z.string().trim());
 
+/**
+ * A canonical IANA timezone. Deprecated tzdb links are accepted at the API
+ * boundary and normalised (Europe/Kiev → Europe/Kyiv), but arbitrary strings
+ * are not — the UI picker and the server share the same 2026b catalogue.
+ */
+const ianaTimezone = z
+  .string()
+  .trim()
+  .refine(
+    (value) => timezones.isValid(value),
+    "Choose a timezone from the list.",
+  )
+  .transform((value) => timezones.normalize(value));
+const optionalTimezone = blankToUndefined(ianaTimezone);
+
 /** An optional email, normalised and validated; `""` → undefined. */
 const email = blankToUndefined(
   z.string().trim().email("Enter a valid email address."),
@@ -137,6 +153,8 @@ exports.positiveAmount = positiveAmount;
 exports.currency = currency;
 exports.blankToUndefined = blankToUndefined;
 exports.optionalText = optionalText;
+exports.ianaTimezone = ianaTimezone;
+exports.optionalTimezone = optionalTimezone;
 exports.email = email;
 exports.countryCode = countryCode;
 exports.optionalDate = optionalDate;

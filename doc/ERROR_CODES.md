@@ -471,7 +471,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 211× | — |
+| `VALIDATION_ERROR` | 422 | 212× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

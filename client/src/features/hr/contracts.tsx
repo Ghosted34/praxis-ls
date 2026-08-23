@@ -20,6 +20,7 @@ import { ContractEditor } from "./contract-editor";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
+import { groupContracts, type ContractGroup } from "./contracts-grouping";
 
 const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = {
@@ -310,6 +311,33 @@ export function ContractsPage() {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [renewing, setRenewing] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [open, setOpen] = React.useState<Set<string>>(() => new Set());
+
+  const groups = React.useMemo(() => groupContracts(rows.data), [rows.data]);
+  /** Which group each contract belongs to, and whether it is a superseded
+   *  term — the two things the cell renderers need and a row does not carry. */
+  const meta = React.useMemo(() => {
+    const m = new Map<string, { group: ContractGroup; isHistory: boolean }>();
+    for (const g of groups) {
+      m.set(g.head.hr_contract_id, { group: g, isHistory: false });
+      for (const h of g.history) m.set(h.hr_contract_id, { group: g, isHistory: true });
+    }
+    return m;
+  }, [groups]);
+  /** Head rows, each followed by its earlier terms while the row is open. */
+  const visible = React.useMemo(
+    () =>
+      groups.flatMap((g) =>
+        open.has(g.key) ? [g.head, ...g.history] : [g.head],
+      ),
+    [groups, open],
+  );
+  const toggle = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   async function toStatus(c: api.Contract, status: string) {
     setBusy(c.hr_contract_id + status);
@@ -349,11 +377,37 @@ export function ContractsPage() {
     {
       key: "emp",
       label: "Employee",
-      render: (c) => (
-        <span className="font-medium text-foreground">
-          {c.employee_name || "—"}
-        </span>
-      ),
+      render: (c) => {
+        const m = meta.get(c.hr_contract_id);
+        if (m?.isHistory)
+          return (
+            <span className="flex items-center gap-2 pl-4 text-muted-foreground">
+              <span aria-hidden>↳</span>
+              <span>{tr("Earlier term")}</span>
+              {c.doc_number && <span className="num text-xs">{c.doc_number}</span>}
+            </span>
+          );
+        const earlier = m?.group.history.length || 0;
+        const isOpen = m ? open.has(m.group.key) : false;
+        return (
+          <span className="flex flex-col items-start gap-0.5">
+            <span className="font-medium text-foreground">
+              {c.employee_name || "—"}
+            </span>
+            {earlier > 0 && m && (
+              <button
+                type="button"
+                onClick={() => toggle(m.group.key)}
+                aria-expanded={isOpen}
+                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                {isOpen ? tr("Hide") : tr("Show")} {earlier}{" "}
+                {earlier === 1 ? tr("earlier term") : tr("earlier terms")}
+              </button>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: "kind",
@@ -465,7 +519,7 @@ export function ContractsPage() {
       )}
       <DataList
         columns={cols}
-        rows={rows.data}
+        rows={rows.data === null ? null : visible}
         error={rows.error}
         loading={rows.loading}
         rowKey={(c) => c.hr_contract_id}

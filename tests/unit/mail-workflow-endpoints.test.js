@@ -226,6 +226,64 @@ describe("sharing one Private thread with one colleague", () => {
   test("sharing with nobody is refused", async () => {
     await expect(workflow.shareThread(fakeClient(), "t-1", null, ME)).rejects.toMatchObject({ status: 422 });
   });
+
+  /* The other two halves of C-1. `shareThread` is the obvious one and is
+   * covered above; these are the two the finding also named and that are easy
+   * to leave behind, because neither looks like a grant. */
+
+  const notMine = [{
+    match: /SELECT t\.visibility, c\.owner_user_id/,
+    rows: [{ visibility: "PRIVATE", owner_user_id: "u-owner", is_sharee: false }],
+  }];
+
+  test("a non-owner cannot revoke somebody else's share", async () => {
+    // Unshare is the half that ERASES evidence: an operator who granted
+    // themselves sight and then withdrew it leaves the table exactly as they
+    // found it. If anyone with edit rights can call this, the ledger row is
+    // the only trace and the attacker chose when to write it.
+    const c = fakeClient(notMine);
+    await expect(workflow.unshareThread(c, "t-1", "u-marie", ME)).rejects.toMatchObject({ status: 404 });
+    expect(c.written(/DELETE FROM email_thread_share/)).toHaveLength(0);
+  });
+
+  test("nor read who has been let in", async () => {
+    // The share list is a disclosure in its own right — it names the people
+    // trusted with a Private conversation.
+    await expect(workflow.listShares(fakeClient(notMine), "t-1", ME))
+      .rejects.toMatchObject({ status: 404 });
+  });
+
+  test("the refusal is NOT_FOUND, not FORBIDDEN", async () => {
+    // A 403 would confirm that this specific Private thread exists and that
+    // the caller merely is not its steward. For a conversation whose existence
+    // is the sensitive part, that is most of the disclosure.
+    const err = await workflow.shareThread(fakeClient(notMine), "t-1", "u-marie", ME).catch((e) => e);
+    expect(err.status).toBe(404);
+    expect(err.code).toBe("NOT_FOUND");
+  });
+
+  test("a TEAM thread needs no stewardship — nothing is disclosed by sharing it", async () => {
+    // Guards the other direction: over-gating would break the ordinary "put
+    // this on Marie's radar" case for no security gain, because a share row on
+    // a thread the team can already read grants nothing.
+    const c = fakeClient([
+      { match: /SELECT t\.visibility, c\.owner_user_id/,
+        rows: [{ visibility: "TEAM", owner_user_id: "u-owner", is_sharee: false }] },
+      shared,
+    ]);
+    await workflow.shareThread(c, "t-1", "u-marie", ME);
+    expect(c.written(/INSERT INTO email_thread_share/)).toHaveLength(1);
+  });
+
+  test("an existing sharee may pass it on — that is what makes PRIVATE usable", async () => {
+    const c = fakeClient([
+      { match: /SELECT t\.visibility, c\.owner_user_id/,
+        rows: [{ visibility: "PRIVATE", owner_user_id: "u-owner", is_sharee: true }] },
+      shared,
+    ]);
+    await workflow.shareThread(c, "t-1", "u-marie", ME);
+    expect(c.written(/INSERT INTO email_thread_share/)).toHaveLength(1);
+  });
 });
 
 /* ── Verified domains ─────────────────────────────────────────────────────── */

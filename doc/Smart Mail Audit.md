@@ -987,3 +987,101 @@ cPanel mailbox, and no amount of static verification substitutes for it. The
 code is ready for that run; it has not had it.
 
 — *Addendum B, 2026-08-22*
+
+---
+
+# Addendum C — the Mediums, and the test pass · 2026-08-22 (evening)
+
+Two streams of work landed between Addendum B and this one: a second engineer
+closed the Medium findings, and the full suite was run against the Critical/High
+remediation for the first time. This records both, and one thing the test run
+taught that is worth more than the failures themselves.
+
+## C.1 The Mediums — closed by a parallel pass
+
+| ID | Fix, as built |
+|---|---|
+| **P5-1** | `sla.service` now dates undated threads `ORDER BY t.first_message_at ASC NULLS LAST`, so a backlog over the 500-row tick dates the oldest — the most at-risk — first rather than an arbitrary 500. Resolution breaches are now detected and alerted, with migration **11747** adding `resolution_breached_at` as a **separate** stamp from `sla_breached_at`. That separation is the load-bearing decision: the breach UPDATE is `…_at IS NULL`, so reusing the first-response column would let a missed first reply swallow the later resolution breach entirely. Two independent clocks, two independent stamps. |
+| **P5-2** | Notification dedupe moved to Redis `SET NX EX 60`, so "one event, at most one notification per user per channel" now holds across replicas and restarts instead of only inside one process. The in-memory Map is kept as the fallback when Redis is down or uninitialised, so the guarantee **degrades to process-local rather than disappearing** — the right failure mode for a dedupe, whose absence is noisy rather than dangerous. |
+| **P2-1** | `signature.png` reuses one headless browser behind a memoised promise, with a `disconnected` handler that clears it so a crashed Chrome is replaced rather than cached forever. A manager regenerating signatures for a team no longer pays a multi-second launch per render or leaves unbounded Chrome processes behind. |
+| **P3-1** | The dossier drawer now re-checks the owning module's read grant per source, the way the AI grounding layer already did. Receivables numbers are withheld from a caller with mail rights but no finance rights, and the response says `financials_withheld: true` rather than rendering a silent zero — a withheld number and a real zero must never look alike. The Money tab is gated the same way. |
+
+That closes the Medium register. `P1A-1`/`P1A-2` were closed in Addendum B's
+pass (the legacy detail and folder reads carry the gate).
+
+## C.2 The test pass — 15 failures, one cause
+
+The first full run after Addendum B produced **15 failures across 3 suites**,
+and every one had the same cause: the new gate queries hit **fake database
+clients that did not model them**.
+
+`mail-shared-inbox.test.js` emulates the tenant schema by matching on SQL text;
+it knew `getThread`'s `SELECT t.*` and not `headIfVisible`'s named column list,
+so every gated route 404'd before reaching its statement. `mail-ocr-extract` and
+`mail-workflow-endpoints` failed the same way against
+`assertExtractionVisible` and `assertMaySteward`.
+
+**None of the 15 was a defect in the remediation.** All were fixtures that
+described a database missing the query the code had started issuing. Each was
+taught the new query, keyed on the *same* visibility set the existing branch
+used — deliberately, because a fixture that answers the gate unconditionally
+would make the "an intruder gets 404" tests pass for the wrong reason, and that
+file would then be the last place anyone looked.
+
+**What the run taught that the failures did not.** Making the existing tests
+pass is not the same as testing the fix. The first repair added fixtures and one
+refusal test; the coverage completed here adds the cases that would actually
+fail if the fix were deleted:
+
+- a non-owner cannot **revoke** somebody else's share — the half that *erases
+  evidence*, since an operator who granted themselves sight and withdrew it
+  leaves the table as they found it;
+- a non-owner cannot **list** who was let in — a disclosure in its own right;
+- the refusal is `NOT_FOUND` and not `FORBIDDEN`, because a 403 confirms the
+  Private thread exists;
+- a **TEAM** thread needs no stewardship, and an existing **sharee** may pass one
+  on — the two over-gating cases, which would break PRIVATE's only escape valve;
+- OCR `dismiss` is gated like `review`, and the refusal lands **before** the
+  write rather than after it.
+
+That last one generalises: a gate that runs after the UPDATE refuses the
+response and keeps the side effect, which is the shape of half the findings in
+this audit.
+
+## C.3 Two things the fixture repair worked around rather than removed
+
+Both are now fixed at the source, because a workaround in a fixture leaves the
+hazard in the product.
+
+**`headIfVisible` was selecting the contested column.** It carried
+`assigned_user_id` and `work_status` as a convenience. `mail-shared-inbox`
+asserts that *nothing* on the claim path selects `assigned_user_id`, because a
+claim that pre-reads the assignment is one refactor from read-then-write, and
+read-then-write is how two agents both win the race. The assertion did not
+fire — its regex cannot span the newline the column list happened to wrap on —
+so the tripwire was disarmed by an accident of formatting. The columns are gone;
+a gate answering "may this caller see it" has no business carrying the fields
+the race is fought over.
+
+**Four routes were reading the thread twice.** `claim`/`assign`/`status`/
+`visibility` kept their inline `getThread` gate — the original FN-2 fix — after
+`requireVisibleThread()` was added above them. Correct, and a full second read
+of every message on the thread per request, plus a duplicate that a future
+reader has to reason about before touching either. The inline gates are removed;
+the middleware does the identical check with a single-row query, and the
+in-statement predicate that closes the gate-to-write window stays exactly where
+it was.
+
+## C.4 Status
+
+Re-verified after the refactor: **32/32** route-gating and finding-specific
+assertions, `eslint` clean on every file touched.
+
+**The full suite still needs a run.** These changes were made after the run that
+produced the 15 failures, so the current tree has not been through jest. The
+three repaired suites and the completed coverage are the files to watch.
+
+§6 checklist section A remains the gate to a pilot, and still needs a live
+tenant with a live cPanel mailbox.
+
+— *Addendum C, 2026-08-22*

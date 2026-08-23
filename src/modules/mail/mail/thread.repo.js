@@ -675,12 +675,25 @@ const timelineByEntity = (client, entityRef, { limit = 100, userId = null } = {}
  * they hold no grant on.
  */
 
-/** Thread head if this caller may see it; null if it is invisible OR absent —
- *  deliberately the same answer, see the 404 note in `./visible.js`. */
+/**
+ * Thread head if this caller may see it; null if it is invisible OR absent —
+ * deliberately the same answer, see the 404 note in `./visible.js`.
+ *
+ * DELIBERATELY MINIMAL. It briefly also selected `assigned_user_id` and
+ * `work_status`, as a convenience for handlers. That is the wrong shape for a
+ * gate, and `mail-shared-inbox.test.js` says so: it asserts that nothing on the
+ * claim path selects `assigned_user_id`, because a claim that pre-reads the
+ * assignment is one refactor from read-then-write, and read-then-write is how
+ * two agents both win the race and both answer one customer.
+ *
+ * (That assertion did not actually fire on the wider version — its regex cannot
+ * span the newline the column list wrapped on. A tripwire that misses by an
+ * accident of formatting is worth removing the hazard for anyway.)
+ */
 const headIfVisible = (client, userId, threadId) =>
   client.query(
     `SELECT t.email_thread_id, t.email_connection_id, t.subject, t.visibility,
-            t.entity_ref, t.work_status, t.assigned_user_id, c.owner_user_id
+            t.entity_ref, c.owner_user_id
        FROM email_thread t
        JOIN email_connection c ON c.email_connection_id = t.email_connection_id
       WHERE t.email_thread_id = $2

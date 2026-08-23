@@ -784,6 +784,10 @@ export type Contract = {
   signed_on?: string | null;
   signed_by_name?: string | null;
   vacancy_id?: string | null;
+  /** The contract's own reference, allocated at ISSUED (11743/12743). */
+  doc_number?: string | null;
+  /** Set on a renewal: the contract this one supersedes. */
+  renews_contract_id?: string | null;
 };
 
 /** A contract whose term or probation runs out soon — the question nothing

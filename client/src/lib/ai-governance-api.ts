@@ -72,13 +72,19 @@ export const setBudget = (body: {
 }) => tenant<Budget>("/ai/governance/budget", { method: "POST", body });
 
 export type UsageRow = {
+  /** The ledger column is `occurred_at`; `created_at` never existed on it. */
+  occurred_at?: string | null;
   created_at?: string | null;
   feature_key?: string | null;
   provider?: string | null;
   model?: string | null;
   cost_xaf?: number | string | null;
+  /** Vendor-currency cost — shown when no FX rate resolved cost_xaf. */
+  cost_native?: number | string | null;
+  cost_native_currency?: string | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
+  total_tokens?: number | null;
   was_successful?: boolean | null;
   [k: string]: unknown;
 };
@@ -94,6 +100,11 @@ export type Vendor = {
   per_vendor_monthly_cap_xaf?: number | null;
   has_key?: boolean;
   last_rotated_at?: string | null;
+  /** List price per 1k tokens, in `cost_native_currency` — what Usage bills. */
+  cost_per_1k_input_tokens?: number | string | null;
+  cost_per_1k_output_tokens?: number | string | null;
+  cost_per_audio_minute?: number | string | null;
+  cost_native_currency?: string | null;
 };
 export const listVendors = () => tenant<Vendor[]>("/ai/governance/vendors");
 export const setVendor = (
@@ -104,6 +115,10 @@ export const setVendor = (
     endpoint_url?: string;
     default_model?: string;
     is_active?: boolean;
+    cost_per_1k_input_tokens?: number;
+    cost_per_1k_output_tokens?: number;
+    cost_per_audio_minute?: number;
+    cost_native_currency?: string;
   },
 ) =>
   tenant<Vendor>(`/ai/governance/vendors/${vendor}`, { method: "PUT", body });

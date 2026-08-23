@@ -304,7 +304,10 @@ export const AREAS: Area[] = [
       { key: "appearance", label: "Appearance", to: "/appearance" },
       { key: "numbering", label: "Numbering" },
       { key: "document-templates", label: "Templates" },
-      { key: "custom-fields", label: "Custom fields" },
+      // Custom fields is hidden from the UI (see HIDDEN_CARDS in
+      // features/settings/settings-hub.tsx). Dropping it here too keeps the
+      // ribbon row and the card grid telling the same story — the route and
+      // its screen are untouched and still open directly.
       { key: "pipeline-stages", label: "Pipeline stages" },
       { key: "scheduled-reports", label: "Scheduled reports" },
       { key: "api-keys", label: "API keys" },

@@ -31,8 +31,8 @@ async function ceoUser(c) {
   const { rows } = await c.query(
     `SELECT u.user_id, u.full_name, u.email
        FROM app_user u
-       JOIN app_user_role ur ON ur.user_id = u.user_id
-       JOIN app_role r ON r.role_id = ur.role_id
+       JOIN user_role ur ON ur.user_id = u.user_id
+       JOIN role r ON r.role_id = ur.role_id
       WHERE r.code = 'CEO' AND u.status = 'ACTIVE'
       ORDER BY u.created_at ASC LIMIT 1`,
   );

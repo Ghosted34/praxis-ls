@@ -83,7 +83,10 @@ async function callVendor(vendor, { messages, tools, temperature, responseFormat
     toolCalls = inline.toolCalls;
     text = inline.text;
   }
-  return { provider: vendor.vendor, text, toolCalls, usage: data.usage || {} };
+  // `model` rides along so the usage ledger records WHICH model was billed —
+  // the vendor row can be re-pointed at a cheaper/newer model at any time, and
+  // a ledger that only names the vendor cannot explain a change in spend.
+  return { provider: vendor.vendor, model: data.model || vendor.model || null, text, toolCalls, usage: data.usage || {} };
 }
 
 /**
@@ -121,7 +124,7 @@ async function* callVendorStream(vendor, { messages, tools, temperature }) {
     // Stream not supported or network error — fall back to non-streaming.
     logger.warn({ err, vendor: vendor.vendor }, "streaming vendor call failed, falling back");
     const result = await callVendor(vendor, { messages, tools, temperature });
-    yield { delta: result.text, done: true, toolCalls: result.toolCalls, text: result.text, usage: result.usage, provider: vendor.vendor };
+    yield { delta: result.text, done: true, toolCalls: result.toolCalls, text: result.text, usage: result.usage, provider: vendor.vendor, model: result.model || vendor.model || null };
     return;
   }
 
@@ -148,7 +151,7 @@ async function* callVendorStream(vendor, { messages, tools, temperature }) {
         // If no structured tool calls, try to recover inline ones from text.
         const finalToolCalls = toolCalls.length ? toolCalls : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).toolCalls : []);
         const finalText = toolCalls.length ? text : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).text : text);
-        yield { delta: "", done: true, toolCalls: finalToolCalls, text: finalText, usage, provider: vendor.vendor };
+        yield { delta: "", done: true, toolCalls: finalToolCalls, text: finalText, usage, provider: vendor.vendor, model: vendor.model || null };
         return;
       }
       try {
@@ -188,11 +191,12 @@ async function* callVendorStream(vendor, { messages, tools, temperature }) {
   const toolCalls = Array.from(toolCallBuffers.values()).map((tc) => ({
     id: tc.id, type: tc.type || "function", function: { name: tc.function.name, arguments: tc.function.arguments },
   }));
-  yield { delta: "", done: true, toolCalls, text, usage, provider: vendor.vendor };
+  yield { delta: "", done: true, toolCalls, text, usage, provider: vendor.vendor, model: vendor.model || null };
 }
 
 const STUB = {
   provider: null,
+  model: null,
   text: "The AI assistant has no chat provider configured yet. An administrator can add one under AI Control > Vendors.",
   toolCalls: [],
   usage: {},

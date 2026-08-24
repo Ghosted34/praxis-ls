@@ -39,5 +39,9 @@ module.exports = {
   },
   setupFilesAfterEnv: ["<rootDir>/tests/jest.setup.js"],
   testTimeout: 15000,
+  // Keep coverage parallelism bounded on GitHub's small runners. The wet-signature
+  // PDF/DataMatrix test exercises native canvas + WASM; unbounded workers make
+  // the Test step measure memory pressure rather than code correctness.
+  maxWorkers: 2,
   clearMocks: true,
 };

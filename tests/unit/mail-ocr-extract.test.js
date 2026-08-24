@@ -360,6 +360,24 @@ describe("review is where a human's reading wins", () => {
     await expect(ocr.review(fakeClient(), "x-1", {}, ME)).rejects.toMatchObject({ status: 404 });
   });
 
+  test("and the refusal lands BEFORE the write, not after it", async () => {
+    // Ordering is the whole point. A gate that runs after the UPDATE has
+    // already flipped the row to REVIEWED refuses the response and keeps the
+    // side effect — which is the shape of half the findings in this audit.
+    const c = fakeClient([{ match: /UPDATE attachment_extraction/, rows: [{ attachment_extraction_id: "x-1" }] }]);
+    await expect(ocr.review(c, "x-1", { fields: { total: 1 } }, ME)).rejects.toMatchObject({ status: 404 });
+    expect(c.written(/UPDATE attachment_extraction/)).toHaveLength(0);
+  });
+
+  test("dismiss is gated the same way as review", async () => {
+    // Dismiss looks harmless — it only sets a status — but reaching it proves
+    // the extraction exists, and the row it acts on describes a document the
+    // caller may not be entitled to know about.
+    const c = fakeClient([{ match: /SET status = 'DISMISSED'/, rows: [{ status: "DISMISSED" }] }]);
+    await expect(ocr.dismiss(c, "x-1", ME)).rejects.toMatchObject({ status: 404 });
+    expect(c.written(/SET status = 'DISMISSED'/)).toHaveLength(0);
+  });
+
   test("dismissing keeps the row so it is not re-extracted", async () => {
     const c = fakeClient([
       visible,

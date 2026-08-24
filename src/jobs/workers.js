@@ -56,6 +56,25 @@ const PROCESSORS = [
    */
   { name: "signature-reminder", concurrency: 1, handler: require("./handlers/signature-reminder") },
   { name: "signature-reminder-scheduler", concurrency: 1, handler: require("./handlers/signature-reminder-scheduler") },
+  /*
+   * Certified-signature backstop (SIGNATURE_ENGINEERING_GUIDE §7.4 step 6).
+   * The webhook is the fast path; this is the one that exists because
+   * webhooks get lost. Concurrency 1 per queue: the poll settles chains
+   * (writes signatures, emails the next party), and two passes over one
+   * tenant's envelopes would race the guarded transitions for nothing —
+   * the claim arbiter makes it safe, but safe-and-serial is cheaper than
+   * safe-and-contended.
+   */
+  { name: "qes-poll", concurrency: 1, handler: require("./handlers/qes-poll") },
+  { name: "qes-poll-scheduler", concurrency: 1, handler: require("./handlers/qes-poll-scheduler") },
+  // The quota watch (§7.5): one sweep, one number, daily. Concurrency 1 —
+  // a second concurrent sweep would count the fleet twice and could emit
+  // the threshold alert in the same minute.
+  { name: "qes-quota", concurrency: 1, handler: require("./handlers/qes-quota") },
+  // Wet-signature decode (SIGNATURE_ENGINEERING_GUIDE §8.4): the barcode is
+  // the expensive half of the ingest, so one attachment per job and
+  // concurrency 1 — a decode burst is a CPU burst on the worker host.
+  { name: "signature-ingest-decode", concurrency: 1, handler: require("./handlers/signature-ingest-decode") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
@@ -500,6 +519,42 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ pattern: signatureCron }, "signature reminder scheduler registered");
+  }
+
+  /*
+   * QES poll backstop (SIGNATURE_ENGINEERING_GUIDE §7.4 step 6) — every
+   * thirty minutes. The interval is the worst-case lateness of a completion
+   * whose webhook was lost: a counterparty who signs on the provider's
+   * platform settles here within half an hour even if the webhook never
+   * arrives.
+   */
+  const qesPollCron = config.QES_POLL_CRON;
+  if (!qesPollCron) {
+    logger.warn("QES poll backstop disabled (QES_POLL_CRON empty) — lost webhooks will stall chains");
+  } else {
+    await enqueue("qes-poll-scheduler", "tick", {}, {
+      repeat: { pattern: qesPollCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: qesPollCron }, "qes poll backstop registered");
+  }
+
+  // QES quota watch (§7.5) — daily at 06:00 UTC. Wall-clock cron for the
+  // same reason as the FX sync: "the 1st of the month at 06:00" is a
+  // calendar promise about the monthly allowance, and an interval-based
+  // repeat would drift off it after every restart. The sweep counts the
+  // CURRENT calendar month, so a missed day is recovered by the next one.
+  const qesQuotaCron = config.QES_QUOTA_CRON;
+  if (!qesQuotaCron) {
+    logger.info("qes quota watch disabled (QES_QUOTA_CRON empty)");
+  } else {
+    await enqueue("qes-quota", "sweep", {}, {
+      repeat: { pattern: qesQuotaCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: qesQuotaCron }, "qes quota watch registered");
   }
 
   // Sandbox auto-wipe (G3, PRD §5.5). Daily at 03:30 UTC — outside every

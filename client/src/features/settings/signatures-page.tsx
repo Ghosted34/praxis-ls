@@ -146,6 +146,94 @@ function DocTypeRow({
   );
 }
 
+type QesUsage = {
+  provider: string;
+  flag: { key: string; on: boolean };
+  configured: boolean;
+  credential_source: string | null;
+  month: string;
+  envelopes: number;
+};
+
+/**
+ * Panel 4 of §3.11 — the certified-signature state, read-only.
+ *
+ * Read-only on purpose: the guide's words, "read-only where the tenant does
+ * not administer the provider." The provider account and its pricing live at
+ * the platform tier (§7.5 — the free-tier allowance belongs to the platform
+ * account, and one tenant must never see another's consumption), so this
+ * panel reports; it does not edit. What it reports: whether the switch is on,
+ * whether an account is configured behind it, and this tenant's own envelope
+ * count for the month — the only number a tenant can act on.
+ */
+function CertifiedPanel() {
+  const [data, setData] = React.useState<QesUsage | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    tenant<QesUsage>("/signatures/qes/usage")
+      .then((r) => {
+        if (!cancelled) setData(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errMsg(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (error) return <ErrorState message={error} />;
+  if (!data) return <SkeletonTable />;
+
+  const source =
+    data.credential_source === "tenant"
+      ? tr("this workspace's own provider account")
+      : data.credential_source === "platform"
+        ? tr("the platform's shared provider account")
+        : null;
+
+  return (
+    <div className="rounded-lg border border-border p-4 text-sm">
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            {tr("Certified signing")}
+          </dt>
+          <dd className="mt-1 font-medium">{data.flag.on ? tr("On") : tr("Off")}</dd>
+          {!data.flag.on ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {tr("The card is greyed out on signing pages until the switch is turned on.")}
+            </p>
+          ) : null}
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            {tr("Provider")}
+          </dt>
+          <dd className="mt-1 font-medium">{data.configured ? tr("Configured") : tr("Not configured")}</dd>
+          {data.configured ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {tr("Certified by")}: {data.provider} · {source}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {tr("The provider account is set up in the platform console. Envelopes cannot be sent until it is.")}
+            </p>
+          )}
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            {tr("Envelopes this month")}
+          </dt>
+          <dd className="mt-1 font-medium">{data.month} · {data.envelopes}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 export function SignaturesSettingsPage() {
   const [presets, setPresets] = React.useState<Preset[] | null>(null);
   const [policies, setPolicies] = React.useState<Record<string, Policy>>({});
@@ -282,6 +370,13 @@ export function SignaturesSettingsPage() {
                 </Field>
               ) : null}
             </div>
+          </div>
+
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              {tr("Certified signatures")}
+            </h2>
+            <CertifiedPanel />
           </div>
 
           <div>

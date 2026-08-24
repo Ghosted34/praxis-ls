@@ -53,6 +53,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "vault/document_verification",
     "The verification portal a printed QR resolves to. A stranger holding a document checking it WITHOUT an account is the entire feature; lookup is by the printed code only, every refusal is a uniform 404 that cannot distinguish malformed from never-existed, the read is pinned to live, and the route is rate-limited — which, since the code is 2^60 and stored in plaintext, is the sole defence against enumeration (SIGNATURE_ENGINEERING_GUIDE §3.7, §5.4).",
   ],
+  [
+    "vault/qes_public",
+    "The certified-signature provider webhook. The caller is the provider itself, and the credential is the signature on the event — verified on the raw body before any field is trusted, a failure answers 401 with nothing from the body logged, the lookup is tenant-scoped by host, the read is pinned to live, and the route is rate-limited. Not feature-gated on purpose: the flag gates the action (the handoff), not the receipt of an event about an envelope started when the flag was on (SIGNATURE_ENGINEERING_GUIDE §7.4 step 5, §7.6 criterion 4).",
+  ],
 ]);
 
 /**

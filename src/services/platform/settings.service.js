@@ -46,6 +46,18 @@ const SPEC = {
   // reconstructed here. Testing a reconstruction is how a test passes against
   // settings nothing else reads.
   "storage.backup": { probe: probes.backupStorage, cfg: () => ({}) },
+  // Certified signatures (SIGNATURE_ENGINEERING_GUIDE §7.2, §7.5). The API
+  // key is the SECRET (a bearer credential — anyone holding it can spend the
+  // account's envelope allowance); the optional base_url is plain config, for
+  // a provider sandbox that moves the API. The probe is GET /me, which also
+  // says WHICH account the key is for — the one thing a wrong key's error
+  // never says.
+  //
+  // The PRICING row (`qes.pricing`: unit_cost, currency, monthly_quota) has
+  // no SPEC entry on purpose — there is no connectivity to test, and a probe
+  // for a number would pass or fail on a guess. It is still settable through
+  // the same console route, which does not consult the SPEC.
+  "qes.signwell": { probe: probes.signwell, cfg: (value, secret) => ({ api_key: secret, base_url: value && value.base_url }) },
 };
 const specKey = (section, key) => section + "." + key;
 
@@ -122,7 +134,8 @@ async function put({ section, key, value = {}, secret, actor = null }) {
   try {
     require("./runtime-config.service").invalidate();
   } catch {
-    /* the cache is an optimisation; losing the invalidation costs one TTL */
+    /* @silent:teardown — the cache is an optimisation; losing the invalidation
+       costs one TTL, and a save must never fail on its own bookkeeping. */
   }
 
   return redact(rows[0]);

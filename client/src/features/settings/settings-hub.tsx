@@ -25,6 +25,23 @@ import { useCanOpenRoute } from "@/lib/route-access";
 type Card = { to: string; label: string; desc: string; icon: IconKey };
 type Section = { heading: string; cards: Card[] };
 
+/**
+ * Cards deliberately kept off the grid, by route.
+ *
+ * A UI-only hide: the routes, their screens and every permission behind them
+ * are untouched, so each page still opens by its direct link and by any other
+ * entry point it has (Business Setup is the Corporate entities editor, which
+ * keeps its own home in Master data). Filtering here rather than deleting the
+ * card keeps the copy and the icon in place for whenever one comes back.
+ */
+const HIDDEN_CARDS = new Set([
+  "/master/corporate-entities", // Business Setup
+  "/settings/business-policies",
+  "/settings/payment-gateways",
+  "/settings/custom-fields",
+  "/settings/factory-languages",
+]);
+
 const SECTIONS: Section[] = [
   {
     heading: "Identity",
@@ -374,9 +391,12 @@ const SETTINGS_T: Record<string, { label: string; desc: string }> = {
 export function SettingsHub() {
   const { t } = useTranslation();
   const canOpen = useCanOpenRoute();
+  // Hidden first and unconditionally: `canOpen` deliberately passes everything
+  // through while the permissions read is unresolved, and a hidden card must
+  // not flash onto the grid for that first second.
   const sections = SECTIONS.map((s) => ({
     ...s,
-    cards: s.cards.filter((c) => canOpen(c.to)),
+    cards: s.cards.filter((c) => !HIDDEN_CARDS.has(c.to) && canOpen(c.to)),
   })).filter((s) => s.cards.length > 0);
 
   return (

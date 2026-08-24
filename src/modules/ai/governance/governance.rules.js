@@ -1,22 +1,36 @@
 /**
  * AI Governance (AII control) — pure rules, DB-free (KB / AI_ARCHITECTURE §6).
- *   estimateCostXaf  tokens/audio × vendor rate → XAF (native→XAF via fx factor)
- *   capState         spend vs soft/hard cap → OK | WARN | BLOCK
- *   canUse           flag on + grant active + budget not hard-blocked
- * All money in major XAF units; rounded to 2dp.
+ *   estimateCostNative tokens/audio × vendor rate → the VENDOR's own currency
+ *   capState           spend vs soft/hard cap → OK | WARN | BLOCK
+ *   canUse             flag on + grant active + budget not hard-blocked
+ *
+ * WHY THERE IS NO XAF ESTIMATOR HERE, AND WHY THE LEDGER READ 0.00.
+ * Vendor token prices are quoted in the vendor's own currency (USD for every
+ * provider seeded here) and they are tiny: DeepSeek chat is $0.00027 per 1k
+ * input tokens. Rounding that to 2dp BEFORE the FX conversion — which is what
+ * the old XAF-only estimator did, with its one caller passing no rate at all —
+ * floors every ordinary call to zero: a 10k-token turn costs $0.0027, and
+ * round2($0.0027) is 0.00. The same call in XAF is ~1.7, which survives 2dp.
+ *
+ * So this file computes native cost only, at 6dp (the precision of
+ * ai_usage_ledger.cost_native). Conversion to the tenant's base currency
+ * happens once, afterwards, in governance.service with a real rate resolved
+ * from MOD-08 — the module that owns FX. Rounding at the end of the chain
+ * instead of the middle is the whole fix.
  */
 "use strict";
-const round2 = (n) => Math.round(n * 100) / 100;
+const round6 = (n) => Math.round(n * 1e6) / 1e6;
 
-function estimateCostXaf({ inputTokens = 0, outputTokens = 0, audioSeconds = 0, vendor = {}, fxToXaf = 1 }) {
+/** Cost of one call in the vendor's own currency (`vendor.cost_native_currency`). */
+function estimateCostNative({ inputTokens = 0, outputTokens = 0, audioSeconds = 0, vendor = {} }) {
   const inK = Number(inputTokens) / 1000;
   const outK = Number(outputTokens) / 1000;
   const mins = Number(audioSeconds) / 60;
-  const native =
+  return round6(
     inK * Number(vendor.cost_per_1k_input_tokens || 0) +
-    outK * Number(vendor.cost_per_1k_output_tokens || 0) +
-    mins * Number(vendor.cost_per_audio_minute || 0);
-  return round2(native * Number(fxToXaf || 1));
+      outK * Number(vendor.cost_per_1k_output_tokens || 0) +
+      mins * Number(vendor.cost_per_audio_minute || 0),
+  );
 }
 
 /** capState(spentXaf, { soft_cap_xaf, hard_cap_xaf }) → OK | WARN | BLOCK. */
@@ -37,4 +51,4 @@ function canUse({ flag, grant, budgetState }) {
   return { allowed: true, reason: budgetState === "WARN" ? "over soft cap (warned)" : "ok" };
 }
 
-module.exports = { estimateCostXaf, capState, canUse };
+module.exports = { estimateCostNative, capState, canUse };

@@ -12,8 +12,11 @@
 
 const repo = require("./governance.repo");
 const events = require("./governance.events");
-const { estimateCostXaf, capState, canUse } = require("./governance.rules");
+const { estimateCostNative, capState, canUse } = require("./governance.rules");
 const encryption = require("../../../services/encryption.service");
+const currencyService = require("../../master/currency/currency.service");
+const currencyRepo = require("../../master/currency/currency.repo");
+const { logger } = require("../../../config/logger");
 const registry = require("../../../services/tenant/registry.service");
 const entitlement = require("../../../services/platform/entitlement.service");
 const axios = require("axios");
@@ -174,19 +177,67 @@ async function isFeatureEnabled(client, featureKey) {
   return flag ? Boolean(flag.is_enabled) : true;
 }
 
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/**
+ * One vendor-currency amount → the tenant's base currency, via MOD-08.
+ *
+ * Direction matters and the feed only writes one of the two. `fx-sync` stores
+ * base→quote rows (XAF→USD = 0.0016…), while a treasurer's manual override may
+ * be entered either way round — so the direct pair (USD→XAF) is tried first and
+ * the reverse is inverted when only it exists. No rate on file for the pair
+ * leaves the base amount at 0 rather than passing the native figure through
+ * unconverted: a USD number sitting in an XAF column would understate spend
+ * ~600× and quietly corrupt every budget cap that reads it. `cost_native` still
+ * carries the true figure, and the Usage screen falls back to showing it.
+ */
+async function nativeToBase(client, { amount, code, date }) {
+  const value = Number(amount || 0);
+  if (!value) return 0;
+  const base = await currencyRepo.getBaseCode(client);
+  const from = String(code || "").trim().toUpperCase();
+  if (!base || !from || from === base) return round2(value);
+  const at = async (b, q) => {
+    try {
+      const row = await currencyService.rateFor(client, { base: b, quote: q, date });
+      const rate = Number(row && row.rate);
+      return Number.isFinite(rate) && rate > 0 ? rate : null;
+    } catch {
+      /* @silent:storage — an unpriced pair is an expected tenant state (FX
+         feed not configured yet), not a failure of the AI call being metered. */
+      return null;
+    }
+  };
+  const direct = await at(from, base);
+  if (direct) return round2(value * direct);
+  const reverse = await at(base, from);
+  if (reverse) return round2(value / reverse);
+  logger.warn({ from, base }, "ai usage: no FX rate — cost recorded in native currency only");
+  return 0;
+}
+
 /** Append a usage row against the active budget period (cost accounting). */
 async function recordUsage(client, { userId = null, featureKey = null, conversationId = null, provider = null, model = null, callType = null, inputTokens = 0, outputTokens = 0, audioSeconds = 0, costXaf = null, costNative = 0, costNativeCurrency = null, latencyMs = null, wasSuccessful = true, errorCode = null, errorMessage = null, onDate = null }) {
   const date = onDate || today();
   const period = await repo.activeBudget(client, date);
-  let cost = costXaf;
-  if (cost === null || cost === undefined) {
-    const vendor = provider ? await repo.getVendorSafe(client, provider) : null;
-    cost = vendor ? estimateCostXaf({ inputTokens, outputTokens, audioSeconds, vendor, fxToXaf: 1 }) : 0;
+  const vendor = provider ? await repo.getVendorSafe(client, provider) : null;
+  // Price the call in the vendor's own currency first (see governance.rules),
+  // unless the caller already priced it.
+  let native = Number(costNative || 0);
+  let nativeCurrency = costNativeCurrency;
+  if (!native && vendor) {
+    native = estimateCostNative({ inputTokens, outputTokens, audioSeconds, vendor });
+    nativeCurrency = nativeCurrency || vendor.cost_native_currency || null;
   }
+  const cost =
+    costXaf === null || costXaf === undefined
+      ? await nativeToBase(client, { amount: native, code: nativeCurrency, date })
+      : costXaf;
   const row = await repo.insertUsage(client, {
     user_id: userId, feature_key: featureKey, conversation_id: conversationId, period_id: period ? period.period_id : null,
-    provider, model, call_type: callType, audio_seconds: audioSeconds, input_tokens: inputTokens, output_tokens: outputTokens,
-    total_tokens: Number(inputTokens) + Number(outputTokens), cost_native: costNative, cost_native_currency: costNativeCurrency,
+    provider, model: model || (vendor && (vendor.current_model || vendor.default_model)) || null,
+    call_type: callType, audio_seconds: audioSeconds, input_tokens: inputTokens, output_tokens: outputTokens,
+    total_tokens: Number(inputTokens) + Number(outputTokens), cost_native: native, cost_native_currency: nativeCurrency,
     cost_xaf: cost, latency_ms: latencyMs, was_successful: wasSuccessful, error_code: errorCode, error_message: errorMessage,
   });
   return row;

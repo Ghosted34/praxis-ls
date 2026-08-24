@@ -314,7 +314,7 @@ async function complete(client, opts) {
   const {
     token, presetCode, signReason = null, markImageB64 = null,
     fullName = null, partyRole = null,
-    ip = null, userAgent = null, lang = "fr", sendEmail = null, origin = null,
+    ip = null, userAgent = null, lang = "fr", sendEmail = null, origin = null, slug = null,
   } = opts;
   const language = langOf(lang);
 
@@ -334,7 +334,54 @@ async function complete(client, opts) {
   }
   const card = presets.assertAllowed(menu, presetCode);
 
-  // RULE 2 — no threshold, no setting, no exception.
+  // ── The certified card (PR-4) — the provider does the identity check ──────
+  //
+  // This branch sits BEFORE the OTP requirement on purpose, and that ordering
+  // is the point of §6.6's sentence "CERTIFIED hands off to the provider,
+  // which does its own identity check". The OTP proves control of an address;
+  // the provider verifies the PERSON, and requiring both would make the
+  // counterparty do a verification the card exists to replace. The database
+  // agrees: ck_sig_external_verified (10771) exempts QES — and this is the
+  // only path that may write a QES signature.
+  //
+  // The handoff settles NOBODY here. The party goes to the provider's side,
+  // and the chain moves on when the webhook (or the poll backstop) says the
+  // provider is done — see modules/vault/qes/qes.service.js for the four
+  // rules that govern what happens then.
+  if (card.assurance_level === "QES") {
+    const qesService = require("../qes/qes.service");
+    const out = await qesService.handoff(client, {
+      party, request, language, slug, origin,
+    });
+    return { signed: false, certified: true, ...out };
+  }
+
+  // The paper card (PR-5): PRINT_SIGN is settled by returned-paper
+  // reconciliation, not by an email OTP act. The signing link is still the
+  // credential that lets the counterparty choose paper, but no
+  // document_signature row exists until the physical copy comes back and
+  // passes §8.6's corroborating checks.
+  if (card.assurance_level === "WET") {
+    const wet = require("../signature_wet/signature_wet.service");
+    const job = await wet.issue(client, {
+      requestId: request.request_id,
+      partyId: party.party_id,
+      entityRef: request.entity_ref,
+      docType: request.doc_type,
+      documentVaultId: request.document_vault_id || null,
+      doc: liveDoc,
+      actor: {},
+    });
+    return { paper: true, print_job: job, completed: false };
+  }
+
+  // RULE 2 — no threshold, no setting, no exception. This is the requirement
+  // for the DIGITAL cards (STAMP, DRAWN): both are AES_OTP, and the code is
+  // what makes them true. It runs after the two branches above because the
+  // certified card's verification is the provider's, not an OTP (§6.6), and
+  // the paper card settles out of band — and that ordering is asserted by the
+  // wiring test, so it cannot drift back.
+
   const challenge = await repo.latestOtp(client, { partyId: party.party_id });
   const verified = challenge
     && challenge.verified_at
@@ -349,17 +396,6 @@ async function complete(client, opts) {
     );
   }
 
-  // PR-4 and PR-5 own these two cards. Until then they are offered disabled by
-  // the menu, and a caller that submits one anyway gets a straight answer
-  // rather than a half-written signature.
-  if (card.assurance_level === "QES") {
-    throw new AppError("NOT_IMPLEMENTED", "Certified signatures are not switched on yet.", 501,
-      { preset_code: presetCode });
-  }
-  if (card.assurance_level === "WET") {
-    throw new AppError("NOT_IMPLEMENTED", "Signing on paper is not switched on yet.", 501,
-      { preset_code: presetCode });
-  }
 
   if (signReason) {
     const allowed = await presets.reasons(client);

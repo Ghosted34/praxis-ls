@@ -181,6 +181,22 @@ describe("send() queues rather than sending", () => {
       expect(p.text).toMatch(/the original/);
     });
 
+    test("a body of ONLY a style block is refused — CSS is not content", async () => {
+      await expect(outbox.send({}, ME, {
+        connectionId: "conn-1", to: ["x@y.cm"], html: "<style>body{margin:0}</style>",
+      })).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/body/i) });
+      expect(repo.enqueue).not.toHaveBeenCalled();
+    });
+
+    test("a style block next to real text does not count as the content", async () => {
+      await outbox.send({}, ME, {
+        connectionId: "conn-1", to: ["x@y.cm"],
+        html: "<style>p{color:red}</style><p>real words</p>",
+      });
+      const p = repo.enqueue.mock.calls[0][1].payload;
+      expect(p.html).toMatch(/real words/);
+    });
+
     test("an image-only body is not empty", async () => {
       const IMG_DOC = {
         type: "doc",
@@ -195,6 +211,7 @@ describe("send() queues rather than sending", () => {
       expect(p.text).toMatch(/\[image: invoice\]/);
     });
   });
+
 
   test("an archived mailbox cannot send", async () => {
     mailRepo.getConnection.mockResolvedValue({ ...CONN, status: "ARCHIVED" });
@@ -226,6 +243,44 @@ describe("send() queues rather than sending", () => {
   test("an idempotency key rides along so an offline replay enqueues once", async () => {
     await outbox.send({}, ME, { ...BASE, idempotency_key: "abc-123" });
     expect(repo.enqueue.mock.calls[0][1].idempotency_key).toBe("abc-123");
+  });
+});
+
+/* ── Style stripping (the visible-content check's front end) ─────────────── */
+
+describe("stripStyleBlocks", () => {
+  test("removes whole style blocks, case-insensitively, and keeps the rest", () => {
+    expect(outbox.stripStyleBlocks("a <style>x</style> b <STYLE>y</STYLE> c"))
+      .toBe("a   b   c");
+    expect(outbox.stripStyleBlocks("plain text")).toBe("plain text");
+    expect(outbox.stripStyleBlocks("")).toBe("");
+  });
+
+  test("a block ends at the FIRST closing tag — later content survives", () => {
+    // The old regex's leftmost-match order: `<style<styleB</style>tail` is one
+    // block (first open, first close), so `tail` is what the visibility check
+    // still sees.
+    expect(outbox.stripStyleBlocks("<styleA<styleB</style>tail")).toBe(" tail");
+  });
+
+  test("an unclosed <style matches nothing and is kept as-is", () => {
+    // Same as the old regex: with no `</style>` after it there is no match at
+    // all, so the fragment stays in the text the rest of the pipeline sees.
+    expect(outbox.stripStyleBlocks("hi<style")).toBe("hi<style");
+    expect(outbox.stripStyleBlocks("<styleA<styleB")).toBe("<styleA<styleB");
+  });
+
+  test("runs in linear time on an adversarial run of unclosed <style tokens", () => {
+    // The pattern this used to be — `/<style[\s\S]*?<\/style>/gi` — rescanned
+    // the whole tail for every unmatched token (quadratic). A body of this
+    // shape is ordinary user input, and it used to hang the send path for
+    // minutes (CodeQL: ReDoS, high). 1.8 MB must return in milliseconds.
+    const evil = "<style".repeat(300000);
+    const t0 = process.hrtime.bigint();
+    const out = outbox.stripStyleBlocks(evil);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    expect(out).toBe(evil);
+    expect(ms).toBeLessThan(2000);
   });
 });
 

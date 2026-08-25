@@ -165,7 +165,49 @@ async function assertRoomFor(client, draftId, bytes) {
   return { total_bytes: total, offer_secure_link: total > SECURE_LINK_HINT_BYTES };
 }
 
-/* ── Sending ──────────────────────────────────────────────────────────────── */
+/* ── Sending ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Remove `<style>…</style>` blocks from a serialized body, so the
+ * "is there visible content" check cannot read a page of CSS as a body.
+ *
+ * A hand scan, deliberately NOT the obvious `/<style[\s\S]*?<\/style>/gi`.
+ * That pattern is polynomial in the input: every unmatched `<style` makes the
+ * engine rescan the whole remainder, so a body of many unclosed `<style`
+ * tokens — perfectly ordinary user input, up to the message-size limit — turns
+ * a few hundred KB into a multi-second hang on the send path. That is the
+ * ReDoS CodeQL flags here (high). The scan below is one linear pass with the
+ * old regex's leftmost-match semantics preserved exactly:
+ *
+ *   - a block is the first `<style` and the first `</style>` at or after the
+ *     end of that opening token (case-insensitive), and the scan resumes after
+ *     the removed block;
+ *   - an unclosed `<style` matches nothing and is kept as-is — and since no
+ *     `</style>` follows it, no later start position can close one either, so
+ *     the scan simply stops and the remainder is returned untouched.
+ *
+ * Each character of the input is scanned at most twice (once by the open
+ * search, once when thrown away with a matched block), so the cost is O(n).
+ */
+function stripStyleBlocks(src) {
+  const text = String(src);
+  if (text.indexOf("<") === -1) return text;
+  const open = /<style/gi;
+  const close = /<\/style>/gi;
+  let out = "";
+  let cursor = 0;
+  let m;
+  while ((m = open.exec(text)) !== null) {
+    close.lastIndex = m.index + m[0].length;
+    const end = close.exec(text);
+    if (!end) break;
+    const stop = end.index + end[0].length;
+    out += text.slice(cursor, m.index) + " ";
+    cursor = stop;
+    open.lastIndex = stop;
+  }
+  return out + text.slice(cursor);
+}
 
 /**
  * Everything that has to be true before a message may be queued.
@@ -233,8 +275,7 @@ async function send(client, actor, input = {}) {
   // carries the quoted mail still says something — and an image counts,
   // because its text projection is a `[image: …]` placeholder; the img test
   // is the belt for any media that renders without one.
-  const visible = String(html || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+  const visible = stripStyleBlocks(String(html || ""))
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
@@ -510,5 +551,5 @@ module.exports = {
   MODULE, ATTACH_MAX_BYTES, SECURE_LINK_HINT_BYTES, UNDO_CHOICES, DEFAULT_UNDO_SECONDS, MAX_ATTEMPTS,
   undoSeconds, saveDraft, getDraft, listDrafts, discardDraft,
   assertRoomFor, validateSend, send, cancel, listQueued,
-  retryPlan, flushOne, flush,
+  retryPlan, flushOne, flush, stripStyleBlocks,
 };

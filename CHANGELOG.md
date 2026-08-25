@@ -270,6 +270,51 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The deliverability and signature surfaces no longer gate the whole `/mail` namespace.** Both routers mounted at `/mail` — the same base path as every mail module — carried a router-level `router.use(requireFeature("mail.<surface>"))`, and the module loader mounts them in alphabetical discovery order (deliverability third, signature sixth). A router-level gate runs for EVERY `/mail/*` request that falls through to that router, including paths it does not own: a tenant that switched `mail.deliverability` off got `403 FEATURE_DISABLED` for `GET /mail/threads`, `GET /mail/folders`, `GET /mail/mailboxes/mine` and every module mounted after deliverability (signature, triage) before they reached the router that owns them; with `mail.deliverability` on and `mail.signatures` off it was triage's shared-inbox claim/assign instead. Both flags ship ON (migration `9114`), so the outage was latent — the same inverted pattern as the `mail.ai` gate fix in this list, armed for the first operator to switch one off. The gate is now a per-route middleware on each `/deliverability*` route and each `/signature*` route — the pattern triage already uses for `mail.shared_inbox` / `mail.followup` / `mail.secure_links`. Pinned by `tests/security/mail-gate-scope-deliverability-signature.test.js` (written first, watched fail — six failures on the broken code: three inbox reads behind deliverability-off, a triage claim behind signature-off, and the both-off worst case, plus the per-own-flag refusal assertions; 20/20 green after the fix).
+- **The compose entry points are discoverable.** The Comms hub (`/comms`) was
+  the only surface with a compose entry — a bare 16px `+` glyph behind a
+  tooltip — and the new Mail Inbox (`/comms/mail`) had none at all (reply-only;
+  only the legacy "Message log" tab had one). The hub header now renders a real
+  button (icon + "New" label on `md` and up, icon-only on narrow screens) that
+  opens the existing new-message chooser (in-house message / group channel /
+  email), and the Inbox header gains a Compose button (icon + label on `sm`
+  and up, icon-only on narrow screens; disabled while the user has no
+  `CONNECTED` mailbox) that opens the existing `ComposeModal`. The resulting
+  `InboxPage ↔ mail.tsx` module cycle is safe — `ComposeModal` is a hoisted
+  function declaration — and is documented in the commit message.
+- **An empty mail can no longer reach a recipient.** The inbox composer could
+  send a message whose body serialized to an 823-byte empty HTML shell
+  (`compose.serialize` wraps any doc — even an empty paragraph — in a full
+  HTML document), and the outbox's `if (!html && !text) throw` guard saw the
+  shell and let it through; the IMAP/SMTP provider then dropped the empty
+  `text` part (`""` collapses to `undefined` via `||`), so the recipient got a
+  subject with no content. The outbox now checks *visible* content (strip
+  `<style>` blocks, strip tags, collapse whitespace, allow a real `<img>`):
+  a message with no visible text and no image is refused with 422 "a message
+  needs a body" before it is queued. Quote-only replies and image-only
+  messages still pass. Client-side, the inbox Send button now requires a
+  non-empty editor (a quote counts as content) and the legacy ComposeModal
+  disables Send on a blank body. Pinned by new `mail-outbox.test.js` cases:
+  empty and whitespace-only docs refused, quote-only and image-only enqueued.
+- **The mailbox no longer disappears when Mail AI is off.** The `mail.ai` feature
+  gate was applied router-wide (`router.use(...)`) on the `mail/assist` router,
+  which is mounted at `/mail` — the same base path as every other mail module,
+  and the first of them the module loader mounts (alphabetical discovery). The
+  gate therefore ran for EVERY `/mail/*` request that fell through to that
+  router: with AI off (this flag's default), `GET /mail/threads`,
+  `GET /mail/folders` and `GET /mail/mailboxes/mine` answered
+  `403 FEATURE_DISABLED` before they reached `mail.routes.js` — the whole inbox
+  was unreachable for every tenant that had not opted into AI, while the
+  Platform Console correctly showed "Mail AI: off". The gate is now a per-route
+  middleware on each `/assist/*` route: the AI surface keeps its protection,
+  OCR extraction keeps BOTH (the `mail.ai` floor and its own `mail.ocr` gate),
+  and the rest of `/mail` is left to the module that owns the path. The one
+  route outside `/assist` (`GET /mail/messages/:id/extractions`) is gated by
+  `mail.ocr` alone — not a loss of the floor, because the catalogue row for
+  `mail.ocr` depends on `mail.ai` (migration `9114`). Pinned by
+  `tests/security/mail-ai-gate-scope.test.js` (written first, watched fail —
+  three 403s on the broken code) and the re-scoped gate assertions in
+  `tests/unit/mail-ai-routes.test.js`.
 - **The certified-signature webhook now receives genuine deliveries (PR-4 remediation).** The
   global `express.json()` in `server.js` parsed every JSON body before the webhook's route-level
   text parser could run (body-parser sets `req._body`, and downstream parsers bail on it), so

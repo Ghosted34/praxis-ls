@@ -93,11 +93,48 @@ describe("the caller is passed into every service call", () => {
 /* ── The gates ────────────────────────────────────────────────────────────── */
 
 describe("authentication, feature and permission all stand in front", () => {
-  test("the router authenticates and gates on mail.ai before any route", () => {
+  test("the router authenticates, and mail.ai gates every /assist route — per route, never router-wide", () => {
     expect(src).toMatch(/router\.use\(authMiddleware\)/);
-    expect(src).toMatch(/router\.use\(requireFeature\("mail\.ai"\)\)/);
-    expect(src.indexOf("router.use(requireFeature")).toBeLessThan(
-      src.indexOf('router.post("/assist/compose"'));
+    // A router-level mail.ai gate used to sit on this router — and it was a
+    // bug, not a style: the module mounts at /mail, the same base path as
+    // mail/mail, and the first /mail module-loader mounts (alphabetical
+    // discovery). The gate then ran for every /mail/* request that fell
+    // through to it: with AI off (the default) GET /mail/threads,
+    // GET /mail/folders and GET /mail/mailboxes/mine answered
+    // FEATURE_DISABLED before they reached mail.routes.js. The whole inbox
+    // was unreachable for every tenant that had not opted into AI.
+    //
+    // Asserted on comment-stripped source: the explanation of this very bug
+    // quotes the offending line, and a check that matches prose is a check
+    // that cannot pass once the file documents its own history.
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
+    expect(code).not.toMatch(/router\.use\(requireFeature\("mail\.ai"\)\)/);
+    expect(code).toMatch(/const requireAi = requireFeature\("mail\.ai"\)/);
+  });
+
+  test("every /assist route carries the mail.ai gate, before its permission check", () => {
+    // The point of "before" is to refuse before the request costs a query.
+    const assistRoutes = ROUTES.filter((r) => r.path.startsWith("/assist/"));
+    expect(assistRoutes.length).toBeGreaterThanOrEqual(10);
+    for (const r of assistRoutes) {
+      expect({
+        route: r.path,
+        carriesGate: /\brequireAi\b/.test(r.body),
+        gateBeforePermission:
+          r.body.indexOf("requireAi") !== -1 &&
+          r.body.indexOf("requireAi") < r.body.indexOf("requirePermission"),
+      }).toEqual({ route: r.path, carriesGate: true, gateBeforePermission: true });
+    }
+  });
+
+  test("the one route outside /assist is deliberately not under the AI gate", () => {
+    // Its own gate is mail.ocr, whose catalogue row depends on mail.ai
+    // (migrations/seeds/9114), so the floor still holds.
+    const extractions = at("/messages/:id/extractions");
+    expect({
+      carriesOcrGate: /\brequireOcr\b/.test(extractions.body),
+      carriesAiGate: /\brequireAi\b/.test(extractions.body),
+    }).toEqual({ carriesOcrGate: true, carriesAiGate: false });
   });
 
   test("every route carries a MOD-72 permission", () => {

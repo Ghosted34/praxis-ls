@@ -29,8 +29,10 @@ import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { PencilIcon } from "@/components/ui/icons";
 import { ErrorState } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
+import { ComposeModal } from "../mail";
 import { useResource } from "@/lib/use-resource";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { reportActionError } from "@/lib/action-error";
@@ -61,6 +63,7 @@ export function InboxPage() {
    * the same thread view the keyword list does. */
   const [meaning, setMeaning] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
   const [bulkFailures, setBulkFailures] = React.useState<
@@ -231,6 +234,25 @@ export function InboxPage() {
       </aside>
 
       <div className="min-w-0 space-y-3">
+        {/* Compose entry — labelled, matching the Comms hub (WS feedback). The
+            Mailbox tab's message log had one but this default inbox had none,
+            so there was no obvious way to start an email from the screen you
+            read on. Disabled while no mailbox is connected. */}
+        <div className="flex items-center justify-end">
+          <Button
+            size="sm"
+            onClick={() => setComposeOpen(true)}
+            disabled={!boxes.some((b) => b.status === "CONNECTED")}
+            title={
+              boxes.some((b) => b.status === "CONNECTED")
+                ? tr("Write a new email")
+                : tr("Connect a mailbox first")
+            }
+            icon={<PencilIcon width={16} height={16} />}
+          >
+            <span className="hidden sm:inline">{tr("Compose")}</span>
+          </Button>
+        </div>
         <form
           role="search"
           onSubmit={(e) => {
@@ -330,6 +352,16 @@ export function InboxPage() {
             onWorkChanged={reload}
           />
         </SplitPane>
+
+        {composeOpen && (
+          <ComposeModal
+            onClose={() => setComposeOpen(false)}
+            onSent={() => {
+              setComposeOpen(false);
+              reload();
+            }}
+          />
+        )}
 
         {threads.error && <ErrorState message={threads.error} />}
       </div>

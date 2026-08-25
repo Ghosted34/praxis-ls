@@ -432,7 +432,19 @@ export function Composer({
     }
   }
 
-  const canSend = Boolean(from) && splitAddresses(to).length > 0 && !busy;
+  // An empty editor is not a body. The server refuses such a message — a
+  // serialized shell is not content (2026-08-25: recipients got a subject
+  // with nothing under it) — and the undo window must not start for a mail
+  // that has nothing to say. A reply may be empty in the editor only when it
+  // still carries the quoted mail, which the serializer appends below the
+  // reply. `editor.isEmpty` is TipTap's own rule: false for a document that
+  // carries only an image or an ERP block, which are legitimate bodies.
+  const hasBody = editor ? !editor.isEmpty : false;
+  const canSend =
+    Boolean(from) &&
+    splitAddresses(to).length > 0 &&
+    (hasBody || Boolean(quotedHtml)) &&
+    !busy;
 
   return (
     <section

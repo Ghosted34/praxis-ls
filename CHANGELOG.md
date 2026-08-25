@@ -270,6 +270,31 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The compose entry points are discoverable.** The Comms hub (`/comms`) was
+  the only surface with a compose entry — a bare 16px `+` glyph behind a
+  tooltip — and the new Mail Inbox (`/comms/mail`) had none at all (reply-only;
+  only the legacy "Message log" tab had one). The hub header now renders a real
+  button (icon + "New" label on `md` and up, icon-only on narrow screens) that
+  opens the existing new-message chooser (in-house message / group channel /
+  email), and the Inbox header gains a Compose button (icon + label on `sm`
+  and up, icon-only on narrow screens; disabled while the user has no
+  `CONNECTED` mailbox) that opens the existing `ComposeModal`. The resulting
+  `InboxPage ↔ mail.tsx` module cycle is safe — `ComposeModal` is a hoisted
+  function declaration — and is documented in the commit message.
+- **An empty mail can no longer reach a recipient.** The inbox composer could
+  send a message whose body serialized to an 823-byte empty HTML shell
+  (`compose.serialize` wraps any doc — even an empty paragraph — in a full
+  HTML document), and the outbox's `if (!html && !text) throw` guard saw the
+  shell and let it through; the IMAP/SMTP provider then dropped the empty
+  `text` part (`""` collapses to `undefined` via `||`), so the recipient got a
+  subject with no content. The outbox now checks *visible* content (strip
+  `<style>` blocks, strip tags, collapse whitespace, allow a real `<img>`):
+  a message with no visible text and no image is refused with 422 "a message
+  needs a body" before it is queued. Quote-only replies and image-only
+  messages still pass. Client-side, the inbox Send button now requires a
+  non-empty editor (a quote counts as content) and the legacy ComposeModal
+  disables Send on a blank body. Pinned by new `mail-outbox.test.js` cases:
+  empty and whitespace-only docs refused, quote-only and image-only enqueued.
 - **The mailbox no longer disappears when Mail AI is off.** The `mail.ai` feature
   gate was applied router-wide (`router.use(...)`) on the `mail/assist` router,
   which is mounted at `/mail` — the same base path as every other mail module,

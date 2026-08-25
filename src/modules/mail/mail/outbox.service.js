@@ -222,7 +222,26 @@ async function send(client, actor, input = {}) {
     });
     html = out.html; text = out.text; warnings = out.warnings; cids = out.cids;
   }
-  if (!html && !text) throw new AppError("VALIDATION_ERROR", "a message needs a body", 422);
+  // A rendered shell is not a body. serialize() wraps ANY document — even an
+  // empty one — in a full HTML shell, so `html` is truthy with nothing visible
+  // in it, and a truthiness check reads the shell as content: the enqueued
+  // message carried a subject and an empty HTML part (the provider drops the
+  // empty text part via `||`), and the recipient saw "sent, subject and all,
+  // but no content" (2026-08-25, cPanel mailbox, sent from the new inbox
+  // composer, whose Send button checked sender and recipient but not the
+  // body). Check VISIBLE content instead. A quote counts — a reply that only
+  // carries the quoted mail still says something — and an image counts,
+  // because its text projection is a `[image: …]` placeholder; the img test
+  // is the belt for any media that renders without one.
+  const visible = String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!String(text || "").trim() && !visible && !/<img\b/.test(String(html || ""))) {
+    throw new AppError("VALIDATION_ERROR", "a message needs a body", 422);
+  }
 
   // Signature is baked into the FROZEN payload here, not at flush. A promotion
   // that lands in the undo window must not rewrite a message the sender already

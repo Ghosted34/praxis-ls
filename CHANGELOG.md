@@ -270,6 +270,25 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The mailbox no longer disappears when Mail AI is off.** The `mail.ai` feature
+  gate was applied router-wide (`router.use(...)`) on the `mail/assist` router,
+  which is mounted at `/mail` — the same base path as every other mail module,
+  and the first of them the module loader mounts (alphabetical discovery). The
+  gate therefore ran for EVERY `/mail/*` request that fell through to that
+  router: with AI off (this flag's default), `GET /mail/threads`,
+  `GET /mail/folders` and `GET /mail/mailboxes/mine` answered
+  `403 FEATURE_DISABLED` before they reached `mail.routes.js` — the whole inbox
+  was unreachable for every tenant that had not opted into AI, while the
+  Platform Console correctly showed "Mail AI: off". The gate is now a per-route
+  middleware on each `/assist/*` route: the AI surface keeps its protection,
+  OCR extraction keeps BOTH (the `mail.ai` floor and its own `mail.ocr` gate),
+  and the rest of `/mail` is left to the module that owns the path. The one
+  route outside `/assist` (`GET /mail/messages/:id/extractions`) is gated by
+  `mail.ocr` alone — not a loss of the floor, because the catalogue row for
+  `mail.ocr` depends on `mail.ai` (migration `9114`). Pinned by
+  `tests/security/mail-ai-gate-scope.test.js` (written first, watched fail —
+  three 403s on the broken code) and the re-scoped gate assertions in
+  `tests/unit/mail-ai-routes.test.js`.
 - **The certified-signature webhook now receives genuine deliveries (PR-4 remediation).** The
   global `express.json()` in `server.js` parsed every JSON body before the webhook's route-level
   text parser could run (body-parser sets `req._body`, and downstream parsers bail on it), so

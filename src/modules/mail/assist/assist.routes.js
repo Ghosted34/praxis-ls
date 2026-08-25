@@ -1,7 +1,7 @@
 /**
  * The AI surface (§8.11).
  *
- * Two things about this file are load-bearing and easy to undo by accident.
+ * Three things about this file are load-bearing and easy to undo by accident.
  *
  * 1. EVERY ROUTE PASSES `actor(req)` INTO THE SERVICE. The grounding whitelist
  *    re-checks RBAC per source against the CALLER — mail's own MOD-72 grant
@@ -16,6 +16,20 @@
  *    tenant's own preference, the caller's grant and the budget. The middleware
  *    is here so an unauthorised request is refused before it costs a query; it
  *    is not sufficient on its own, and the service does not trust it.
+ *
+ * 3. THE `mail.ai` GATE IS A PER-ROUTE MIDDLEWARE — NEVER A `router.use` ON
+ *    THIS ROUTER. This module mounts at /mail, the same base path as
+ *    mail/mail, mail/binding, mail/triage and the rest, and the module loader
+ *    discovers them alphabetically: this router is the first /mail a request
+ *    meets. A router-level `router.use(requireFeature("mail.ai"))` therefore
+ *    ran for every /mail/* request that fell through to it — with AI off (the
+ *    flag's default) it answered FEATURE_DISABLED for GET /mail/threads,
+ *    GET /mail/folders and GET /mail/mailboxes/mine before they ever reached
+ *    mail.routes.js. The whole inbox was unreachable for every tenant that
+ *    had not opted into AI, while the Platform Console correctly showed
+ *    "Mail AI: off". The gate is applied to each /assist/* route below; a
+ *    route added without it fails the test in
+ *    tests/security/mail-ai-gate-scope.test.js, not the customer's inbox.
  */
 "use strict";
 const express = require("express");
@@ -56,7 +70,22 @@ const {
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(requireFeature("mail.ai"));
+
+/**
+ * The AI gate (note 3 in the header): per route, on every /assist/* route
+ * below — the AI surface, and nothing else in this module.
+ *
+ * It was once one line, one scope wider than it should have been:
+ * `router.use(requireFeature("mail.ai"))` directly on `router`. Because this
+ * module mounts at /mail — the same base path as mail/mail (the inbox,
+ * folders and mailbox setup), and the first /mail router the module loader
+ * mounts — that router-level gate ran for every /mail/* request that fell
+ * through to it. With AI off, its default, the gate answered
+ * FEATURE_DISABLED for GET /mail/threads, GET /mail/folders and
+ * GET /mail/mailboxes/mine before they reached mail.routes.js, and the inbox
+ * was down for every tenant that had not opted into AI.
+ */
+const requireAi = requireFeature("mail.ai");
 
 /** See note 1 in the header. */
 const actor = (req) => req.user || null;
@@ -67,7 +96,7 @@ const TONE = z.enum([
 ]);
 const ACTION = z.enum(["grammar", "shorten", "expand", "to_fr", "to_en"]);
 
-router.post("/assist/compose", requirePermission("MOD-72", "view"),
+router.post("/assist/compose", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     mode: z.string().max(32).optional(),
     // Enumerated rather than free strings. The tone catalogue is a fixed list
@@ -85,7 +114,7 @@ router.post("/assist/compose", requirePermission("MOD-72", "view"),
     data: await req.identityDb((c) => service.compose(c, req.body, actor(req))),
   })));
 
-router.post("/assist/draft", requirePermission("MOD-72", "view"),
+router.post("/assist/draft", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     thread_id: z.string().uuid(),
     language: z.enum(["en", "fr"]).optional(),
@@ -102,7 +131,7 @@ router.post("/assist/draft", requirePermission("MOD-72", "view"),
     }, actor(req))),
   })));
 
-router.post("/assist/rewrite", requirePermission("MOD-72", "view"),
+router.post("/assist/rewrite", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     thread_id: z.string().uuid().optional(),
     text: z.string().min(1).max(20000),
@@ -117,7 +146,7 @@ router.post("/assist/rewrite", requirePermission("MOD-72", "view"),
     }, actor(req))),
   })));
 
-router.post("/assist/translate", requirePermission("MOD-72", "view"),
+router.post("/assist/translate", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     thread_id: z.string().uuid().optional(),
     text: z.string().min(1).max(20000),
@@ -137,7 +166,7 @@ router.post("/assist/translate", requirePermission("MOD-72", "view"),
  * it spends money and writes `email_thread_summary`. A GET that can bill the
  * tenant is a GET a proxy, a prefetcher or a retry will bill them for twice.
  */
-router.post("/assist/summary", requirePermission("MOD-72", "view"),
+router.post("/assist/summary", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     thread_id: z.string().uuid(),
     language: z.enum(["en", "fr"]).optional(),
@@ -157,7 +186,7 @@ router.post("/assist/summary", requirePermission("MOD-72", "view"),
  * second transcription path in the mail module would be a second thing to keep
  * configured and the first to break.
  */
-router.post("/assist/voice", requirePermission("MOD-72", "view"),
+router.post("/assist/voice", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     thread_id: z.string().uuid().optional(),
     transcript: z.string().min(1).max(20000),
@@ -178,7 +207,7 @@ router.post("/assist/voice", requirePermission("MOD-72", "view"),
  * `outbox.service.send` (see `mail/presend.js`), which is what makes the block
  * a block rather than a suggestion a client may decline to request.
  */
-router.post("/assist/guardrails", requirePermission("MOD-72", "view"),
+router.post("/assist/guardrails", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     html: z.string().max(200000).optional(),
     text: z.string().max(200000).optional(),
@@ -198,7 +227,7 @@ router.post("/assist/guardrails", requirePermission("MOD-72", "view"),
  * §9.5 predicate before returning it. The embedding layer never decides who
  * sees a thread.
  */
-router.post("/assist/search", requirePermission("MOD-72", "view"),
+router.post("/assist/search", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({
     query: z.string().min(2).max(500),
     limit: z.number().int().min(1).max(50).optional(),
@@ -213,8 +242,9 @@ router.post("/assist/search", requirePermission("MOD-72", "view"),
 
 /* ── OCR staging (§8.6) ────────────────────────────────────────────────────
  *
- * TWO gates, not one. `mail.ai` is already on the router — it is the floor for
- * every AI surface in the mailbox — and `mail.ocr` narrows it further, because
+ * TWO gates, not one. `mail.ai` (requireAi, note 3 in the header) is the
+ * floor for every AI surface in the mailbox — and `mail.ocr` narrows it
+ * further, because
  * drafting sends a thread's TEXT to a language model while extraction sends a
  * scanned supplier invoice, bank details and all, to a VISION vendor. A tenant
  * is entitled to want the first and refuse the second, and one flag for both
@@ -225,7 +255,7 @@ router.post("/assist/search", requirePermission("MOD-72", "view"),
  * not be shown a screen implying otherwise. */
 const requireOcr = requireFeature("mail.ocr");
 
-router.post("/assist/ocr/:attachmentId", requireOcr, requirePermission("MOD-72", "view"),
+router.post("/assist/ocr/:attachmentId", requireAi, requireOcr, requirePermission("MOD-72", "view"),
   body(z.object({ force: z.boolean().optional() }).strict()),
   requireVisibleAttachment("attachmentId"),
   asyncHandler(async (req, res) => res.json({
@@ -238,7 +268,7 @@ router.post("/assist/ocr/:attachmentId", requireOcr, requirePermission("MOD-72",
  * vision vendor, keyed to attachments, and it named threads the caller could
  * not open. It is now filtered by the same §9.5 predicate as everything else —
  * in the service, because a middleware cannot narrow a list it does not build. */
-router.get("/assist/ocr/pending", requireOcr, requirePermission("MOD-72", "view"),
+router.get("/assist/ocr/pending", requireAi, requireOcr, requirePermission("MOD-72", "view"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.listPending(c, {
       limit: Number(req.query.limit) || 50,
@@ -246,6 +276,11 @@ router.get("/assist/ocr/pending", requireOcr, requirePermission("MOD-72", "view"
     })),
   })));
 
+/* Outside /assist on purpose: the AI gate is scoped to the AI surface (note 3
+ * in the header), and this read route's own gate is mail.ocr. That is not a
+ * loss of the AI floor — the catalogue row for mail.ocr depends on mail.ai
+ * (9114), so the projection cannot enable it without the AI flag already on.
+ */
 router.get("/messages/:id/extractions", requireOcr, requirePermission("MOD-72", "view"), requireVisibleMessage("id"),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.listForMessage(c, req.params.id)),
@@ -258,7 +293,7 @@ router.get("/messages/:id/extractions", requireOcr, requirePermission("MOD-72", 
  * `edit` rather than `create` is the right permission because nothing is
  * created here.
  */
-router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
+router.post("/assist/extractions/:id/review", requireAi, requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
   body(z.object({ fields: z.record(z.unknown()).nullable().optional() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.review(c, req.params.id, { fields: req.body.fields }, actor(req))),
@@ -270,7 +305,7 @@ router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD
  * unparseable one should be a 422 naming the field, not a 500 out of the
  * driver on a malformed uuid.
  */
-router.post("/assist/extractions/:id/dismiss", requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
+router.post("/assist/extractions/:id/dismiss", requireAi, requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
   params(z.object({ id: z.string().uuid() })),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.dismiss(c, req.params.id, actor(req))),

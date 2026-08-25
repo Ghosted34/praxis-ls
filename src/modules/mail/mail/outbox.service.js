@@ -210,6 +210,44 @@ function stripStyleBlocks(src) {
 }
 
 /**
+ * Replace HTML tags with single spaces — the second half of the visible-
+ * content check.
+ *
+ * Again a hand scan, not `/<[^>]+>/g`: that pattern has the same polynomial
+ * trap as the style one above, a notch down the food chain — every `<` with
+ * no `>` after it makes the engine scan to the end of the body, and a body of
+ * many bare `<` (CodeQL's next alert after the style one was fixed) is O(n²).
+ * One pass, the old regex's semantics preserved exactly:
+ *
+ *   - a tag is a `<`, at least one non-`>` character, and a `>`; a second `<`
+ *     before the first `>` is just content of the FIRST tag, so `<<>>` is
+ *     `<<>` (replaced) plus a leftover `>`;
+ *   - `<>` is not a tag (nothing between the brackets) and stays;
+ *   - a `<` with no closing `>` is not a tag and stays — it is plain text to
+ *     the check, which is what the old regex also concluded.
+ */
+function stripTags(src) {
+  const text = String(src);
+  if (text.indexOf("<") === -1) return text;
+  let out = "";
+  let last = 0;
+  let tagStart = -1;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "<") {
+      if (tagStart === -1) tagStart = i;
+    } else if (ch === ">" && tagStart !== -1) {
+      if (i - tagStart >= 2) {
+        out += text.slice(last, tagStart) + " ";
+        last = i + 1;
+      }
+      tagStart = -1;
+    }
+  }
+  return out + text.slice(last);
+}
+
+/**
  * Everything that has to be true before a message may be queued.
  *
  * Ordered so the cheapest and most likely refusals come first, and so the user
@@ -551,5 +589,5 @@ module.exports = {
   MODULE, ATTACH_MAX_BYTES, SECURE_LINK_HINT_BYTES, UNDO_CHOICES, DEFAULT_UNDO_SECONDS, MAX_ATTEMPTS,
   undoSeconds, saveDraft, getDraft, listDrafts, discardDraft,
   assertRoomFor, validateSend, send, cancel, listQueued,
-  retryPlan, flushOne, flush, stripStyleBlocks,
+  retryPlan, flushOne, flush, stripStyleBlocks, stripTags,
 };

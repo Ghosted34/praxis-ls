@@ -284,6 +284,43 @@ describe("stripStyleBlocks", () => {
   });
 });
 
+describe("stripTags", () => {
+  test("replaces tags with spaces and keeps the text between them", () => {
+    expect(outbox.stripTags("a <b> c <i>x</i> d")).toBe("a   c  x  d");
+    expect(outbox.stripTags("plain text")).toBe("plain text");
+    expect(outbox.stripTags("")).toBe("");
+  });
+
+  test("a tag needs at least one character between the brackets", () => {
+    // `<>` is not a tag to the old regex either — `[^>]+` cannot match empty.
+    expect(outbox.stripTags("a<>b")).toBe("a<>b");
+  });
+
+  test("a second < before the first > is content of the FIRST tag", () => {
+    // Leftmost-match order: `<<>>` is `<<>` (one tag, replaced) plus a
+    // leftover `>`.
+    expect(outbox.stripTags("<<>>")).toBe(" >");
+  });
+
+  test("a < with no closing > is plain text, not a tag", () => {
+    expect(outbox.stripTags("a<b")).toBe("a<b");
+    expect(outbox.stripTags("<unclosed>mid<another")).toBe(" mid<another");
+  });
+
+  test("runs in linear time on an adversarial run of bare <", () => {
+    // The next alert after the style one: `/<[^>]+>/g` rescanned the whole
+    // tail for every unclosed < — 39 KB already took 1.4 s, and a 2.5 MB body
+    // would have taken minutes (CodeQL: ReDoS, high). 1.6 MB must return in
+    // milliseconds.
+    const evil = "<".repeat(400000);
+    const t0 = process.hrtime.bigint();
+    const out = outbox.stripTags(evil);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    expect(out).toBe(evil);
+    expect(ms).toBeLessThan(2000);
+  });
+});
+
 /* ── The undo window ──────────────────────────────────────────────────────── */
 
 describe("the undo window", () => {

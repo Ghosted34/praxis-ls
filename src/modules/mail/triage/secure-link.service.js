@@ -81,9 +81,12 @@ async function list(client, { entityRef = null, includeExpired = false } = {}, a
       const vault = require("../../vault/document_vault/document_vault.service");
       const doc = await vault.assertDocumentAccess(client, client, row.target_ref, actor, "view");
       if (doc) visible.push(row);
-    } catch {
+    } catch (err) {
       // Permission and storage errors both omit the row: a list must never
-      // reveal which protected target happened to exist.
+      // reveal which protected target happened to exist. Keep an operational
+      // trace, however, so a vault outage is not indistinguishable from a
+      // normal permission narrowing.
+      logger.debug({ err, secureLinkId: row.secure_link_id }, "[mail] secure link omitted from authorised list");
     }
   }
   return visible;

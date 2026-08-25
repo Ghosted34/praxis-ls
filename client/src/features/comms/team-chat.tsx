@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
+import { PlusIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
 import { useCommsChannel } from "@/lib/comms-socket";
 import { ComposeModal } from "./mail";
@@ -493,23 +494,18 @@ export function TeamChatPage() {
                 </span>
               )}
             </div>
-            <button
+            {/* Labeled, not a bare glyph: the previous 16px "+" read as a
+                generic "add" control and the compose entry was invisible to
+                new users. Text at md+, icon-only below (WS feedback). */}
+            <Button
+              size="sm"
               onClick={() => setNewKind("menu")}
-              className="text-muted-foreground hover:text-foreground"
               title={tr("New conversation")}
               aria-label={tr("New conversation")}
+              icon={<PlusIcon width={16} height={16} />}
             >
-              <svg
-                viewBox="0 0 24 24"
-                width={16}
-                height={16}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
+              <span className="hidden md:inline">{tr("New")}</span>
+            </Button>
           </div>
           <div className="px-3 py-2">
             <Input

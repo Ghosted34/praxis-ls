@@ -165,7 +165,87 @@ async function assertRoomFor(client, draftId, bytes) {
   return { total_bytes: total, offer_secure_link: total > SECURE_LINK_HINT_BYTES };
 }
 
-/* ── Sending ──────────────────────────────────────────────────────────────── */
+/* ── Sending ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Remove `<style>…</style>` blocks from a serialized body, so the
+ * "is there visible content" check cannot read a page of CSS as a body.
+ *
+ * A hand scan, deliberately NOT the obvious `/<style[\s\S]*?<\/style>/gi`.
+ * That pattern is polynomial in the input: every unmatched `<style` makes the
+ * engine rescan the whole remainder, so a body of many unclosed `<style`
+ * tokens — perfectly ordinary user input, up to the message-size limit — turns
+ * a few hundred KB into a multi-second hang on the send path. That is the
+ * ReDoS CodeQL flags here (high). The scan below is one linear pass with the
+ * old regex's leftmost-match semantics preserved exactly:
+ *
+ *   - a block is the first `<style` and the first `</style>` at or after the
+ *     end of that opening token (case-insensitive), and the scan resumes after
+ *     the removed block;
+ *   - an unclosed `<style` matches nothing and is kept as-is — and since no
+ *     `</style>` follows it, no later start position can close one either, so
+ *     the scan simply stops and the remainder is returned untouched.
+ *
+ * Each character of the input is scanned at most twice (once by the open
+ * search, once when thrown away with a matched block), so the cost is O(n).
+ */
+function stripStyleBlocks(src) {
+  const text = String(src);
+  if (text.indexOf("<") === -1) return text;
+  const open = /<style/gi;
+  const close = /<\/style>/gi;
+  let out = "";
+  let cursor = 0;
+  let m;
+  while ((m = open.exec(text)) !== null) {
+    close.lastIndex = m.index + m[0].length;
+    const end = close.exec(text);
+    if (!end) break;
+    const stop = end.index + end[0].length;
+    out += text.slice(cursor, m.index) + " ";
+    cursor = stop;
+    open.lastIndex = stop;
+  }
+  return out + text.slice(cursor);
+}
+
+/**
+ * Replace HTML tags with single spaces — the second half of the visible-
+ * content check.
+ *
+ * Again a hand scan, not `/<[^>]+>/g`: that pattern has the same polynomial
+ * trap as the style one above, a notch down the food chain — every `<` with
+ * no `>` after it makes the engine scan to the end of the body, and a body of
+ * many bare `<` (CodeQL's next alert after the style one was fixed) is O(n²).
+ * One pass, the old regex's semantics preserved exactly:
+ *
+ *   - a tag is a `<`, at least one non-`>` character, and a `>`; a second `<`
+ *     before the first `>` is just content of the FIRST tag, so `<<>>` is
+ *     `<<>` (replaced) plus a leftover `>`;
+ *   - `<>` is not a tag (nothing between the brackets) and stays;
+ *   - a `<` with no closing `>` is not a tag and stays — it is plain text to
+ *     the check, which is what the old regex also concluded.
+ */
+function stripTags(src) {
+  const text = String(src);
+  if (text.indexOf("<") === -1) return text;
+  let out = "";
+  let last = 0;
+  let tagStart = -1;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "<") {
+      if (tagStart === -1) tagStart = i;
+    } else if (ch === ">" && tagStart !== -1) {
+      if (i - tagStart >= 2) {
+        out += text.slice(last, tagStart) + " ";
+        last = i + 1;
+      }
+      tagStart = -1;
+    }
+  }
+  return out + text.slice(last);
+}
 
 /**
  * Everything that has to be true before a message may be queued.
@@ -233,9 +313,7 @@ async function send(client, actor, input = {}) {
   // carries the quoted mail still says something — and an image counts,
   // because its text projection is a `[image: …]` placeholder; the img test
   // is the belt for any media that renders without one.
-  const visible = String(html || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+  const visible = stripTags(stripStyleBlocks(String(html || "")))
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -510,5 +588,5 @@ module.exports = {
   MODULE, ATTACH_MAX_BYTES, SECURE_LINK_HINT_BYTES, UNDO_CHOICES, DEFAULT_UNDO_SECONDS, MAX_ATTEMPTS,
   undoSeconds, saveDraft, getDraft, listDrafts, discardDraft,
   assertRoomFor, validateSend, send, cancel, listQueued,
-  retryPlan, flushOne, flush,
+  retryPlan, flushOne, flush, stripStyleBlocks, stripTags,
 };

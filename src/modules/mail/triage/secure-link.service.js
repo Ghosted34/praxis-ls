@@ -29,6 +29,15 @@ const token = require("./secure-link");
 /* ── Minting and administration ───────────────────────────────────────────── */
 
 async function mint(client, { targetKind, targetRef, entityRef = null, label = null, days = 7 }, actor = {}) {
+  // A secure link is an external delegation of access, not merely metadata.
+  // Requiring MOD-72 create at the HTTP layer is insufficient: without the
+  // vault's own read rule a mail user could mint a public bearer token for any
+  // document UUID in the tenant — the C-2 exfiltration path in a second form.
+  if (targetKind === "VAULT_DOC") {
+    const vault = require("../../vault/document_vault/document_vault.service");
+    const doc = await vault.assertDocumentAccess(client, client, targetRef, actor, "view");
+    if (!doc) throw new AppError("NOT_FOUND", "document not found", 404);
+  }
   const raw = token.mintToken();
   const { rows } = await client.query(
     `INSERT INTO secure_link (token_hash, target_kind, target_ref, entity_ref, label, created_by, expires_at)
@@ -71,6 +80,24 @@ const views = (client, secureLinkId) =>
       ORDER BY viewed_at DESC LIMIT 200`,
     [secureLinkId],
   ).then((r) => r.rows);
+
+/** Resolve a link administration handle through the access rule of its target.
+ * Link metadata includes recipient activity and a bearer token can be revoked,
+ * so merely having Mail permission is not authority over another module's
+ * document.  Keep this beside minting so every authenticated secure-link path
+ * uses the same delegation rule. */
+async function assertLinkAccess(client, id, actor = {}) {
+  const row = await client.query(
+    `SELECT * FROM secure_link WHERE secure_link_id = $1`, [id],
+  ).then((r) => r.rows[0] || null);
+  if (!row) throw new AppError("NOT_FOUND", "link not found", 404);
+  if (row.target_kind === "VAULT_DOC") {
+    const vault = require("../../vault/document_vault/document_vault.service");
+    const doc = await vault.assertDocumentAccess(client, client, row.target_ref, actor, "view");
+    if (!doc) throw new AppError("NOT_FOUND", "link not found", 404);
+  }
+  return row;
+}
 
 const revoke = (client, id) =>
   client.query(
@@ -177,4 +204,4 @@ async function fetchTarget(client, row) {
   throw new AppError("NOT_FOUND", "This link has expired or been revoked.", 404);
 }
 
-module.exports = { mint, list, views, revoke, resolve, open, fetchTarget };
+module.exports = { mint, list, views, revoke, assertLinkAccess, resolve, open, fetchTarget };

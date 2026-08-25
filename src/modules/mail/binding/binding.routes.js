@@ -21,6 +21,7 @@ const intake = require("./intake.service");
 // different answer, not a skipped one.
 const {
   requireVisibleThread,
+  requireVisibleClassification,
   restrictThreadIdsBody,
 } = require("../mail/visible");
 
@@ -105,7 +106,7 @@ router.post("/threads/:id/converted", requireFeature("mail.binding"), requirePer
 router.get("/threads/:id/intake", requireFeature("mail.doc_intake"), requirePermission(M, "view"), requireVisibleThread(),
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => intake.listForThread(c, req.params.id)) })));
 
-router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermission("MOD-64", "create"),
+router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermission("MOD-64", "create"), requireVisibleClassification(),
   body(z.object({
     doc_type_code: z.string().trim().max(64).optional(),
     entity_ref: z.string().trim().max(128).optional(),
@@ -117,7 +118,7 @@ router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermis
     }, actor(req))),
   })));
 
-router.post("/intake/:id/reject", requireFeature("mail.doc_intake"), requirePermission(M, "edit"),
+router.post("/intake/:id/reject", requireFeature("mail.doc_intake"), requirePermission(M, "edit"), requireVisibleClassification(),
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => intake.reject(c, req.params.id, actor(req))),

@@ -143,6 +143,59 @@ function requireVisibleAttachment(param = "attachmentId") {
 }
 
 /**
+ * Gates for records that are *derived* from an inbound attachment.  An
+ * extraction/classification id is not itself a thread id, but it is a durable
+ * handle onto one.  Treating only paths literally named `/threads/:id` as
+ * scoped re-created C-4 one indirection away: a user could review/dismiss an
+ * extraction or file a classified attachment from a Private thread by guessing
+ * its UUID.  Resolve the handle through attachment → message → thread and use
+ * the same predicate before the handler can write.
+ */
+function requireVisibleExtraction(param = "id") {
+  return tag("extraction", asyncHandler(async function visibleExtraction(req, _res, next) {
+    const id = req.params[param];
+    if (!id) throw new AppError("NOT_FOUND", "extraction not found", 404);
+    const { rows } = await req.identityDb((c) => c.query(
+      `SELECT x.attachment_extraction_id, x.email_attachment_id, t.email_thread_id
+         FROM attachment_extraction x
+         JOIN email_attachment a ON a.email_attachment_id = x.email_attachment_id
+         JOIN email_message m ON m.email_message_id = a.email_message_id
+         JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+         JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+        WHERE x.attachment_extraction_id = $1
+          AND t.email_connection_id IN ${repo.accessible(2)}
+          AND (${require("../triage/visibility").clause("$2")})`,
+      [id, userOf(req)],
+    ));
+    if (!rows[0]) throw new AppError("NOT_FOUND", "extraction not found", 404);
+    req.mailExtraction = rows[0];
+    return next();
+  }));
+}
+
+function requireVisibleClassification(param = "id") {
+  return tag("classification", asyncHandler(async function visibleClassification(req, _res, next) {
+    const id = req.params[param];
+    if (!id) throw new AppError("NOT_FOUND", "suggestion not found", 404);
+    const { rows } = await req.identityDb((c) => c.query(
+      `SELECT k.email_attachment_classification_id, k.email_attachment_id, t.email_thread_id
+         FROM email_attachment_classification k
+         JOIN email_attachment a ON a.email_attachment_id = k.email_attachment_id
+         JOIN email_message m ON m.email_message_id = a.email_message_id
+         JOIN email_thread t ON t.email_thread_id = m.email_thread_id
+         JOIN email_connection c ON c.email_connection_id = t.email_connection_id
+        WHERE k.email_attachment_classification_id = $1
+          AND t.email_connection_id IN ${repo.accessible(2)}
+          AND (${require("../triage/visibility").clause("$2")})`,
+      [id, userOf(req)],
+    ));
+    if (!rows[0]) throw new AppError("NOT_FOUND", "suggestion not found", 404);
+    req.mailClassification = rows[0];
+    return next();
+  }));
+}
+
+/**
  * The batch shape. `POST /suggestions/accept-batch` takes up to 200 thread ids.
  *
  * Refusing the whole batch when one id is invisible would make the endpoint an
@@ -169,5 +222,7 @@ module.exports = {
   requireVisibleThreadBody,
   requireVisibleMessage,
   requireVisibleAttachment,
+  requireVisibleExtraction,
+  requireVisibleClassification,
   restrictThreadIdsBody,
 };

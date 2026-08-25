@@ -146,7 +146,10 @@ router.post("/secure-links", requireFeature("mail.secure_links"), requirePermiss
 router.post("/secure-links/:id/revoke", requireFeature("mail.secure_links"), requirePermission(M, "edit"),
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => {
-    const row = await req.identityDb((c) => secureLinks.revoke(c, req.params.id));
+    const row = await req.identityDb(async (c) => {
+      await secureLinks.assertLinkAccess(c, req.params.id, actor(req));
+      return secureLinks.revoke(c, req.params.id);
+    });
     if (!row) throw new AppError("NOT_FOUND", "link not found, or already revoked", 404);
     return res.json({ data: row });
   }));
@@ -343,7 +346,10 @@ router.get("/secure-links", requireFeature("mail.secure_links"), requirePermissi
 
 router.get("/secure-links/:id/views", requireFeature("mail.secure_links"), requirePermission(M, "view"),
   asyncHandler(async (req, res) => res.json({
-    data: await req.identityDb((c) => secureLinks.views(c, req.params.id)),
+    data: await req.identityDb(async (c) => {
+      await secureLinks.assertLinkAccess(c, req.params.id, actor(req));
+      return secureLinks.views(c, req.params.id);
+    }),
   })));
 
 router.patch("/threads/:id/visibility", requireFeature("mail.archive"), requirePermission(M, "edit"), requireVisibleThread(),

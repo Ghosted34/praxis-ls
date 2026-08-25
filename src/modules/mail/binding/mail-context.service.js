@@ -62,6 +62,27 @@ function parseRef(entityRef) {
   return { kind: m[1], id: m[2] };
 }
 
+// The dossier drawer is reached from Mail, but it exposes records owned by
+// other modules. Mail permission is the right to open correspondence, not a
+// blanket read grant over every client, supplier or operations file in the
+// tenant. Keep this mapping beside the aggregator so direct service callers
+// cannot bypass the HTTP route's intent.
+const ENTITY_MODULE = Object.freeze({ client: "MOD-03", supplier: "MOD-04", dossier: "MOD-29" });
+
+async function assertEntityAccess(client, kind, user) {
+  if (user && user.is_ceo === true) return;
+  const moduleKey = ENTITY_MODULE[kind];
+  if (!moduleKey || !user) throw new AppError("NOT_FOUND", "context not found", 404);
+  const grants = await identityCache.getGrants(client, {
+    role_ids: user.role_ids || [], module: moduleKey,
+  });
+  if (!grants.some((g) => g.can_read === true)) {
+    // Same opaque refusal as the mail visibility predicate: an operator who
+    // cannot read a dossier should not learn that it exists from its UUID.
+    throw new AppError("NOT_FOUND", "context not found", 404);
+  }
+}
+
 async function overview(client, entityRef, opts = {}) {
   const { kind, id } = parseRef(entityRef);
   const userId = opts.userId || null;
@@ -186,4 +207,4 @@ async function tab(client, entityRef, tabName, opts = {}) {
   return { ...data, cached: false };
 }
 
-module.exports = { overview, tab, tabQuery, parseRef, maySeeFinancials, invalidate: cache.invalidate };
+module.exports = { overview, tab, tabQuery, parseRef, maySeeFinancials, assertEntityAccess, invalidate: cache.invalidate };

@@ -50,8 +50,8 @@ async function mint(client, { targetKind, targetRef, entityRef = null, label = n
   return { ...rows[0], token: raw, path: `/public/secure/${raw}` };
 }
 
-const list = (client, { entityRef = null, includeExpired = false } = {}) =>
-  client.query(
+async function list(client, { entityRef = null, includeExpired = false } = {}, actor = {}) {
+  const rows = await client.query(
     `SELECT l.secure_link_id, l.target_kind, l.target_ref, l.entity_ref, l.label,
             l.created_by, l.created_at, l.expires_at, l.revoked_at,
             l.first_viewed_at, l.view_count,
@@ -65,6 +65,29 @@ const list = (client, { entityRef = null, includeExpired = false } = {}) =>
       LIMIT 200`,
     [entityRef, includeExpired === true],
   ).then((r) => r.rows);
+
+  // The list is metadata, but metadata includes document labels, entity refs
+  // and whether an external recipient opened it. Do not use the list as a
+  // side-channel around the same vault rule enforced by mint/view/revoke.
+  const visible = [];
+  for (const row of rows) {
+    try {
+      if (row.target_kind !== "VAULT_DOC") {
+        // Legacy target kinds have no callable access rule. Fail closed except
+        // for their creator or the CEO until a target-specific predicate exists.
+        if (actor.is_ceo === true || row.created_by === actor.user_id) visible.push(row);
+        continue;
+      }
+      const vault = require("../../vault/document_vault/document_vault.service");
+      const doc = await vault.assertDocumentAccess(client, client, row.target_ref, actor, "view");
+      if (doc) visible.push(row);
+    } catch {
+      // Permission and storage errors both omit the row: a list must never
+      // reveal which protected target happened to exist.
+    }
+  }
+  return visible;
+}
 
 /**
  * Who opened it, when, and from where.

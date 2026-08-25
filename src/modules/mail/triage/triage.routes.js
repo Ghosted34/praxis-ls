@@ -341,7 +341,7 @@ router.get("/secure-links", requireFeature("mail.secure_links"), requirePermissi
     data: await req.identityDb((c) => secureLinks.list(c, {
       entityRef: req.query.entity_ref || null,
       includeExpired: req.query.include_expired === "true",
-    })),
+    }, actor(req))),
   })));
 
 router.get("/secure-links/:id/views", requireFeature("mail.secure_links"), requirePermission(M, "view"),

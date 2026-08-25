@@ -51,6 +51,7 @@ const {
   requireVisibleThreadBody,
   requireVisibleMessage,
   requireVisibleAttachment,
+  requireVisibleExtraction,
 } = require("../mail/visible");
 
 const router = express.Router();
@@ -257,7 +258,7 @@ router.get("/messages/:id/extractions", requireOcr, requirePermission("MOD-72", 
  * `edit` rather than `create` is the right permission because nothing is
  * created here.
  */
-router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD-72", "edit"),
+router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
   body(z.object({ fields: z.record(z.unknown()).nullable().optional() }).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.review(c, req.params.id, { fields: req.body.fields }, actor(req))),
@@ -269,7 +270,7 @@ router.post("/assist/extractions/:id/review", requireOcr, requirePermission("MOD
  * unparseable one should be a 422 naming the field, not a 500 out of the
  * driver on a malformed uuid.
  */
-router.post("/assist/extractions/:id/dismiss", requireOcr, requirePermission("MOD-72", "edit"),
+router.post("/assist/extractions/:id/dismiss", requireOcr, requirePermission("MOD-72", "edit"), requireVisibleExtraction(),
   params(z.object({ id: z.string().uuid() })),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => ocr.dismiss(c, req.params.id, actor(req))),

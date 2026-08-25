@@ -21,6 +21,7 @@ const intake = require("./intake.service");
 // different answer, not a skipped one.
 const {
   requireVisibleThread,
+  requireVisibleClassification,
   restrictThreadIdsBody,
 } = require("../mail/visible");
 
@@ -29,6 +30,15 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const actor = (req) => req.user || { user_id: null };
+
+// Entity context is entered from Mail but is owned by Client Master, Supplier
+// Master or Operations. Verify that second permission before the aggregator
+// runs; it keeps a guessed entity reference from becoming a cross-module read.
+const requireContextEntityAccess = asyncHandler(async (req, _res, next) => {
+  const { kind } = context.parseRef(req.query.entity_ref);
+  await req.identityDb((c) => context.assertEntityAccess(c, kind, req.user));
+  return next();
+});
 
 router.get("/threads/:id/suggestions", requireFeature("mail.binding"), requirePermission(M, "view"), requireVisibleThread(),
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => binding.list(c, req.params.id)) })));
@@ -63,9 +73,9 @@ router.post("/suggestions/accept-batch", requireFeature("mail.binding"), require
     },
   })));
 
-router.get("/context", requireFeature("mail.binding"), requirePermission(M, "view"),
+router.get("/context", requireFeature("mail.binding"), requirePermission(M, "view"), requireContextEntityAccess,
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.overview(c, req.query.entity_ref, { userId: actor(req).user_id, user: req.user })) })));
-router.get("/context/:tab", requireFeature("mail.binding"), requirePermission(M, "view"),
+router.get("/context/:tab", requireFeature("mail.binding"), requirePermission(M, "view"), requireContextEntityAccess,
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => context.tab(c, req.query.entity_ref, req.params.tab, { userId: actor(req).user_id, user: req.user })) })));
 
 /* Every card that applies to this thread, with its readiness — ONE query, so
@@ -105,7 +115,7 @@ router.post("/threads/:id/converted", requireFeature("mail.binding"), requirePer
 router.get("/threads/:id/intake", requireFeature("mail.doc_intake"), requirePermission(M, "view"), requireVisibleThread(),
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => intake.listForThread(c, req.params.id)) })));
 
-router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermission("MOD-64", "create"),
+router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermission("MOD-64", "create"), requireVisibleClassification(),
   body(z.object({
     doc_type_code: z.string().trim().max(64).optional(),
     entity_ref: z.string().trim().max(128).optional(),
@@ -117,7 +127,7 @@ router.post("/intake/:id/file", requireFeature("mail.doc_intake"), requirePermis
     }, actor(req))),
   })));
 
-router.post("/intake/:id/reject", requireFeature("mail.doc_intake"), requirePermission(M, "edit"),
+router.post("/intake/:id/reject", requireFeature("mail.doc_intake"), requirePermission(M, "edit"), requireVisibleClassification(),
   body(z.object({}).strict()),
   asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => intake.reject(c, req.params.id, actor(req))),
@@ -132,7 +142,7 @@ router.post("/intake/:id/reject", requireFeature("mail.doc_intake"), requirePerm
  * the same standing question as P3-1 (per-source RBAC on the dossier drawer),
  * and it wants the same answer. Recorded rather than silently gated with a
  * predicate that would not mean anything here. */
-router.get("/intake/chase/:clientId", requireFeature("mail.doc_intake"), requirePermission(M, "view"),
+router.get("/intake/chase/:clientId", requireFeature("mail.doc_intake"), requirePermission(M, "view"), requirePermission("MOD-03", "view"),
   asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => intake.chaseList(c, req.params.clientId)) })));
 
 module.exports = { basePath: "/mail", feature: null, router };

@@ -22,6 +22,7 @@ jest.mock("../../src/shared/events/emit", () => ({
   audit: jest.fn(async () => ({})),
 }));
 jest.mock("../../src/modules/vault/document_vault/document_vault.service", () => ({
+  assertDocumentAccess: jest.fn(async () => ({ doc_id: "v-1" })),
   fetchBytes: jest.fn(async () => ({
     doc: { doc_id: "v-1", original_name: "Invoice INV-2026-0311.pdf", content_type: "application/pdf" },
     buffer: Buffer.from("%PDF-1.4 pretend"),
@@ -63,6 +64,7 @@ describe("the token is never stored", () => {
     const out = await links.mint(c, { targetKind: "VAULT_DOC", targetRef: "v-1" }, { user_id: "u-1" });
 
     const stored = c.written(/INSERT INTO secure_link/)[0].params[0];
+    expect(vault.assertDocumentAccess).toHaveBeenCalledWith(c, c, "v-1", { user_id: "u-1" }, "view");
     expect(out.token).toBeTruthy();
     expect(stored).toBe(token.hashToken(out.token));
     expect(stored).not.toBe(out.token);

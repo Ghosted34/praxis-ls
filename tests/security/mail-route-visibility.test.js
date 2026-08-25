@@ -63,6 +63,11 @@ const SCOPED = [
   // paths it is meant to cover reports success over the routes it never saw,
   // which is the exact failure this file was written to end.
   /:attachmentId\b/,
+  // Derived records are durable handles to an attachment/thread. Their paths
+  // do not say `thread`, but review/dismiss/file must not become an indirect
+  // visibility bypass.
+  /\/assist\/extractions\/:id\b/,
+  /\/intake\/:id\b/,
 ];
 
 /**
@@ -159,6 +164,10 @@ describe("every thread-scoped mail route carries the §9.5 gate (C-4)", () => {
       "POST /threads/:id/followup",       // C-4 triage
       "POST /threads/:id/lock",           // C-4 triage
       "POST /assist/ocr/:attachmentId",   // C-4 assist — bytes leave for a vendor
+      "POST /assist/extractions/:id/review", // derived attachment write
+      "POST /assist/extractions/:id/dismiss", // derived attachment write
+      "POST /intake/:id/file", // derived attachment → vault write
+      "POST /intake/:id/reject", // derived attachment write
     ];
     for (const want of mustBeGated) {
       const route = scoped.find((r) => key(r) === want);

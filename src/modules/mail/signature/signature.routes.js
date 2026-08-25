@@ -15,15 +15,16 @@ const v = require("./signature.validator");
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(requireFeature("mail.signatures"));
 
-router.get("/signature", c.me);
-router.put("/signature", v.profile, c.saveMe);
-router.get("/signature/preview", c.preview);
-router.post("/signature/png", v.png, c.png);
-router.get("/signature/png", c.png);
+// Route-scoped feature gates — never router-level. See the header in
+// deliverability.routes.js for why a router.use here must never come back.
+router.get("/signature", requireFeature("mail.signatures"), c.me);
+router.put("/signature", requireFeature("mail.signatures"), v.profile, c.saveMe);
+router.get("/signature/preview", requireFeature("mail.signatures"), c.preview);
+router.post("/signature/png", requireFeature("mail.signatures"), v.png, c.png);
+router.get("/signature/png", requireFeature("mail.signatures"), c.png);
 
-router.get("/signature/templates", requirePermission("MOD-70", "view"), c.templates);
-router.patch("/signature/templates/:id", requirePermission("MOD-70", "edit"), v.templatePatch, c.updateTemplate);
+router.get("/signature/templates", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.templates);
+router.patch("/signature/templates/:id", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.templatePatch, c.updateTemplate);
 
 module.exports = { basePath: "/mail", feature: null, router };

@@ -147,6 +147,55 @@ describe("send() queues rather than sending", () => {
     expect(repo.enqueue).not.toHaveBeenCalled();
   });
 
+  describe("the body must be real content, not a wrapper", () => {
+    const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
+
+    test("an EMPTY document is refused — the serialized shell is not a body", async () => {
+      // serialize() wraps ANY document in a full HTML shell, so `html` is
+      // truthy with nothing visible in it. The old truthiness check enqueued
+      // that shell, the provider dropped the empty text part, and the
+      // recipient got a subject with nothing under it — "sent, subject and
+      // all, but no content" (2026-08-25, cPanel mailbox, new inbox
+      // composer: canSend checked sender + recipient but not the body).
+      await expect(outbox.send({}, ME, { ...BASE, body_json: EMPTY_DOC }))
+        .rejects.toMatchObject({ status: 422, message: expect.stringMatching(/body/i) });
+      expect(repo.enqueue).not.toHaveBeenCalled();
+    });
+
+    test("whitespace-only text is refused the same way", async () => {
+      await expect(outbox.send({}, ME, {
+        connectionId: "conn-1", to: ["x@y.cm"], text: "   \n\t  ",
+      })).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/body/i) });
+      expect(repo.enqueue).not.toHaveBeenCalled();
+    });
+
+    test("a reply that only carries the quote still says something", async () => {
+      // The quoted history is content the recipient will read — a reply that
+      // adds no new words must not be refused just because the editor is
+      // empty.
+      await outbox.send({}, ME, {
+        ...BASE, body_json: EMPTY_DOC,
+        quoted_html: "<p>the original</p>", quoted_text: "the original",
+      });
+      const p = repo.enqueue.mock.calls[0][1].payload;
+      expect(p.text).toMatch(/the original/);
+    });
+
+    test("an image-only body is not empty", async () => {
+      const IMG_DOC = {
+        type: "doc",
+        content: [
+          { type: "paragraph" },
+          { type: "image", attrs: { src: "cid:att-1", alt: "invoice" } },
+        ],
+      };
+      await outbox.send({}, ME, { ...BASE, body_json: IMG_DOC });
+      const p = repo.enqueue.mock.calls[0][1].payload;
+      expect(p.html).toMatch(/<img/);
+      expect(p.text).toMatch(/\[image: invoice\]/);
+    });
+  });
+
   test("an archived mailbox cannot send", async () => {
     mailRepo.getConnection.mockResolvedValue({ ...CONN, status: "ARCHIVED" });
     await expect(outbox.send({}, ME, BASE)).rejects.toMatchObject({ code: "MAILBOX_ARCHIVED" });

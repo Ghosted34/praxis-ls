@@ -394,7 +394,7 @@ export function ComposeModal({
           >
             Cancel
           </Button>
-          <Button type="submit" loading={busy} disabled={busy || !conns.length}>
+          <Button type="submit" loading={busy} disabled={busy || !conns.length || !f.body.trim()}>
             Send
           </Button>
         </div>

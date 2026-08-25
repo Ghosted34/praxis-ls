@@ -313,8 +313,7 @@ async function send(client, actor, input = {}) {
   // carries the quoted mail still says something — and an image counts,
   // because its text projection is a `[image: …]` placeholder; the img test
   // is the belt for any media that renders without one.
-  const visible = stripStyleBlocks(String(html || ""))
-    .replace(/<[^>]+>/g, " ")
+  const visible = stripTags(stripStyleBlocks(String(html || "")))
     .replace(/&nbsp;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();

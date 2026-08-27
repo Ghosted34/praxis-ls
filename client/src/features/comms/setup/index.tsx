@@ -34,7 +34,7 @@ import { useResource } from "@/lib/use-resource";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { MyMailboxTab } from "./my-mailbox";
-import { MailboxesTab } from "./mailboxes";
+import { MailboxesTab, ConnectionsTab } from "./mailboxes";
 import { SendPointsTab } from "./send-points";
 import { SetupPage as SendersAndChannelsTab } from "../setup";
 import { SecureLinksTab } from "./secure-links";
@@ -43,7 +43,7 @@ import { TrustTab } from "./trust";
 import { FollowupsTab } from "./followups";
 
 type TabKey =
-  | "mine" | "mailboxes" | "send-points" | "senders"
+  | "mine" | "connections" | "mailboxes" | "send-points" | "senders"
   | "secure-links" | "sla" | "trust" | "followups";
 
 /**
@@ -67,6 +67,7 @@ type TabKey =
  */
 const TABS: { key: TabKey; label: string; adminOnly: boolean; hint: string }[] = [
   { key: "mine", label: "My mailbox", adminOnly: false, hint: "Your own professional address" },
+  { key: "connections", label: "Connections", adminOnly: false, hint: "Connect, test and sync the mailboxes you send from" },
   { key: "followups", label: "Follow-ups", adminOnly: false, hint: "Conversations waiting to come back" },
   { key: "secure-links", label: "Secure links", adminOnly: true, hint: "Every expiring link the company has sent, and who opened it" },
   { key: "mailboxes", label: "Mailboxes", adminOnly: true, hint: "Every mailbox in the company" },
@@ -116,6 +117,7 @@ export function CommsSetupPage() {
       )}
 
       {tab === "mine" && <MyMailboxTab />}
+      {tab === "connections" && <ConnectionsTab />}
       {tab === "followups" && <FollowupsTab />}
       {tab === "secure-links" && <SecureLinksTab />}
       {tab === "mailboxes" && isAdmin && <MailboxesTab />}

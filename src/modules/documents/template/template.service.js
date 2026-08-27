@@ -1300,7 +1300,11 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
     language: cfg.language,
     title: tpl.title,
     entity: { legal_name: entity.legal_name, niu: entity.niu, rccm: entity.rccm },
-    suggested_to: real ? await resolveRecipient(client, docType, recordId) : null,
+    /* `suggested_to` was here, and it is gone: it existed to seed the default
+       of `window.prompt("Send document to (email):")`, and the composer now
+       resolves the recipient properly — with the party's NAME and their
+       contacts, not one bare address (see composePrefill). Every preview was
+       paying a party-master lookup for it. */
     report: !!tpl.report,
   };
 }
@@ -1425,6 +1429,103 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
 
 
 /**
+ * Everything the composer needs to open on a document, in one round trip.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * ⚠  THIS REPLACES `window.prompt("Send document to (email):")`.
+ *
+ *    That prompt was the entire send UI: one address, no cc, no subject, no
+ *    body, no chance to read what was about to go out, and it fired a
+ *    transactional system email that never appeared in the sender's own Sent
+ *    folder. A document going to a client is CORRESPONDENCE — it belongs in
+ *    the thread with everything else that client was told.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── Why the PDF is vaulted here rather than attached by the client ─────────
+ * The composer attaches from the vault by id (`/mail/attachments/from-vault`),
+ * so the file has to exist before the draft can reference it. Rendering it here
+ * also means the attachment is the SAME artifact the Download button produces
+ * and the same one the signature engine writes its artifact hash against —
+ * rather than a second render that could differ from what was signed.
+ *
+ * ── The language is the operator's, chosen at this moment ─────────────────
+ * The document, its subject line and its body all come out in one language,
+ * decided by the toggle on the document page when they press Send. A French
+ * client gets a French sheet under a French subject; that is one decision, made
+ * once, and this is where it is applied.
+ *
+ * ── The counterparty is offered regardless of the caller's party grants ────
+ * `signature_request.candidates` resolves who this document is ABOUT — the
+ * client on the file, and their contacts. Those addresses come from THIS
+ * RECORD, not from a search, so an operations clerk who may raise a transit
+ * order but may not browse the client register can still email it to the client
+ * it is addressed to. The recipient PICKER is gated separately and stays gated
+ * (see mail.service.searchRecipients); this is the one address the document
+ * itself supplies.
+ */
+async function composePrefill(client, { docType, recordId, entityId = null, actor = {}, origin = null, language = null }) {
+  const tpl = registry.get(docType);
+  if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
+  if (!recordId) throw new AppError("VALIDATION_ERROR", "record_id is required", 422);
+
+  const rec = await loadRecord(client, docType, recordId);
+  if (!rec) throw new AppError("NOT_FOUND", `No ${docType} ${recordId}`, 404);
+  const data = rec.data;
+  const ent = entityId || rec.entity_id;
+  const { cfg, entity } = await resolveCfg(client, docType, ent, null, { language });
+
+  // The artifact, vaulted. Not best-effort: a compose window that opens with
+  // nothing attached is worse than an error, because the operator will write
+  // the covering note, press send, and only then discover the document is
+  // missing — by which time it has gone.
+  const artifact = await generate(client, { docType, entityId: ent, recordId, actor, origin, language });
+
+  const copy = registry.emailCopy(docType, data, { language: cfg.language, entity }) || { subject: "", body: "" };
+
+  let counterparty = null;
+  try {
+    const candidates = require("../../vault/signature_request/signature_request.candidates");
+    counterparty = await candidates.counterpartyFor(client, { docType, entityRef: `${docType.toLowerCase()}:${recordId}` });
+  } catch (err) {
+    /* @silent:parse — the counterparty is a convenience prefill. Losing it
+       opens the composer with an empty To field and the operator types or
+       searches, which is exactly what happens for a doc type that has no
+       counterparty at all. */
+    logger.warn({ err: err && err.message, doc_type: docType }, "[documents] compose prefill without a counterparty");
+  }
+
+  // One address in `to`, and every address we hold offered beside it. The
+  // primary contact wins over the party's generic mailbox when both exist —
+  // `candidates` already orders them that way.
+  const suggestions = (counterparty && counterparty.signatories) || [];
+  const to = (suggestions[0] && suggestions[0].email)
+    || (await resolveRecipient(client, docType, recordId))
+    || null;
+
+  return {
+    doc_type: docType,
+    record_id: recordId,
+    language: cfg.language,
+    vault_id: artifact.doc_id,
+    filename: `${String(data.number || docType).replace(/[^\w.-]+/g, "-")}.pdf`,
+    to,
+    subject: copy.subject,
+    body: copy.body,
+    counterparty: counterparty
+      ? {
+        party_id: counterparty.party_id,
+        party_name: counterparty.party_name,
+        // `source_ref` is carried through so a later change can attribute the
+        // address the same way a signature request does.
+        contacts: suggestions.map((c) => ({
+          name: c.full_name, email: c.email, role: c.party_role, source_ref: c.source_ref,
+        })),
+      }
+      : null,
+  };
+}
+
+/**
  * Split a contract body into the articles the template renders.
  *
  * Cuts on `##` headings — the shape both the AI drafter and the template
@@ -1458,7 +1559,7 @@ function contractArticles(bodyMd) {
 
 module.exports = {
   // Exported for the test that pins it — see tests/unit/contract-draft.
-  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send,
+  contractArticles, list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send, composePrefill,
   // Exported for document_signature.service, which needs the SAME record shape
   // the templates render from — hashing anything else would attest to a
   // projection of the document rather than the document (guide §3.6).

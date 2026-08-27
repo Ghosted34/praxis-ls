@@ -315,25 +315,66 @@ async function listAttachments(client, messageId) {
   )).rows;
 }
 
-/** Search mailable parties (clients, suppliers, employees, leads) by name or
- *  email for the compose recipient picker (WS-E8). Read-only; runs live-schema. */
-async function searchRecipients(client, q, limit = 20) {
+/**
+ * The four address books, and the module that owns each one.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * ⚠  A RECIPIENT SEARCH IS A READ OF A PARTY REGISTER, and it was not gated
+ *    as one. This UNION ran behind MOD-72 `view` alone — the grant that says
+ *    "you may use mail" — so anybody who could open the composer could type
+ *    two letters and enumerate every client, supplier, employee and lead
+ *    address in the tenant. The employee row is the sharpest: staff home
+ *    addresses are HR data, and HR is MOD-02.
+ *
+ *    The fix is not a filter over the results. A source the caller may not
+ *    read is not QUERIED, so a row they may not see cannot be counted, ranked
+ *    or leaked by a timing difference.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Each branch is a literal in this file, chosen by grant — never assembled
+ * from a caller-supplied string. The parameters stay bound.
+ */
+const RECIPIENT_SOURCES = [
+  {
+    type: "client", module: "MOD-03",
+    sql: "SELECT 'client'::text AS type, client_id::text AS id, name, email::text AS email "
+      + "FROM client_master WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)",
+  },
+  {
+    type: "supplier", module: "MOD-04",
+    sql: "SELECT 'supplier'::text, supplier_id::text, name, email::text "
+      + "FROM supplier_master WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)",
+  },
+  {
+    type: "employee", module: "MOD-02",
+    sql: "SELECT 'employee'::text, employee_id::text, full_name, email::text "
+      + "FROM employee WHERE email IS NOT NULL AND (email ILIKE $1 OR full_name ILIKE $1)",
+  },
+  {
+    type: "lead", module: "MOD-20",
+    sql: "SELECT 'lead'::text, lead_id::text, COALESCE(contact_name, company_name), email::text "
+      + "FROM lead WHERE email IS NOT NULL AND (email ILIKE $1 OR contact_name ILIKE $1 OR company_name ILIKE $1)",
+  },
+];
+
+/**
+ * Search the address books this caller may actually read.
+ *
+ * `sources` is decided by the SERVICE from the caller's grants and passed in
+ * as a list of type names; the repo never resolves a permission itself. An
+ * empty list is an empty result and no query at all — which is the honest
+ * answer for somebody who holds mail and nothing else, and is why the picker
+ * degrades to "type an address" rather than to an error.
+ */
+async function searchRecipients(client, q, { sources = [], limit = 20 } = {}) {
   const term = String(q || "").trim();
   if (!term) return [];
+  const allowed = RECIPIENT_SOURCES.filter((s) => sources.includes(s.type));
+  if (!allowed.length) return [];
   const like = `%${term}%`;
   const { rows } = await client.query(
     `SELECT type, id, name, email FROM (
-       SELECT 'client'::text AS type, client_id::text AS id, name, email::text AS email
-         FROM client_master   WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)
-       UNION ALL
-       SELECT 'supplier', supplier_id::text, name, email::text
-         FROM supplier_master WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)
-       UNION ALL
-       SELECT 'employee', employee_id::text, full_name, email::text
-         FROM employee        WHERE email IS NOT NULL AND (email ILIKE $1 OR full_name ILIKE $1)
-       UNION ALL
-       SELECT 'lead', lead_id::text, COALESCE(contact_name, company_name), email::text
-         FROM lead            WHERE email IS NOT NULL AND (email ILIKE $1 OR contact_name ILIKE $1 OR company_name ILIKE $1)
+       ${allowed.map((s) => s.sql).join("\n       UNION ALL\n       ")}
      ) r
      ORDER BY name LIMIT $2`,
     [like, limit],
@@ -346,6 +387,6 @@ module.exports = {
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
   setDefaultConnection, ensureDefaultConnection, claimConnectionIfUnowned,
 
-  findClientByEmail, searchRecipients, findDossierByRefs,
+  findClientByEmail, searchRecipients, RECIPIENT_SOURCES, findDossierByRefs,
   addAttachment, listAttachments,
 };

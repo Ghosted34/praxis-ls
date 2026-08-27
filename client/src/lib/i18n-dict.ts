@@ -2464,6 +2464,23 @@ export const en = {
     "Out for signature": "Out for signature",
     "Signatures on this note": "Signatures on this note",
     "Signatures on this order": "Signatures on this order",
+
+    /* Sending a document from its own page: the composer that replaced the
+       browser prompt, and the line that says which language the attachment
+       came out in. */
+    "French": "French",
+    "Bilingual": "Bilingual",
+    "the attached document and this note are both in that language.": "the attached document and this note are both in that language.",
+    "New message": "New message",
+    "From mailbox": "From mailbox",
+    "No mailbox connected": "No mailbox connected",
+    "Connect your mailbox under Comms → Mailbox, then send from here.": "Connect your mailbox under Comms → Mailbox, then send from here.",
+    "Finding your mailbox…": "Finding your mailbox…",
+    "On this document": "On this document",
+    "The draft could not be created.": "The draft could not be created.",
+    "The document could not be attached.": "The document could not be attached.",
+    "Sent — it is in your Sent folder and on the record.": "Sent — it is in your Sent folder and on the record.",
+    "default": "default",
   },
   dataRoom: {
     staffDesc: "Document requests from external auditors — share vault documents in answer.",
@@ -4979,6 +4996,23 @@ export const fr: Dict = {
     "Out for signature": "En attente de signature",
     "Signatures on this note": "Signatures sur ce bon",
     "Signatures on this order": "Signatures sur cet ordre",
+
+    /* Sending a document from its own page: the composer that replaced the
+       browser prompt, and the line that says which language the attachment
+       came out in. */
+    "French": "Français",
+    "Bilingual": "Bilingue",
+    "the attached document and this note are both in that language.": "le document joint et ce message sont tous deux dans cette langue.",
+    "New message": "Nouveau message",
+    "From mailbox": "Boîte d'envoi",
+    "No mailbox connected": "Aucune boîte connectée",
+    "Connect your mailbox under Comms → Mailbox, then send from here.": "Connectez votre boîte dans Comms → Boîte, puis envoyez d'ici.",
+    "Finding your mailbox…": "Recherche de votre boîte…",
+    "On this document": "Sur ce document",
+    "The draft could not be created.": "Le brouillon n'a pas pu être créé.",
+    "The document could not be attached.": "Le document n'a pas pu être joint.",
+    "Sent — it is in your Sent folder and on the record.": "Envoyé — le message est dans vos Envoyés et sur le dossier.",
+    "default": "par défaut",
   },
   dataRoom: {
     staffDesc: "Demandes de documents des auditeurs externes — partagez les documents du coffre en réponse.",

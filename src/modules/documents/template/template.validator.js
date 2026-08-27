@@ -28,7 +28,14 @@ const sendDoc = z.object({
   entity_id: z.string().uuid().nullish(),
   language: docLanguage,
 });
-const schemas = { setConfig, preview, sendDoc };
+/* Opening the composer. The record is the URL's `:id`, so the body carries only
+   the two things the operator chose: which entity issues it, and the language
+   the sheet and its covering email both come out in. */
+const composePrefill = z.object({
+  entity_id: z.string().uuid().nullish(),
+  language: docLanguage,
+});
+const schemas = { setConfig, preview, sendDoc, composePrefill };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -37,4 +44,7 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { setConfig: mw("setConfig"), preview: mw("preview"), sendDoc: mw("sendDoc"), schemas };
+module.exports = {
+  setConfig: mw("setConfig"), preview: mw("preview"), sendDoc: mw("sendDoc"),
+  composePrefill: mw("composePrefill"), schemas,
+};

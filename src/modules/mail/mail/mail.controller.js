@@ -73,7 +73,12 @@ module.exports = {
   testConnection: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.testConnection(c, req.params.id)) })),
   syncNow: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.syncConnection(c, req.params.id, { slug: req.tenant && req.tenant.slug })) })),
   setDefaultMailbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setDefaultMailbox(c, req.params.id, actor(req).user_id)) })),
-  recipients: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.searchRecipients(c, req.query.q)) })),
+  // The CALLER is what decides which address books are searched — see
+  // mail.service.searchRecipients. Passing only the term is what let a mail
+  // grant read the whole client, supplier, staff and lead register.
+  recipients: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.searchRecipients(c, req.query.q, { user: actor(req) })),
+  })),
 
   // ── Engine: messages ──
   thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, { ...req.query, user_id: req.user && req.user.user_id })) })),

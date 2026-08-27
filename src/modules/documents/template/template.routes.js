@@ -85,5 +85,8 @@ router.get("/:docType/records", requireDocTypePermission("view"), controller.rec
 router.post("/:docType/preview", requireDocTypePermission("view"), validator.preview, controller.preview);
 router.post("/:docType/generate", requireDocTypePermission("edit"), validator.preview, controller.generate);
 router.post("/:docType/:id/send", requireDocTypePermission("edit"), validator.sendDoc, controller.send);
+// Opens the composer on a document: renders and vaults the PDF, then returns the
+// address, subject and body to open on. `edit`, because it produces an artifact.
+router.post("/:docType/:id/compose", requireDocTypePermission("edit"), validator.composePrefill, controller.composePrefill);
 
 module.exports = { basePath: "/document-templates", feature: null, router };

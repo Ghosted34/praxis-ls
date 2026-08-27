@@ -2,10 +2,10 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 133,
-  "route_count": 1454,
+  "route_count": 1455,
   "tiers": {
     "public": 44,
-    "self-scoped": 87,
+    "self-scoped": 88,
     "gated": 1323
   },
   "routes": {
@@ -6032,6 +6032,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "POST /api/tenant/document-templates/:docType/:id/compose": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/document-templates/:docType/:id/send": {
       "auth": true,

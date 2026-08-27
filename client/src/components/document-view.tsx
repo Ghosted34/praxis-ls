@@ -25,6 +25,7 @@ import { errMsg } from "@/lib/use-resource";
 import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { LoadingRow } from "@/components/ui/states";
+import { NewMessageDialog } from "@/features/comms/inbox/composer/new-message";
 
 // The auth-gated fetch that serves a signed copy (uploaded, rather than
 // regenerated) is `lib/vault-file.openVaultDoc` — shared with the scan
@@ -196,11 +197,30 @@ type Preview = {
   data?: DocData | null;
   title?: { fr?: string; en?: string };
   entity?: Entity;
-  suggested_to?: string | null;
   report?: boolean;
   /** The language this render came out in — the tenant's configured default
    *  until the operator picks otherwise. "bilingual" is a real, chosen value. */
   language?: string;
+};
+
+/**
+ * What the server hands back when Send is pressed: the vaulted PDF, who it goes
+ * to, and the covering note — all in the language the operator picked.
+ */
+type ComposePrefill = {
+  doc_type: string;
+  record_id: string;
+  language: string;
+  vault_id: string;
+  filename: string;
+  to: string | null;
+  subject: string;
+  body: string;
+  counterparty: {
+    party_id: string;
+    party_name: string;
+    contacts: { name: string | null; email: string; role: string | null; source_ref: string }[];
+  } | null;
 };
 
 /** A language the operator can pick for one render. */
@@ -698,6 +718,9 @@ export function DocumentPage() {
    */
   const [lang, setLang] = React.useState<DocLang | null>(null);
 
+  /** The prefill the composer opens on — null until Send has fetched it. */
+  const [compose, setCompose] = React.useState<ComposePrefill | null>(null);
+
   React.useEffect(() => {
     let live = true;
     setError(null);
@@ -762,21 +785,33 @@ export function DocumentPage() {
       setBusy(null);
     }
   }
+  /**
+   * Open the composer on this document.
+   *
+   * ── What this replaced ────────────────────────────────────────────────────
+   * `window.prompt("Send document to (email):")`. One address, typed from
+   * memory; no cc, no subject, no body, and no sight of what was about to leave
+   * the building. It fired a transactional system email that never appeared in
+   * the sender's own Sent folder, so the record of what a client had been told
+   * lived nowhere a human could find it.
+   *
+   * The server does the work that has to happen before a composer can open:
+   * renders and vaults the PDF in the chosen language, resolves the client the
+   * document is addressed to, and returns the subject and body written beside
+   * the template that produced the sheet. One round trip, because a compose
+   * window that opens empty and fills in piecemeal invites somebody to start
+   * typing into a form that is still moving.
+   */
   async function send() {
-    const to = window.prompt(
-      "Send document to (email):",
-      pv?.suggested_to || "",
-    );
-    if (!to) return;
     setBusy("send");
     setError(null);
     setNote(null);
     try {
-      await tenant(`/document-templates/${docType}/${id}/send`, {
-        method: "POST",
-        body: { to, ...(lang ? { language: lang } : {}) },
-      });
-      setNote(`Sent to ${to}.`);
+      const p = await tenant<ComposePrefill>(
+        `/document-templates/${docType}/${id}/compose`,
+        { method: "POST", body: { ...(lang ? { language: lang } : {}) } },
+      );
+      setCompose(p);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -815,6 +850,38 @@ export function DocumentPage() {
           </Button>
         </div>
       </header>
+
+      {/*
+        * The composer, opened on this document.
+        *
+        * `recipientExtras` carries the client THIS document is addressed to,
+        * resolved from the record rather than from the address-book search —
+        * which is gated on the party registers (MOD-03 / MOD-04 / MOD-02 /
+        * MOD-20). An operations clerk who may raise a transit order and may not
+        * browse the client register still has to be able to email it to the
+        * client it names.
+        */}
+      {compose && (
+        <NewMessageDialog
+          open
+          title={`${tr("Send")} ${heading}`}
+          onClose={() => setCompose(null)}
+          onSent={() => setNote(tr("Sent — it is in your Sent folder and on the record."))}
+          to={compose.to ? [compose.to] : []}
+          subject={compose.subject}
+          bodyText={compose.body}
+          vaultAttachments={[{ vault_id: compose.vault_id, filename: compose.filename }]}
+          recipientExtras={(compose.counterparty?.contacts || []).map((c) => ({
+            name: c.name || compose.counterparty?.party_name || c.email,
+            email: c.email,
+            note: c.role || compose.counterparty?.party_name || null,
+          }))}
+          entityRef={`${compose.doc_type.toLowerCase()}:${compose.record_id}`}
+          languageNote={`${
+            compose.language === "fr" ? tr("French") : compose.language === "en" ? tr("English") : tr("Bilingual")
+          } — ${tr("the attached document and this note are both in that language.")}`}
+        />
+      )}
 
       {error && (
         <div className="mx-auto mb-3 max-w-3xl">

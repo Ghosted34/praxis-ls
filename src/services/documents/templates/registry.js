@@ -329,6 +329,30 @@ const TEMPLATES = {
   DELIVERY_NOTE: {
     docType: "DELIVERY_NOTE", title: { fr: "Bon de livraison", en: "Delivery note" }, module: "operations/delivery_note",
     fields: ["container manifest", "partial-delivery position", "reservations", "received by", "signatory box"],
+    /*
+     * The covering note. It asks for the ONE thing this document exists to get
+     * back — a signed copy with the client's reserves on it — because a
+     * delivery note that comes back unsigned is stationery, and an email that
+     * does not say what to do with the attachment is how that happens.
+     */
+    email: {
+      subject: {
+        fr: "Bon de livraison {number}[[ — dossier {dossier_ref}]]",
+        en: "Delivery note {number}[[ — file {dossier_ref}]]",
+      },
+      body: {
+        fr: "Bonjour,\n\n"
+          + "Veuillez trouver ci-joint le bon de livraison {number}[[ relatif au dossier {dossier_ref}]].\n\n"
+          + "Nous vous remercions de bien vouloir contrôler la marchandise à la réception, puis de nous "
+          + "retourner un exemplaire signé et cacheté en y portant vos éventuelles réserves.\n\n"
+          + "Cordialement,\n{entity_name}",
+        en: "Hello,\n\n"
+          + "Please find attached delivery note {number}[[ for file {dossier_ref}]].\n\n"
+          + "Kindly check the goods on receipt, then return a signed and stamped copy to us, noting any "
+          + "reservations on it.\n\n"
+          + "Kind regards,\n{entity_name}",
+      },
+    },
     /** Measured off the render — see scripts/dev/measure-instrument.js. */
     HEIGHT_MM: {
       head: 17,        // letterhead + accent rule
@@ -613,6 +637,33 @@ const TEMPLATES = {
   TRANSIT_ORDER: {
     docType: "TRANSIT_ORDER", title: { fr: "Ordre de transit", en: "Transit order" }, module: "operations/transit_order",
     fields: ["shipment facts", "customs regime", "insurance & surveyor", "attached documents", "signatory box"],
+    /*
+     * The covering note. This document is an AUTHORISATION — nothing can be
+     * declared until it comes back signed — so the email says that plainly and
+     * names the consequence, rather than "please find attached". The clerk
+     * reading it is deciding whether to action it today or on Monday.
+     */
+    email: {
+      subject: {
+        fr: "Ordre de transit {number}[[ — dossier {dossier_ref}]] — signature requise",
+        en: "Transit order {number}[[ — file {dossier_ref}]] — signature required",
+      },
+      body: {
+        fr: "Bonjour,\n\n"
+          + "Veuillez trouver ci-joint l'ordre de transit {number}[[ relatif au dossier {dossier_ref}]].\n\n"
+          + "Nous vous prions de bien vouloir nous le retourner signé et cacheté : il constitue notre "
+          + "autorisation d'engager les formalités de dédouanement pour votre compte, qui ne peuvent "
+          + "commencer sans lui.\n\n"
+          + "Nous restons à votre disposition pour toute précision.\n\n"
+          + "Cordialement,\n{entity_name}",
+        en: "Hello,\n\n"
+          + "Please find attached transit order {number}[[ for file {dossier_ref}]].\n\n"
+          + "Please return it to us signed and stamped: it is our authority to begin the customs "
+          + "formalities on your behalf, and they cannot start without it.\n\n"
+          + "Do let us know if anything needs clarifying.\n\n"
+          + "Kind regards,\n{entity_name}",
+      },
+    },
     /**
      * Height model, in millimetres at fit = 1.
      *
@@ -1599,4 +1650,73 @@ TEMPLATES.DSF.fields = ["SYSCOHADA structured layout"];
 const list = () => Object.values(TEMPLATES).map((t) => ({ docType: t.docType, title: t.title, module: t.module, fields: t.fields || [], report: !!t.report }));
 const get = (docType) => TEMPLATES[docType] || null;
 
-module.exports = { TEMPLATES, list, get };
+/* ── The covering email ──────────────────────────────────────────────────── */
+
+/**
+ * The subject and body a document is emailed under.
+ *
+ * ── Why it lives beside the template ───────────────────────────────────────
+ * Because it is the same document. The sheet and the note that carries it say
+ * the same thing to the same person on the same day, and the one way to
+ * guarantee they never contradict each other is to write them in one place.
+ * The alternative — wording typed into a screen — drifts from the document the
+ * first time a doc type changes shape, and nobody notices until a client is
+ * told to sign something the attachment does not ask for.
+ *
+ * ── Monolingual, by the same rule as the sheet ─────────────────────────────
+ * {fr,en} pairs resolved through `k.t`. A French document must not arrive under
+ * an English subject line: that is the same defect as "Ordre de transit /
+ * Transit order" on the page, wearing an envelope.
+ *
+ * ── The optional segment ───────────────────────────────────────────────────
+ * `[[ … {token} … ]]` drops entirely when a token inside it is empty. A note
+ * raised outside a file has no reference, and "concerne le dossier " with
+ * nothing after it is worse than a sentence that never mentions one.
+ */
+const EMAIL_TOKENS = (data = {}, entity = {}) => ({
+  number: data.number || "",
+  dossier_ref: data.dossier_ref || "",
+  date: k.dateFmt(data.date) || "",
+  delivery_date: k.dateFmt(data.delivery_date) || "",
+  party_name: (data.party && data.party.name) || "",
+  entity_name: entity.legal_name || "",
+});
+
+/**
+ * Fill one template string. Unknown tokens resolve to empty rather than
+ * printing their own braces at a client — a typo in the wording above should
+ * read as a missing word, not as machinery showing through.
+ */
+function fillCopy(text, tokens) {
+  return String(text || "")
+    // Optional segments first: the whole segment goes if any token in it is empty.
+    .replace(/\[\[([\s\S]*?)\]\]/g, (_m, seg) => {
+      const names = [...String(seg).matchAll(/\{(\w+)\}/g)].map((x) => x[1]);
+      if (names.some((n) => !tokens[n])) return "";
+      return seg;
+    })
+    .replace(/\{(\w+)\}/g, (_m, name) => tokens[name] || "")
+    // Interpolation can leave doubled spaces where a token was empty.
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * The subject and body for one document, in one language.
+ *
+ * Returns null for a doc type with no wording of its own — the caller then
+ * opens an empty composer, which is honest. Inventing a generic "Please find
+ * attached" for a payslip would put our words on a document nobody wrote them
+ * for.
+ */
+function emailCopy(docType, data = {}, { language = "fr", entity = {} } = {}) {
+  const tpl = get(docType);
+  if (!tpl || !tpl.email) return null;
+  const tokens = EMAIL_TOKENS(data, entity);
+  return {
+    subject: fillCopy(k.t(tpl.email.subject, language), tokens),
+    body: fillCopy(k.t(tpl.email.body, language), tokens),
+  };
+}
+
+module.exports = { TEMPLATES, list, get, emailCopy, fillCopy };

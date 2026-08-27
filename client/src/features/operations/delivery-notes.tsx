@@ -52,6 +52,7 @@ import { PlacePicker } from "@/components/operations/place-picker";
 import { ListPage } from "@/components/list-page";
 import type { Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { MeterGroup } from "@/components/ui/meter";
 import { Pill } from "@/components/ui/pill";
 import type { Tone } from "@/components/ui/pill";
 import { ScreenAi } from "@/components/screen-ai";
@@ -62,6 +63,12 @@ import { num, dateFmt } from "@/lib/format";
 import { useCanUseModule } from "@/lib/route-access";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
+import {
+  SendForSignatureModal,
+  SignatureChainOnRecord,
+  SignDocumentModal,
+  SignaturesOnRecord,
+} from "@/features/vault/sign-document";
 import { ShipmentDetailsPanel } from "./shipment-details";
 import { nameMap } from "./shared";
 
@@ -75,6 +82,26 @@ const STATUS_TONE: Record<string, Tone> = {
   ISSUED: "warn",
   DELIVERED: "ok",
   CANCELLED: "bad",
+};
+
+/**
+ * A container's own state on the file, which is NOT the note's status.
+ *
+ * A box is delivered when somebody signed for it, in transit when it is out
+ * with a driver on a note nobody has signed yet, and outstanding when no live
+ * note covers it. On a twelve-box file all three are true at once, which is
+ * exactly why the file needed a view the note's own `status` pill cannot give.
+ */
+const BOX_TONE: Record<string, Tone> = {
+  DELIVERED: "ok",
+  IN_TRANSIT: "warn",
+  OUTSTANDING: "mute",
+};
+
+const BOX_WORD: Record<string, string> = {
+  DELIVERED: "Signed for",
+  IN_TRANSIT: "Out with a driver",
+  OUTSTANDING: "Still to go",
 };
 
 type GoodsLine = { inventory_item_id: string; label: string; qty: string };
@@ -101,16 +128,34 @@ function ContainerPicker({
   selected,
   onChange,
   disabled,
+  capturesContainers,
 }: {
   dossierId: string;
   excludeNoteId?: string;
   selected: api.DeliveryNoteContainer[];
   onChange: (next: api.DeliveryNoteContainer[]) => void;
   disabled?: boolean;
+  /**
+   * Whether this file's SERVICE TYPE moves containers at all.
+   *
+   * Undefined while the answer is still in flight, and that matters: the picker
+   * must not flash "this service type has no containers" at a sea file for the
+   * duration of one request.
+   *
+   * When it is false the picker is not merely empty — there is nothing for it
+   * to be full OF. A customs-brokerage or air file has no equipment on it and
+   * never will, so the list and its "no containers captured" prompt are wrong
+   * questions rather than empty answers. The hand-typed box stays, because a
+   * one-off box on a non-container service is exactly what it is for.
+   */
+  capturesContainers?: boolean;
 }) {
+  const containerless = capturesContainers === false;
   const { data, error, loading } = useResource(
-    () => (dossierId ? api.availableContainers(dossierId, excludeNoteId) : Promise.resolve([])),
-    [dossierId, excludeNoteId],
+    () => (dossierId && !containerless
+      ? api.availableContainers(dossierId, excludeNoteId)
+      : Promise.resolve([])),
+    [dossierId, excludeNoteId, containerless],
   );
   const [manual, setManual] = React.useState("");
 
@@ -121,6 +166,19 @@ function ContainerPicker({
     selected.map((c) => c.dossier_container_line_id).filter(Boolean) as string[],
   );
   const typed = selected.filter((c) => !c.dossier_container_unit_id && !c.dossier_container_line_id);
+
+  /** The reason carried on the picked row for a box already signed for. */
+  const reasonFor = (u: api.AvailableContainer) =>
+    selected.find((c) => c.dossier_container_unit_id === u.dossier_container_unit_id)
+      ?.redelivery_reason ?? null;
+  const setReason = (u: api.AvailableContainer, reason: string) =>
+    onChange(
+      selected.map((c) =>
+        c.dossier_container_unit_id === u.dossier_container_unit_id
+          ? { ...c, redelivery_reason: reason }
+          : c,
+      ),
+    );
 
   function toggle(u: api.AvailableContainer, on: boolean) {
     if (u.kind === "line" && u.dossier_container_line_id) {
@@ -179,12 +237,21 @@ function ContainerPicker({
 
   return (
     <div className="space-y-3">
-      {loading && <p className="text-sm text-muted">Loading the file&rsquo;s containers…</p>}
+      {loading && !containerless && (
+        <p className="text-sm text-muted">Loading the file&rsquo;s containers…</p>
+      )}
 
-      {!loading && !rows.length && (
+      {containerless && (
+        <p className="text-sm text-muted">
+          This file&rsquo;s service does not move containers, so there is nothing
+          to tick. Type a number below only if one genuinely applies.
+        </p>
+      )}
+
+      {!loading && !containerless && !rows.length && (
         <Callout tone="info" title="No containers captured on this file">
-          Nothing to tick yet. Either the file does not track equipment, or the
-          B/L has not landed. You can still type a container number below.
+          Nothing to tick yet. The service moves containers, but the B/L has not
+          landed — you can still type a number below.
         </Callout>
       )}
 
@@ -230,9 +297,35 @@ function ContainerPicker({
                       {u.seal_no && <span className="text-muted"> · seal {u.seal_no}</span>}
                     </>
                   )}
-                  {u.already_on && u.already_on.length > 0 && (
+                  {/*
+                    * TWO DIFFERENT FACTS, and they used to read as one.
+                    *
+                    * A box on another ISSUED note is a split load: routine,
+                    * stated quietly. A box on a DELIVERED note has been signed
+                    * for by a named human, and sending it out again is nearly
+                    * always a mis-click — so it is loud, and ticking it opens
+                    * the reason field below, which the API requires.
+                    */}
+                  {u.delivered_on && u.delivered_on.length > 0 && (
+                    <span className="block text-xs font-medium text-[rgb(var(--bad))]">
+                      Already signed for on {u.delivered_on.join(", ")} — say why
+                      it is going out again.
+                    </span>
+                  )}
+                  {u.issued_on && u.issued_on.length > 0 && (
                     <span className="block text-xs text-warn">
-                      Already on {u.already_on.join(", ")} — tick only if this is a split load.
+                      Out on {u.issued_on.join(", ")} — tick only if this is a split load.
+                    </span>
+                  )}
+                  {on && u.delivered_on && u.delivered_on.length > 0 && (
+                    <span className="mt-1 block">
+                      <Input
+                        value={reasonFor(u) || ""}
+                        onChange={(e) => setReason(u, e.target.value)}
+                        placeholder="e.g. Returned damaged on 12/07, re-delivered"
+                        aria-label="Why this container is being delivered again"
+                        onClick={(e) => e.preventDefault()}
+                      />
                     </span>
                   )}
                 </span>
@@ -302,6 +395,154 @@ function ContainerPicker({
   );
 }
 
+/* ── How much of the file has gone ──────────────────────────── */
+
+/**
+ * The file's progress, fetched once however many surfaces ask for it.
+ *
+ * One hook rather than a `useResource` call per caller: the resource key is
+ * built from the fetcher's SOURCE plus its deps, so callers sharing this body
+ * share a query — the form and the detail drawer show the same numbers from one
+ * request, and either one's `reload` refreshes both.
+ */
+function useDeliveryProgress(dossierId: string) {
+  return useResource(
+    () => (dossierId ? api.deliveryProgress(dossierId) : Promise.resolve(null)),
+    [dossierId],
+  );
+}
+
+/**
+ * The file's delivery progress, derived from its notes.
+ *
+ * ── THE QUESTION NOTHING COULD ANSWER ───────────────────────────────
+ * A sea file carries twelve containers and they do not clear together. Three
+ * notes are raised over three weeks, and until now the only thing the screen
+ * could say about any one of them was its own status. "Is this file finished?"
+ * required opening all three notes and doing the arithmetic on paper — which is
+ * how a thirteenth truck gets sent for a box that was signed for last Tuesday.
+ *
+ * Nothing here is stored. The notes ARE the record; this reads them back
+ * (GET /delivery-notes/progress) so there is no second number to drift from the
+ * first the moment a note is cancelled.
+ *
+ * It renders NOTHING when the file's service type does not capture containers.
+ * A customs-brokerage file is not "0 of 0 delivered" — it has no boxes to count,
+ * and a panel saying so is a panel that teaches operators to ignore panels.
+ */
+function DeliveryProgressPanel({
+  progress: data,
+  highlightNoteRef,
+}: {
+  progress: api.DeliveryProgress | null;
+  /** The note being looked at, marked in the box list so "which of these did
+   *  THIS note carry" is answered without cross-referencing two lists. */
+  highlightNoteRef?: string | null;
+}) {
+  if (!data) return null;
+  if (!data.captures_containers || data.total === 0) return null;
+
+  const { total, delivered, in_transit: inTransit, outstanding, complete } = data;
+
+  return (
+    <Panel
+      title={tr("Delivery progress")}
+      subtitle="Across every live note on this file — counted from the notes themselves."
+      action={
+        /*
+          * "0 still to go" while four boxes are on a truck is the exact
+          * sentence that dispatches a second truck for them. When nothing is
+          * outstanding but something is moving, the headline is what is moving.
+          *
+          * Label-then-figure rather than "4 still to go": `tr` translates whole
+          * labels, and a sentence assembled from translated fragments comes out
+          * in English word order whatever language it is wearing.
+          */
+        complete ? (
+          <Pill tone="ok">{tr("Fully delivered")}</Pill>
+        ) : outstanding > 0 ? (
+          <Pill tone="warn">{tr(BOX_WORD.OUTSTANDING)}: {outstanding}</Pill>
+        ) : (
+          <Pill tone="warn">{tr(BOX_WORD.IN_TRANSIT)}: {inTransit}</Pill>
+        )
+      }
+    >
+      <div className="space-y-4">
+        <MeterGroup
+          ariaLabel={`${delivered} of ${total} containers signed for, ${inTransit} out with a driver, ${outstanding} still to go`}
+          max={total}
+          rows={[
+            { label: tr(BOX_WORD.DELIVERED), value: delivered, display: `${delivered} / ${total}`, tone: "ok" },
+            { label: tr(BOX_WORD.IN_TRANSIT), value: inTransit, display: String(inTransit), tone: "warn" },
+            { label: tr(BOX_WORD.OUTSTANDING), value: outstanding, display: String(outstanding), tone: "neutral" },
+          ]}
+        />
+
+        {/*
+          * Box by box, because the totals are the summary and the dispute is
+          * always about one number. `delivered_on_note` is the note somebody
+          * signed — it is the answer to "who has it", printed where the question
+          * gets asked.
+          */}
+        {data.boxes.length > 0 && (
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {data.boxes.map((b) => (
+              <li
+                key={b.id}
+                className={
+                  "flex items-center justify-between gap-2 rounded border border-line px-2 py-1 text-sm"
+                  + (highlightNoteRef
+                    && (b.delivered_on_note === highlightNoteRef || b.issued_on_note === highlightNoteRef)
+                    ? " border-primary/60 bg-primary/5"
+                    : "")
+                }
+              >
+                <span className="min-w-0 truncate">
+                  <span className="num font-medium">{b.container_no || tr("Unnumbered")}</span>
+                  {b.container_type_code && (
+                    <span className="text-muted"> · {b.container_type_code}</span>
+                  )}
+                  {(b.delivered_on_note || b.issued_on_note) && (
+                    <span className="num text-muted"> · {b.delivered_on_note || b.issued_on_note}</span>
+                  )}
+                </span>
+                <Pill tone={BOX_TONE[b.state] || "mute"}>{tr(BOX_WORD[b.state] || b.state)}</Pill>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/*
+          * The grouped shape (10708): equipment the file states as a quantity
+          * because the Bill of Lading has not numbered the boxes yet. It still
+          * counts towards the file, split three ways like everything else.
+          */}
+        {data.groups.length > 0 && (
+          <ul className="space-y-1">
+            {data.groups.map((g) => (
+              <li key={g.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-medium">
+                  {g.qty} × {g.container_type_code || tr("container")}
+                  <span className="text-muted"> — {tr("numbers not yet on file")}</span>
+                </span>
+                {/* Label: figure, joined — never a sentence built out of
+                    translated fragments. */}
+                <span className="text-muted">
+                  {[
+                    `${tr(BOX_WORD.DELIVERED)}: ${g.delivered_qty}`,
+                    ...(g.in_transit_qty > 0 ? [`${tr(BOX_WORD.IN_TRANSIT)}: ${g.in_transit_qty}`] : []),
+                    ...(g.outstanding_qty > 0 ? [`${tr(BOX_WORD.OUTSTANDING)}: ${g.outstanding_qty}`] : []),
+                  ].join(" · ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 /* ── Create / edit ──────────────────────────────────────────────────────── */
 
 function DeliveryForm({
@@ -329,6 +570,15 @@ function DeliveryForm({
     delivery_date: note?.delivery_date || "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+
+  /**
+   * What the file has already sent, while the next note is being written.
+   *
+   * The operator raising delivery three of four needs the answer HERE, at the
+   * moment they are choosing boxes — reading it off the drawer they closed to
+   * open this form is how the same container goes out twice.
+   */
+  const { data: progress } = useDeliveryProgress(f.dossier_id);
 
 
   /**
@@ -574,12 +824,18 @@ function DeliveryForm({
           <ShipmentDetailsPanel dossierId={f.dossier_id} variant="strip" />
         )}
 
+        <DeliveryProgressPanel
+          progress={progress}
+          highlightNoteRef={note?.ref || null}
+        />
+
         <Panel title={tr("Containers")}>
           <ContainerPicker
             dossierId={f.dossier_id}
             excludeNoteId={note?.delivery_note_id}
             selected={containers}
             onChange={setContainers}
+            capturesContainers={progress ? progress.captures_containers : undefined}
           />
         </Panel>
 
@@ -742,15 +998,24 @@ function NoteDetail({
   onChanged: () => void;
 }) {
   const { data, error, reload } = useResource(() => api.getDeliveryNote(id), [id]);
+  // Before the early returns below: the file is not known until `data` lands,
+  // and a hook cannot be called conditionally. An empty id fetches nothing.
+  const { data: progress, reload: reloadProgress } = useDeliveryProgress(data?.dossier_id || "");
   const [editing, setEditing] = React.useState(false);
   const [delivering, setDelivering] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
+  const [signOpen, setSignOpen] = React.useState(false);
+  const [sendOpen, setSendOpen] = React.useState(false);
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
   const refresh = () => {
     reload();
+    // Confirming a delivery moves boxes from "out with a driver" to "signed
+    // for", and the panel is on this same screen — leaving it stale would show
+    // the operator the file as it was before the act they just performed.
+    reloadProgress();
     onChanged();
   };
 
@@ -859,6 +1124,14 @@ function NoteDetail({
                       {c.seal_no && <span className="text-muted"> · seal {c.seal_no}</span>}
                     </>
                   )}
+                  {/* Why a box already signed for is on this note too. It
+                      prints on the sheet, so it belongs on the screen the sheet
+                      is raised from. */}
+                  {c.redelivery_reason && (
+                    <span className="block text-xs text-warn">
+                      ↻ {c.redelivery_reason}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -866,6 +1139,14 @@ function NoteDetail({
             <p className="text-sm text-muted">No containers on this note.</p>
           )}
         </Panel>
+
+        {/*
+          * The FILE, not this note: how many of its boxes have been signed for,
+          * how many are on the road, how many are still to go. This drawer is
+          * where somebody decides whether another note is needed, so the answer
+          * has to be here rather than one screen away.
+          */}
+        <DeliveryProgressPanel progress={progress} highlightNoteRef={data.ref || null} />
 
         {(data.lines || []).length > 0 && (
           <Panel title="Other cargo">
@@ -880,6 +1161,23 @@ function NoteDetail({
           </Panel>
         )}
 
+        {/*
+          * Who was ASKED (the chain) and who HAS signed (the seals). Two panels
+          * because they answer different questions — a request still out with
+          * one signature already on the note is the normal mid-chain state, and
+          * either view alone reads as a fault. Both render nothing when there
+          * is nothing to show, so a tenant with signatures switched off never
+          * sees an empty section for a feature it does not have.
+          */}
+        <SignatureChainOnRecord
+          entityRef={`delivery_note:${data.delivery_note_id}`}
+          title={tr("Out for signature")}
+        />
+        <SignaturesOnRecord
+          entityRef={`delivery_note:${data.delivery_note_id}`}
+          title={tr("Signatures on this note")}
+        />
+
         <div className="flex flex-wrap justify-end gap-2">
           {data.status === "DRAFT" && (
             <Button variant="outline" onClick={() => setEditing(true)}>
@@ -893,6 +1191,34 @@ function NoteDetail({
           )}
           {can("DELIVERED") && (
             <Button onClick={() => setDelivering(true)}>Confirm delivery</Button>
+          )}
+          {/*
+            * THREE DIFFERENT ACTS, and the screen has to keep them apart:
+            *
+            *   Confirm delivery     records what the client wrote at the gate —
+            *                        the name, the reservations, the moment. It
+            *                        moves the note to DELIVERED.
+            *   Sign electronically  puts OUR attestation on the document: the
+            *                        seal that prints in the company box with the
+            *                        QR anyone holding the paper can check.
+            *   Send for signature   emails the consignee a link to sign it
+            *                        themselves, which is the same evidence
+            *                        without the driver carrying a clipboard.
+            *
+            * Only once the note is numbered. The seal prints the note's own
+            * reference as evidence and its hash covers the issued manifest, so
+            * sealing a draft would attest to a document that does not exist yet
+            * and would go stale the moment it was issued.
+            */}
+          {data.status !== "DRAFT" && data.status !== "CANCELLED" && (
+            <>
+              <Button variant="outline" disabled={busy} onClick={() => setSignOpen(true)}>
+                Sign electronically
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={() => setSendOpen(true)}>
+                Send for signature
+              </Button>
+            </>
           )}
           {can("CANCELLED") && (
             <Button variant="ghost" onClick={() => setCancelling(true)}>
@@ -912,6 +1238,20 @@ function NoteDetail({
       {delivering && (
         <DeliverDialog note={data} onClose={() => setDelivering(false)} onDone={refresh} />
       )}
+      <SignDocumentModal
+        open={signOpen}
+        entityRef={`delivery_note:${data.delivery_note_id}`}
+        docType="DELIVERY_NOTE"
+        onClose={() => setSignOpen(false)}
+        onSaved={refresh}
+      />
+      <SendForSignatureModal
+        open={sendOpen}
+        entityRef={`delivery_note:${data.delivery_note_id}`}
+        docType="DELIVERY_NOTE"
+        onClose={() => setSendOpen(false)}
+        onSent={refresh}
+      />
       <ConfirmDialog
         open={cancelling}
         onClose={() => setCancelling(false)}

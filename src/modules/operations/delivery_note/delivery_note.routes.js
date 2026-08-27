@@ -33,6 +33,8 @@ router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/summary", requirePermission(MODULE, "view"), controller.summary);
 // Static before `/:id`, or "available-containers" is parsed as an id.
 router.get("/available-containers", requirePermission(MODULE, "view"), controller.availableContainers);
+// How much of a file has been delivered. Static, before `/:id`.
+router.get("/progress", requirePermission(MODULE, "view"), controller.progress);
 // A create body prefilled from the file. `create`, not `view`: it is the first
 // step of raising a note, and a read-only grant has no use for a draft it could
 // not submit.

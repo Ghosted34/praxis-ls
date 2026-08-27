@@ -326,6 +326,9 @@ export type DeliveryNoteContainer = {
   seal_no?: string | null;
   gross_weight_kg?: number | null;
   notes?: string | null;
+  /** Why this box is going out again when a signed note already covers it. The
+   *  API REQUIRES it in that case and refuses the save by container number. */
+  redelivery_reason?: string | null;
 };
 
 /** A container on the FILE, as offered by the picker (10708: grouped lines
@@ -342,8 +345,52 @@ export type AvailableContainer = {
   container_type_fr?: string | null;
   /** Line rows only: the un-numbered remainder of the line ("3" of 3 × 40HC). */
   qty?: number | null;
-  /** Note numbers this box is already on — a split load, not necessarily wrong. */
+  /** Note numbers this box is already on. The UNION of the two below; kept
+   *  because it is what this field has always meant. */
   already_on?: string[];
+  /** Notes that have been SIGNED FOR. Putting the box on another note is a
+   *  re-delivery and needs a reason — almost always it is a mis-click. */
+  delivered_on?: string[];
+  /** Notes that are out with a driver. A split load: normal, no reason needed. */
+  issued_on?: string[];
+};
+
+/**
+ * How much of a file has been delivered — derived from its notes, never stored.
+ *
+ * `outstanding` is NOT `total - delivered`: a box on an issued note is neither
+ * delivered nor still to be sent, and counting it as outstanding is what puts a
+ * second truck on the road for a container already on the first.
+ */
+export type DeliveryProgress = {
+  total: number;
+  delivered: number;
+  in_transit: number;
+  outstanding: number;
+  complete: boolean;
+  /** False for a service type that does not capture containers at all. */
+  containerised: boolean;
+  captures_containers: boolean;
+  boxes: {
+    kind: "unit";
+    id: string;
+    container_no: string | null;
+    seal_no: string | null;
+    container_type_code: string | null;
+    state: "DELIVERED" | "IN_TRANSIT" | "OUTSTANDING";
+    delivered_on_note: string | null;
+    delivered_at: string | null;
+    issued_on_note: string | null;
+  }[];
+  groups: {
+    kind: "line";
+    id: string;
+    container_type_code: string | null;
+    qty: number;
+    delivered_qty: number;
+    in_transit_qty: number;
+    outstanding_qty: number;
+  }[];
 };
 
 export type DeliveryNote = {
@@ -417,6 +464,11 @@ export const availableContainers = (dossierId: string, excludeNoteId?: string) =
       dossier_id: dossierId,
       ...(excludeNoteId ? { exclude_note_id: excludeNoteId } : {}),
     })}`,
+  );
+/** How much of a file has been delivered. Derived from the notes on it. */
+export const deliveryProgress = (dossierId: string) =>
+  tenant<DeliveryProgress>(
+    `/delivery-notes/progress?${new URLSearchParams({ dossier_id: dossierId })}`,
   );
 /**
  * A create body prefilled from the file — same contract as

@@ -364,11 +364,39 @@ async function deliveryNoteData(client, recordId) {
     ),
     client.query(
       `SELECT container_no, seal_no, gross_weight_kg, dossier_container_line_id,
-              container_type_code, qty
+              container_type_code, qty, redelivery_reason
          FROM delivery_note_container WHERE delivery_note_id = $1 ORDER BY seq, created_at`,
       [recordId],
     ),
   ]);
+
+  /*
+   * WHERE THIS DELIVERY SITS IN THE FILE.
+   *
+   * A sea file's containers do not all clear at once, so one file produces
+   * several notes over weeks. Until now each note said only what was in it, and
+   * neither the driver nor the client's gatekeeper could tell whether more was
+   * coming. `position` is derived from the OTHER notes on the same file — never
+   * stored — by the same rollup the operations screen reads, so the sheet and
+   * the screen cannot disagree.
+   *
+   * Best-effort: a note must still print for a file whose progress cannot be
+   * computed. It then prints as a plain delivery note, which is what it was
+   * before this existed.
+   */
+  let position = null;
+  if (dn.dossier_id) {
+    try {
+      const dnRules = require("../../operations/delivery_note/delivery_note.rules");
+      const dnRepo = require("../../operations/delivery_note/delivery_note.repo");
+      const progress = dnRules.deliveryProgress(await dnRepo.progressForDossier(client, dn.dossier_id));
+      const seq = await dnRepo.sequenceOnDossier(client, { dossierId: dn.dossier_id, noteId: recordId });
+      position = dnRules.deliveryPosition(progress, seq);
+    } catch (err) {
+      logger.warn({ err: err && err.message, delivery_note_id: recordId },
+        "[documents] delivery note printed without its position on the file");
+    }
+  }
 
   return {
     entity_id: dn.entity_id || null,
@@ -378,6 +406,8 @@ async function deliveryNoteData(client, recordId) {
       delivery_date: dn.delivery_date,
       dossier_ref: dn.dossier_ref || null,
       status: dn.status,
+      status_words: require("../../operations/delivery_note/delivery_note.rules").statusWords(dn.status),
+      position,
       party: {
         name: dn.consignee || dn.client_name || "—",
         // The address is the point of the document; city/zone alone is routing.
@@ -391,7 +421,34 @@ async function deliveryNoteData(client, recordId) {
         seal_no: c.seal_no,
         container_type_code: c.container_type_code,
         qty: Number(c.qty) || 1,
+        // Why a box already signed for is going out again. Printed, because
+        // the note is the only place a reader will ever look for it.
+        redelivery_reason: c.redelivery_reason || null,
       })),
+      /*
+       * `reservations`, and deliberately NOT also as `reserves`.
+       *
+       * canonical.js's DELIVERY_NOTE builder reads `d.reserves || d.remarks`,
+       * and nothing has ever supplied either — so the signed payload carries an
+       * empty reserves field. That looks like a wiring bug and is left alone on
+       * purpose, because the lifecycle already gives what the field was meant
+       * to buy and feeding it would cost more than it gives:
+       *
+       *   · reservations are written once, at DELIVERED, and a DELIVERED note
+       *     cannot be edited (delivery_note.rules.assertEditable). There is no
+       *     path by which reserves change under a signature.
+       *   · a note signed at ISSUE — our countersignature — would flip to
+       *     AMENDED the moment the client writes anything in the box at the
+       *     gate. That is the document completing its lifecycle, not somebody
+       *     tampering with it, and an amendment alarm that fires on the normal
+       *     path is an alarm people learn to ignore.
+       *
+       * Adding it would mean a v2 payload (canonical.js is explicit: never edit
+       * a live builder), which is a different piece of work with a migration of
+       * its own. The container manifest is absent from the payload for the same
+       * reason and is protected the same way — containers are frozen at ISSUE,
+       * and signing is only offered on a numbered note.
+       */
       reservations: dn.reservations || null,
       received_by_name: dn.received_by_name || null,
       received_at: dn.received_at || null,

@@ -2447,6 +2447,23 @@ export const en = {
     "— tenant default —": "— tenant default —",
     "— top level —": "— top level —",
     "“Four hours” starting at 17:00 on a Friday should mean Monday morning, not Friday evening.": "“Four hours” starting at 17:00 on a Friday should mean Monday morning, not Friday evening.",
+
+    /* Delivery progress and the signing rail on an operations record. Kept
+       together rather than filed alphabetically into unrelated neighbours:
+       they are one vocabulary, and a state word translated in isolation
+       ("Complete" is already here as the VERB "Terminer") is how a status
+       pill ends up telling a French operator to do something. */
+    "Delivery progress": "Delivery progress",
+    "Signed for": "Signed for",
+    "Out with a driver": "Out with a driver",
+    "Still to go": "Still to go",
+    "Fully delivered": "Fully delivered",
+    "Unnumbered": "Unnumbered",
+    "container": "container",
+    "numbers not yet on file": "numbers not yet on file",
+    "Out for signature": "Out for signature",
+    "Signatures on this note": "Signatures on this note",
+    "Signatures on this order": "Signatures on this order",
   },
   dataRoom: {
     staffDesc: "Document requests from external auditors — share vault documents in answer.",
@@ -4945,6 +4962,23 @@ export const fr: Dict = {
     "— tenant default —": "— défaut du locataire —",
     "— top level —": "— niveau supérieur —",
     "“Four hours” starting at 17:00 on a Friday should mean Monday morning, not Friday evening.": "« Quatre heures » à partir de 17h00 un vendredi doit vouloir dire lundi matin, pas vendredi soir.",
+
+    /* Delivery progress and the signing rail on an operations record. Kept
+       together rather than filed alphabetically into unrelated neighbours:
+       they are one vocabulary, and a state word translated in isolation
+       ("Complete" is already here as the VERB "Terminer") is how a status
+       pill ends up telling a French operator to do something. */
+    "Delivery progress": "Avancement de la livraison",
+    "Signed for": "Signé à la réception",
+    "Out with a driver": "En cours de livraison",
+    "Still to go": "Reste à livrer",
+    "Fully delivered": "Entièrement livré",
+    "Unnumbered": "Sans numéro",
+    "container": "conteneur",
+    "numbers not yet on file": "numéros pas encore au dossier",
+    "Out for signature": "En attente de signature",
+    "Signatures on this note": "Signatures sur ce bon",
+    "Signatures on this order": "Signatures sur cet ordre",
   },
   dataRoom: {
     staffDesc: "Demandes de documents des auditeurs externes — partagez les documents du coffre en réponse.",

@@ -351,6 +351,11 @@ function shell(title, bodyHtml, cfg = {}) {
        area it is on a one-line order (the legacy reserved the same space), and
        flex:1 hands it every millimetre the rest of the page does not use. */
     .grow { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+    /* A ruled block inside the elastic area takes the slack ITSELF, so the
+       spare millimetres land inside its border as more ruled space to write on
+       — not as a gap between two boxes, which reads as a layout fault. */
+    .grow > .blk { flex: 1 1 auto; display: flex; flex-direction: column; }
+    .grow > .blk > .manifest { flex: 1 1 auto; align-content: start; }
 
     /* ── Letterhead ─────────────────────────────────────────────────────────
        Logo left, the legal identity right, one accent rule under both. The
@@ -447,6 +452,16 @@ function shell(title, bodyHtml, cfg = {}) {
        ~21mm to say two things; abreast they cost ~11mm and the two elections
        stop reading as one four-way choice, which is what they are not. */
     .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 calc(4mm * var(--k)); }
+    /* The container manifest: three ruled cells to a row, every slot the same
+       height whether it holds a box or a blank line to write one on. The blank
+       IS the feature — a container added on the quay has somewhere to go and
+       is still part of what gets signed. */
+    .manifest { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+    .manifest .mcell { border-right: 0.2mm solid ${c.rule}; border-bottom: 0.2mm solid ${c.rule};
+                       padding: calc(1mm * var(--k)) calc(2mm * var(--k));
+                       font-size: calc(8.4pt * var(--k)); line-height: 1.3; min-width: 0;
+                       overflow-wrap: anywhere; }
+    .manifest .mcell:nth-child(3n) { border-right: 0; }
     .cols2 > div { min-width: 0; }
     .subh { font-weight: 700; font-size: calc(7.6pt * var(--k)); letter-spacing: 0.04em; margin-bottom: calc(0.8mm * var(--k)); }
 
@@ -1075,6 +1090,27 @@ function instrumentFoot(entity = {}, cfg = {}, verify, opts = {}) {
 }
 
 /**
+ * The millimetres of a letterhead that DO NOT scale with the fit.
+ *
+ * `instrumentHead` sizes the mark with an explicit `height: Nmm` from the
+ * tenant's Studio config, because an <img> constrained only by max-height
+ * contributes zero width to a flex item in Chrome and the whole letterhead
+ * rendered at 0×0. The consequence is that a 17mm mark is 17mm at every fit,
+ * and a template that counts it among the shrinkable blocks tells `fitScale` it
+ * has millimetres to give that it does not.
+ *
+ * Returns 0 when no mark is shown — the wordmark fallback is type, and type
+ * scales — so the caller adds its own scaling estimate for the head instead.
+ */
+function headFixedMm(cfg = {}) {
+  const logo = cfg.logo || {};
+  if (!logo.show || !logo.url) return 0;
+  const h = Number(logo.height_mm);
+  // +1 for the accent rule and its margin, which are hairlines either way.
+  return (Number.isFinite(h) && h > 0 ? h : 15) + 1;
+}
+
+/**
  * The fit scale for a sheet: how far the page must tighten to hold its content.
  *
  * The estimate is the CALLER's, because only the template knows what it is
@@ -1161,6 +1197,6 @@ module.exports = {
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, signerBlock,
   tick, clause, clauseText, factsGrid, ruledBlock, pairRow, cargoTable, instrumentHead,
-  docName, signStrip, instrumentFoot, fitScale, sheetHeightMm, fitBudgetMm, FIT_FLOOR,
+  docName, signStrip, instrumentFoot, fitScale, headFixedMm, sheetHeightMm, fitBudgetMm, FIT_FLOOR,
   sealBlock, printBarcode, formatPrintCode, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
 };

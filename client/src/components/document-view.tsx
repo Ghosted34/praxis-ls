@@ -51,6 +51,27 @@ type Container = {
   container_no?: string | null;
   seal_no?: string | null;
   gross_weight_kg?: number | null;
+  /** 10708 — the GROUPED shape: equipment the file states as a quantity
+   *  because the B/L has not numbered the boxes yet. */
+  container_type_code?: string | null;
+  qty?: number | null;
+  /** Why a box another signed note already covers is going out again. */
+  redelivery_reason?: string | null;
+};
+
+/**
+ * Where this delivery sits on its file, derived from the other notes.
+ *
+ * Null for a file with no containers — a non-containerised note says nothing
+ * about container counts, and "0 of 0" is not an improvement on silence.
+ */
+type DeliveryPosition = {
+  sequence?: number | null;
+  of_notes?: number | null;
+  total: number;
+  delivered: number;
+  in_transit: number;
+  outstanding: number;
 };
 type Regime = { code: string; on?: boolean };
 /**
@@ -128,6 +149,7 @@ type DocData = {
   received_at?: string;
   issued_by_name?: string;
   containers?: Container[];
+  position?: DeliveryPosition | null;
   /* transit order (operations/transit_order) */
   /** The lifecycle in the reader's language. Replaced `status_label`, which the
    *  projection used to emit pre-joined as "Émis / Issued". */
@@ -309,6 +331,7 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
   const party = d.party;
   const lines = (d.lines || []) as Line[];
   const containers = d.containers || [];
+  const pos = d.position || null;
   return (
     <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
       <Card>
@@ -325,6 +348,9 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
             <KV label="Delivery date">{dateFmt(d.delivery_date)}</KV>
           )}
           {d.dossier_ref && <KV label="File">{d.dossier_ref}</KV>}
+          {/* The lifecycle in the reader's language — the same {fr,en} pair the
+              printed sheet resolves, never a pre-joined "Émis / Issued". */}
+          {d.status_words && <KV label="Status">{pick(d.status_words)}</KV>}
           {d.issued_by_name && (
             <KV label="Issued by">{d.issued_by_name}</KV>
           )}
@@ -336,19 +362,65 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
         )}
       </Card>
 
+      {/*
+        * WHERE THIS DELIVERY SITS IN THE FILE — the band the printed sheet
+        * carries, on screen for the same reason: the driver and the client's
+        * gatekeeper both need to know whether more is coming.
+        *
+        * Only when the file has more than one box. "Delivery 1 of 1, 0
+        * remaining" is noise, and the template omits it on the same test.
+        */}
+      {pos && pos.total > 1 && (
+        <Card title="Delivery progress">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <KV label="Delivery">
+              {pos.sequence ? `${pos.sequence}${pos.of_notes ? ` / ${pos.of_notes}` : ""}` : "—"}
+            </KV>
+            <KV label="Containers delivered">
+              {pos.delivered} / {pos.total}
+            </KV>
+            {/* In transit is its OWN figure: a box on another issued note is
+                neither delivered nor waiting to be sent, and "0 still to come"
+                while four are on a truck is how a second truck gets sent. */}
+            <KV label={pos.in_transit ? "Out for delivery" : "Still to come"}>
+              {pos.in_transit || pos.outstanding}
+              {pos.in_transit && pos.outstanding ? (
+                <span className="text-muted-foreground"> · {pos.outstanding} to come</span>
+              ) : null}
+            </KV>
+          </div>
+        </Card>
+      )}
+
       <Card title={`Containers (${containers.length})`}>
         {containers.length ? (
           <ul className="grid gap-1 sm:grid-cols-2">
             {containers.map((c, i) => (
               <li key={c.container_no || i} className="text-sm">
-                <span className="num font-medium">{c.container_no || "—"}</span>
-                {c.seal_no && (
-                  <span className="text-muted"> · seal {c.seal_no}</span>
+                {c.container_type_code ? (
+                  // The GROUPED shape: the manifest states the equipment the
+                  // way the file does, before any box has a number.
+                  <span className="font-medium">
+                    {c.qty ?? 1} × {c.container_type_code}
+                    <span className="text-muted"> — numbers not yet on file</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="num font-medium">{c.container_no || "—"}</span>
+                    {c.seal_no && (
+                      <span className="text-muted"> · seal {c.seal_no}</span>
+                    )}
+                    {c.gross_weight_kg != null && (
+                      <span className="text-muted">
+                        {" "}
+                        · {num(c.gross_weight_kg)} kg
+                      </span>
+                    )}
+                  </>
                 )}
-                {c.gross_weight_kg != null && (
-                  <span className="text-muted">
-                    {" "}
-                    · {num(c.gross_weight_kg)} kg
+                {c.redelivery_reason && (
+                  <span className="block text-xs text-muted-foreground">
+                    ↻ {c.redelivery_reason}
                   </span>
                 )}
               </li>

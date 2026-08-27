@@ -16,7 +16,13 @@
  *   CASES=1,8,20,60 DETAIL=1 node scripts/dev/measure-instrument.js
  *
  * Options: DOC (default TRANSIT_ORDER) · LANG_DOC (fr) · CASES · DETAIL ·
- * NO_SEAL · NO_STAMP · NO_LOGO.
+ * NO_SEAL · NO_STAMP · NO_LOGO · SWEEP.
+ *
+ * SWEEP names the dimension that grows: "lines" (the cargo table) or
+ * "containers" (the delivery note's manifest). It defaults to whichever one
+ * actually drives the page for the document being measured — a delivery note
+ * carries one or two cargo lines and twelve boxes, so sweeping its cargo table
+ * measures the wrong axis and quotes a ceiling nobody will ever hit.
  */
 /*
  * `document` and `getComputedStyle` below appear inside `page.evaluate`
@@ -83,6 +89,9 @@ async function main() {
   const cases = (process.env.CASES || "1,2,3,5,8,12,20,30,40,60").split(",").map(Number).sort((a, b) => a - b);
   // The FIRST case that spills, not the last — the ceiling is where it starts.
   let firstSpill = 0;
+  // Named once the first case has resolved it, so the closing line quotes the
+  // dimension actually swept rather than always saying "cargo lines".
+  let swept = process.env.SWEEP || "";
   for (const n of cases) {
     const cfg = kit.mergeCfg(
       { logo_url: process.env.NO_LOGO ? "" : LOGO },
@@ -93,7 +102,22 @@ async function main() {
     // scale with the fit. Measure at the height being asked about.
     cfg.logo.height_mm = Number(process.env.LOGO_MM || cfg.logo.height_mm || 15);
     const data = JSON.parse(JSON.stringify(tpl.sampleData));
-    const base = data.lines && data.lines[0];
+    /*
+     * WHICH DIMENSION GROWS. On a transit order it is the cargo table; on a
+     * delivery note it is the container manifest, which is three-across and
+     * ruled to a minimum of twelve, and whose growth the cargo table's does not
+     * predict. Sweeping the wrong one produces a real measurement of an
+     * irrelevant page.
+     */
+    const sweep = (process.env.SWEEP || (Array.isArray(data.containers) ? "containers" : "lines")).toLowerCase();
+    swept = sweep;
+    if (sweep === "containers") {
+      data.containers = Array.from({ length: n }, (_, i) => ({
+        container_no: `TCLU${String(1000000 + i).padStart(7, "0")}`,
+        seal_no: `SL${889000 + i}`,
+      }));
+    }
+    const base = sweep === "lines" && data.lines && data.lines[0];
     if (base) {
       data.lines = Array.from({ length: n }, (_, i) => ({
         ...base,
@@ -129,13 +153,13 @@ async function main() {
         })),
       };
     });
-    if (!out) { console.log(`lines=${n}: this template has no .sheet — nothing to measure`); continue; }
+    if (!out) { console.log(`${sweep}=${n}: this template has no .sheet — nothing to measure`); continue; }
 
     const budget = kit.fitBudgetMm(kit.mergeCfg({}, {}));
     const over = out.scroll > budget + 0.5;
     if (over && !firstSpill) firstSpill = n;
     console.log(
-      `lines=${String(n).padStart(3)}  k=${String(out.k).padEnd(5)}  sheet=${out.sheet}mm  `
+      `${sweep}=${String(n).padStart(3)}  k=${String(out.k).padEnd(5)}  sheet=${out.sheet}mm  `
       + `content=${out.scroll}mm  budget=${budget}mm  ${over ? "*** SPILLS TO A SECOND PAGE" : "one page"}`,
     );
     if (process.env.DETAIL) {
@@ -144,7 +168,7 @@ async function main() {
   }
   await browser.close();
   if (firstSpill) {
-    console.log(`\nFirst spill at ${firstSpill} cargo lines. That is the ceiling to quote — and to`);
+    console.log(`\nFirst spill at ${firstSpill} ${swept === "lines" ? "cargo lines" : swept}. That is the ceiling to quote — and to`);
     console.log("re-measure after any change to the sheet, because it is where the blocks that");
     console.log("cannot shrink (the QR, the seal's evidence rows) start to dominate the page.");
   }

@@ -81,7 +81,17 @@ const listQuery = z.object({
 
 const dispatchBody = z.object({ lang: z.enum(["fr", "en"]).optional() }).strict();
 
-const schemas = { create, voidRequest, listQuery, dispatchBody };
+/**
+ * Who may be asked to sign this document. Both fields required: the resolver
+ * needs the doc type to know WHICH counterparty a ref points at, and answering
+ * for the wrong one would put a stranger's address in front of the sender.
+ */
+const candidatesQuery = z.object({
+  entity_ref: z.string().min(1).max(200),
+  doc_type: z.string().min(1).max(64),
+});
+
+const schemas = { create, voidRequest, listQuery, dispatchBody, candidatesQuery };
 
 const body = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -113,5 +123,6 @@ module.exports = {
   voidRequest: body("voidRequest"),
   dispatchBody: body("dispatchBody"),
   listQuery: query("listQuery"),
+  candidatesQuery: query("candidatesQuery"),
   schemas,
 };

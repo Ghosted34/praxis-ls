@@ -241,6 +241,26 @@ short values.
    see SIGNATURE_ENGINEERING_GUIDE §3.12a for the placement rules, including the
    one-QR-per-page rule and why the cachet is not a signature.
 
+**The letterhead is DERIVED, never typed.** `instrumentHead` takes
+`entity.address_lines` and `instrumentFoot` takes `entity.identifiers`, both
+assembled by `modules/master/entity-letterhead.service` from the entity's
+structured `entity_address` row and its registration rows — the same function
+the entity dossier previews with, so the letterhead a tenant designs is the one
+that prints. The legacy `corporate_entity.address` / `niu` / `rccm` columns
+remain as that service's fallback and nothing re-implements them.
+
+Two consequences worth stating:
+
+- **The address is a block, not a line.** `addressLines()` returns the postal
+  lines somebody would write on an envelope (street, then PO box + postcode +
+  city + country); `addressLine()` still comma-joins the same fields for a
+  footer running along the bottom of an invoice. Same precedence, two shapes.
+- **The identifiers are jurisdictional.** A Cameroonian sheet carries NIU and
+  RCCM, a French one SIREN and TVA. Two hardcoded labels are correct in exactly
+  one country, and this product is not sold in exactly one country. The country
+  name itself comes from `Intl.DisplayNames`, so a French document says
+  "Cameroun" without a second country catalogue to maintain.
+
 **Re-measure after any change**: `node scripts/dev/measure-instrument.js`
 reports every block's rendered height and the page count across a sweep of
 cargo-line counts. The `HEIGHT_MM` constants come from it, not from reading the

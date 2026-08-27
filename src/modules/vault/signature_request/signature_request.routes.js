@@ -31,6 +31,8 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
+// Static before `/:id`, or "candidates" is parsed as a request id.
+router.get("/candidates", requirePermission(MODULE, "view"), validator.candidatesQuery, controller.candidates);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

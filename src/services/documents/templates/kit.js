@@ -937,33 +937,35 @@ function cargoTable(columns, rows = [], cfg = {}, foot = []) {
  *
  * ── The head/foot split ────────────────────────────────────────────────────
  * The head answers "who sent this and how do I reach them"; the foot answers
- * "who are they, legally". Nothing appears in both. The first version printed
+ * "who are they, legally". Nothing appears in both. An earlier version printed
  * the legal name, the address, RCCM and NIU at the top and the SAME four at the
  * bottom — a quarter of the identity block on the page was duplication, on a
  * document whose entire problem is height.
  *
  *   head  legal name · address lines · phone + email
- *   foot  RCCM · NIU                                    (kit.instrumentFoot)
+ *   foot  the statutory identifiers                  (kit.instrumentFoot)
  *
- * ── Why the address is split on newlines ───────────────────────────────────
- * `corporate_entity.address` is one `text` column — there is no separate
- * po_box, city or postal_code — so the only honest way to give a tenant the
- * three-line postal address a letterhead wants is to RESPECT THE LINE BREAKS
- * THEY TYPED. A tenant who enters
+ * ── Where the address lines come from ──────────────────────────────────────
+ * `entity.address_lines` — an ARRAY, derived by
+ * `modules/master/entity-letterhead.service.addressLines()` from the entity's
+ * structured `entity_address` row (line1, line2, po_box, postal_code, city,
+ * region, country), with the legacy free-text `address` column as its fallback.
  *
- *     1030, Avenue Douala Manga Bell, Bali
- *     PO Box 5120, Douala, Cameroun
- *
- * gets exactly that, and one who types a single line gets a single line. The
- * alternative — parsing a free-text address into parts — guesses, and guesses
- * wrongly the first time somebody writes an address that is not Cameroonian.
+ * It is not derived HERE, and the kit must never start parsing an address: the
+ * entity dossier's live preview runs the same assembler, and two of them is how
+ * the letterhead a tenant designs stops matching the one that prints. A caller
+ * that passes no `address_lines` falls back to the raw column so an unmigrated
+ * path still renders something true.
  */
 function instrumentHead(entity = {}, cfg = {}) {
   const mark = cfg.logo && cfg.logo.show && cfg.logo.url
     ? `<img src="${esc(cfg.logo.url)}" alt="">`
     : `<div class="wordmark">${esc(entity.legal_name || "")}</div>`;
+  const address = Array.isArray(entity.address_lines) && entity.address_lines.length
+    ? entity.address_lines
+    : String(entity.address || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const lines = [
-    ...String(entity.address || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean),
+    ...address,
     [entity.phone, entity.email].filter(Boolean).join(" · "),
   ].filter(Boolean).map((l) => `<div class="ln">${esc(l)}</div>`).join("");
   return `<div class="lh2"><div class="mark">${mark}</div><div class="id"><div class="nm">${esc(entity.legal_name || "")}</div>${lines}</div></div><div class="lh2rule"></div>`;
@@ -1027,10 +1029,15 @@ function signStrip(blocks = [], cfg = {}) {
  * the page by the flex column rather than by a margin that happens to work at
  * one content length.
  *
- * RCCM and NIU, and by default nothing else — see `instrumentHead` for the
- * split. They are not decoration in the OHADA zone: they are what makes the
- * sheet an instrument of the company that issued it, and they are the two
- * things a counterparty's own filing needs that the head does not already say.
+ * ── The identifiers are DERIVED, not two named columns ─────────────────────
+ * `entity.identifiers` is [{ kind, number }] from
+ * `entity-letterhead.service.identifiers()`, which reads the entity's
+ * registration and tax-registration rows and falls back to the legacy
+ * `niu`/`rccm` columns. That matters because the mandatory mentions on a
+ * commercial document are JURISDICTIONAL: a Cameroonian sheet carries NIU and
+ * RCCM, a French one SIREN and TVA intracommunautaire. Printing two hardcoded
+ * labels is correct in exactly one country, and this product is not sold in
+ * exactly one country.
  *
  * `bank` is OFF by default and opt-in per template. Bank details belong on a
  * document somebody is meant to PAY — an invoice, a proforma. A transit order
@@ -1044,10 +1051,10 @@ function signStrip(blocks = [], cfg = {}) {
  * unsigned document showing no QR is the honest answer.
  */
 function instrumentFoot(entity = {}, cfg = {}, verify, opts = {}) {
-  const legal = [
-    entity.rccm ? `RCCM ${entity.rccm}` : null,
-    entity.niu ? `NIU ${entity.niu}` : null,
-  ].filter(Boolean).map((l) => `<div>${esc(l)}</div>`).join("");
+  const ids = Array.isArray(entity.identifiers) && entity.identifiers.length
+    ? entity.identifiers.map((i) => `${i.kind} ${i.number}`)
+    : [entity.rccm ? `RCCM ${entity.rccm}` : null, entity.niu ? `NIU ${entity.niu}` : null].filter(Boolean);
+  const legal = ids.map((l) => `<div>${esc(l)}</div>`).join("");
   const b = entity.bank_block || {};
   const bank = opts.bank
     ? [b.bank, b.account ? `${t({ fr: "Compte", en: "Account" }, cfg.language)} ${b.account}` : null, b.iban ? `IBAN ${b.iban}` : null]

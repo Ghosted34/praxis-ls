@@ -1,6 +1,7 @@
 "use strict";
 
 const service = require("./signature_request.service");
+const candidates = require("./signature_request.candidates");
 const mail = require("./signature_request.mail");
 const { asyncHandler } = require("../../../utils/errors");
 const { originForSlug } = require("../../../services/signatures/verify-link");
@@ -39,6 +40,19 @@ module.exports = {
   list: asyncHandler(async (req, res) => {
     const { entity_ref: entityRef, status } = req.validatedQuery;
     res.json({ data: await req.tenantDb((c) => service.list(c, { entityRef, status })) });
+  }),
+
+  /**
+   * Who may be asked to sign this document.
+   *
+   * `view`-gated on the route: it lists addresses the tenant already holds, to
+   * the same people who can already read the record. It is what keeps the
+   * sending screen from having to type one (§6.3, and the note in
+   * signature_request.candidates.js).
+   */
+  candidates: asyncHandler(async (req, res) => {
+    const { entity_ref: entityRef, doc_type: docType } = req.validatedQuery;
+    res.json({ data: await req.tenantDb((c) => candidates.list(c, { docType, entityRef })) });
   }),
 
   get: asyncHandler(async (req, res) => {

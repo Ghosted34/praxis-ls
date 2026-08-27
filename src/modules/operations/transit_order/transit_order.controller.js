@@ -14,7 +14,9 @@ const headArgs = (b) => ({
   serviceDirection: b.service_direction,
   declaredValue: b.declared_value,
   declaredCurrency: b.declared_currency,
-  declaredFxToXaf: b.declared_fx_to_xaf,
+  // No declaredFxToXaf. The rate is derived from the currency master; the
+  // service has never read one from here, and the validator now refuses the
+  // field by name rather than letting a caller believe it was honoured.
   insuranceType: b.insurance_type,
   surveyorParty: b.surveyor_party,
   departureDate: b.departure_date,
@@ -27,7 +29,7 @@ const patchOf = (b) => {
   const out = {};
   const keys = [
     "entity_id", "dossier_id", "customs_regime", "customs_regime_other", "service_direction",
-    "declared_value", "declared_currency", "declared_fx_to_xaf", "insurance_type",
+    "declared_value", "declared_currency", "insurance_type",
     "surveyor_party", "departure_date", "instructions", "submitted_docs",
   ];
   for (const k of keys) if (b[k] !== undefined) out[k] = b[k];

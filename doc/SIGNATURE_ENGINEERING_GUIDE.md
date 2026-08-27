@@ -725,6 +725,30 @@ looks for it. It carries no evidentiary weight and must never be presented as th
 is explicit that there is no `UPLOAD` visual mark, because an uploaded image proves nothing about
 who applied it. The claim comes from the seal; the stamp is the house mark.
 
+### 6.3a Choosing signatories — the candidates resolver
+
+§6.3 forbids a signer supplying the address their own OTP goes to. The sender typing it *for*
+them is the same disclosure wearing a different hat, so the sending screen is given a list rather
+than a text box: `GET /signature-requests/candidates?entity_ref=…&doc_type=…`
+(`signature_request.candidates.js`).
+
+| It returns | Why |
+| --- | --- |
+| The counterparty's on-file contacts, each with the `source_ref` the request stores (`client_contact:<uuid>`) | A party created from one leaves no override to attribute. Without the ref, an on-file address is indistinguishable from a typed one on the certificate. |
+| The party's own `email`, when no contact already carries it, as `client_master:<uuid>` | Many client rows have an address and no contacts. Without this the only way to reach them is an override on every send, which empties the one-override cap of meaning. |
+| Our own active users, as `app_user:<uuid>`, unfiltered by role | Who may attest is an RBAC question, enforced when the signature is taken. Shortening the list here would make that failure silent. |
+| `max_overrides: 1` | The cap stated, not discovered as a 422 after the operator has typed. |
+
+**A contact with no email is dropped, not disabled.** The list answers "who can receive a signing
+link"; a row that cannot is not an answer, and greying it out invites an operator to override the
+address of somebody we already hold — the exact move §6.3 exists to prevent.
+
+**`dossier_visible`, not `dossier`.** A DRAFT file is half-finished wizard state, and this resolver
+names the party we are about to email. An order hanging off an unfinished file resolves to nobody.
+
+Everything else is unchanged: the one hand-entered signatory is available, capped, attributed to
+the sender, and costs a reason the Certificate of Completion prints.
+
 ### 3.13 IP addresses — handling directive
 
 Binding, and it applies to `document_signature.ip` and `signature_scan.ip` alike.

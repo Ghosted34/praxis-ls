@@ -17,6 +17,9 @@ const sealView = require("../../../services/signatures/seal-view");
 // The one outbound-language helper (mail/signature/language.js). A second copy
 // of this rule is how a French client starts receiving English documents.
 const { asLang } = require("../../mail/signature/language");
+// The one letterhead assembler (MOD-01). The entity dossier previews with the
+// same function, so the designer and the printer cannot disagree.
+const letterhead = require("../../master/entity-letterhead.service");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -92,12 +95,74 @@ async function currencyCatalog(client) {
   }
 }
 
-async function resolveEntity(client, entityId) {
+/**
+ * A country's name in the document's own language.
+ *
+ * `Intl.DisplayNames` rather than a lookup table: the shared catalogue carries
+ * English exonyms only, so a French Cameroonian letterhead printed "Cameroon".
+ * The alternative was a second country list with French names in it, which is a
+ * catalogue to maintain and to disagree with the first one. This is ICU data,
+ * it covers every ISO code, and it is already in the runtime.
+ */
+function countryName(code, language) {
+  const c = String(code || "").trim().toUpperCase();
+  if (c.length !== 2) return null;
+  try {
+    return new Intl.DisplayNames([language === "fr" ? "fr" : "en"], { type: "region" }).of(c) || null;
+  } catch {
+    /* @silent:parse — a runtime built without full ICU, or an unassigned code.
+       The caller falls back to the raw code, which is still true. */
+    return null;
+  }
+}
+
+/**
+ * The issuing entity, with the facts a letterhead is BUILT FROM rather than the
+ * raw row.
+ *
+ * ── Why this stopped reading `corporate_entity.address` ────────────────────
+ * It is a free-text column that predates `entity_address`, and the structured
+ * table — line1, line2, po_box, postal_code, city, region, country_code, with a
+ * REGISTERED type and a primary flag — has existed, been CRUD-wired under
+ * `/entities/:id/addresses` and been editable on the entity dossier all along.
+ * The documents were the only surface still reading the blob, so an operator
+ * could fill the address in properly and watch the PDF ignore it.
+ *
+ * Same for the identifiers: `entity_registration` and
+ * `entity_tax_registration` hold what each jurisdiction requires, so a French
+ * entity's document carries SIREN and TVA where a Cameroonian one carries NIU
+ * and RCCM — instead of the two hardcoded labels the foot used to print.
+ *
+ * `entity-letterhead.service` owns both derivations and is the same function
+ * the entity dossier previews with, so what the designer shows is what prints.
+ * The legacy columns stay as its fallback; nothing here re-implements them.
+ */
+async function resolveEntity(client, entityId, { language = "en" } = {}) {
   const q = entityId
     ? await client.query("SELECT * FROM corporate_entity WHERE entity_id = $1", [entityId])
     : await client.query("SELECT * FROM corporate_entity ORDER BY created_at LIMIT 1");
   const entity = q.rows[0] || {};
   const ref = entity.logo_light_ref || (await brandingLogoRef(client));
+
+  if (entity.entity_id) {
+    // Best-effort: a document must still render for a tenant whose dossier
+    // tables are empty or unreadable. Each derivation falls back to the legacy
+    // column on its own, so a partial failure loses one line, not the header.
+    const [addresses, registrations, taxRegistrations] = await Promise.all([
+      client.query("SELECT * FROM entity_address WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM entity_registration WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM entity_tax_registration WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+    ]);
+    entity.address_lines = letterhead.addressLines(entity, addresses, { countryName, language });
+    entity.identifiers = letterhead.identifiers(entity, registrations, taxRegistrations);
+  } else {
+    entity.address_lines = letterhead.addressLines(entity, [], { countryName, language });
+    entity.identifiers = letterhead.identifiers(entity, [], []);
+  }
+
   return { entity, brand: { logo_url: await resolveLogo(ref) } };
 }
 
@@ -131,9 +196,12 @@ function resolveDocLanguage(picked, saved) {
 }
 
 async function resolveCfg(client, docType, entityId, override, { language = null } = {}) {
-  const { entity, brand } = await resolveEntity(client, entityId);
   const saved = await savedConfig(client, docType, entityId);
   const picked = resolveDocLanguage(language, saved);
+  // Resolved BEFORE the entity, because the entity's own derived lines are
+  // language-dependent — a French document says "Cameroun", an English one
+  // "Cameroon", and both come from the same country_code.
+  const { entity, brand } = await resolveEntity(client, entityId, { language: picked === "fr" ? "fr" : "en" });
   const cfg = kit.mergeCfg(brand, {
     ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
   });

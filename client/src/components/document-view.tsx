@@ -129,7 +129,8 @@ type DocData = {
   issued_by_name?: string;
   containers?: Container[];
   /* transit order (operations/transit_order) */
-  status_label?: string;
+  /** The lifecycle in the reader's language. Replaced `status_label`, which the
+   *  projection used to emit pre-joined as "Émis / Issued". */
   status_words?: LangPair;
   direction?: string;
   client?: string;

@@ -34,10 +34,22 @@ const rules = require("../../src/modules/operations/transit_order/transit_order.
 
 const TPL = registry.get("TRANSIT_ORDER");
 
+/**
+ * The entity as the RENDERER receives it: derived lines, not raw columns.
+ *
+ * `address_lines` and `identifiers` are assembled by
+ * `modules/master/entity-letterhead.service` from the entity's structured
+ * `entity_address` and registration rows — the same function the entity
+ * dossier previews with. The legacy `address` / `rccm` / `niu` columns are
+ * kept here to prove the fallback still renders for an unmigrated tenant.
+ */
 const ENTITY = {
   legal_name: "SMART LOGISTICS AND SERVICES LTD",
-  // Two lines, as a letterhead wants them. `corporate_entity.address` is one
-  // text column, so the split comes from the tenant's own line breaks.
+  address_lines: ["1030, Avenue Douala Manga Bell, Bali", "PO Box 5120, Douala, Cameroun"],
+  identifiers: [
+    { kind: "RCCM", number: "RC/DLA/2021/B/2060" },
+    { kind: "NIU", number: "M042116033580Q" },
+  ],
   address: "1030, Avenue Douala Manga Bell, Bali\nPO Box 5120, Douala, Cameroun",
   city: "Douala",
   rccm: "RC/DLA/2021/B/2060",
@@ -378,14 +390,41 @@ describe("the letterhead and the foot", () => {
     expect(foot).not.toContain("Avenue Douala Manga Bell");
   });
 
-  test("a multi-line address prints as multiple lines", () => {
-    // There is no po_box or city column — the split is the tenant's own line
-    // breaks, honoured rather than parsed. A single-line address still works.
+  test("the address prints as the structured lines the entity holds", () => {
     const html = body(TPL.build(dataWith(), cfgFor("fr"), ENTITY, VERIFY));
     expect(html).toContain('<div class="ln">1030, Avenue Douala Manga Bell, Bali</div>');
     expect(html).toContain('<div class="ln">PO Box 5120, Douala, Cameroun</div>');
-    const oneLine = body(TPL.build(dataWith(), cfgFor("fr"), { ...ENTITY, address: "Bonabéri, Douala" }, VERIFY));
-    expect(oneLine).toContain('<div class="ln">Bonabéri, Douala</div>');
+  });
+
+  test("an entity with no structured address still prints its legacy column", () => {
+    // The documents were the LAST surface reading `corporate_entity.address`.
+    // A tenant that has never filled in the structured row must keep the
+    // letterhead it has, so the fallback is load-bearing, not decoration.
+    const legacy = { ...ENTITY, address_lines: undefined, address: "Bonabéri\nDouala, Cameroun" };
+    const html = body(TPL.build(dataWith(), cfgFor("fr"), legacy, VERIFY));
+    expect(html).toContain('<div class="ln">Bonabéri</div>');
+    expect(html).toContain('<div class="ln">Douala, Cameroun</div>');
+  });
+
+  test("the identifiers are whatever the jurisdiction requires", () => {
+    // Two hardcoded labels are correct in exactly one country. A French entity
+    // carries SIREN and TVA; the foot prints what the entity's registration
+    // rows actually hold.
+    const french = {
+      ...ENTITY,
+      identifiers: [{ kind: "SIREN", number: "552 100 554" }, { kind: "TVA", number: "FR40552100554" }],
+    };
+    const html = body(TPL.build(dataWith(), cfgFor("fr"), french, VERIFY));
+    expect(html).toContain("SIREN 552 100 554");
+    expect(html).toContain("TVA FR40552100554");
+    expect(html).not.toContain("RCCM");
+  });
+
+  test("an entity with no registration rows falls back to niu and rccm", () => {
+    const legacy = { ...ENTITY, identifiers: [] };
+    const html = body(TPL.build(dataWith(), cfgFor("fr"), legacy, VERIFY));
+    expect(html).toContain("RCCM RC/DLA/2021/B/2060");
+    expect(html).toContain("NIU M042116033580Q");
   });
 
   test("bank details are not printed on an authorisation", () => {

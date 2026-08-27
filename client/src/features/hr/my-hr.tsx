@@ -17,6 +17,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { money, dateFmt } from "@/lib/format";
 import * as hrApi from "@/lib/hr-api";
 import { MyReviewCard } from "./appraisal-review";
+import { AttendanceHistory } from "./attendance-history";
 
 type Query = {
   hr_query_id: string;
@@ -227,10 +228,19 @@ export function MyHrPage() {
       <PageHeader
         eyebrow="My HR"
         title="My HR"
-        description="Everything HR concerning you — queries to respond to, sanctions on record, and your appraisals."
+        description="Everything HR concerning you — your attendance, queries to respond to, sanctions on record, and your appraisals."
       />
 
       <div className="flex flex-col gap-8">
+        {/* FIRST, and self-scoped. My HR had no attendance at all: an employee
+            could be charged for a late arrival, read the query about it here,
+            and have nowhere in the product to see the month it came from. The
+            widget is the same one HR reads, pointed at `/mine` — so the figure
+            an employee disputes is the figure their manager is looking at. */}
+        <Section title={tr("My attendance")}>
+          <AttendanceHistory scope="self" />
+        </Section>
+
         <Section title={tr("Queries")} count={qs.length}>
           {queries.error ? (
             <ErrorState message={queries.error} />

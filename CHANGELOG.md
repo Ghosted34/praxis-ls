@@ -24,6 +24,29 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Attendance history, analytics and payroll-ready export (clock-in revamp PR 2).** Every user
+  can now see their own attendance and download it, and HR can do the same for the set they pick.
+  `GET /attendance/analytics` (+ `/mine`), `GET /attendance/export` (+ `/mine`) and
+  `GET /attendance/punches/mine` are new; the log list gains `employee_ids` and `department`, and
+  `daysFor` takes a compare set of up to 50. The summarizer (`attendance.analytics`) is pure —
+  punctuality, hours from in/out, lateness, absences, on-site %, leave/holiday/off counts,
+  department rollup, per-employee compare rows and heatmap cells — and takes expected working days
+  ONLY from PR1's calendar resolver, never from the reconciled status (a punch on a non-working day
+  reconciles as `PRESENT`, so the status cannot answer "was this owed as work"). Waived days are
+  reported apart from charged ones. The export (`attendance.export`) renders Days + Punches through
+  the house spreadsheet toolkit — branded, currency-aware, injection-safe — with the guide's exact
+  column keys frozen and pinned by a test, because payroll parses them; CSV honours `?sheet=`,
+  the file is `attendance-{from}-{to}.{ext}` (SANDBOX-suffixed in Test), and rows are hard-capped
+  at 20k with the truncation reported rather than silently applied. One shared `AttendanceHistory`
+  widget — period chips (7d/month/quarter/year/custom), KPI row, heatmap over expected working
+  days, a day table where leave, holidays and days off are first-class rows, and CSV/XLSX download
+  — is mounted on My HR (self, `/mine`), Human capital → Attendance as a new "History & analytics"
+  tab, and the employee 360 Attendance tab, which it replaces the raw punch list on. Waive/uphold
+  stays on the HR rows that carry a deduction, raising the same dialog the reconciled-days view
+  uses. The day-window validator moves from 92 days to 366 so the year view and the past-year
+  download stop being a 422; the cost argument the day cap used to carry alone now sits on the row
+  ceiling, where the cost actually is.
+
 - **Certified signatures (Signature Programme PR-4, Tier 3).** The `CERTIFIED` card is live end
   to end: a counterparty who picks it is handed to the provider (SignWell, the only V1 adapter,
   behind a provider-agnostic interface) which verifies their identity and emails them its own

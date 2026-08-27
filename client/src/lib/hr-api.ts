@@ -2,7 +2,7 @@
  * HR API helpers (typed) — attendance time-clock + worksite geofences.
  * Routes mirror src/modules/hr/attendance.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantDownload } from "./api-client";
 import { tokenStore } from "./token-store";
 import { deviceId } from "./device-id";
 
@@ -144,6 +144,11 @@ export const listAttendance = (params?: {
   from?: string;
   to?: string;
   employee_id?: string;
+  /** Comma-joined. The server takes a repeated parameter, a single value or a
+   *  comma list; one string keeps it inside the shared `qs` helper, which sets
+   *  each key once. */
+  employee_ids?: string;
+  department?: string;
 }) => tenant<AttendanceRow[]>("/attendance" + qs(params));
 export const absence = (date?: string) =>
   tenant<AbsenceResult>("/attendance/absence" + qs({ date }));
@@ -177,6 +182,28 @@ export type AttendanceDay = {
   rule_code?: string | null;
   sop_document_id?: string | null;
   sop_title?: string | null;
+  /* ── Joined for the history widget and the export (PR2) ─────────────────
+   * The day row and the downloaded file are drawn from the SAME query, so the
+   * screen and the spreadsheet cannot disagree about what a day was. */
+  department?: string | null;
+  entity_id?: string | null;
+  entity_name?: string | null;
+  /** Named when the day is ON_LEAVE — what makes leave a first-class row
+   *  rather than a missing punch. */
+  leave_type_name?: string | null;
+  /** The punch behind the day, when there was one. Null on an absence, a
+   *  holiday or a day off — which is why the location cell is blank there
+   *  rather than reading "no GPS". */
+  attendance_id?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  within_geofence?: boolean | null;
+  location_source?: "gps" | "none" | null;
+  location_status?: AttendanceRow["location_status"];
+  geo_label?: string | null;
+  distance_m?: number | string | null;
+  device_label?: string | null;
+  device_trusted?: boolean | null;
 };
 
 export type HrRule = {
@@ -217,6 +244,136 @@ export const runReconcile = (date?: string) =>
     "/attendance/reconcile",
     { method: "POST", body: date ? { date } : {} },
   );
+
+/* ── History & analytics (PR2) ─────────────────────────────────────────────
+ *
+ * One payload behind three screens — My HR, the HR history tab and the
+ * employee 360 attendance tab — because they are the same report at three
+ * scopes, and a second endpoint per screen is how the three start disagreeing
+ * about what a month was.
+ *
+ * The `/mine` variants take no grant and resolve the employee from the token,
+ * so there is nothing on their query to point at somebody else.
+ */
+
+/** Totals over a window. The same shape for the whole window, one department
+ *  and one person, so a KPI row and a compare row render from one component.
+ *  A rate is `null` when nothing was measured — never 0, which reads as
+ *  "never on time", and never 100, which reads as "flawless". */
+export type AttendanceTotals = {
+  employees: number;
+  /** Working days owed, from the entity calendar + employee overrides. */
+  expected_days: number;
+  reconciled_days: number;
+  attended_days: number;
+  present_days: number;
+  late_days: number;
+  absent_days: number;
+  on_leave_days: number;
+  holiday_days: number;
+  off_days: number;
+  /** leave + holiday + non-working. */
+  days_off: number;
+  minutes_late: number;
+  hours_worked: number;
+  /** Charged. A waived day is in `waived_total` instead. */
+  deduction_total: number;
+  waived_total: number;
+  punches: number;
+  on_site_punches: number;
+  off_site_punches: number;
+  no_gps_punches: number;
+  unfenced_punches: number;
+  /** On-time days over ATTENDED days. Absence is its own figure. */
+  punctuality_pct: number | null;
+  /** Attended days over EXPECTED days. */
+  attendance_pct: number | null;
+  absence_pct: number | null;
+  /** Over punches a geofence could actually judge — a no-GPS punch is not
+   *  evidence of being elsewhere. */
+  on_site_pct: number | null;
+};
+
+/** One date in the window. `expected` is how many people owed work that day —
+ *  0 on a weekend, which is what makes the heatmap a calendar rather than a
+ *  grid of gaps. `status` is set only when one person is in scope. */
+export type AttendanceHeatCell = {
+  date: string;
+  weekday: number | null;
+  expected: number | null;
+  reconciled: number;
+  present: number;
+  late: number;
+  absent: number;
+  on_leave: number;
+  holiday: number;
+  off: number;
+  minutes_late: number;
+  hours_worked: number;
+  status: AttendanceDay["status"] | null;
+};
+
+export type AttendanceAnalytics = {
+  window: { from: string; to: string; days: number };
+  kpis: AttendanceTotals;
+  heatmap: AttendanceHeatCell[];
+  byDepartment: (AttendanceTotals & { department: string })[];
+  byEmployee: (AttendanceTotals & {
+    employee_id: string;
+    employee_name: string | null;
+    department: string | null;
+  })[];
+  /** The day rows behind the numbers — the table under the KPIs draws these,
+   *  so the two halves of the screen cannot disagree about the window. */
+  days: AttendanceDay[];
+  /** The row ceiling cut the window short. Narrow the selection. */
+  truncated: boolean;
+  timezone: string | null;
+  /** "calendar" when expected days were resolved; null when they could not be. */
+  expected_source: "calendar" | null;
+};
+
+export type AttendanceWindow = {
+  from: string;
+  to: string;
+  employee_id?: string;
+  employee_ids?: string;
+  department?: string;
+};
+
+export const attendanceAnalytics = (p: AttendanceWindow) =>
+  tenant<AttendanceAnalytics>("/attendance/analytics" + qs(p));
+export const myAttendanceAnalytics = (p: { from: string; to: string }) =>
+  tenant<AttendanceAnalytics>("/attendance/analytics/mine" + qs(p));
+export const myPunches = (p: { from: string; to: string }) =>
+  tenant<AttendanceRow[]>("/attendance/punches/mine" + qs(p));
+
+export type ExportFormat = "csv" | "xlsx";
+
+/** `attendance-{from}-{to}.{ext}` — the filename the server sends, repeated
+ *  here because `tenantDownload` names the saved file. */
+const exportFilename = (p: { from: string; to: string }, format: ExportFormat) =>
+  `attendance-${p.from}-${p.to}.${format}`;
+
+/**
+ * Download the window. The file is built SERVER-side by the house spreadsheet
+ * toolkit (branded, currency-aware, injection-safe) — the client never gains a
+ * spreadsheet writer for one button.
+ *
+ * `sheet` only means anything for csv, which cannot carry two sheets; the xlsx
+ * always carries both Days and Punches.
+ */
+export const downloadAttendanceExport = (
+  p: AttendanceWindow,
+  format: ExportFormat = "xlsx",
+  sheet?: "days" | "punches",
+) => tenantDownload("/attendance/export" + qs({ ...p, format, sheet }), exportFilename(p, format));
+
+export const downloadMyAttendanceExport = (
+  p: { from: string; to: string },
+  format: ExportFormat = "xlsx",
+  sheet?: "days" | "punches",
+) => tenantDownload("/attendance/export/mine" + qs({ ...p, format, sheet }), exportFilename(p, format));
 
 /* ── Standard operating procedures (MOD-16 / 0704) ────────────────────────
  * A procedure is a DOCUMENT now, not a title row: `body_md` is the text (the

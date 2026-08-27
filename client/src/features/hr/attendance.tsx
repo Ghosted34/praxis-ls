@@ -16,6 +16,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { AttendanceDaysView } from "./attendance-days";
+import { AttendanceHistory } from "./attendance-history";
 import { SitePill } from "./attendance-site-pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
@@ -738,12 +739,27 @@ function Devices() {
   );
 }
 
+type AttendanceView = "day" | "history" | "month";
+
+const VIEWS: { key: AttendanceView; label: string }[] = [
+  { key: "day", label: "Today" },
+  { key: "history", label: "History & analytics" },
+  { key: "month", label: "Reconciled days" },
+];
+
 export function AttendancePage() {
   const [date, setDate] = React.useState(today);
-  // The log answers "who badged in today"; the reconciled month answers "what
-  // did this cost, and is any of it wrong". Different questions, different
-  // windows — so they are separate views rather than one crowded page.
-  const [view, setView] = React.useState<"day" | "month">("day");
+  /*
+   * The log answers "who badged in today"; the reconciled month answers "what
+   * did this cost, and is any of it wrong"; History & analytics (PR2) answers
+   * the one neither could — "what does this look like over a period, for the
+   * people I pick". Different questions, different windows, so they stay
+   * separate views rather than one crowded page.
+   *
+   * History is the SAME widget My HR and the employee 360 mount, at a wider
+   * scope. Three copies of this screen would be three answers to one question.
+   */
+  const [view, setView] = React.useState<AttendanceView>("day");
   return (
     <section className={shell}>
       <PageHeader
@@ -753,18 +769,17 @@ export function AttendancePage() {
       />
       <HubTabs />{" "}
       <div className="chips mb-4">
-        <button
-          className={`chip ${view === "day" ? "on" : ""}`}
-          onClick={() => setView("day")}
-        >
-          Today
-        </button>
-        <button
-          className={`chip ${view === "month" ? "on" : ""}`}
-          onClick={() => setView("month")}
-        >
-          Reconciled days
-        </button>
+        {VIEWS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            className={`chip ${view === v.key ? "on" : ""}`}
+            aria-pressed={view === v.key}
+            onClick={() => setView(v.key)}
+          >
+            {tr(v.label)}
+          </button>
+        ))}
       </div>
       {view === "day" ? (
         <>
@@ -788,6 +803,8 @@ export function AttendancePage() {
             <Devices />
           </div>
         </>
+      ) : view === "history" ? (
+        <AttendanceHistory scope="hr" />
       ) : (
         <AttendanceDaysView />
       )}

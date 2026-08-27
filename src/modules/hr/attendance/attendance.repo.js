@@ -124,37 +124,172 @@ module.exports = {
     return updateOne(client, "hr_device", "hr_device_id", id, fields, "*", null, { touch: "updated_at" });
   },
 
+  /**
+   * The local-zone day window, as WHERE fragments — the ONE definition.
+   *
+   * Never `clock_in_at::date`: that is the UTC date, so a 00:30 Douala punch
+   * lands on the previous day and disappears from Today. Extracted here when
+   * the report range (PR2) needed the same predicate as the paged log — two
+   * copies of this comparison is how one of them gets fixed and the other does
+   * not.
+   *
+   * Mutates `params` (pushing the bind values it needs) and returns the
+   * fragments, which is the shape every builder in this repo already uses.
+   */
+  dayWindowSql(params, q = {}, tz = "Africa/Douala") {
+    const wh = [];
+    const geAt = (value) => {
+      params.push(value, tz);
+      return "al.clock_in_at >= ($" + (params.length - 1) + "::timestamp AT TIME ZONE $" + params.length + ")";
+    };
+    const ltNextDay = (value) => {
+      params.push(value, tz);
+      return "al.clock_in_at <  (($" + (params.length - 1) + "::date + 1)::timestamp AT TIME ZONE $" + params.length + ")";
+    };
+    if (q.date) {
+      wh.push(geAt(q.date), ltNextDay(q.date));
+    } else {
+      if (q.from) wh.push(geAt(q.from));
+      if (q.to) wh.push(ltNextDay(q.to));
+    }
+    return wh;
+  },
+
+  /**
+   * An employee-id filter off a query string, normalised and BOUNDED.
+   *
+   * `GET /attendance` has never had a query schema — it takes `date`,
+   * `employee_id`, `open` and the page — so the PR2 `employee_ids` filter is
+   * normalised here rather than by adding a strict validator that would start
+   * refusing parameters existing callers already send.
+   *
+   * Express hands one value over as a string and several as an array; people
+   * also paste comma-separated lists. All three collapse to an array. Non-uuid
+   * elements are DROPPED rather than passed on: the array lands in Postgres as
+   * a `uuid[]` bind, where junk is a driver-level 500 instead of an empty
+   * result. Capped at 50, the same compare set the validator allows.
+   */
+  idList(value, cap = 50) {
+    if (value === undefined || value === null || value === "") return [];
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const uuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    return list.map((v) => String(v).trim()).filter((v) => uuid.test(v)).slice(0, cap);
+  },
+
+  /** The workplace zone a caller asked for, or Douala. */
+  zoneOf(q = {}) {
+    return typeof q.timeZone === "string" && q.timeZone.trim() ? q.timeZone.trim() : "Africa/Douala";
+  },
+
   async list(client, q = {}) {
     const { limit, offset } = page(q);
     const params = [limit, offset];
     const wh = [];
     if (q.employee_id) { params.push(q.employee_id); wh.push("al.employee_id = $" + params.length); }
-    if (q.open === "true" || q.open === true) wh.push("al.clock_out_at IS NULL");
-    // Local-zone window, never `clock_in_at::date`. That is the UTC date, so a
-    // 00:30 Douala punch lands on the previous day and disappears from Today.
-    const tz = typeof q.timeZone === "string" && q.timeZone.trim() ? q.timeZone.trim() : "Africa/Douala";
-    if (q.date) {
-      params.push(q.date, tz);
-      wh.push("al.clock_in_at >= ($" + (params.length - 1) + "::timestamp AT TIME ZONE $" + params.length + ")");
-      wh.push("al.clock_in_at <  (($" + (params.length - 1) + "::date + 1)::timestamp AT TIME ZONE $" + params.length + ")");
-    } else if (q.from || q.to) {
-      if (q.from) {
-        params.push(q.from, tz);
-        wh.push("al.clock_in_at >= ($" + (params.length - 1) + "::timestamp AT TIME ZONE $" + params.length + ")");
-      }
-      if (q.to) {
-        params.push(q.to, tz);
-        wh.push("al.clock_in_at <  (($" + (params.length - 1) + "::date + 1)::timestamp AT TIME ZONE $" + params.length + ")");
-      }
+    // PR2: the log accepts a SET of employees, not only one. `= ANY($n)` rather
+    // than an interpolated IN list — the array is one bind parameter, so the
+    // shape cannot be widened by whatever the caller put in it.
+    const idSet = this.idList(q.employee_ids);
+    if (idSet.length) {
+      params.push(idSet);
+      wh.push("al.employee_id = ANY($" + params.length + "::uuid[])");
     }
+    if (q.department) {
+      // Same match as employees.repo: case- and whitespace-insensitive, because
+      // exact equality made "Operations" and "operations" two departments.
+      params.push(q.department);
+      wh.push(`lower(btrim(e.department)) = lower(btrim($${params.length}))`);
+    }
+    if (q.open === "true" || q.open === true) wh.push("al.clock_out_at IS NULL");
+    wh.push(...this.dayWindowSql(params, q, this.zoneOf(q)));
     const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
     const { rows } = await client.query(
-      `SELECT al.*, e.full_name AS employee_name
+      `SELECT al.*, e.full_name AS employee_name, e.department
          FROM attendance_log al
          LEFT JOIN employee e ON e.employee_id = al.employee_id
          ${where}
         ORDER BY al.clock_in_at DESC NULLS LAST
         LIMIT $1 OFFSET $2`,
+      params,
+    );
+    return rows;
+  },
+
+  /**
+   * The roster a report covers — WHO, before any punch or day row is read.
+   *
+   * Analytics counts expected working days per person, so it needs the people
+   * even when they have no rows at all: an employee who was absent for the
+   * whole window has nothing in `attendance_day` until reconciliation runs, and
+   * without this they would simply not appear. "No data" and "never turned up"
+   * must not look the same.
+   *
+   * `is_active` is applied ONLY when nobody was named. Asking for a specific
+   * employee (their own history, an employee 360) must still answer after they
+   * leave — their last month is exactly what payroll is looking at.
+   */
+  async rosterForReport(client, { employeeId = null, employeeIds = null, department = null, limit = 2000 } = {}) {
+    const params = [];
+    const wh = [];
+    const set = this.idList(employeeIds);
+    if (employeeId) { params.push(employeeId); wh.push("e.employee_id = $" + params.length); }
+    if (set.length) { params.push(set); wh.push("e.employee_id = ANY($" + params.length + "::uuid[])"); }
+    if (department) {
+      params.push(department);
+      wh.push(`lower(btrim(e.department)) = lower(btrim($${params.length}))`);
+    }
+    if (!employeeId && !set.length) wh.push("e.is_active");
+    params.push(Math.min(Math.max(Number(limit) || 2000, 1), 2000));
+    const { rows } = await client.query(
+      `SELECT e.employee_id, e.full_name, e.department, e.entity_id,
+              e.work_days, e.expected_start_time, e.grace_minutes
+         FROM employee e
+        ${wh.length ? "WHERE " + wh.join(" AND ") : ""}
+        ORDER BY e.full_name
+        LIMIT $${params.length}`,
+      params,
+    );
+    return rows;
+  },
+
+  /**
+   * Punches over a window, for a REPORT — analytics, export, and the employee's
+   * own history.
+   *
+   * Separate from `list` because the two are bounded differently on purpose:
+   * `list` is a page (`page()` clamps it to 200) and this is a file. It takes a
+   * hard `limit` instead, and the caller compares the row count against it to
+   * know whether the answer was cut short — an export that silently drops the
+   * second half of a month is worse than one that says it did.
+   *
+   * The device label is joined here rather than looked up per row: an export of
+   * 20k punches would otherwise be 20k queries.
+   */
+  async punchesForRange(client, { from, to, employeeIds = null, employeeId = null, department = null, timeZone = null, limit = 20000 } = {}) {
+    const cap = Math.min(Math.max(Number(limit) || 20000, 1), 20000);
+    const params = [];
+    const wh = [];
+    if (employeeId) { params.push(employeeId); wh.push("al.employee_id = $" + params.length); }
+    const idSet = this.idList(employeeIds);
+    if (idSet.length) {
+      params.push(idSet);
+      wh.push("al.employee_id = ANY($" + params.length + "::uuid[])");
+    }
+    if (department) {
+      params.push(department);
+      wh.push(`lower(btrim(e.department)) = lower(btrim($${params.length}))`);
+    }
+    wh.push(...this.dayWindowSql(params, { from, to }, this.zoneOf({ timeZone })));
+    params.push(cap);
+    const { rows } = await client.query(
+      `SELECT al.*, e.full_name AS employee_name, e.department, e.entity_id,
+              dev.label AS device_label
+         FROM attendance_log al
+         LEFT JOIN employee e ON e.employee_id = al.employee_id
+         LEFT JOIN hr_device dev ON dev.hr_device_id = al.hr_device_id
+        ${wh.length ? "WHERE " + wh.join(" AND ") : ""}
+        ORDER BY al.clock_in_at DESC NULLS LAST
+        LIMIT $${params.length}`,
       params,
     );
     return rows;

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ComposeIconButton } from "@/features/comms/mail";
 import { DocButton } from "@/components/doc-button";
 import { UploadSigned } from "@/features/hr/contracts";
+import { AttendanceHistory } from "./attendance-history";
 import { groupContracts } from "@/features/hr/contracts-grouping";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -26,7 +27,7 @@ import {
   type DepartmentValue,
 } from "@/components/department-select";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
-import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
+import { money, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
 const shell = pageShell.wide;
@@ -420,6 +421,9 @@ function EmployeeDetail({
     [eid],
   );
   const leave = useResource(() => api.listLeave({ employee_id: eid }), [eid]);
+  // Kept for the tab's count badge only: the Attendance tab itself now mounts
+  // the shared history widget, which fetches its own window. This is "is there
+  // anything in here", not the tab's data.
   const attendance = useResource(
     () => api.listAttendance({ employee_id: eid }),
     [eid],
@@ -775,32 +779,15 @@ function EmployeeDetail({
           ))}
         </MiniTable>
       )}
-      {tab === "Attendance" && (
-        <MiniTable
-          empty={aRows.length === 0}
-          head={
-            <>
-              <Th>{tr("Clock in")}</Th>
-              <Th>{tr("Clock out")}</Th>
-              <Th r>Lateness</Th>
-            </>
-          }
-        >
-          {aRows.map((a) => (
-            <tr key={a.attendance_id}>
-              <Td>{a.clock_in_at ? dateTimeFmt(a.clock_in_at) : "—"}</Td>
-              <Td>{a.clock_out_at ? dateTimeFmt(a.clock_out_at) : "—"}</Td>
-              <td className="px-3 py-1.5 text-right">
-                {a.is_late ? (
-                  <Pill tone="warn">{a.minutes_late}m late</Pill>
-                ) : (
-                  <span className="micro">On time</span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </MiniTable>
-      )}
+      {/*
+        * The raw punch list this replaces could only ever say "here are the
+        * clock-ins". A day of approved leave and a day somebody simply did not
+        * come looked identical in it — both absent from the list — and there
+        * was no window, no KPI and no download. This is the SAME widget My HR
+        * and the HR history tab mount, pinned to this person: leave, holidays
+        * and days off are rows, and the numbers are the ones payroll reads.
+        */}
+      {tab === "Attendance" && <AttendanceHistory scope="hr" employeeId={eid} />}
       {tab === "Sanctions" && (
         <MiniTable
           empty={sRows.length === 0}

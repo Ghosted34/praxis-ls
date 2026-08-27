@@ -68,6 +68,29 @@ router.get("/work-sites", view, controller.listSites);
 router.post("/work-sites", edit, validator.workSite, controller.createSite);
 router.patch("/work-sites/:siteId", edit, validator.workSiteUpdate, controller.updateSite);
 
+/* ── History, analytics and the download (PR2) ─────────────────────────────
+ *
+ * DECLARED BEFORE `/:id`, like every specific path in this file. `/analytics`
+ * and `/export` are not uuids, but Express does not know that — `/:id` has no
+ * pattern on it, so whichever route is declared first wins and a later
+ * `/analytics` would be swallowed as `get(id = "analytics")`. The file already
+ * makes this point about `/devices/:deviceId/name`; this is the same rule.
+ *
+ * The `/mine` variants take NO grant, deliberately. An employee is entitled to
+ * their own attendance — the same reasoning `/days/mine` records above — and
+ * they reach service functions that resolve the employee from the token rather
+ * than from the query string, so there is nothing on them to point at somebody
+ * else.
+ *
+ * The `/mine` route of each pair is declared FIRST for the same shadowing
+ * reason as everything else here.
+ */
+router.get("/analytics/mine", validator.punchWindow, controller.myAnalytics);
+router.get("/analytics", view, validator.analyticsWindow, controller.analytics);
+router.get("/export/mine", validator.exportWindow, controller.myExport);
+router.get("/export", view, validator.exportWindow, controller.exportWindow);
+router.get("/punches/mine", validator.punchWindow, controller.myPunches);
+
 // Admin log + corrections
 router.get("/", view, controller.list);
 router.post("/", create, validator.create, controller.create);

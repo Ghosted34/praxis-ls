@@ -336,20 +336,72 @@ async function setJustified(client, { id, justified, justification = null, actor
   return row;
 }
 
-/** One employee's reconciled month, for My HR and the payroll review sheet. */
-async function daysFor(client, { employeeId = null, from, to }) {
+/**
+ * Reconciled days over a window — My HR, the payroll review sheet, the history
+ * widget, analytics and the export all read THIS.
+ *
+ * ── WHY ONE READER AND NOT FIVE ────────────────────────────────────────────
+ *
+ * A day row is what an employee disputes and what payroll charges. The moment
+ * the export selects its own columns, the export and the screen can disagree
+ * about what a day was — and the person holding the spreadsheet is the one who
+ * finds out. So the joins the export needs (department, entity, leave type, and
+ * the punch's own location/device facts) live here, on the query everybody
+ * already used, rather than in a second query beside it.
+ *
+ * ── THE CAP ────────────────────────────────────────────────────────────────
+ *
+ * One row per employee per day: with the window now 366 days (PR2 raised it
+ * from 92), an unfiltered year on a 300-person roster is six figures of rows.
+ * `limit` is a CEILING, not a page — a caller compares `rows.length` against it
+ * to know the answer was cut short. It is deliberately well above any
+ * interactive window and equal to the export's own row cap.
+ *
+ * @param {string[]} [employeeIds] up to 50. The compare set for analytics.
+ * @param {string}   [department]  matched case- and whitespace-insensitively,
+ *                                 the same way employees.repo matches it.
+ */
+const DAYS_LIMIT = 20000;
+/** The compare set a person can actually read across. Also the bound that keeps
+ *  `= ANY($n)` from being handed a 10k-element array. */
+const MAX_EMPLOYEE_IDS = 50;
+
+async function daysFor(client, { employeeId = null, employeeIds = null, department = null, from, to, limit = DAYS_LIMIT } = {}) {
   const params = [from, to];
-  let where = "d.work_date BETWEEN $1 AND $2";
-  if (employeeId) { params.push(employeeId); where += ` AND d.employee_id = $${params.length}`; }
+  const wh = ["d.work_date BETWEEN $1 AND $2"];
+  if (employeeId) { params.push(employeeId); wh.push(`d.employee_id = $${params.length}`); }
+  const set = Array.isArray(employeeIds) ? employeeIds.filter(Boolean).slice(0, MAX_EMPLOYEE_IDS) : [];
+  if (set.length) {
+    params.push(set);
+    wh.push(`d.employee_id = ANY($${params.length}::uuid[])`);
+  }
+  if (department) {
+    params.push(department);
+    wh.push(`lower(btrim(e.department)) = lower(btrim($${params.length}))`);
+  }
+  const cap = Math.min(Math.max(Number(limit) || DAYS_LIMIT, 1), DAYS_LIMIT);
+  params.push(cap);
   const { rows } = await client.query(
-    `SELECT d.*, e.full_name AS employee_name, r.name AS rule_name, r.code AS rule_code,
-            r.sop_document_id, s.title AS sop_title
+    `SELECT d.*, e.full_name AS employee_name, e.department, e.entity_id,
+            ce.legal_name AS entity_name,
+            r.name AS rule_name, r.code AS rule_code,
+            r.sop_document_id, s.title AS sop_title,
+            lt.name AS leave_type_name,
+            al.latitude, al.longitude, al.within_geofence, al.location_source,
+            al.geo_label, al.distance_m, al.device_trusted,
+            dev.label AS device_label
        FROM attendance_day d
        LEFT JOIN employee e ON e.employee_id = d.employee_id
+       LEFT JOIN corporate_entity ce ON ce.entity_id = e.entity_id
        LEFT JOIN hr_rule r ON r.hr_rule_id = d.hr_rule_id
        LEFT JOIN sop_document s ON s.sop_document_id = r.sop_document_id
-      WHERE ${where}
-      ORDER BY d.work_date DESC, e.full_name`,
+       LEFT JOIN leave_request lr ON lr.leave_request_id = d.leave_request_id
+       LEFT JOIN leave_type lt ON lt.leave_type_id = lr.leave_type_id
+       LEFT JOIN attendance_log al ON al.attendance_id = d.attendance_id
+       LEFT JOIN hr_device dev ON dev.hr_device_id = al.hr_device_id
+      WHERE ${wh.join(" AND ")}
+      ORDER BY d.work_date DESC, e.full_name
+      LIMIT $${params.length}`,
     params,
   );
   return rows;
@@ -371,4 +423,4 @@ async function chargesFor(client, { from, to }) {
   return rows;
 }
 
-module.exports = { reconcileDate, setJustified, daysFor, chargesFor, workingDaysInMonth, timezoneOf };
+module.exports = { reconcileDate, setJustified, daysFor, chargesFor, workingDaysInMonth, timezoneOf, DAYS_LIMIT, MAX_EMPLOYEE_IDS };

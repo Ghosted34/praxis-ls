@@ -32,6 +32,16 @@ const calendar = require("./attendance.calendar");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "attendance", events });
 
+/**
+ * How many punches the map will plot.
+ *
+ * Lower than the export's 20k on purpose: this is a picture, and ten thousand
+ * pins is not a denser picture but an opaque one — the browser renders every
+ * marker and the reader sees a solid block. The cap is the point past which the
+ * map has stopped answering its question, and the payload reports when it bit.
+ */
+const MAP_PIN_LIMIT = 5000;
+
 /** Great-circle distance in metres between two WGS-84 points. */
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -393,6 +403,125 @@ async function exportFor(client, { from, to, employeeId = null, employeeIds = nu
     env,
     expectedFor: scope.expectedFor,
   });
+}
+
+/**
+ * The map layer (PR3, guide §3.6): punches that can be PINNED, plus the
+ * worksite geofences to judge them against.
+ *
+ * ── SCOPE IS A PARAMETER, AND IT IS NOT OPTIONAL ───────────────────────────
+ *
+ * `scope` is one of `team` | `self` | `none`, decided by the CONTROLLER from
+ * the actor's grants, and there is no default. A map is the one attendance
+ * surface where a leak is not a row in a table somebody has to read — it is a
+ * pin on a picture showing where a named colleague physically was, which is a
+ * different order of disclosure. So the caller must state what it resolved,
+ * and `self` without an `employeeId` returns nothing rather than falling
+ * through to everybody (the failure mode `myAnalytics` records).
+ *
+ * ── ONLY PUNCHES THAT HAVE A POINT ─────────────────────────────────────────
+ *
+ * A no-GPS punch cannot be a pin — there is no coordinate, and inventing one
+ * from the worksite or a last-known fix is exactly the spoofing rule 8 forbids.
+ * They are COUNTED instead (`no_gps_count`), so the map can say "4 punches had
+ * no location" rather than quietly showing fewer pins than the day had punches,
+ * which reads as "everybody was here" and is the opposite of the truth.
+ */
+async function mapLayer(client, { from, to, scope = "none", actor = {} } = {}) {
+  const empty = { from, to, scope, punches: [], worksites: [], no_gps_count: 0, truncated: false, timezone: null };
+  if (scope === "none") return empty;
+  // Resolved from the TOKEN, never from the query string — the same reason the
+  // `/mine` endpoints resolve it rather than accepting it, and the reason an
+  // unlinked user gets an empty map instead of an unscoped one.
+  const employeeId = scope === "self"
+    ? (actor && actor.user_id ? await repo.employeeIdForUser(client, actor.user_id) : null)
+    : null;
+  if (scope === "self" && !employeeId) return empty;
+
+  const policy = await attendancePolicy(client);
+  const rows = await repo.punchesForRange(client, {
+    from,
+    to,
+    // The self lock, again at the data layer: `punchesForRange` builds
+    // `al.employee_id = $n` from this, so a self-scoped call cannot widen.
+    employeeId: scope === "self" ? employeeId : null,
+    timeZone: policy.timeZone,
+    limit: MAP_PIN_LIMIT,
+  });
+
+  /*
+   * `Number(null)` is 0, not NaN — so a finite-check alone would place every
+   * no-GPS punch at 0°N 0°E, in the Gulf of Guinea, as a confident pin. That is
+   * the invented location rule 8 forbids, arrived at by arithmetic rather than
+   * by intent, and on a Douala tenant it lands 500km offshore of real ones
+   * where it reads as a plausible outlier rather than as an obvious null.
+   * Presence is therefore tested BEFORE the coercion.
+   */
+  const num = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const pinnable = [];
+  let noGps = 0;
+  for (const p of rows) {
+    const status = locationStatus(p);
+    const lat = num(p.latitude);
+    const lng = num(p.longitude);
+    if (lat === null || lng === null) {
+      noGps += 1;
+      continue;
+    }
+    pinnable.push({
+      attendance_id: p.attendance_id,
+      employee_id: p.employee_id,
+      employee_name: p.employee_name || null,
+      department: p.department || null,
+      clock_in_at: p.clock_in_at,
+      clock_out_at: p.clock_out_at,
+      latitude: lat,
+      longitude: lng,
+      accuracy_m: num(p.accuracy_m),
+      distance_m: num(p.distance_m),
+      within_geofence: p.within_geofence,
+      geo_label: p.geo_label || null,
+      work_site_id: p.work_site_id || null,
+      device_label: p.device_label || null,
+      location_status: status,
+    });
+  }
+
+  // Worksites are the frame the pins are read against — an off-site pin means
+  // nothing without the fence it is outside of — so they are drawn for anyone
+  // who may see other people's pins at all. A self-scoped caller gets none:
+  // the register of every company site is not part of "my own attendance".
+  const worksites = scope === "team"
+    ? (await repo.listSites(client))
+      .filter((w) => w.is_active)
+      .map((w) => ({
+        work_site_id: w.work_site_id,
+        entity_id: w.entity_id || null,
+        name: w.name,
+        latitude: num(w.latitude),
+        longitude: num(w.longitude),
+        radius_m: num(w.radius_m) || 150,
+      }))
+      // A fence with no centre cannot be drawn as a circle. Same rule as the
+      // pins: nothing is placed at a coordinate nobody recorded.
+      .filter((w) => w.latitude !== null && w.longitude !== null)
+    : [];
+
+  return {
+    from,
+    to,
+    scope,
+    punches: pinnable,
+    worksites,
+    no_gps_count: noGps,
+    truncated: rows.length >= MAP_PIN_LIMIT,
+    timezone: policy.timeZone,
+  };
 }
 
 /** What a user with no linked employee record sees: a real, empty report. Not
@@ -804,6 +933,9 @@ module.exports = {
     }
     return exportFor(client, { from, to, employeeId: empId, format, sheet, context, env });
   },
+
+  /** The map layer. See `mapLayer` — `scope` is the controller's decision. */
+  mapLayer: (client, opts = {}) => mapLayer(client, opts),
 
   /** The caller's own punches over a range — My HR's punch list and map pins. */
   async myPunches(client, { from, to, actor = {} } = {}) {

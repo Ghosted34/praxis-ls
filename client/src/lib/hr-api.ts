@@ -107,6 +107,11 @@ export type HrDevice = {
   status: "PENDING" | "TRUSTED" | "REVOKED";
   first_seen_at?: string | null;
   last_seen_at?: string | null;
+  /** Where this device last punched from, in words (PR3). Null when no punch
+   *  from it ever carried a place name — a device that has only ever clocked in
+   *  without GPS has nothing to show, which is itself worth seeing. */
+  last_geo_label?: string | null;
+  last_punch_at?: string | null;
 };
 export const listDevices = (params?: { employee_id?: string }) =>
   tenant<HrDevice[]>("/attendance/devices" + qs(params));
@@ -374,6 +379,76 @@ export const downloadMyAttendanceExport = (
   format: ExportFormat = "xlsx",
   sheet?: "days" | "punches",
 ) => tenantDownload("/attendance/export/mine" + qs({ ...p, format, sheet }), exportFilename(p, format));
+
+/* ── The map layer (PR3) ───────────────────────────────────────────────────
+ *
+ * ONE endpoint for every caller, and the payload is what the SERVER decided the
+ * caller may see — `scope` says which of the guide's matrix rows they landed on
+ * rather than the client choosing a request to make. That direction matters:
+ * a client that picked between a "team" and a "self" URL would be the thing
+ * deciding, and the first bug in it would be somebody else's coordinates.
+ *
+ * `ops.allowed` is a CUE, not data. The commercial lanes are the Control
+ * Tower's own model, fetched from `/dashboard/control-tower` (MOD-00A-gated in
+ * its own right) and projected through the existing map model — so an
+ * attendance-only user simply never makes that request, and HR never carries a
+ * second copy of the ops query.
+ */
+export type MapPunch = {
+  attendance_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  department?: string | null;
+  clock_in_at?: string | null;
+  clock_out_at?: string | null;
+  latitude: number;
+  longitude: number;
+  accuracy_m?: number | null;
+  distance_m?: number | null;
+  within_geofence?: boolean | null;
+  geo_label?: string | null;
+  work_site_id?: string | null;
+  device_label?: string | null;
+  location_status?: "on_site" | "off_site" | "no_gps" | "unfenced";
+};
+
+export type MapWorkSite = {
+  work_site_id: string;
+  entity_id?: string | null;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+};
+
+export type AttendanceMap = {
+  from: string;
+  to: string;
+  /** Which matrix row the caller landed on: team pins, own pins, or nothing. */
+  scope: "team" | "self" | "none";
+  punches: MapPunch[];
+  worksites: MapWorkSite[];
+  /** Punches with no fix at all. Counted rather than pinned — inventing a
+   *  coordinate for them is the spoofing the guide forbids, and dropping them
+   *  silently makes the map read as "everybody was on site". */
+  no_gps_count: number;
+  truncated?: boolean;
+  timezone?: string | null;
+  /** A tile provider, or null → coordinates plus an OSM link. */
+  tiles?: "geoapify" | null;
+  ops: { allowed: boolean };
+};
+
+export const attendanceMap = (p: { from: string; to: string }) =>
+  tenant<AttendanceMap>("/attendance/map" + qs(p));
+
+/** Run the weekly lateness summariser now — the backfill and the sandbox
+ *  rehearsal. Idempotent: the week is keyed on its end date. */
+export const runWeeklySummaries = (body: { week_start?: string; week_end?: string } = {}) =>
+  tenant<{ weekStart: string; weekEnd: string; candidates: number; queries: number; employees: number }>(
+    "/attendance/weekly-summaries",
+    { method: "POST", body },
+  );
 
 /* ── Standard operating procedures (MOD-16 / 0704) ────────────────────────
  * A procedure is a DOCUMENT now, not a title row: `body_md` is the text (the

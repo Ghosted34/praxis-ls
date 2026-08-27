@@ -24,6 +24,48 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Weekly lateness queries and the authorised attendance map (clock-in revamp PR 3 — the last of
+  the three).** After a week closes, an employee who was late on one or more EXPECTED WORKING
+  DAYS is asked once about the pattern rather than five times about five mornings: `attendance.weekly`
+  composes and upserts exactly one `WARNING` query per person per completed Mon–Sun week, employee
+  only (managers and HR have analytics; a batch job must not raise a disciplinary document against
+  somebody on their behalf). Expected days come from PR1's calendar resolver, never from the
+  reconciled status, so a Mon–Sat yard and a Mon–Fri office are counted differently; waived days are
+  excluded from the count and stated rather than dropped. Migration `12745` adds `WEEKLY` to
+  `hr_query.source` and a dedicated partial unique index `(employee_id, work_date) WHERE source =
+  'WEEKLY'` — the weekly row carries `hr_rule_id = NULL` so it stays OUT of 0704's daily index (where
+  a week-end date would collide with that day's own lateness query), and because a NULL is distinct
+  from every other NULL in a unique index, that dedicated index is the entire deduplication story.
+  The nightly reconcile job gained the step, gated on Monday in the workplace zone, running on its
+  OWN tenant connection AFTER the reconcile has committed: sharing one would have let a failed
+  weekly INSERT abort the transaction and silently roll back every row the reconciler wrote.
+  `POST /attendance/weekly-summaries` (`edit`) is the idempotent backfill and sandbox rehearsal.
+- **`GET /attendance/map`** returns pinnable punches plus worksite geofences, with the guide's
+  five-row permission matrix resolved in the CONTROLLER rather than by a single middleware — MOD-14
+  view gets team pins and fences, a Control Tower grant unlocks the order-lane overlay, an employee
+  with neither still gets their own pins, and an unlinked caller gets nothing. Punches with no fix
+  are COUNTED, never placed: `Number(null)` is 0, so a finite check alone would have pinned every
+  no-GPS punch at 0°N 0°E as a confident outlier. Preview tiles need a platform Geoapify key
+  (resolved outside the tenant connection); without one the map degrades to coastline, fences, pins
+  and an OSM link per pin.
+- **Map tab on HR Attendance, and own pins on My HR.** The tab reuses the Control Tower's projection
+  rather than restating it — `buildMapModel` gained one additive `points` option so an
+  attendance-only user with no lanes still gets a fitted map — and draws order legs in the operations
+  map's own per-mode colours only when the server says the caller may see them. My HR reads
+  `/attendance/punches/mine`, closing the last unfinished PR2 contract item (guide §3.2): the
+  endpoint is the boundary, so an HR manager on their own My HR page sees themselves, not their team.
+  The devices queue (still pending-first) now shows where each device last punched from, which is the
+  one fact that makes an unfamiliar auto-generated device name decidable.
+
+### Fixed
+
+- **Two adjacent attendance screens no longer shout a status at different volumes.** The reconciled-
+  days table pre-split `ON_LEAVE` into `"ON LEAVE"` before handing it to `Pill`, which defeated the
+  shared `enumLabel` (it only recognises the underscored form) — so it printed `ON LEAVE` where the
+  history table, one tab away and reading the same rows, printed `On leave`. Same slip in the
+  heatmap tooltip. Both now pass the raw enum through the one humaniser, and the two hard-coded
+  strings beside them go through `tr`.
+
 - **Attendance history, analytics and payroll-ready export (clock-in revamp PR 2).** Every user
   can now see their own attendance and download it, and HR can do the same for the set they pick.
   `GET /attendance/analytics` (+ `/mine`), `GET /attendance/export` (+ `/mine`) and

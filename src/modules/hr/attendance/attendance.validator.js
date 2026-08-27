@@ -178,6 +178,38 @@ const exportWindow = windowShape({
  *  there is nothing on this schema that could name another employee. */
 const punchWindow = windowShape({});
 
+/**
+ * The map window (PR3). Deliberately the same shape as `punchWindow` — NO
+ * employee selector of any kind.
+ *
+ * The map's scope is decided in the controller from the caller's grants, and a
+ * selector here would be a second, contradictory answer to the same question:
+ * a schema that accepts `employee_id` invites a handler that honours it, and
+ * the first one that does hands an ungated route somebody else's coordinates.
+ * There is nothing to forget to check if there is nothing to check.
+ */
+const mapWindow = windowShape({});
+
+/**
+ * The weekly backfill body. Both dates optional — omitted means "the last
+ * completed week in the tenant's zone", which is what the nightly job runs and
+ * therefore what "run it now" should mean without arguments.
+ *
+ * `week_end` alone is enough to name a week (the composer derives the start
+ * from it), so `week_start` is only honoured alongside it; a start without an
+ * end would be an open-ended window, and this writes queries.
+ */
+const weeklyRun = z
+  .object({ week_start: d.optional(), week_end: d.optional() })
+  .refine((v) => !v.week_start || !!v.week_end, {
+    path: ["week_end"],
+    message: "Give the end of the week too, or neither.",
+  })
+  .refine((v) => !v.week_start || !v.week_end || v.week_end >= v.week_start, {
+    path: ["week_end"],
+    message: "The end of the week must not precede its start.",
+  });
+
 /** Waiving keeps the deduction figure (see 0697) — this only decides whether
  *  payroll counts it. A waiver takes a reason; upholding does not need one. */
 const justify = z
@@ -193,7 +225,7 @@ const reconcileRun = z.object({ date: d.optional() });
  *  the employee-facing grant this rides on can never approve a device. */
 const deviceRename = z.object({ label: z.string().trim().min(1).max(80) });
 
-const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, deviceRename, dayWindow, analyticsWindow, exportWindow, punchWindow, justify, reconcileRun };
+const schemas = { create, update: create.partial(), clockIn, clockOut, workSite, workSiteUpdate: workSite.partial(), placeSearch, deviceRegister, deviceUpdate, deviceRename, dayWindow, analyticsWindow, exportWindow, punchWindow, mapWindow, weeklyRun, justify, reconcileRun };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -225,6 +257,8 @@ module.exports = {
   analyticsWindow: qmw("analyticsWindow"),
   exportWindow: qmw("exportWindow"),
   punchWindow: qmw("punchWindow"),
+  mapWindow: qmw("mapWindow"),
+  weeklyRun: mw("weeklyRun"),
   justify: mw("justify"),
   reconcileRun: mw("reconcileRun"),
   schemas,

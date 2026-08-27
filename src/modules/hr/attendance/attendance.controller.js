@@ -3,10 +3,43 @@ const { makeController } = require("../../../shared/crud/resource");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const service = require("./attendance.service");
 const reconcile = require("./attendance.reconcile");
+const weekly = require("./attendance.weekly");
+const geoapify = require("../../../services/geoapify.service");
+const identityCache = require("../../../shared/cache/identity-cache");
 const { resolveContext } = require("../../../services/spreadsheet");
 
 const base = makeController(service, "Attendance");
 const actor = (req) => req.user || { user_id: null };
+
+/**
+ * Does this caller hold a grant — asked INSIDE a handler rather than by
+ * `requirePermission` in front of it.
+ *
+ * The map is the one attendance route that cannot be a single middleware. Its
+ * matrix (guide §3.6) is not "allowed or 403": an employee with no HR grant at
+ * all is entitled to their OWN pins, and a Control Tower user with no MOD-14
+ * grant is entitled to the commercial lanes and to nothing of HR's. A
+ * `requirePermission("MOD-14", "view")` in front of it would turn both of those
+ * into a 403 and there would be no map for either of them; leaving the route
+ * ungated and answering with the whole payload would hand every employee the
+ * company's movements. So the route is authenticated only, and the ANSWER is
+ * narrowed here, per grant, which is what "the controller strips subjects the
+ * actor cannot see" means.
+ *
+ * Mirrors `requirePermission`'s own resolution exactly — the CEO bypass, the
+ * cached `getGrants` read on `identityDb`, and `=== true` rather than truthy —
+ * because two paths that disagree about what a grant is are worse than one
+ * that is wrong.
+ */
+async function hasGrant(req, moduleKey, column = "can_read") {
+  if (!req || !req.user) return false;
+  if (req.user.is_ceo === true) return true;
+  if (!req.identityDb || !Array.isArray(req.user.role_ids)) return false;
+  const grants = await req.identityDb((c) =>
+    identityCache.getGrants(c, { role_ids: req.user.role_ids, module: moduleKey }),
+  );
+  return grants.some((g) => g[column] === true);
+}
 
 /** Ship a built export. The filename is the guide's contract
  *  (`attendance-{from}-{to}.{ext}`); `X-Praxis-Truncated` says so out loud when
@@ -179,6 +212,81 @@ module.exports = {
       });
     });
     sendFile(res, file);
+  }),
+
+  /* ── The map (PR3, guide §3.6) ───────────────────────────────────────────
+   *
+   * FIVE outcomes from two grants, and the negative rows are the ones that
+   * matter: attendance-only HR must never see commercial lanes, ops-only users
+   * must never see HR pins, and an employee sees themselves and nobody else.
+   *
+   *   MOD-14 view + MOD-00A view → team pins, worksites, lanes
+   *   MOD-14 view                → team pins, worksites, no lanes
+   *   MOD-00A view only          → lanes, and no HR pins but the caller's own
+   *   neither                    → the caller's own pins, nothing else
+   *   neither, and no employee   → nothing at all
+   *
+   * The ops-only row keeps the caller's OWN pins because decision 8 states it
+   * without a condition: "own pins always visible to the employee". Somebody in
+   * dispatch is still an employee who clocks in, and "no HR pins" is a rule
+   * about OTHER people — the row it forbids is a colleague's coordinates, which
+   * this cannot produce: `scope` is `self`, and `mapLayer` builds
+   * `al.employee_id = $n` from the token. An ops user with no employee record
+   * gets the empty map, which is the fifth row.
+   *
+   * The lanes themselves are NOT in this payload. They are the Control Tower's
+   * own model, drawn by the client from `/dashboard/control-tower` — which is
+   * MOD-00A-gated in its own right, so `ops.allowed` here is the client's cue
+   * to fetch rather than a second copy of the ops query living in HR. That also
+   * keeps the guide's "do not rewrite the Control Tower projection" honest:
+   * this endpoint adds a layer, it does not restate the map.
+   */
+  map: asyncHandler(async (req, res) => {
+    const { from, to } = req.validatedQuery;
+    const [canTeam, canOps] = await Promise.all([
+      hasGrant(req, "MOD-14"),
+      hasGrant(req, "MOD-00A"),
+    ]);
+    /*
+     * OUTSIDE `req.tenantDb`, like `placeSearch` above. `hasKey` makes no HTTP
+     * call — it is a memoised platform-settings read — but the rule this module
+     * follows is that nothing provider-shaped resolves while a tenant
+     * connection is held, and a rule with an exception is a rule people forget.
+     */
+    const tiles = (await geoapify.hasKey()) ? "geoapify" : null;
+    const scope = canTeam ? "team" : "self";
+    const data = await req.tenantDb((c) => service.mapLayer(c, { from, to, scope, actor: actor(req) }));
+    res.json({
+      data: {
+        ...data,
+        /* Static/preview tiles only with a platform key; without one the client
+         * degrades to coordinates and an OSM link rather than an empty grey
+         * box that looks like a broken map. */
+        tiles,
+        ops: { allowed: canOps },
+      },
+    });
+  }),
+
+  /**
+   * Run the weekly summariser now — the backfill, and the sandbox rehearsal the
+   * rollout plan asks for before the job is trusted on live.
+   *
+   * `edit`, not `approve`: it raises a question, it does not decide anything or
+   * move money. Idempotent by construction, so pressing it twice — or pressing
+   * it for a week the nightly job already covered — upserts the same rows
+   * rather than asking anybody twice.
+   */
+  runWeekly: asyncHandler(async (req, res) => {
+    const out = await req.tenantDb(async (c) => {
+      const timeZone = await reconcile.timezoneOf(c);
+      return weekly.runWeekly(c, {
+        weekStart: req.body.week_start || null,
+        weekEnd: req.body.week_end || null,
+        timeZone,
+      });
+    });
+    res.json({ data: out });
   }),
 
   // Admin clock-out on a specific row (kept for corrections).

@@ -318,7 +318,22 @@ async function searchPlaces(text, { limit = 6, bias = null, countryCodes = null 
   }
 }
 
+/**
+ * Is a provider key configured at all — WITHOUT spending a request to find out.
+ *
+ * The attendance map asks this before offering preview tiles: with a key it can
+ * render them, without one it degrades to coordinates plus an OSM link rather
+ * than drawing an empty grey box. `resolveKey` reads the platform settings store
+ * (or the env fallback) and caches, so this is a memoised local read and makes
+ * no HTTP call — which is why a caller may hold a tenant connection across it,
+ * unlike every other function in this module.
+ */
+async function hasKey() {
+  return !!(await resolveKey());
+}
+
 module.exports = {
+  hasKey,
   reverseGeocode,
   forwardGeocode,
   searchPlaces,

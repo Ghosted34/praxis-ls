@@ -269,12 +269,22 @@ export function AttendanceDaysView() {
                     <td className="px-3 py-1.5 font-medium text-foreground">{d.employee_name || "—"}</td>
                     <td className="px-3 py-1.5">
                       <div className="flex items-center gap-1.5">
-                        <Pill tone={STATUS_TONE[d.status] || "mute"}>{d.status.replace("_", " ")}</Pill>
-                        {d.justified && <Pill tone="mute">Waived</Pill>}
+                        {/* The RAW status goes to Pill, which sentence-cases an
+                            enum through the shared `enumLabel`. Pre-splitting
+                            the underscore here defeated that: `enumLabel` only
+                            recognises `ON_LEAVE`, so "ON LEAVE" arrived already
+                            spaced and came back out unchanged — this table
+                            printed "ON LEAVE" where the history table, one tab
+                            away and reading the same rows, printed "On leave".
+                            Two adjacent screens shouting a status at different
+                            volumes is the kind of thing people read as two
+                            different states. */}
+                        <Pill tone={STATUS_TONE[d.status] || "mute"}>{d.status}</Pill>
+                        {d.justified && <Pill tone="mute">{tr("Waived")}</Pill>}
                       </div>
                     </td>
                     <td className="num whitespace-nowrap px-3 py-1.5 text-right text-muted-foreground">
-                      {d.minutes_late > 0 ? `${d.minutes_late} min` : "—"}
+                      {d.minutes_late > 0 ? `${d.minutes_late} ${tr("min")}` : "—"}
                     </td>
                     <td
                       className={cn(

@@ -37,10 +37,11 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { useResource, errMsg } from "@/lib/use-resource";
-import { money, dateFmt } from "@/lib/format";
+import { money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
 import { SitePill } from "./attendance-site-pill";
+import { MyAttendanceMap } from "./attendance-map";
 import { WaiveModal } from "./attendance-days";
 import { PERIODS, periodRange, type Period } from "./attendance-period";
 
@@ -69,7 +70,10 @@ function Pct({ value }: { value: number | null }) {
 
 /* ── Period chips + custom range ─────────────────────────────────────────── */
 
-function PeriodChips({
+/** Exported so the Map tab offers the SAME five windows as the history table.
+ *  A map with its own idea of "this quarter" is a second period vocabulary, and
+ *  the first thing anybody does is compare the two tabs against each other. */
+export function PeriodChips({
   period,
   window: win,
   onPeriod,
@@ -235,8 +239,12 @@ function Heatmap({ cells }: { cells: api.AttendanceHeatCell[] }) {
               {w.map((c, di) => {
                 if (!c) return <span key={di} className="h-3 w-3" />;
                 const tone = cellTone(c);
+                // `enumLabel`, not a hand-rolled underscore split: the split
+                // produced "ON LEAVE" in a tooltip whose neighbours read
+                // "Present" and "Absent", and it is the same slip the day table
+                // carried. One humaniser, used everywhere a status is shown.
                 const detail = c.status
-                  ? c.status.replace("_", " ")
+                  ? enumLabel(c.status)
                   : `${c.present + c.late} ${tr("in")} · ${c.absent} ${tr("absent")}`;
                 return (
                   <span
@@ -591,6 +599,18 @@ export function AttendanceHistory({
               onWaive={setWaiving}
               onUphold={uphold}
             />
+          )}
+
+          {/* Own map pins (guide §3.2) — SELF ONLY, and on the window the
+              chips above already chose, so the pins and the table are answering
+              the same question. It reads `/attendance/punches/mine`, not the
+              map endpoint: an HR manager opening their own My HR page must see
+              themselves here, not their team. */}
+          {self && !employeeId && (
+            <div className="flex flex-col gap-2">
+              <p className="micro">{tr("Where you clocked in")}</p>
+              <MyAttendanceMap from={win.from} to={win.to} />
+            </div>
           )}
 
           {/* The compare table only earns its space when there is something to

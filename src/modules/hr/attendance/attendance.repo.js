@@ -107,9 +107,33 @@ module.exports = {
     if (employeeId) { params.push(employeeId); where = "WHERE d.employee_id = $1"; }
     return client
       .query(
-        `SELECT d.*, e.full_name AS employee_name
+        /*
+         * PENDING FIRST — this panel is a QUEUE, not a register. The rows that
+         * need a decision are the reason anybody opens it, and sorting purely
+         * by recency would bury a device awaiting approval under every trusted
+         * one that punched this morning.
+         *
+         * The lateral is where the device was last SEEN, in words (PR3). A
+         * manager deciding on "Windows · Chrome · 7f3a" is being asked whether
+         * a machine they have never touched belongs to somebody — and "Bonabéri
+         * yard" is the single most useful fact for answering that, because a
+         * device that only ever appears at the yard is almost certainly the
+         * yard's. Cheap: `ix_attendance_log_device` covers the lookup and each
+         * subquery stops at one row.
+         */
+        `SELECT d.*, e.full_name AS employee_name,
+                last_punch.geo_label AS last_geo_label,
+                last_punch.clock_in_at AS last_punch_at
            FROM hr_device d
            LEFT JOIN employee e ON e.employee_id = d.employee_id
+           LEFT JOIN LATERAL (
+             SELECT al.geo_label, al.clock_in_at
+               FROM attendance_log al
+              WHERE al.hr_device_id = d.hr_device_id
+                AND al.geo_label IS NOT NULL
+              ORDER BY al.clock_in_at DESC
+              LIMIT 1
+           ) last_punch ON true
            ${where}
           ORDER BY (d.status = 'PENDING') DESC, d.last_seen_at DESC`,
         params,

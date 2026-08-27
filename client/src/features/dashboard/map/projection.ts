@@ -19,6 +19,7 @@ import {
   boundsOf,
   clusterNodes,
   labelOffset,
+  type Bounds,
   type ClusteredNode,
   type PlacedNode,
 } from "./selection";
@@ -94,7 +95,47 @@ export type BuildOptions = {
    * what "focus" means.
    */
   focus?: Lane[] | null;
+  /**
+   * Extra points the viewport must contain, and — when there are no lanes at
+   * all — the only thing it is fitted to.
+   *
+   * ADDITIVE, for the attendance map (clock-in revamp PR3). That map draws
+   * punch pins and worksite circles, optionally over the same order lanes this
+   * model already projects, and the two layers have to share ONE frame: two
+   * projections in one picture put a pin and the yard it was taken at in
+   * different places. Reusing this fit is also what keeps the guide's "do not
+   * rewrite the Control Tower projection" honest — attendance adds points to
+   * the existing model rather than carrying a second copy of the maths.
+   *
+   * Without lanes (attendance-only HR, who may not see commercial lanes at all)
+   * `buildMapModel` would otherwise return null and there would be no map. With
+   * points supplied it fits to them instead.
+   */
+  points?: { lat: number; lng: number }[] | null;
 };
+
+/** The box these points fit in, folded into a lane bounds. Either may be empty;
+ *  null only when BOTH are. */
+function extendBounds(
+  base: Bounds | null,
+  points: { lat: number; lng: number }[],
+): Bounds | null {
+  const usable = points.filter(
+    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng),
+  );
+  if (!usable.length) return base;
+  let minLon = base ? base.minLon : Infinity;
+  let maxLon = base ? base.maxLon : -Infinity;
+  let minLat = base ? base.minLat : Infinity;
+  let maxLat = base ? base.maxLat : -Infinity;
+  for (const p of usable) {
+    if (p.lng < minLon) minLon = p.lng;
+    if (p.lng > maxLon) maxLon = p.lng;
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+  }
+  return { minLon, maxLon, minLat, maxLat };
+}
 
 /**
  * A lane id, made safe to use as an SVG fragment id.
@@ -110,12 +151,13 @@ export function buildMapModel(
   lanes: Lane[],
   options: BuildOptions = {},
 ): MapModel | null {
-  if (!lanes.length) return null;
+  const points = options.points || [];
+  if (!lanes.length && !points.length) return null;
 
   // The fit is computed from the focused subset when there is one, and from
   // everything otherwise — but the LANES drawn below are always all of them.
   const framing = options.focus && options.focus.length ? options.focus : lanes;
-  const bounds = boundsOf(framing);
+  const bounds = extendBounds(boundsOf(framing), points);
   if (!bounds) return null;
   const cLon = (bounds.minLon + bounds.maxLon) / 2;
   const cLat = (bounds.minLat + bounds.maxLat) / 2;

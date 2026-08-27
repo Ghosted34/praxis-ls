@@ -374,4 +374,31 @@ describe("ServiceTypeWebTab", () => {
       screen.getAllByText(/Unpublish before changing slugs or media/i).length,
     ).toBeGreaterThan(0);
   });
+
+  it("clearing a draft slug box sends null (server col = EXCLUDED.col clears)", async () => {
+    const user = userEvent.setup();
+    getServiceTypeWeb.mockResolvedValue(draftTab());
+    upsertServiceTypeWeb.mockResolvedValue(draftTab());
+
+    view(
+      <ServiceTypeWebTab
+        serviceTypeId={ST_ID}
+        serviceTypeKey={ST_KEY}
+        onEditServiceType={() => {}}
+      />,
+    );
+    await screen.findByTestId("web-profile-editor");
+
+    const slugFr = screen.getByTestId("web-slug-fr");
+    expect(slugFr).toHaveValue("fret-aerien-import");
+    await user.clear(slugFr);
+
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => expect(upsertServiceTypeWeb).toHaveBeenCalled());
+    const [, body] = upsertServiceTypeWeb.mock.calls.at(-1)!;
+    // Explicit null — not omitted, not "" — so the server clears the column.
+    expect(body).toMatchObject({ slug_fr: null });
+    expect(body.slug_fr).toBeNull();
+  });
 });

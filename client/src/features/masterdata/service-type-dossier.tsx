@@ -132,11 +132,11 @@ type Tab = BaseTab | "Website";
  *
  * The admin `/service-types/:id/web` routes ride the service-type router's
  * `operations` feature gate, so they answer even when `website` is off. The
- * public router is what carries `feature: "website"`. Probing an anonymous
- * public list is the established client pattern for a flag the auth session
- * does not yet surface (same shape as trainings' FEATURE_DISABLED branch): a
- * 403 FEATURE_DISABLED means hide the tab; anything else (including an empty
- * 200 list) means the package is on.
+ * public router is what carries `feature: "website"`. Probing the feature-gated
+ * public route is the only client-visible signal until the auth session
+ * surfaces `website`: hide the tab ONLY on `FEATURE_DISABLED`; anything else
+ * (empty 200 list, 429, non-feature 403, network blip) keeps the tab visible so
+ * a paid package is never hidden on a transient or an unrelated denial.
  */
 function useWebsiteFeature(): boolean {
   const [on, setOn] = React.useState(false);
@@ -148,12 +148,12 @@ function useWebsiteFeature(): boolean {
       })
       .catch((e: unknown) => {
         if (!live) return;
+        // Hide ONLY when the feature gate itself refused. A bare 403 without
+        // FEATURE_DISABLED must not hide a paid tab.
         if (e instanceof ApiError && e.code === "FEATURE_DISABLED") {
           setOn(false);
         } else {
-          // Network blip / 404 empty — do not hide a paid package on a transient.
-          // A non-feature error still means the route is mounted, so show the tab.
-          setOn(!(e instanceof ApiError && e.status === 403));
+          setOn(true);
         }
       });
     return () => {

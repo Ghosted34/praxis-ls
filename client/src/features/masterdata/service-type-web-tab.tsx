@@ -401,9 +401,11 @@ export function ServiceTypeWebTab({
         }
       }
     }
-    // Never send empty slug strings — the regex rejects ""; leave omitted.
-    if (out.slug_fr === "") delete out.slug_fr;
-    if (out.slug_en === "") delete out.slug_en;
+    // Empty slug box while draft → explicit null (server `col = EXCLUDED.col`
+    // clears). The regex rejects "", so we never send "". Slug inputs are locked
+    // while published, so this path only runs on a draft clear.
+    if (out.slug_fr === "") out.slug_fr = null;
+    if (out.slug_en === "") out.slug_en = null;
     return out;
   }
 

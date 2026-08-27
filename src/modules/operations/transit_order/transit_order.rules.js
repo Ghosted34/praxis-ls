@@ -36,6 +36,28 @@ const NEXT = {
   CANCELLED: [],
 };
 
+/**
+ * The lifecycle in words, FR and EN.
+ *
+ * A PAIR, never a pre-joined string. The printed document is monolingual — a
+ * French client's copy says "Émis" and an English client's says "Issued" — and
+ * the projection that feeds it used to hand the renderer "Émis / Issued" as one
+ * value, so `cfg.language` could not do anything about it. Every label that
+ * reaches a template leaves here as {fr, en} and the template picks a side.
+ *
+ * It lives with the lifecycle rather than with the document because the screen
+ * and the sheet must call the same state the same thing.
+ */
+const STATUS_WORDS = {
+  DRAFT: { fr: "Brouillon", en: "Draft" },
+  ISSUED: { fr: "Émis", en: "Issued" },
+  SIGNED: { fr: "Signé", en: "Signed" },
+  LODGED: { fr: "Déclaré", en: "Lodged" },
+  CANCELLED: { fr: "Annulé", en: "Cancelled" },
+};
+const statusWords = (status) => STATUS_WORDS[String(status || "").toUpperCase()]
+  || { fr: String(status || ""), en: String(status || "") };
+
 /** States in which the header and lines may still be edited freely. */
 const EDITABLE = new Set(["DRAFT"]);
 
@@ -227,6 +249,8 @@ function computeValues(head = {}, lines = []) {
 
 module.exports = {
   NEXT,
+  STATUS_WORDS,
+  statusWords,
   EDITABLE,
   POST_ISSUE_EDITABLE_FIELDS,
   CUSTOMS_REGIMES,

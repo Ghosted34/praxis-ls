@@ -32,7 +32,9 @@ module.exports = {
         entityId: p.entity_id, dossierId: p.dossier_id,
         customsRegime: p.customs_regime, customsRegimeOther: p.customs_regime_other,
         serviceDirection: p.service_direction, declaredValue: p.declared_value,
-        declaredCurrency: p.declared_currency, declaredFxToXaf: p.declared_fx_to_xaf,
+        // No declaredFxToXaf: the rate is derived from the currency master and
+        // the schema refuses the field, so this only ever read `undefined`.
+        declaredCurrency: p.declared_currency,
         insuranceType: p.insurance_type, surveyorParty: p.surveyor_party,
         departureDate: p.departure_date, instructions: p.instructions,
         submittedDocs: p.submitted_docs, lines: p.lines,

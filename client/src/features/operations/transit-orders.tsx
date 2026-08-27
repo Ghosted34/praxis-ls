@@ -66,6 +66,12 @@ import * as masterApi from "@/lib/masterdata-api";
 import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
 import { cn } from "@/lib/cn";
 import { openVaultDoc } from "@/lib/vault-file";
+import {
+  SendForSignatureModal,
+  SignatureChainOnRecord,
+  SignDocumentModal,
+  SignaturesOnRecord,
+} from "@/features/vault/sign-document";
 import { ShipmentDetailsPanel } from "./shipment-details";
 import { humanizeKey, nameMap } from "./shared";
 
@@ -837,6 +843,10 @@ function OrderActions({
   /** The client-signed copy, held until the transition that needs it. */
   const [scan, setScan] = React.useState<File | null>(null);
   const [scanError, setScanError] = React.useState<string | null>(null);
+  /** The signatures engine (MOD-64), on this order's own screen. */
+  const [signOpen, setSignOpen] = React.useState(false);
+  const [sendOpen, setSendOpen] = React.useState(false);
+  const entityRef = `transit_order:${row.transit_order_id}`;
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -875,7 +885,45 @@ function OrderActions({
         )}
         {allowed.has("SIGNED") && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => setAsk("sign")}>
-            Record signature
+            Record client signature
+          </Button>
+        )}
+        {/*
+          * Sign it OURSELVES, through the signatures engine.
+          *
+          * A different act from "Record client signature" beside it, and the
+          * screen has to keep them apart: that one files the scan the CLIENT
+          * stamped and moves the order to SIGNED; this one puts OUR
+          * countersignature on the document — the approval that prints as the
+          * seal in the company box, with the QR that lets anyone holding the
+          * paper verify it.
+          *
+          * Only once the order is numbered. The seal prints the order's own
+          * reference as evidence and its hash covers the issued figures, so
+          * sealing a draft would attest to a document that does not exist yet
+          * and would go stale the moment it was issued.
+          */}
+        {row.status !== "DRAFT" && row.status !== "CANCELLED" && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setSignOpen(true)}>
+            Sign electronically
+          </Button>
+        )}
+        {/*
+          * Ask the CLIENT to sign it — the external chain.
+          *
+          * The third of three distinct acts on this rail, and the screen has to
+          * keep them apart:
+          *   Record client signature  files the scan they stamped by hand
+          *   Sign electronically      puts OUR countersignature on the document
+          *   Send for signature       emails the client a link to sign it
+          *
+          * Only once numbered, for the same reason as the countersignature: the
+          * chain's hash covers the issued figures and its email names the
+          * order's own reference.
+          */}
+        {row.status !== "DRAFT" && row.status !== "CANCELLED" && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setSendOpen(true)}>
+            Send for signature
           </Button>
         )}
         {allowed.has("LODGED") && (
@@ -1026,6 +1074,22 @@ function OrderActions({
           </div>
         }
       />
+
+      <SignDocumentModal
+        open={signOpen}
+        entityRef={entityRef}
+        docType="TRANSIT_ORDER"
+        onClose={() => setSignOpen(false)}
+        onSaved={onDone}
+      />
+
+      <SendForSignatureModal
+        open={sendOpen}
+        entityRef={entityRef}
+        docType="TRANSIT_ORDER"
+        onClose={() => setSendOpen(false)}
+        onSent={onDone}
+      />
     </div>
   );
 }
@@ -1174,6 +1238,30 @@ function OrderDetail({
             </Callout>
           )}
         </Panel>
+
+        {/*
+         * What is already attested on this order, and by whom.
+         *
+         * `SignaturesOnRecord` renders nothing when the tenant has signatures
+         * switched off or when nothing has been signed, so the panel only
+         * appears once there is something in it — a record screen must not
+         * sprout an empty section for a feature its tenant never bought.
+         */}
+        {/*
+         * Who was ASKED (the chain) and who HAS signed (the signatures). Two
+         * panels because they answer different questions — a request that is
+         * PARTIALLY_SIGNED with one signature on the document is the normal
+         * mid-chain state, and either view alone reads as a fault. Both hide
+         * themselves when there is nothing to show.
+         */}
+        <SignatureChainOnRecord
+          entityRef={`transit_order:${data.transit_order_id}`}
+          title={tr("Out for signature")}
+        />
+        <SignaturesOnRecord
+          entityRef={`transit_order:${data.transit_order_id}`}
+          title={tr("Signatures on this order")}
+        />
 
         <div className="flex justify-end gap-2">
           {data.status !== "LODGED" && data.status !== "CANCELLED" && (

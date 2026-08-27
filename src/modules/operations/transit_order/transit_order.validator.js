@@ -32,6 +32,22 @@ const submittedDoc = z.union([
   z.object({ code: z.string().min(1).max(60), note: z.string().max(200).optional() }),
 ]);
 
+/**
+ * A field the API used to ACCEPT and never act on.
+ *
+ * Declared as a KEY rather than left out of the schema, for two reasons: a
+ * plain `z.object` strips unknown keys before any refinement runs, so a check
+ * written across the whole object would never see it — and a caller built
+ * against the old shape deserves to be told once, by name, what to remove. A
+ * silently dropped field is worse than a refused one: it lets the caller
+ * believe it was honoured. (The same rule signature_request.validator carries
+ * as `.strict()`.)
+ */
+const refused = (message) =>
+  z.any().optional().superRefine((v, ctx) => {
+    if (v !== undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  });
+
 const headFields = {
   entity_id: uuid.optional().nullable(),
   dossier_id: uuid.optional().nullable(),
@@ -40,7 +56,16 @@ const headFields = {
   service_direction: z.enum(rules.DIRECTIONS).optional().nullable(),
   declared_value: z.number().nonnegative().optional().nullable(),
   declared_currency: z.string().length(3).toUpperCase().optional(),
-  declared_fx_to_xaf: z.number().positive().optional(),
+  /*
+   * The rate is DERIVED from the currency master (MOD-08, `fx_rate_daily`, fed
+   * by the live exchangerate sync). Neither `create` nor `update` has ever read
+   * one from the body — see `fxToXaf` in the service — but the schema accepted
+   * it and the controller even mapped it, so a caller could send a rate, get a
+   * 201, and watch the order carry a different one.
+   */
+  declared_fx_to_xaf: refused(
+    "The rate to XAF is derived from the currency master, not supplied. Send declared_currency and the order carries the tenant's own rate for it.",
+  ),
   insurance_type: z.enum(rules.INSURANCE_TYPES).optional(),
   surveyor_party: z.enum(rules.SURVEYOR_PARTIES).optional(),
   departure_date: isoDate.optional().nullable(),
@@ -68,7 +93,16 @@ const schemas = {
     ...headFields,
     lines: z.array(line).optional(),
     allow_duplicate: z.boolean().optional(),
-    date: isoDate.optional(),
+    /*
+     * A draft has no date of its own to set. `created_at` records when it was
+     * raised, and `issue({ date })` picks the date the NUMBER is allocated
+     * against — which is the one a caller sending `date` actually means. This
+     * key was accepted here and read by nobody: the controller never passed it
+     * on and `create()` has no parameter for it.
+     */
+    date: refused(
+      "A draft carries no date. Pass `date` to POST /:id/issue, which is what it dates: the number allocation.",
+    ),
   }).superRefine(oneRegime),
 
   update: z.object({

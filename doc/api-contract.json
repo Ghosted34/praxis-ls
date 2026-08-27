@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 133,
-  "route_count": 1450,
+  "route_count": 1453,
   "tiers": {
     "public": 44,
-    "self-scoped": 86,
-    "gated": 1320
+    "self-scoped": 87,
+    "gated": 1322
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1078,6 +1078,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/attendance/export/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/attendance/map": {
       "auth": true,
       "rbac": false,
       "validated": false,
@@ -3585,6 +3591,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/signature-requests/candidates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/signatures/": {
       "auth": true,
       "rbac": true,
@@ -5452,6 +5464,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/attendance/reconcile": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/attendance/weekly-summaries": {
       "auth": true,
       "rbac": true,
       "validated": false,

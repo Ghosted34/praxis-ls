@@ -47,6 +47,45 @@ function addressLine(a) {
 }
 
 /**
+ * The same address as a LETTERHEAD BLOCK — the postal lines somebody would
+ * actually write on an envelope, in order.
+ *
+ *   1030, Avenue Douala Manga Bell, Bali     ← street: line1 + line2
+ *   PO Box 5120, 00237 Douala, Cameroun      ← delivery: po box, postcode, city…
+ *
+ * `addressLine` above comma-joins the whole thing into ONE string, which is
+ * right for a footer running along the bottom of an invoice and wrong for a
+ * letterhead, where the address is the block under the company name and reads
+ * as three or four short lines. Same fields, same precedence, two shapes — so a
+ * template never has to re-derive either.
+ *
+ * ── Why a country NAME and not the ISO code ────────────────────────────────
+ * `country_code` is 'CM'. A letterhead prints "Cameroun", and a document
+ * crossing a border prints it in the document's own language. `countryName` is
+ * injected rather than imported so this file stays pure and stays testable
+ * without the country catalogue; callers pass `countries.nameFor`.
+ *
+ * Falls back to the legacy free-text `corporate_entity.address` column when the
+ * entity has no structured row yet — split on the tenant's own line breaks,
+ * because that column is all some tenants have ever filled in.
+ */
+function addressLines(entity, addresses = [], { countryName = null, language = "en" } = {}) {
+  const active = (addresses || []).filter((a) => a && a.is_active !== false);
+  const a = active.find((x) => x.type === "REGISTERED") || active.find((x) => x.is_primary) || active[0];
+  if (!a) {
+    return String((entity && entity.address) || "")
+      .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  }
+  const country = a.country_code
+    ? (typeof countryName === "function" ? countryName(a.country_code, language) : null) || a.country_code
+    : null;
+  return [
+    join([a.line1, a.line2], ", "),
+    join([a.po_box, join([a.postal_code, a.city], " "), a.region, country], ", "),
+  ].filter(Boolean);
+}
+
+/**
  * The registered office, preferring a REGISTERED row, then the primary one, then
  * the legacy free-text column that predates entity_address.
  */
@@ -246,6 +285,6 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
 }
 
 module.exports = {
-  render, registeredAddress, identifiers, paymentBlock, addressLine, formatAmount,
+  render, registeredAddress, identifiers, paymentBlock, addressLine, addressLines, formatAmount,
   issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

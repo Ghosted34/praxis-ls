@@ -122,7 +122,32 @@ async function onAmendmentDetected(client, sig, liveDoc) {
 }
 
 /** Shape a row for an authenticated caller. Full IP; the reveal is audited. */
-function present(sig, status, { language = "fr", full = false } = {}) {
+/**
+ * The tenant's own wording for a signing reason, by code.
+ *
+ * A Map, and read through `.get`: `sign_reason` originates in a request body,
+ * and a plain object indexed by it answers `"constructor"` with a function —
+ * the same shape that was a High CodeQL finding in canonical.js and is guarded
+ * against in the client's `signature-vocab.look()`.
+ */
+async function reasonWordsMap(client, language) {
+  try {
+    const rows = await presets.reasons(client);
+    return new Map(rows.map((r) => [r.reason_code, language === "en" ? r.label_en : r.label_fr]));
+  } catch {
+    /* @silent:parse — the reason vocabulary is a presentation lookup. A tenant
+       whose settings table cannot be read still gets its signatures; the reason
+       falls back to nothing rather than to a raw enum on a screen. */
+    return new Map();
+  }
+}
+
+/**
+ * @param {Map<string,string>} [opts.reasonWords] resolved reason vocabulary.
+ *   Passed in rather than looked up here because `present` is synchronous and
+ *   is called once per row; one query per list, not one per signature.
+ */
+function present(sig, status, { language = "fr", full = false, reasonWords = null } = {}) {
   return {
     signature_id: sig.signature_id,
     entity_ref: sig.entity_ref,
@@ -138,6 +163,16 @@ function present(sig, status, { language = "fr", full = false } = {}) {
     assurance_words: methodWords(sig.assurance_level, language),
     visual_mark: sig.visual_mark,
     sign_reason: sig.sign_reason,
+    /*
+     * The attestation IN WORDS, in the caller's language.
+     *
+     * The row stores a code, the seal prints the tenant's wording for it, and
+     * until now the API returned only the code — so any screen showing the
+     * reason showed `APPROVED_DISPATCH`. An enum must never reach a person
+     * (client/src/features/vault/signature-vocab.ts opens with that rule);
+     * the seal already obeyed it and the API did not.
+     */
+    sign_reason_words: (reasonWords && sig.sign_reason && reasonWords.get(sig.sign_reason)) || null,
     signed_at: sig.signed_at,
     verify_code: tokens.formatCode(sig.verify_code),
     content_hash: sig.content_hash,
@@ -166,11 +201,12 @@ async function listByRef(client, entityRef, { language = "fr", doc = null } = {}
     }
   }
 
+  const reasonWords = await reasonWordsMap(client, language);
   const out = [];
   for (const sig of rows) {
     const status = statusOf(sig, liveDoc);
     if (status === "AMENDED") await onAmendmentDetected(client, sig, liveDoc);
-    out.push(present(sig, status, { language }));
+    out.push(present(sig, status, { language, reasonWords }));
   }
   return out;
 }
@@ -184,7 +220,7 @@ async function get(client, id, { language = "fr", full = false } = {}) {
   } catch { /* @silent:parse — unloadable document reads UNKNOWN, not AMENDED */ }
   const status = statusOf(sig, liveDoc);
   if (status === "AMENDED") await onAmendmentDetected(client, sig, liveDoc);
-  return present(sig, status, { language, full });
+  return present(sig, status, { language, full, reasonWords: await reasonWordsMap(client, language) });
 }
 
 /** The full card catalogue, for the settings screen. */

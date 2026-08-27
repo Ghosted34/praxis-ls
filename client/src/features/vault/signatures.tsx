@@ -22,7 +22,7 @@ import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal, Field, Select } from "@/components/ui/modal";
+import { Modal, Field } from "@/components/ui/modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -33,139 +33,8 @@ import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { isGated } from "./shared";
-import { SignatureCardGrid, type SignatureMenu } from "./signature-cards";
+import { SignDocumentModal } from "./sign-document";
 import { STATUS_WORDS, statusTone, look } from "./signature-vocab";
-
-/**
- * Sign as the current user.
- *
- * The only inputs are WHICH METHOD and WHY. Everything else — who is signing,
- * what they are attesting to, the content fingerprint — is resolved server-side
- * from the session and the document.
- */
-function SignForm({
-  open,
-  entityRef,
-  docType,
-  onClose,
-  onSaved,
-}: {
-  open: boolean;
-  entityRef: string;
-  docType: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [menu, setMenu] = React.useState<SignatureMenu | null>(null);
-  const [preset, setPreset] = React.useState<string | null>(null);
-  const [reason, setReason] = React.useState("");
-  const [reasons, setReasons] = React.useState<Row[]>([]);
-  const [busy, setBusy] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!open || !docType) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setMenu(null);
-    (async () => {
-      try {
-        const m = await tenant<SignatureMenu>(
-          `/signatures/menu?doc_type=${encodeURIComponent(docType)}`,
-        );
-        if (cancelled) return;
-        setMenu(m);
-        setPreset(m.default ?? m.cards[0]?.preset_code ?? null);
-      } catch (e) {
-        if (!cancelled) setError(errMsg(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, docType]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setReason("");
-    // The signing reason is a controlled vocabulary, never free text — free
-    // text on a legal seal is a liability field.
-    tenant<Row[]>("/signatures/reasons")
-      .then((r) => setReasons(Array.isArray(r) ? r : []))
-      .catch(() => setReasons([]));
-  }, [open]);
-
-  async function submit() {
-    if (!preset) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await tenant("/signatures/internal", {
-        method: "POST",
-        body: {
-          entity_ref: entityRef,
-          doc_type: docType,
-          preset_code: preset,
-          ...(reason ? { sign_reason: reason } : {}),
-        },
-      });
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={tr("Sign this document")}
-      description="You are signing as yourself. Your name and role come from your account — they cannot be typed in."
-      size="lg"
-    >
-      <div className="space-y-4">
-        {loading ? (
-          <SkeletonTable />
-        ) : menu ? (
-          <>
-            <Field label={tr("How do you want to sign?")}>
-              <SignatureCardGrid menu={menu} value={preset} onChange={setPreset} />
-            </Field>
-            <Field
-              label={tr("Reason")}
-              hint="Printed on the signature stamp."
-            >
-              <Select value={reason} onChange={(e) => setReason(e.target.value)}>
-                <option value="">{tr("No reason given")}</option>
-                {reasons.map((r) => (
-                  <option key={String(r.reason_code)} value={String(r.reason_code)}>
-                    {String(r.label_en ?? r.reason_code)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
-        ) : null}
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
-            {tr("Cancel")}
-          </Button>
-          <Button onClick={submit} loading={busy} disabled={!preset || busy}>
-            {tr("Sign")}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 function RevokeForm({
   open,
@@ -623,7 +492,7 @@ export function SignaturesPage() {
         </>
       )}
 
-      <SignForm
+      <SignDocumentModal
         open={signOpen}
         entityRef={activeRef}
         docType={activeType}

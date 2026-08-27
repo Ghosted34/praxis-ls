@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1450 |
+| Routes | 1453 |
 | Modules mounted | 133 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1450 mounted routes, grouped by path prefix.
+All 1453 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -314,10 +314,12 @@ All 1450 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/attendance/devices/:deviceId/name` | — |
 | GET | `/api/tenant/attendance/export` | — |
 | GET | `/api/tenant/attendance/export/mine` | — |
+| GET | `/api/tenant/attendance/map` | — |
 | GET | `/api/tenant/attendance/open` | — |
 | GET | `/api/tenant/attendance/place-search` | — |
 | GET | `/api/tenant/attendance/punches/mine` | — |
 | POST | `/api/tenant/attendance/reconcile` | — |
+| POST | `/api/tenant/attendance/weekly-summaries` | — |
 | GET | `/api/tenant/attendance/work-sites` | — |
 | POST | `/api/tenant/attendance/work-sites` | — |
 | PATCH | `/api/tenant/attendance/work-sites/:siteId` | — |
@@ -1752,6 +1754,7 @@ All 1450 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/signature-requests/:id/certificate` | — |
 | POST | `/api/tenant/signature-requests/:id/dispatch` | — |
 | POST | `/api/tenant/signature-requests/:id/void` | — |
+| GET | `/api/tenant/signature-requests/candidates` | — |
 
 ### `tenant/signatures`
 

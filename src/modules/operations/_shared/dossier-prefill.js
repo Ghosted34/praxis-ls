@@ -113,17 +113,24 @@ function transitOrderFrom(dossier, entity, regimes) {
   }
 
   /*
-   * Money. The currency and the rate come from the ENTITY, not the file: the
-   * declared value is what this company is declaring, in the money it keeps its
-   * books in. `1` when the currency already IS XAF, because a rate of 1 is the
-   * truth there and leaving it blank makes the operator type a number whose only
-   * correct value is one.
+   * Money. The currency comes from the ENTITY, not the file: the declared value
+   * is what this company is declaring, in the money it keeps its books in.
+   *
+   * THE RATE IS NOT PREFILLED, and it used to be — `declared_fx_to_xaf = 1` for
+   * a XAF entity. This body is documented as "shaped exactly like the create
+   * payload so the form can spread it", and the create schema now REFUSES that
+   * field by name (it was accepted and ignored: the rate is derived from the
+   * currency master). A prefill that seeds a field the create call rejects
+   * hands the operator a 422 on a form they never touched.
+   *
+   * Nothing is lost: `GET /transit-orders/currencies` returns each currency
+   * with its live rate already resolved, which is what the form's rate field
+   * reads — a derived read-out, never a second number to mistype.
    */
   const currency = (entity && entity.default_currency) || null;
   if (currency) {
     body.declared_currency = currency;
     from.push("declared_currency");
-    if (currency.toUpperCase() === "XAF") body.declared_fx_to_xaf = 1;
   }
 
   /*

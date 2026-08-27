@@ -198,12 +198,74 @@ beyond the standard set.
 | #   | Document                         | docType            | Module                       | Status | Doc-specific beautify             |
 | --- | -------------------------------- | ------------------ | ---------------------------- | ------ | --------------------------------- |
 | 7   | Delivery note (bon de livraison) | `DELIVERY_NOTE`    | operations/delivery_note     | ▫      | consignee block, no prices toggle |
-| 8   | Transit order                    | `TRANSIT_ORDER`    | operations/transit_order     | ▫      | carrier block, route              |
+| 8   | Transit order                    | `TRANSIT_ORDER`    | operations/transit_order     | ✅     | **one-page instrument sheet** — see below |
 | 9   | Purchase request                 | `PURCHASE_REQUEST` | procurement/purchase_request | ▫      | approver signatures               |
 | 10  | Purchase order                   | `PURCHASE_ORDER`   | procurement/purchase_order   | ▫      | supplier terms, delivery addr     |
 | 11  | Supplier invoice (recorded)      | `SUPPLIER_INVOICE` | procurement/supplier_invoice | ▫      | "COPY" watermark                  |
 | 12  | Cash request                     | `CASH_REQUEST`     | costing/cash_request         | ▫      | approval chain                    |
 | 13  | Régie advance                    | `REGIE_ADVANCE`    | costing/regie                | ▫      | float ledger                      |
+
+#### The instrument sheet (`TRANSIT_ORDER`, and the operations documents after it)
+
+A transit order, a delivery note and a goods-received note are the same KIND of
+page: a letterhead, a block of facts a clerk checks at a glance, a cargo table,
+a few elections, two signatures and a foot. `kit` carries that vocabulary —
+`instrumentHead`, `docName`, `factsGrid`, `ruledBlock`, `pairRow`, `cargoTable`,
+`clause`, `signStrip`, `instrumentFoot` — and it looks like a hard-ruled FORM,
+not like the card deck the rest of the family uses. A customs clerk reads it
+faster, and eight rounded `.box` cards cost ~55mm of height to carry sixteen
+short values.
+
+**Three contracts hold for any template built on it.**
+
+1. **One page.** `.sheet` is exactly one printable page tall less a 1mm rounding
+   guard (`kit.fitBudgetMm`), it is a flex column so the cargo table absorbs the
+   slack and the signatures land at the foot, and every compressible metric is
+   `calc(N * var(--k))`. The template estimates its own height from the record
+   (`HEIGHT_MM`) and sets `cfg.fit`; a fuller order is SET TIGHTER, never
+   truncated or summarised. Deterministic from data, so it is unit-testable and
+   there is no script in the rendered page. Measured ceiling for the transit
+   order: **50 cargo lines**.
+
+2. **One language.** Every label reaching a template is a `{fr,en}` pair
+   resolved by `k.t` against `cfg.language`. A projection must never pre-join
+   them: "Émis / Issued" as a single value is a decision the template cannot
+   undo, and it is how a tenant configured `fr` ended up printing both halves on
+   every line of the page. The operator picks the language per render (a FR/EN
+   control on the document page); the tenant's Document Studio setting is the
+   default, and `bilingual` remains available as a deliberate third choice.
+
+3. **A signatory box the signature engine fills.** The client's side is a ruled
+   stamp well; ours carries the tenant's company cachet and, once the document
+   has been signed through MOD-64, `kit.sealBlock` beneath it —
+   see SIGNATURE_ENGINEERING_GUIDE §3.12a for the placement rules, including the
+   one-QR-per-page rule and why the cachet is not a signature.
+
+**The letterhead is DERIVED, never typed.** `instrumentHead` takes
+`entity.address_lines` and `instrumentFoot` takes `entity.identifiers`, both
+assembled by `modules/master/entity-letterhead.service` from the entity's
+structured `entity_address` row and its registration rows — the same function
+the entity dossier previews with, so the letterhead a tenant designs is the one
+that prints. The legacy `corporate_entity.address` / `niu` / `rccm` columns
+remain as that service's fallback and nothing re-implements them.
+
+Two consequences worth stating:
+
+- **The address is a block, not a line.** `addressLines()` returns the postal
+  lines somebody would write on an envelope (street, then PO box + postcode +
+  city + country); `addressLine()` still comma-joins the same fields for a
+  footer running along the bottom of an invoice. Same precedence, two shapes.
+- **The identifiers are jurisdictional.** A Cameroonian sheet carries NIU and
+  RCCM, a French one SIREN and TVA. Two hardcoded labels are correct in exactly
+  one country, and this product is not sold in exactly one country. The country
+  name itself comes from `Intl.DisplayNames`, so a French document says
+  "Cameroun" without a second country catalogue to maintain.
+
+**Re-measure after any change**: `node scripts/dev/measure-instrument.js`
+reports every block's rendered height and the page count across a sweep of
+cargo-line counts. The `HEIGHT_MM` constants come from it, not from reading the
+CSS — the first hand-written model was out by 12mm on the facts grid and 15mm on
+the foot, which is a second sheet.
 
 ### Phase 3 — Statements, reports & tax filings
 

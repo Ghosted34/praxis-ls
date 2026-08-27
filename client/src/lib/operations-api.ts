@@ -182,7 +182,9 @@ export type TransitOrderInput = {
   service_direction?: string | null;
   declared_value?: number | null;
   declared_currency?: string;
-  declared_fx_to_xaf?: number;
+  /* No declared_fx_to_xaf. It is DERIVED from the currency master and the API
+     refuses it by name — sending one used to return 201 and be ignored. The
+     rate is on the READ type above, where it is a derived read-out. */
   insurance_type?: string;
   surveyor_party?: string;
   departure_date?: string | null;

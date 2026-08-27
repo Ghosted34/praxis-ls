@@ -441,3 +441,73 @@ describe("CodeQL — transition() cannot be steered onto Object.prototype", () =
     },
   );
 });
+
+/**
+ * FIELDS THAT WERE ACCEPTED AND ACTED ON BY NOBODY.
+ *
+ * Both of these validated, returned 201, and changed nothing — the controller
+ * mapped one to a service argument that does not exist and dropped the other
+ * before the service saw it. A silently ignored field is worse than a refused
+ * one: the caller believes it was honoured, and in the FX case believes the
+ * order carries a rate it does not carry.
+ */
+describe("the write surface refuses what it cannot honour", () => {
+  const validator = require("../../src/modules/operations/transit_order/transit_order.validator");
+
+  test("a hand-supplied FX rate is refused, by name, on create and update", () => {
+    for (const schema of [validator.schemas.create, validator.schemas.update, validator.schemas.aiCreate]) {
+      const r = schema.safeParse({ declared_currency: "EUR", declared_fx_to_xaf: 655.957 });
+      expect(r.success).toBe(false);
+      const errors = r.error.flatten().fieldErrors.declared_fx_to_xaf;
+      expect(errors).toBeTruthy();
+      // The message has to name the field that DOES work, or a refusal is just
+      // a wall — the caller wanted a rate on the order and there is a way.
+      expect(errors[0]).toMatch(/declared_currency/);
+    }
+  });
+
+  test("the rate the order carries still comes from the currency master", () => {
+    // The refusal is only correct because the value is derived. `declared_currency`
+    // remains writable, and the service resolves the rate for it.
+    const r = validator.schemas.create.safeParse({ declared_currency: "eur" });
+    expect(r.success).toBe(true);
+    expect(r.data.declared_currency).toBe("EUR");
+  });
+
+  test("a date on create is refused and points at the endpoint that dates", () => {
+    const r = validator.schemas.create.safeParse({ date: "2026-07-27" });
+    expect(r.success).toBe(false);
+    expect(r.error.flatten().fieldErrors.date[0]).toMatch(/issue/);
+    // …and that endpoint still takes it: the number allocation is what a date
+    // on a transit order actually means.
+    expect(validator.schemas.issue.safeParse({ date: "2026-07-27" }).success).toBe(true);
+  });
+
+  test("every field the create schema accepts is one the service writes", () => {
+    /*
+     * The list below is the transit_order columns `create()` inserts, and it is
+     * maintained by hand in two files. This makes a field added to the schema
+     * without a home in the service a failed build rather than a 201 that
+     * silently drops it — which is the defect the two tests above document.
+     */
+    const WRITTEN = new Set([
+      "entity_id", "dossier_id", "customs_regime", "customs_regime_other",
+      "service_direction", "declared_value", "declared_currency",
+      "insurance_type", "surveyor_party", "departure_date", "instructions",
+      "submitted_docs",
+    ]);
+    // Control keys: not columns, but they do change what create() does.
+    const CONTROL = new Set(["lines", "allow_duplicate"]);
+    // Refused on purpose — see the tests above.
+    const REFUSED = new Set(["declared_fx_to_xaf", "date"]);
+
+    const accepted = Object.keys(validator.schemas.create._def.schema.shape);
+    for (const key of accepted) {
+      expect(
+        WRITTEN.has(key) || CONTROL.has(key) || REFUSED.has(key),
+      ).toBe(true);
+    }
+    // …and nothing the service writes has fallen out of the schema.
+    for (const key of WRITTEN) expect(accepted).toContain(key);
+  });
+});

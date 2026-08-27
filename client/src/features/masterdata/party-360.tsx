@@ -35,7 +35,7 @@ import {
   readFileAsDataUrl,
 } from "@/lib/vault-file";
 import * as api from "@/lib/masterdata-api";
-import { ComposeIconButton } from "@/features/comms/mail";
+import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
 
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
@@ -1662,7 +1662,7 @@ export function PartyDossier({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ComposeIconButton
+            <MailIconButton
               to={(p as { email?: string | null }).email || undefined}
               className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             />

@@ -10,7 +10,7 @@ import { tr } from "@/lib/i18n";
 import * as React from "react";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
-import { ComposeIconButton } from "@/features/comms/mail";
+import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
 import { DocButton } from "@/components/doc-button";
 import { UploadSigned } from "@/features/hr/contracts";
 import { AttendanceHistory } from "./attendance-history";
@@ -528,7 +528,7 @@ function EmployeeDetail({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ComposeIconButton
+            <MailIconButton
               to={employee.email || undefined}
               className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             />

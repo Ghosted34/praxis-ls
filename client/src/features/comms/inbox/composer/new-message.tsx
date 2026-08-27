@@ -99,7 +99,7 @@ export function NewMessageDialog({
              yet. It names the screen that fixes it rather than saying "no
              connections", which is a fact about our schema, not about them. */
           <Callout tone="warn" title={tr("No mailbox connected")}>
-            {tr("Connect your mailbox under Comms → Mailbox, then send from here.")}
+            {tr("Connect your mailbox under Comms → Setup, then send from here.")}
           </Callout>
         )}
 

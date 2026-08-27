@@ -4,9 +4,9 @@
  * ── Why this exists as its own component ────────────────────────────────────
  *
  * There were two recipient searches in the product and they disagreed. The old
- * `ComposeModal` (mail.tsx) had one on To and nothing on Cc; the rich composer
- * had neither, because it only ever opened on a reply where the address was
- * already decided. So the moment the composer grew a "new message" mode — which
+ * legacy compose modal (removed) had one on To and nothing on Cc; the rich
+ * composer had neither, because it only ever opened on a reply where the
+ * address was already decided. So the moment the composer grew a "new message" mode — which
  * is what sending a document from its own page needs — Cc became a field where
  * you had to already know the address by heart.
  *

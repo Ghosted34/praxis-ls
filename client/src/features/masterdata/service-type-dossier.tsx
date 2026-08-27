@@ -44,7 +44,10 @@ import { ServiceTypeAssumptions } from "./service-type-assumptions";
 // The shipment/service-detail form (0660) — which fields a file of this
 // service type captures, and therefore what every document about it prints.
 import { ServiceTypeFieldsTab } from "./service-type-fields-tab";
+// Website tab (PR2) — ninth tab, only when the `website` feature is on.
+import { ServiceTypeWebTab } from "./service-type-web-tab";
 import { reportActionError } from "@/lib/action-error";
+import { tenant, ApiError } from "@/lib/api-client";
 
 /* ── Local building blocks (mirroring party-360's MiniTable / Th / Td) ───── */
 
@@ -107,7 +110,11 @@ function DeepLink({
 // "Details" sits directly after Milestones: the two are the same kind of
 // per-service-type definition (a versioned template with one live version),
 // and a manager setting up a service works through them together.
-const TABS = [
+//
+// "Website" is the ninth tab (guide §3.1) and is appended only when the
+// tenant's `website` feature is on — see `useWebsiteFeature` below. The base
+// eight stay fixed so a flag-off tenant keeps the same tab order.
+const BASE_TABS = [
   "Overview",
   "Milestones",
   "Details",
@@ -117,7 +124,44 @@ const TABS = [
   "Commercial",
   "Automation",
 ] as const;
-type Tab = (typeof TABS)[number];
+type BaseTab = (typeof BASE_TABS)[number];
+type Tab = BaseTab | "Website";
+
+/**
+ * Is the tenant website package switched on?
+ *
+ * The admin `/service-types/:id/web` routes ride the service-type router's
+ * `operations` feature gate, so they answer even when `website` is off. The
+ * public router is what carries `feature: "website"`. Probing the feature-gated
+ * public route is the only client-visible signal until the auth session
+ * surfaces `website`: hide the tab ONLY on `FEATURE_DISABLED`; anything else
+ * (empty 200 list, 429, non-feature 403, network blip) keeps the tab visible so
+ * a paid package is never hidden on a transient or an unrelated denial.
+ */
+function useWebsiteFeature(): boolean {
+  const [on, setOn] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    tenant("/public/services", { auth: false })
+      .then(() => {
+        if (live) setOn(true);
+      })
+      .catch((e: unknown) => {
+        if (!live) return;
+        // Hide ONLY when the feature gate itself refused. A bare 403 without
+        // FEATURE_DISABLED must not hide a paid tab.
+        if (e instanceof ApiError && e.code === "FEATURE_DISABLED") {
+          setOn(false);
+        } else {
+          setOn(true);
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return on;
+}
 
 const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
   OPEN: "blue",
@@ -1128,6 +1172,11 @@ export function ServiceTypeDossier({
     () => api.getServiceTypeDossier(serviceTypeId),
     [serviceTypeId],
   );
+  const websiteOn = useWebsiteFeature();
+  const tabs = React.useMemo<Tab[]>(
+    () => (websiteOn ? [...BASE_TABS, "Website"] : [...BASE_TABS]),
+    [websiteOn],
+  );
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [archiving, setArchiving] = React.useState(false);
 
@@ -1137,6 +1186,11 @@ export function ServiceTypeDossier({
   React.useEffect(() => {
     setTab("Overview");
   }, [serviceTypeId]);
+
+  // If the flag flips off while the Website tab is open, fall back to Overview.
+  React.useEffect(() => {
+    if (tab === "Website" && !websiteOn) setTab("Overview");
+  }, [tab, websiteOn]);
 
   const reload = () => {
     dossier.reload();
@@ -1247,9 +1301,9 @@ export function ServiceTypeDossier({
         />
       </KpiRow>
 
-      {/* Tabs */}
+      {/* Tabs — ninth "Website" tab only when the website feature is on. */}
       <div className="flex flex-wrap gap-1 border-b">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -1259,7 +1313,7 @@ export function ServiceTypeDossier({
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t}
+            {t === "Website" ? tr("Website") : t}
           </button>
         ))}
       </div>
@@ -1307,6 +1361,16 @@ export function ServiceTypeDossier({
       )}
       {tab === "Commercial" && <CommercialTab d={d} />}
       {tab === "Automation" && <AutomationTab st={st} />}
+      {tab === "Website" && websiteOn && (
+        <ServiceTypeWebTab
+          serviceTypeId={serviceTypeId}
+          serviceTypeKey={st.key}
+          // When the jump-modal saves name_en, the dossier reloads and this
+          // prop changes → the tab re-GETs so readiness.name_en_present ticks.
+          serviceTypeNameEn={st.name_en}
+          onEditServiceType={onEdit}
+        />
+      )}
     </div>
   );
 }

@@ -227,17 +227,28 @@ module.exports = {
    * and if it didn't, it would erase the classification of historical files.
    * Deactivating hides it from pickers while every existing dossier keeps its
    * meaning, which is also why `list` can include inactive rows on request.
+   *
+   * Archive ALSO auto-unpublishes any web profile row in the SAME transaction
+   * (guide §4.2 rule 2). A web page for an archived service is a leak by
+   * construction: the service_type.is_active check the public list applies
+   * would catch it anyway, but doing it here makes the on-disk state honest
+   * with itself and means reactivation never auto-republishes — the tenant
+   * walks the checklist again.
    */
   async archive(client, { id, actor = {} }) {
     await assertNotSystem(client, id, "archived");
-    const row = await repo.update(client, id, { is_active: false });
-    await audit(client, {
-      actorUserId: actor.user_id || null,
-      action: events.ARCHIVED,
-      moduleKey: events.MODULE,
-      entityRef: "service_type:" + id,
-      after: row,
+    const webHook = require("../service_type_web/service_type_web.service");
+    return atomically(client, async () => {
+      const row = await repo.update(client, id, { is_active: false });
+      const unhooked = await webHook.autoUnpublishForArchive(client, id);
+      await audit(client, {
+        actorUserId: actor.user_id || null,
+        action: events.ARCHIVED,
+        moduleKey: events.MODULE,
+        entityRef: "service_type:" + id,
+        after: { ...row, web_unpublished: Boolean(unhooked) },
+      });
+      return row;
     });
-    return row;
   },
 };

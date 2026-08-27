@@ -1735,3 +1735,200 @@ export const configureServiceTypeContainers = (
  * exposed by `masterdata-api.listDictRefs` and already priced against by expense
  * rates (0634). It is NOT re-declared here: one reader means a file's equipment
  * and its rate card can never disagree about what a 40' HC is. */
+
+/* ── Service-type web profile (Website tab — PR2) ───────────────────────────
+ *
+ * Admin surface for the tenant website package (guide §3.1 / §4.5). GET always
+ * answers 200 for an existing service type (`profile: null` before creation);
+ * one upsert covers create + edit with omitted-keys-unchanged semantics.
+ * Publish/unpublish, media, FAQ and related are separate verbs. The server is
+ * the readiness authority — the checklist renders `readiness` exactly as
+ * returned.
+ */
+export type ServiceTypeWebCover = {
+  present: boolean;
+  /** Allowlist truth (VERIFIED + scoped + image). Publish requires this. */
+  allowed: boolean;
+};
+
+export type ServiceTypeWebReadiness = {
+  name_en_present: boolean;
+  short_fr: boolean;
+  short_en: boolean;
+  long_fr: boolean;
+  long_en: boolean;
+  slug_fr: boolean;
+  slug_en: boolean;
+  cover: ServiceTypeWebCover;
+  publishable: boolean;
+  missing: string[];
+};
+
+export type ServiceTypeWebProfile = {
+  service_type_id: string;
+  short_description_fr?: string | null;
+  short_description_en?: string | null;
+  long_description_fr?: string | null;
+  long_description_en?: string | null;
+  highlights_fr?: string[];
+  highlights_en?: string[];
+  coverage_fr?: string | null;
+  coverage_en?: string | null;
+  slug_fr?: string | null;
+  slug_en?: string | null;
+  meta_title_fr?: string | null;
+  meta_title_en?: string | null;
+  meta_description_fr?: string | null;
+  meta_description_en?: string | null;
+  cover_vault_id?: string | null;
+  icon_vault_id?: string | null;
+  gallery_vault_ids?: string[];
+  video_url?: string | null;
+  is_published: boolean;
+  published_at?: string | null;
+  published_by?: string | null;
+  sort_order?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  /** Server-side allowlist check, recomputed on every GET. */
+  cover_allowed?: boolean;
+};
+
+export type ServiceTypeWebFaqRow = {
+  faq_id?: string;
+  question_fr: string;
+  question_en: string;
+  answer_fr: string;
+  answer_en: string;
+  sort_order?: number;
+};
+
+export type ServiceTypeWebRelated = {
+  related_service_type_id: string;
+  name_fr?: string | null;
+  name_en?: string | null;
+  key?: string | null;
+};
+
+export type ServiceTypeWebTab = {
+  /** Null before the first upsert — the empty state. */
+  profile: ServiceTypeWebProfile | null;
+  faq: ServiceTypeWebFaqRow[];
+  related: ServiceTypeWebRelated[] | string[];
+  readiness: ServiceTypeWebReadiness;
+  service_type: {
+    is_active: boolean;
+    name_fr?: string | null;
+    name_en?: string | null;
+  };
+};
+
+/** Caps mirror `service_type_web.validator.js` LIMITS — client-side only. */
+export const SERVICE_TYPE_WEB_LIMITS = {
+  SHORT_DESCRIPTION_MAX: 500,
+  LONG_DESCRIPTION_MAX: 20000,
+  META_TITLE_MAX: 70,
+  META_DESCRIPTION_MAX: 200,
+  COVERAGE_MAX: 1000,
+  QUESTION_MAX: 300,
+  ANSWER_MAX: 4000,
+  HIGHLIGHTS_MAX: 8,
+  HIGHLIGHTS_GUIDED_MIN: 4,
+  GALLERY_MAX: 12,
+  FAQ_MAX: 12,
+} as const;
+
+/**
+ * Profile patch for the one upsert. Omitted keys are left unchanged on the
+ * server; explicit `null` clears a nullable field. Send only dirty keys.
+ */
+export type ServiceTypeWebProfilePatch = {
+  short_description_fr?: string | null;
+  short_description_en?: string | null;
+  long_description_fr?: string | null;
+  long_description_en?: string | null;
+  highlights_fr?: string[];
+  highlights_en?: string[];
+  coverage_fr?: string | null;
+  coverage_en?: string | null;
+  slug_fr?: string | null;
+  slug_en?: string | null;
+  meta_title_fr?: string | null;
+  meta_title_en?: string | null;
+  meta_description_fr?: string | null;
+  meta_description_en?: string | null;
+  cover_vault_id?: string | null;
+  icon_vault_id?: string | null;
+  gallery_vault_ids?: string[];
+  video_url?: string | null;
+  sort_order?: number;
+};
+
+/** GET always 200 for an existing service type (`profile: null` when absent). */
+export const getServiceTypeWeb = (serviceTypeId: string) =>
+  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web`);
+
+/** One upsert — create-when-absent, update-when-present. Returns the full tab. */
+export const upsertServiceTypeWeb = (
+  serviceTypeId: string,
+  patch: ServiceTypeWebProfilePatch,
+) =>
+  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web`, {
+    method: "PUT",
+    body: patch,
+  });
+
+export const publishServiceTypeWeb = (serviceTypeId: string) =>
+  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/publish`, {
+    method: "POST",
+    body: {},
+  });
+
+export const unpublishServiceTypeWeb = (serviceTypeId: string) =>
+  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/unpublish`, {
+    method: "POST",
+    body: {},
+  });
+
+export const uploadServiceTypeWebMedia = (
+  serviceTypeId: string,
+  body: {
+    role: "COVER" | "ICON" | "GALLERY";
+    data_url: string;
+    original_name?: string;
+  },
+) =>
+  tenant<ServiceTypeWebTab>(`/service-types/${serviceTypeId}/web/media`, {
+    method: "POST",
+    body,
+  });
+
+export const removeServiceTypeWebMedia = (
+  serviceTypeId: string,
+  documentId: string,
+) =>
+  tenant<ServiceTypeWebTab>(
+    `/service-types/${serviceTypeId}/web/media/${documentId}`,
+    { method: "DELETE" },
+  );
+
+export const replaceServiceTypeWebFaq = (
+  serviceTypeId: string,
+  rows: ServiceTypeWebFaqRow[],
+) =>
+  tenant<{ faq: ServiceTypeWebFaqRow[]; tab: ServiceTypeWebTab }>(
+    `/service-types/${serviceTypeId}/web/faq`,
+    { method: "PUT", body: { rows } },
+  );
+
+export const replaceServiceTypeWebRelated = (
+  serviceTypeId: string,
+  relatedServiceTypeIds: string[],
+) =>
+  tenant<{ related: string[]; tab: ServiceTypeWebTab }>(
+    `/service-types/${serviceTypeId}/web/related`,
+    {
+      method: "PUT",
+      body: { related_service_type_ids: relatedServiceTypeIds },
+    },
+  );

@@ -208,6 +208,136 @@ router.put(
   }),
 );
 
+/* ── Service-type web profile (PR1 — guide §4.5) ────────────────────────── */
+//
+// The "Website" tab on the service-type dossier. Mounted on THIS router
+// because (a) it is the same MOD-29 permission, (b) the URL shape
+// `/service-types/:id/web…` reads as what it is, and (c) the module
+// loader mounts one router per basePath — the same arrangement
+// `service_type_field` uses ("the form lives on the service type, so its
+// routes hang off this router"). The PUBLIC surface (`/public/services`)
+// is auto-mounted as its own module via the loader.
+//
+// Validators are bound to `validateX` names so the write-route guard
+// (scripts/check-write-route-validators.js) sees them. The service
+// lives in `service_type_web/service_type_web.service.js`; the public
+// read queries it shares with the admin side live in
+// `service_type_web/service_type_web.repo.js`.
+const webService = require("../service_type_web/service_type_web.service");
+const {
+  upsertProfile: validateUpsertProfile,
+  replaceFaq: validateReplaceFaq,
+  replaceRelated: validateReplaceRelated,
+  replaceMedia: validateReplaceMedia,
+  validateNoBody: validateWebAction,
+} = require("../service_type_web/service_type_web.validator");
+
+// GET — always 200 for an existing service type, `profile: null` before
+// creation. The tab never branches on a 404 (guide §3.1, §4.5 GET row).
+router.get(
+  "/:id/web",
+  requirePermission(MODULE, "view"),
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.getTab(c, req.params.id));
+    res.json({ data });
+  }),
+);
+// PUT — one upsert, omitted-keys-unchanged. The single writer for the
+// profile row; the first call creates, every subsequent call updates.
+// Slug + media writes are 422 LOCKED while published.
+router.put(
+  "/:id/web",
+  requirePermission(MODULE, "edit"),
+  validateUpsertProfile,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.upsertProfile(c, {
+      serviceTypeId: req.params.id, patch: req.body, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Publish — the §4.2 gate, atomically. Each missing item is named in 422.
+router.post(
+  "/:id/web/publish",
+  requirePermission(MODULE, "edit"),
+  validateWebAction,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.publish(c, {
+      serviceTypeId: req.params.id, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Unpublish — always available, keeps content.
+router.post(
+  "/:id/web/unpublish",
+  requirePermission(MODULE, "edit"),
+  validateWebAction,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.unpublish(c, {
+      serviceTypeId: req.params.id, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Media upload — refused while published. Replacing cover/icon archives
+// the old vault row and clears its public scope.
+router.post(
+  "/:id/web/media",
+  requirePermission(MODULE, "edit"),
+  validateReplaceMedia,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.uploadMedia(c, {
+      serviceTypeId: req.params.id,
+      role: req.body.role,
+      dataUrl: req.body.data_url,
+      originalName: req.body.original_name,
+      actor: req.user || {},
+      slug: req.tenant && req.tenant.slug,
+    }));
+    res.json({ data });
+  }),
+);
+// Media remove — refuses while published; otherwise archives the vault
+// row and clears its public scope.
+router.delete(
+  "/:id/web/media/:docId",
+  requirePermission(MODULE, "edit"),
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.removeMedia(c, {
+      serviceTypeId: req.params.id, documentId: req.params.docId, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// FAQ set-replace — refused while published. The `replaceDossiers`
+// precedent: one PUT with the whole ordered list.
+router.put(
+  "/:id/web/faq",
+  requirePermission(MODULE, "edit"),
+  validateReplaceFaq,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.replaceFaq(c, {
+      serviceTypeId: req.params.id, rows: req.body.rows, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Related set-replace — a metadata tweak, stays live while published.
+router.put(
+  "/:id/web/related",
+  requirePermission(MODULE, "edit"),
+  validateReplaceRelated,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.replaceRelated(c, {
+      serviceTypeId: req.params.id,
+      relatedIds: req.body.related_service_type_ids,
+      actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
 

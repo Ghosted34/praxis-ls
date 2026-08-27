@@ -7,6 +7,7 @@ const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emi
 const { atomically } = require("../../../shared/db/tx");
 const { AppError } = require("../../../utils/errors");
 const { parseDataUrl } = require("../../../utils/data-url");
+const { slug: slugify } = require("../../../shared/text/slug");
 const llm = require("../../../services/ai/llm.service");
 const storage = require("../../../services/storage.service");
 const governance = require("../../ai/governance/governance.service");
@@ -21,8 +22,10 @@ const writable = [
 const pick = (data) => Object.fromEntries(
   writable.filter((key) => data[key] !== undefined).map((key) => [key, data[key]]),
 );
-const slug = (value) => String(value).toLowerCase().trim()
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+// The accent-safe shared helper. Only called at CREATE to auto-suggest a
+// slug from the title; existing stored slugs are never rewritten by this
+// path (the validator + insert shape never re-slugifies an existing row).
+const slug = (value) => slugify(value);
 
 async function validateDossiers(client, dossierIds) {
   const ids = [...new Set((dossierIds || []).map(String))];

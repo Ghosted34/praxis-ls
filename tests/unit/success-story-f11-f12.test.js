@@ -98,6 +98,19 @@ describe("F12 public story media", () => {
     expect(sql).toContain("public_media_role = 'CLIENT_LOGO'");
   });
 
+  test("list's published_month is YYYY-MM even when published_at is a JS Date (audit mirror fix)", async () => {
+    // Audit (comment 3) originally flagged the inline
+    //   String(row.published_at).slice(0, 7)
+    // in this very file. The fix lives in src/shared/date/published-month.js
+    // and is now used here. A JS Date from pg.toString() would yield
+    // "Wed Aug …" — not "2026-08" — so the helper takes the ISO path.
+    const client = { query: jest.fn().mockResolvedValue({ rows: [
+      { slug: "aug", title: "August", public_reference_consent: "NAMED", name: "Acme", published_at: new Date("2026-08-27T12:34:56.000Z") },
+    ] }) };
+    const out = await publicStory.list(client);
+    expect(out[0].published_month).toBe("2026-08");
+  });
+
   test("anonymous media requires exact publication, story binding, image type, role and logo consent", async () => {
     storage.get.mockResolvedValue(Buffer.from("image"));
     const client = { query: jest.fn().mockResolvedValue({ rows: [{

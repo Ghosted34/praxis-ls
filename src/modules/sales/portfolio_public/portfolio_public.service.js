@@ -2,6 +2,7 @@
 
 const storage = require("../../../services/storage.service");
 const { AppError } = require("../../../utils/errors");
+const { publishedMonth } = require("../../../shared/date/published-month");
 
 const nope = () => new AppError("NOT_FOUND", "Story not found", 404);
 const nameOf = (row) => row.public_reference_consent === "NAMED"
@@ -47,7 +48,7 @@ async function list(client) {
     client_logo_url: row.public_reference_consent === "NAMED" && row.logo_allowed
       ? mediaUrl(row.client_logo_vault_id) : null,
     client_name: nameOf(row),
-    published_month: row.published_at ? String(row.published_at).slice(0, 7) : null,
+    published_month: publishedMonth(row.published_at),
   }));
 }
 

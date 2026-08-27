@@ -85,6 +85,21 @@ describe("the two halves of a feature flag agree", () => {
     expect(TENANT_FLAGS.has("mail.core")).toBe(true);
   });
 
+  test("the website feature has a catalogue row to switch it (PR1 — guide §4.4)", () => {
+    // Same shape failure the 9114 mail incident caught: a tenant flag with
+    // no catalogue row is a feature nobody can turn on, because both
+    // `provisioning.projectFeatures()` and `plans.service.reprojectPlan`
+    // iterate the catalogue, and the console has nothing to show.
+    const row = CATALOGUE.get("website");
+    expect(row).toBeDefined();
+    expect(row.default_state).toBe("off");
+    // No dependency — website stands on its own. (The MOD-29 module key
+    // comes from the SQL, which the test's parse captures as a regex
+    // group; what is verified here is that the row exists with the
+    // correct default and no unmet dependencies.)
+    expect(row.depends_on).toEqual([]);
+  });
+
   test("EVERY tenant-seeded flag has a catalogue row to switch it", () => {
     const unswitchable = [...TENANT_FLAGS].filter((k) => !CATALOGUE.has(k)).sort();
     // Without a catalogue row the console has nothing to show, the projection

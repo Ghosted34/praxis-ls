@@ -41,3 +41,44 @@ describe("attendance.repo.list date window", () => {
     expect(calls[0].params).toContain("Africa/Douala");
   });
 });
+
+/* ── PR2 filters on the log ────────────────────────────────────────────── */
+
+const U1 = "11111111-1111-1111-1111-111111111111";
+const U2 = "22222222-2222-2222-2222-222222222222";
+
+describe("attendance.repo.list employee/department filters", () => {
+  it("takes a set of employees as ONE bound array, not an interpolated IN list", async () => {
+    const { client, calls } = capture();
+    await repo.list(client, { employee_ids: [U1, U2] });
+    expect(calls[0].sql).toMatch(/= ANY\(\$\d+::uuid\[\]\)/);
+    expect(calls[0].params).toContainEqual([U1, U2]);
+  });
+
+  it("accepts a comma-separated list, which is how a URL carries one", async () => {
+    const { client, calls } = capture();
+    await repo.list(client, { employee_ids: `${U1},${U2}` });
+    expect(calls[0].params).toContainEqual([U1, U2]);
+  });
+
+  it("DROPS a non-uuid rather than handing junk to a uuid[] bind", async () => {
+    // `GET /attendance` has no query schema (it predates one), so this is the
+    // only place that can refuse it. Reaching the driver would be a 500.
+    const { client, calls } = capture();
+    await repo.list(client, { employee_ids: "everyone" });
+    expect(calls[0].sql).not.toContain("ANY(");
+  });
+
+  it("caps the set at 50", async () => {
+    const { client, calls } = capture();
+    await repo.list(client, { employee_ids: Array.from({ length: 80 }, () => U1) });
+    expect(calls[0].params.find((p) => Array.isArray(p))).toHaveLength(50);
+  });
+
+  it("matches a department case- and whitespace-insensitively", async () => {
+    const { client, calls } = capture();
+    await repo.list(client, { department: " operations " });
+    expect(calls[0].sql).toContain("lower(btrim(e.department)) = lower(btrim($");
+    expect(calls[0].params).toContain(" operations ");
+  });
+});

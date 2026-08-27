@@ -55,7 +55,11 @@ function defaultWindow() {
   return { from: iso(from), to: iso(to < from ? from : to) };
 }
 
-function WaiveModal({
+/** The waive dialog. EXPORTED because the history widget (PR2) raises the same
+ *  decision from its own rows: waiving moves money off a payslip, and a second
+ *  dialog would be a second wording of the one thing that must read the same
+ *  everywhere it is offered. */
+export function WaiveModal({
   day,
   onClose,
   onSaved,

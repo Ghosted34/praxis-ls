@@ -3,9 +3,21 @@ const { makeController } = require("../../../shared/crud/resource");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const service = require("./attendance.service");
 const reconcile = require("./attendance.reconcile");
+const { resolveContext } = require("../../../services/spreadsheet");
 
 const base = makeController(service, "Attendance");
 const actor = (req) => req.user || { user_id: null };
+
+/** Ship a built export. The filename is the guide's contract
+ *  (`attendance-{from}-{to}.{ext}`); `X-Praxis-Truncated` says so out loud when
+ *  the row cap cut the window short, so a caller downloading a year for the
+ *  whole company is not silently handed a prefix of it. */
+function sendFile(res, file) {
+  res.setHeader("Content-Type", file.contentType);
+  res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  if (file.truncated) res.setHeader("X-Praxis-Truncated", "1");
+  res.send(file.buffer);
+}
 
 module.exports = {
   ...base,
@@ -105,6 +117,69 @@ module.exports = {
   // reconciler), so this is safe to press twice.
   runReconcile: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => reconcile.reconcileDate(c, { date: req.body.date || null, actor: actor(req) })) })),
+
+  /* ── History, analytics and the download (PR2) ───────────────────────────
+   *
+   * `/mine` takes NO grant — an employee is always entitled to their own
+   * attendance — and reaches a different service function from the HR one, so
+   * an unresolved employee can never fall through to the whole company. See
+   * attendance.service's note on the self variants.
+   */
+  analytics: asyncHandler(async (req, res) => {
+    const { from, to, employee_id: employeeId, employee_ids: employeeIds, department } = req.validatedQuery;
+    res.json({
+      data: await req.tenantDb((c) => service.analytics(c, {
+        from, to, employeeId: employeeId || null, employeeIds: employeeIds || null, department: department || null,
+      })),
+    });
+  }),
+  myAnalytics: asyncHandler(async (req, res) => {
+    const { from, to } = req.validatedQuery;
+    res.json({ data: await req.tenantDb((c) => service.myAnalytics(c, { from, to, actor: actor(req) })) });
+  }),
+
+  myPunches: asyncHandler(async (req, res) => {
+    const { from, to } = req.validatedQuery;
+    res.json({ data: await req.tenantDb((c) => service.myPunches(c, { from, to, actor: actor(req) })) });
+  }),
+
+  /**
+   * The download.
+   *
+   * `resolveContext` runs INSIDE `req.tenantDb`, alongside the rows, because
+   * that is the contract services/spreadsheet states: production callers
+   * resolve the tenant's brand/currency context on their tenant connection and
+   * hand it to the builder, which stays pure. Skipping it would ship an
+   * unbranded file, which the toolkit permits only so unit tests can build
+   * without a database.
+   */
+  exportWindow: asyncHandler(async (req, res) => {
+    const { from, to, employee_id: employeeId, employee_ids: employeeIds, department, format, sheet } = req.validatedQuery;
+    const file = await req.tenantDb(async (c) => {
+      const context = await resolveContext(c, { title: `Attendance ${from} → ${to}`, env: req.env, actor: req.user || null });
+      return service.exportWindow(c, {
+        from, to,
+        employeeId: employeeId || null,
+        employeeIds: employeeIds || null,
+        department: department || null,
+        format: format || "xlsx",
+        sheet: sheet || "days",
+        context,
+        env: req.env,
+      });
+    });
+    sendFile(res, file);
+  }),
+  myExport: asyncHandler(async (req, res) => {
+    const { from, to, format, sheet } = req.validatedQuery;
+    const file = await req.tenantDb(async (c) => {
+      const context = await resolveContext(c, { title: `My attendance ${from} → ${to}`, env: req.env, actor: req.user || null });
+      return service.myExport(c, {
+        from, to, format: format || "xlsx", sheet: sheet || "days", context, env: req.env, actor: actor(req),
+      });
+    });
+    sendFile(res, file);
+  }),
 
   // Admin clock-out on a specific row (kept for corrections).
   clockOutById: asyncHandler(async (req, res) => {

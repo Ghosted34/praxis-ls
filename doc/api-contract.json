@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 131,
-  "route_count": 1425,
+  "modules_mounted": 133,
+  "route_count": 1450,
   "tiers": {
-    "public": 41,
-    "self-scoped": 83,
-    "gated": 1301
+    "public": 44,
+    "self-scoped": 86,
+    "gated": 1320
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -460,6 +460,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/service-types/:id/field-sets/:setId/fields/:fieldId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/service-types/:id/web/media/:docId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1035,6 +1041,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/attendance/analytics": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/attendance/analytics/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/attendance/days": {
       "auth": true,
       "rbac": true,
@@ -1053,6 +1071,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/attendance/export": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/attendance/export/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/attendance/open": {
       "auth": true,
       "rbac": true,
@@ -1064,6 +1094,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/attendance/punches/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/attendance/work-sites": {
       "auth": true,
@@ -3135,6 +3171,24 @@
       "validated": false,
       "tier": "public"
     },
+    "GET /api/tenant/public/services/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/services/:slug": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
+    "GET /api/tenant/public/services/media/:id": {
+      "auth": false,
+      "rbac": false,
+      "validated": false,
+      "tier": "public"
+    },
     "GET /api/tenant/public/sign/:token": {
       "auth": false,
       "rbac": false,
@@ -3471,6 +3525,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/service-types/:id/web": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/sessions/": {
       "auth": true,
       "rbac": true,
@@ -3543,6 +3603,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/signatures/ingest/queue": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/signatures/menu": {
       "auth": true,
       "rbac": true,
@@ -3550,6 +3616,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/signatures/presets": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/signatures/print-jobs/:id/barcode": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -7611,6 +7683,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/service-types/:id/web/media": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/service-types/:id/web/publish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/service-types/:id/web/unpublish": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/sessions/": {
       "auth": true,
       "rbac": true,
@@ -7665,7 +7755,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/signatures/ingest": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/bind": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/decode": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/ingest/:id/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/signatures/internal": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs/:id/printed": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/signatures/print-jobs/:id/reprint": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -8524,6 +8656,24 @@
       "tier": "gated"
     },
     "PUT /api/tenant/service-types/:id/dictionary/:itemId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/service-types/:id/web": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/service-types/:id/web/faq": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/service-types/:id/web/related": {
       "auth": true,
       "rbac": true,
       "validated": false,

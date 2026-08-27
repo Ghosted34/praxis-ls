@@ -13,6 +13,12 @@
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
+/** UUID format check — the public media route must never run a query on
+ *  arbitrary user input (the audit found a route that did a `SELECT …
+ *  FROM document_vault WHERE doc_id = $1`; mirror `portfolio_public` and
+ *  refuse anything that isn't a UUID before we touch the database). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /**
  * Single-row read for the admin GET. Carries every field the dashboard
  * renders. JOIN on service_type so readiness can read name_en in the same
@@ -75,6 +81,20 @@ function emptyProfile(serviceTypeId) {
  * service (pick of defined keys) not here; the repo accepts the full patch
  * (only the keys the caller sent). The first INSERT carries the patch so
  * the row is created with the caller's values, not just defaults.
+ *
+ * Distinguishing "key omitted" from "key explicitly null" matters:
+ *   - omitted: `Object.prototype.hasOwnProperty` is false → not in `sent`
+ *     → not part of the INSERT, not part of the DO UPDATE; the existing
+ *     value is preserved verbatim.
+ *   - explicit null: `hasOwnProperty` is true, value is null → in `sent`
+ *     with value null → written through verbatim, no `COALESCE`. A PUT
+ *     that says `{video_url: null}` clears the field; the previous
+ *     `COALESCE(EXCLUDED.col, current)` would have silently no-op'd it.
+ *   - the INSERT path coerces `undefined` to NULL (defence against a
+ *     caller that builds the patch with `{video_url: undefined}` and
+ *     passes it through), but a JSON body never carries `undefined` and
+ *     the validator strips unknown keys, so this is the belt to the
+ *     `.strict()` braces.
  */
 async function upsertProfile(client, serviceTypeId, patch) {
   // The columns the patch may set on either branch.
@@ -93,8 +113,8 @@ async function upsertProfile(client, serviceTypeId, patch) {
   ];
   // Build an INSERT with ONLY the keys the patch actually carries (so a
   // first write with one field does not insert NULLs over every other
-  // column) and ON CONFLICT DO UPDATE that COALESCEs the EXCLUDED value
-  // back to the existing column — omitted keys are left unchanged.
+  // column). The DO UPDATE only touches the columns in `sent` too — no
+  // COALESCE, so an explicit null is honoured as a clear.
   const sent = COLUMNS.filter((col) => Object.prototype.hasOwnProperty.call(patch, col));
   if (sent.length === 0) {
     // Pure touch (e.g. the caller only sent an audio field that maps to no
@@ -108,8 +128,11 @@ async function upsertProfile(client, serviceTypeId, patch) {
   const insertCols = ["service_type_id", ...sent];
   const placeholders = insertCols.map((_, i) => `$${i + 1}`).join(", ");
   const values = [serviceTypeId, ...sent.map((col) => (patch[col] === undefined ? null : patch[col]))];
+  // EXCLUDED.<col> = the value the INSERT tried to write (i.e. what the
+  // caller sent, including a real null). No COALESCE — explicit null is a
+  // clear, omitted keys are not in the SET list at all.
   const updateSet = sent
-    .map((col) => `${col} = COALESCE(EXCLUDED.${col}, service_type_web_profile.${col})`)
+    .map((col) => `${col} = EXCLUDED.${col}`)
     .join(", ");
   const sql = `
     INSERT INTO service_type_web_profile (${insertCols.join(", ")})
@@ -384,9 +407,15 @@ async function serviceTypeExists(client, serviceTypeId) {
   return rows.length > 0;
 }
 
-/** Used by the readiness check + the public media route. Re-checks the
+/** Used by the readiness check + the admin cover check. Re-checks the
  *  allowlist at serve time (guide §4.3) — a row that points at a doc id
- *  whose scope/role has been cleared is unreachable. */
+ *  whose scope/role has been cleared is unreachable.
+ *
+ *  ADMIN USE ONLY. The public media route is a separate function below:
+ *  this one intentionally does NOT verify that the owning profile is
+ *  published, because the admin path needs to read the cover row to
+ *  decide whether publish should be allowed (the readiness gate). The
+ *  public surface must never make that pre-publish check. */
 async function vaultMediaForServe(client, docId) {
   const { rows } = await client.query(
     `SELECT v.*
@@ -395,6 +424,59 @@ async function vaultMediaForServe(client, docId) {
         AND v.doc_type = 'SERVICE_TYPE_MEDIA'
         AND v.public_media_scope = 'SERVICE_TYPE'
         AND v.public_media_content_type = ANY($2::text[])`,
+    [docId, IMAGE_TYPES],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * PUBLIC USE ONLY. Re-checks the allowlist at serve time, end-to-end
+ * (guide §4.3 + §6 rules 2 & 9).
+ *
+ * The portfolio_public precedent (`portfolio_public.service.js:117-139`)
+ * joins the owning row and asserts `is_published = true` + the doc is
+ * bound to one of the published row's slots. This function does the
+ * same for service_type_web:
+ *
+ *   1. the vault row is VERIFIED + `SERVICE_TYPE` scoped + image-only;
+ *   2. its `public_media_entity_ref` matches a service_type whose
+ *      web profile is `is_published = true` AND whose service_type is
+ *      `is_active = true`;
+ *   3. its `public_media_role` is COVER, ICON or GALLERY (the three
+ *      roles the §4.3 CHECK accepts);
+ *   4. AND the doc is actually bound to the profile on the matching
+ *      slot — so a doc scoped to service A cannot be served from a
+ *      request for service B's media, and a doc archived out of the
+ *      cover slot is not served as a cover from a stale URL.
+ *
+ * 0 rows ⇒ 404 NOT_FOUND. The function returns the joined row so the
+ * caller has both the doc (for streaming) and the parent (for context).
+ */
+async function publicMediaForServe(client, docId) {
+  if (!UUID_RE.test(String(docId || ""))) return null;
+  const { rows } = await client.query(
+    `SELECT v.doc_id, v.public_media_content_type, v.public_media_role,
+            v.public_media_entity_ref, v.storage_path,
+            p.service_type_id
+       FROM document_vault v
+       JOIN service_type_web_profile p
+         ON p.service_type_id = NULLIF(
+              SUBSTRING(v.public_media_entity_ref FROM 'service_type:(.*)$'),
+              '')::uuid
+       JOIN service_type st
+         ON st.service_type_id = p.service_type_id
+      WHERE v.doc_id = $1 AND v.status = 'VERIFIED'
+        AND v.doc_type = 'SERVICE_TYPE_MEDIA'
+        AND v.public_media_scope = 'SERVICE_TYPE'
+        AND v.public_media_role IN ('COVER', 'ICON', 'GALLERY')
+        AND v.public_media_content_type = ANY($2::text[])
+        AND p.is_published = true
+        AND st.is_active = true
+        AND (
+          (v.public_media_role = 'COVER'  AND v.doc_id = p.cover_vault_id)
+          OR (v.public_media_role = 'ICON'  AND v.doc_id = p.icon_vault_id)
+          OR (v.public_media_role = 'GALLERY' AND v.doc_id = ANY(p.gallery_vault_ids))
+        )`,
     [docId, IMAGE_TYPES],
   );
   return rows[0] || null;
@@ -420,4 +502,6 @@ module.exports = {
   publicFaq,
   serviceTypeExists,
   vaultMediaForServe,
+  publicMediaForServe,
+  UUID_RE,
 };

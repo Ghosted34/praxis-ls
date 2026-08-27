@@ -241,7 +241,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
-| `LOCKED` | 422 | 36× | — |
+| `LOCKED` | 422 | 35× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
@@ -277,7 +277,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 559× | — |
+| `NOT_FOUND` | 404, 422 | 560× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |

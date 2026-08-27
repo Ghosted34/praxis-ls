@@ -413,12 +413,14 @@ async function removeMedia(client, { serviceTypeId, documentId, actor = {} }) {
 async function replaceFaq(client, { serviceTypeId, rows, actor = {} }) {
   const exists = await repo.serviceTypeExists(client, serviceTypeId);
   if (!exists) throw new AppError("NOT_FOUND", "Service type not found", 404);
+  // FAQ is copy, not slug/media — it stays live while published. The audit
+  // called out the asymmetry with `/related` (deliberately live) and made
+  // the FAQ lock look like an over-application. Guide §4.2 rule 4 is
+  // "slug + media 422 LOCKED"; FAQ edits are a CMS typo fix that must
+  // not require downtime (rule 4's own rationale).
   return atomically(client, async () => {
     const profile = await repo.lockProfile(client, serviceTypeId);
     if (!profile) throw new AppError("NOT_FOUND", "Web profile not found — create one before adding FAQ", 404);
-    if (profile.is_published) {
-      throw new AppError("LOCKED", "Unpublish before changing the FAQ", 422);
-    }
     const list = await repo.replaceFaq(client, serviceTypeId, rows);
     await audit(client, {
       actorUserId: actor.user_id || null,

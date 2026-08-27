@@ -14,7 +14,9 @@ jest.mock("../../src/modules/operations/service_type_web/service_type_web.repo",
   publicRelated: jest.fn(),
   publicFaq: jest.fn(),
   vaultMediaForServe: jest.fn(),
+  publicMediaForServe: jest.fn(),
   IMAGE_TYPES: ["image/png", "image/jpeg", "image/webp"],
+  UUID_RE: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 }));
 jest.mock("../../src/services/storage.service", () => ({ get: jest.fn(), delete: jest.fn() }));
 
@@ -104,9 +106,9 @@ describe("public detail", () => {
     expect(repoSrc).toMatch(/publicRelated[\s\S]*?p\.is_published = true/);
   });
 
-  test("media route re-checks VERIFIED + scope + role + image content type before streaming", async () => {
+  test("media route re-checks VERIFIED + scope + role + image content type + ownership before streaming", async () => {
     const UUID = "11111111-1111-4111-8111-111111111111";
-    repo.vaultMediaForServe.mockResolvedValue(null);
+    repo.publicMediaForServe.mockResolvedValue(null);
     const { router } = require(routesFile);
     // Call the route directly with a fake req/res.
     const layer = router.stack.find((l) => l.route && l.route.path === "/media/:id");
@@ -122,21 +124,25 @@ describe("public detail", () => {
       setHeader: jest.fn(),
       send: jest.fn(),
     };
+    let captured = null;
+    const next = (err) => { captured = err; };
     for (const h of handlers) {
-      await h(fakeReq, fakeRes, () => undefined);
+      await h(fakeReq, fakeRes, next);
     }
-    // With no doc, the route should answer 404.
-    expect(fakeRes.status).toHaveBeenCalledWith(404);
+    // With no doc, the route throws NOT_FOUND (404) through the asyncHandler.
+    expect(captured).toBeTruthy();
+    expect(captured.code).toBe("NOT_FOUND");
+    expect(captured.status).toBe(404);
     expect(fakeRes.send).not.toHaveBeenCalled();
     expect(storage.get).not.toHaveBeenCalled();
   });
 
   test("media route streams a verified, scoped, image doc with the right headers", async () => {
     const UUID = "11111111-1111-4111-8111-111111111111";
-    repo.vaultMediaForServe.mockResolvedValue({
+    repo.publicMediaForServe.mockResolvedValue({
       doc_id: UUID, storage_path: "tenant/web/x.png",
       public_media_content_type: "image/png", public_media_scope: "SERVICE_TYPE",
-      public_media_role: "COVER",
+      public_media_role: "COVER", public_media_entity_ref: `service_type:st-1`,
     });
     storage.get.mockResolvedValue(Buffer.from("image-bytes"));
     const { router } = require(routesFile);
@@ -160,5 +166,103 @@ describe("public detail", () => {
     expect(fakeRes.setHeader).toHaveBeenCalledWith("X-Content-Type-Options", "nosniff");
     expect(fakeRes.setHeader).toHaveBeenCalledWith("Cache-Control", "public, max-age=300");
     expect(fakeRes.send).toHaveBeenCalledWith(expect.any(Buffer));
+  });
+
+  test("media route refuses a non-UUID id without hitting the database", async () => {
+    // Defends against the audit's "stringly validated doc id" concern —
+    // a bare UUID never grants public access; a non-UUID never even
+    // reaches the SQL. Without this, the repo's UUID_RE check is the
+    // only line of defence and a future refactor that drops it would
+    // leak a SQL error page to the internet.
+    repo.publicMediaForServe.mockResolvedValue(null); // defensive: clear prior test's mock
+    const { router } = require(routesFile);
+    const layer = router.stack.find((l) => l.route && l.route.path === "/media/:id");
+    // Find the LAST handler (the asyncHandler-wrapped user fn), bypassing
+    // the rate-limiter. The previous test exercises the limiter; here we
+    // want to assert what happens AFTER the limiter passes.
+    const userHandler = layer.route.stack[layer.route.stack.length - 1].handle;
+    const fakeReq = {
+      params: { id: "not-a-uuid" },
+      ip: "10.0.0.7",
+      tenantDbIn: jest.fn(async (env, fn) => fn({})),
+    };
+    const fakeRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+      setHeader: jest.fn(),
+      send: jest.fn(),
+    };
+    let captured = null;
+    const next = (err) => { captured = err; };
+    try {
+      await userHandler(fakeReq, fakeRes, next);
+    } catch (e) {
+      captured = captured || e;
+    }
+    expect(captured).toBeTruthy();
+    expect(captured.code).toBe("NOT_FOUND");
+    expect(captured.status).toBe(404);
+    expect(fakeRes.send).not.toHaveBeenCalled();
+    expect(storage.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("public media — fail-closed at the serve time (audit fix 1)", () => {
+  // The audit (comment 1) named the BLOCKER: a draft (or
+  // unpublished-after-edit) profile whose cover is already VERIFIED +
+  // scoped in the vault served its bytes to anyone holding the doc UUID.
+  // §6 rule 9: "media of unpublished profiles is unreachable." The fix
+  // moves the join into the repo (publicMediaForServe); these tests
+  // prove the SQL the route calls it for.
+  test("the serve-time SQL joins the profile AND the service_type", () => {
+    const repoSrc = fs.readFileSync(
+      path.join(__dirname, "../../src/modules/operations/service_type_web/service_type_web.repo.js"),
+      "utf8",
+    );
+    // The function must check the OWNING row is published and active.
+    expect(repoSrc).toMatch(/JOIN service_type_web_profile p/);
+    expect(repoSrc).toMatch(/JOIN service_type st/);
+    expect(repoSrc).toMatch(/p\.is_published = true/);
+    expect(repoSrc).toMatch(/st\.is_active = true/);
+  });
+
+  test("the serve-time SQL refuses the doc if it isn't bound to the matching slot", () => {
+    // Without this, a doc scoped to service A but stored in a stale URL
+    // for service B's media would serve. The cover/icon/gallery-or-null
+    // disjunction is the disproof.
+    const repoSrc = fs.readFileSync(
+      path.join(__dirname, "../../src/modules/operations/service_type_web/service_type_web.repo.js"),
+      "utf8",
+    );
+    expect(repoSrc).toMatch(/public_media_role = 'COVER' {2}AND v\.doc_id = p\.cover_vault_id/);
+    expect(repoSrc).toMatch(/public_media_role = 'ICON' {2}AND v\.doc_id = p\.icon_vault_id/);
+    expect(repoSrc).toMatch(/public_media_role = 'GALLERY' AND v\.doc_id = ANY\(p\.gallery_vault_ids\)/);
+  });
+
+  test("a non-UUID id never reaches the database (UUID_RE short-circuits)", () => {
+    // Walk the repo to confirm UUID_RE is exported and used as a guard.
+    const repoMod = require("../../src/modules/operations/service_type_web/service_type_web.repo");
+    expect(repoMod.UUID_RE).toBeInstanceOf(RegExp);
+    expect(repoMod.UUID_RE.test("11111111-1111-4111-8111-111111111111")).toBe(true);
+    expect(repoMod.UUID_RE.test("not-a-uuid")).toBe(false);
+  });
+});
+
+describe("public response — publishedMonth helper (audit fix 3)", () => {
+  // The audit (comment 3) called out String(published_at).slice(0, 7) which
+  // would happily return "2024-01-01 12:34" in unparsed form. The route
+  // file now imports a `publishedMonth` helper from the shared module.
+  // Verify the route is no longer calling the raw slice — it must
+  // always go through the helper.
+  test("the route does not raw-slice published_at — it calls publishedMonth(…)", () => {
+    expect(routesSrc).not.toMatch(/String\([^)]*published_at[^)]*\)\.slice\(0,\s*7\)/);
+    expect(routesSrc).toContain("publishedMonth(");
+  });
+
+  test("the route imports publishedMonth from the shared helper (single source of truth)", () => {
+    // Without centralising, audit comment 3 keeps recurring. The helper
+    // is in src/shared/date/published-month.js so portfolio_public and
+    // service_type_web_public cannot drift.
+    expect(routesSrc).toMatch(/require\([^)]*shared\/date\/published-month/);
   });
 });

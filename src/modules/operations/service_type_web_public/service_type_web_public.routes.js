@@ -12,16 +12,28 @@
  *
  * The `/media/:id` route streams the image bytes itself; nothing about the
  * streaming depends on a tenant connection that the public surface can reach,
- * and the allowlist re-check (`repo.vaultMediaForServe` + an additional
- * `service_type_id` match against `public_media_entity_ref`) is what makes a
- * doc id genuinely servable.
+ * and the allowlist re-check (`repo.publicMediaForServe`) is what makes a
+ * doc id genuinely servable. That function:
+ *   - refuses a non-UUID id at the boundary (no DB hit);
+ *   - re-verifies VERIFIED + scope + image content type;
+ *   - joins the owning `service_type_web_profile` AND the master
+ *     `service_type` so it can assert `p.is_published = true AND
+ *     st.is_active = true` (an embargoed launch preview, an archived
+ *     service, or a draft edit all stop the stream); and
+ *   - binds the doc to the specific slot — `cover_vault_id`,
+ *     `icon_vault_id`, or one of the `gallery_vault_ids` — so a doc
+ *     scoped to service A cannot be served from a request for
+ *     service B's media, and a doc archived out of the cover slot is
+ *     not served as a cover from a stale URL.
+ * Mirrors the named precedent at `portfolio_public.service.js:117-139`.
  */
 "use strict";
 
 const express = require("express");
 const { makeLimiter } = require("../../../shared/http/rate-limit");
-const { asyncHandler } = require("../../../utils/errors");
+const { AppError, asyncHandler } = require("../../../utils/errors");
 const storage = require("../../../services/storage.service");
+const { publishedMonth } = require("../../../shared/date/published-month");
 const repo = require("../service_type_web/service_type_web.repo");
 
 const router = express.Router();
@@ -31,6 +43,8 @@ const limit = makeLimiter({ name: "services-public", max: 120, windowMs: 15 * 60
  *  just the addressable identity, the card teaser, the cover/icon URLs
  *  (nulled if the allowlist would refuse), and the published_month. */
 const mediaUrl = (id) => (id ? `/api/tenant/public/services/media/${id}` : null);
+
+const notFound = (msg) => new AppError("NOT_FOUND", msg, 404);
 
 router.get("/", limit, asyncHandler(async (req, res) => {
   const rows = await req.tenantDbIn("live", (client) => repo.publicList(client));
@@ -46,7 +60,7 @@ router.get("/", limit, asyncHandler(async (req, res) => {
     icon_url: row.icon_allowed ? mediaUrl(row.icon_vault_id) : null,
     has_video: row.has_video,
     sort_order: row.sort_order,
-    published_month: row.published_at ? String(row.published_at).slice(0, 7) : null,
+    published_month: publishedMonth(row.published_at),
   }));
   res.json({ data });
 }));
@@ -62,10 +76,7 @@ router.get("/:slug", limit, asyncHandler(async (req, res) => {
     ]);
     return { row, mediaByRole, related, faq };
   });
-  if (!result) {
-    res.status(404).json({ error: { code: "NOT_FOUND", message: "Service not found" } });
-    return;
-  }
+  if (!result) throw notFound("Service not found");
   const { row, mediaByRole, related, faq } = result;
   const coverAllowed = mediaByRole.has(row.cover_vault_id);
   const iconAllowed = mediaByRole.has(row.icon_vault_id);
@@ -96,19 +107,19 @@ router.get("/:slug", limit, asyncHandler(async (req, res) => {
       meta_description_en: row.meta_description_en,
       faq,
       related,
-      published_month: row.published_at ? String(row.published_at).slice(0, 7) : null,
+      published_month: publishedMonth(row.published_at),
     },
   });
 }));
 
 router.get("/media/:id", limit, asyncHandler(async (req, res) => {
-  // Re-check VERIFIED + scope + role + image content type before streaming.
-  // The doc id alone is not authority; a profile row that points at an
-  // archived vault row gets a 404 here, exactly as `portfolio_public` does.
-  const doc = await req.tenantDbIn("live", (client) => repo.vaultMediaForServe(client, req.params.id));
+  // publicMediaForServe is the fail-closed allowlist re-check — it joins
+  // the owning profile + service_type and asserts the parent is published
+  // AND active, the role is one of COVER/ICON/GALLERY, and the doc is
+  // bound to the matching slot. A bare UUID never grants public access.
+  const doc = await req.tenantDbIn("live", (client) => repo.publicMediaForServe(client, req.params.id));
   if (!doc || !doc.storage_path || doc.storage_path.startsWith("pending://")) {
-    res.status(404).json({ error: { code: "NOT_FOUND", message: "Media not found" } });
-    return;
+    throw notFound("Media not found");
   }
   const buffer = await storage.get(doc.storage_path);
   res.setHeader("Content-Type", doc.public_media_content_type);

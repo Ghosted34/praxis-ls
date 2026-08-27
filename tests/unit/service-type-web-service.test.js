@@ -19,12 +19,14 @@ jest.mock("../../src/modules/operations/service_type_web/service_type_web.repo",
   listRelated: jest.fn(),
   replaceRelated: jest.fn(),
   vaultMediaForServe: jest.fn(),
+  publicMediaForServe: jest.fn(),
   serviceTypeExists: jest.fn(),
   publicList: jest.fn(),
   publicDetail: jest.fn(),
   publicRelated: jest.fn(),
   publicFaq: jest.fn(),
   IMAGE_TYPES: ["image/png", "image/jpeg", "image/webp"],
+  UUID_RE: /^[0-9a-f-]{36}$/i,
 }));
 jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(), audit: jest.fn(), resolveActorId: jest.fn(async (_c, id) => id || null),
@@ -273,6 +275,24 @@ describe("service_type_web.service — upsert is create-once-then-update", () =>
       serviceTypeId: ST, patch: { slug_fr: "new-slug" }, actor: {},
     })).rejects.toMatchObject({ code: "SLUG_TAKEN" });
   });
+
+  test("an explicit null on video_url is forwarded to the repo (clears the field, not a no-op)", async () => {
+    // The audit (Fix 2) found that the previous COALESCE(EXCLUDED.col, current)
+    // silently swallowed explicit nulls. The patch has the key (it IS in
+    // `Object.prototype`), so the repo's `sent` filter passes it through
+    // verbatim — and the service must NOT short-circuit it.
+    const client = recordingClient();
+    repo.getProfile.mockResolvedValue({ ...baseProfile, video_url: "https://youtu.be/old" });
+    repo.upsertProfile.mockResolvedValue({ ...baseProfile, video_url: null });
+    await service.upsertProfile(client, {
+      serviceTypeId: ST, patch: { video_url: null }, actor: {},
+    });
+    const upsertCall = repo.upsertProfile.mock.calls[0];
+    expect(upsertCall[2]).toMatchObject({ video_url: null });
+    // And the key was forwarded to the repo with the actual null value, not
+    // dropped, not coerced to undefined, not kept at the old string.
+    expect(upsertCall[2].video_url).toBeNull();
+  });
 });
 
 describe("service_type_web.service — GET is total (guide §3.1, §4.5)", () => {
@@ -331,5 +351,23 @@ describe("service_type_web.service — auto-unpublish hook for archive", () => {
     repo.autoUnpublishForServiceType.mockResolvedValueOnce({ service_type_id: ST });
     const out = await service.autoUnpublishForArchive({}, ST);
     expect(out.service_type_id).toBe(ST);
+  });
+});
+
+describe("service_type_web.service — FAQ stays live while published (guide §4.2 rule 4)", () => {
+  // The audit (Fix 4) found that FAQ set-replace was over-locking — the
+  // guide's rule 4 is "slug + media" only. A CMS typo fix must not require
+  // unpublishing, and the asymmetry with /related (deliberately live) made
+  // the FAQ lock look like an over-application. The FAQ service now
+  // matches the principle: copy edits, FAQ edits and related edits are
+  // all live while published; only slug + media are locked.
+  test("FAQ set-replace succeeds while published (no LOCKED)", async () => {
+    repo.getProfile.mockResolvedValue({ ...baseProfile, is_published: true });
+    repo.replaceFaq.mockResolvedValue([]);
+    const client = recordingClient();
+    await expect(
+      service.replaceFaq(client, { serviceTypeId: ST, rows: [], actor: {} }),
+    ).resolves.toBeDefined();
+    expect(repo.replaceFaq).toHaveBeenCalledWith(client, ST, []);
   });
 });

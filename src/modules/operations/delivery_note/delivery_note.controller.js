@@ -39,6 +39,20 @@ module.exports = {
       })),
     })),
 
+  /**
+   * How much of a file has been delivered — derived from its notes.
+   *
+   * On the delivery-note router rather than on the dossier's, because the
+   * answer is made of delivery notes: MOD-32 view is the grant that should let
+   * you read it, and putting it under /operations would mean a file-reader
+   * with no delivery-note access could enumerate them.
+   */
+  progress: asyncHandler(async (req, res) => {
+    const dossierId = String(req.query.dossier_id || "");
+    if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422, { dossier_id: ["required"] });
+    res.json({ data: await req.tenantDb((c) => service.progress(c, { dossierId })) });
+  }),
+
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!row) throw new AppError("NOT_FOUND", "Delivery note not found", 404);

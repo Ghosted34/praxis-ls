@@ -308,23 +308,33 @@ describe("the printed manifest", () => {
   const render = (data) =>
     TEMPLATES.DELIVERY_NOTE.build({ ...TEMPLATES.DELIVERY_NOTE.sampleData, ...data }, cfg, { legal_name: "X" }, null);
 
-  it("pads to 18 slots so a box added at the gate can be written in", () => {
+  /*
+   * The manifest's shape is pinned in full by delivery-note-document.test.js,
+   * alongside the one-page fit and the monolingual rendering it is part of.
+   * What stays here is the pair of claims that belong to the LIFECYCLE: a form
+   * somebody can write on at the gate, and a manifest that never truncates.
+   */
+  it("pads to a ruled minimum so a box added at the gate can be written in", () => {
+    // Twelve, in four rows of three — the instrument sheet's manifest grid.
+    // (Legacy's eighteen was a single column and cost a third of the page.)
     const html = render({ containers: [{ container_no: "TCLU1" }] });
-    expect((html.match(/______________/g) || [])).toHaveLength(17);
+    expect((html.match(/______________/g) || [])).toHaveLength(11);
   });
 
-  it("prints ALL containers when there are more than 18", () => {
+  it("prints ALL containers when there are more than the minimum", () => {
     // Legacy hard-coded 18 slots and silently dropped the rest — data loss on
     // a document whose whole job is to say what was handed over.
     const many = Array.from({ length: 22 }, (_, i) => ({ container_no: `TCLU${i}` }));
     const html = render({ containers: many });
     expect(html).toContain("TCLU21");
-    expect((html.match(/______________/g) || [])).toHaveLength(0);
+    // 22 boxes fill eight rows of three; the two spare cells stay ruled rather
+    // than leaving the last row two-thirds blank.
+    expect((html.match(/______________/g) || [])).toHaveLength(2);
   });
 
   it("prints an empty reservations box when the client wrote nothing", () => {
     const html = render({ reservations: null });
-    expect(html).toMatch(/Reservations/);
+    expect(html).toMatch(/Comments \/ reservations \(client\)/);
   });
 
   it("names who signed, rather than an anonymous line", () => {

@@ -32,6 +32,10 @@ const containerSchema = z.object({
   seal_no: z.string().max(40).optional().nullable(),
   gross_weight_kg: z.number().nonnegative().optional().nullable(),
   notes: z.string().max(500).optional().nullable(),
+  /* Why this box is going out again when a signed note already covers it. The
+     service REQUIRES it in that case and refuses it by container number; here
+     it is merely allowed, because only the database knows what was delivered. */
+  redelivery_reason: z.string().max(500).optional().nullable(),
 });
 
 const headerFields = {

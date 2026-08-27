@@ -73,7 +73,23 @@ async function containersForDossier(client, dossierId, { excludeNoteId = null } 
             ct.name_en AS container_type_en,
             ct.name_fr AS container_type_fr,
             NULL::int AS qty,
-            ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number), NULL) AS already_on
+            /*
+             * TWO ARRAYS, not one.
+             *
+             * already_on lumped both cases together in the same neutral tone,
+             * so handing over a box the client has ALREADY SIGNED FOR was
+             * exactly as easy as splitting a load across two live notes. They
+             * are different acts: the first is nearly always a mistake and
+             * occasionally a genuine return; the second is routine.
+             *
+             * already_on is kept as the union, so a caller not yet migrated
+             * receives what it has always received.
+             */
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number), NULL) AS already_on,
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number)
+              FILTER (WHERE other.status = 'DELIVERED'), NULL) AS delivered_on,
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT other.doc_number)
+              FILTER (WHERE other.status = 'ISSUED'), NULL) AS issued_on
        FROM dossier_container_unit u
        JOIN dossier_container_line l
          ON l.dossier_container_line_id = u.dossier_container_line_id
@@ -100,7 +116,9 @@ async function containersForDossier(client, dossierId, { excludeNoteId = null } 
             ct.name_fr AS container_type_fr,
             (l.qty - (SELECT count(*)::int FROM dossier_container_unit u
                        WHERE u.dossier_container_line_id = l.dossier_container_line_id)) AS qty,
-            NULL::text[] AS already_on
+            NULL::text[] AS already_on,
+            NULL::text[] AS delivered_on,
+            NULL::text[] AS issued_on
        FROM dossier_container_line l
        JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
       WHERE l.dossier_id = $1
@@ -114,6 +132,180 @@ async function containersForDossier(client, dossierId, { excludeNoteId = null } 
     ...lines.filter((l) => (Number(l.qty) || 0) > 0),
     ...units,
   ];
+}
+
+/**
+ * HOW MUCH OF THIS FILE HAS ACTUALLY BEEN DELIVERED.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * ⚠  DERIVED FROM THE NOTES. There is no `delivered_on` column anywhere and
+ *    there must not be one.
+ *
+ *    The delivery notes already ARE the record of what was handed over: each
+ *    one snapshots its boxes and carries a signature and a receiver's name. A
+ *    date stamped onto `dossier_container_unit` beside them would be a second
+ *    source of truth, and it drifts the first time a note is cancelled — at
+ *    which point the file says a box was delivered and no signed document
+ *    agrees.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── The three states, and why "issued" is its own ──────────────────────────
+ *   DELIVERED  a note covering this box has been signed for. Done.
+ *   ISSUED     a note covering it is numbered and out with a driver. NOT done,
+ *              and not outstanding either — sending a second truck for it is
+ *              the mistake this state exists to prevent.
+ *   OUTSTANDING no live note covers it. This is what "4 still to go" means.
+ *
+ * A CANCELLED note counts for nothing, which is what makes cancelling the
+ * correct way to undo a mistaken note.
+ *
+ * ── Two shapes, because a file has two ─────────────────────────────────────
+ * A file that itemised its boxes reports per UNIT. A file still at "3 × 40' HC"
+ * (10708) has no units, so it reports per container LINE, counting the QUANTITY
+ * handed over against the line's own qty. Both are returned; a file mid-way
+ * through itemisation legitimately has some of each.
+ *
+ * ⚠ NOT to be confused with `linesOnDossier`'s `remaining`, which is the line's
+ *   qty minus how many units have been BROKEN OUT of it. That is itemisation
+ *   progress — how much of the booking has container numbers yet — and it says
+ *   nothing about delivery. Two different questions, similar arithmetic, and
+ *   mixing them up reports a file as fully delivered the moment somebody types
+ *   in its container numbers.
+ */
+async function progressForDossier(client, dossierId) {
+  const { rows: units } = await client.query(
+    `SELECT u.dossier_container_unit_id AS id,
+            u.container_no,
+            u.seal_no,
+            ct.code AS container_type_code,
+            -- The note that SIGNED for it, if any. MAX over a set that the
+            -- unique index keeps to one row per note; a box on two delivered
+            -- notes (a genuine re-delivery) reports the latest.
+            MAX(dn.doc_number) FILTER (WHERE dn.status = 'DELIVERED')  AS delivered_on_note,
+            MAX(dn.received_at) FILTER (WHERE dn.status = 'DELIVERED') AS delivered_at,
+            MAX(dn.doc_number) FILTER (WHERE dn.status = 'ISSUED')     AS issued_on_note,
+            bool_or(dn.status = 'DELIVERED') AS is_delivered,
+            bool_or(dn.status = 'ISSUED')    AS is_issued
+       FROM dossier_container_unit u
+       JOIN dossier_container_line l
+         ON l.dossier_container_line_id = u.dossier_container_line_id
+       JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
+       LEFT JOIN delivery_note_container dnc
+         ON dnc.dossier_container_unit_id = u.dossier_container_unit_id
+       LEFT JOIN delivery_note dn
+         ON dn.delivery_note_id = dnc.delivery_note_id
+        AND dn.status <> 'CANCELLED'
+      WHERE u.dossier_id = $1
+      GROUP BY u.dossier_container_unit_id, u.container_no, u.seal_no, ct.code
+      ORDER BY u.container_no NULLS LAST`,
+    [dossierId],
+  );
+
+  const { rows: lines } = await client.query(
+    `SELECT l.dossier_container_line_id AS id,
+            ct.code AS container_type_code,
+            l.qty,
+            -- How many units have been itemised out of this line. Those boxes
+            -- report individually above, so only the un-itemised remainder is
+            -- this line's to account for.
+            (SELECT count(*)::int FROM dossier_container_unit u
+              WHERE u.dossier_container_line_id = l.dossier_container_line_id) AS itemised,
+            COALESCE(SUM(dnc.qty) FILTER (WHERE dn.status = 'DELIVERED'), 0)::int AS delivered_qty,
+            COALESCE(SUM(dnc.qty) FILTER (WHERE dn.status = 'ISSUED'), 0)::int    AS issued_qty
+       FROM dossier_container_line l
+       JOIN dictionary_ref ct ON ct.ref_id = l.container_type_ref_id
+       LEFT JOIN delivery_note_container dnc
+         ON dnc.dossier_container_line_id = l.dossier_container_line_id
+       LEFT JOIN delivery_note dn
+         ON dn.delivery_note_id = dnc.delivery_note_id
+        AND dn.status <> 'CANCELLED'
+      WHERE l.dossier_id = $1
+      GROUP BY l.dossier_container_line_id, ct.code, l.qty, l.seq
+      ORDER BY l.seq, l.dossier_container_line_id`,
+    [dossierId],
+  );
+
+  return { units, lines };
+}
+
+/**
+ * Does this file's SERVICE TYPE capture containers at all?
+ *
+ * The toggle has existed since 0660 and the delivery note never asked: the
+ * container picker rendered on every file, so a customs-brokerage note offered
+ * an empty box list and a sea note offered a real one, with nothing to explain
+ * the difference. `dossier_container.service` already reads exactly this pair;
+ * this is the same question asked from the document side.
+ *
+ * Defaults to FALSE for a file whose service type cannot be resolved, because
+ * "no containers" renders a plain delivery note and the alternative renders an
+ * empty manifest on a document a client signs. A DRAFT file resolves to false
+ * for the same reason every other read in this repo goes through
+ * `dossier_visible`: a note cannot be raised against one anyway.
+ */
+async function capturesContainers(client, dossierId) {
+  const { rows } = await client.query(
+    `SELECT st.captures_containers
+       FROM dossier_visible d
+       JOIN service_type st ON st.service_type_id = d.service_type_id
+      WHERE d.dossier_id = $1`,
+    [dossierId],
+  );
+  return rows[0] ? rows[0].captures_containers === true : false;
+}
+
+/**
+ * Which delivery this note is on its file, and how many there are.
+ *
+ * Counted over the LIVE notes in issue order, so a cancelled note does not
+ * leave a hole in a sequence the client can see — "delivery 2 of 3" reads as a
+ * fact about the shipment, not about our filing.
+ *
+ * A note not yet issued has no place in the sequence and reports null: it is
+ * not one of the deliveries until it has a number.
+ */
+async function sequenceOnDossier(client, { dossierId, noteId }) {
+  const { rows } = await client.query(
+    `WITH live AS (
+       SELECT delivery_note_id,
+              row_number() OVER (ORDER BY issued_at, doc_number) AS seq,
+              count(*) OVER () AS total
+         FROM delivery_note
+        WHERE dossier_id = $1 AND status <> 'CANCELLED' AND doc_number IS NOT NULL
+     )
+     SELECT seq, total FROM live WHERE delivery_note_id = $2`,
+    [dossierId, noteId],
+  );
+  const r = rows[0];
+  return { sequence: r ? Number(r.seq) : null, ofNotes: r ? Number(r.total) : null };
+}
+
+/**
+ * Which of these boxes has already been SIGNED FOR, and on which note.
+ *
+ * The guard behind `redelivery_reason`. Asked at write time rather than trusted
+ * from the picker's `delivered_on`: the picker's answer is as old as the page,
+ * and a box can be signed for by another operator between opening the form and
+ * saving it. The rule is enforced where the row is written.
+ *
+ * `excludeNoteId` is the note being edited — re-saving a note that already
+ * carries the box must not accuse it of re-delivering it.
+ */
+async function deliveredUnits(client, { unitIds = [], excludeNoteId = null } = {}) {
+  if (!unitIds.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT dnc.dossier_container_unit_id AS id,
+            MAX(dn.doc_number) AS doc_number,
+            MAX(dn.received_at) AS received_at
+       FROM delivery_note_container dnc
+       JOIN delivery_note dn ON dn.delivery_note_id = dnc.delivery_note_id
+      WHERE dnc.dossier_container_unit_id = ANY($1::uuid[])
+        AND dn.status = 'DELIVERED'
+        AND ($2::uuid IS NULL OR dn.delivery_note_id <> $2)
+      GROUP BY dnc.dossier_container_unit_id`,
+    [unitIds, excludeNoteId],
+  );
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 /** Verify picked units really belong to this file — one query, not per row. */
@@ -267,5 +459,7 @@ module.exports = {
   insertDN, getDN, getFull, update, listDN, statusCounts,
   insertLine, listLines, deleteLines,
   insertContainer, listContainers, deleteContainers,
-  containersForDossier, unitsOnDossier, linesOnDossier, dossierBrief, dossierForPrefill,
+  containersForDossier, progressForDossier, capturesContainers, deliveredUnits, sequenceOnDossier,
+  unitsOnDossier, linesOnDossier,
+  dossierBrief, dossierForPrefill,
 };

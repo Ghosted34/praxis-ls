@@ -26,6 +26,14 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => service.preview(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, config: req.body.config || null, origin: origin(req), language: req.body.language || null })) })),
   generate: asyncHandler(async (req, res) =>
     res.status(201).json({ data: await req.tenantDb((c) => service.generate(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, actor: actor(req), origin: origin(req), language: req.body.language || null })) })),
+  /**
+   * Open the composer on this document.
+   *
+   * `edit`, not `view` (see the route): it RENDERS and vaults a PDF, which is
+   * the same side effect `generate` has and the same grant it is gated on.
+   */
+  composePrefill: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.composePrefill(c, { docType: req.params.docType, recordId: req.params.id, entityId: req.body.entity_id || null, actor: actor(req), origin: origin(req), language: req.body.language || null })) })),
   send: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.send(c, { docType: req.params.docType, recordId: req.params.id, entityId: req.body.entity_id || null, to: req.body.to, subject: req.body.subject, actor: actor(req), origin: origin(req), language: req.body.language || null })) })),
 };

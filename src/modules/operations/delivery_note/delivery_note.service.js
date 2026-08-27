@@ -73,6 +73,18 @@ async function replaceContainers(client, { id, dossierId, containers }) {
 
   const unitIds = rows.map((r) => r.dossier_container_unit_id).filter(Boolean);
   const known = await repo.unitsOnDossier(client, dossierId, unitIds);
+  /*
+   * The re-delivery guard, asked HERE and not trusted from the picker.
+   *
+   * The picker's `delivered_on` is as old as the page it was drawn on, and a
+   * box can be signed for by another operator between opening the form and
+   * saving it. `excludeNoteId` is this note, so re-saving a note that already
+   * carries the box is not accused of re-delivering it.
+   */
+  rules.assertRedeliveryExplained(
+    rows,
+    await repo.deliveredUnits(client, { unitIds, excludeNoteId: id }),
+  );
   const lineIds = rows.map((r) => r.dossier_container_line_id).filter(Boolean);
   const knownLines = await repo.linesOnDossier(client, dossierId, lineIds);
 
@@ -120,6 +132,7 @@ async function replaceContainers(client, { id, dossierId, containers }) {
       seal_no: r.seal_no || (unit && unit.seal_no) || null,
       gross_weight_kg: r.gross_weight_kg ?? (unit && unit.gross_weight_kg) ?? null,
       notes: r.notes,
+      redelivery_reason: r.redelivery_reason,
     });
   }
 }
@@ -168,6 +181,29 @@ async function prefill(client, { dossier_id }) {
 async function availableContainers(client, { dossierId, excludeNoteId = null }) {
   if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422);
   return repo.containersForDossier(client, dossierId, { excludeNoteId });
+}
+
+/**
+ * How much of this file has been delivered.
+ *
+ * The answer nobody could get before: a twelve-container file delivered over
+ * three weeks had `already_on` per box and nothing that added up. Derived from
+ * the notes (see `repo.progressForDossier`), so there is no second source of
+ * truth to drift.
+ *
+ * `containerised` comes off the service type rather than off the count: a file
+ * whose service type does not capture containers reports `containerised: false`
+ * and every surface can hide the whole idea, instead of showing "0 of 0
+ * containers" on a customs-brokerage file that will never have one.
+ */
+async function progress(client, { dossierId }) {
+  if (!dossierId) throw new AppError("VALIDATION_ERROR", "dossier_id is required", 422);
+  const [rows, captures] = await Promise.all([
+    repo.progressForDossier(client, dossierId),
+    repo.capturesContainers(client, dossierId),
+  ]);
+  const out = rules.deliveryProgress(rows);
+  return { ...out, containerised: captures && out.total > 0, captures_containers: captures };
 }
 
 /* ── writes ─────────────────────────────────────────────────────────────── */
@@ -397,5 +433,5 @@ async function transition(client, { id, to, reason = null, receivedByName = null
 
 module.exports = {
   create, update, issue, confirmDelivery, cancel, transition,
-  get, list, summary, availableContainers, prefill,
+  get, list, summary, availableContainers, progress, prefill,
 };

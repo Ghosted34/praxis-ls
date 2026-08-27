@@ -43,6 +43,7 @@ import { EditorSurface } from "./editor";
 import { ComposerToolbar, FontNote } from "./toolbar";
 import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
+import { RecipientField, type ExtraRecipient } from "./recipient-field";
 import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
 import { GuardrailBar } from "../work/guardrails";
@@ -68,7 +69,27 @@ export type ComposerProps = {
   replyToMessageId?: string | null;
   kind?: api.Draft["kind"];
   initialTo?: string[];
+  initialCc?: string[];
   initialSubject?: string | null;
+  /** Plain text to open the body on — a covering note the operator then edits. */
+  initialBodyText?: string | null;
+  /**
+   * Files already in the vault to hang off this draft the moment it exists.
+   *
+   * The document case: the PDF is rendered and vaulted BEFORE the composer
+   * opens, so the operator never sees a compose window whose attachment is
+   * still being produced — writing the note, pressing send, and only then
+   * learning the document was missing is not a recoverable order of events.
+   */
+  initialVaultAttachments?: { vault_id: string; filename?: string | null }[];
+  /**
+   * Addresses this record supplies, offered in To/Cc beside the search.
+   *
+   * Gated searches can legitimately return nothing for someone who may raise a
+   * document but not browse the party register; the counterparty the document
+   * is addressed to still has to be reachable. See recipient-field.tsx.
+   */
+  recipientExtras?: ExtraRecipient[];
   /** The message being replied to, already rendered. Appended below the reply. */
   quotedHtml?: string | null;
   quotedText?: string | null;
@@ -95,7 +116,11 @@ export function Composer({
   replyToMessageId = null,
   kind = "NEW",
   initialTo = [],
+  initialCc = [],
   initialSubject = null,
+  initialBodyText = null,
+  initialVaultAttachments = [],
+  recipientExtras = [],
   quotedHtml = null,
   quotedText = null,
   entityRef = null,
@@ -105,8 +130,8 @@ export function Composer({
 }: ComposerProps) {
   const [from, setFrom] = React.useState(connectionId);
   const [to, setTo] = React.useState(initialTo.join(", "));
-  const [cc, setCc] = React.useState("");
-  const [showCc, setShowCc] = React.useState(false);
+  const [cc, setCc] = React.useState(initialCc.join(", "));
+  const [showCc, setShowCc] = React.useState(initialCc.length > 0);
   const [subject, setSubject] = React.useState(initialSubject || "");
   const [draftId, setDraftId] = React.useState<string | null>(null);
   const [tray, setTray] = React.useState<api.AttachmentTray | null>(null);
@@ -237,22 +262,76 @@ export function Composer({
     try { setTray(await api.draftAttachments(id)); } catch (err) { reportActionError(err); }
   }, []);
 
+  /**
+   * The draft id, creating the row if this is the first thing to need one.
+   *
+   * An attachment hangs off a draft, so on a NEW message — where nothing has
+   * been typed yet and autosave has not fired — the row has to be brought into
+   * existence before the first file can be attached.
+   */
+  const ensureDraft = React.useCallback(async () => {
+    let id = draftIdRef.current;
+    if (!id) {
+      await flush();
+      id = draftIdRef.current;
+    }
+    if (!id) {
+      const saved = await api.saveDraft({ email_connection_id: from, email_thread_id: threadId, kind });
+      id = saved.email_draft_id;
+      setDraftId(id);
+    }
+    return id;
+  }, [flush, from, threadId, kind]);
+
+  /* ── Seeded attachments ───────────────────────────────────────────────────
+   *
+   * Runs once, on open. The PDF was rendered and vaulted by the endpoint that
+   * produced this prefill, so all that is left is to point the draft at it.
+   *
+   * A failure here is LOUD, unlike an autosave failure: the whole reason this
+   * composer opened is to send that document, and a silent miss means the
+   * operator sends a covering note attached to nothing. */
+  const seeded = React.useRef(false);
+  React.useEffect(() => {
+    if (seeded.current || !initialVaultAttachments.length) return;
+    seeded.current = true;
+    (async () => {
+      setBusy(true);
+      try {
+        const id = await ensureDraft();
+        if (!id) throw new Error(tr("The draft could not be created."));
+        for (const a of initialVaultAttachments) {
+           
+          await api.attachFromVault({
+            email_draft_id: id, vault_id: a.vault_id, filename: a.filename || undefined,
+          });
+        }
+        await reloadTray(id);
+      } catch (err) {
+        setError((err as { message?: string })?.message || tr("The document could not be attached."));
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [initialVaultAttachments, ensureDraft, reloadTray]);
+
+  /* The covering note, once. Written through the editor rather than mirrored
+     into state, for the reason `setBodyText` documents. */
+  const bodySeeded = React.useRef(false);
+  React.useEffect(() => {
+    if (bodySeeded.current || !editor || !initialBodyText) return;
+    bodySeeded.current = true;
+    setBodyText(initialBodyText);
+    dirtyRef.current.body_json = docRef.current;
+    touch();
+  }, [editor, initialBodyText, setBodyText, touch]);
+
   async function attach(files: File[]) {
     if (!files.length) return;
     setBusy(true);
     setError(null);
     try {
-      // The draft has to exist before a file can hang off it.
-      let id = draftIdRef.current;
-      if (!id) {
-        await flush();
-        id = draftIdRef.current;
-      }
-      if (!id) {
-        const saved = await api.saveDraft({ email_connection_id: from, email_thread_id: threadId, kind });
-        id = saved.email_draft_id;
-        setDraftId(id);
-      }
+      const id = await ensureDraft();
       for (const file of files) {
          
         await api.uploadAttachment({
@@ -467,12 +546,11 @@ export function Composer({
         )}
         <div className="flex items-center gap-2">
           <label htmlFor="composer-to" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("To")}</label>
-          <Input
+          <RecipientField
             id="composer-to"
             value={to}
-            onChange={(e) => setField("to_address", splitAddresses(e.target.value), (() => setTo(e.target.value)) as never)}
-            placeholder="name@company.cm"
-            className="h-8"
+            onChange={(v) => setField("to_address", splitAddresses(v), (() => setTo(v)) as never)}
+            extra={recipientExtras}
           />
           {!showCc && (
             <button
@@ -487,11 +565,14 @@ export function Composer({
         {showCc && (
           <div className="flex items-center gap-2">
             <label htmlFor="composer-cc" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("Cc")}</label>
-            <Input
+            {/* The same picker as To. Cc is where a colleague gets copied, so
+                searching staff from it is the whole point — typing a
+                remembered address was the only way before. */}
+            <RecipientField
               id="composer-cc"
               value={cc}
-              onChange={(e) => setField("cc_address", splitAddresses(e.target.value), (() => setCc(e.target.value)) as never)}
-              className="h-8"
+              onChange={(v) => setField("cc_address", splitAddresses(v), (() => setCc(v)) as never)}
+              extra={recipientExtras}
             />
           </div>
         )}

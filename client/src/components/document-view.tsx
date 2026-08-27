@@ -25,6 +25,7 @@ import { errMsg } from "@/lib/use-resource";
 import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { LoadingRow } from "@/components/ui/states";
+import { NewMessageDialog } from "@/features/comms/inbox/composer/new-message";
 
 // The auth-gated fetch that serves a signed copy (uploaded, rather than
 // regenerated) is `lib/vault-file.openVaultDoc` — shared with the scan
@@ -51,6 +52,27 @@ type Container = {
   container_no?: string | null;
   seal_no?: string | null;
   gross_weight_kg?: number | null;
+  /** 10708 — the GROUPED shape: equipment the file states as a quantity
+   *  because the B/L has not numbered the boxes yet. */
+  container_type_code?: string | null;
+  qty?: number | null;
+  /** Why a box another signed note already covers is going out again. */
+  redelivery_reason?: string | null;
+};
+
+/**
+ * Where this delivery sits on its file, derived from the other notes.
+ *
+ * Null for a file with no containers — a non-containerised note says nothing
+ * about container counts, and "0 of 0" is not an improvement on silence.
+ */
+type DeliveryPosition = {
+  sequence?: number | null;
+  of_notes?: number | null;
+  total: number;
+  delivered: number;
+  in_transit: number;
+  outstanding: number;
 };
 type Regime = { code: string; on?: boolean };
 /**
@@ -128,6 +150,7 @@ type DocData = {
   received_at?: string;
   issued_by_name?: string;
   containers?: Container[];
+  position?: DeliveryPosition | null;
   /* transit order (operations/transit_order) */
   /** The lifecycle in the reader's language. Replaced `status_label`, which the
    *  projection used to emit pre-joined as "Émis / Issued". */
@@ -174,11 +197,30 @@ type Preview = {
   data?: DocData | null;
   title?: { fr?: string; en?: string };
   entity?: Entity;
-  suggested_to?: string | null;
   report?: boolean;
   /** The language this render came out in — the tenant's configured default
    *  until the operator picks otherwise. "bilingual" is a real, chosen value. */
   language?: string;
+};
+
+/**
+ * What the server hands back when Send is pressed: the vaulted PDF, who it goes
+ * to, and the covering note — all in the language the operator picked.
+ */
+type ComposePrefill = {
+  doc_type: string;
+  record_id: string;
+  language: string;
+  vault_id: string;
+  filename: string;
+  to: string | null;
+  subject: string;
+  body: string;
+  counterparty: {
+    party_id: string;
+    party_name: string;
+    contacts: { name: string | null; email: string; role: string | null; source_ref: string }[];
+  } | null;
 };
 
 /** A language the operator can pick for one render. */
@@ -309,6 +351,7 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
   const party = d.party;
   const lines = (d.lines || []) as Line[];
   const containers = d.containers || [];
+  const pos = d.position || null;
   return (
     <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
       <Card>
@@ -325,6 +368,9 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
             <KV label="Delivery date">{dateFmt(d.delivery_date)}</KV>
           )}
           {d.dossier_ref && <KV label="File">{d.dossier_ref}</KV>}
+          {/* The lifecycle in the reader's language — the same {fr,en} pair the
+              printed sheet resolves, never a pre-joined "Émis / Issued". */}
+          {d.status_words && <KV label="Status">{pick(d.status_words)}</KV>}
           {d.issued_by_name && (
             <KV label="Issued by">{d.issued_by_name}</KV>
           )}
@@ -336,19 +382,65 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
         )}
       </Card>
 
+      {/*
+        * WHERE THIS DELIVERY SITS IN THE FILE — the band the printed sheet
+        * carries, on screen for the same reason: the driver and the client's
+        * gatekeeper both need to know whether more is coming.
+        *
+        * Only when the file has more than one box. "Delivery 1 of 1, 0
+        * remaining" is noise, and the template omits it on the same test.
+        */}
+      {pos && pos.total > 1 && (
+        <Card title="Delivery progress">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <KV label="Delivery">
+              {pos.sequence ? `${pos.sequence}${pos.of_notes ? ` / ${pos.of_notes}` : ""}` : "—"}
+            </KV>
+            <KV label="Containers delivered">
+              {pos.delivered} / {pos.total}
+            </KV>
+            {/* In transit is its OWN figure: a box on another issued note is
+                neither delivered nor waiting to be sent, and "0 still to come"
+                while four are on a truck is how a second truck gets sent. */}
+            <KV label={pos.in_transit ? "Out for delivery" : "Still to come"}>
+              {pos.in_transit || pos.outstanding}
+              {pos.in_transit && pos.outstanding ? (
+                <span className="text-muted-foreground"> · {pos.outstanding} to come</span>
+              ) : null}
+            </KV>
+          </div>
+        </Card>
+      )}
+
       <Card title={`Containers (${containers.length})`}>
         {containers.length ? (
           <ul className="grid gap-1 sm:grid-cols-2">
             {containers.map((c, i) => (
               <li key={c.container_no || i} className="text-sm">
-                <span className="num font-medium">{c.container_no || "—"}</span>
-                {c.seal_no && (
-                  <span className="text-muted"> · seal {c.seal_no}</span>
+                {c.container_type_code ? (
+                  // The GROUPED shape: the manifest states the equipment the
+                  // way the file does, before any box has a number.
+                  <span className="font-medium">
+                    {c.qty ?? 1} × {c.container_type_code}
+                    <span className="text-muted"> — numbers not yet on file</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="num font-medium">{c.container_no || "—"}</span>
+                    {c.seal_no && (
+                      <span className="text-muted"> · seal {c.seal_no}</span>
+                    )}
+                    {c.gross_weight_kg != null && (
+                      <span className="text-muted">
+                        {" "}
+                        · {num(c.gross_weight_kg)} kg
+                      </span>
+                    )}
+                  </>
                 )}
-                {c.gross_weight_kg != null && (
-                  <span className="text-muted">
-                    {" "}
-                    · {num(c.gross_weight_kg)} kg
+                {c.redelivery_reason && (
+                  <span className="block text-xs text-muted-foreground">
+                    ↻ {c.redelivery_reason}
                   </span>
                 )}
               </li>
@@ -626,6 +718,9 @@ export function DocumentPage() {
    */
   const [lang, setLang] = React.useState<DocLang | null>(null);
 
+  /** The prefill the composer opens on — null until Send has fetched it. */
+  const [compose, setCompose] = React.useState<ComposePrefill | null>(null);
+
   React.useEffect(() => {
     let live = true;
     setError(null);
@@ -690,21 +785,33 @@ export function DocumentPage() {
       setBusy(null);
     }
   }
+  /**
+   * Open the composer on this document.
+   *
+   * ── What this replaced ────────────────────────────────────────────────────
+   * `window.prompt("Send document to (email):")`. One address, typed from
+   * memory; no cc, no subject, no body, and no sight of what was about to leave
+   * the building. It fired a transactional system email that never appeared in
+   * the sender's own Sent folder, so the record of what a client had been told
+   * lived nowhere a human could find it.
+   *
+   * The server does the work that has to happen before a composer can open:
+   * renders and vaults the PDF in the chosen language, resolves the client the
+   * document is addressed to, and returns the subject and body written beside
+   * the template that produced the sheet. One round trip, because a compose
+   * window that opens empty and fills in piecemeal invites somebody to start
+   * typing into a form that is still moving.
+   */
   async function send() {
-    const to = window.prompt(
-      "Send document to (email):",
-      pv?.suggested_to || "",
-    );
-    if (!to) return;
     setBusy("send");
     setError(null);
     setNote(null);
     try {
-      await tenant(`/document-templates/${docType}/${id}/send`, {
-        method: "POST",
-        body: { to, ...(lang ? { language: lang } : {}) },
-      });
-      setNote(`Sent to ${to}.`);
+      const p = await tenant<ComposePrefill>(
+        `/document-templates/${docType}/${id}/compose`,
+        { method: "POST", body: { ...(lang ? { language: lang } : {}) } },
+      );
+      setCompose(p);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -743,6 +850,38 @@ export function DocumentPage() {
           </Button>
         </div>
       </header>
+
+      {/*
+        * The composer, opened on this document.
+        *
+        * `recipientExtras` carries the client THIS document is addressed to,
+        * resolved from the record rather than from the address-book search —
+        * which is gated on the party registers (MOD-03 / MOD-04 / MOD-02 /
+        * MOD-20). An operations clerk who may raise a transit order and may not
+        * browse the client register still has to be able to email it to the
+        * client it names.
+        */}
+      {compose && (
+        <NewMessageDialog
+          open
+          title={`${tr("Send")} ${heading}`}
+          onClose={() => setCompose(null)}
+          onSent={() => setNote(tr("Sent — it is in your Sent folder and on the record."))}
+          to={compose.to ? [compose.to] : []}
+          subject={compose.subject}
+          bodyText={compose.body}
+          vaultAttachments={[{ vault_id: compose.vault_id, filename: compose.filename }]}
+          recipientExtras={(compose.counterparty?.contacts || []).map((c) => ({
+            name: c.name || compose.counterparty?.party_name || c.email,
+            email: c.email,
+            note: c.role || compose.counterparty?.party_name || null,
+          }))}
+          entityRef={`${compose.doc_type.toLowerCase()}:${compose.record_id}`}
+          languageNote={`${
+            compose.language === "fr" ? tr("French") : compose.language === "en" ? tr("English") : tr("Bilingual")
+          } — ${tr("the attached document and this note are both in that language.")}`}
+        />
+      )}
 
       {error && (
         <div className="mx-auto mb-3 max-w-3xl">

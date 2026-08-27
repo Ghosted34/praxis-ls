@@ -35,6 +35,10 @@ const access = require("./access");
 const mailbox = require("./mailbox.service");
 const origin = require("./origin");
 const threading = require("./threading");
+// For `holds` — the grant check the slash-command menu already uses. Same cache,
+// same CEO rule and same columns as requirePermission; a second copy of a
+// permission check is a second thing to forget to update.
+const commands = require("./commands.service");
 const folders = require("./folders");
 const stream = require("./stream");
 const threadRepo = require("./thread.repo");
@@ -137,7 +141,37 @@ async function oauthAccessToken(client, conn, idp) {
 
 const listConnections = (client, q = {}) => repo.listConnections(client, q);
 const setDefaultMailbox = (client, id, ownerUserId) => repo.setDefaultConnection(client, id, ownerUserId);
-const searchRecipients = (client, q) => repo.searchRecipients(client, q);
+/**
+ * Which address books this caller may read, by grant.
+ *
+ * `commands.service.holds` rather than a third implementation: it is the same
+ * cache, the same CEO rule and the same columns as `requirePermission`, and a
+ * second copy of a permission check is a second thing to forget to update.
+ *
+ * Resolved in parallel — four cached lookups on a keystroke-driven endpoint.
+ */
+async function allowedRecipientSources(client, user) {
+  const checks = await Promise.all(
+    repo.RECIPIENT_SOURCES.map(async (src) => (
+      (await commands.holds(client, user, src.module, "view")) ? src.type : null
+    )),
+  );
+  return checks.filter(Boolean);
+}
+
+/**
+ * Search the recipient picker's address books.
+ *
+ * ⚠ `user` is REQUIRED for this to return anything. It used to take only the
+ * term, and the route's MOD-72 grant — "you may use mail" — was the only thing
+ * between a signed-in user and every address in the tenant, staff included.
+ * A caller that passes no user now gets an empty list rather than everything,
+ * which is the safe direction for a signature this shape to fail in.
+ */
+async function searchRecipients(client, q, { user = null } = {}) {
+  if (!user) return [];
+  return repo.searchRecipients(client, q, { sources: await allowedRecipientSources(client, user) });
+}
 
 /** Connect a mailbox: persist the connection + secret, then live-test it. */
 /**
@@ -1017,7 +1051,7 @@ async function linkEntity(client, { inboundId, entity_ref }) {
 module.exports = {
   listIdentities, listSent, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   listConnections, setDefaultMailbox, connect, updateImapConnection, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
-  clientTimeline, linkEntity, autodiscover, searchRecipients,
+  clientTimeline, linkEntity, autodiscover, searchRecipients, allowedRecipientSources,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
   // Exported for the send-queue flusher, which injects them rather than

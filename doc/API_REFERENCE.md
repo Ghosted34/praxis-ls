@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1453 |
+| Routes | 1455 |
 | Modules mounted | 133 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1453 mounted routes, grouped by path prefix.
+All 1455 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -648,6 +648,7 @@ All 1453 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/delivery-notes/:id/transition` | — |
 | GET | `/api/tenant/delivery-notes/available-containers` | — |
 | GET | `/api/tenant/delivery-notes/prefill` | — |
+| GET | `/api/tenant/delivery-notes/progress` | — |
 | GET | `/api/tenant/delivery-notes/summary` | — |
 
 ### `tenant/dispatch`
@@ -666,6 +667,7 @@ All 1453 mounted routes, grouped by path prefix.
 | Method | Path | Body validated |
 |---|---|---|
 | GET | `/api/tenant/document-templates/` | — |
+| POST | `/api/tenant/document-templates/:docType/:id/compose` | — |
 | POST | `/api/tenant/document-templates/:docType/:id/send` | — |
 | GET | `/api/tenant/document-templates/:docType/config` | — |
 | PUT | `/api/tenant/document-templates/:docType/config` | — |

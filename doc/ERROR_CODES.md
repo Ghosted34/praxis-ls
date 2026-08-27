@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (494)
+## All codes (495)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -43,6 +43,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_CONVERTED` | 422 | 1× | — |
 | `ALREADY_DECIDED` | 409, 422 | 3× | — |
 | `ALREADY_DECLINED` | 409 | 1× | — |
+| `ALREADY_DELIVERED` | — | 1× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
 | `ALREADY_EXISTS` | 409 | 1× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
@@ -277,7 +278,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 560× | — |
+| `NOT_FOUND` | 404, 422 | 561× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -491,7 +492,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_CURRENCY` | 422 | 2× | — |
 | `UNKNOWN_DECLINE_REASON` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
-| `UNKNOWN_DOC` | 404 | 6× | — |
+| `UNKNOWN_DOC` | 404 | 7× | — |
 | `UNKNOWN_DOC_TYPE` | 422 | 2× | — |
 | `UNKNOWN_EVENT_TYPE` | 400 | 1× | — |
 | `UNKNOWN_FIELD` | — | 1× | — |
@@ -512,7 +513,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 221× | — |
+| `VALIDATION_ERROR` | 422 | 224× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

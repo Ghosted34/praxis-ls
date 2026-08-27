@@ -44,7 +44,7 @@
  * Sunday the 16th, one silently overwriting the other.
  *
  * But a NULL is distinct from every other NULL in a unique index, so the null
- * alone means NO deduplication at all. 12745 adds the dedicated
+ * alone means NO deduplication at all. 12746 adds the dedicated
  * `ux_hr_query_weekly_week (employee_id, work_date) WHERE source = 'WEEKLY'`,
  * and the upsert below names it. That pair — null rule id, dedicated index — is
  * what makes "one per person per week" structural.

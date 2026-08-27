@@ -1,6 +1,6 @@
 "use strict";
 /**
- * 12745 — the weekly query's source value and its dedicated index.
+ * 12746 — the weekly query's source value and its dedicated index.
  *
  * Read as SQL text rather than run, like 10740's test: these two statements are
  * the ONLY thing standing between "one weekly query per person per week" and an
@@ -12,9 +12,9 @@
 const fs = require("fs");
 const path = require("path");
 
-describe("12745 weekly query source + index", () => {
+describe("12746 weekly query source + index", () => {
   const sql = fs.readFileSync(
-    path.join(__dirname, "../../migrations/tenant/12745_hr_query_weekly_source.sql"),
+    path.join(__dirname, "../../migrations/tenant/12746_hr_query_weekly_source.sql"),
     "utf8",
   );
 

@@ -31,7 +31,7 @@ Dates are ISO-8601, UTC.
   only (managers and HR have analytics; a batch job must not raise a disciplinary document against
   somebody on their behalf). Expected days come from PR1's calendar resolver, never from the
   reconciled status, so a Mon–Sat yard and a Mon–Fri office are counted differently; waived days are
-  excluded from the count and stated rather than dropped. Migration `12745` adds `WEEKLY` to
+  excluded from the count and stated rather than dropped. Migration `12746` adds `WEEKLY` to
   `hr_query.source` and a dedicated partial unique index `(employee_id, work_date) WHERE source =
   'WEEKLY'` — the weekly row carries `hr_rule_id = NULL` so it stays OUT of 0704's daily index (where
   a week-end date would collide with that day's own lateness query), and because a NULL is distinct

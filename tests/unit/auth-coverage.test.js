@@ -39,6 +39,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "sales/portfolio_public",
     "Published marketing stories are intentionally public; responses are allow-listed, consent-aware and every route is limited.",
   ],
+  [
+    "operations/service_type_web_public",
+    "The /public/services tenant website. Anonymous by design (the public website is the feature); every route is pinned to LIVE, rate-limited 120/15min, the media route re-checks the allowlist before streaming, and the flag is FEATURE_DISABLED (403) when the website package is off. See SERVICE_TYPE_WEB_PROFILE_ENGINEERING_GUIDE §3.2 / §6.",
+  ],
   ["sales/public_intake", "Marketing website forms submit bounded, rate-limited CRM intake without accounts."],
   ["operations/tracking_public", "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing."],
   [

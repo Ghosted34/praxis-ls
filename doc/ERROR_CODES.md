@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (490)
+## All codes (494)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -76,7 +76,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_DECISION` | 422 | 2× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
 | `BAD_FILE` | 400, 422 | 11× | — |
-| `BAD_FILE_TYPE` | 422 | 6× | — |
+| `BAD_FILE_TYPE` | 422 | 7× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
 | `BAD_IMAGE` | 400 | 5× | — |
@@ -202,8 +202,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `IDEMPOTENCY_KEY_REUSED` | 422 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
+| `INACTIVE_SERVICE_TYPE` | 422 | 1× | — |
 | `INCOMPLETE` | — | 2× | — |
 | `INCOMPLETE_APPLICATION` | 422 | 1× | — |
+| `INCOMPLETE_PROFILE` | — | 1× | — |
 | `INELIGIBLE_DOSSIER` | — | 1× | — |
 | `INSUFFICIENT_LEAVE` | — | 1× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
@@ -239,7 +241,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
-| `LOCKED` | 422 | 32× | — |
+| `LOCKED` | 422 | 36× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
@@ -275,7 +277,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 542× | — |
+| `NOT_FOUND` | 404, 422 | 559× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -415,6 +417,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
 | `REF_WRITE_REQUIRED` | 500 | 1× | — |
+| `RELATED_IS_SELF` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUEST_CLOSED` | 409 | 1× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
@@ -447,6 +450,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
+| `SLUG_TAKEN` | 422 | 1× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_FAILED` | 502 | 2× | — |
 | `SMTP_SEND_REJECTED` | 502 | 1× | — |
@@ -508,7 +512,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 219× | — |
+| `VALIDATION_ERROR` | 422 | 221× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

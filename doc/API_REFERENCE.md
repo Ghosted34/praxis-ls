@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1425 |
-| Modules mounted | 131 |
+| Routes | 1450 |
+| Modules mounted | 133 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1425 mounted routes, grouped by path prefix.
+All 1450 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -301,6 +301,8 @@ All 1425 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/attendance/:id` | — |
 | POST | `/api/tenant/attendance/:id/clock-out` | — |
 | GET | `/api/tenant/attendance/absence` | — |
+| GET | `/api/tenant/attendance/analytics` | — |
+| GET | `/api/tenant/attendance/analytics/mine` | — |
 | POST | `/api/tenant/attendance/clock-in` | — |
 | POST | `/api/tenant/attendance/clock-out` | — |
 | GET | `/api/tenant/attendance/days` | — |
@@ -310,8 +312,11 @@ All 1425 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/attendance/devices` | — |
 | PATCH | `/api/tenant/attendance/devices/:deviceId` | — |
 | PATCH | `/api/tenant/attendance/devices/:deviceId/name` | — |
+| GET | `/api/tenant/attendance/export` | — |
+| GET | `/api/tenant/attendance/export/mine` | — |
 | GET | `/api/tenant/attendance/open` | — |
 | GET | `/api/tenant/attendance/place-search` | — |
+| GET | `/api/tenant/attendance/punches/mine` | — |
 | POST | `/api/tenant/attendance/reconcile` | — |
 | GET | `/api/tenant/attendance/work-sites` | — |
 | POST | `/api/tenant/attendance/work-sites` | — |
@@ -1504,6 +1509,9 @@ All 1425 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/public/qes/:provider/webhook` | — |
 | GET | `/api/tenant/public/secure/:token` | — |
 | GET | `/api/tenant/public/secure/:token/download` | — |
+| GET | `/api/tenant/public/services/` | — |
+| GET | `/api/tenant/public/services/:slug` | — |
+| GET | `/api/tenant/public/services/media/:id` | — |
 | GET | `/api/tenant/public/sign/:token` | — |
 | POST | `/api/tenant/public/sign/:token/complete` | — |
 | POST | `/api/tenant/public/sign/:token/decline` | — |
@@ -1700,6 +1708,14 @@ All 1425 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/service-types/:id/field-sets/:setId/fields/:fieldId` | — |
 | PATCH | `/api/tenant/service-types/:id/field-sets/:setId/fields/:fieldId` | — |
 | POST | `/api/tenant/service-types/:id/field-sets/:setId/publish` | — |
+| GET | `/api/tenant/service-types/:id/web` | — |
+| PUT | `/api/tenant/service-types/:id/web` | — |
+| PUT | `/api/tenant/service-types/:id/web/faq` | — |
+| POST | `/api/tenant/service-types/:id/web/media` | — |
+| DELETE | `/api/tenant/service-types/:id/web/media/:docId` | — |
+| POST | `/api/tenant/service-types/:id/web/publish` | — |
+| PUT | `/api/tenant/service-types/:id/web/related` | — |
+| POST | `/api/tenant/service-types/:id/web/unpublish` | — |
 
 ### `tenant/sessions`
 
@@ -1745,9 +1761,18 @@ All 1425 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/signatures/:id` | — |
 | POST | `/api/tenant/signatures/:id/revoke` | — |
 | GET | `/api/tenant/signatures/:id/scans` | — |
+| POST | `/api/tenant/signatures/ingest` | — |
+| POST | `/api/tenant/signatures/ingest/:id/bind` | — |
+| POST | `/api/tenant/signatures/ingest/:id/decode` | — |
+| POST | `/api/tenant/signatures/ingest/:id/reject` | — |
+| GET | `/api/tenant/signatures/ingest/queue` | — |
 | POST | `/api/tenant/signatures/internal` | — |
 | GET | `/api/tenant/signatures/menu` | — |
 | GET | `/api/tenant/signatures/presets` | — |
+| POST | `/api/tenant/signatures/print-jobs` | — |
+| GET | `/api/tenant/signatures/print-jobs/:id/barcode` | — |
+| POST | `/api/tenant/signatures/print-jobs/:id/printed` | — |
+| POST | `/api/tenant/signatures/print-jobs/:id/reprint` | — |
 | GET | `/api/tenant/signatures/qes/quote` | — |
 | GET | `/api/tenant/signatures/qes/usage` | — |
 | GET | `/api/tenant/signatures/reasons` | — |

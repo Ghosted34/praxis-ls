@@ -13,6 +13,7 @@
  * same story without importing the white sheet into the dark UI.
  */
 import { pageShell } from "@/lib/layout";
+import { tr, currentLocale } from "@/lib/i18n";
 import * as React from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,25 @@ type Container = {
   gross_weight_kg?: number | null;
 };
 type Regime = { code: string; on?: boolean };
-type DocChecklistItem = { code: string; label: string; on?: boolean };
+/**
+ * A checklist row. `label` is a {fr,en} PAIR, not a string.
+ *
+ * It used to arrive pre-joined as "Facture / Invoice", which is exactly why the
+ * printed transit order was bilingual on every line however the tenant had
+ * configured it — the projection had already picked both. The pair is resolved
+ * here, and on the PDF, against the language of the render.
+ */
+type LangPair = { fr?: string; en?: string };
+type DocChecklistItem = { code: string; label: string | LangPair; on?: boolean };
+
+/** One side of a {fr,en} pair, for the operator's own UI language. A plain
+ *  string is passed through — some projections still emit one. */
+const pick = (v?: string | LangPair | null): string => {
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  const fr = currentLocale().startsWith("fr");
+  return String((fr ? v.fr : v.en) ?? v.en ?? v.fr ?? "");
+};
 type DocData = {
   number?: string;
   date?: string;
@@ -111,6 +130,7 @@ type DocData = {
   containers?: Container[];
   /* transit order (operations/transit_order) */
   status_label?: string;
+  status_words?: LangPair;
   direction?: string;
   client?: string;
   conveyance?: string;
@@ -155,7 +175,13 @@ type Preview = {
   entity?: Entity;
   suggested_to?: string | null;
   report?: boolean;
+  /** The language this render came out in — the tenant's configured default
+   *  until the operator picks otherwise. "bilingual" is a real, chosen value. */
+  language?: string;
 };
+
+/** A language the operator can pick for one render. */
+type DocLang = "fr" | "en";
 
 /** The issuing entity renders as the "From" party. The preview returns it as
  *  { legal_name, niu, rccm } — map those onto the Party shape PartyCol expects
@@ -513,7 +539,7 @@ function TransitOrderBody({ d, entity }: { d: DocData; entity?: Entity }) {
                   {doc.on ? "✓" : "○"}
                 </span>
                 <span className={doc.on ? "" : "text-muted"}>
-                  {doc.label}
+                  {pick(doc.label)}
                 </span>
               </li>
             ))}
@@ -532,6 +558,49 @@ function TransitOrderBody({ d, entity }: { d: DocData; entity?: Entity }) {
   );
 }
 
+/**
+ * FR / EN, for one document, at the moment it is produced.
+ *
+ * Two buttons rather than a select: there are exactly two, the current one has
+ * to be readable at a glance beside Download, and a two-option dropdown costs a
+ * click to tell you what it already knows. Neither reads active when the tenant
+ * has configured "bilingual" — that is a third, deliberate state, and lighting
+ * one of these would misreport what the page is showing.
+ */
+function LangPick({
+  value,
+  onChange,
+}: {
+  value?: DocLang;
+  onChange: (l: DocLang) => void;
+}) {
+  return (
+    <div
+      className="flex overflow-hidden rounded-md border border-[rgb(var(--ink)/0.14)]"
+      role="group"
+      aria-label={tr("Document language")}
+    >
+      {(["fr", "en"] as DocLang[]).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => onChange(l)}
+          aria-pressed={value === l}
+          title={l === "fr" ? tr("Print this document in French") : tr("Print this document in English")}
+          className={cn(
+            "px-2.5 py-1 text-xs font-semibold uppercase tracking-wide transition-colors",
+            value === l
+              ? "bg-[rgb(var(--accent))] text-white"
+              : "text-muted-foreground hover:bg-[rgb(var(--ink)/0.06)]",
+          )}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function DocumentPage() {
   const { docType = "", id = "" } = useParams();
   const navigate = useNavigate();
@@ -544,6 +613,17 @@ export function DocumentPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
   const [height, setHeight] = React.useState(1100);
+  /**
+   * The language THIS operator wants THIS document in.
+   *
+   * `null` means "whatever the tenant configured for this doc type" — the
+   * common case, and the one that must not require a click. A pick is deliberately
+   * per-render and not persisted: it is a property of who this copy is going to,
+   * not of the tenant, and the operator is the only one who knows that. It rides
+   * on the preview, the PDF and the email alike, so the copy on screen is the
+   * copy that gets sent.
+   */
+  const [lang, setLang] = React.useState<DocLang | null>(null);
 
   React.useEffect(() => {
     let live = true;
@@ -551,7 +631,7 @@ export function DocumentPage() {
     setPv(null);
     tenant<Preview>(`/document-templates/${docType}/preview`, {
       method: "POST",
-      body: { record_id: id },
+      body: { record_id: id, ...(lang ? { language: lang } : {}) },
     })
       .then((r) => {
         if (live) setPv(r);
@@ -562,7 +642,7 @@ export function DocumentPage() {
     return () => {
       live = false;
     };
-  }, [docType, id]);
+  }, [docType, id, lang]);
 
   async function download() {
     setBusy("dl");
@@ -599,7 +679,7 @@ export function DocumentPage() {
       //    only route that serves them.
       const out = await tenant<{ doc_id?: string }>(
         `/document-templates/${docType}/generate`,
-        { method: "POST", body: { record_id: id } },
+        { method: "POST", body: { record_id: id, ...(lang ? { language: lang } : {}) } },
       );
       if (out.doc_id) await downloadVaultDoc(String(out.doc_id), filename);
       else setNote("Generated and stored in the document vault.");
@@ -621,7 +701,7 @@ export function DocumentPage() {
     try {
       await tenant(`/document-templates/${docType}/${id}/send`, {
         method: "POST",
-        body: { to },
+        body: { to, ...(lang ? { language: lang } : {}) },
       });
       setNote(`Sent to ${to}.`);
     } catch (e) {
@@ -650,7 +730,8 @@ export function DocumentPage() {
           )}
           {d?.signed_vault_id && <Pill tone="ok">Signed copy on file</Pill>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <LangPick value={lang ?? (pv?.language as DocLang | undefined)} onChange={setLang} />
           {sendable && (
             <Button variant="outline" loading={busy === "send"} onClick={send}>
               Send

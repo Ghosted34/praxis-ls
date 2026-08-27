@@ -704,6 +704,27 @@ cannot type.
 | Content | `content_hash`, first 16 |
 | QR, code | `verify_code` — one credential, two renderings |
 
+### 3.12a Placing the seal on a template
+
+`kit.sealBlock` renders one signature. `services/signatures/seal-view.js` turns stored rows into what
+it needs, and `template.service` resolves it once per render and hands the template `data.seals` —
+oldest first, so two seals read down the page as the chain they are. A template that does not know
+about seals ignores the key; the placement decision stays where it belongs, with the template.
+
+Three rules a reviewer should reject a placement over:
+
+| Rule | Why |
+| --- | --- |
+| **The seal goes in the signatory box, not in the margin** | It is the countersignature. A reader looking for who approved the document looks where a signature goes, and a seal anywhere else reads as a watermark. |
+| **One QR per page** | The seal carries the verification block, so a template that places a seal must stop `kit.instrumentFoot`/`kit.footer` printing a second one from the same code. Two QRs for one credential is ~15mm of a one-page document spent on saying the same thing twice. |
+| **`{ titled: true }` when the box already names the party** | §3.12 requires a seal to declare whose side it speaks for *because two seals on a page are otherwise indistinguishable*. A signatory box headed "Pour {company}" satisfies that; printing the name again 4mm below it in the same accent caps does not. The position in the chain is kept either way — a box header cannot say "2 of 3". |
+
+**The company cachet is not a signature.** A template may print the tenant's stamp image
+(`cfg.signature.image_url`) beside the seal — it is a commercial convention and a Cameroonian client
+looks for it. It carries no evidentiary weight and must never be presented as though it does: §3.4
+is explicit that there is no `UPLOAD` visual mark, because an uploaded image proves nothing about
+who applied it. The claim comes from the seal; the stamp is the house mark.
+
 ### 3.13 IP addresses — handling directive
 
 Binding, and it applies to `document_signature.ip` and `signature_scan.ip` alike.
@@ -744,7 +765,7 @@ visual seal, and staleness detection. No public surface, no OTP.
 | --- | --- |
 | `10740`–`10743` migrations | ✅ Delivered — **as ALTER, not DROP + CREATE**, see below |
 | `services/signatures/{canonical,tokens,presets,mask,qr}.js` | ✅ Delivered |
-| `kit.sealBlock()` + the seal CSS | ✅ Delivered — §3.12 |
+| `kit.sealBlock()` + the seal CSS | ✅ Delivered — §3.12. **Placed on a template in the transit-order rebuild; see §3.12a** |
 | `document_signature.*` — all seven files rewritten | ✅ Delivered |
 | `document_vault.types.js` ceiling | ✅ Delivered — `SIGNATURE_CEILING` |
 | Tests: canonical (18), tokens/mask (15), presets (15), seal (18) | ✅ 66 passing |
@@ -1131,7 +1152,8 @@ Five deviations, each with its reason. Everything else in this chapter shipped a
 | `signature.scanned_new_ip`, `signature.scan_anomaly` | `document_signature.scanned_new_ip`, `document_signature.scan_anomaly` | The mail programme owns the `signature.*` event prefix for EMAIL signatures (10768). PR-1 already made this call for its four events (10774); splitting the namespace now would route half of one feature's events to the wrong notification bucket, since `categories.js` keys on the prefix. |
 | The summary registry sits beside `DOC_TYPES` in `document_vault.types.js` | `src/services/signatures/summary.js`, with a coverage test | The stated goal — a new signable type cannot be added without someone seeing the summary slot — is enforced harder by `tests/unit/signature-summary.test.js`, which fails when a type in `SIGNATURE_CEILING` has no resolver. The code sits next to `canonical.js` instead because that is the coupling that actually bites: these resolvers read the shape those builders produce. |
 | Six V1 resolvers | Eight — every signable type | `PROFORMA_ADVANCE` and `TRANSIT_ORDER` are signable, and the "unregistered type shows the verdict only" rule would otherwise have applied to two types that are perfectly summarisable. |
-| The seal is rendered into the PDF | Only the **foot's** verification block is | The seal needs a placement decision per template inside a hard 34mm budget on a one-page document, and it needs the named-party attribution that PR-3's signing session produces. The foot's block delivers §5.8 criterion 1 on every doc type at once with no per-template layout risk — and it shares one renderer with the seal (`kit.verifyBlock`), so PR-3 places the seal without a second QR implementation appearing. |
+| The seal is rendered into the PDF | Only the **foot's** verification block was — **closed, see §3.12a** | The seal needed a placement decision per template inside a hard 34mm budget, so PR-1 shipped the foot's block: §5.8 criterion 1 on every doc type at once with no per-template layout risk, sharing one renderer with the seal (`kit.verifyBlock`). The deferral held for longer than intended — `kit.sealBlock` was tested, documented and **called by nothing**, so no document ever carried the signature it collected. `TRANSIT_ORDER` is the first template to place it. |
+
 
 **One PR-1 defect closed on the way.** `document_signature.service.loadDoc` called
 `template.service.loadRecord(client, { docType, entityRef })` behind a `typeof … === "function"`

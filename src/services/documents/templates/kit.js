@@ -153,6 +153,61 @@ function t(pair, lang = "bilingual") {
   return fr === en ? esc(fr) : `${esc(fr)} / ${esc(en)}`;
 }
 
+/**
+ * The fit scale — the single number that keeps an instrument sheet on one page.
+ *
+ * Every compressible metric in the sheet stylesheet is `calc(N * var(--k))`, so
+ * a template that knows it is about to render nine cargo lines instead of one
+ * sets `k` below 1 and the whole page tightens. Nothing is dropped, nothing is
+ * summarised, nothing is measured at render time — the value is computed from
+ * the record, which is what makes it unit-testable.
+ *
+ * `FIT_FLOOR` is deliberately far below what anyone would call comfortable.
+ * A one-page instrument is a CONTRACT, not a preference: the transit order is
+ * signed, stamped and filed as a single sheet, and the second sheet is the one
+ * that never comes back stamped. So an order with forty cargo lines comes out
+ * small rather than coming out as two sheets, and the floor exists only to stop
+ * the arithmetic running away with itself — not to decide, on the operator's
+ * behalf, that their cargo list is too long.
+ *
+ * Shrinking stops helping before the floor is reached anyway: a QR has a
+ * physical size below which no camera resolves it (§3.7), so the seal and the
+ * verification block keep their millimetres however small the type gets. Past
+ * that point the page is mostly the blocks that cannot shrink, and it spills.
+ * `tests/unit/transit-order-document.test.js` pins where that happens.
+ */
+const FIT_FLOOR = 0.35;
+const clampFit = (k) => {
+  const n = Number(k);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(FIT_FLOOR, Math.round(n * 1000) / 1000));
+};
+
+/**
+ * The printable height of one page, in mm, for the paper and margin in `cfg`.
+ * `.sheet` is set to exactly this, which is what pins the foot to the bottom of
+ * the page and lets the cargo table absorb the slack above it.
+ */
+const PAPER_MM = { A4: { w: 210, h: 297 }, LETTER: { w: 215.9, h: 279.4 } };
+const sheetHeightMm = (cfg = {}) => {
+  const paper = PAPER_MM[String(cfg.paper || "A4").toUpperCase()] || PAPER_MM.A4;
+  const margin = Number.isFinite(Number(cfg.margin_mm)) ? Number(cfg.margin_mm) : 16;
+  return Math.round((paper.h - 2 * margin) * 10) / 10;
+};
+
+/**
+ * The height a one-page sheet is actually allowed to occupy — the printable
+ * height, less a millimetre.
+ *
+ * The millimetre is not slack, it is a ROUNDING GUARD. Layout happens in CSS
+ * pixels at 96dpi, so 265mm is 1001.57px and lands on whatever the engine
+ * rounds it to; a sheet built to exactly the page height measured 265.1mm and
+ * paginated to two pages, with the second one carrying nothing but a tenth of
+ * a millimetre. `.sheet` and every template's fit budget both come from here,
+ * so the guard cannot be applied to one and forgotten on the other.
+ */
+const fitBudgetMm = (cfg = {}) => Math.round((sheetHeightMm(cfg) - 1) * 10) / 10;
+
 /** Merge a saved config over the branding-derived defaults. */
 function defaults(brand = {}) {
   return {
@@ -168,6 +223,11 @@ function defaults(brand = {}) {
     monoFont: PDF_FONT_MONO,
     paper: "A4",
     margin_mm: 16,
+    // The instrument sheet's two extra greys. `line` is the soft hairline the
+    // card-style templates use; a ruled form needs a rule with more presence
+    // (it survives a photocopy) and a band behind its labels.
+    rule: brand.rule || "#B7C4D6",
+    band: brand.band || "#F2F6FB",
     language: "bilingual",
     logo: { url: brand.logo_url || null, show: true, height_mm: 15, align: "left" },
     show: { tax_breakdown: true, notes: true, bank: true, signature: true, terms: true, qr: true, words: true },
@@ -190,6 +250,8 @@ function mergeCfg(brand, saved = {}) {
 /** Full HTML document. `title` sets <title>; `cfg` themes it; `bodyHtml` is the doc. */
 function shell(title, bodyHtml, cfg = {}) {
   const c = { ...defaults(), ...cfg };
+  const sheetMm = fitBudgetMm(c);
+  const logoMm = Number(c.logo && c.logo.height_mm) || 15;
   const css = `
     ${fontFaceCss()}
     @page { size: ${c.paper}; margin: ${c.margin_mm}mm; }
@@ -199,7 +261,7 @@ function shell(title, bodyHtml, cfg = {}) {
     .muted { color: ${c.muted}; }
     .num { font-family: ${c.monoFont}; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
     h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -0.01em; }
-    .doc { position: relative; }
+    .doc { position: relative; --k: 1; }
     .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 14px; border-bottom: 2px solid ${c.accent}; }
     .head .lh { max-width: 60%; }
     .head .logo { max-height: ${c.logo.height_mm}mm; max-width: 200px; display: block; }
@@ -250,6 +312,208 @@ function shell(title, bodyHtml, cfg = {}) {
     .wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
     .wm span { font-size: 96px; font-weight: 800; color: ${c.accent}; opacity: 0.08; transform: rotate(-24deg); letter-spacing: 0.1em; }
 
+    /* ══ THE INSTRUMENT SHEET ═══════════════════════════════════════════════
+       A transit order, a delivery note, a goods-received note: a header, a
+       block of facts a clerk checks at a glance, a cargo table, a few
+       elections, two signatures. The blocks below are that vocabulary.
+
+       THEY LOOK LIKE A FORM, NOT LIKE A CARD DECK. The transit order was built
+       out of k.section + .box — a rounded, padded card per fact pair — and
+       eight of those cost ~55mm of vertical space to carry sixteen short
+       values, which is what pushed the signature block onto a second page. The
+       legacy print view (transit-order.php) used hard-ruled boxes with grey
+       label bands; it fits, and it is what a customs clerk and a filing clerk
+       both read faster. This is that anatomy in our own type and colour.
+
+       ── The one-page guarantee ──────────────────────────────────────────────
+       Two mechanisms, and they are different things:
+
+       1. THE SHEET IS EXACTLY ONE PAGE TALL (.sheet min-height, computed from
+          the paper and the margin). It is a flex column, so the cargo table
+          absorbs the slack and the signature strip and foot land at the bottom
+          of the page whether the order carries one cargo line or nine —
+          instead of floating up under a short table the way a normal flow
+          would.
+
+       2. THE CONTENT SCALES TO FIT (--k). Every compressible metric below is
+          calc(N * var(--k)); the template computes k from what it is about to
+          render and sets it inline. Nothing is ever dropped or summarised —
+          a fuller order is set tighter. Deterministic from the data, so it is
+          unit-testable and there is no measuring and no script in the page.
+
+       WHAT DOES NOT SCALE: the verification QR. §3.7 measured it — below about
+       0.5mm per module a phone camera stops resolving it at arm's length, and
+       a symbol that cannot be scanned is worse than none. It keeps its
+       millimetres however tight the rest of the page gets. */
+
+    .sheet { display: flex; flex-direction: column; min-height: ${sheetMm}mm; }
+    /* The elastic middle. min-height keeps the cargo box looking like the ruled
+       area it is on a one-line order (the legacy reserved the same space), and
+       flex:1 hands it every millimetre the rest of the page does not use. */
+    .grow { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+
+    /* ── Letterhead ─────────────────────────────────────────────────────────
+       Logo left, the legal identity right, one accent rule under both. The
+       identity block is the OHADA one every Cameroonian commercial document
+       carries — RCCM and NIU are not optional decoration, they are what makes
+       the paper an instrument of the company that issued it. */
+    .lh2 { display: flex; justify-content: space-between; align-items: flex-end; gap: calc(6mm * var(--k)); }
+    .lh2 .mark { flex: none; max-width: 62mm; }
+    /* An EXPLICIT height, not a max-height. An <img> sized only by max-height +
+       max-width contributes ZERO to a flex item's max-content width in Chrome,
+       so the letterhead mark collapsed to 0×0 and every document rendered with
+       no logo at all — loaded, decoded, and invisible. A definite height also
+       makes the letterhead's own height predictable, which is what the one-page
+       height model needs. object-fit keeps a wide mark from stretching when
+       max-width caps it. */
+    .lh2 .mark img { height: ${logoMm}mm; width: auto; max-width: 62mm;
+                     object-fit: contain; object-position: left bottom; display: block; }
+    .lh2 .mark .wordmark { font-size: calc(15pt * var(--k)); font-weight: 800; letter-spacing: -0.01em; color: ${c.accent}; line-height: 1.1; }
+    .lh2 .id { text-align: right; min-width: 0; }
+    .lh2 .id .nm { font-size: calc(11.5pt * var(--k)); font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; line-height: 1.2; }
+    .lh2 .id .ln { font-size: calc(7.4pt * var(--k)); color: ${c.muted}; line-height: 1.45; }
+    .lh2rule { border-bottom: 0.7mm solid ${c.accent}; margin-top: calc(1.6mm * var(--k)); }
+
+    /* ── Title bar ──────────────────────────────────────────────────────────
+       The document's own name, centred and letter-spaced, with the reference
+       and the direction on the right where the legacy put them. */
+    .tbar { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(4mm * var(--k)); margin-top: calc(2.4mm * var(--k)); }
+    .tbar .ttl { font-size: calc(15pt * var(--k)); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.1; }
+    .tbar .sub { font-size: calc(7.6pt * var(--k)); color: ${c.muted}; font-style: italic; margin-top: 0.3mm; }
+    .tbar .rt { text-align: right; flex: none; }
+    .tbar .no { font-family: ${c.monoFont}; font-size: calc(11pt * var(--k)); font-weight: 700; color: ${c.accent}; letter-spacing: 0.02em; white-space: nowrap; }
+    .tbar .meta { font-size: calc(7.4pt * var(--k)); color: ${c.muted}; margin-top: 0.4mm; }
+    .tbar .dirs { margin-top: calc(1mm * var(--k)); font-size: calc(8pt * var(--k)); white-space: nowrap; }
+    .tbar .dirs .on { font-weight: 700; }
+
+    /* ── Ruled blocks ───────────────────────────────────────────────────────
+       One border colour, one radius, one label style, used by every block
+       below. A 3px radius rather than the legacy's hard corner: enough to read
+       as ours, not enough to read as a card. */
+    .blk { border: 0.25mm solid ${c.rule}; border-radius: 3px; margin-top: calc(2.2mm * var(--k)); }
+    .blk > .hd { background: ${c.band}; border-bottom: 0.25mm solid ${c.rule};
+                 padding: calc(0.9mm * var(--k)) calc(2.2mm * var(--k));
+                 font-size: calc(6.4pt * var(--k)); font-weight: 700; letter-spacing: 0.1em;
+                 text-transform: uppercase; color: ${c.ink}; }
+    .blk > .bd { padding: calc(1.6mm * var(--k)) calc(2.2mm * var(--k)); font-size: calc(8.6pt * var(--k)); line-height: 1.4; }
+    .row2 { display: flex; }
+    .row2 > * { flex: 1; min-width: 0; }
+    .row2 > * + * { border-left: 0.25mm solid ${c.rule}; }
+    /* Two ruled blocks side by side. Stacking a one-line "place of delivery"
+       under a one-line "customs regime" costs two label bands and two gaps to
+       carry two short values; abreast they cost one row. */
+    .pair { display: flex; gap: calc(3mm * var(--k)); margin-top: calc(2.2mm * var(--k)); align-items: stretch; }
+    .pair > .blk { flex: 1; min-width: 0; margin-top: 0; display: flex; flex-direction: column; }
+    .pair > .blk.w2 { flex: 2; }
+    .pair > .blk > .bd { flex: 1 1 auto; }
+
+    /* Facts: a ruled grid, label over value. min-width:0 on the cell or a long
+       vessel name widens its track instead of wrapping inside it. */
+    .facts { display: grid; grid-template-columns: 1fr 1fr; }
+    .facts.c3 { grid-template-columns: repeat(3, 1fr); }
+    .facts.c4 { grid-template-columns: repeat(4, 1fr); }
+    .facts .c { padding: calc(1.4mm * var(--k)) calc(2.2mm * var(--k));
+                border-right: 0.25mm solid ${c.rule}; border-bottom: 0.25mm solid ${c.rule}; min-width: 0; }
+    .facts.c2 .c:nth-child(2n), .facts.c3 .c:nth-child(3n), .facts.c4 .c:nth-child(4n) { border-right: 0; }
+    .facts .c.last-row { border-bottom: 0; }
+    .facts .k { font-size: calc(6.2pt * var(--k)); text-transform: uppercase; letter-spacing: 0.08em; color: ${c.muted}; line-height: 1.3; }
+    .facts .v { font-weight: 700; font-size: calc(9.4pt * var(--k)); line-height: 1.3; overflow-wrap: anywhere; }
+    /* The document's own reference, in the accent — the proforma's treatment,
+       and the value everyone quotes back on the phone. */
+    .facts .v.ref { font-family: ${c.monoFont}; color: ${c.accent}; letter-spacing: 0.01em; }
+    .facts .v.plain { font-weight: 400; }
+    /* The centred document name, as the proforma sets it. */
+    .dname { text-align: center; margin-top: calc(2.6mm * var(--k)); }
+    .dname .ttl { font-size: calc(14pt * var(--k)); font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1.15; }
+    .dname .sub { font-size: calc(7.8pt * var(--k)); color: ${c.muted}; font-style: italic; margin-top: 0.4mm; letter-spacing: 0.04em; }
+    .dname .ref { font-family: ${c.monoFont}; font-size: calc(11pt * var(--k)); font-weight: 700;
+                  color: ${c.accent}; letter-spacing: 0.02em; margin-top: 0.6mm; }
+
+    /* A ticked box. An inline-block square with an ✕ — NOT ☐/☒, which are
+       absent from the embedded Noto subsets and print as tofu, i.e. as a box
+       nobody can interpret, on the one document where a tick is the meaning. */
+    .tick { display: inline-block; width: calc(2.5mm * var(--k)); height: calc(2.5mm * var(--k));
+            border: 0.25mm solid currentColor; margin-right: calc(1.1mm * var(--k)); vertical-align: -0.3mm;
+            text-align: center; line-height: calc(2.2mm * var(--k)); font-size: calc(6.2pt * var(--k)); }
+
+    /* A tick + a sentence. baseline, so the box sits on the first line of a
+       clause that wraps rather than centring against the whole paragraph. */
+    .clause { display: flex; align-items: baseline; gap: calc(0.5mm * var(--k)); margin-top: calc(1mm * var(--k)); }
+    .clause:first-child { margin-top: 0; }
+    .clause .tx { flex: 1; min-width: 0; }
+    .clause .alt { color: ${c.muted}; font-size: calc(7.2pt * var(--k)); display: block; }
+    .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 calc(3mm * var(--k)); }
+    /* Two clause columns inside one ruled block. Four clauses stacked cost
+       ~21mm to say two things; abreast they cost ~11mm and the two elections
+       stop reading as one four-way choice, which is what they are not. */
+    .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 calc(4mm * var(--k)); }
+    .cols2 > div { min-width: 0; }
+    .subh { font-weight: 700; font-size: calc(7.6pt * var(--k)); letter-spacing: 0.04em; margin-bottom: calc(0.8mm * var(--k)); }
+
+    /* Cargo. The header band matches .blk > .hd so the table reads as one of
+       the ruled blocks rather than as a loose grid. */
+    .cargo { border: 0.25mm solid ${c.rule}; border-radius: 3px; margin-top: calc(2.2mm * var(--k));
+             display: flex; flex-direction: column; flex: 1 1 auto; min-height: calc(26mm * var(--k)); overflow: hidden; }
+    .cargo table { width: 100%; border-collapse: collapse; }
+    .cargo thead th { background: ${c.band}; border-bottom: 0.25mm solid ${c.rule}; text-align: left;
+                      padding: calc(1mm * var(--k)) calc(2.2mm * var(--k));
+                      font-size: calc(6.4pt * var(--k)); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .cargo thead th.num { text-align: right; }
+    .cargo tbody td { padding: calc(1.2mm * var(--k)) calc(2.2mm * var(--k)); border-bottom: 0.2mm solid ${c.rule};
+                      font-size: calc(8.6pt * var(--k)); vertical-align: top; }
+    .cargo tbody tr:last-child td { border-bottom: 0; }
+    /* The declared value closes the table it is the total of, instead of
+       floating in a separate right-aligned block the way .totals does. */
+    .cargo tfoot td { border-top: 0.5mm solid ${c.accent}; padding: calc(1.2mm * var(--k)) calc(2.2mm * var(--k));
+                      font-size: calc(9pt * var(--k)); font-weight: 700; }
+    .cargo tfoot td.sub { border-top: 0; padding-top: 0; font-weight: 400; font-size: calc(7.6pt * var(--k)); color: ${c.muted}; }
+
+    /* ── The signatory strip ────────────────────────────────────────────────
+       The block the document exists to collect, and the one thing that must
+       never split across a page break — the failure this replaced was a
+       transit order whose signature boxes landed alone on page 2, so the copy
+       that came back stamped was a sheet with no cargo on it. */
+    .strip { display: flex; gap: calc(3mm * var(--k)); margin-top: calc(2.2mm * var(--k));
+             break-inside: avoid; page-break-inside: avoid; }
+    .strip .sb { flex: 1; min-width: 0; border: 0.25mm solid ${c.rule}; border-radius: 3px;
+                 display: flex; flex-direction: column; }
+    .strip .sb > .hd { background: ${c.band}; border-bottom: 0.25mm solid ${c.rule};
+                       padding: calc(0.9mm * var(--k)) calc(2.2mm * var(--k));
+                       font-size: calc(6.4pt * var(--k)); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+    /* The stamp well. A named, ruled area — "sign here" with no box is how a
+       rubber stamp lands across the cargo table. 20mm is a Cameroonian round
+       company stamp with a signature over it. */
+    /* flex:1 so the body fills the box its taller sibling stretched, which is
+       what puts the ruled line on the FLOOR of the well. Without it the line
+       sits wherever the content happens to end and the two signature boxes
+       rule at different heights — which reads as a rendering fault. */
+    .strip .sb > .bd { padding: calc(1.6mm * var(--k)) calc(2.2mm * var(--k)); display: flex; flex-direction: column;
+                       flex: 1 1 auto; min-height: calc(20mm * var(--k)); }
+    .strip .grow2 { flex: 1 1 auto; }
+    .strip .stamp { max-height: calc(16mm * var(--k)); max-width: 44mm; align-self: flex-start; display: block; }
+    .strip .ln { border-top: 0.25mm solid ${c.ink}; margin-top: calc(1.2mm * var(--k)); padding-top: calc(0.7mm * var(--k));
+                 font-size: calc(7.4pt * var(--k)); }
+    .strip .hint { font-size: calc(7pt * var(--k)); color: ${c.muted}; line-height: 1.35; }
+    /* A seal inside a box that is already bordered drops its own border: two
+       rules 1mm apart read as a mistake. It keeps its own type sizes, because
+       the evidence rows have their own legibility floor (§3.12). */
+    .strip .seal { width: auto; border: 0; padding: 0; max-height: none; margin-top: calc(1mm * var(--k)); }
+
+    /* ── The foot ───────────────────────────────────────────────────────────
+       Pinned to the bottom of the sheet by the flex column, not by a margin
+       that happens to work at one content length. Legal identity and bank on
+       the left — the OHADA block a counterparty needs to pay or to check us —
+       page and provenance on the right, verification QR beside them. */
+    .ifoot { margin-top: calc(2.2mm * var(--k)); border-top: 0.5mm solid ${c.accent}; padding-top: calc(1.2mm * var(--k));
+             display: flex; align-items: flex-start; justify-content: space-between; gap: calc(4mm * var(--k));
+             font-size: calc(6.8pt * var(--k)); color: ${c.muted}; line-height: 1.45; }
+    .ifoot .lft { flex: 1; min-width: 0; }
+    .ifoot .rgt { text-align: right; flex: none; }
+    .ifoot .vfy { width: 20mm; text-align: center; flex: none; }
+    .ifoot .vfy svg { width: 20mm; height: 20mm; display: block; }
+    .ifoot .vfy .code { font-family: ${c.monoFont}; font-size: 5.5pt; color: #4b5563; margin-top: 0.6mm; white-space: nowrap; }
+    .ifoot .vfy .hint { font-size: 5.5pt; line-height: 1.25; }
+
     /* ── The electronic seal (SIGNATURE_ENGINEERING_GUIDE §3.12) ────────────
        Sized in millimetres, not pixels: this block has a hard 34mm height
        budget on a one-page document, and px would leave that at the mercy of
@@ -299,7 +563,17 @@ function shell(title, bodyHtml, cfg = {}) {
                  color: #4b5563; margin-top: 0.8mm; white-space: nowrap; }
     .vfy .hint { font-family: ${c.font}; color: #4b5563; }
     @media print { .wm span { opacity: 0.08; } }`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="doc">${cfg.watermark ? watermark(cfg.watermark) : ""}${bodyHtml}</div></body></html>`;
+  /*
+   * `--k` is emitted as a NUMBER, clamped, never as the raw cfg value.
+   *
+   * It reaches here from a template's own arithmetic, but `cfg` is merged from
+   * a tenant-saved settings row on the way in, so an interpolated string would
+   * be a CSS injection point on a stylesheet that themes every document. A
+   * clamped Number cannot carry anything but a number, and a nonsense value
+   * lands on 1 — a readable page — rather than on a broken one.
+   */
+  const k = clampFit(c.fit === undefined ? 1 : c.fit);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="doc" style="--k:${k}">${cfg.watermark ? watermark(cfg.watermark) : ""}${bodyHtml}</div></body></html>`;
 }
 
 /** Letterhead: logo (or brand name) + the OHADA identity lines. */
@@ -404,7 +678,7 @@ function signatureBlock(cfg = {}) {
  * @param {string} sig.qrSvg        inline SVG from services/signatures/qr.js
  * @param {string} [sig.markImageB64] data URL, DRAWN only
  */
-function sealBlock(sig = {}, cfg = {}) {
+function sealBlock(sig = {}, cfg = {}, { titled = false } = {}) {
   const c = { ...defaults(), ...cfg };
   const lang = c.language;
 
@@ -436,9 +710,24 @@ function sealBlock(sig = {}, cfg = {}) {
   // leads because that is what the eye goes to first.
   const identity = isDrawn ? `${drawn}${who}${reason}` : `${reason}${who}`;
 
+  /*
+   * `titled` — the seal is sitting inside a block that ALREADY names the party
+   * (the transit order's signatory box is headed "Pour {company}").
+   *
+   * §3.12 requires a seal to declare which side it speaks for, and the reason
+   * it gives is that two seals on one page are otherwise indistinguishable.
+   * That requirement is met by the box, not dropped: what is dropped is the
+   * SECOND printing of the same company name, 4mm under the first, in the same
+   * accent caps. The position in the chain is kept either way — a box header
+   * cannot say "2 of 3".
+   */
+  const forRow = titled
+    ? (pos ? `<div class="for"><span></span>${pos}</div>` : "")
+    : `<div class="for"><span>${t({ fr: "Pour", en: "For" }, lang)} ${esc(sig.forParty)}</span>${pos}</div>`;
+
   return `<div class="seal">
   <div class="body">
-    <div class="for"><span>${t({ fr: "Pour", en: "For" }, lang)} ${esc(sig.forParty)}</span>${pos}</div>
+    ${forRow}
     <div class="rule"></div>
     ${identity}
     <div class="ev">${esc(sig.signedAt)} · ${esc(sig.method)}<br>${esc(sig.docRef || "")}${hashFragment}</div>
@@ -533,6 +822,286 @@ function signerBlock(signers = [], cfg = {}) {
   }).join("")}</div>`;
 }
 
+/* ── Instrument builders ────────────────────────────────────────────────────
+ * The builders for the sheet stylesheet declared in `shell`. See the comment
+ * there for what the sheet is and why it looks like a form. Every one of them
+ * takes already-resolved values and returns a string: no measuring, no I/O, and
+ * nothing that behaves differently between the HTML preview and the PDF.
+ *
+ * ⚠ A parameter named `html` is inserted RAW. Those are the seams where a
+ *   template composes other kit blocks (a seal, a table, a clause list);
+ *   everything carrying a value out of a record goes through `esc` or `t` here.
+ */
+
+/**
+ * A ticked, or empty, box.
+ *
+ * An ✕ inside a bordered span rather than ☒/☐: the box-drawing checkbox
+ * characters are absent from the embedded Noto subsets (latin + latin-ext) and
+ * print as tofu — a box nobody can interpret, on the one document where the
+ * tick IS the instruction.
+ */
+function tick(on) {
+  return `<span class="tick">${on ? "&#10005;" : ""}</span>`;
+}
+
+/**
+ * A sentence in the document's language, STACKED rather than slash-joined.
+ *
+ * `t` renders "fr / en" on one line, which reads fine for a two-word column
+ * heading and badly for a legal clause — especially one carrying the company's
+ * own name, where the bilingual form repeats it twice in a row. So in bilingual
+ * mode the languages sit on two lines with the second muted, and a monolingual
+ * document carries ONE language with no separator anywhere on the page.
+ */
+function clauseText(pair, lang) {
+  if (lang === "fr" || lang === "en") return t(pair, lang);
+  const fr = pair.fr ?? pair.en ?? "";
+  const en = pair.en ?? pair.fr ?? "";
+  return fr === en ? esc(fr) : `${esc(fr)}<span class="alt">${esc(en)}</span>`;
+}
+
+/** A tick + a clause. `pair` is {fr,en}; a one-language caller passes both. */
+function clause(on, pair, cfg = {}) {
+  return `<div class="clause">${tick(on)}<span class="tx">${clauseText(pair, cfg.language)}</span></div>`;
+}
+
+/**
+ * The facts grid — `cells` = [[label, value], …], two or four to a row.
+ *
+ * A falsy cell is dropped, so a template can list every fact it MIGHT hold and
+ * let the record decide which appear. The last row is padded to full width, or
+ * the grid's bottom edge comes out as a step rather than a rule.
+ */
+function factsGrid(cells, cfg = {}, { cols = 2 } = {}) {
+  const n = cols === 3 || cols === 4 ? cols : 2;
+  const list = (cells || []).filter((c) => Array.isArray(c) && c.length);
+  if (!list.length) return "";
+  const pad = (n - (list.length % n)) % n;
+  const all = list.concat(Array.from({ length: pad }, () => null));
+  const lastRow = all.length - n;
+  return `<div class="facts c${n}">${all.map((cell, i) => {
+    const cls = `c${i >= lastRow ? " last-row" : ""}`;
+    if (!cell) return `<div class="${cls}"></div>`;
+    const [label, value, opt] = cell;
+    const v = value === null || value === undefined || value === "" ? "—" : value;
+    // `opt.html` is the escape hatch for a value that is markup rather than
+    // text — the Import/Export tick-pair is the only current user. It is the
+    // caller's job to have escaped it; every other path here goes through esc.
+    const vh = opt && opt.html ? String(value) : esc(v);
+    const vc = ["v", opt && opt.ref ? "ref" : "", opt && opt.plain ? "plain" : ""].filter(Boolean).join(" ");
+    return `<div class="${cls}"><div class="k">${t(typeof label === "string" ? { fr: label, en: label } : label, cfg.language)}</div><div class="${vc}">${vh}</div></div>`;
+  }).join("")}</div>`;
+}
+
+/**
+ * A ruled block: a grey label band over its content. `html` is raw.
+ *
+ * `wide` doubles the block's share when it sits in a `pairRow`; `bare` drops
+ * the body padding for content that brings its own (a facts grid).
+ */
+function ruledBlock(label, html, cfg = {}, { wide = false, bare = false } = {}) {
+  if (!html) return "";
+  const hd = label
+    ? `<div class="hd">${t(typeof label === "string" ? { fr: label, en: label } : label, cfg.language)}</div>`
+    : "";
+  const body = bare ? html : `<div class="bd">${html}</div>`;
+  return `<div class="blk${wide ? " w2" : ""}">${hd}${body}</div>`;
+}
+
+/**
+ * The cargo table — the elastic block of the sheet.
+ *
+ * `foot` = [[label, value, {sub?}]] closes the table with the figure it totals
+ * (a declared customs value belongs to the cargo it describes, not to a
+ * right-floated box three blocks further down).
+ *
+ * An EMPTY table still renders its header and its ruled area: a transit order
+ * with no cargo lines is an order somebody has to notice is incomplete, and a
+ * blank space where the table should be reads as a rendering fault instead.
+ */
+function cargoTable(columns, rows = [], cfg = {}, foot = []) {
+  const th = columns.map((c) => `<th class="${c.num ? "num" : ""}">${t(typeof c.label === "string" ? { fr: c.label, en: c.label } : c.label, cfg.language)}</th>`).join("");
+  const tb = (rows || []).length
+    ? rows.map((r) => `<tr>${columns.map((c) => `<td class="${c.num ? "num" : ""}">${esc(r[c.key])}</td>`).join("")}</tr>`).join("")
+    : `<tr><td colspan="${columns.length}" class="muted">—</td></tr>`;
+  const tf = (foot || []).filter(Boolean).map(([label, value, opt]) => {
+    const cls = opt && opt.sub ? " class=\"sub\"" : "";
+    return `<tr><td${cls} colspan="${columns.length - 1}">${t(typeof label === "string" ? { fr: label, en: label } : label, cfg.language)}</td><td${cls || ' class=""'}><div class="num">${esc(value)}</div></td></tr>`;
+  }).join("");
+  return `<div class="cargo"><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody>${tf ? `<tfoot>${tf}</tfoot>` : ""}</table></div>`;
+}
+
+/**
+ * The letterhead: the mark on the left, HOW TO REACH US on the right.
+ *
+ * ── The head/foot split ────────────────────────────────────────────────────
+ * The head answers "who sent this and how do I reach them"; the foot answers
+ * "who are they, legally". Nothing appears in both. The first version printed
+ * the legal name, the address, RCCM and NIU at the top and the SAME four at the
+ * bottom — a quarter of the identity block on the page was duplication, on a
+ * document whose entire problem is height.
+ *
+ *   head  legal name · address lines · phone + email
+ *   foot  RCCM · NIU                                    (kit.instrumentFoot)
+ *
+ * ── Why the address is split on newlines ───────────────────────────────────
+ * `corporate_entity.address` is one `text` column — there is no separate
+ * po_box, city or postal_code — so the only honest way to give a tenant the
+ * three-line postal address a letterhead wants is to RESPECT THE LINE BREAKS
+ * THEY TYPED. A tenant who enters
+ *
+ *     1030, Avenue Douala Manga Bell, Bali
+ *     PO Box 5120, Douala, Cameroun
+ *
+ * gets exactly that, and one who types a single line gets a single line. The
+ * alternative — parsing a free-text address into parts — guesses, and guesses
+ * wrongly the first time somebody writes an address that is not Cameroonian.
+ */
+function instrumentHead(entity = {}, cfg = {}) {
+  const mark = cfg.logo && cfg.logo.show && cfg.logo.url
+    ? `<img src="${esc(cfg.logo.url)}" alt="">`
+    : `<div class="wordmark">${esc(entity.legal_name || "")}</div>`;
+  const lines = [
+    ...String(entity.address || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean),
+    [entity.phone, entity.email].filter(Boolean).join(" · "),
+  ].filter(Boolean).map((l) => `<div class="ln">${esc(l)}</div>`).join("");
+  return `<div class="lh2"><div class="mark">${mark}</div><div class="id"><div class="nm">${esc(entity.legal_name || "")}</div>${lines}</div></div><div class="lh2rule"></div>`;
+}
+
+/**
+ * The document's own name, centred under the letterhead — the proforma's
+ * treatment, and the one the tenant asked for. The reference, date and status
+ * live in the facts grid beneath it rather than beside it: a title fighting a
+ * right-hand meta column for the same optical centre is what made the previous
+ * header read as two documents stapled together.
+ */
+/**
+ * `sub` is normally the document's own REFERENCE, not a strapline.
+ *
+ * A title with the number under it is how everyone identifies the sheet, and it
+ * is the pairing the proforma this was modelled on uses. The strapline
+ * ("Autorisation de transit") went to the foot: it explains what the document
+ * IS, which a reader needs once, at the end — not in the position of greatest
+ * emphasis on the page. Pass `{ ref: true }` for the reference treatment (mono,
+ * accent, larger); leave it off for an actual subtitle.
+ */
+function docName(title, sub, cfg = {}, { ref = false } = {}) {
+  const line = sub
+    ? `<div class="${ref ? "ref" : "sub"}">${ref ? esc(sub) : t(typeof sub === "string" ? { fr: sub, en: sub } : sub, cfg.language)}</div>`
+    : "";
+  return `<div class="dname"><div class="ttl">${t(title, cfg.language)}</div>${line}</div>`;
+}
+
+/** Two (or three) ruled blocks abreast. `w2` on a block doubles its share. */
+function pairRow(blocks = []) {
+  const list = (blocks || []).filter(Boolean);
+  if (!list.length) return "";
+  if (list.length === 1) return list[0];
+  return `<div class="pair">${list.join("")}</div>`;
+}
+
+/**
+ * The signatory strip. `blocks` = [{ title, html?, line?, hint? }].
+ *
+ * `html` fills the well (a stamp image, a seal, or nothing); `line` is the
+ * ruled name/date line under it; `hint` is the small print above it. All three
+ * are raw — callers compose them from kit blocks or escape them.
+ *
+ * The CSS marks this `break-inside: avoid`. That is the whole point: the
+ * failure this replaced was a transit order whose signature boxes landed alone
+ * on a second page, so the sheet that came back stamped had no cargo on it.
+ */
+function signStrip(blocks = [], cfg = {}) {
+  const list = (blocks || []).filter(Boolean);
+  if (!list.length) return "";
+  return `<div class="strip">${list.map((b) => `<div class="sb"><div class="hd">${
+    t(typeof b.title === "string" ? { fr: b.title, en: b.title } : b.title, cfg.language)
+  }</div><div class="bd">${b.hint ? `<div class="hint">${b.hint}</div>` : ""}<div class="grow2">${b.html || ""}</div>${
+    b.line ? `<div class="ln">${b.line}</div>` : ""
+  }</div></div>`).join("")}</div>`;
+}
+
+/**
+ * The foot of an instrument sheet: WHO WE ARE, LEGALLY. Pinned to the bottom of
+ * the page by the flex column rather than by a margin that happens to work at
+ * one content length.
+ *
+ * RCCM and NIU, and by default nothing else — see `instrumentHead` for the
+ * split. They are not decoration in the OHADA zone: they are what makes the
+ * sheet an instrument of the company that issued it, and they are the two
+ * things a counterparty's own filing needs that the head does not already say.
+ *
+ * `bank` is OFF by default and opt-in per template. Bank details belong on a
+ * document somebody is meant to PAY — an invoice, a proforma. A transit order
+ * is an authorisation to declare cargo; printing an account number on it hands
+ * the tenant's banking details to every warehouse and border post the sheet
+ * passes through, for nothing.
+ *
+ * `verify` is the {url, code, qrSvg} object from services/signatures/verify-link
+ * and renders ONLY when the document carries a signature — and only when no
+ * seal on the page is already carrying one (§3.12a: one QR per page). An
+ * unsigned document showing no QR is the honest answer.
+ */
+function instrumentFoot(entity = {}, cfg = {}, verify, opts = {}) {
+  const legal = [
+    entity.rccm ? `RCCM ${entity.rccm}` : null,
+    entity.niu ? `NIU ${entity.niu}` : null,
+  ].filter(Boolean).map((l) => `<div>${esc(l)}</div>`).join("");
+  const b = entity.bank_block || {};
+  const bank = opts.bank
+    ? [b.bank, b.account ? `${t({ fr: "Compte", en: "Account" }, cfg.language)} ${b.account}` : null, b.iban ? `IBAN ${b.iban}` : null]
+      .filter(Boolean).map(esc).join(" · ")
+    : "";
+  const custom = cfg.footer_text ? `<div>${esc(cfg.footer_text)}</div>` : "";
+  const v = verify && typeof verify === "object" && verify.code && cfg.show && cfg.show.qr ? verify : null;
+  const host = v ? String(v.url || "").replace(/^https?:\/\//i, "").split("/")[0] : "";
+  const vfy = v
+    ? `<div class="vfy">${v.qrSvg || ""}<div class="code">${esc(formatVerifyCode(v.code))}</div><div class="hint">${t({ fr: "Vérifiez sur", en: "Verify at" }, cfg.language)} ${esc(host)}</div></div>`
+    : "";
+  const right = [
+    opts.pageLabel ? esc(opts.pageLabel) : "",
+    opts.provenance ? esc(opts.provenance) : "",
+  ].filter(Boolean).map((x) => `<div>${x}</div>`).join("");
+  return `<div class="ifoot"><div class="lft">${legal}${bank ? `<div>${bank}</div>` : ""}${custom}</div>`
+    + `<div class="rgt">${right}</div>${vfy}</div>`;
+}
+
+/**
+ * The fit scale for a sheet: how far the page must tighten to hold its content.
+ *
+ * The estimate is the CALLER's, because only the template knows what it is
+ * about to render. This is the arithmetic and the clamp, in one place, so two
+ * templates cannot disagree about what k means or about where the floor is.
+ *
+ * ── Why `fixedMm` is a separate argument and not part of the total ─────────
+ * Not everything on the page scales. The seal keeps its own type sizes (§3.12
+ * sets a legibility floor for the evidence rows) and every QR keeps its
+ * millimetres (§3.7 — below ~0.5mm per module a camera stops resolving it), so
+ * those blocks are the SAME height at k = 0.5 as at k = 1.
+ *
+ * Folding them into one total and solving `budget / content` therefore
+ * under-shrinks: it assumes 28mm of seal will become 26mm when it will not, and
+ * the page comes out a couple of millimetres over — which is a second sheet.
+ * Solving `budget = fixed + scaling · k` is exact, and it is the difference
+ * between a document that fits and one that fits on the cases you happened to
+ * test.
+ *
+ * @param {number} scalingMm content whose height follows `--k`
+ * @param {number} budgetMm  the page's own height (see `fitBudgetMm`)
+ * @param {number} [fixedMm] content that keeps its millimetres whatever k is
+ */
+function fitScale(scalingMm, budgetMm, fixedMm = 0) {
+  const budget = Number(budgetMm);
+  const scaling = Number(scalingMm);
+  const fixed = Number.isFinite(Number(fixedMm)) ? Number(fixedMm) : 0;
+  if (!Number.isFinite(budget) || !Number.isFinite(scaling) || scaling <= 0 || budget <= 0) return 1;
+  // A page whose UNSHRINKABLE blocks already exceed the paper cannot be solved
+  // for. It lands on the floor and spills, which is honest — and it is exactly
+  // where the measured ceiling of the transit order comes from.
+  return clampFit((budget - fixed) / scaling);
+}
+
 function watermark(text) {
   return `<div class="wm"><span>${esc(text)}</span></div>`;
 }
@@ -584,5 +1153,7 @@ module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
   bankBlock, termsBlock, signatureBlock, signerBlock,
+  tick, clause, clauseText, factsGrid, ruledBlock, pairRow, cargoTable, instrumentHead,
+  docName, signStrip, instrumentFoot, fitScale, sheetHeightMm, fitBudgetMm, FIT_FLOOR,
   sealBlock, printBarcode, formatPrintCode, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
 };

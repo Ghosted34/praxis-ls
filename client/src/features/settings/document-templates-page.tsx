@@ -411,6 +411,67 @@ export function TemplateStudioPage() {
                   />
                 </Field>
               </div>
+              {/*
+                * THE COMPANY CACHET — the round rubber stamp a Cameroonian
+                * commercial document carries, and what a client's filing clerk
+                * looks for on a transit order.
+                *
+                * It has been in the config shape since the kit existed and has
+                * never had a control or been rendered, so every tenant printed
+                * an empty signature box.
+                *
+                * It is NOT a signature and the product must never present it as
+                * one: an uploaded image proves nothing about who applied it,
+                * which is why the signatures engine has no `UPLOAD` mark
+                * (doc/SIGNATURE_ENGINEERING_GUIDE.md §3.4). What it is, is the
+                * house mark. The evidentiary claim on a signed document comes
+                * from the seal printed beneath it.
+                */}
+              <Field label="Company stamp (cachet)">
+                <div className="space-y-2">
+                  {sig.image_url ? (
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={String(sig.image_url)}
+                        alt=""
+                        className="h-14 rounded border border-[rgb(var(--ink)/0.12)] bg-white p-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setNested("signature", { image_url: "" })}
+                      >
+                        {tr("Remove")}
+                      </Button>
+                    </div>
+                  ) : null}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      // Held as a data URI in the config, exactly like a small
+                      // inline logo: the renderer has no page origin, so a
+                      // relative URL would resolve in the preview iframe and
+                      // silently not in the PDF.
+                      const reader = new FileReader();
+                      reader.onload = () =>
+                        setNested("signature", {
+                          image_url: String(reader.result || ""),
+                        });
+                      reader.readAsDataURL(file);
+                      e.target.value = "";
+                    }}
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {tr(
+                      "Printed in the company signature box. A transparent PNG of the stamp reproduces best.",
+                    )}
+                  </p>
+                </div>
+              </Field>
               <Field label="Watermark">
                 <Input
                   value={s(cfg.watermark)}

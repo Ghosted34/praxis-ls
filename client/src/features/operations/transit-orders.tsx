@@ -66,6 +66,7 @@ import * as masterApi from "@/lib/masterdata-api";
 import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
 import { cn } from "@/lib/cn";
 import { openVaultDoc } from "@/lib/vault-file";
+import { SignDocumentModal, SignaturesOnRecord } from "@/features/vault/sign-document";
 import { ShipmentDetailsPanel } from "./shipment-details";
 import { humanizeKey, nameMap } from "./shared";
 
@@ -837,6 +838,9 @@ function OrderActions({
   /** The client-signed copy, held until the transition that needs it. */
   const [scan, setScan] = React.useState<File | null>(null);
   const [scanError, setScanError] = React.useState<string | null>(null);
+  /** The signatures engine (MOD-64), on this order's own screen. */
+  const [signOpen, setSignOpen] = React.useState(false);
+  const entityRef = `transit_order:${row.transit_order_id}`;
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -875,7 +879,27 @@ function OrderActions({
         )}
         {allowed.has("SIGNED") && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => setAsk("sign")}>
-            Record signature
+            Record client signature
+          </Button>
+        )}
+        {/*
+          * Sign it OURSELVES, through the signatures engine.
+          *
+          * A different act from "Record client signature" beside it, and the
+          * screen has to keep them apart: that one files the scan the CLIENT
+          * stamped and moves the order to SIGNED; this one puts OUR
+          * countersignature on the document — the approval that prints as the
+          * seal in the company box, with the QR that lets anyone holding the
+          * paper verify it.
+          *
+          * Only once the order is numbered. The seal prints the order's own
+          * reference as evidence and its hash covers the issued figures, so
+          * sealing a draft would attest to a document that does not exist yet
+          * and would go stale the moment it was issued.
+          */}
+        {row.status !== "DRAFT" && row.status !== "CANCELLED" && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setSignOpen(true)}>
+            Sign electronically
           </Button>
         )}
         {allowed.has("LODGED") && (
@@ -1026,6 +1050,14 @@ function OrderActions({
           </div>
         }
       />
+
+      <SignDocumentModal
+        open={signOpen}
+        entityRef={entityRef}
+        docType="TRANSIT_ORDER"
+        onClose={() => setSignOpen(false)}
+        onSaved={onDone}
+      />
     </div>
   );
 }
@@ -1174,6 +1206,19 @@ function OrderDetail({
             </Callout>
           )}
         </Panel>
+
+        {/*
+         * What is already attested on this order, and by whom.
+         *
+         * `SignaturesOnRecord` renders nothing when the tenant has signatures
+         * switched off or when nothing has been signed, so the panel only
+         * appears once there is something in it — a record screen must not
+         * sprout an empty section for a feature its tenant never bought.
+         */}
+        <SignaturesOnRecord
+          entityRef={`transit_order:${data.transit_order_id}`}
+          title={tr("Signatures on this order")}
+        />
 
         <div className="flex justify-end gap-2">
           {data.status !== "LODGED" && data.status !== "CANCELLED" && (

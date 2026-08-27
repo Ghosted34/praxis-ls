@@ -13,6 +13,10 @@ const pdf = require("../../../services/pdf.service");
 const storage = require("../../../services/storage.service");
 const emailSvc = require("../../../services/email.service");
 const verifyLink = require("../../../services/signatures/verify-link");
+const sealView = require("../../../services/signatures/seal-view");
+// The one outbound-language helper (mail/signature/language.js). A second copy
+// of this rule is how a French client starts receiving English documents.
+const { asLang } = require("../../mail/signature/language");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -104,10 +108,47 @@ async function savedConfig(client, docType, entityId) {
   return { ...(def && def.value ? def.value : {}), ...(ov && ov.value ? ov.value : {}) };
 }
 
-async function resolveCfg(client, docType, entityId, override) {
+/**
+ * The language ONE render comes out in.
+ *
+ * Resolution order, and it is deliberately short:
+ *   1. what the operator picked at print time (`language`, from the request)
+ *   2. what the tenant configured for this doc type in the Document Studio
+ *
+ * The operator's pick wins because they are the one looking at the client's
+ * file while they press Download — a tenant-wide default cannot know that this
+ * particular consignee reads English. `asLang` drops anything that is not a
+ * supported code, so an unrecognised value falls through to the tenant setting
+ * rather than rendering a document in nothing.
+ *
+ * "bilingual" is a legitimate configured value and is passed through untouched;
+ * it is only ever chosen deliberately.
+ */
+function resolveDocLanguage(picked, saved) {
+  const explicit = asLang(picked);
+  if (explicit) return explicit;
+  return (saved && saved.language) || undefined;
+}
+
+async function resolveCfg(client, docType, entityId, override, { language = null } = {}) {
   const { entity, brand } = await resolveEntity(client, entityId);
   const saved = await savedConfig(client, docType, entityId);
-  const cfg = kit.mergeCfg(brand, { ...saved, ...(override || {}) });
+  const picked = resolveDocLanguage(language, saved);
+  const cfg = kit.mergeCfg(brand, {
+    ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
+  });
+  /*
+   * The company cachet, inlined the same way the letterhead logo is.
+   *
+   * It was configurable (`signature.image_url` has been in `kit.defaults`
+   * since the kit existed) and it was never RESOLVED, so a tenant that set one
+   * got a bare storage key in an <img src> — which loads in the preview iframe,
+   * where there is an origin, and silently nothing in the PDF, where there is
+   * not. Same failure the logo had, same fix.
+   */
+  if (cfg.signature && cfg.signature.image_url) {
+    cfg.signature = { ...cfg.signature, image_url: await resolveLogo(cfg.signature.image_url) };
+  }
   // Currency catalogue + the entity's default currency, so templates render the
   // symbol ("FCFA") and correct decimals, and fall back to the entity's base
   // currency (not a hardcoded XAF) when a document has no currency column.
@@ -223,10 +264,6 @@ async function records(client, docType) {
  * shipment_details.rules exists.
  */
 const REGIME_CODES = ["IM4", "IM7", "IM8", "EX1", "EX2"];
-const TO_STATUS_LABEL = {
-  DRAFT: "Brouillon / Draft", ISSUED: "Émis / Issued", SIGNED: "Signé / Signed",
-  LODGED: "Déclaré / Lodged", CANCELLED: "Annulé / Cancelled",
-};
 const fmtMoney = (n, ccy) =>
   `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${ccy || "XAF"}`;
 
@@ -347,10 +384,42 @@ async function transitOrderData(client, recordId) {
     data: {
       number: to.ot_number || String(to.transit_order_id).slice(0, 8),
       date: to.issued_at || to.created_at,
-      status_label: TO_STATUS_LABEL[to.status] || to.status,
+      status: to.status,
+      /*
+       * A PAIR, not "Émis / Issued".
+       *
+       * This field used to be a pre-joined bilingual string, so a document
+       * configured `fr` printed the English half too and there was nothing
+       * `cfg.language` could do about it — the projection had already decided.
+       * Same for the attached-document labels below. Every label a template
+       * renders now leaves here as {fr, en}, and the template picks a side.
+       */
+      status_words: rules.statusWords(to.status),
       direction: to.service_direction || "",
 
       client: to.client_name || "—",
+      /*
+       * The counterparty in the shape `canonical.js` and the public
+       * verification portal expect.
+       *
+       * Without it the signed payload carried `party: { name: "" }` and the
+       * portal answered "Donneur d'ordre: —" to anyone scanning a signed
+       * transit order — the one field a stranger holding the paper uses to
+       * confirm they are looking at their own document. `client` stays beside
+       * it: the native document view reads it, and dropping a field the
+       * projection has always emitted is not this change's business.
+       *
+       * ⚠ This CHANGES THE CANONICAL HASH for transit orders. A signature
+       *   taken before this change recomputes to a different digest and reads
+       *   as AMENDED — correctly, in the sense that the payload it attested to
+       *   really was missing the counterparty. The seal was never rendered on
+       *   this doc type before now, so that set is empty in practice; it is
+       *   called out here because the next person to change a projection field
+       *   needs to know that is what they are doing.
+       */
+      party: { name: to.client_name || "—", lines: [] },
+      // The conveyance under the key canonical.js reads for a movement document.
+      vehicle: facet("CONVEYANCE") || "",
       dossier_ref: to.dossier_ref || "—",
       conveyance: facet("CONVEYANCE"),
       transport_ref: facet("TRANSPORT_REF"),
@@ -382,7 +451,7 @@ async function transitOrderData(client, recordId) {
 
       documents: rules.SUBMITTED_DOC_TYPES.map((d) => ({
         code: d.code,
-        label: `${d.label_fr} / ${d.label_en}`,
+        label: { fr: d.label_fr, en: d.label_en },
         on: ticked.has(d.code),
       })),
 
@@ -1016,6 +1085,36 @@ async function wetPrintBlockFor(client, { entityRef }) {
   }
 }
 
+/**
+ * The seals a rendered document should carry, in print order.
+ *
+ * Handed to the template as `data.seals`. A template that does not know about
+ * seals simply ignores the key, which is why this can be resolved once here
+ * rather than per doc type — the placement decision the guide's delivery table
+ * deferred is the TEMPLATE's, and there is now one template making it.
+ *
+ * Best-effort, like everything else on this path: no seals is the same page a
+ * tenant with no signatures gets.
+ */
+async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null }) {
+  if (!entityRef || !cfg || !cfg.show || !cfg.show.signature) return [];
+  try {
+    const rows = signatures || (await activeSignatures(client, entityRef));
+    if (!rows.length) return [];
+    return await sealView.build(client, rows, {
+      entity,
+      docRef: (data && data.number) || "",
+      // A bilingual document seals in French: the seal is a sentence, not a
+      // label pair, and `sealBlock` has no stacked form to render both in.
+      language: cfg.language === "en" ? "en" : "fr",
+      origin,
+    });
+  } catch (err) {
+    logger.warn({ err: err && err.message, entity_ref: entityRef }, "seals could not be resolved for render");
+    return [];
+  }
+}
+
 async function verifyBlockFor(client, { entityRef, origin = null, signatures = null }) {
   const rows = signatures || (await activeSignatures(client, entityRef));
   if (!rows.length) return null;
@@ -1028,7 +1127,7 @@ async function verifyBlockFor(client, { entityRef, origin = null, signatures = n
 }
 
 /** Live preview → HTML (no PDF). Real record when recordId + a loader exist, else sample. */
-async function preview(client, { docType, entityId, recordId, config, origin = null }) {
+async function preview(client, { docType, entityId, recordId, config, origin = null, language = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   let data = tpl.sampleData;
@@ -1062,13 +1161,18 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
       signedRef = `${docType.toLowerCase()}:${recordId}`;
     }
   }
-  const { cfg, entity } = await resolveCfg(client, docType, ent, config);
+  const { cfg, entity } = await resolveCfg(client, docType, ent, config, { language });
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef: signedRef });
   const verify = await verifyBlockFor(client, { entityRef: signedRef, origin });
+  // The preview must show the seal the PDF will carry, or the operator checks
+  // one document and sends another.
+  const seals = await sealsFor(client, { entityRef: signedRef, entity, data, cfg, origin });
+  const shown = seals.length ? { ...data, seals } : data;
   return {
-    html: tpl.build(data, cfg, entity, verify),
+    html: tpl.build(shown, cfg, entity, verify),
     sample: !real,
-    data, // structured data for the native (app-themed) detail view
+    data: shown, // structured data for the native (app-themed) detail view
+    language: cfg.language,
     title: tpl.title,
     entity: { legal_name: entity.legal_name, niu: entity.niu, rccm: entity.rccm },
     suggested_to: real ? await resolveRecipient(client, docType, recordId) : null,
@@ -1091,13 +1195,13 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
  * `origin` is the host the QR should resolve on. The HTTP path passes the
  * request's own host; the worker passes the tenant's. See verify-link.js.
  */
-async function generate(client, { docType, entityId, recordId, actor, origin = null }) {
+async function generate(client, { docType, entityId, recordId, actor, origin = null, language = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const rec = recordId ? await loadRecord(client, docType, recordId) : null;
   const data = rec ? rec.data : tpl.sampleData;
   const ent = entityId || (rec && rec.entity_id);
-  const { cfg, entity } = await resolveCfg(client, docType, ent);
+  const { cfg, entity } = await resolveCfg(client, docType, ent, null, { language });
   const entityRef = `${docType.toLowerCase()}:${recordId || "adhoc"}`;
   const key = `documents/${docType}/${recordId || "adhoc"}-${Date.now()}.pdf`;
   // G2 — sandbox renders are watermarked TEST SANDBOX regardless of config.
@@ -1105,7 +1209,8 @@ async function generate(client, { docType, entityId, recordId, actor, origin = n
   const signatures = await activeSignatures(client, entityRef);
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef });
   const verify = await verifyBlockFor(client, { entityRef, origin, signatures });
-  const html = tpl.build(data, cfg, entity, verify);
+  const seals = await sealsFor(client, { entityRef, entity, data, cfg, origin, signatures });
+  const html = tpl.build(seals.length ? { ...data, seals } : data, cfg, entity, verify);
   const out = await pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
   await recordArtifact(client, signatures, out);
   return out;
@@ -1156,12 +1261,12 @@ async function renderPdfFromData(client, { docType, data, entityId, actor }) {
  *  inline HTML if the render fails), then vault a PDF copy (best-effort) and
  *  audit. `to` is resolved from the record where possible (e.g. a proposal's
  *  lead) and otherwise supplied by the caller. */
-async function send(client, { docType, entityId, recordId, to, subject, actor = {}, origin = null }) {
+async function send(client, { docType, entityId, recordId, to, subject, actor = {}, origin = null, language = null }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const recipient = to || (await resolveRecipient(client, docType, recordId));
   if (!recipient) throw new AppError("NO_RECIPIENT", "recipient email 'to' is required", 422);
-  const { html } = await preview(client, { docType, entityId, recordId, origin });
+  const { html } = await preview(client, { docType, entityId, recordId, origin, language });
   const title = (tpl.title && (tpl.title.en || tpl.title.fr)) || docType;
 
   // Attach the rendered PDF so the recipient gets a real document, not just an
@@ -1185,7 +1290,7 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
     // Record the source document on the send-log row (e.g. `invoice:<id>`).
     entityRef: entityId || recordId ? `${String(docType).toLowerCase()}:${entityId || recordId}` : null,
   });
-  try { await generate(client, { docType, entityId, recordId, actor }); } catch { /* @silent:storage —
+  try { await generate(client, { docType, entityId, recordId, actor, language }); } catch { /* @silent:storage —
     the email has already been sent by this point. Filing a vault copy is
     bookkeeping; failing here would report the send as failed and invite somebody
     to send it twice. */ }

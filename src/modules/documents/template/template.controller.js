@@ -23,9 +23,9 @@ module.exports = {
   records: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.records(c, req.params.docType)) })),
   preview: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.preview(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, config: req.body.config || null, origin: origin(req) })) })),
+    res.json({ data: await req.tenantDb((c) => service.preview(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, config: req.body.config || null, origin: origin(req), language: req.body.language || null })) })),
   generate: asyncHandler(async (req, res) =>
-    res.status(201).json({ data: await req.tenantDb((c) => service.generate(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, actor: actor(req), origin: origin(req) })) })),
+    res.status(201).json({ data: await req.tenantDb((c) => service.generate(c, { docType: req.params.docType, entityId: req.body.entity_id || null, recordId: req.body.record_id || null, actor: actor(req), origin: origin(req), language: req.body.language || null })) })),
   send: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.send(c, { docType: req.params.docType, recordId: req.params.id, entityId: req.body.entity_id || null, to: req.body.to, subject: req.body.subject, actor: actor(req), origin: origin(req) })) })),
+    res.json({ data: await req.tenantDb((c) => service.send(c, { docType: req.params.docType, recordId: req.params.id, entityId: req.body.entity_id || null, to: req.body.to, subject: req.body.subject, actor: actor(req), origin: origin(req), language: req.body.language || null })) })),
 };

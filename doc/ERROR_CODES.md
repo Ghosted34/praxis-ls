@@ -501,7 +501,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_SIGN_REASON` | 422 | 2× | — |
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNKNOWN_TREASURY_ACCOUNT` | 404 | 1× | — |
-| `UNSUPPORTED_FORMAT` | 422 | 1× | — |
+| `UNSUPPORTED_FORMAT` | 422 | 2× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `UNVERIFIED` | 401 | 2× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |

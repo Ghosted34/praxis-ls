@@ -21,11 +21,13 @@
  * the question the name alone does not answer.
  */
 import * as React from "react";
+import * as RadixDialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Modal, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { XIcon } from "@/components/ui/icons";
 import { DataList, PageHeader, type Column } from "@/components/data-list";
 import { EmployeePicker } from "@/components/employee-picker";
 import { useResource, errMsg } from "@/lib/use-resource";
@@ -464,5 +466,471 @@ export function MailboxesTab() {
           onClose={() => setHandover(null)} onDone={reload} />
       )}
     </section>
+  );
+}
+
+/* ── Mailbox connections (moved from the removed features/comms/mail.tsx) ── */
+/*
+ * The connect/test/sync surface for the mailboxes a user sends from —
+ * IMAP/SMTP, Microsoft 365 and Google Workspace. It lived on the legacy
+ * Mail page's "Mailboxes" mode; when that page was reduced to the inbox
+ * (PR-1B), the management UI moved here rather than being deleted, because
+ * connecting a mailbox is still how a person gets into the product's mail.
+ */
+
+const connTone = (s?: string | null): Tone => {
+  const u = String(s || "").toUpperCase();
+  if (u === "CONNECTED") return "ok";
+  if (u === "PENDING") return "warn";
+  return "bad";
+};
+const providerLabel: Record<api.Provider, string> = {
+  imap_smtp: "IMAP / SMTP",
+  microsoft_graph: "Microsoft 365",
+  google_gmail: "Google Workspace",
+};
+
+function ImapConnectForm({
+  existing,
+  onDone,
+}: {
+  existing?: api.Connection;
+  onDone: () => void;
+}) {
+  const editing = !!existing;
+  const [f, setF] = React.useState({
+    email_address: existing?.email_address || "",
+    display_name: existing?.display_name || "",
+    imap_host: existing?.imap_host || "",
+    imap_port: existing?.imap_port != null ? String(existing.imap_port) : "993",
+    smtp_host: existing?.smtp_host || "",
+    smtp_port: existing?.smtp_port != null ? String(existing.smtp_port) : "587",
+    auth_user: existing?.auth_user || "",
+    password: "",
+  });
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [busy, setBusy] = React.useState(false);
+  const [discovering, setDiscovering] = React.useState(false);
+  const [hint, setHint] = React.useState<string>("");
+  const [result, setResult] = React.useState<api.TestResult | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
+
+  async function discover() {
+    if (!f.email_address) return;
+    setDiscovering(true);
+    setHint("");
+    setError(null);
+    try {
+      const cfg = await api.autodiscover(f.email_address);
+      setF((s) => ({
+        ...s,
+        imap_host: cfg.imap_host || s.imap_host,
+        imap_port: cfg.imap_port ? String(cfg.imap_port) : s.imap_port,
+        smtp_host: cfg.smtp_host || s.smtp_host,
+        smtp_port: cfg.smtp_port ? String(cfg.smtp_port) : s.smtp_port,
+      }));
+      setHint(
+        cfg.oauth_hint
+          ? `Tip: ${cfg.oauth_hint === "google_gmail" ? "Google" : "Microsoft"} — consider OAuth above instead of a password.`
+          : `Settings from ${cfg.source}. Verify, then connect.`,
+      );
+    } catch (err) {
+      setError(err);
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const body = {
+        email_address: f.email_address,
+        display_name: f.display_name || undefined,
+        imap_host: f.imap_host,
+        imap_port: Number(f.imap_port) || undefined,
+        smtp_host: f.smtp_host,
+        smtp_port: Number(f.smtp_port) || undefined,
+        auth_user: f.auth_user || undefined,
+        password: f.password || undefined,
+      };
+      const r = existing
+        ? await api.updateImapConnection(existing.email_connection_id, body)
+        : await api.connectImap({ ...body, password: f.password });
+      setResult(r.test || { ok: r.status === "CONNECTED" });
+      onDone();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <p className="micro mb-3">
+        Any host (cPanel, private server, provider). Password is encrypted at
+        rest.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Email address" required>
+          <Input
+            value={f.email_address}
+            onChange={(e) => set("email_address", e.target.value)}
+            placeholder="info@company.cm"
+          />
+        </Field>
+        <Field label={tr("Display name")}>
+          <Input
+            value={f.display_name}
+            onChange={(e) => set("display_name", e.target.value)}
+            placeholder="Company Info"
+          />
+        </Field>
+        <Field label="IMAP host" required>
+          <Input
+            value={f.imap_host}
+            onChange={(e) => set("imap_host", e.target.value)}
+            placeholder="mail.company.cm"
+          />
+        </Field>
+        <Field label="IMAP port">
+          <Input
+            type="number"
+            className="num"
+            value={f.imap_port}
+            onChange={(e) => set("imap_port", e.target.value)}
+          />
+        </Field>
+        <Field label={tr("SMTP host")} required>
+          <Input
+            value={f.smtp_host}
+            onChange={(e) => set("smtp_host", e.target.value)}
+            placeholder="mail.company.cm"
+          />
+        </Field>
+        <Field label={tr("SMTP port")}>
+          <Input
+            type="number"
+            className="num"
+            value={f.smtp_port}
+            onChange={(e) => set("smtp_port", e.target.value)}
+          />
+        </Field>
+        <Field label="Login user" hint="Defaults to the email address.">
+          <Input
+            value={f.auth_user}
+            onChange={(e) => set("auth_user", e.target.value)}
+            placeholder={tr("optional")}
+          />
+        </Field>
+        <Field
+          label={tr("Password")}
+          required={!editing}
+          hint={
+            editing ? "Leave blank to keep the current password." : undefined
+          }
+        >
+          <Input
+            type="password"
+            value={f.password}
+            onChange={(e) => set("password", e.target.value)}
+            placeholder="••••••"
+          />
+        </Field>
+      </div>
+      {hint && <p className="mt-2 micro">{hint}</p>}
+      {error != null && (
+        <div className="mt-2">
+          <ErrorState message={errMsg(error)} />
+          <SmtpErrorGuide err={error} />
+        </div>
+      )}
+      {result && (
+        <div className="mt-2 micro">
+          {result.ok ? (
+            <span className="text-[rgb(var(--ok))]">✓ Connected</span>
+          ) : (
+            <span className="text-[rgb(var(--bad))]">
+              ✗ {String(result.error || "Failed").slice(0, 90)}
+            </span>
+          )}
+        </div>
+      )}
+      {result && !result.ok && (
+        <SmtpErrorGuide code={result.code} message={result.error} />
+      )}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={discover}
+          loading={discovering}
+          disabled={discovering || !f.email_address}
+        >
+          Autodiscover
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          loading={busy}
+          disabled={
+            busy ||
+            !f.email_address ||
+            !f.imap_host ||
+            !f.smtp_host ||
+            (!editing && !f.password)
+          }
+        >
+          {editing ? "Save & test" : "Connect & test"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* Right-side sheet — a lightweight drawer (Radix dialog pinned to the right edge,
+   overlay not push) for the connect form. Distinct from the AI copilot drawer,
+   which is copilot-specific. */
+function RightDrawer({
+  open,
+  onOpenChange,
+  title,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-fade-in" />
+        {/* Starts at `--titlebar-h`, not at 0, for the reason the Praxis drawer
+            does (see praxis-drawer.tsx): pinned to the right edge, a full-height
+            sheet puts its own close button underneath the OS caption buttons in
+            an installed window. Any right-edge sheet inherits that problem, so
+            it inherits the same one-variable answer. */}
+        <RadixDialog.Content
+          aria-describedby={undefined}
+          className="fixed bottom-0 right-0 top-[var(--titlebar-h)] z-50 flex w-[min(560px,100vw)] flex-col border-l border-t border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <RadixDialog.Title className="font-display text-base">
+              {title}
+            </RadixDialog.Title>
+            <RadixDialog.Close asChild>
+              <button
+                type="button"
+                aria-label={tr("Close")}
+                className="tap-24 grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <XIcon width={16} height={16} />
+              </button>
+            </RadixDialog.Close>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
+  );
+}
+
+export function ConnectionsTab() {
+  const conns = useResource(() => api.listConnections(), []);
+  const [busyId, setBusyId] = React.useState<string>("");
+  const [note, setNote] = React.useState<string>("");
+  const [imapOpen, setImapOpen] = React.useState(false);
+  const [editConn, setEditConn] = React.useState<api.Connection | null>(null);
+  // A failed connection test with a classified SMTP code — renders the fix guide.
+  const [testFail, setTestFail] = React.useState<{
+    code?: string;
+    message?: string;
+  } | null>(null);
+
+  // Surface the OAuth callback result. The provider redirect lands back on
+  // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
+  // refresh the mailbox list, then strip the query so a reload doesn't replay it.
+  React.useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ok = p.get("mail_connected");
+    const bad = p.get("mail_error");
+    if (!ok && !bad) return;
+    if (ok) {
+      const who = ok === "google" ? "Google" : "Microsoft";
+      const email = p.get("email");
+      setNote(`✓ Connected ${who}${email ? ` — ${email}` : ""}`);
+      conns.reload();
+    } else {
+      setNote(`✗ Connection failed (${bad})`);
+      setTestFail({ code: bad ?? undefined, message: undefined });
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function oauth(kind: "ms" | "gg") {
+    try {
+      const r =
+        kind === "ms" ? await api.startMicrosoft() : await api.startGoogle();
+      window.location.href = r.url;
+    } catch (err) {
+      setNote(errMsg(err));
+    }
+  }
+  async function test(id: string) {
+    setBusyId(id);
+    setNote("");
+    setTestFail(null);
+    try {
+      const r = await api.testConnection(id);
+      setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`);
+      if (!r.ok) setTestFail({ code: r.code, message: r.error });
+      conns.reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusyId("");
+    }
+  }
+  async function sync(id: string) {
+    setBusyId(id);
+    setNote("");
+    try {
+      const r = await api.syncConnection(id);
+      setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`);
+      conns.reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusyId("");
+    }
+  }
+  async function makeDefault(id: string) {
+    setBusyId(id);
+    setNote("");
+    try {
+      await api.setDefaultMailbox(id);
+      setNote("✓ Default mailbox updated");
+      conns.reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={() => oauth("ms")}>
+          Connect Microsoft 365
+        </Button>
+        <Button variant="outline" onClick={() => oauth("gg")}>
+          Connect Google Workspace
+        </Button>
+        <Button variant="outline" onClick={() => setImapOpen(true)}>
+          Connect IMAP / SMTP
+        </Button>
+        {note && <span className="micro">{note}</span>}
+      </div>
+
+      {testFail && (
+        <SmtpErrorGuide code={testFail.code} message={testFail.message} />
+      )}
+      {conns.error && <ErrorState message={conns.error} />}
+      <div className="grid gap-3">
+        {(conns.data || []).map((c) => (
+          <div
+            key={c.email_connection_id}
+            className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm"
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="num font-medium text-foreground">
+                  {c.email_address}
+                </span>
+                <Pill tone="mute">{providerLabel[c.provider]}</Pill>
+                <Pill tone={connTone(c.status)}>{c.status}</Pill>
+                {c.is_default && <Pill tone="ok">{tr("Default")}</Pill>}
+              </div>
+              <p className="micro mt-0.5">
+                Last sync {dateFmt(c.last_sync_at)}
+                {c.last_error ? ` · ${c.last_error.slice(0, 60)}` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!c.is_default && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => makeDefault(c.email_connection_id)}
+                  disabled={busyId === c.email_connection_id}
+                >
+                  Make default
+                </Button>
+              )}
+              {c.provider === "imap_smtp" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditConn(c)}
+                >
+                  Edit
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => test(c.email_connection_id)}
+                disabled={busyId === c.email_connection_id}
+              >
+                Test
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => sync(c.email_connection_id)}
+                loading={busyId === c.email_connection_id}
+              >
+                Sync now
+              </Button>
+            </div>
+          </div>
+        ))}
+        {(conns.data || []).length === 0 && !conns.loading && (
+          <p className="micro">No mailboxes connected yet.</p>
+        )}
+      </div>
+
+      <RightDrawer
+        open={imapOpen || !!editConn}
+        onOpenChange={(v) => {
+          if (!v) {
+            setImapOpen(false);
+            setEditConn(null);
+          }
+        }}
+        title={
+          editConn
+            ? "Edit IMAP / SMTP mailbox"
+            : "Connect an IMAP / SMTP mailbox"
+        }
+      >
+        <ImapConnectForm
+          key={editConn?.email_connection_id ?? "new"}
+          existing={editConn ?? undefined}
+          onDone={() => {
+            conns.reload();
+            setImapOpen(false);
+            setEditConn(null);
+          }}
+        />
+      </RightDrawer>
+    </div>
   );
 }

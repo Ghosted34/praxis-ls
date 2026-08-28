@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { PencilIcon } from "@/components/ui/icons";
 import { ErrorState } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
-import { ComposeModal } from "../mail";
+import { NewMessageDialog } from "./composer/new-message";
 import { useResource } from "@/lib/use-resource";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { reportActionError } from "@/lib/action-error";
@@ -354,12 +354,10 @@ export function InboxPage() {
         </SplitPane>
 
         {composeOpen && (
-          <ComposeModal
+          <NewMessageDialog
+            open
             onClose={() => setComposeOpen(false)}
-            onSent={() => {
-              setComposeOpen(false);
-              reload();
-            }}
+            onSent={reload}
           />
         )}
 

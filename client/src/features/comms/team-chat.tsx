@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import { PlusIcon } from "@/components/ui/icons";
 import * as api from "@/lib/smartcomm-api";
 import { useCommsChannel } from "@/lib/comms-socket";
-import { ComposeModal } from "./mail";
+import { NewMessageDialog } from "./inbox/composer/new-message";
 
 /* avatar colouring — a fixed per-person palette (pixie parity), not the brand accent */
 const AVATAR_COLOURS = [
@@ -618,7 +618,8 @@ export function TeamChatPage() {
         />
       )}
       {newKind === "email" && (
-        <ComposeModal
+        <NewMessageDialog
+          open
           onClose={() => setNewKind("")}
           onSent={() => setNewKind("")}
         />

@@ -209,13 +209,7 @@ export const startMicrosoft = () =>
 export const startGoogle = () =>
   tenant<{ url: string }>("/mail/oauth/google/start");
 
-// Threads / messages
-export const listThread = (connectionId?: string) =>
-  tenant<ThreadMsg[]>(
-    `/mail/thread${connectionId ? `?connection_id=${connectionId}` : ""}`,
-  );
-export const getMessage = (id: string) =>
-  tenant<ThreadMsg>(`/mail/thread/${id}`);
+// Messages
 export const listMsgAttachments = (id: string) =>
   tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
 
@@ -239,10 +233,6 @@ export async function downloadAttachment(attachmentId: string, filename?: string
     filename || "attachment",
   );
 }
-export const markThreadRead = (id: string) =>
-  tenant<{ email_inbound_id: string }>(`/mail/thread/${id}/read`, {
-    method: "POST",
-  });
 export const linkThread = (id: string, entity_ref: string) =>
   tenant<{ entity_ref: string }>(`/mail/thread/${id}/link`, {
     method: "POST",
@@ -268,28 +258,6 @@ export const updateImapConnection = (
 ) =>
   tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, {
     method: "PATCH",
-    body,
-  });
-
-// Send / reply
-export const sendMail = (body: {
-  connectionId: string;
-  to: string | string[];
-  subject?: string;
-  html?: string;
-  text?: string;
-  cc?: string[];
-}) =>
-  tenant<{ externalMessageId?: string }>("/mail/send", {
-    method: "POST",
-    body,
-  });
-export const replyMail = (
-  inboundId: string,
-  body: { connectionId: string; html?: string; text?: string },
-) =>
-  tenant<{ externalMessageId?: string }>(`/mail/thread/${inboundId}/reply`, {
-    method: "POST",
     body,
   });
 

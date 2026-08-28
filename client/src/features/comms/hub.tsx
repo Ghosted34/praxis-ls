@@ -1,8 +1,10 @@
 /**
  * Comms — the single Messaging workstation:
  *   /comms        → unified inbox / team chat (individual + group channels)
- *   /comms/mail   → the mailbox (email_connection): connect + work any mailbox
- *                   (Microsoft 365 / Google / IMAP-SMTP), inbound + outbound
+ *   /comms/mail   → the mailbox: the PR-1 unified inbox (threads, folders,
+ *                   search, the Master Composer). Connecting and managing
+ *                   mailboxes (Microsoft 365 / Google / IMAP-SMTP) lives under
+ *                   Comms → Setup.
  *   /comms/setup  → everything about how email is configured, in sub-tabs:
  *                   My mailbox (everyone) · Mailboxes, Send points and
  *                   Senders & channels (administrators). PR-0 moved tenant mail
@@ -16,8 +18,10 @@
  */
 import { useParams, NavLink } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { pageShell } from "@/lib/layout";
+import { HubTabs } from "@/components/tabbed-hub";
 import { TeamChatPage } from "./team-chat";
-import { MailPage } from "./mail";
+import { InboxPage } from "./inbox";
 import { CommsSetupPage } from "./setup/index";
 
 const TABS = [
@@ -32,7 +36,13 @@ export function CommsHub() {
     section === "setup" ? (
       <CommsSetupPage />
     ) : section === "mail" ? (
-      <MailPage />
+      /* The legacy Mail page's mode switcher (inbox / message log / mailboxes)
+         was deleted with the legacy composer: the inbox IS the mailbox now.
+         Mailbox connection management moved to Comms → Setup. */
+      <section className={pageShell.wide}>
+        <HubTabs />
+        <InboxPage />
+      </section>
     ) : (
       <TeamChatPage />
     );

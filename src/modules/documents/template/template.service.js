@@ -359,7 +359,8 @@ async function deliveryNoteData(client, recordId) {
 
   const [lr, cr] = await Promise.all([
     client.query(
-      "SELECT label, qty FROM delivery_note_line WHERE delivery_note_id = $1 ORDER BY delivery_note_line_id",
+      "SELECT label, qty, gross_weight_kg, marks FROM delivery_note_line "
+      + "WHERE delivery_note_id = $1 ORDER BY delivery_note_line_id",
       [recordId],
     ),
     client.query(
@@ -385,6 +386,21 @@ async function deliveryNoteData(client, recordId) {
    * before this existed.
    */
   let position = null;
+  /*
+   * DOES THIS FILE MOVE CONTAINERS?
+   *
+   * The printed note reserved twelve ruled manifest slots on every document,
+   * so an AIR FREIGHT delivery note came out with a container manifest on it —
+   * a third of the page given to boxes that do not exist for that shipment,
+   * while its packages had nowhere to state their weight. The sheet asks the
+   * same question the form does, from the same place.
+   *
+   * Defaults to false: a file whose service type cannot be resolved prints as
+   * packages, which is the shape that loses nothing. A container file printed
+   * as packages still lists its boxes as cargo lines; a package file printed
+   * with a manifest prints twelve empty ruled rows.
+   */
+  let containerised = false;
   if (dn.dossier_id) {
     try {
       const dnRules = require("../../operations/delivery_note/delivery_note.rules");
@@ -392,6 +408,7 @@ async function deliveryNoteData(client, recordId) {
       const progress = dnRules.deliveryProgress(await dnRepo.progressForDossier(client, dn.dossier_id));
       const seq = await dnRepo.sequenceOnDossier(client, { dossierId: dn.dossier_id, noteId: recordId });
       position = dnRules.deliveryPosition(progress, seq);
+      containerised = await dnRepo.capturesContainers(client, dn.dossier_id);
     } catch (err) {
       logger.warn({ err: err && err.message, delivery_note_id: recordId },
         "[documents] delivery note printed without its position on the file");
@@ -408,12 +425,27 @@ async function deliveryNoteData(client, recordId) {
       status: dn.status,
       status_words: require("../../operations/delivery_note/delivery_note.rules").statusWords(dn.status),
       position,
+      // Decides whether the sheet prints a container manifest at all.
+      containerised,
       party: {
         name: dn.consignee || dn.client_name || "—",
         // The address is the point of the document; city/zone alone is routing.
         lines: [dn.address, dn.city_zone, dn.contact_person, dn.phone].filter(Boolean),
       },
-      lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty) })),
+      /*
+       * The cargo lines, with what a PACKAGE note needs on them.
+       *
+       * On a container file the manifest carries the identity of the goods and
+       * these are empty. On an air or road file they are the document: the
+       * weight the consignee checks at the counter, and the marks that identify
+       * the cartons the way a number identifies a box.
+       */
+      lines: lr.rows.map((l) => ({
+        label: l.label,
+        qty: Number(l.qty),
+        gross_weight_kg: l.gross_weight_kg === null ? null : Number(l.gross_weight_kg),
+        marks: l.marks || null,
+      })),
       // 10708 — a container row is either a per-box unit (number + seal) or a
       // GROUPED line ("3 × 40HC"): the note prints whichever the file stated.
       containers: cr.rows.map((c) => ({

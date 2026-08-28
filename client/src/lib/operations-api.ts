@@ -8,6 +8,9 @@ import { tenant } from "./api-client";
 export type Dossier = {
   dossier_id: string;
   ref: string;
+  /** The short name the file was opened with ("Export of Beer"). Optional, and
+   *  the reason it exists: a reference is not recognisable, a title is. */
+  title?: string | null;
   entity_id?: string | null;
   client_id?: string | null;
   service_type_id?: string | null;
@@ -24,6 +27,11 @@ export type Dossier = {
   customs_regime?: string | null;
   eta?: string | null;
   ata?: string | null;
+  /** Where the cargo is delivered after the port or airport. A verified place
+   *  name since 12748 — which is what lets a delivery note inherit it. */
+  place_delivery?: string | null;
+  place_receipt?: string | null;
+  promised_delivery_date?: string | null;
   created_at?: string;
   // The carrier this job moves on (MOD-10 rate_provider) — scopes every
   // costing line's expense-rate lookup. NULL until confirmed.
@@ -249,6 +257,37 @@ export const transitOrderCurrencies = () =>
  */
 export type Prefill<T> = { body: Partial<T>; inferred: string[]; from: string[] };
 
+/**
+ * The facts a file states about itself, for a form to show back read-only.
+ *
+ * Distinct from the prefill `body`, which is what the form lets somebody EDIT.
+ * Conflating the two is how the delivery note ended up asking for an Entity the
+ * file already carried: every fact was either an input or invisible, with
+ * nothing in between.
+ */
+export type PrefillFile = {
+  dossier_id: string;
+  ref: string | null;
+  title: string | null;
+  client_name: string | null;
+  entity_name: string | null;
+  service_key: string | null;
+  service_name_en: string | null;
+  service_name_fr: string | null;
+  /** Does this service move containers? Decides whether a manifest is asked for. */
+  captures_containers: boolean;
+  /** Does it describe cargo at all? False for a representation or brokerage
+   *  retainer, where there is nothing to hand over and nothing to list. */
+  captures_cargo: boolean;
+  bl_mawb: string | null;
+  vessel_flight: string | null;
+  pol: string | null;
+  pod: string | null;
+  eta: string | null;
+  ata: string | null;
+  opened_at: string | null;
+};
+
 export const transitOrderPrefill = (dossierId: string) =>
   tenant<Prefill<TransitOrderInput>>(
     `/transit-orders/prefill?${new URLSearchParams({ dossier_id: dossierId })}`,
@@ -306,6 +345,17 @@ export type DeliveryNoteLine = {
   inventory_item_id?: string | null;
   label?: string | null;
   qty?: number | null;
+  /**
+   * Weight and marks (12749) — the substance of a note for a shipment handed
+   * over as PACKAGES rather than as containers.
+   *
+   * On a sea file the manifest carries the identity of the goods and these stay
+   * empty. On an air file they are the whole document: the weight is what the
+   * consignee checks at the counter, and the marks identify the cartons the way
+   * a number identifies a box.
+   */
+  gross_weight_kg?: number | null;
+  marks?: string | null;
 };
 
 /**
@@ -442,7 +492,15 @@ export type DeliveryNoteInput = {
    * present, and the server returns a field-keyed 422 naming the row if neither
    * is.
    */
-  lines?: { inventory_item_id?: string | null; label?: string; qty?: number }[];
+  /* Weight and marks (12749) ride on the line, so a note for goods handed over
+     as packages says what a container manifest would have said. */
+  lines?: {
+    inventory_item_id?: string | null;
+    label?: string;
+    qty?: number;
+    gross_weight_kg?: number | null;
+    marks?: string | null;
+  }[];
   containers?: DeliveryNoteContainer[];
 };
 
@@ -478,16 +536,18 @@ export const deliveryProgress = (dossierId: string) =>
  * container and seal numbers, picked BY ID so the note stays pointed at the box
  * on the file rather than at a copy of its number.
  *
- * `inferred` is normally EMPTY here — everything this one offers is copied.
+ * `inferred` names the two the file ANSWERS BUT DOES NOT STATE: the consignee
+ * and the gate contact both come from the client on the file, which is right on
+ * nine notes in ten and has to be checked on the tenth. The form shows those as
+ * "suggested — check it" rather than as facts.
  *
- * Two blocks are deliberately not prefilled. The consignee block, because the
- * file does not record one and a client is not a consignee. And `city_zone`,
- * because it is a `PlacePicker`: the file's `place_delivery` is free text, and
- * putting free text into a control that only accepts verified places produces a
- * box that looks filled and is flagged wrong.
+ * `file` is what the form displays read-only above the inputs — the entity, the
+ * service, the transport reference, the route. It also decides the SHAPE of the
+ * form: `captures_containers` for the manifest, `captures_cargo` for packages,
+ * neither for a retainer that hands nothing over.
  */
 export const deliveryNotePrefill = (dossierId: string) =>
-  tenant<Prefill<DeliveryNoteInput>>(
+  tenant<Prefill<DeliveryNoteInput> & { file: PrefillFile }>(
     `/delivery-notes/prefill?${new URLSearchParams({ dossier_id: dossierId })}`,
   );
 

@@ -385,6 +385,21 @@ const TEMPLATES = {
       const seals = Array.isArray(data.seals) ? data.seals : [];
       const hasStamp = Boolean(cfg.signature && cfg.signature.image_url);
       const pos = data.position || null;
+      /*
+       * DOES THIS FILE MOVE CONTAINERS?
+       *
+       * Every delivery note used to print twelve ruled manifest slots, so an
+       * AIR FREIGHT note carried a container manifest — a third of the page
+       * given to boxes that do not exist on that shipment. The projection asks
+       * the file's service type (`template.service.deliveryNoteData`), and a
+       * note whose file cannot be resolved prints as packages: that shape loses
+       * nothing, where the other prints twelve empty rows.
+       *
+       * A note that HOLDS containers keeps its manifest whatever the flag says
+       * — the boxes on the note are the fact, and hiding them because a service
+       * type was reconfigured afterwards would shorten a signed document.
+       */
+      const containerised = data.containerised === true || tcs.length > 0;
 
       /*
        * The manifest's ruled slots. A minimum of twelve so a short delivery
@@ -398,13 +413,18 @@ const TEMPLATES = {
        */
       const manifestRows = Math.ceil(Math.max(12, tcs.length) / 3);
       const slots = manifestRows * 3;
+      // The elastic block, and the block that decides the page's shape. A
+      // package note has no manifest, so the CARGO table takes the slack — it
+      // is that note's substance, and ruled space to write another carton on is
+      // worth exactly what a ruled container slot is worth on a sea note.
+      const showManifest = containerised;
 
       const wraps = lines.reduce((n, l) => n + Math.max(0, Math.ceil(String(l.label || "").length / 46) - 1), 0);
       // Every direct child of .sheet carries a top margin, and there are ten of
       // them (head, rule, name, ident, consignee, cargo, manifest, reserves,
       // strip, foot) plus the optional progress band. Counting seven of them
       // was worth 6mm of a page that has none to spare.
-      const blocks = 10 + (pos ? 1 : 0);
+      const blocks = 10 + (pos ? 1 : 0) - (showManifest ? 0 : 1);
       /*
        * THE MARK'S HEIGHT DOES NOT SCALE, so it is not in the scaling total.
        *
@@ -428,7 +448,7 @@ const TEMPLATES = {
         + (lines.length
           ? Math.max(H.cargoMin, H.cargoHead + lines.length * H.cargoRow + wraps * H.cargoWrap)
           : 0)
-        + H.manifestHead + manifestRows * H.manifestRow
+        + (showManifest ? H.manifestHead + manifestRows * H.manifestRow : 0)
         + (pos ? H.position : 0)
         + H.reserves + H.strip + (hasStamp ? H.stampExtra : 0)
         + H.foot + blocks * H.gap;
@@ -479,14 +499,34 @@ const TEMPLATES = {
           + `</div>`, cfgFit)
         : "";
 
-      const cols = [
-        { key: "label", label: { fr: "Désignation", en: "Description" } },
-        { key: "marks", label: { fr: "Marques", en: "Marks" } },
-        { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true },
-      ];
+      /*
+       * The cargo table carries the WEIGHT on a package note.
+       *
+       * On a container file the manifest below identifies the goods, so the
+       * table stays three columns and the page keeps the width for the
+       * description. On an air or road file there is no manifest: the weight is
+       * what the consignee checks at the counter, and it has to be on the sheet
+       * they sign or the note says less than the file it came from.
+       */
+      const cols = containerised
+        ? [
+          { key: "label", label: { fr: "Désignation", en: "Description" } },
+          { key: "marks", label: { fr: "Marques", en: "Marks" } },
+          { key: "qty", label: { fr: "Quantité", en: "Quantity" }, num: true },
+        ]
+        : [
+          { key: "label", label: { fr: "Désignation", en: "Description" } },
+          { key: "marks", label: { fr: "Marques", en: "Marks" } },
+          { key: "qty", label: { fr: "Colis", en: "Packages" }, num: true },
+          { key: "weight", label: { fr: "Poids (kg)", en: "Weight (kg)" }, num: true },
+        ];
       const cargo = lines.length
         ? k.cargoTable(cols, lines.map((l) => ({
-          label: l.label, marks: l.marks || "", qty: String(l.qty),
+          label: l.label,
+          marks: l.marks || "",
+          qty: String(l.qty),
+          weight: l.gross_weight_kg === null || l.gross_weight_kg === undefined
+            ? "" : String(l.gross_weight_kg),
         })), cfgFit)
         : "";
 
@@ -547,8 +587,11 @@ const TEMPLATES = {
         + k.ruledBlock(null, ident, cfgFit, { bare: true })
         + consignee
         + positionBand
-        + cargo
-        + `<div class="grow">${manifest()}</div>`
+        + (showManifest
+          ? cargo + `<div class="grow">${manifest()}</div>`
+          // No manifest: the cargo table is the elastic block, so the ruled
+          // space a driver writes an extra carton into is where it is useful.
+          : `<div class="grow">${cargo}</div>`)
         + reserves
         + strip
         + k.instrumentFoot(entity, cfgFit, seals.length ? null : verify, {

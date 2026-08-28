@@ -59,6 +59,31 @@ const num = (v) => {
 };
 
 /**
+ * A weight in the file's unit, as kilogrammes.
+ *
+ * The dossier stores a number and a unit (`KG` | `TON` | `LB`, 0660) because a
+ * client quotes in whichever they trade in. The delivery note stores
+ * kilogrammes flat: it is a receipt, and a receipt that needs a unit conversion
+ * to check against a weighbridge ticket is a receipt nobody checks.
+ *
+ * An unknown unit returns null rather than assuming kilogrammes — a weight
+ * wrong by a factor of a thousand on a proof of delivery is worse than no
+ * weight, and it is the failure nobody would spot on the page.
+ */
+const KG_PER = { KG: 1, TON: 1000, LB: 0.45359237 };
+function kilogrammes(value, unit) {
+  // `num(null)` is 0, because `Number(null)` is 0 — so an ABSENT weight has to
+  // be rejected before the conversion, or a file that never recorded one prints
+  // "0 kg" on the document somebody signs to say they received the goods.
+  if (value === null || value === undefined || value === "") return null;
+  const n = num(value);
+  if (n === null || n < 0) return null;
+  const factor = KG_PER[String(unit || "KG").trim().toUpperCase()];
+  if (!factor) return null;
+  return Math.round(n * factor * 1000) / 1000;
+}
+
+/**
  * One cargo line from the dossier's own cargo columns (0660).
  *
  * `label` is required by the transit-order validator and is the one field with
@@ -171,19 +196,28 @@ function transitOrderFrom(dossier, entity, regimes) {
  * The line travels as `{ dossier_container_line_id, container_type_code,
  * qty }` and the note prints it the way the file states it.
  *
- * ── THE CONSIGNEE BLOCK IS NOT PREFILLED AT ALL ────────────────────────────
+ * ── THE CONSIGNEE, AND WHY IT IS NOW SUGGESTED RATHER THAN BLANK ───────────
  *
- * `consignee`, `contact_person`, `phone` and `address` are columns on
- * DELIVERY_NOTE, not on `dossier` — the file simply does not record who the
- * goods are being handed to. The only candidate is `dossier.client_id`, and a
- * client is not a consignee: the consignee is regularly the customer's own
- * buyer, a bonded warehouse or a site foreman.
+ * `consignee`, `contact_person` and `phone` are columns on DELIVERY_NOTE, not
+ * on `dossier`: the file does not record who the goods are handed to. The only
+ * candidate is the file's CLIENT, and a client is not a consignee — it is
+ * regularly the customer's own buyer, a bonded warehouse or a site foreman.
  *
- * Filling that box with the client's name would be right often enough to stop
- * being checked and wrong often enough to matter — on the document somebody
- * signs to say they received the goods. So the note asks, and rule 2 in the
- * header holds: an empty box gets filled in, a plausible wrong one gets skimmed
- * past.
+ * This used to leave the box empty on that reasoning. The reasoning is right
+ * and the conclusion was wrong: an empty box on the busiest field of the form
+ * is not neutrality, it is retyping the client's name on the nine notes out of
+ * ten where the client IS the consignee. So it is filled and returned in
+ * `inferred`, which the form renders as "suggested — check it" rather than as
+ * "from the file". The operator confirms or overtypes; nobody transcribes.
+ *
+ * ── THE ADDRESS IS FROM THE FILE NOW ───────────────────────────────────────
+ *
+ * It was not, and the reason was real: `place_delivery` was free text on
+ * several service types while the note's field is a verified PlacePicker, so
+ * copying one into the other produced a box that LOOKED filled and was flagged
+ * unverified underneath. Migration 12748 makes every field bound to
+ * `place_delivery` a GEO_PLACE, so its value is a catalogue name — the same
+ * thing the picker holds. The objection is gone and the copy is now correct.
  *
  * @param dossier    the row, as `dossierForPrefill` selects it
  * @param containers `dossier_container_unit` rows for that file
@@ -207,26 +241,81 @@ function deliveryNoteFrom(dossier, containers = [], lines = []) {
    * forward-geocoded into a confident wrong coordinate. It accepts only a
    * verified catalogue entry.
    *
-   * `place_delivery` is a free-text contractual point on the transport leg. Put
-   * into that field it would show as legacy unverified text, with the picker's
-   * own "not linked to a place, so it will not appear on the map" warning
-   * underneath — a box that LOOKS filled, is flagged as wrong, and still has to
-   * be redone. An empty picker the operator searches properly is strictly
-   * better, so the file leaves it alone.
+   * `place_delivery` was free text on several service types, so copying it into
+   * that picker produced a box that LOOKED filled and carried the picker's own
+   * "not linked to a place" warning underneath — filled, flagged wrong, and
+   * still to be redone.
+   *
+   * Migration 12748 makes every field bound to `place_delivery` a GEO_PLACE, so
+   * the value is a catalogue name: the same thing the picker holds. The copy is
+   * now correct, and it is the address the client was quoted.
    */
+  if (dossier.place_delivery) {
+    body.city_zone = String(dossier.place_delivery).trim();
+    body.address = String(dossier.place_delivery).trim();
+    from.push("city_zone", "address");
+  }
 
   /*
-   * A delivery-note line is `{ label, qty }` — no marks, no weight, because the
-   * note is a receipt for COUNT, not a customs description. `package_count` is
-   * the quantity being handed over; the transit order's version of this line
-   * carries the weight and marks instead, which is why the two are built
-   * separately rather than sharing one shape.
+   * The consignee, SUGGESTED rather than stated.
+   *
+   * A client is not a consignee — see the header. But leaving it blank meant
+   * retyping the client's name on the nine notes in ten where they are the same
+   * party, so it is filled and declared in `inferred`; the form shows "suggested
+   * — check it" and the operator confirms or overtypes.
+   */
+  if (dossier.client_name) {
+    body.consignee = String(dossier.client_name).slice(0, 200);
+    inferred.push("consignee");
+  }
+  // The person a driver rings at the gate, from the client's primary contact.
+  // Same standing as the consignee: a real answer to check, not a fact.
+  if (dossier.contact_name) {
+    body.contact_person = String(dossier.contact_name).slice(0, 200);
+    inferred.push("contact_person");
+  }
+  if (dossier.contact_phone) {
+    body.phone = String(dossier.contact_phone).slice(0, 40);
+    inferred.push("phone");
+  }
+  /*
+   * WHEN the goods are expected. `promised_delivery_date` is what the CLIENT was
+   * promised and is exactly this document's date; `eta` is the carrier's guess
+   * at the port and is not, so it is not used here. Copied when the file has the
+   * promise, absent otherwise — never derived from the ETA, which would print a
+   * delivery date wrong by the length of the last mile.
+   */
+  if (dossier.promised_delivery_date) {
+    body.delivery_date = dossier.promised_delivery_date;
+    from.push("delivery_date");
+  }
+
+  /*
+   * The cargo line, which on a non-container file is the WHOLE document.
+   *
+   * It used to be `{label, qty}` only, on the reasoning that a note is a receipt
+   * for count rather than a customs description. That holds for a sea file whose
+   * substance is the container manifest. It is wrong for an air file, where the
+   * packages ARE the substance: the weight is what the consignee checks at the
+   * counter and what a claim is argued over, and the marks are how the cartons
+   * are identified — the same job the container number does on a box.
+   *
+   * Weight arrives in the file's own unit (KG / TON / LB) and is stored on the
+   * note in kilogrammes, because a receipt should not need a conversion to read.
    */
   const label = (dossier.commodity_desc || dossier.commodity || "").trim();
   if (label) {
     const line = { label: label.slice(0, 500) };
-    const qty = num(dossier.package_count);
-    if (qty !== null && qty >= 0) line.qty = qty;
+    // Same trap as the weight, and it was already here: `num(null)` is 0, so a
+    // file with no package count produced a line reading "0". A delivery note
+    // for zero packages is not a thing; absent means absent, and the note's own
+    // default of 1 is the honest fallback.
+    const qty = dossier.package_count === null || dossier.package_count === undefined
+      ? null : num(dossier.package_count);
+    if (qty !== null && qty > 0) line.qty = qty;
+    const kg = kilogrammes(dossier.gross_weight, dossier.weight_unit);
+    if (kg !== null) line.gross_weight_kg = kg;
+    if (dossier.marks_numbers) line.marks = String(dossier.marks_numbers).slice(0, 200);
     body.lines = [line];
     from.push("lines");
   }
@@ -259,4 +348,4 @@ function deliveryNoteFrom(dossier, containers = [], lines = []) {
   return { body, inferred, from };
 }
 
-module.exports = { transitOrderFrom, deliveryNoteFrom, cargoLine, directionFromRegime, splitRegime };
+module.exports = { transitOrderFrom, deliveryNoteFrom, cargoLine, kilogrammes, directionFromRegime, splitRegime };

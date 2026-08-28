@@ -65,6 +65,7 @@ export function SearchSelect({
   queryParam = "q",
   limit = 20,
   id,
+  renderRow,
 }: {
   path: string;
   value?: string | null;
@@ -83,6 +84,16 @@ export function SearchSelect({
   queryParam?: string;
   limit?: number;
   id?: string;
+  /**
+   * Render one result as something richer than its label.
+   *
+   * A file reference on its own is not recognisable — "SBX-2026-0004" tells an
+   * operator nothing about which of nine open files it is. A row that also
+   * carries the client, the title and the air waybill is. `getLabel` still
+   * decides what the CLOSED control shows and what the client-side narrowing
+   * matches on, so a picker with this stays searchable the same way.
+   */
+  renderRow?: (row: Row) => React.ReactNode;
 }) {
   const reactId = React.useId();
   const baseId = id ?? reactId;
@@ -280,7 +291,7 @@ export function SearchSelect({
                       i === active ? "bg-muted" : "hover:bg-muted",
                     )}
                   >
-                    {getLabel(r)}
+                    {renderRow ? renderRow(r) : getLabel(r)}
                   </button>
                 </li>
               ))}

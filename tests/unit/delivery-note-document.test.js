@@ -259,6 +259,66 @@ describe("the container manifest", () => {
   });
 });
 
+/* ── 3b. The shape follows what the file actually moves ──────────────────── */
+
+describe("a file that moves no containers gets no manifest", () => {
+  const packageNote = (patch = {}) => dataWith({
+    containers: [], containerised: false, seals: [],
+    lines: [{ label: "Cartons de bière", marks: "BRC/2026/44", qty: 120, gross_weight_kg: 2400 }],
+    ...patch,
+  });
+
+  test("an air note prints packages, not twelve ruled container slots", () => {
+    // THE DEFECT THIS PINS: every delivery note reserved twelve manifest slots,
+    // so an AIR FREIGHT note came out with a container manifest on it — a third
+    // of the page given to boxes that do not exist on that shipment.
+    const html = body(TPL.build(packageNote(), cfgFor("fr"), ENTITY, VERIFY));
+    expect(html).not.toContain("Liste des conteneurs");
+    expect(html).not.toContain("______________");
+    expect(html).toContain("Cartons de bière");
+  });
+
+  test("the weight is on the sheet the consignee signs", () => {
+    // On a container note the manifest identifies the goods. On a package note
+    // there is no manifest, so the weight — what is checked at the counter and
+    // what a claim is argued over — has to be in the cargo table or it is
+    // nowhere.
+    const html = body(TPL.build(packageNote(), cfgFor("fr"), ENTITY, VERIFY));
+    expect(html).toContain("Poids (kg)");
+    expect(html).toContain("2400");
+    expect(html).toContain("BRC/2026/44");
+    expect(body(TPL.build(packageNote(), cfgFor("en"), ENTITY, VERIFY))).toContain("Weight (kg)");
+  });
+
+  test("a container note keeps its manifest and its three-column table", () => {
+    const html = body(TPL.build(dataWith({ containerised: true }), cfgFor("fr"), ENTITY, VERIFY));
+    expect(html).toContain("Liste des conteneurs");
+    // The weight column is a package-note affordance: on a sea note the
+    // manifest carries the identity and the description keeps the width.
+    expect(html).not.toContain("Poids (kg)");
+  });
+
+  test("a note that HOLDS boxes keeps its manifest whatever the flag says", () => {
+    // The boxes on the note are the fact. Hiding them because somebody
+    // reconfigured the service type afterwards would shorten a signed document.
+    const html = body(TPL.build(dataWith({ containerised: false }), cfgFor("fr"), ENTITY, VERIFY));
+    expect(html).toContain("Liste des conteneurs");
+    expect(html).toContain("TCLU1234567");
+  });
+
+  test("dropping the manifest gives the page back to the cargo table", () => {
+    // Not merely hidden — the height model has to know, or the page is solved
+    // for a block that is not there and comes out looser than it should.
+    const lines = (n) => Array.from({ length: n }, (_, i) => ({
+      label: "Cartons de bière palettisés", marks: `BRC/${i}`, qty: 10 + i, gross_weight_kg: 200 + i,
+    }));
+    const at = (data) => scaleOf(TPL.build(data, cfgFor("fr"), ENTITY, VERIFY));
+    const pkg = packageNote({ lines: lines(20) });
+    const box = dataWith({ containerised: true, lines: lines(20), seals: [] });
+    expect(at(pkg)).toBeGreaterThan(at(box));
+  });
+});
+
 /* ── 4. Where in the file this delivery sits ─────────────────────────────── */
 
 describe("the partial-delivery band", () => {

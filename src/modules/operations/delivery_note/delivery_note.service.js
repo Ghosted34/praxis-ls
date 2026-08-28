@@ -53,6 +53,10 @@ async function replaceLines(client, id, lines) {
       inventory_item_id: l.inventory_item_id || null,
       label: label || null,
       qty: Number(l.qty) || 1,
+      // Both nullable and both absent on a container note — see 12749.
+      gross_weight_kg: l.gross_weight_kg === null || l.gross_weight_kg === undefined
+        ? null : Number(l.gross_weight_kg),
+      marks: typeof l.marks === "string" && l.marks.trim() ? l.marks.trim().slice(0, 200) : null,
     });
   }
 }
@@ -171,10 +175,46 @@ const summary = (client, q) => repo.statusCounts(client, q);
  * order's: `body` spreads into the create payload, `from` names what was
  * copied, `inferred` names what was derived. Nothing is binding.
  */
+/**
+ * The create body for a note on this file, plus the FACTS THE FORM SHOWS BACK.
+ *
+ * `body` is what gets typed into the form; `file` is what the form displays
+ * read-only above it — the entity, the service, the transport reference, the
+ * route. Two different jobs, and conflating them is how the old screen ended up
+ * asking for an Entity the file already carried: everything the file knows was
+ * either an input or invisible, with nothing in between.
+ *
+ * `file.captures_containers` and `file.captures_cargo` decide the SHAPE of the
+ * form. A sea file gets a container manifest; an air file gets packages; a
+ * representation retainer gets neither, because there is nothing to list.
+ */
 async function prefill(client, { dossier_id }) {
   const found = await repo.dossierForPrefill(client, dossier_id);
   if (!found) throw new AppError("NOT_FOUND", "Operations file not found", 404);
-  return prefillShared.deliveryNoteFrom(found.dossier, found.containers, found.lines);
+  const out = prefillShared.deliveryNoteFrom(found.dossier, found.containers, found.lines);
+  const d = found.dossier;
+  return {
+    ...out,
+    file: {
+      dossier_id: d.dossier_id,
+      ref: d.ref || null,
+      title: d.title || null,
+      client_name: d.client_name || null,
+      entity_name: d.entity_name || null,
+      service_key: d.service_key || null,
+      service_name_en: d.service_name_en || null,
+      service_name_fr: d.service_name_fr || null,
+      captures_containers: d.captures_containers === true,
+      captures_cargo: d.captures_cargo === true,
+      bl_mawb: d.bl_mawb || null,
+      vessel_flight: d.vessel_flight || null,
+      pol: d.pol || null,
+      pod: d.pod || null,
+      eta: d.eta || null,
+      ata: d.ata || null,
+      opened_at: d.created_at || null,
+    },
+  };
 }
 
 /** The file's boxes, for the picker. */

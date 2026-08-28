@@ -373,10 +373,57 @@ async function dossierBrief(client, dossierId) {
  * same reason as the transit-order version: this feeds a document.
  */
 async function dossierForPrefill(client, dossierId) {
+  /*
+   * EVERYTHING THE NOTE COULD POSSIBLY WANT, in one read.
+   *
+   * This used to select six columns, and the form asked the operator for the
+   * rest — the issuing entity it already knew, the delivery address it already
+   * held, the weight it had on the file. The rule the screen now follows is
+   * that a field is asked ONLY when the file genuinely cannot answer it, so
+   * this query is the list of what the file can answer.
+   *
+   * `captures_containers` and the cargo-role probe come along because they
+   * decide the SHAPE of the form: a sea file gets a container manifest, an air
+   * file gets packages, and a representation retainer gets neither. Asking here
+   * costs one join on a query the form already makes.
+   */
   const { rows } = await client.query(
-    `SELECT d.dossier_id, d.entity_id, d.commodity, d.commodity_desc,
-            d.package_count, d.place_delivery
+    `SELECT d.dossier_id, d.ref, d.title, d.entity_id, d.client_id,
+            d.commodity, d.commodity_desc, d.package_count,
+            d.gross_weight, d.weight_unit, d.marks_numbers,
+            d.place_delivery, d.place_receipt,
+            d.bl_mawb, d.vessel_flight, d.pol, d.pod, d.eta, d.ata,
+            d.promised_delivery_date, d.created_at,
+            cm.name AS client_name, cm.email AS client_email,
+            -- The client's PRIMARY contact, for the gate. client_master has no
+            -- phone of its own; the person a driver rings is a contact row, and
+            -- this is the one the register marks as primary.
+            (SELECT cc.name FROM client_contact cc
+              WHERE cc.client_id = d.client_id AND cc.is_active
+              ORDER BY cc.is_primary DESC, cc.name LIMIT 1) AS contact_name,
+            (SELECT cc.phone FROM client_contact cc
+              WHERE cc.client_id = d.client_id AND cc.is_active AND cc.phone IS NOT NULL
+              ORDER BY cc.is_primary DESC, cc.name LIMIT 1) AS contact_phone,
+            ce.legal_name AS entity_name,
+            st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr,
+            COALESCE(st.captures_containers, false) AS captures_containers,
+            -- Does this service type describe CARGO at all? A freight file does;
+            -- a business-representation or brokerage retainer does not, and a
+            -- delivery note for one has nothing to list. Read off the field set
+            -- rather than a new column, so a tenant's own profile answers too.
+            EXISTS (
+              SELECT 1 FROM service_type_field_set fs
+              JOIN service_type_field f
+                ON f.service_type_field_set_id = fs.service_type_field_set_id
+             WHERE fs.service_type_id = d.service_type_id
+               AND fs.is_active AND f.is_active IS NOT false
+               AND f.facet_role IN ('CARGO_DESC','CARGO_WEIGHT','CARGO_VOLUME',
+                                    'CARGO_PACKAGES','CARGO_MARKS')
+            ) AS captures_cargo
        FROM dossier_visible d
+       LEFT JOIN client_master cm ON cm.client_id = d.client_id
+       LEFT JOIN corporate_entity ce ON ce.entity_id = d.entity_id
+       LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
       WHERE d.dossier_id = $1`,
     [dossierId],
   );

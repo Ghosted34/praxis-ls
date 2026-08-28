@@ -151,6 +151,9 @@ type DocData = {
   issued_by_name?: string;
   containers?: Container[];
   position?: DeliveryPosition | null;
+  /** False on a file whose service type does not move containers — an air or
+   *  road job. The manifest is then not rendered at all. */
+  containerised?: boolean;
   /* transit order (operations/transit_order) */
   /** The lifecycle in the reader's language. Replaced `status_label`, which the
    *  projection used to emit pre-joined as "Émis / Issued". */
@@ -412,6 +415,10 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
         </Card>
       )}
 
+      {/* No manifest on a file that moves no containers — an air note showed a
+          "Containers (0)" card with "No containers on this note" under it,
+          which is a true sentence about a question nobody asked. */}
+      {(d.containerised !== false || containers.length > 0) && (
       <Card title={`Containers (${containers.length})`}>
         {containers.length ? (
           <ul className="grid gap-1 sm:grid-cols-2">
@@ -450,17 +457,25 @@ function DeliveryNoteBody({ d, entity }: { d: DocData; entity?: Entity }) {
           <p className="text-sm text-muted">No containers on this note.</p>
         )}
       </Card>
+      )}
 
       {lines.length > 0 && (
-        <Card title="Cargo">
+        /* On a package note this table IS the document — so it carries the
+           weight the consignee checks and the marks on the cartons, the same
+           two facts a container manifest states with a number and a seal. */
+        <Card title={d.containerised === false ? "Packages" : "Cargo"}>
           <LineTable
             cols={[
               { key: "label", label: "Description" },
-              { key: "qty", label: "Qty", num: true },
+              { key: "marks", label: "Marks" },
+              { key: "qty", label: d.containerised === false ? "Packages" : "Qty", num: true },
+              { key: "weight", label: "Weight (kg)", num: true },
             ]}
             rows={lines.map((l) => ({
               label: l.label ?? "",
+              marks: l.marks ?? "",
               qty: num(Number(l.qty ?? 0)),
+              weight: l.gross_weight_kg == null ? "" : num(Number(l.gross_weight_kg)),
             }))}
           />
         </Card>

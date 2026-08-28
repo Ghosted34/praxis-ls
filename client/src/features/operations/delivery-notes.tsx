@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, ConfirmDialog } from "@/components/ui/dialog";
-import { Field, Select } from "@/components/ui/modal";
+import { Field } from "@/components/ui/modal";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DateField } from "@/components/ui/date-field";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -49,6 +49,7 @@ import { Panel } from "@/components/ui/panel";
 import { DocButton } from "@/components/doc-button";
 import { InventoryItemSelect } from "@/components/catalogue-select";
 import { PlacePicker } from "@/components/operations/place-picker";
+import { OperationsFilePicker } from "@/components/operations/file-picker";
 import { ListPage } from "@/components/list-page";
 import type { Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -61,7 +62,6 @@ import { XIcon } from "@/components/ui/icons";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import { useCanUseModule } from "@/lib/route-access";
-import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
 import {
   SendForSignatureModal,
@@ -104,8 +104,25 @@ const BOX_WORD: Record<string, string> = {
   OUTSTANDING: "Still to go",
 };
 
-type GoodsLine = { inventory_item_id: string; label: string; qty: string };
-const blankGoods = (): GoodsLine => ({ inventory_item_id: "", label: "", qty: "1" });
+/**
+ * A line of goods on the note.
+ *
+ * `gross_weight_kg` and `marks` (12749) are the substance on a file that hands
+ * cargo over as PACKAGES rather than as containers: the weight is what the
+ * consignee checks at the counter, the marks identify the cartons the way a
+ * number identifies a box. Strings, because they are form inputs — an empty box
+ * has to stay distinguishable from a zero.
+ */
+type GoodsLine = {
+  inventory_item_id: string;
+  label: string;
+  qty: string;
+  gross_weight_kg: string;
+  marks: string;
+};
+const blankGoods = (): GoodsLine => ({
+  inventory_item_id: "", label: "", qty: "1", gross_weight_kg: "", marks: "",
+});
 
 /* ── The container picker ───────────────────────────────────────────────── */
 
@@ -395,6 +412,58 @@ function ContainerPicker({
   );
 }
 
+/* ── What the file says about itself ─────────────────────────────────────── */
+
+/**
+ * The facts the note inherits, shown read-only.
+ *
+ * ── WHY THIS IS A PANEL AND NOT A SET OF DISABLED INPUTS ────────────────────
+ * A disabled input says "you may not change this". These are not fields at all:
+ * they are the file's own facts, and the note is derived from them. The entity
+ * was a dropdown of every company in the tenant before this — asking an operator
+ * to choose something the file had already decided, on a form where choosing
+ * wrong puts the wrong company's letterhead on a signed document.
+ *
+ * The service type earns its place for a different reason: it was NOWHERE on
+ * this form, so an operator filling in a delivery note could not tell whether
+ * they were on an air file or a sea one — while the form below silently changed
+ * shape depending on the answer.
+ */
+function FileFacts({ file }: { file: api.PrefillFile }) {
+  const service = file.service_name_en || file.service_name_fr || file.service_key;
+  const transport = file.bl_mawb || file.vessel_flight;
+  const route = [file.pol, file.pod].filter(Boolean).join(" → ");
+  const facts: [string, React.ReactNode][] = [
+    [tr("Issued by"), file.entity_name],
+    [tr("Client"), file.client_name],
+    [tr("Service"), service],
+    [file.bl_mawb ? tr("B/L or AWB") : tr("Vessel / flight"), transport],
+    [tr("Route"), route],
+    [tr("Arrival"), file.ata ? dateFmt(file.ata) : file.eta ? dateFmt(file.eta) : null],
+  ].filter(([, v]) => Boolean(v)) as [string, React.ReactNode][];
+
+  if (!facts.length) return null;
+
+  return (
+    <div className="rounded-lg border border-line bg-muted/20 p-3">
+      {file.title && (
+        <p className="mb-2 text-sm font-medium text-foreground">{file.title}</p>
+      )}
+      <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-3">
+        {facts.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-micro uppercase text-muted">{label}</dt>
+            <dd className="truncate text-sm text-foreground">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-xs text-muted">
+        From the operations file. Change it there and every document follows.
+      </p>
+    </div>
+  );
+}
+
 /* ── How much of the file has gone ──────────────────────────── */
 
 /**
@@ -554,10 +623,27 @@ function DeliveryForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { rows: entities } = useList<Entity>("/entities");
-  const { rows: dossiers } = useList<api.Dossier>("/operations");
   const canCreatePlace = useCanUseModule("MOD-29");
   const editing = !!note;
+
+  /**
+   * What the FILE says, shown back rather than asked for.
+   *
+   * Null until a file is picked, and on an existing note until the prefill for
+   * its file lands. It carries the issuing entity, the service type and the
+   * transport reference — and `captures_containers` / `captures_cargo`, which
+   * decide whether this form shows a container manifest, a package list, or
+   * neither.
+   */
+  const [file, setFile] = React.useState<api.PrefillFile | null>(null);
+
+  /**
+   * Fields the file ANSWERED but did not STATE — the consignee and the gate
+   * contact, both taken from the client on the file. Right on nine notes in
+   * ten; the tenth is a bonded warehouse or the customer's own buyer, so they
+   * are shown as "suggested — check it" rather than as facts.
+   */
+  const [suggested, setSuggested] = React.useState<Set<string>>(new Set());
 
   const [f, setF] = React.useState({
     entity_id: note?.entity_id || "",
@@ -582,53 +668,73 @@ function DeliveryForm({
 
 
   /**
-   * Picking the file fills the note from it — above all, the CONTAINERS.
+   * Picking the file IS the form.
    *
-   * A file with twelve boxes carries twelve container numbers and twelve seal
-   * numbers, and this note is the document they exist to travel on. Typed by
-   * hand that is twenty-four eleven-character alphanumerics, which is not a task
-   * people do accurately; copied, the note cannot drift from the file. A
-   * GROUPED file (10708) carries its equipment as lines — "3 × 40' HC" — and
-   * those are picked the same way, so the note states the equipment even
-   * before the Bill of Lading numbers any boxes.
+   * ── WHAT THIS SCREEN USED TO ASK FOR ──────────────────────────────────────
+   * An Entity, from a dropdown of every company in the tenant — a fact the file
+   * carries. A Dossier, from a list of bare references nobody recognises. Then
+   * the consignee, the address and the cargo, typed, on a file that already
+   * held all three. The operator was transcribing a record into a document
+   * derived from that record, which is the exact step at which the two start to
+   * disagree.
    *
-   * Only on a NEW note, and never over something already typed. The consignee
-   * block is deliberately left alone — the file does not record one, and a
-   * client is not a consignee.
+   * Now: choose the file and everything follows from it. What the file states
+   * is shown read-only; what it merely answers is filled in and flagged; only
+   * what it genuinely cannot know is left to type.
+   *
+   * ── REPLACE, NOT MERGE ────────────────────────────────────────────────────
+   * Choosing a file is choosing its facts, so a re-pick replaces everything
+   * rather than filling only the empty boxes. The alternative leaves the
+   * PREVIOUS file's consignee and delivery address sitting on a note that now
+   * points somewhere else — which is how goods go to the wrong address, and it
+   * is invisible because the box looks filled.
    */
   async function pickDossier(id: string) {
     set("dossier_id", id);
-    if (!id || note) return;
+    if (!id) {
+      setFile(null);
+      setSuggested(new Set());
+      return;
+    }
     try {
-      const { body } = await api.deliveryNotePrefill(id);
-      setF((prev) =>
-        body.entity_id && !prev.entity_id
-          ? { ...prev, dossier_id: id, entity_id: body.entity_id }
-          : { ...prev, dossier_id: id },
-      );
-      if (body.lines?.length && lines.every((l) => !l.label.trim())) {
-        setLines(
-          body.lines.map((l) => ({
+      const { body, inferred, file: ctx } = await api.deliveryNotePrefill(id);
+      setFile(ctx);
+      // On an EXISTING note the file is loaded for context only: its values were
+      // agreed when the note was raised and are not re-derived under the
+      // operator, who may have corrected them on purpose.
+      if (note) return;
+      setSuggested(new Set(inferred));
+      setF((prev) => ({
+        ...prev,
+        dossier_id: id,
+        entity_id: body.entity_id || "",
+        consignee: body.consignee || "",
+        city_zone: body.city_zone || "",
+        address: body.address || "",
+        contact_person: body.contact_person || "",
+        phone: body.phone || "",
+        delivery_date: body.delivery_date || prev.delivery_date,
+      }));
+      setLines(
+        body.lines?.length
+          ? body.lines.map((l) => ({
             inventory_item_id: "",
             label: l.label ?? "",
             qty: String(l.qty ?? 1),
-          })),
-        );
-      }
-      // Containers replace only an empty grid: on a new note there is nothing
-      // to lose, and an operator who has already picked boxes has made a
-      // choice the file should not overrule.
-      if (body.containers?.length && !containers.length) {
-        // Boxes another note already covers are OFFERED but not auto-ticked —
-        // silently double-delivering them is the failure this prefill exists
-        // to prevent; a deliberate split load is one tick away in the picker.
-        const free = (body.containers as (api.DeliveryNoteContainer & {
-          already_on?: string[];
-        })[])
-          .filter((c) => c.dossier_container_line_id || !c.already_on?.length)
-          .map(({ already_on: _on, ...c }) => c);
-        setContainers(free);
-      }
+            gross_weight_kg: l.gross_weight_kg == null ? "" : String(l.gross_weight_kg),
+            marks: l.marks ?? "",
+          }))
+          : [blankGoods()],
+      );
+      // Boxes another note already covers are OFFERED by the picker but not
+      // auto-ticked — silently double-delivering them is the failure this
+      // prefill exists to prevent; a deliberate split load is one tick away.
+      const free = ((body.containers || []) as (api.DeliveryNoteContainer & {
+        already_on?: string[];
+      })[])
+        .filter((c) => c.dossier_container_line_id || !c.already_on?.length)
+        .map(({ already_on: _on, ...c }) => c);
+      setContainers(free);
     } catch {
       /* @silent:parse -- a convenience. The file is selected and every field is
          still editable, so reporting a failed shortcut as an error would say
@@ -636,12 +742,26 @@ function DeliveryForm({
     }
   }
 
+  /* An existing note loads its file's context so the header reads the same as
+     it did when the note was raised — and so the container/package panels pick
+     the right shape. Never re-derives the values; see `pickDossier`. */
+  React.useEffect(() => {
+    if (!note?.dossier_id) return;
+    let live = true;
+    api.deliveryNotePrefill(note.dossier_id)
+      .then((r) => { if (live) setFile(r.file); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [note?.dossier_id]);
+
   const [lines, setLines] = React.useState<GoodsLine[]>(
     note?.lines?.length
       ? note.lines.map((l) => ({
           inventory_item_id: l.inventory_item_id || "",
           label: l.label || "",
           qty: String(l.qty ?? 1),
+          gross_weight_kg: l.gross_weight_kg == null ? "" : String(l.gross_weight_kg),
+          marks: l.marks || "",
         }))
       : [blankGoods()],
   );
@@ -676,6 +796,10 @@ function DeliveryForm({
           inventory_item_id: l.inventory_item_id || null,
           label: l.label.trim(),
           qty: Number(l.qty) || 1,
+          // An empty box is ABSENT, not zero. A delivery note reading "0 kg" is
+          // a claim about the goods, and it is the wrong one.
+          gross_weight_kg: l.gross_weight_kg.trim() ? Number(l.gross_weight_kg) : null,
+          marks: l.marks.trim() || null,
         }));
 
       const body: api.DeliveryNoteInput = {
@@ -721,38 +845,50 @@ function DeliveryForm({
           </Callout>
         )}
 
+        {/*
+          * THE FILE, FIRST AND ALONE.
+          *
+          * A delivery note cannot be issued without one (`issueBlockers`), so
+          * this is not one field among several — it is the question the form
+          * exists to ask. Everything below it is derived from the answer.
+          */}
+        <Field
+          label={tr("Operations file")}
+          required
+          hint="Search by reference, client, B/L or AWB. Everything below fills from the file."
+        >
+          <OperationsFilePicker
+            value={file?.ref || note?.dossier_ref || null}
+            disabled={editing}
+            onSelect={(picked) => void pickDossier(picked.dossier_id)}
+          />
+        </Field>
+
+        {/*
+          * What the file STATES, shown back rather than asked for.
+          *
+          * The issuing entity used to be a dropdown of every company in the
+          * tenant — a fact the file carries, offered as a decision. The service
+          * type was not on the form at all, so an operator could not tell an air
+          * file from a sea one while filling in a note about it.
+          */}
+        {file && <FileFacts file={file} />}
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={tr("Entity")} required>
-            <Select
-              value={f.entity_id}
-              onChange={(e) => set("entity_id", e.target.value)}
-            >
-              <option value="">{tr("Select…")}</option>
-              {(entities || []).map((x) => (
-                <option key={x.entity_id} value={x.entity_id}>
-                  {x.trading_name || x.legal_name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={tr("Dossier")} hint="The consignee and containers come from the file.">
-            <Select
-              value={f.dossier_id}
-              onChange={(e) => void pickDossier(e.target.value)}
-            >
-              <option value="">{tr("Select…")}</option>
-              {(dossiers || []).map((d) => (
-                <option key={d.dossier_id} value={d.dossier_id}>
-                  {d.ref}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={tr("Consignee")} className="sm:col-span-2">
+          <Field
+            label={tr("Consignee")}
+            className="sm:col-span-2"
+            hint={suggested.has("consignee")
+              ? "From the file's client — change it if somebody else receives the goods."
+              : undefined}
+          >
             <Input
               value={f.consignee}
-              onChange={(e) => set("consignee", e.target.value)}
-              placeholder="Defaults to the file's client"
+              onChange={(e) => {
+                set("consignee", e.target.value);
+                setSuggested((p) => { const n = new Set(p); n.delete("consignee"); return n; });
+              }}
+              placeholder="Who signs for the goods"
             />
           </Field>
           {/*
@@ -829,18 +965,55 @@ function DeliveryForm({
           highlightNoteRef={note?.ref || null}
         />
 
-        <Panel title={tr("Containers")}>
-          <ContainerPicker
-            dossierId={f.dossier_id}
-            excludeNoteId={note?.delivery_note_id}
-            selected={containers}
-            onChange={setContainers}
-            capturesContainers={progress ? progress.captures_containers : undefined}
-          />
-        </Panel>
+        {/*
+          * THE MANIFEST, ONLY WHERE THERE IS EQUIPMENT TO LIST.
+          *
+          * This panel used to render on every file. An AIR FREIGHT note showed
+          * a "Containers" heading and a box to type a container number into —
+          * on a shipment that travels in the hold of an aeroplane. Gating the
+          * LIST while leaving the heading and the manual box was not a fix; the
+          * question is wrong on that file, so it is not asked.
+          */}
+        {file?.captures_containers && (
+          <Panel title={tr("Containers")}>
+            <ContainerPicker
+              dossierId={f.dossier_id}
+              excludeNoteId={note?.delivery_note_id}
+              selected={containers}
+              onChange={setContainers}
+              capturesContainers
+            />
+          </Panel>
+        )}
 
+        {/*
+          * PACKAGES — what an air, road or LCL file actually hands over.
+          *
+          * Titled by what the file moves rather than "Other cargo", which only
+          * made sense while containers were the main event. On a non-container
+          * file this IS the document: the description, the count, the weight the
+          * consignee checks at the counter and the marks on the cartons.
+          *
+          * Absent entirely for a service type that describes no cargo at all —
+          * a business-representation or brokerage retainer hands nothing over,
+          * and a delivery note for one has nothing to list.
+          */}
+        {file && !file.captures_cargo && !file.captures_containers && (
+          <Callout tone="info" title="Nothing to itemise on this file">
+            {(file.service_name_en || file.service_name_fr || "This service")} does
+            not move goods, so there is no cargo to list. The note still records
+            who received what was handed over, and when.
+          </Callout>
+        )}
+
+        {/* Rendered only where there is cargo to describe. A retainer file gets
+            the callout above and no list, because it hands nothing over. */}
+        {(!file || file.captures_cargo || file.captures_containers) && (
         <Panel
-          title="Other cargo"
+          title={file?.captures_containers ? tr("Other cargo") : tr("Packages")}
+          subtitle={file?.captures_containers
+            ? "Anything travelling alongside the containers."
+            : "What is being handed over — description, count, weight and marks."}
           action={
             <Button
               type="button"
@@ -876,6 +1049,32 @@ function DeliveryForm({
                     onChange={(e) => setLine(i, { qty: e.target.value })}
                   />
                 </Field>
+                {/*
+                  * Weight and marks, on the files where they are the substance.
+                  * A container note identifies goods by the number on the box;
+                  * a package note has only these, so hiding them behind the
+                  * container manifest is how an air note ends up saying less
+                  * than the file it came from.
+                  */}
+                {!file?.captures_containers && (
+                  <>
+                    <Field label={tr("Weight (kg)")} className="w-28">
+                      <Input
+                        inputMode="decimal"
+                        value={l.gross_weight_kg}
+                        onChange={(e) => setLine(i, { gross_weight_kg: e.target.value })}
+                        placeholder="—"
+                      />
+                    </Field>
+                    <Field label={tr("Marks")} className="min-w-[8rem] flex-1">
+                      <Input
+                        value={l.marks}
+                        onChange={(e) => setLine(i, { marks: e.target.value })}
+                        placeholder="SLS/001"
+                      />
+                    </Field>
+                  </>
+                )}
                 {lines.length > 1 && (
                   <button
                     type="button"
@@ -894,10 +1093,16 @@ function DeliveryForm({
             </p>
           </div>
         </Panel>
+        )}
 
+        {/*
+          * The file, not the entity. `issueBlockers` refuses to issue a note
+          * without an operations file, and the entity is derived from it — so
+          * gating on the entity was gating on a consequence.
+          */}
         <FormButtons
           busy={busy}
-          disabled={!f.entity_id || busy}
+          disabled={!f.dossier_id || busy}
           onCancel={onClose}
           saveLabel={editing ? "Save changes" : "Save draft"}
         />

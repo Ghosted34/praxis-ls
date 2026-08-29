@@ -58,15 +58,13 @@ const GRANDFATHERED = new Map(Object.entries({
   /* Superseded by the 10731 thread model; the screens read threads. */
   listInbox: "superseded by the thread list (10731)",
   listSent: "superseded by the thread list (10731)",
-  listOutbox: "superseded by the thread list (10731)",
   linkThread: "superseded by binding/, which writes entity_ref on the thread",
   clientTimeline: "superseded by the dossier drawer's Interactions tab",
   /* Duplicates of a wrapper that IS used. */
   microsoftStartUrl: "duplicate of startMicrosoft, which the setup screen uses",
   googleStartUrl: "duplicate of startGoogle, which the setup screen uses",
   /* Endpoints ahead of their screen. */
-  getDraft: "no draft-list screen: the composer autosaves and never re-opens by id",
-  discardDraft: "no draft-list screen",
+  getDraft: "the Drafts list opens the row it already has, so nothing re-fetches by id",
   deleteLabel: "labels can be created and listed; no delete affordance yet",
   putSetting: "generic settings writer, unused by the comms screens",
   updateSender: "the senders tab is read-only today",
@@ -142,7 +140,11 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
   test("the grandfathered list can only shrink", () => {
     // Its size is the ratchet. Adding a wrapper and parking it here is exactly
     // the move this gate exists to refuse.
-    expect(GRANDFATHERED.size).toBeLessThanOrEqual(23);
+    // 23 → 21. `listOutbox` and `discardDraft` came off when `pending.tsx`
+    // gave the send queue and the draft list a screen; `listOutbox`'s entry was
+    // also WRONG, not merely stale — it read "superseded by the thread list",
+    // and the queue is precisely the mail that is NOT in the thread list yet.
+    expect(GRANDFATHERED.size).toBeLessThanOrEqual(21);
   });
 
   test("nothing sits on the list that is now wired", () => {
@@ -235,5 +237,175 @@ describe("§9.1 · a lead can hand a thread over", () => {
     expect(triage).toMatch(/api\.assignThread\(/);
     // And says what it is, in the words the panel's own header uses.
     expect(triage).toMatch(/Hand over/);
+  });
+});
+
+/* ── The blind spot this gate had, and what now covers it ─────────────────── */
+
+/**
+ * AN ENDPOINT WITH NO WRAPPER AT ALL WAS INVISIBLE HERE.
+ *
+ * Everything above walks the wrappers in `mail-api.ts` and asks who calls them.
+ * That question cannot be asked of an endpoint that has no wrapper — and that
+ * is precisely how §H-1's deletion hid: `DELETE /mail/threads/:id` and
+ * `POST /mail/folders/empty` were built, retention-aware, ledgered, and told to
+ * the mail server so a deleted message would not come back on the next sync.
+ * `thread.service` even documents the second as "the Empty Trash the product
+ * did not have". Neither had a wrapper, so this file was green while the whole
+ * feature was unreachable, Trash accumulated for ever, and §9.6's promise that
+ * "deletion of an archived message is blocked in the service layer" protected
+ * nothing, because nothing could delete anything.
+ *
+ * So the question is now asked from the OTHER end as well: every route this
+ * module declares has a wrapper, or is named below with a reason. The two
+ * directions together are the property that actually matters — a route reaches
+ * a screen, and a screen reaches a route.
+ */
+describe("every mail ROUTE has a client wrapper", () => {
+  const ROUTE_DIR = path.join(ROOT, "src", "modules", "mail");
+
+  function routeFiles(dir, acc = []) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) routeFiles(p, acc);
+      else if (/\.routes\.js$/.test(e.name)) acc.push(p);
+    }
+    return acc;
+  }
+
+  // Turn a route's params into wildcards, so a wrapper's `${id}` template and
+  // a route's `:id` normalise to the same string: `/mail/threads/:id/star`
+  // becomes the same shape as `` `/mail/threads/${id}/star` ``.
+  // (A line comment, not a block one: the shape contains a star and a slash,
+  //  which would close a block comment early.)
+  const shape = (basePath, routePath) =>
+    `${basePath}${routePath}`.replace(/:[A-Za-z0-9_]+/g, "*").replace(/\/+$/, "") || "/";
+
+  const declared = [];
+  for (const file of routeFiles(ROUTE_DIR)) {
+    const src = fs.readFileSync(file, "utf8");
+    const base = /basePath:\s*"([^"]+)"/.exec(src);
+    if (!base) continue;
+    for (const m of src.matchAll(
+      /router\.(get|post|put|patch|delete)\(\s*"([^"]+)"/g,
+    )) {
+      declared.push({
+        file: path.relative(ROOT, file).replace(/\\/g, "/"),
+        method: m[1].toUpperCase(),
+        path: shape(base[1], m[2]),
+      });
+    }
+  }
+
+  /**
+   * The same normalisation, over every path literal in the API modules.
+   *
+   * `${…}` is consumed by counting braces rather than by a regex, because the
+   * interpolations in this file NEST: `` `/mail/sent${id ? `?identity_id=${id}`
+   * : ""}` `` has a template inside a ternary inside a template. A
+   * `\$\{[^}]*\}` stops at the first `}` and leaves a fragment that matches
+   * nothing, which reads as six perfectly wired routes being orphans.
+   */
+  function normalise(literal) {
+    let out = "";
+    for (let i = 0; i < literal.length; i += 1) {
+      if (literal[i] === "$" && literal[i + 1] === "{") {
+        let depth = 1;
+        i += 2;
+        while (i < literal.length && depth > 0) {
+          if (literal[i] === "{") depth += 1;
+          else if (literal[i] === "}") depth -= 1;
+          i += 1;
+        }
+        i -= 1;
+        out += "*";
+      } else {
+        out += literal[i];
+      }
+    }
+    return out
+      .replace(/\?.*$/, "")            // a literal query string
+      // A trailing `*` NOT after a slash came from a query builder, not a path
+      // segment: `/mail/threads${qs(q)}` is the route `/mail/threads`, while
+      // `/mail/threads/${id}` is `/mail/threads/*`.
+      .replace(/([^/])\*$/, "$1")
+      .replace(/\/+$/, "");
+  }
+
+  const wrapperPaths = new Set();
+  for (const f of API_FILES) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const m of src.matchAll(/["'`](\/(?:mail|public)\/[^"'`]*)["'`]/g)) {
+      wrapperPaths.add(normalise(m[1]));
+    }
+  }
+
+  /**
+   * Routes the mail client does not call, each with the reason.
+   *
+   * Two kinds, kept apart because they mean different things. The first is
+   * "nothing in a browser calls this and nothing should" — a webhook, an OAuth
+   * redirect target, a page served outside the app shell. A wrapper for one of
+   * those would be the bug.
+   *
+   * The second is the same admission the wrapper-side `GRANDFATHERED` map
+   * makes: an endpoint whose screen has not been built. It is capped for the
+   * same reason — an allowance that grows is the gate being routed around.
+   */
+  const NOT_FOR_THE_CLIENT = new Map(
+    Object.entries({
+      "/mail/oauth/microsoft/callback": "the provider redirects the browser here; there is nothing to call",
+      "/mail/oauth/google/callback": "the provider redirects the browser here",
+      "/mail/webhook/microsoft": "Microsoft Graph change notifications",
+      "/mail/webhook/google": "Google Pub/Sub push",
+      "/public/secure/*": "the public secure-link page — served outside the app shell, to a recipient with no session",
+      "/public/secure/*/download": "the same page's download, opened as a plain link",
+    }),
+  );
+
+  /** Endpoints ahead of their screen. Capped, and it can only shrink. */
+  const NO_SCREEN_YET = new Map(
+    Object.entries({
+      /* The pre-10731 per-MESSAGE surface. `listInbox` / `listSent` are
+       * grandfathered on the wrapper side for the same reason: the screens read
+       * the thread model now. Still mounted because `email_inbound` survives as
+       * a compat view and something outside the client may still read it. */
+      "/mail/thread": "superseded by the thread list (10731)",
+      "/mail/thread/*": "superseded by GET /mail/threads/:id",
+      "/mail/thread/*/read": "superseded by POST /mail/threads/:id/read",
+      "/mail/thread/*/reply": "superseded by the composer's POST /mail/send",
+      /* Q15's templates are admin-curated and seeded; the screen that edits a
+       * template's department default has not been built. Read is wired
+       * (`listSignatureTemplates`); only the PATCH is unreachable. */
+      "/mail/signature/templates/*": "no template-admin screen: templates are seeded, and only their department default is editable",
+    }),
+  );
+
+  test("the endpoints-ahead-of-their-screen list can only shrink", () => {
+    expect(NO_SCREEN_YET.size).toBeLessThanOrEqual(5);
+  });
+
+  test("the route sweep found the routes it thinks it did", () => {
+    // A floor, so a broken parse cannot make the assertion below pass vacuously.
+    expect(declared.length).toBeGreaterThan(60);
+  });
+
+  test("NO ROUTE IS UNREACHABLE FROM THE CLIENT", () => {
+    const orphans = declared
+      .filter((r) => !NOT_FOR_THE_CLIENT.has(r.path) && !NO_SCREEN_YET.has(r.path))
+      .filter((r) => !wrapperPaths.has(r.path))
+      .map((r) => `${r.method} ${r.path}  (${r.file})`);
+
+    expect(orphans).toEqual([]);
+  });
+
+  test("the two deletion routes that hid here are reachable now", () => {
+    // Named rather than left to the sweep, because they are the ones that
+    // taught us the sweep was needed.
+    expect(wrapperPaths.has("/mail/threads/*")).toBe(true);
+    expect(wrapperPaths.has("/mail/folders/empty")).toBe(true);
+    const api = fs.readFileSync(API_FILES[0], "utf8");
+    expect(api).toMatch(/export const deleteThread/);
+    expect(api).toMatch(/export const emptyFolder/);
   });
 });

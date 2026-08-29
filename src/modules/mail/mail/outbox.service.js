@@ -444,17 +444,52 @@ async function cancel(client, actor, id) {
 const listQueued = (client, actor, q = {}) => repo.listQueued(client, actor.user_id, q);
 
 /**
+ * Codes that are never worth a second attempt.
+ *
+ * Every one of these is emitted by something — which is the property the list
+ * it replaced did not have. That one named `AUTH_FAILED`, which nothing has
+ * ever thrown: `mail.service.explainSendError` emits `MAILBOX_AUTH_FAILED`, and
+ * a rejected login survived as permanent only because it also happens to carry
+ * a 422. A dead name in a list that reads as authoritative is worse than a
+ * short list, because it looks like the case is covered.
+ *
+ * `SMTP_SEND_REJECTED` is the one that actually changed behaviour. It is the
+ * classifier's verdict for a hard 5xx with no other evidence — a message over
+ * the size limit, a recipient mailbox that is full — and RFC 5321 §4.2.1 is
+ * explicit that a 5yz means the client SHOULD NOT repeat the request. It used
+ * to be retried three times because `explainSendError` flattened it into the
+ * same code as a greylisting.
+ *
+ * Kept beside `retryPlan` rather than imported from the map, because the
+ * question here is operational (do we try again?) and the map's question is
+ * diagnostic (what went wrong?). `tests/unit/mail-send-classifier.test.js`
+ * walks every code the map can produce through both and asserts they agree, so
+ * a new verdict cannot land in one and not the other.
+ */
+const PERMANENT_CODES = new Set([
+  "SENDER_NOT_AUTHORIZED",   // the From address is not ours to send from
+  "RECIPIENT_REJECTED",      // the address does not exist
+  "MAILBOX_ARCHIVED",        // our own mailbox was retired mid-queue
+  "MAILBOX_AUTH_FAILED",     // explainSendError's name for a rejected login
+  "SMTP_AUTH_FAILED",        // the map's name for the same thing
+  "SMTP_SEND_REJECTED",      // a hard 5xx refusal — see above
+]);
+
+/**
  * Should this failure be retried, and when?
  *
  * A permanent refusal is not retried at all. Trying a rejected sender address
  * three times does not make it work; it just delays telling the person something
  * only they can fix, and burns three more entries in the mail host's abuse log.
+ *
+ * Retrying a rejected LOGIN is worse than useless: three failed authentications
+ * in ten minutes is what a shared host's brute-force protection is watching
+ * for, and it suspends the mailbox.
  */
 function retryPlan(err, attempts) {
   const status = err && err.status;
   const code = (err && err.code) || null;
-  const permanent = status === 422 || status === 413
-    || ["SENDER_NOT_AUTHORIZED", "RECIPIENT_REJECTED", "MAILBOX_ARCHIVED", "AUTH_FAILED"].includes(code);
+  const permanent = status === 422 || status === 413 || PERMANENT_CODES.has(code);
   if (permanent || attempts >= MAX_ATTEMPTS) return { retryAt: null, code };
   // 30s, 2min, 8min. Long enough for a mail host's transient limit to clear,
   // short enough that a message still arrives while it is relevant.
@@ -588,5 +623,5 @@ module.exports = {
   MODULE, ATTACH_MAX_BYTES, SECURE_LINK_HINT_BYTES, UNDO_CHOICES, DEFAULT_UNDO_SECONDS, MAX_ATTEMPTS,
   undoSeconds, saveDraft, getDraft, listDrafts, discardDraft,
   assertRoomFor, validateSend, send, cancel, listQueued,
-  retryPlan, flushOne, flush, stripStyleBlocks, stripTags,
+  retryPlan, PERMANENT_CODES, flushOne, flush, stripStyleBlocks, stripTags,
 };

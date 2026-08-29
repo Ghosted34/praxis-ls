@@ -201,6 +201,22 @@ export const syncConnection = (id: string) =>
     { method: "POST" },
   );
 
+/**
+ * Stop the sync and forget the credential.
+ *
+ * A POST, not a DELETE, because nothing is deleted: the mailbox is archived and
+ * the stored password or token bundle is removed, and every message stays
+ * exactly where it was. `archiveMailbox` below is the weaker half of this — it
+ * stops the sync and leaves the credential on disk — and stays for the admin
+ * "Retire" action, which is about the mailbox's place in the company rather
+ * than about a password.
+ */
+export const disconnectMailbox = (id: string) =>
+  tenant<Connection & { disconnected: boolean }>(
+    `/mail/connections/${id}/disconnect`,
+    { method: "POST" },
+  );
+
 // OAuth — start returns the provider consent URL to redirect the browser to.
 export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
 export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";
@@ -634,7 +650,16 @@ export type BulkOp =
   | "unstar"
   | "move"
   | "label"
-  | "unlabel";
+  | "unlabel"
+  /**
+   * Permanent, retention-aware deletion.
+   *
+   * `mail.validator.threadBulk` has accepted `"delete"` and `threads.bulk` has
+   * routed it to `remove()` since H-1; this type left it out, so no screen
+   * could ask for it. A message sealed into the compliance archive is retained
+   * and REPORTED rather than silently skipped — see `deleteThreads` below.
+   */
+  | "delete";
 export type BulkResult = {
   op: BulkOp;
   succeeded: number;
@@ -750,6 +775,41 @@ export const bulkThreads = (body: {
     method: "POST",
     body: body,
   });
+
+/* ── Deletion (H-1) ────────────────────────────────────────────────────────
+ *
+ * Both endpoints were built — retention-aware, ledgered, and told to the mail
+ * server so a deleted message does not come back on the next sync — and neither
+ * had a wrapper here. Which is also why `mail-client-api-wiring.test.js` never
+ * flagged them: that gate walks the wrappers in this file and asks who calls
+ * them, so an endpoint with no wrapper at all is invisible to it. The whole
+ * feature was unreachable and nothing said so.
+ *
+ * `retained_archived` is the field that must never be dropped on the floor. A
+ * message sealed into `email_archive` is under retention and stays; reporting
+ * "deleted" over a partial result would tell somebody their correspondence is
+ * gone when it is not, which is the opposite of what a retention control is
+ * for.
+ */
+export type ThreadDeletion = {
+  email_thread_id: string;
+  deleted: number;
+  retained_archived: number;
+  thread_removed: boolean;
+};
+export const deleteThread = (id: string) =>
+  tenant<ThreadDeletion>(`/mail/threads/${id}`, { method: "DELETE" });
+
+export type FolderEmptied = {
+  folder: MailFolder;
+  threads: number;
+  deleted: number;
+  retained_archived: number;
+  failed: { email_thread_id: string; error: string }[];
+};
+/** TRASH and SPAM only — the server refuses anything else by name. */
+export const emptyFolder = (folder: "TRASH" | "SPAM") =>
+  tenant<FolderEmptied>("/mail/folders/empty", { method: "POST", body: { folder } });
 
 /**
  * The rail, in one call: folders with the CALLER's unread counts, plus the two

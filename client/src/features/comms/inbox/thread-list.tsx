@@ -176,6 +176,17 @@ const BULK: { op: BulkOp; label: string; folder?: MailFolder }[] = [
   { op: "move", label: "Trash", folder: "TRASH" },
 ];
 
+/**
+ * Permanent deletion, offered only where deletion is what the person means.
+ *
+ * Everywhere else "Trash" is the destructive verb and it is reversible. In
+ * Trash and Spam it is not available — moving a conversation from Trash to
+ * Trash is a no-op — and "delete it properly" is the only thing left to want.
+ * Restricting it to those two also matches the server: `emptyFolder`'s
+ * allow-list is TRASH and SPAM by name.
+ */
+const DELETABLE = new Set<MailFolder>(["TRASH", "SPAM"]);
+
 export function ThreadList({
   threads,
   loading,
@@ -186,6 +197,8 @@ export function ThreadList({
   onOpen,
   onStar,
   onBulk,
+  folder,
+  onEmptyFolder,
   bulkBusy,
   bulkFailures,
   onLoadMore,
@@ -201,6 +214,10 @@ export function ThreadList({
   onOpen: (t: Thread) => void;
   onStar: (t: Thread, on: boolean) => void;
   onBulk: (op: BulkOp, folder?: MailFolder) => void;
+  /** Which folder is being listed — decides whether deletion is offered. */
+  folder?: MailFolder;
+  /** Empty the whole of Trash or Spam. Absent = not offered. */
+  onEmptyFolder?: () => void;
   bulkBusy: boolean;
   bulkFailures: { email_thread_id: string; error: string }[];
   onLoadMore: () => void;
@@ -230,23 +247,52 @@ export function ThreadList({
             <span className="num text-xs text-muted-foreground">
               {selected.size} {tr("selected")}
             </span>
-            {BULK.map((b) => (
+            {BULK
+              // "Move to Trash" while reading Trash is a no-op dressed as an
+              // action; the same for Spam.
+              .filter((b) => !(b.op === "move" && b.folder === folder))
+              .map((b) => (
+                <Button
+                  key={b.label}
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkBusy}
+                  onClick={() => onBulk(b.op, b.folder)}
+                >
+                  {tr(b.label)}
+                </Button>
+              ))}
+            {folder && DELETABLE.has(folder) && (
               <Button
-                key={b.label}
                 size="sm"
                 variant="outline"
                 disabled={bulkBusy}
-                onClick={() => onBulk(b.op, b.folder)}
+                onClick={() => onBulk("delete")}
               >
-                {tr(b.label)}
+                {tr("Delete for ever")}
               </Button>
-            ))}
+            )}
           </>
         ) : (
-          <span className="num text-xs text-muted-foreground">
-            {threads.length}
-            {hasMore ? "+" : ""} {threads.length === 1 ? tr("conversation") : tr("conversations")}
-          </span>
+          <>
+            <span className="num text-xs text-muted-foreground">
+              {threads.length}
+              {hasMore ? "+" : ""} {threads.length === 1 ? tr("conversation") : tr("conversations")}
+            </span>
+            {/* The "Empty Trash" the product did not have — `thread.service`'s
+                own words for the endpoint it shipped without a screen. */}
+            {onEmptyFolder && folder && DELETABLE.has(folder) && threads.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto"
+                disabled={bulkBusy}
+                onClick={onEmptyFolder}
+              >
+                {folder === "TRASH" ? tr("Empty the bin") : tr("Empty spam")}
+              </Button>
+            )}
+          </>
         )}
       </div>
 

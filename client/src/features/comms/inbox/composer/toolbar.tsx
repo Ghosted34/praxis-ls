@@ -59,6 +59,77 @@ function Tool({
 
 const Divider = () => <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />;
 
+/**
+ * The colours on offer, and why it is a short list rather than a picker.
+ *
+ * `compose.js` accepts a colour only as `#rgb`, `#rrggbb` or `rgb()` — anything
+ * else is dropped on the way out, silently, because a mark it cannot parse
+ * contributes no style rather than an error. A native `<input type="color">`
+ * would satisfy that, and would also let somebody set 14pt #f2f4f5 body text
+ * that is unreadable in every dark-mode client and invisible on a printout.
+ * These are the colours that survive both: dark enough to read on white, and
+ * distinguishable from one another for the ~8% of men with a colour deficiency.
+ *
+ * The palette is deliberately NOT the app's theme tokens. These values are
+ * baked into the recipient's mail, where our CSS variables do not exist.
+ */
+const TEXT_COLOURS: { value: string; label: string }[] = [
+  { value: "", label: "Default" },
+  { value: "#111827", label: "Black" },
+  { value: "#4b5563", label: "Grey" },
+  { value: "#b91c1c", label: "Red" },
+  { value: "#c2410c", label: "Orange" },
+  { value: "#a16207", label: "Amber" },
+  { value: "#15803d", label: "Green" },
+  { value: "#1a56db", label: "Blue" },
+  { value: "#6d28d9", label: "Purple" },
+];
+
+/** Highlights are backgrounds, so they run the other way: pale enough that the
+ *  text on top of them stays legible when a client ignores our text colour. */
+const HIGHLIGHTS: { value: string; label: string }[] = [
+  { value: "", label: "None" },
+  { value: "#fff3a3", label: "Yellow" },
+  { value: "#c7f5d9", label: "Green" },
+  { value: "#cfe3ff", label: "Blue" },
+  { value: "#ffd6d6", label: "Red" },
+];
+
+/** A swatch menu: a `<select>` whose options carry their colour, so the choice
+ *  is visible before it is made and reachable from the keyboard. */
+function ColourMenu({
+  id,
+  label,
+  options,
+  value,
+  onPick,
+}: {
+  id: string;
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>{label}</label>
+      <Select
+        id={id}
+        title={label}
+        className="h-7 w-auto text-xs"
+        value={value}
+        onChange={(e) => onPick(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.value || "none"} value={o.value} style={o.value ? { color: o.value } : undefined}>
+            {tr(o.label)}
+          </option>
+        ))}
+      </Select>
+    </>
+  );
+}
+
 export function ComposerToolbar({
   editor,
   slotRight,
@@ -139,6 +210,64 @@ export function ComposerToolbar({
       <Tool label={tr("Horizontal rule")} onClick={() => chain().setHorizontalRule().run()}>
         —
       </Tool>
+
+      <Tool
+        label={tr("Insert an image")}
+        onClick={() => {
+          // https only, and the serializer enforces it again: `safeSrc` accepts
+          // an https URL or a `cid:` part and nothing else. An http image is
+          // stripped by most mail clients as mixed content anyway, so accepting
+          // one here would only move the disappointment to the recipient.
+          const url = window.prompt(tr("Image address (https://…):"));
+          if (!url) return;
+          const alt = window.prompt(tr("Describe the image — recipients who block images see this instead:")) || "";
+          chain().setImage({ src: url, alt }).run();
+        }}
+      >
+        ▣
+      </Tool>
+
+      <Divider />
+
+      {/* Alignment. TextAlign has been in the extension set and rendered by
+          `compose.js` (`align()`) since PR-1B; there was simply no control, so
+          a centred heading was reachable only by pasting one in. */}
+      {([
+        { v: "left", glyph: "⯇", label: "Align left" },
+        { v: "center", glyph: "≡", label: "Centre" },
+        { v: "right", glyph: "⯈", label: "Align right" },
+      ] as const).map((a) => (
+        <Tool
+          key={a.v}
+          label={tr(a.label)}
+          active={editor.isActive({ textAlign: a.v })}
+          onClick={() => (editor.isActive({ textAlign: a.v })
+            ? chain().unsetTextAlign().run()
+            : chain().setTextAlign(a.v).run())}
+        >
+          {a.glyph}
+        </Tool>
+      ))}
+
+      <Divider />
+
+      {/* Text colour and highlight — both marks the serializer emits as inline
+          hex (`textStyle`, `highlight`), both loaded in `use-editor.ts`, and
+          neither previously reachable from this bar. */}
+      <ColourMenu
+        id="composer-colour"
+        label={tr("Text colour")}
+        options={TEXT_COLOURS}
+        value={String(editor.getAttributes("textStyle").color || "")}
+        onPick={(v) => (v ? chain().setColor(v).run() : chain().unsetColor().run())}
+      />
+      <ColourMenu
+        id="composer-highlight"
+        label={tr("Highlight")}
+        options={HIGHLIGHTS}
+        value={String(editor.getAttributes("highlight").color || "")}
+        onPick={(v) => (v ? chain().setHighlight({ color: v }).run() : chain().unsetHighlight().run())}
+      />
 
       <Divider />
 

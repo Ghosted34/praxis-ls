@@ -110,7 +110,9 @@ async function main() {
 
   const files = (await readdir(ASSETS)).filter((f) => f.endsWith(".js"));
   if (files.length === 0) {
-    console.error("✗ No JS chunks in dist/assets — the build produced nothing to check.");
+    console.error(
+      "✗ No JS chunks in dist/assets — the build produced nothing to check.",
+    );
     process.exit(1);
   }
 
@@ -130,24 +132,36 @@ async function main() {
 
   const cycle = findCycle(graph);
   if (cycle) {
-    console.error("✗ Circular chunk graph in dist/assets — this ships a blank page.\n");
+    console.error(
+      "✗ Circular chunk graph in dist/assets — this ships a blank page.\n",
+    );
     console.error(`    ${cycle.join("\n  → ")}\n`);
-    console.error("  One chunk reads another's exports before they are assigned, which throws");
-    console.error("  during module evaluation — before React renders, so no ErrorBoundary");
+    console.error(
+      "  One chunk reads another's exports before they are assigned, which throws",
+    );
+    console.error(
+      "  during module evaluation — before React renders, so no ErrorBoundary",
+    );
     console.error("  catches it and the reader sees nothing at all.");
-    console.error("\n  Do NOT resolve this by adding a second manualChunks bucket; keep the");
-    console.error("  single `vendor` bucket in vite.config.ts and split by route instead.");
+    console.error(
+      "\n  Do NOT resolve this by adding a second manualChunks bucket; keep the",
+    );
+    console.error(
+      "  single `vendor` bucket in vite.config.ts and split by route instead.",
+    );
     process.exit(1);
   }
 
   // ── 2. the first-paint payload, from what index.html loads ──
   const html = await readFile(path.join(DIST, "index.html"), "utf8");
   const referenced = new Set(
-    [...html.matchAll(/["'\/.]*([\w.-]+\.(?:js|css))["']/g)].map((m) => m[1]),
+    [...html.matchAll(/["'/.]*([\w.-]+\.(?:js|css))["']/g)].map((m) => m[1]),
   );
   const entry = [...referenced].filter((f) => f.endsWith(".js"));
   if (!entry.length) {
-    console.error("✗ dist/index.html references no JS — the build is not an app.");
+    console.error(
+      "✗ dist/index.html references no JS — the build is not an app.",
+    );
     process.exit(1);
   }
 
@@ -185,19 +199,27 @@ async function main() {
   const budget = FIRST_PAINT_BUDGET_KB * 1024;
   console.log("First paint (entry + its static imports + css):");
   console.log(rows.join("\n"));
-  console.log(`    ${"TOTAL".padEnd(34)} ${KB(total).padStart(9)} gzip  (budget ${FIRST_PAINT_BUDGET_KB} kB)`);
+  console.log(
+    `    ${"TOTAL".padEnd(34)} ${KB(total).padStart(9)} gzip  (budget ${FIRST_PAINT_BUDGET_KB} kB)`,
+  );
   console.log(
     `    ${"fonts, not counted".padEnd(34)} ${KB(fontTotal).padStart(9)} gzip  (${fonts.length} files, subset by unicode-range)`,
   );
 
   if (total > budget) {
+    console.error(`\n✗ Over budget by ${KB(total - budget)}.`);
     console.error(
-      `\n✗ Over budget by ${KB(total - budget)}.`,
+      "  Usual causes, in order: a route stopped being lazy (a static import of a",
     );
-    console.error("  Usual causes, in order: a route stopped being lazy (a static import of a");
-    console.error("  feature module from a shared component), or a new dependency in the entry");
-    console.error("  graph. Check `git diff -- src/app/router.tsx` first; the fix is almost");
-    console.error("  never to raise this number, and if it is, say in the commit message what");
+    console.error(
+      "  feature module from a shared component), or a new dependency in the entry",
+    );
+    console.error(
+      "  graph. Check `git diff -- src/app/router.tsx` first; the fix is almost",
+    );
+    console.error(
+      "  never to raise this number, and if it is, say in the commit message what",
+    );
     console.error("  the stranger gets for the extra kilobytes.");
     process.exit(1);
   }

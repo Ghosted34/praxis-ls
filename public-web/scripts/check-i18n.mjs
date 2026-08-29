@@ -99,17 +99,20 @@ function readDict() {
       // reported a perfectly good `tr("Résultat")` as a dangling call — the most
       // dangerous kind of false positive, because it teaches you to distrust the
       // gate. \w under /u covers the Latin letters this file uses.
-      const m = raw.match(/^(\s*)(?:"([^"]+)"|([\p{L}_][\p{L}\p{N}_]*))\s*:\s*(.*)$/u);
+      const m = raw.match(
+        /^(\s*)(?:"([^"]+)"|([\p{L}_][\p{L}\p{N}_]*))\s*:\s*(.*)$/u,
+      );
       if (!m) continue;
       const indent = m[1].length;
       const key = m[2] ?? m[3];
       const rest = m[4] ?? "";
-      while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+      while (stack.length && stack[stack.length - 1].indent >= indent)
+        stack.pop();
       const dotted = [...stack.map((s) => s.key), key].join(".");
       keys.add(dotted);
       if (rest.trim() === "{" || rest.trim().startsWith("{")) {
         stack.push({ indent, key });
-      } else if (/[{\[]/.test(rest)) {
+      } else if (/[{[]/.test(rest)) {
         stack.push({ indent, key });
       }
     }
@@ -133,7 +136,11 @@ function readValues() {
     target: "node18",
   });
   const mod = { exports: {} };
-  new Function("module", "exports", "require", code)(mod, mod.exports, () => ({}));
+  new Function("module", "exports", "require", code)(
+    mod,
+    mod.exports,
+    () => ({}),
+  );
   const { en, fr } = mod.exports;
   if (!en || !fr) {
     console.error("✗ check:i18n — the dictionary did not export en and fr.");
@@ -150,8 +157,22 @@ const dict = readDict();
 const values = readValues();
 
 /* ── 1. parity ──────────────────────────────────────────────────────────── */
-for (const key of dict.en) if (!dict.fr.has(key)) fail("src/lib/i18n-dict.ts", 0, "parity", `"${key}" exists in en and not in fr`);
-for (const key of dict.fr) if (!dict.en.has(key)) fail("src/lib/i18n-dict.ts", 0, "parity", `"${key}" exists in fr and not in en`);
+for (const key of dict.en)
+  if (!dict.fr.has(key))
+    fail(
+      "src/lib/i18n-dict.ts",
+      0,
+      "parity",
+      `"${key}" exists in en and not in fr`,
+    );
+for (const key of dict.fr)
+  if (!dict.en.has(key))
+    fail(
+      "src/lib/i18n-dict.ts",
+      0,
+      "parity",
+      `"${key}" exists in fr and not in en`,
+    );
 
 /* ── 2. every call resolves ─────────────────────────────────────────────── */
 // Test files are exempt from the dangling-key scan on purpose: they assert that
@@ -163,40 +184,67 @@ for (const file of files) {
   const src = readFileSync(file, "utf8");
   const rel = path.relative(ROOT, file);
   src.split("\n").forEach((line, i) => {
-    for (const m of line.matchAll(/\b(?:t|tList(?:<[^>]*>)?)\(\s*"([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)"/g)) {
+    for (const m of line.matchAll(
+      /\b(?:t|tList(?:<[^>]*>)?)\(\s*"([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)"/g,
+    )) {
       const key = m[1];
-      if (!dict.en.has(key)) fail(rel, i + 1, "dangling", `t("${key}") has no dictionary entry`);
-      else if (!dict.fr.has(key)) fail(rel, i + 1, "dangling", `t("${key}") resolves in en only`);
+      if (!dict.en.has(key))
+        fail(rel, i + 1, "dangling", `t("${key}") has no dictionary entry`);
+      else if (!dict.fr.has(key))
+        fail(rel, i + 1, "dangling", `t("${key}") resolves in en only`);
     }
     // `tr("Label")` goes through the `strings.` subtree of the dictionary.
     for (const m of line.matchAll(/\btr\(\s*"([^"]+)"\s*\)/g)) {
       const label = m[1];
       const dotted = `strings.${label}`;
       if (!dict.en.has(dotted) || !dict.fr.has(dotted))
-        fail(rel, i + 1, "dangling", `tr("${label}") is not in en.strings and fr.strings`);
+        fail(
+          rel,
+          i + 1,
+          "dangling",
+          `tr("${label}") is not in en.strings and fr.strings`,
+        );
     }
   });
 }
 
 /* ── 3. interpolation tokens ────────────────────────────────────────────── */
-const tokens = (s) => (typeof s === "string" ? (s.match(/\{\{\s*[\w.]+\s*\}\}/g) || []).sort().join(",") : "");
+const tokens = (s) =>
+  typeof s === "string"
+    ? (s.match(/\{\{\s*[\w.]+\s*\}\}/g) || []).sort().join(",")
+    : "";
 const walkBoth = (a, b, prefix) => {
   for (const [k, v] of Object.entries(a ?? {})) {
     const key = prefix ? `${prefix}.${k}` : k;
     const other = b?.[k];
     if (typeof v === "string" || typeof other === "string") {
       if (tokens(v) !== tokens(other))
-        fail("src/lib/i18n-dict.ts", 0, "tokens", `${key}: en "${tokens(v)}" vs fr "${tokens(other)}"`);
+        fail(
+          "src/lib/i18n-dict.ts",
+          0,
+          "tokens",
+          `${key}: en "${tokens(v)}" vs fr "${tokens(other)}"`,
+        );
     } else if (Array.isArray(v) && Array.isArray(other)) {
       v.forEach((item, idx) => {
         if (item && typeof item === "object" && other[idx]) {
           for (const [ik, iv] of Object.entries(item)) {
             if (tokens(iv) !== tokens(other[idx][ik]))
-              fail("src/lib/i18n-dict.ts", 0, "tokens", `${key}[${idx}].${ik}: token sets differ`);
+              fail(
+                "src/lib/i18n-dict.ts",
+                0,
+                "tokens",
+                `${key}[${idx}].${ik}: token sets differ`,
+              );
           }
         }
       });
-    } else if (v && typeof v === "object" && other && typeof other === "object") {
+    } else if (
+      v &&
+      typeof v === "object" &&
+      other &&
+      typeof other === "object"
+    ) {
       walkBoth(v, other, key);
     }
   }
@@ -235,11 +283,14 @@ const LONE_BRACE = /(?<!\{)\{\s?[A-Za-z_][\w.]*\s?\}(?!\})/;
 /* ── 4. French typography (§5) ──────────────────────────────────────────── */
 const TYPO = [
   [/\s{2,}/g, "double space"],
-  [/[ \t][:;!?]/g, `a normal space before : ; ! ? — §5 requires U+202F (${NBSP})`],
+  [
+    /[ \t][:;!?]/g,
+    `a normal space before : ; ! ? — §5 requires U+202F (${NBSP})`,
+  ],
   [/[ \t]%/g, "a space before % — §5 requires U+202F before the sign"],
   [/,/g, null],
 ];
-for (const [lang] of ["fr"]) {
+{
   const fr = values.fr;
   const seen = new Set();
   const scan = (node, prefix) => {
@@ -307,13 +358,19 @@ for (const file of allFiles) {
       // it starts on a letter and contains no operator, bracket or punctuation
       // that only code uses. Losing "a JSX text node with parentheses in it" is
       // a cheap price for a gate nobody has to silence with a disable comment.
-      const codeShaped = /[(){}[\];=<>|&*+_/]/.test(text) || /=>|\.\.\./.test(text);
+      const codeShaped =
+        /[(){}[\];=<>|&*+_/]/.test(text) || /=>|\.\.\./.test(text);
       const looksLikeProse =
         !codeShaped &&
         /^[A-Za-zÀ-ÿ]/.test(text) &&
         (words >= 2 || /[,;:!?]/.test(text));
       if (looksLikeProse)
-        fail(rel, at, "hardcoded", `JSX text "${text}" is not a dictionary key`);
+        fail(
+          rel,
+          at,
+          "hardcoded",
+          `JSX text "${text}" is not a dictionary key`,
+        );
     }
   }
 }
@@ -333,8 +390,12 @@ if (failures.length) {
     if (list.length > 25) console.error(`    …and ${list.length - 25} more`);
     console.error("");
   }
-  console.error("  The dictionary is the only place copy lives. If a string is not");
-  console.error("  in it, it is not translated, and the French page is English here.");
+  console.error(
+    "  The dictionary is the only place copy lives. If a string is not",
+  );
+  console.error(
+    "  in it, it is not translated, and the French page is English here.",
+  );
   process.exit(1);
 }
 

@@ -36,7 +36,31 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.config.{ts,js}", "scripts/**/*.mjs"],
+    files: ["**/*.config.{ts,js}"],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // The gates in scripts/ are the app's own CI tooling, so they get real rules:
+    // `js.configs.recommended` at minimum. They were previously listed only to
+    // receive Node globals, which meant `no-useless-escape` and friends never ran
+    // on them — and two of those regexes did carry a useless escape, which the
+    // BACKEND's lint then reported as an error in `npm run lint` at the repo root.
+    // The point of covering them here is so that class of mistake is caught by the
+    // app that owns the file, in the app's own `npm run lint`.
+    files: ["scripts/**/*.mjs"],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
+    rules: {
+      // The backend forbids `console.log` because the API has a logger and a log
+      // line in a request handler is a bug. A standalone CLI gate has no logger and
+      // its stdout IS the product — the green line a reviewer reads — so the rule
+      // is off here rather than satisfied by writing informational output through
+      // `console.warn`, which is what the equivalent client scripts do.
+      "no-console": "off",
+    },
   },
 );

@@ -54,6 +54,7 @@ import { useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import { dateTimeFmt, fmtRelative } from "@/lib/format";
 import { tr } from "@/lib/i18n";
+import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import * as api from "@/lib/mail-api";
 
 /** A draft or a queued send, drawn the same way. */
@@ -308,6 +309,15 @@ export function OutboxList() {
                       person who can change the From address. */}
                   {e.last_error && (
                     <p className="mt-1 text-xs text-[rgb(var(--danger))]">{e.last_error}</p>
+                  )}
+                  {/* …and the steps that fix it, keyed on the code.
+                      `error_code` only became worth reading here once the send
+                      path stopped flattening the classifier's five verdicts
+                      into two: a queue row used to say MAIL_SEND_FAILED for
+                      both a greylisting and a message over the size limit, and
+                      no guide can be written for that. */}
+                  {e.status === "FAILED" && (
+                    <SmtpErrorGuide code={e.error_code} message={e.last_error} />
                   )}
                   {e.attempts > 1 && (
                     <p className="num mt-0.5 text-xs text-muted-foreground">

@@ -619,40 +619,122 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
 }
 
 /** Send from a connected mailbox; records the OUT copy for the thread view. */
-/** Translate a raw SMTP/provider send failure into a message that puts the blame
- *  where it belongs — the connected mailbox's OWN server/config, not Praxis. It
- *  returns a 4xx AppError so the error monitor classifies it as a mailbox-config
- *  issue rather than a server/code fault, and the compose UI shows the user why. */
+
+/**
+ * The mailbox-specific wording, per verdict from the shared classifier.
+ *
+ * `smtp-error.map.js` decides WHAT went wrong, by evidence, for every outbound
+ * path in the product — Test, system email, the platform probe, and this one.
+ * This table only decides HOW TO SAY IT when the failure happened on a person's
+ * own connected mailbox, where the fix is a screen they can open rather than a
+ * server they do not run.
+ *
+ * `code` is the map's own unless a row overrides it, and the ONE override is
+ * deliberate: the send path says `MAILBOX_AUTH_FAILED` rather than
+ * `SMTP_AUTH_FAILED` because the client has a distinct fix guide for it
+ * ("edit this mailbox") and `smtp-errors.ts` already resolves the word "login"
+ * to that code.
+ */
+const SEND_ERROR_WORDING = {
+  SENDER_NOT_AUTHORIZED: (addr, raw) => ({
+    message: `Your mailbox ${addr} isn't an authorised sender on its own mail server, so the server refused the message`
+      + (raw ? ` (${raw})` : "")
+      + `. This is the mailbox's SMTP setup — not Praxis. The "From" address must be a real mailbox on that server and usually has to match the login you connected with. Open Comms → Mailbox → Edit on this mailbox to fix the address, login or password, then Test.`,
+  }),
+  SMTP_AUTH_FAILED: (addr, raw) => ({
+    code: "MAILBOX_AUTH_FAILED",
+    // The one status override, and the reason it exists: the shared map calls a
+    // rejected credential a 502 because for Test and the platform probe it IS
+    // "the remote server said no", and `smtp-error-map.test.js` pins that. On a
+    // person's OWN mailbox it is a configuration fact about a screen they can
+    // open, so it stays the 4xx it has always been here — otherwise every
+    // mistyped password lands in the server-error monitor as a Praxis fault.
+    status: 422,
+    message: `Login to ${addr} was rejected by its mail server${raw ? ` (${raw})` : ""}. Edit this mailbox to correct the username or password, then Test.`,
+  }),
+  RECIPIENT_REJECTED: (addr, raw) => ({
+    message: `${addr}'s mail server refused a recipient${raw ? ` (${raw})` : ""}. Check the To/Cc addresses.`,
+  }),
+  SMTP_SEND_REJECTED: (addr, raw) => ({
+    message: `${addr}'s mail server rejected the message outright${raw ? `: ${raw}` : ""}. It will not be retried — a 5xx refusal means the server has decided. Usually the message is too large, or the recipient's mailbox is full.`,
+  }),
+  SMTP_SEND_FAILED: (addr, raw) => ({
+    message: `${addr}'s mail server could not take the message just now${raw ? `: ${raw}` : ""}. This is usually temporary, and it will be tried again.`,
+  }),
+};
+
+/**
+ * Translate a raw SMTP/provider send failure into a message that puts the blame
+ * where it belongs — the connected mailbox's OWN server/config, not Praxis.
+ *
+ * ── IT PRESERVES THE CLASSIFIER'S VERDICT, AND THAT IS THE POINT ────────────
+ *
+ * `mapSmtpError` sorts a rejection into five outcomes: auth, sender, recipient,
+ * TRANSIENT (421/451/452, greylisting, "try again later"), and a hard 5xx
+ * refusal. The last two are the same HTTP status — both 502, because from the
+ * API's point of view both are "the remote server did not take it" — and they
+ * are opposite operational facts: one should be retried and the other must not
+ * be.
+ *
+ * This function used to flatten both into one `MAIL_SEND_FAILED`, so
+ * `outbox.retryPlan` — which decides retries from the code — could not tell
+ * them apart and retried both. A message the recipient's server refused for
+ * being too large was sent again at 30s, 2min and 8min, against a server that
+ * had already said no three times in RFC-defined language, before the person
+ * who could have shortened it or sent a secure link instead was told anything.
+ * Which is exactly what `retryPlan`'s own header says it exists to prevent:
+ * "trying a rejected sender address three times does not make it work; it just
+ * delays telling the person something only they can fix, and burns three more
+ * entries in the mail host's abuse log."
+ *
+ * It also made two of the client's fix guides — `SMTP_SEND_REJECTED` and
+ * `SMTP_SEND_FAILED` in `smtp-errors.ts` — unreachable from a send, because no
+ * send ever produced those codes.
+ *
+ * So: the code survives, the wording is overlaid, and `MAIL_SEND_FAILED` is now
+ * only what it says on the tin — a send that failed for a reason the SMTP
+ * classifier could not name at all.
+ *
+ * The returned AppError is 4xx for a mailbox-config verdict so the error
+ * monitor files it as a configuration issue rather than a server fault.
+ */
 function explainSendError(err, conn) {
   const raw = String((err && (err.response || err.message)) || "").trim();
   const addr = (conn && conn.email_address) || "this mailbox";
-  // Same classifier as Test / system-email / probes. Mailbox send only overlays
-  // the connected address so compose names which mailbox to Edit. Codes and
-  // status (including RECIPIENT_REJECTED 422, which the outbox must not retry)
-  // come from the map — wrapping everything leftover as MAIL_SEND_FAILED would
-  // hide a permanent recipient refusal as a retryable 502.
   const mapped = mapSmtpError(err);
-  if (mapped.code === "SENDER_NOT_AUTHORIZED") {
+
+  /* An AppError that arrives here is already a verdict somebody made — the
+   * archived-mailbox refusal from `outbox.assertRoomFor`, a NOT_FOUND on a
+   * connection that vanished mid-queue. `mapSmtpError` hands one straight back,
+   * and so must this: rewrapping it below would keep its status and REPLACE its
+   * code with MAIL_SEND_FAILED, which is how `MAILBOX_ARCHIVED` would stop
+   * being the thing `retryPlan` and the outbox screen recognise. Nothing throws
+   * one down this path today; the guard is here so that staying true is not a
+   * property of every future caller remembering. */
+  if (mapped === err) return err;
+
+  const wording = SEND_ERROR_WORDING[mapped.code];
+  if (wording) {
+    const out = wording(addr, raw);
     return new AppError(
-      "SENDER_NOT_AUTHORIZED",
-      `Your mailbox ${addr} isn't an authorised sender on its own mail server, so the server refused the message`
-        + (raw ? ` (${raw})` : "")
-        + `. This is the mailbox's SMTP setup — not Praxis. The "From" address must be a real mailbox on that server and usually has to match the login you connected with. Open Comms → Mailbox → Edit on this mailbox to fix the address, login or password, then Test.`,
-      422,
+      out.code || mapped.code,
+      out.message,
+      out.status || mapped.status,
       mapped.details,
     );
   }
-  if (mapped.code === "SMTP_AUTH_FAILED") {
-    return new AppError("MAILBOX_AUTH_FAILED", `Login to ${addr} was rejected by its mail server${raw ? ` (${raw})` : ""}. Edit this mailbox to correct the username or password, then Test.`, 422);
-  }
-  if (mapped.code === "RECIPIENT_REJECTED") {
-    return new AppError(
-      "RECIPIENT_REJECTED",
-      `${addr}'s mail server refused a recipient${raw ? ` (${raw})` : ""}. Check the To/Cc addresses.`,
-      422,
-      mapped.details,
-    );
-  }
+
+  /* Unreachable today, and deliberately kept.
+   *
+   * `mapSmtpError` is TOTAL — every error it is given comes back as one of its
+   * five verdicts, and all five have wording above. So this branch can only be
+   * reached by a SIXTH verdict added to the map without wording added here, and
+   * the honest thing to do about that message is send it with the server's own
+   * words rather than crash on an undefined lookup.
+   *
+   * `mail-send-classifier.test.js` fails the moment such a verdict exists, so
+   * this is a soft landing rather than the silent hole it used to be: before,
+   * it swallowed two of the five and cost the outbox its retry decision. */
   return new AppError(
     "MAIL_SEND_FAILED",
     `${addr}'s mail server rejected the message${raw ? `: ${raw}` : ""}. This came from the mailbox's server, not Praxis.`,

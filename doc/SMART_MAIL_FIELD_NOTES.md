@@ -10,6 +10,97 @@ Newest first.
 
 ---
 
+## FN-6 · 2026-08-29 · The send path threw away the classifier's verdict, so the outbox retried what a mail server had already refused
+
+**Severity:** every permanently-rejected message sent three more times over ten
+minutes before anyone was told. **Found by:** closing FN-1's last open item, and
+discovering it was two-thirds stale and one-third worse than recorded.
+
+### What FN-1 said, and what was actually true
+
+FN-1 recorded two SMTP classifiers with different verdicts and recommended
+fixing the send path "as the first item of PR-2". By the time anyone read it,
+one and a half of its three claims had expired:
+
+| FN-1's claim | State on 2026-08-29 |
+| --- | --- |
+| `explainSendError` calls every 550 `SENDER_NOT_AUTHORIZED` | **Fixed** by 5829185, hours after the note. Both 550 cases are pinned in `mail-service.test.js`. |
+| `retryPlan` names `RECIPIENT_REJECTED`, which nothing emits | **Fixed** by the same commit — the send path emits it now. |
+| `retryPlan` names `AUTH_FAILED`, which nothing emits | **Still true.** Nothing has ever thrown it. |
+
+A stale note is not a harmless one. Anybody who checked the first row would have
+concluded the item was done and stopped reading, and the thing underneath it had
+been costing sends the whole time.
+
+### The defect that was actually there
+
+`mapSmtpError` sorts a rejection into five verdicts. `explainSendError` — which
+only needs to reword them for a person's own mailbox — collapsed four of them
+into two codes:
+
+```
+map                     explainSendError        retryPlan
+SENDER_NOT_AUTHORIZED → SENDER_NOT_AUTHORIZED → permanent   ✓
+RECIPIENT_REJECTED    → RECIPIENT_REJECTED    → permanent   ✓
+SMTP_AUTH_FAILED      → MAILBOX_AUTH_FAILED   → permanent   ✓ (by status, not by name)
+SMTP_SEND_FAILED    ┐                         ┌ RETRIED     ✓ transient
+                    ├→ MAIL_SEND_FAILED     ──┤
+SMTP_SEND_REJECTED  ┘                         └ RETRIED     ✗ PERMANENT
+```
+
+The merged pair is the whole bug. A greylisting and a hard 5xx refusal carry the
+same HTTP status — both 502, because to an API both are "the remote server did
+not take it" — and they are opposite operational facts. `retryPlan` decides from
+the **code**, so once they shared one it could not tell them apart.
+
+A message the recipient's server refused for being over its size limit was
+therefore sent again at 30 seconds, two minutes and eight minutes, against a
+server that had already said no in RFC-defined language, before the person who
+could have shortened it or sent a secure link instead heard anything. Which is
+precisely what `retryPlan`'s own header says it exists to prevent.
+
+It also made two of the client's fix guides — `SMTP_SEND_REJECTED` and
+`SMTP_SEND_FAILED` in `smtp-errors.ts` — unreachable from a send, because no
+send could produce those codes.
+
+### The shape worth internalising
+
+**A function that only means to reword something must not also re-decide it.**
+`explainSendError` exists to change WORDING for a mailbox the user owns. It was
+written as an if-ladder that rebuilt the AppError from scratch, and rebuilding
+meant re-choosing a code — so a presentational function silently acquired an
+operational opinion, and the operational layer downstream believed it.
+
+It is now a wording TABLE keyed on the map's verdict. The code passes through
+unless a row overrides it, and the one override is documented at the row.
+
+**Two lists that must agree will not, unless something makes them.** FN-1 caught
+`AUTH_FAILED` by reading. Nobody caught it by testing, because
+`mail-outbox.test.js` asserted `retryPlan("AUTH_FAILED", 401)` is permanent —
+a test that passed for as long as the list and the test were wrong together. A
+test written from the same list it is testing proves nothing.
+
+### What now prevents it
+
+- `tests/unit/mail-send-classifier.test.js` walks a real SMTP rejection —
+  cPanel's sender-verify, Postfix's sender-address-rejected, a greylisting, a
+  552 over-size, a dropped socket — through all three functions and asserts they
+  agree. It reaches every code from an ERROR rather than from a list, so a
+  verdict that exists only in a list fails.
+- `retryPlan`'s permanent set is named `PERMANENT_CODES`, `AUTH_FAILED` is gone,
+  and every remaining member is asserted to be something a real rejection
+  produces.
+- `explainSendError` passes an `AppError` straight through. Nothing throws one
+  down that path today, but rebuilding one would have kept its status and
+  replaced its code — quietly turning `MAILBOX_ARCHIVED` into the generic one.
+- Its generic branch is now unreachable, and the test says so. `mapSmtpError` is
+  total, so the branch can only be reached by a sixth verdict added without
+  wording — which the same test catches.
+- The outbox screen renders the fix guide for a failed row, which is only worth
+  doing now that the code reaching it means something.
+
+---
+
 ## FN-5 · 2026-08-29 · Eighteen finished capabilities that no screen could reach — and the two gates that were both looking the wrong way
 
 **Severity:** the mailbox worked, and a substantial part of what had been built
@@ -130,10 +221,10 @@ Trust tab's.
 
 ### One thing this exposed and did not close
 
-FN-1's second open item still stands: `mail.service.explainSendError` and
-`smtp-error.map.js` are two SMTP classifiers, and the send path uses the one
-FN-1 diagnosed as wrong. This sweep touched the send path only to add Bcc, and
-a behaviour change there deserves its own review with its own fixtures.
+FN-1's second open item — the two SMTP classifiers — was left standing by this
+sweep, which touched the send path only to add Bcc. It was taken up immediately
+afterwards and is **closed in FN-6**, where the diagnosis turned out to be two
+thirds stale and the third worse than recorded.
 
 `tests/integration/mail-model-backfill.test.js`, named by §5.9, is still absent
 for the reason FN-3 recorded: it needs a CI harness change, not a test file.
@@ -539,3 +630,9 @@ authoritative.
 **Not fixed here**, because it is a behaviour change on the send path with its
 own test expectations and deserves its own review. Recommended as the first item
 of PR-2.
+
+> **CLOSED 2026-08-29, and the diagnosis above was half right.** See FN-6.
+> The 550 half was fixed by 5829185 four hours after this note was written, and
+> this paragraph went stale rather than wrong. The `retryPlan` half was real and
+> survived: `RECIPIENT_REJECTED` is emitted now, `AUTH_FAILED` never was, and a
+> third defect — the one that actually cost sends — was hiding underneath both.

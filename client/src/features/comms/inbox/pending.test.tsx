@@ -129,6 +129,25 @@ describe("Outbox", () => {
     expect(screen.getByText("3 attempts")).toBeInTheDocument();
   });
 
+  it("offers the fix guide, now that the code survives the send path", async () => {
+    // `error_code` only became worth reading here once `explainSendError`
+    // stopped flattening the classifier's five verdicts into two: a queue row
+    // used to say MAIL_SEND_FAILED for both a greylisting and a message over
+    // the size limit, and no set of steps fixes both.
+    renderScreen(<OutboxList />, {
+      routes: {
+        "/mail/outbox": [
+          queued({
+            status: "FAILED",
+            error_code: "SENDER_NOT_AUTHORIZED",
+            last_error: "550 Sender verify failed",
+          }),
+        ],
+      },
+    });
+    expect(await screen.findByText(/How to fix this/)).toBeInTheDocument();
+  });
+
   it("counts the failures in the header, where they are seen without reading", async () => {
     renderScreen(<OutboxList />, {
       routes: {

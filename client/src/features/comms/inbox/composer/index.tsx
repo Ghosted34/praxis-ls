@@ -70,6 +70,7 @@ export type ComposerProps = {
   kind?: api.Draft["kind"];
   initialTo?: string[];
   initialCc?: string[];
+  initialBcc?: string[];
   initialSubject?: string | null;
   /** Plain text to open the body on — a covering note the operator then edits. */
   initialBodyText?: string | null;
@@ -117,6 +118,7 @@ export function Composer({
   kind = "NEW",
   initialTo = [],
   initialCc = [],
+  initialBcc = [],
   initialSubject = null,
   initialBodyText = null,
   initialVaultAttachments = [],
@@ -132,6 +134,13 @@ export function Composer({
   const [to, setTo] = React.useState(initialTo.join(", "));
   const [cc, setCc] = React.useState(initialCc.join(", "));
   const [showCc, setShowCc] = React.useState(initialCc.length > 0);
+  /* Bcc. The column, the draft field, the send payload and the serializer have
+   * carried it since PR-1B; the only thing missing was a box to type it into,
+   * so the one address a forwarder most often needs to hide — the colleague
+   * copied on a rate quotation, the accountant on a payment chase — could only
+   * be added by putting them in Cc, where the counterparty sees them. */
+  const [bcc, setBcc] = React.useState<string>(initialBcc.join(", "));
+  const [showBcc, setShowBcc] = React.useState(initialBcc.length > 0);
   const [subject, setSubject] = React.useState(initialSubject || "");
   const [draftId, setDraftId] = React.useState<string | null>(null);
   const [tray, setTray] = React.useState<api.AttachmentTray | null>(null);
@@ -459,6 +468,7 @@ export function Composer({
       connectionId: from,
       to: recipients,
       cc: showCc ? splitAddresses(cc) : undefined,
+      bcc: showBcc ? splitAddresses(bcc) : undefined,
       subject: subject || null,
       body_json: docRef.current,
       email_draft_id: draftId,
@@ -561,6 +571,15 @@ export function Composer({
               {tr("Cc")}
             </button>
           )}
+          {!showBcc && (
+            <button
+              type="button"
+              onClick={() => setShowBcc(true)}
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {tr("Bcc")}
+            </button>
+          )}
         </div>
         {showCc && (
           <div className="flex items-center gap-2">
@@ -574,6 +593,23 @@ export function Composer({
               onChange={(v) => setField("cc_address", splitAddresses(v), (() => setCc(v)) as never)}
               extra={recipientExtras}
             />
+          </div>
+        )}
+        {showBcc && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="composer-bcc" className="w-10 shrink-0 text-xs text-muted-foreground">{tr("Bcc")}</label>
+            <RecipientField
+              id="composer-bcc"
+              value={bcc}
+              onChange={(v) => setField("bcc_address", splitAddresses(v), (() => setBcc(v)) as never)}
+              extra={recipientExtras}
+            />
+            {/* Said next to the field, not in a tooltip. Bcc is the one
+                recipient row whose behaviour a person can get wrong in a way
+                the recipients see and they do not. */}
+            <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+              {tr("hidden from everyone else")}
+            </span>
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -607,7 +643,13 @@ export function Composer({
       {/* §8. Everything it produces lands in THIS editor. Nothing is sent, and
           nothing is written to a record. */}
       <div className="px-3 pt-2">
-        <AssistToolbar threadId={threadId} getText={getBodyText} setText={setBodyText} />
+        <AssistToolbar
+          threadId={threadId}
+          getText={getBodyText}
+          setText={setBodyText}
+          getSubject={() => subject}
+          getRecipients={() => splitAddresses(to)}
+        />
       </div>
 
       <AttachmentTray tray={tray} onRemove={detach} onSecureLink={sendAsSecureLink} busy={busy} />

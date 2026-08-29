@@ -63,6 +63,8 @@ const prompts = require("./assist.prompts");
 const { resolveLanguage } = require("../signature/language");
 const governance = require("../../ai/governance/governance.service");
 const llm = require("../../../services/ai/llm.service");
+const transcription = require("../../../services/ai/transcription.service");
+const { parseDataUrl } = require("../../../utils/data-url");
 const { emitEvent } = require("../../../shared/events/emit");
 
 /**
@@ -318,10 +320,54 @@ async function compose(client, input = {}, user = null) {
     ? transcriptOf(await threadMessages(client, input.thread_id, 6))
     : "");
 
+  /* ── What the assistant is actually writing ABOUT ─────────────────────────
+   *
+   * The subject line and the free-text brief (§8.3's "Other…") are the only
+   * things a NEW message carries before anyone has typed a body, and neither
+   * used to reach this function. So "Write it for me" on a blank composer with
+   * `Subject: Demurrage on MSKU4567890 — request for waiver` got no material at
+   * all and produced a tone preset applied to nothing: a courteous, fluent
+   * email about no subject. Operators read that once and stop pressing the
+   * button, which is the worst outcome for a feature that works as soon as it
+   * is told what it is for.
+   *
+   * They go in the SYSTEM message rather than the prompt because they are the
+   * assignment, not the material. `seed` is material — text to transform — and
+   * a subject line pasted in beside a draft reads to the model as something to
+   * rewrite. The recipients follow the same rule and for a stronger reason:
+   * addressing a customs broker is not the same letter as addressing a client,
+   * and the domain is the only signal available before a thread exists. */
+  const brief = [
+    input.subject ? `The subject line the operator has already written: "${String(input.subject).trim()}". Write a body that belongs under it, and do not repeat it as a heading.` : "",
+    input.to && input.to.length ? `It is addressed to: ${input.to.slice(0, 10).join(", ")}.` : "",
+    input.instruction ? `The operator asks specifically: ${String(input.instruction).trim()}` : "",
+  ].filter(Boolean).join("\n");
+
+  /* Nothing to write about is not a draft request, and a model call that spends
+   * the tenant's budget on it returns the same courteous nothing every time.
+   * Say what is missing instead — the operator is one subject line away. */
+  if (!seed && !brief) {
+    return {
+      draft_text: "",
+      prompt: styleInstruction,
+      language: lang,
+      mode: input.mode || "compose",
+      tone: input.tone || null,
+      action: input.action || null,
+      facts: [],
+      sources: [],
+      withheld: ground.withheld,
+      fence: null,
+      protected_terms_restored: [],
+      needs_review: false,
+      note: "Give it something to work from — a subject line, a sentence of your own, or a note in “What should it say?”.",
+    };
+  }
+
   const out = await generate(client, {
     user,
     callType: input.action ? `compose.${input.action}` : `compose.${input.tone || "formal"}`,
-    system: systemFor({ lang, facts: factStrings, styleInstruction }),
+    system: systemFor({ lang, facts: factStrings, styleInstruction, extra: brief }),
     prompt: seed
       ? `Here is the material to work from:\n\n${seed}`
       : "Draft the email described by the instruction above.",
@@ -614,6 +660,89 @@ async function summary(client, { threadId, language, force = false } = {}, user 
  * takes the TEXT and turns dictation into correspondence, which is the part
  * that is specific to mail.
  */
+/**
+ * Speech → text, so that "Dictate" dictates.
+ *
+ * ── WHY THIS ROUTE EXISTS WHEN `voice` TAKES A TRANSCRIPT ───────────────────
+ *
+ * `voice` below is the SECOND half of §8.7: transcript → cleaned, toned email.
+ * It was built, tested and reachable. The first half — the microphone — was
+ * not, so the composer shipped a button labelled "Dictate" over a textarea you
+ * had to TYPE into. That is not a smaller version of dictation; it is the
+ * opposite of it, and the label promised the thing it could not do.
+ *
+ * ── THIS IS NOT A SECOND TRANSCRIPTION PATH ─────────────────────────────────
+ *
+ * `assist.routes` warns against one, and rightly: a second Whisper client with
+ * its own key resolution is a second thing to keep configured and the first to
+ * break. This is the SAME `services/ai/transcription.service` the HR intake
+ * wizard uses — one implementation, one vendor config, one place to change the
+ * model. What is new here is only the route in front of it, because
+ * `/vacancies/intake/transcribe` is gated on MOD-31 and a mail user has no
+ * business holding a recruitment grant to speak into their own composer.
+ * `vacancy.routes` anticipated exactly this ("when the second caller appears
+ * … it should move"); this is that caller.
+ *
+ * ── THE AUDIO IS NOT RETAINED (Q30) ─────────────────────────────────────────
+ *
+ * The buffer lives in this function and nowhere else: no vault write, no
+ * temporary file, no column. Only the text comes back, and the caller shows the
+ * raw transcript beside the cleaned version so the speaker can see what the
+ * tidy-up changed.
+ */
+async function transcribe(client, { audioDataUrl } = {}, user = null) {
+  await assertAiOn(client, user);
+  const parsed = parseDataUrl(audioDataUrl);
+  if (!parsed) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL.", 422);
+  if (!parsed.buffer.length) {
+    throw new AppError("EMPTY_AUDIO", "Nothing was recorded — hold the button while you speak.", 422);
+  }
+  if (!/^audio\//.test(parsed.mimeType)) {
+    throw new AppError("BAD_AUDIO", `Expected audio, got ${parsed.mimeType || "an unlabelled file"}.`, 422);
+  }
+
+  const started = Date.now();
+  let text = "";
+  let error = null;
+  try {
+    const out = await transcription.transcribe({ audio: parsed.buffer, mimeType: parsed.mimeType });
+    text = String((out && out.text) || "").trim();
+    return { transcript: text };
+  } catch (err) {
+    error = err;
+    // "Not configured" is the administrator's problem and "the provider failed"
+    // is nobody's fault; both have to reach the operator as a sentence they can
+    // act on, because a mic button that returns a 500 is one people press until
+    // they conclude the product is broken.
+    throw new AppError(
+      "TRANSCRIPTION_UNAVAILABLE",
+      /not configured/i.test((err && err.message) || "")
+        ? "Voice input is not set up on this workspace — type your message, or ask an administrator to configure it."
+        : "That recording could not be transcribed. Try again, or type your message.",
+      502,
+    );
+  } finally {
+    // Metered like every other model call: transcription costs money, and a
+    // budget that counts drafting but not dictation under-reports silently.
+    try {
+      await governance.recordUsage(client, {
+        userId: (user && user.user_id) || null,
+        featureKey: FEATURE,
+        provider: "groq",
+        callType: "voice.transcribe",
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - started,
+        wasSuccessful: !error,
+        errorCode: error ? "TRANSCRIPTION_FAILED" : null,
+        errorMessage: error ? String(error.message).slice(0, 500) : null,
+      });
+    } catch (meterErr) {
+      logger.error({ err: meterErr }, "mail AI: dictation was NOT metered");
+    }
+  }
+}
+
 async function voice(client, { threadId, transcript: spoken, tone, language } = {}, user = null) {
   await assertAiOn(client, user);
   if (!spoken || !String(spoken).trim()) throw new AppError("EMPTY_TRANSCRIPT", "Nothing was dictated.", 422);
@@ -657,7 +786,7 @@ const runGlossary = (original, rewritten) => glossary.restore(original, rewritte
 const runGuardrails = (message, ctx) => guardrails.check(message, ctx);
 
 module.exports = {
-  compose, draft, rewrite, translate, summary, voice,
+  compose, draft, rewrite, translate, summary, voice, transcribe,
   runFence, runGlossary, runGuardrails,
   assertAiOn, threadContext, threadMessages,
   FEATURE, SUMMARY_TRIGGER,

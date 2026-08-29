@@ -60,6 +60,9 @@ jest.mock("../../src/modules/master/client_master/client_master.service", () => 
 jest.mock("../../src/modules/mail/binding/intake.service", () => ({
   chaseList: jest.fn(async () => ({ nothing_outstanding: true, missing: [] })),
 }));
+jest.mock("../../src/services/ai/transcription.service", () => ({
+  transcribe: jest.fn(async () => ({ text: "tell them the container cleared", audio_seconds: 3 })),
+}));
 
 const fs = require("fs");
 const path = require("path");
@@ -71,6 +74,7 @@ const finalInvoice = require("../../src/modules/finance/final_invoice/final_invo
 const { emitEvent } = require("../../src/shared/events/emit");
 const assist = require("../../src/modules/mail/assist/assist.service");
 const grounding = require("../../src/modules/mail/assist/assist.grounding");
+const transcription = require("../../src/services/ai/transcription.service");
 
 function fakeClient(answers = []) {
   const calls = [];
@@ -107,6 +111,7 @@ beforeEach(() => {
   llm.chat.mockResolvedValue({ provider: "deepseek", text: "Bonjour.", toolCalls: [], usage: {} });
   governance.canUseFeature.mockResolvedValue({ allowed: true, budget_state: "OK" });
   identityCache.getGrants.mockResolvedValue([{ can_read: true }]);
+  transcription.transcribe.mockResolvedValue({ text: "tell them the container cleared", audio_seconds: 3 });
 });
 
 /* ── 1. A model is called at all ──────────────────────────────────────────── */
@@ -145,6 +150,115 @@ describe("the assistant calls a model", () => {
     // The prompt is the first line of defence and the fence is the second.
     // Asserting both because a system with only the prompt ships fabricated
     // invoice numbers on the tail of the distribution.
+  });
+});
+
+/* ── 1b. "Write it for me" writes about SOMETHING ─────────────────────────── */
+
+/**
+ * The composer's most-pressed AI button is `compose()` on a NEW message, where
+ * the body is empty by definition. It used to reach the model with `draft`
+ * empty, no thread, and therefore no material at all — so the model got a tone
+ * preset and an instruction to "draft the email described above", where nothing
+ * was described. It answered with fluent, courteous filler about no subject,
+ * every time, and the subject line the operator had already typed
+ * ("Demurrage on MSKU4567890 — request for waiver") never left the browser.
+ *
+ * These four assert the material arrives.
+ */
+describe("compose() is told what the email is about", () => {
+  const NEW = () => fakeClient([ON]); // a new message: no thread, no messages
+
+  test("the subject line reaches the model", async () => {
+    await assist.compose(NEW(), { tone: "formal", subject: "Demurrage on MSKU4567890" }, ME);
+    const system = llm.chat.mock.calls[0][0].messages[0].content;
+    expect(system).toContain("Demurrage on MSKU4567890");
+  });
+
+  test("so does the free-text brief — §8.3's \"Other…\"", async () => {
+    await assist.compose(NEW(), { tone: "formal", instruction: "Ask them to waive it." }, ME);
+    const system = llm.chat.mock.calls[0][0].messages[0].content;
+    expect(system).toContain("Ask them to waive it.");
+  });
+
+  test("and the addressees, which decide the register", async () => {
+    await assist.compose(NEW(), { tone: "formal", to: ["ops@maersk.com"] }, ME);
+    const system = llm.chat.mock.calls[0][0].messages[0].content;
+    expect(system).toContain("ops@maersk.com");
+  });
+
+  test("WITH NOTHING TO GO ON it says so instead of billing for filler", async () => {
+    const out = await assist.compose(NEW(), { tone: "formal" }, ME);
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(out.draft_text).toBe("");
+    expect(out.note).toMatch(/subject line/i);
+  });
+
+  test("a thread still grounds it without any of the three", async () => {
+    // The reply case is unchanged: the transcript is the material.
+    await assist.compose(fakeClient(base()), { tone: "formal", thread_id: "t-1" }, ME);
+    expect(llm.chat).toHaveBeenCalled();
+  });
+});
+
+/* ── 1c. Dictate dictates ─────────────────────────────────────────────────── */
+
+/**
+ * §8.7 is two halves: audio → transcript, then transcript → toned email. The
+ * second half (`voice`) was built and reachable; the first did not exist, so
+ * the composer shipped a button labelled "Dictate" over a textarea you had to
+ * TYPE into — the opposite of what the label promised.
+ */
+describe("transcribe()", () => {
+  const CLIP = "data:audio/webm;codecs=opus;base64,AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBk=";
+
+  test("sends the clip to the shared transcription service and returns the words", async () => {
+    const out = await assist.transcribe(fakeClient([ON]), { audioDataUrl: CLIP }, ME);
+    expect(transcription.transcribe).toHaveBeenCalledWith(
+      expect.objectContaining({ mimeType: "audio/webm" }),
+    );
+    // The parameter-carrying media type is the one a hand-rolled data-url regex
+    // cannot cross — see utils/data-url. Asserted because that exact bug made
+    // the HR voice button fail 100% of the time.
+    expect(out.transcript).toBe("tell them the container cleared");
+  });
+
+  test("the audio is not retained: only a Buffer, never a path or an id", async () => {
+    await assist.transcribe(fakeClient([ON]), { audioDataUrl: CLIP }, ME);
+    const arg = transcription.transcribe.mock.calls[0][0];
+    expect(Buffer.isBuffer(arg.audio)).toBe(true);
+    expect(Object.keys(arg)).toEqual(expect.not.arrayContaining(["vault_id", "path", "file"]));
+  });
+
+  test("it is METERED, like every other model call", async () => {
+    await assist.transcribe(fakeClient([ON]), { audioDataUrl: CLIP }, ME);
+    expect(governance.recordUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ callType: "voice.transcribe", wasSuccessful: true }),
+    );
+  });
+
+  test("a vendor with no key becomes a sentence, not a 500", async () => {
+    transcription.transcribe.mockRejectedValueOnce(new Error("voice transcription provider not configured"));
+    await expect(
+      assist.transcribe(fakeClient([ON]), { audioDataUrl: CLIP }, ME),
+    ).rejects.toMatchObject({ code: "TRANSCRIPTION_UNAVAILABLE" });
+    // A failed call still costs, and a budget that stops counting on failure
+    // under-reports silently.
+    expect(governance.recordUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ wasSuccessful: false }),
+    );
+  });
+
+  test.each([
+    ["not a data url", "hello"],
+    ["a document, not audio", "data:application/pdf;base64,AAAA"],
+  ])("refuses %s before a byte reaches the vendor", async (_label, url) => {
+    await expect(
+      assist.transcribe(fakeClient([ON]), { audioDataUrl: url }, ME),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(transcription.transcribe).not.toHaveBeenCalled();
   });
 });
 

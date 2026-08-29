@@ -35,6 +35,7 @@ import { Callout } from "@/components/ui/callout";
 import { Select } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingRow } from "@/components/ui/states";
+import { VoiceInput } from "@/components/voice-input";
 import { reportActionError } from "@/lib/action-error";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
@@ -122,17 +123,37 @@ export function AssistToolbar({
   getText,
   setText,
   language,
+  getSubject,
+  getRecipients,
 }: {
   threadId?: string | null;
   getText: () => string;
   setText: (text: string) => void;
   language?: "en" | "fr";
+  /**
+   * The subject line and the addressees, read at the moment the button is
+   * pressed.
+   *
+   * These are the whole difference between "Write it for me" drafting the
+   * email in front of the operator and drafting a generic one. On a NEW
+   * message the body is empty by definition — the subject is the only thing
+   * that has been typed, and it is almost always the topic in full
+   * ("Demurrage on MSKU4567890 — request for waiver"). Read through getters
+   * rather than passed as values so this bar never holds a second copy of the
+   * composer's state; see the note on getText/setText below.
+   */
+  getSubject?: () => string;
+  getRecipients?: () => string[];
 }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<api.AssistDraft | null>(null);
   const [tone, setTone] = React.useState<api.AssistTone>("formal");
   const [dictation, setDictation] = React.useState("");
   const [showVoice, setShowVoice] = React.useState(false);
+  /* §8.3's "Other…" — a sentence of brief in the operator's own words, beside
+   * the ten named tones. A preset says HOW to write; this says WHAT about. */
+  const [brief, setBrief] = React.useState("");
+  const [showBrief, setShowBrief] = React.useState(false);
 
   async function run(key: string, fn: () => Promise<api.AssistDraft>) {
     setBusy(key);
@@ -177,17 +198,36 @@ export function AssistToolbar({
           </Button>
         )}
 
+        {/* The subject, the addressees and the brief all ride along. Before
+            they did, this button on a blank new message asked the model to
+            write about nothing and got exactly that back. */}
         <Button
           size="sm"
           variant="outline"
           disabled={busy !== null}
           onClick={() =>
             run("compose", () => api.assistCompose({
-              tone, language, thread_id: threadId || undefined, draft: getText() || undefined,
+              tone,
+              language,
+              thread_id: threadId || undefined,
+              draft: getText() || undefined,
+              subject: getSubject?.().trim() || undefined,
+              to: getRecipients?.().length ? getRecipients() : undefined,
+              instruction: brief.trim() || undefined,
             }))
           }
         >
           {busy === "compose" ? tr("Writing…") : hasText() ? tr("Rewrite in this tone") : tr("Write it for me")}
+        </Button>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-expanded={showBrief}
+          onClick={() => setShowBrief((v) => !v)}
+          title={tr("Tell it what the email should say, in your own words")}
+        >
+          {brief.trim() ? tr("Brief ✓") : tr("Other…")}
         </Button>
 
         {ACTIONS.map((a) => (
@@ -227,13 +267,45 @@ export function AssistToolbar({
         </Button>
       </div>
 
+      {showBrief && (
+        <Textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          rows={2}
+          placeholder={tr("e.g. Ask them to waive the demurrage, mention we cleared within the free days, and propose a call Thursday.")}
+          aria-label={tr("What should it say?")}
+          className="text-sm"
+        />
+      )}
+
       {showVoice && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 rounded-lg border border-border bg-background px-3 py-2">
+          {/* The MICROPHONE, which is what "Dictate" was always supposed to
+              mean (§8.7). This panel used to be a textarea you TYPED into
+              under a button labelled Dictate — the opposite of the thing the
+              label promised. `VoiceInput` records, posts the clip, and appends
+              what it hears; nothing is stored, on our side or the vendor's. */}
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {tr("Hold the microphone and speak. What you say is transcribed here — edit it if you like, then turn it into an email.")}
+            </p>
+            <VoiceInput
+              label={tr("Dictate your message")}
+              // Called through an arrow rather than passed by reference: the
+              // wiring gate in `tests/security/mail-client-api-wiring.test.js`
+              // looks for a call expression on a screen, and a bare reference
+              // reads to it as a wrapper nobody reaches. It is also the plainer
+              // thing to read — the clip goes to the mail route, not the HR one.
+              transcribe={(clip) => api.assistTranscribe(clip)}
+              disabled={busy !== null}
+              onText={(t) => setDictation((d) => (d ? `${d} ${t}` : t))}
+            />
+          </div>
           <Textarea
             value={dictation}
             onChange={(e) => setDictation(e.target.value)}
             rows={3}
-            placeholder={tr("Say what you want to tell them, then turn it into an email.")}
+            placeholder={tr("…or type it here, if you would rather not speak.")}
             aria-label={tr("Dictation")}
             className="text-sm"
           />
@@ -249,6 +321,14 @@ export function AssistToolbar({
             {busy === "voice" ? tr("Turning it into an email…") : tr("Make it an email")}
           </Button>
         </div>
+      )}
+
+      {/* Q30: the raw transcript beside the cleaned version, once, so the
+          speaker can see what the tidy-up changed rather than trusting it. */}
+      {result?.transcript && (
+        <p className="text-xs text-muted-foreground">
+          {tr("Heard:")} “{result.transcript}”
+        </p>
       )}
 
       {result?.note && (

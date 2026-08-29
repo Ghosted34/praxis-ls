@@ -47,6 +47,10 @@ const PAGE = 50;
 /** What an empty list means depends on why it is empty. Say the right thing. */
 function emptyHintFor(sel: RailSelection, query: string): string {
   if (query.trim()) return `${tr("Nothing matches")} “${query.trim()}”. ${tr("Try fewer words, or drop an operator like from: or has:.")}`;
+  if (sel.view === "STARRED") return tr("Nothing is starred. Tap the star on a conversation to keep it here.");
+  if (sel.view === "UNREAD") return tr("Everything is read.");
+  if (sel.view === "VIP") return tr("No VIP conversations. A client or supplier marked VIP in their record lands here.");
+  if (sel.view === "ATTACHMENT") return tr("No conversation here carries a file.");
   if (sel.label) return `${tr("Nothing carries the label")} “${sel.label}” ${tr("yet.")}`;
   if (sel.stream === "SYSTEM") return tr("No automated mail — carrier notices and system reports will collect here.");
   if (sel.stream === "HUMAN") return tr("No mail from people yet.");
@@ -82,17 +86,26 @@ export function InboxPage() {
   );
   const labels = useResource(() => api.listLabels(), []);
 
+  /* A saved view cuts ACROSS folders — a starred conversation that has been
+   * archived is still starred — so it sends its flag and NO folder. Pinning it
+   * to the inbox would rebuild the dead end it exists to remove. The four flags
+   * have been supported by `listThreads` since PR-1A; only the rail was
+   * missing. See `RailSelection.view`. */
   const threads = useResource(
     () =>
       api.listThreads({
         q: applied || undefined,
         connection_id: sel.connectionId,
-        folder: sel.folder,
+        folder: sel.view ? undefined : sel.folder,
         stream: sel.stream,
         label: sel.label,
+        starred: sel.view === "STARRED" || undefined,
+        unread: sel.view === "UNREAD" || undefined,
+        vip: sel.view === "VIP" || undefined,
+        has_attachment: sel.view === "ATTACHMENT" || undefined,
         limit,
       }),
-    [applied, sel.connectionId, sel.folder, sel.stream, sel.label, limit],
+    [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, limit],
   );
 
   const thread = useResource(
@@ -126,7 +139,7 @@ export function InboxPage() {
     setSelected(new Set());
     setBulkFailures([]);
     setLimit(PAGE);
-  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label]);
+  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view]);
 
   const rows = React.useMemo(
     () =>

@@ -107,6 +107,13 @@ router.post("/assist/compose", requireAi, requirePermission("MOD-72", "view"),
     action: ACTION.optional(),
     thread_id: z.string().uuid().optional(),
     draft: z.string().max(20000).optional(),
+    /* The subject line, the recipients and a free-text brief — §8.3's
+     * "Other…". Without these a compose on a blank new message had no material
+     * at all and returned a tone applied to nothing. `to` is capped and only
+     * ever read as context for register and salutation; it is never a send. */
+    subject: z.string().max(998).optional(),
+    to: z.array(z.string().max(320)).max(50).optional(),
+    instruction: z.string().max(2000).optional(),
     language: z.enum(["en", "fr"]).optional(),
   }).strict()),
   requireVisibleThreadBody("thread_id", { optional: true }),
@@ -180,11 +187,33 @@ router.post("/assist/summary", requireAi, requirePermission("MOD-72", "view"),
   })));
 
 /**
+ * The microphone (§8.7, first half).
+ *
+ * `/assist/voice` below turns a TRANSCRIPT into an email, and that half always
+ * worked. The half that produces the transcript did not exist, so the composer
+ * offered a "Dictate" button over a box you typed into. This closes it — over
+ * the SAME `services/ai/transcription.service` the HR intake wizard uses, not a
+ * second Whisper client. See the long note in `assist.service.transcribe`.
+ *
+ * The body cap is generous because base64 audio is ~1.37× the clip and the
+ * recorder stops itself at two minutes; the service refuses anything that is
+ * not audio before a byte reaches the vendor, and the buffer is never stored.
+ */
+router.post("/assist/transcribe", requireAi, requirePermission("MOD-72", "view"),
+  body(z.object({ audio_data_url: z.string().min(32).max(20_000_000) }).strict()),
+  asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.transcribe(c, {
+      audioDataUrl: req.body.audio_data_url,
+    }, actor(req))),
+  })));
+
+/**
  * Voice takes the TRANSCRIPT, not the audio — see the note in
  * `assist.service.voice`. The product already owns speech-to-text in
  * `jobs/handlers/ai-transcribe.js`, metered against its own feature, and a
  * second transcription path in the mail module would be a second thing to keep
- * configured and the first to break.
+ * configured and the first to break. `/assist/transcribe` above is the route in
+ * front of that same shared service, not a second one.
  */
 router.post("/assist/voice", requireAi, requirePermission("MOD-72", "view"),
   body(z.object({

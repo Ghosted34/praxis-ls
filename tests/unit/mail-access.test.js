@@ -261,3 +261,63 @@ describe("recordSentAs", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+/**
+ * ── WHO MAY ACT ON A MAILBOX AS A THING ─────────────────────────────────────
+ *
+ * `assertCanOperate` is the check that was missing from three routes:
+ * `POST /mail/connections/:id/test`, `/sync`, and `POST /mail/mailboxes/:id/
+ * archive`. All three were gated on `requirePermission("MOD-72", "edit")` and
+ * nothing else — and in this product MOD-72 edit is what marking a thread READ
+ * requires, so every mail user holds it. Any of them could therefore sync a
+ * colleague's personal mailbox, run a test that overwrites their `last_error`,
+ * or archive it outright: sync stopped, mailbox out of their workspace, every
+ * grant on it revoked. `updateImapConnection` had the ownership check the whole
+ * time; its three neighbours never grew one.
+ */
+describe("assertCanOperate", () => {
+  test("the owner may operate their own personal mailbox", async () => {
+    repo.getConnection.mockResolvedValueOnce({ ...PERSONAL });
+    await expect(
+      access.assertCanOperate(C, "c-mine", { user_id: "ada" }),
+    ).resolves.toMatchObject({ email_connection_id: "c-mine" });
+  });
+
+  test("A COLLEAGUE MAY NOT — this is the hole it closes", async () => {
+    repo.getConnection.mockResolvedValueOnce({ ...PERSONAL });
+    await expect(
+      access.assertCanOperate(C, "c-mine", { user_id: "someone-else" }),
+    ).rejects.toMatchObject({ code: "MAILBOX_FORBIDDEN", status: 403 });
+  });
+
+  test("nor may an anonymous caller", async () => {
+    repo.getConnection.mockResolvedValueOnce({ ...PERSONAL });
+    await expect(access.assertCanOperate(C, "c-mine", {})).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  test("the CEO passes, as they do everywhere else", async () => {
+    repo.getConnection.mockResolvedValueOnce({ ...PERSONAL });
+    await expect(
+      access.assertCanOperate(C, "c-mine", { user_id: "ceo", is_ceo: true }),
+    ).resolves.toBeTruthy();
+  });
+
+  test("a SHARED mailbox stays with the administrator gate on the route", async () => {
+    // billing@ is company infrastructure, and the Mailboxes screen is
+    // admin-only so an administrator can look after it. Requiring MANAGER here
+    // would lock a second administrator out of a mailbox the first one made.
+    repo.getConnection.mockResolvedValueOnce({ ...SHARED });
+    await expect(
+      access.assertCanOperate(C, "c-shared", { user_id: "not-a-member" }),
+    ).resolves.toBeTruthy();
+  });
+
+  test("an unknown id is a 404, not a 403 — it says nothing about who owns it", async () => {
+    repo.getConnection.mockResolvedValueOnce(null);
+    await expect(
+      access.assertCanOperate(C, "nope", { user_id: "ada" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+});

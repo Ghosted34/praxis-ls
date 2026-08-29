@@ -30,6 +30,7 @@ const limits = require("./limits");
 const { AppError } = require("../../../utils/errors");
 const { audit, emitEvent, resolveActorId } = require("../../../shared/events/emit");
 const { getSetting } = require("../../../shared/config/settings");
+const settings = require("../../security/setting/setting.service");
 
 const MODULE = "MOD-72";
 const ref = (id) => `email_connection:${id}`;
@@ -200,6 +201,87 @@ async function archive(client, id, actor = {}) {
 }
 
 /**
+ * Disconnect a mailbox — the action that had no button.
+ *
+ * ── THE GAP THIS CLOSES ─────────────────────────────────────────────────────
+ *
+ * A person could connect their mailbox from Comms → Setup → My mailbox and then
+ * had no way to un-connect it. Not a hidden way; no way. The page said "to
+ * change the address, edit this one in Mailbox → Mailboxes", which is an
+ * administrator's screen most people cannot open, and even there the only
+ * action was "Retire" — which stops sync and leaves the stored password behind.
+ *
+ * That is the wrong shape for the thing people actually want, which is: stop
+ * reading my mail, and forget my password. Somebody leaving a company, somebody
+ * who mistyped an address into the wizard, somebody who has just rotated a
+ * cPanel password — all three need the credential GONE, not parked.
+ *
+ * ── WHAT IT DOES, IN ORDER, AND WHY THAT ORDER ──────────────────────────────
+ *
+ *   1. ARCHIVE      via `archive` above: sync stops, the mailbox leaves every
+ *                   workspace, every live grant is withdrawn and the whole
+ *                   thing is written to the access audit and the event log.
+ *   2. FORGET       delete the row in `integration_secret` that holds the IMAP
+ *                   password or the OAuth bundle, and null the columns that
+ *                   point at it. This is the step "Retire" never did.
+ *
+ * Archive first: if the secret is deleted and the archive then fails, a mailbox
+ * is left CONNECTED with no credential, and the sync worker retries it every
+ * cycle until the failure counter suspends it — a mailbox that looks connected
+ * and is not. In the other order the worst case is a retired mailbox whose dead
+ * password is still on disk, which the next call clears.
+ *
+ * ── WHAT IT DOES NOT DO ─────────────────────────────────────────────────────
+ *
+ * It does not delete a single message. The correspondence is a business record
+ * — an OHADA one, hash-chained by §9.6 — and disconnecting a transport is not
+ * a decision about retention. The mail stays readable to whoever could read it
+ * before; only the live connection ends. The confirmation in the UI says so,
+ * because "disconnect" reads like "delete" to most people and the difference
+ * matters the moment somebody needs last March's bill of lading.
+ */
+async function disconnect(client, id, actor = {}) {
+  const conn = await repo.getConnection(client, id);
+  if (!conn) throw new AppError("NOT_FOUND", "mailbox not found", 404);
+
+  const row = conn.status === "ARCHIVED" ? conn : await archive(client, id, actor);
+
+  if (conn.secret_key) {
+    // Best-effort by design. A secret row that is already gone is the state we
+    // want, and a settings failure must not leave the mailbox half-retired:
+    // the archive above is the part that stops mail moving.
+    try {
+      await settings.remove(client, { section: settings.SECRET_SECTION, key: conn.secret_key, actor });
+    } catch (err) {
+      if (err && err.code !== "NOT_FOUND") throw err;
+    }
+  }
+
+  await repo.updateConnection(client, id, {
+    secret_key: null,
+    token_expires_at: null,
+    push_subscription_id: null,
+    push_expires_at: null,
+    last_error: null,
+  });
+
+  await repo.recordAccessAudit(client, {
+    email_connection_id: id, action: "MAILBOX_DISCONNECTED",
+    subject_user_id: conn.owner_user_id || null, actor_user_id: actor.user_id || null,
+    detail: { address: conn.email_address, credential_cleared: Boolean(conn.secret_key) },
+  });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: "mailbox.disconnected",
+    moduleKey: MODULE, entityRef: ref(id),
+    before: { status: conn.status, had_credential: Boolean(conn.secret_key) },
+    after: { status: "ARCHIVED", had_credential: false },
+    isSensitive: true,
+  });
+
+  return { ...row, secret_key: null, disconnected: true };
+}
+
+/**
  * Convert a personal mailbox into a shared one so a team can work its backlog.
  *
  * Deliberately explicit: this takes one person's correspondence and shows it to a
@@ -314,7 +396,7 @@ module.exports = {
   MODULE,
   listCatalogue, addCatalogueEntry, setCatalogueEnabled,
   listAll, listForUser,
-  assertNoPersonalMailbox, classify, archive, handover, offboardUser,
+  assertNoPersonalMailbox, classify, archive, disconnect, handover, offboardUser,
   setLimits, checkSendAllowance, recordSent, markSyncSuccess, markSyncFailure,
   tenantLimits, tenantPolicy,
 };

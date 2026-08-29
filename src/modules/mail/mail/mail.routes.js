@@ -111,6 +111,17 @@ router.patch("/connections/:id", requirePermission(M, "edit"), v.connectPatch, c
 router.post("/connections/:id/test", requirePermission(M, "edit"), c.testConnection);
 router.post("/connections/:id/sync", requirePermission(M, "edit"), c.syncNow);
 router.post("/connections/:id/default", requirePermission(M, "edit"), c.setDefaultMailbox);
+/*
+ * Disconnect: stop the sync AND forget the credential.
+ *
+ * A POST rather than a DELETE because nothing is deleted — not one message.
+ * The connection is archived and the stored IMAP password or OAuth bundle is
+ * removed; the correspondence stays exactly where it was, which is what the
+ * verb has to imply to whoever reads this file next. `assertCanOperate` in the
+ * controller keeps it to the mailbox's own owner (or an administrator, for a
+ * shared address).
+ */
+router.post("/connections/:id/disconnect", requirePermission(M, "edit"), c.disconnectConnection);
 router.get("/recipients", requirePermission(M, "view"), c.recipients);
 
 /* ── PR-0 foundation ──────────────────────────────────────────────────────

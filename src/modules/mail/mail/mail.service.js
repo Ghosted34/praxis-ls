@@ -839,9 +839,18 @@ const OAUTH = {
 
 /** Step 1: return the provider consent URL. State is a signed JWT binding the
  *  provider + tenant slug + initiating user + redirect (CSRF + tenant pinning). */
-function startOAuth(_client, provider, { slug, redirectUri, display_name = null, actor = {} }) {
+async function startOAuth(client, provider, { slug, redirectUri, display_name = null, actor = {} }) {
   const o = OAUTH[provider];
   if (!o) throw new AppError("PROVIDER_UNSUPPORTED", `Unknown OAuth provider '${provider}'`, 400);
+  // P4: "kept and tested but gated off — SERVER-SIDE, not only in the UI." The
+  // gate used to sit on `connect()` alone, which the OAuth path does not go
+  // through: it inserts its connection directly in `completeOAuth`. So hiding
+  // the two buttons was in fact the only thing standing between a caller and a
+  // half-supported provider, and a POST from a console or a stale tab walked
+  // straight past it. Asked HERE as well so a disabled provider is refused
+  // before anyone is redirected to Microsoft, rather than after they have
+  // consented and come back.
+  await assertProviderEnabled(client, provider);
   if (!o.idp.isConfigured()) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
   if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
   const state = jwt.sign(
@@ -856,6 +865,11 @@ function startOAuth(_client, provider, { slug, redirectUri, display_name = null,
 async function completeOAuth(client, provider, { code, state, slug, webhookUrl }) {
   const o = OAUTH[provider];
   if (!o) throw new AppError("PROVIDER_UNSUPPORTED", `Unknown OAuth provider '${provider}'`, 400);
+  // Again here, and not redundantly: this is the function that WRITES the
+  // connection row, and an OAuth state token is valid for its whole TTL — so a
+  // consent flow begun while the provider was enabled would otherwise land a
+  // mailbox after an administrator turned it off.
+  await assertProviderEnabled(client, provider);
   let claims;
   try { claims = jwt.verify(state, config.JWT_ACCESS_SECRET); } catch { throw new AppError("BAD_STATE", "invalid or expired OAuth state", 400); }
   if (claims.purpose !== o.purpose || claims.provider !== provider) throw new AppError("BAD_STATE", "wrong state purpose/provider", 400);

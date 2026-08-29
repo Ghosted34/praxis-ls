@@ -36,6 +36,12 @@ import { SignatureSlot } from "./composer/signature-slot";
 import { WorkRail } from "./work";
 import { VerdictBanner, VerdictPill } from "./work/guardrails";
 import { Extractions } from "./work/intake";
+import {
+  blockRemoteContent,
+  restoreRemoteContent,
+  splitQuotedHtml,
+  splitQuotedText,
+} from "./message-body";
 
 const Composer = React.lazy(() => import("./composer"));
 
@@ -124,6 +130,117 @@ function AttachmentStrip({ messageId }: { messageId: string }) {
   );
 }
 
+/**
+ * The message itself: images held back, history folded.
+ *
+ * ── WHY BOTH DECISIONS LIVE IN ONE COMPONENT ────────────────────────────────
+ *
+ * They are the same decision seen twice — "do not render everything this
+ * message would like you to render until the reader has asked". §5.6.3
+ * specifies both, and neither existed: the pane handed `body_html` straight to
+ * `dangerouslySetInnerHTML`, so every tracking pixel in every supplier footer
+ * fired on open, and a ten-message thread rendered the previous nine inside the
+ * tenth.
+ *
+ * ── THE STATE IS PER MESSAGE, AND DELIBERATELY NOT REMEMBERED ───────────────
+ *
+ * §5.6.3 offers a per-sender "always show" stored per user. That is a
+ * preference table and a settings surface; this is the control it would sit on
+ * top of, and it is the half that stops the pixels. Showing images is one click
+ * per message until that lands, which is the same trade Gmail shipped for
+ * years. What must not happen is the reverse — a remembered "always show" with
+ * no way to see or withdraw it — so the persistence waits for the screen that
+ * can show what has been allowed.
+ *
+ * Sanitized on ingest (see the file header); this is privacy, not safety.
+ */
+function MessageBody({ message }: { message: Message }) {
+  const [showImages, setShowImages] = React.useState(false);
+  const [showQuote, setShowQuote] = React.useState(false);
+
+  const html = message.body_html || "";
+  const parts = React.useMemo(
+    () => (html ? splitQuotedHtml(html) : splitQuotedText(message.body_text || "")),
+    [html, message.body_text],
+  );
+  const scan = React.useMemo(
+    () => (html ? blockRemoteContent(parts.visible) : { html: parts.visible, blocked: 0 }),
+    [html, parts.visible],
+  );
+  const quoteScan = React.useMemo(
+    () => (html && parts.quoted ? blockRemoteContent(parts.quoted) : { html: parts.quoted || "", blocked: 0 }),
+    [html, parts.quoted],
+  );
+
+  const blocked = scan.blocked + quoteScan.blocked;
+  const render = (frag: { html: string; blocked: number }) =>
+    showImages ? restoreRemoteContent(frag.html) : frag.html;
+
+  return (
+    <div className="space-y-2">
+      {blocked > 0 && !showImages && (
+        // Named and counted. "Images blocked" with no number reads as a setting;
+        // "3 images" reads as a message that has something in it.
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+          <span>
+            {blocked === 1
+              ? tr("One image was not loaded — remote images can tell the sender when you opened this.")
+              : `${blocked} ${tr("images were not loaded — remote images can tell the sender when you opened this.")}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowImages(true)}
+            className="font-medium text-foreground underline underline-offset-2"
+          >
+            {tr("Show images")}
+          </button>
+        </div>
+      )}
+
+      {html ? (
+        <div
+          className="prose prose-sm max-w-none"
+          // Sanitized on ingest — see the file header.
+          dangerouslySetInnerHTML={{ __html: render(scan) }}
+        />
+      ) : (
+        <div className="whitespace-pre-wrap text-sm">
+          {parts.visible || message.body_preview || tr("(no content)")}
+        </div>
+      )}
+
+      {parts.quoted && (
+        <div>
+          {/* The ellipsis every mail client uses, because everybody already
+              knows what it means. Folded, never dropped: this is the record of
+              who said what, and it stays one click away. */}
+          <button
+            type="button"
+            onClick={() => setShowQuote((v) => !v)}
+            aria-expanded={showQuote}
+            className="rounded border border-border px-2 py-0.5 text-xs leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+            title={showQuote ? tr("Hide the earlier messages") : tr("Show the earlier messages")}
+          >
+            {showQuote ? tr("Hide earlier messages") : "···"}
+          </button>
+          {showQuote && (
+            html ? (
+              <div
+                className="prose prose-sm mt-2 max-w-none border-l-2 border-border pl-3 text-muted-foreground"
+                dangerouslySetInnerHTML={{ __html: render(quoteScan) }}
+              />
+            ) : (
+              <div className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 text-sm text-muted-foreground">
+                {parts.quoted}
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBlock({
   message,
   defaultOpen,
@@ -202,17 +319,7 @@ function MessageBlock({
               {tr("Cc")}: <span className="num">{cc.join(", ")}</span>
             </p>
           )}
-          {message.body_html ? (
-            <div
-              className="prose prose-sm max-w-none"
-              // Sanitized on ingest — see the file header.
-              dangerouslySetInnerHTML={{ __html: message.body_html }}
-            />
-          ) : (
-            <div className="whitespace-pre-wrap text-sm">
-              {message.body_text || message.body_preview || tr("(no content)")}
-            </div>
-          )}
+          <MessageBody message={message} />
 
           {/* §8.6 — whatever was read off this message's attachments, staged
               and awaiting a person. Renders nothing when there is nothing. */}
@@ -260,8 +367,8 @@ export function ThreadView({
   busy: boolean;
 }) {
   // Declared before the early returns below, because hooks cannot be conditional.
-  const [replying, setReplying] = React.useState(false);
-  React.useEffect(() => { setReplying(false); }, [thread?.email_thread_id]);
+  const [replying, setReplying] = React.useState<null | "REPLY" | "REPLY_ALL" | "FORWARD">(null);
+  React.useEffect(() => { setReplying(null); }, [thread?.email_thread_id]);
 
   if (error) return <ErrorState message={error} />;
   if (loading && !thread) return <LoadingRow label={tr("Opening conversation…")} />;
@@ -282,6 +389,46 @@ export function ThreadView({
   // Replying to your own last message would address the mail to yourself.
   const lastInbound = [...messages].reverse().find((m) => m.direction === "IN");
   const replyTo = lastInbound ? [lastInbound.from_address] : (messages[lastIndex]?.to_address || []);
+
+  /* ── REPLY ALL, and the one address it must never carry ───────────────────
+   *
+   * Everyone who was on the last inbound message, minus the people already in
+   * To, and minus OUR OWN MAILBOX. Leaving ourselves in the Cc of our own reply
+   * is the classic reply-all defect: every answer lands back in the inbox it
+   * was sent from, the thread doubles, and the unread count is permanently
+   * wrong. `mailbox_address` is the one address on the thread that is
+   * definitionally us.
+   *
+   * Compared lower-cased because an address is case-insensitive in its domain
+   * and, in practice, everywhere — a Cc reading `Ops@maersk.com` beside a To of
+   * `ops@maersk.com` is one recipient, not two, and sending to both is how a
+   * counterparty gets the same mail twice.
+   */
+  const mine = String(thread.mailbox_address || "").toLowerCase();
+  const source = lastInbound || messages[lastIndex] || null;
+  const replyAllCc = (() => {
+    const seen = new Set([mine, ...replyTo.map((a) => a.toLowerCase())]);
+    const out: string[] = [];
+    for (const a of [
+      ...(Array.isArray(source?.to_address) ? source.to_address : []),
+      ...(Array.isArray(source?.cc_address) ? source.cc_address : []),
+    ]) {
+      const k = String(a).toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(a);
+    }
+    return out;
+  })();
+
+  /* A FORWARD carries the message, not the conversation's recipients: the whole
+   * point is that it goes to somebody who was not on it. So To starts empty and
+   * the operator types who — and the quoted body below is what they are
+   * actually sending. Prefixing Fwd: only when it is not already there keeps a
+   * twice-forwarded subject from reading "Fwd: Fwd: Fwd:". */
+  const subj = thread.subject || "";
+  const replySubject = /^re:/i.test(subj) ? subj : `Re: ${subj}`.trim();
+  const forwardSubject = /^fwd?:/i.test(subj) ? subj : `Fwd: ${subj}`.trim();
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -384,22 +531,47 @@ export function ThreadView({
         {replying ? (
           <React.Suspense fallback={<LoadingRow label={tr("Opening the composer…")} />}>
             <Composer
+              // Remounted when the mode changes, so switching from Reply to
+              // Reply all actually re-seeds the recipients. `initialTo` is read
+              // once, on mount — without the key, the second choice would open
+              // the first choice's composer and quietly lose the Cc.
+              key={replying}
               connectionId={thread.email_connection_id}
               threadId={thread.email_thread_id}
               replyToMessageId={messages[lastIndex]?.email_message_id || null}
-              kind="REPLY"
-              initialTo={replyTo}
-              initialSubject={/^re:/i.test(thread.subject || "") ? thread.subject : `Re: ${thread.subject || ""}`.trim()}
+              kind={replying}
+              initialTo={replying === "FORWARD" ? [] : replyTo}
+              initialCc={replying === "REPLY_ALL" ? replyAllCc : []}
+              initialSubject={replying === "FORWARD" ? forwardSubject : replySubject}
               quotedHtml={messages[lastIndex]?.body_html || null}
               quotedText={messages[lastIndex]?.body_text || null}
               entityRef={thread.entity_ref || null}
-              onClose={() => setReplying(false)}
+              onClose={() => setReplying(null)}
               onSent={onReplied}
               slots={{ "composer.footer.left": <SignatureSlot /> }}
             />
           </React.Suspense>
         ) : (
-          <Button size="sm" onClick={() => setReplying(true)}>{tr("Reply")}</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => setReplying("REPLY")}>{tr("Reply")}</Button>
+            {/* Offered only when there IS somebody else on it. A "Reply all"
+                that produces the same message as "Reply" is a button that
+                teaches people the two are interchangeable — and then they use
+                it on the thread where they are not. */}
+            {replyAllCc.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setReplying("REPLY_ALL")}
+                title={`${tr("Also copies")} ${replyAllCc.join(", ")}`}
+              >
+                {`${tr("Reply all")} (${replyAllCc.length + replyTo.length})`}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setReplying("FORWARD")}>
+              {tr("Forward")}
+            </Button>
+          </div>
         )}
       </footer>
     </div>

@@ -201,6 +201,22 @@ export const syncConnection = (id: string) =>
     { method: "POST" },
   );
 
+/**
+ * Stop the sync and forget the credential.
+ *
+ * A POST, not a DELETE, because nothing is deleted: the mailbox is archived and
+ * the stored password or token bundle is removed, and every message stays
+ * exactly where it was. `archiveMailbox` below is the weaker half of this — it
+ * stops the sync and leaves the credential on disk — and stays for the admin
+ * "Retire" action, which is about the mailbox's place in the company rather
+ * than about a password.
+ */
+export const disconnectMailbox = (id: string) =>
+  tenant<Connection & { disconnected: boolean }>(
+    `/mail/connections/${id}/disconnect`,
+    { method: "POST" },
+  );
+
 // OAuth — start returns the provider consent URL to redirect the browser to.
 export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
 export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";

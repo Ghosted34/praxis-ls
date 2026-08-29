@@ -240,16 +240,43 @@ export type AssistDraft = {
   action?: string | null;
   /** Present only when there was nothing to ground the draft in. */
   note?: string;
+  /** Voice only: what was actually heard, before the tidy-up (§8.7). */
+  transcript?: string;
 };
 
+/**
+ * `subject`, `to` and `instruction` are what make this write about SOMETHING.
+ *
+ * Without them a compose on a blank new message reached the model with no
+ * material and came back as a tone preset applied to nothing — fluent, polite,
+ * and about no subject. The subject line is almost always already typed by the
+ * time somebody presses the button, and `instruction` is §8.3's "Other…": a
+ * sentence of brief in the operator's own words.
+ */
 export const assistCompose = (body: {
   tone?: AssistTone;
   action?: AssistAction;
   thread_id?: string;
   draft?: string;
+  subject?: string;
+  to?: string[];
+  instruction?: string;
   language?: "en" | "fr";
   mode?: string;
 }) => tenant<AssistDraft>("/mail/assist/compose", { method: "POST", body });
+
+/**
+ * The microphone (§8.7).
+ *
+ * Sends the recorded clip and gets the words back. The audio is not retained —
+ * it is transcribed in the request and discarded — and the transcript is shown
+ * beside the tidied email so the speaker can see what changed.
+ */
+export const assistTranscribe = (audioDataUrl: string) =>
+  tenant<{ transcript: string }>("/mail/assist/transcribe", {
+    method: "POST",
+    body: { audio_data_url: audioDataUrl },
+  });
 
 export const assistDraft = (body: {
   thread_id: string;
@@ -304,6 +331,7 @@ export const assistVoice = (body: {
   tone?: AssistTone;
   language?: "en" | "fr";
 }) => tenant<AssistDraft>("/mail/assist/voice", { method: "POST", body });
+
 
 /**
  * ADVISORY. The authoritative run is inside the send path — see `presend.js`.

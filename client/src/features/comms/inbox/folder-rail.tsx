@@ -29,6 +29,25 @@ export type RailSelection = {
   folder: MailFolder;
   stream?: MailStream;
   label?: string;
+  /**
+   * The four saved views (§5.6 "VIP filter").
+   *
+   * `listThreads` has accepted `starred`, `unread`, `vip` and `has_attachment`
+   * since PR-1A — the repo builds a predicate for each, `thread.service` parses
+   * each, and `ThreadQuery` in mail-api.ts declares all four. Nothing offered
+   * them. The consequences were not symmetric:
+   *
+   *   STARRED     the list draws a star on every row and stars flip
+   *               optimistically, so people used them — and then had no way to
+   *               ever see what they had starred. A one-way marker.
+   *   VIP         `thread.repo` already orders `is_vip DESC` and the row draws a
+   *               VIP pill, but the LANE the chapter specifies, where you look
+   *               at the VIPs and nothing else, did not exist.
+   *   UNREAD      the obvious triage move in any mail client.
+   *   ATTACHMENT  "the bill of lading came in last week" is an attachment
+   *               search, and it was a scroll.
+   */
+  view?: "STARRED" | "UNREAD" | "VIP" | "ATTACHMENT";
 };
 
 /** English + French, because the two are used interchangeably in the office. */
@@ -40,6 +59,18 @@ const FOLDER_LABEL: Record<MailFolder, string> = {
   SPAM: "Spam",
   TRASH: "Trash",
 };
+
+/**
+ * The four saved views. Glyphs rather than an icon set: the star has to be the
+ * SAME character the thread list draws, or the view and the control that fills
+ * it do not read as the same feature.
+ */
+const VIEWS: { key: NonNullable<RailSelection["view"]>; label: string; glyph: string }[] = [
+  { key: "UNREAD", label: "Unread", glyph: "●" },
+  { key: "STARRED", label: "Starred", glyph: "★" },
+  { key: "VIP", label: "VIP", glyph: "◆" },
+  { key: "ATTACHMENT", label: "With attachments", glyph: "◫" },
+];
 
 /** The canonical name, translated; anything else is the server's own text. */
 function folderLabel(f: Folder): string {
@@ -136,34 +167,57 @@ export function FolderRail({
 
       <Heading>{tr("Triage")}</Heading>
       <RailButton
-        active={selection.stream === "HUMAN"}
-        onClick={() => set({ stream: "HUMAN", folder: "INBOX", label: undefined })}
+        active={selection.stream === "HUMAN" && !selection.view}
+        onClick={() => set({ stream: "HUMAN", folder: "INBOX", label: undefined, view: undefined })}
         count={humanUnread}
       >
         {tr("People")}
       </RailButton>
       <RailButton
-        active={selection.stream === "SYSTEM"}
-        onClick={() => set({ stream: "SYSTEM", folder: "INBOX", label: undefined })}
+        active={selection.stream === "SYSTEM" && !selection.view}
+        onClick={() => set({ stream: "SYSTEM", folder: "INBOX", label: undefined, view: undefined })}
         count={systemUnread}
       >
         {tr("Notices")}
       </RailButton>
       <RailButton
-        active={!selection.stream && selection.folder === "INBOX" && !selection.label}
-        onClick={() => set({ stream: undefined, folder: "INBOX", label: undefined })}
+        active={!selection.stream && !selection.view && selection.folder === "INBOX" && !selection.label}
+        onClick={() => set({ stream: undefined, folder: "INBOX", label: undefined, view: undefined })}
         count={inboxUnread}
       >
         {tr("Everything")}
       </RailButton>
 
+      <Heading>{tr("Views")}</Heading>
+      {/* Saved views, not folders: they cut ACROSS folders, which is why they
+          clear `folder` rather than set one. A starred conversation that has
+          been archived is still starred, and a view that only looked in the
+          inbox would be the same dead end with a different shape. */}
+      {VIEWS.map((v) => (
+        <RailButton
+          key={v.key}
+          active={selection.view === v.key}
+          onClick={() =>
+            set(
+              selection.view === v.key
+                ? { view: undefined, folder: "INBOX", stream: "HUMAN", label: undefined }
+                : { view: v.key, folder: "INBOX", stream: undefined, label: undefined },
+            )
+          }
+          indent
+        >
+          <span className="mr-1.5" aria-hidden>{v.glyph}</span>
+          {tr(v.label)}
+        </RailButton>
+      ))}
+
       <Heading>{tr("Folders")}</Heading>
       {canonical.map((f) => (
         <RailButton
           key={f.email_folder_id}
-          active={selection.folder === f.canonical && !selection.stream && !selection.label}
+          active={selection.folder === f.canonical && !selection.stream && !selection.label && !selection.view}
           onClick={() =>
-            set({ folder: f.canonical as MailFolder, stream: undefined, label: undefined })
+            set({ folder: f.canonical as MailFolder, stream: undefined, label: undefined, view: undefined })
           }
           count={f.unread_count}
           indent
@@ -185,8 +239,8 @@ export function FolderRail({
           {labels.map((l) => (
             <RailButton
               key={l.email_label_id}
-              active={selection.label === l.name}
-              onClick={() => set({ label: l.name, stream: undefined })}
+              active={selection.label === l.name && !selection.view}
+              onClick={() => set({ label: l.name, stream: undefined, view: undefined })}
               count={l.thread_count}
               indent
             >

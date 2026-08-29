@@ -29,7 +29,7 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
-import * as api from "@/lib/hr-api";
+import * as hr from "@/lib/hr-api";
 
 /** Below this, the clip is a mis-click rather than an answer. */
 const MIN_MS = 400;
@@ -52,11 +52,24 @@ export function VoiceInput({
   onText,
   disabled,
   label = "Record your answer",
+  transcribe = hr.transcribeAnswer,
 }: {
   /** Called with the transcript. The caller appends — see the header. */
   onText: (text: string) => void;
   disabled?: boolean;
   label?: string;
+  /**
+   * Where the clip is posted.
+   *
+   * The recorder is provider-agnostic; the ROUTE is not, because each one sits
+   * behind the permission of the module it serves. The HR intake wizard's
+   * `/vacancies/intake/transcribe` is gated on a recruitment grant, so the mail
+   * composer — the second caller this component grew, exactly as
+   * `vacancy.routes` predicted — passes `/mail/assist/transcribe` instead.
+   * Both land on the same `services/ai/transcription.service`; only the gate
+   * differs. Defaulted so the original caller is unchanged.
+   */
+  transcribe?: (audioDataUrl: string) => Promise<{ text?: string; transcript?: string }>;
 }) {
   const [state, setState] = React.useState<State>("idle");
   const [error, setError] = React.useState<string | null>(null);
@@ -106,7 +119,10 @@ export function VoiceInput({
           r.onload = () => resolve(String(r.result));
           r.readAsDataURL(blob);
         });
-        const { text } = await api.transcribeAnswer(dataUrl);
+        // The two routes name the field differently (`text` in HR, `transcript`
+        // in mail). Reading both keeps this component from caring which.
+        const out = await transcribe(dataUrl);
+        const text = (out && (out.text ?? out.transcript)) || "";
         if (text) onText(text);
         // An empty transcript is a real outcome — silence, or background noise
         // Whisper found no words in — and saying so beats appending nothing and

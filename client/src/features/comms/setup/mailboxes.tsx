@@ -774,22 +774,34 @@ export function ConnectionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function oauth(kind: "ms" | "gg") {
-    try {
-      const r =
-        kind === "ms" ? await api.startMicrosoft() : await api.startGoogle();
-      window.location.href = r.url;
-    } catch (err) {
-      setNote(errMsg(err));
-    }
-  }
+  /* ── The OAuth kick-off, hidden with its two buttons ──────────────────────
+   *
+   * Commented out rather than deleted, for the reason set out beside the
+   * buttons below: Microsoft Graph and Gmail are gated off for this programme
+   * (Q4, Q11, PR-0 P4), not abandoned. `api.startMicrosoft` and
+   * `api.startGoogle` are still exported, the adapters still have their CI
+   * tests, and the server now refuses the flow itself
+   * (`mail.service.assertProviderEnabled`, on both `startOAuth` and
+   * `completeOAuth`). Re-enabling a provider should be un-commenting this and
+   * the buttons, not rediscovering how the redirect worked.
+   *
+   *   async function oauth(kind: "ms" | "gg") {
+   *     try {
+   *       const r =
+   *         kind === "ms" ? await api.startMicrosoft() : await api.startGoogle();
+   *       window.location.href = r.url;
+   *     } catch (err) {
+   *       setNote(errMsg(err));
+   *     }
+   *   }
+   */
   async function test(id: string) {
     setBusyId(id);
     setNote("");
     setTestFail(null);
     try {
       const r = await api.testConnection(id);
-      setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`);
+      setNote(r.ok ? `✓ ${tr("Connection OK")}` : `✗ ${r.error || tr("failed")}`);
       if (!r.ok) setTestFail({ code: r.code, message: r.error });
       conns.reload();
     } catch (e) {
@@ -803,7 +815,7 @@ export function ConnectionsTab() {
     setNote("");
     try {
       const r = await api.syncConnection(id);
-      setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`);
+      setNote(r.error ? `✗ ${r.error}` : `✓ ${tr("Synced")} — ${r.inserted ?? 0} ${tr("new")}`);
       conns.reload();
     } catch (e) {
       reportActionError(e);
@@ -811,12 +823,40 @@ export function ConnectionsTab() {
       setBusyId("");
     }
   }
+  /**
+   * Disconnect — the action a person could not reach at all.
+   *
+   * `window.confirm` rather than a modal, deliberately: this is destructive of
+   * a credential and the sentence has to be READ, and every dialog in this app
+   * is dismissible by clicking outside it. What the sentence says is the point
+   * — most people read "disconnect" as "delete my mail", and the difference
+   * matters the first time somebody needs last March's bill of lading.
+   */
+  async function disconnect(c: api.Connection) {
+    const ok = window.confirm(
+      `${tr("Disconnect")} ${c.email_address}?\n\n` +
+      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
+    );
+    if (!ok) return;
+    setBusyId(c.email_connection_id);
+    setNote("");
+    try {
+      await api.disconnectMailbox(c.email_connection_id);
+      setNote(`✓ ${tr("Disconnected")} — ${c.email_address}`);
+      conns.reload();
+    } catch (e) {
+      reportActionError(e);
+    } finally {
+      setBusyId("");
+    }
+  }
+
   async function makeDefault(id: string) {
     setBusyId(id);
     setNote("");
     try {
       await api.setDefaultMailbox(id);
-      setNote("✓ Default mailbox updated");
+      setNote(`✓ ${tr("Default mailbox updated")}`);
       conns.reload();
     } catch (e) {
       reportActionError(e);
@@ -827,15 +867,33 @@ export function ConnectionsTab() {
 
   return (
     <div className="space-y-5">
+      {/* ── Connect Microsoft 365 / Connect Google Workspace: HIDDEN ─────────
+       *
+       * Not deleted — hidden, because the adapters are not dead code. Q4 and
+       * Q11 put Microsoft Graph and Gmail out of scope for this programme
+       * ("one provider properly rather than four adequately"), and PR-0 P4 kept
+       * them "kept and tested but gated off — server-side, not only in the UI".
+       * The adapters, their tests and `oauth()` below all still work; the day
+       * `mail.provider.oauth` is turned on, this block comes back and nothing
+       * else has to change.
+       *
+       * The server now agrees, which it did not before: `startOAuth` and
+       * `completeOAuth` both call `assertProviderEnabled`. Until that was
+       * added, the gate sat only on `connect()` — which the OAuth path never
+       * goes through, since `completeOAuth` inserts its own connection row —
+       * so hiding these two buttons was literally the only thing standing
+       * between a caller and a half-supported provider.
+       *
+       *   <Button variant="outline" onClick={() => oauth("ms")}>
+       *     Connect Microsoft 365
+       *   </Button>
+       *   <Button variant="outline" onClick={() => oauth("gg")}>
+       *     Connect Google Workspace
+       *   </Button>
+       */}
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={() => oauth("ms")}>
-          Connect Microsoft 365
-        </Button>
-        <Button variant="outline" onClick={() => oauth("gg")}>
-          Connect Google Workspace
-        </Button>
         <Button variant="outline" onClick={() => setImapOpen(true)}>
-          Connect IMAP / SMTP
+          {tr("Connect a mailbox")}
         </Button>
         {note && <span className="micro">{note}</span>}
       </div>
@@ -860,11 +918,11 @@ export function ConnectionsTab() {
                 {c.is_default && <Pill tone="ok">{tr("Default")}</Pill>}
               </div>
               <p className="micro mt-0.5">
-                Last sync {dateFmt(c.last_sync_at)}
+                {tr("Last sync")} {dateFmt(c.last_sync_at)}
                 {c.last_error ? ` · ${c.last_error.slice(0, 60)}` : ""}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {!c.is_default && (
                 <Button
                   size="sm"
@@ -872,7 +930,7 @@ export function ConnectionsTab() {
                   onClick={() => makeDefault(c.email_connection_id)}
                   disabled={busyId === c.email_connection_id}
                 >
-                  Make default
+                  {tr("Make default")}
                 </Button>
               )}
               {c.provider === "imap_smtp" && (
@@ -881,7 +939,7 @@ export function ConnectionsTab() {
                   variant="outline"
                   onClick={() => setEditConn(c)}
                 >
-                  Edit
+                  {tr("Edit")}
                 </Button>
               )}
               <Button
@@ -890,20 +948,30 @@ export function ConnectionsTab() {
                 onClick={() => test(c.email_connection_id)}
                 disabled={busyId === c.email_connection_id}
               >
-                Test
+                {tr("Test")}
               </Button>
               <Button
                 size="sm"
                 onClick={() => sync(c.email_connection_id)}
                 loading={busyId === c.email_connection_id}
               >
-                Sync now
+                {tr("Sync now")}
+              </Button>
+              {/* Last, and quiet. It is the one control here that cannot be
+                  undone by pressing it again. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => disconnect(c)}
+                disabled={busyId === c.email_connection_id}
+              >
+                {tr("Disconnect")}
               </Button>
             </div>
           </div>
         ))}
         {(conns.data || []).length === 0 && !conns.loading && (
-          <p className="micro">No mailboxes connected yet.</p>
+          <p className="micro">{tr("No mailboxes connected yet.")}</p>
         )}
       </div>
 
@@ -917,8 +985,8 @@ export function ConnectionsTab() {
         }}
         title={
           editConn
-            ? "Edit IMAP / SMTP mailbox"
-            : "Connect an IMAP / SMTP mailbox"
+            ? tr("Edit this mailbox")
+            : tr("Connect a mailbox")
         }
       >
         <ImapConnectForm

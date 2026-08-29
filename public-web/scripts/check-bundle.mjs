@@ -37,14 +37,29 @@
  * Usage: node scripts/check-bundle.mjs   (after `npm run build`)
  */
 import { readdir, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(dirname, "../dist");
-const ASSETS = path.join(DIST, "assets");
+
+/**
+ * Read from vite.config.ts rather than assumed.
+ *
+ * This used to be `path.join(DIST, "assets")`. The moment `build.assetsDir` was
+ * given a name of this app's own — it has to differ from the ERP's, or the mount
+ * in src/server.js cannot claim it without breaking client/dist — this gate
+ * started reporting "dist/assets not found" on a build that was perfectly fine,
+ * which is the failure mode where a gate teaches people to ignore it.
+ */
+const ASSETS_DIR = (() => {
+  const cfg = readFileSync(path.resolve(dirname, "../vite.config.ts"), "utf8");
+  const m = cfg.match(/assetsDir:\s*"([^"]+)"/);
+  return m ? m[1] : "assets";
+})();
+const ASSETS = path.join(DIST, ASSETS_DIR);
 
 /** gzip -9-equivalent, which is what a browser actually receives. */
 function gz(bytes) {
@@ -111,7 +126,7 @@ async function main() {
   const files = (await readdir(ASSETS)).filter((f) => f.endsWith(".js"));
   if (files.length === 0) {
     console.error(
-      "✗ No JS chunks in dist/assets — the build produced nothing to check.",
+      `✗ No JS chunks in dist/${ASSETS_DIR} — the build produced nothing to check.`,
     );
     process.exit(1);
   }
@@ -133,7 +148,7 @@ async function main() {
   const cycle = findCycle(graph);
   if (cycle) {
     console.error(
-      "✗ Circular chunk graph in dist/assets — this ships a blank page.\n",
+      `✗ Circular chunk graph in dist/${ASSETS_DIR} — this ships a blank page.\n`,
     );
     console.error(`    ${cycle.join("\n  → ")}\n`);
     console.error(

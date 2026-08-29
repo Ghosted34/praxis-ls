@@ -60,6 +60,26 @@ const schemas = {
   // 0 = never auto-wipe (0102). `.positive()` here was the last thing keeping
   // the scheduler's own documented opt-out unreachable.
   sandbox: z.object({ days: z.number().int().min(0).max(365) }),
+  // A tenant's additional hosts. `surface` says what the host serves — 'public'
+  // is a domain their own clients visit, and must never answer with the staff
+  // workspace. The hostname itself is validated in tenants.service, which is
+  // also where the platform hosts are refused; doing it there keeps one answer
+  // for both the add and the update path.
+  domainAdd: z.object({
+    host: z.string().trim().min(3).max(253),
+    surface: z.enum(["erp", "public"]).default("public"),
+  }),
+  domainSurface: z.object({
+    host: z.string().trim().min(3).max(253),
+    surface: z.enum(["erp", "public"]),
+  }),
+  // Shape only. WHICH prefixes are refused lives in shared/http/public-web-paths.js,
+  // beside the route table it has to agree with — duplicating that list here
+  // would produce the copy that never gets updated.
+  domainBase: z.object({
+    host: z.string().trim().min(3).max(253),
+    base: z.string().trim().min(1).max(32),
+  }),
   ticketStatus: z.object({
     status: z.enum(["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"]),
   }),

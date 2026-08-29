@@ -1,5 +1,6 @@
 import * as React from "react";
 import { PublicApiError } from "./api";
+import { tStatic } from "./i18n";
 import { fieldErrorsOf, type Trap } from "./intake-api";
 
 /**
@@ -80,8 +81,8 @@ export function useIntake<T = { received: boolean; reference: string }>(opts: {
         setFields(fieldErrorsOf(e));
         setError(
           e instanceof PublicApiError && e.isRateLimited
-            ? opts.onRateLimited || "Too many attempts. Please try again later."
-            : opts.onFailed || "Something went wrong. Please try again.",
+            ? opts.onRateLimited || tStatic("errors.intakeRateLimited")
+            : opts.onFailed || tStatic("errors.generic"),
         );
       }
       return null;

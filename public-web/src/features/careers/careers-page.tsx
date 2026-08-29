@@ -2,8 +2,8 @@ import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as api from "@/lib/careers-api";
-import { PublicApiError } from "@/lib/api";
-import { currentLocale } from "@/lib/i18n";
+import { PublicApiError, messageFor } from "@/lib/api";
+import { currentLocale, tStatic } from "@/lib/i18n";
 import { enumText, withScheme } from "@/lib/format";
 import { useIntake } from "@/lib/use-intake";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
@@ -19,6 +19,7 @@ import { Chip } from "@/components/ui/pill";
 import { Markdown } from "@/components/ui/markdown";
 import { AlertIcon, ClockIcon, DocumentIcon } from "@/components/ui/icons";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { p } from "@/lib/base-path";
 
 /**
  * `/public/careers` and `/public/careers/:token` — the one screen in this product
@@ -68,7 +69,7 @@ export function CareersPage() {
         // not a failure. Only a real fault gets an error line.
         if (e instanceof PublicApiError && (e.isNotFound || e.status === 403))
           setRows([]);
-        else setError(e instanceof Error ? e.message : String(e));
+        else setError(messageFor(e, tStatic("errors.loadFailed")));
       });
     return () => {
       alive = false;
@@ -104,7 +105,7 @@ export function CareersPage() {
             {rows.map((v) => (
               <li key={v.token}>
                 <Link
-                  to={`/public/careers/${encodeURIComponent(v.token)}`}
+                  to={p(`/careers/${encodeURIComponent(v.token)}`)}
                   className="group flex flex-col gap-2 py-6 transition-colors sm:flex-row sm:items-start sm:justify-between sm:gap-8"
                 >
                   <div className="min-w-0">
@@ -173,7 +174,7 @@ export function VacancyPage() {
       .catch((e: unknown) => {
         if (!alive) return;
         if (e instanceof PublicApiError && e.isNotFound) setGone(true);
-        else setError(e instanceof Error ? e.message : String(e));
+        else setError(messageFor(e, tStatic("errors.loadFailed")));
       });
     return () => {
       alive = false;
@@ -212,7 +213,7 @@ export function VacancyPage() {
               <PageSkeleton rows={3} cols={2} />
             )}
             <div className="mt-6">
-              <ButtonLink to="/public/careers" variant="outline">
+              <ButtonLink to={p("/careers")} variant="outline">
                 {t("site.careers.back")}
               </ButtonLink>
             </div>
@@ -239,7 +240,7 @@ export function VacancyPage() {
         <PageContainer size="reading">
           <nav aria-label={t("site.careers.title")} className="mb-6">
             <Link
-              to="/public/careers"
+              to={p("/careers")}
               className="text-sm text-muted-foreground underline-offset-4 hover:underline"
             >
               {t("site.careers.back")}
@@ -420,7 +421,7 @@ function ApplyForm({ vacancy: v }: { vacancy: api.PublicVacancy }) {
           }
         />
         <Link
-          to="/public/careers"
+          to={p("/careers")}
           className="mt-4 inline-flex text-sm text-primary-ink underline underline-offset-4"
         >
           {t("site.careers.anotherRole")}

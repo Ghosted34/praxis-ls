@@ -129,6 +129,22 @@ export const getLang = (): Lang =>
  * string renders English harmlessly instead of blank. Bulk conversion of the
  * portal screens depends on it.
  */
+/**
+ * ⚠ SHORT LABELS ONLY — never a sentence.
+ *
+ * `tr` looks the label up as `strings.<label>`, and i18next's default
+ * `keySeparator` is "." — which this app does not disable, because every other
+ * key in the dictionary is dotted (`site.hero.title`). So a label containing a
+ * full stop is parsed as a path with an empty final segment, can never resolve,
+ * and silently returns the ENGLISH label to a French reader. It fails quietly,
+ * which is the worst way for a translation to fail.
+ *
+ * That is why all 41 entries in `strings` are period-free column headings —
+ * "Cash position", "Trial balance" — and why sentences belong in a dotted key of
+ * their own, read with `t()` or `tStatic()`. Rule 6 of check:i18n fails the build
+ * on a sentence anywhere in `src/`, including inside a `tr()` call, so this
+ * cannot be reintroduced by accident.
+ */
 export function tr(label: string): string {
   const out = i18n.t(`strings.${label}`, { defaultValue: label });
   return typeof out === "string" ? out : label;
@@ -161,6 +177,23 @@ export function useLang(): void {
  * French for a value a component switches on is a component that silently stops
  * matching in one language only.
  */
+/**
+ * A translated string read OUTSIDE the React tree — the same module-level
+ * instance `tr` and `tList` above already use.
+ *
+ * It exists for the sentences a read's `catch` block needs. The hook's `t`
+ * changes identity when the language changes, so calling it there makes
+ * `react-hooks/exhaustive-deps` ask for `t` in the effect's dependency array —
+ * and honouring that would re-run the read on every language switch. Mostly
+ * that is only wasteful; on the tracking page it would spend one of the
+ * visitor's thirty lookups per fifteen minutes (`tracking_public.routes.js`),
+ * and on a rate-limited public surface a wasted request is a visitor who gets
+ * told to come back later. Reading the instance directly costs no dependency
+ * and still answers in the language in force when the error happened.
+ */
+export const tStatic = (key: string, vars?: Record<string, string | number>): string =>
+  String(i18n.t(key, vars as never));
+
 export function tList<T>(key: string): T[] {
   const v = i18n.t(key, { returnObjects: true });
   return Array.isArray(v) ? (v as T[]) : [];

@@ -65,6 +65,27 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    /**
+     * NOT the default "assets", and this is load-bearing.
+     *
+     * On the tenant host this app is mounted under path prefixes (see the note on
+     * the mount in src/server.js) and the ERP's own build already answers
+     * /assets/*. Under the default, this app's index.html asks for
+     * /assets/index-<hash>.js; that path matches no prefix the mount claims, so
+     * the request falls through to client/dist (a miss — different hashes) and
+     * then to the ERP's `app.get("*")`, which returns index.html with
+     * 200 text/html. The browser refuses to execute HTML as a module and paints
+     * nothing: the page loads and the app never starts.
+     *
+     * Neither `vite dev` nor `vite preview` goes through that mount, which is why
+     * this is invisible in development and only appears once SERVE_PUBLIC_WEB is
+     * on in a container.
+     *
+     * A directory name of this app's own, claimed by PUBLIC_WEB_PATH, is what
+     * makes the static handler resolve it. The two must stay in step;
+     * tests/unit/public-web-mount.test.js reads both files and pins them together.
+     */
+    assetsDir: "public-assets",
     rollupOptions: {
       onwarn(warning, warn) {
         // The one warning that must never be a warning. A circular chunk graph

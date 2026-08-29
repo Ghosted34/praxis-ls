@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (495)
+## All codes (499)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -69,6 +69,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_APPLIES_TO` | 422 | 1× | — |
 | `BAD_AUDIO` | 400, 422 | 5× | — |
 | `BAD_AUDIO_TYPE` | — | 1× | — |
+| `BAD_BASE` | 400 | 1× | — |
 | `BAD_CATEGORY` | 422 | 1× | — |
 | `BAD_CODE` | 422 | 2× | — |
 | `BAD_CONTEXT` | 422 | 1× | — |
@@ -80,7 +81,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_FILE_TYPE` | 422 | 7× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
-| `BAD_IMAGE` | 400 | 5× | — |
+| `BAD_HOST` | 400 | 3× | — |
+| `BAD_IMAGE` | 400 | 6× | — |
 | `BAD_INPUT` | 422 | 4× | — |
 | `BAD_KIND` | 422 | 3× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
@@ -198,11 +200,12 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
 | `HAS_SUBSIDIARIES` | 409 | 1× | — |
+| `HOST_TAKEN` | 409 | 1× | — |
 | `IDEMPOTENCY_IN_PROGRESS` | 409 | 1× | — |
 | `IDEMPOTENCY_KEY_INVALID` | 400 | 1× | — |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
-| `IMAGE_TOO_LARGE` | 413 | 5× | — |
+| `IMAGE_TOO_LARGE` | 413 | 6× | — |
 | `INACTIVE_SERVICE_TYPE` | 422 | 1× | — |
 | `INCOMPLETE` | — | 2× | — |
 | `INCOMPLETE_APPLICATION` | 422 | 1× | — |
@@ -278,7 +281,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 563× | — |
+| `NOT_FOUND` | 404, 422 | 565× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -422,6 +425,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUEST_CLOSED` | 409 | 1× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
+| `RESERVED_HOST` | 409 | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
 | `RESULT_SET_TOO_LARGE` | 500 | 1× | — |
 | `RETIRED_FIELD` | 422 | 1× | — |
@@ -507,7 +511,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNKNOWN_TREASURY_ACCOUNT` | 404 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 2× | — |
-| `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
+| `UNSUPPORTED_IMAGE` | 400, 415 | 6× | — |
 | `UNVERIFIED` | 401 | 2× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |

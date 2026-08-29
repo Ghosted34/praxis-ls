@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { p } from "@/lib/base-path";
 
 /**
  * The crash boundary.
@@ -67,7 +68,7 @@ function CrashScreen() {
           {/* A plain anchor: `react-router`'s `<Link>` needs the very context that
               may have thrown, and leaving the app entirely is the safe exit. */}
           <a
-            href="/public"
+            href={p()}
             className="btn-surface inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold"
           >
             {t("site.crash.home")}

@@ -419,6 +419,34 @@
     background: rgb(237 238 238 / 0.08);
   }
 
+  /* ── Disabled is a STATE, not a faded control ──────────────────────────────
+     `disabled:opacity-55` on a brand fill produces a washed-out orange that
+     reads as a styling bug rather than as "there is a field to fill in first".
+     It is also the FIRST control a visitor meets — the hero's Track button and
+     the quote form's submit both open disabled — so the page's first impression
+     was of something broken. And 55% of `--primary` over whatever sits behind it
+     is a colour nobody chose and nothing measured.
+
+     Neutral ground with muted ink says the same thing in a language people
+     already read, and lands on tokens that were picked on purpose.
+
+     `:not([aria-busy="true"])` keeps a SUBMITTING button on its brand fill:
+     `Button` sets `aria-busy` while `loading` and disables itself at the same
+     moment, and a request in flight is the one time the control should still
+     look live behind its spinner. */
+  .btn-primary:disabled:not([aria-busy="true"]),
+  .btn-surface:disabled:not([aria-busy="true"]) {
+    background: var(--muted);
+    color: var(--muted-foreground);
+    border-color: var(--border);
+  }
+  .btn-onhero:disabled:not([aria-busy="true"]),
+  .btn-ghost-hero:disabled:not([aria-busy="true"]) {
+    background: rgb(237 238 238 / 0.1);
+    color: var(--hero-muted);
+    border-color: var(--hero-line);
+  }
+
   /* ── Status pills (identical recipe to client, see the header note) ───── */
 
   .status {

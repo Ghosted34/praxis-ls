@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { p } from "@/lib/base-path";
 
 /**
  * The 404 — a real status, not a design flourish.
@@ -32,13 +33,13 @@ export function NotFoundPage() {
       >
         <div className="flex flex-wrap gap-3">
           <Link
-            to="/public"
+            to={p()}
             className="btn-primary inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold"
           >
             {t("site.notFound.home")}
           </Link>
           <Link
-            to="/public/track"
+            to={p("/track")}
             className="btn-surface inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold"
           >
             {t("site.track.title")}

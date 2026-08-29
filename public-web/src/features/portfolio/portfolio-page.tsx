@@ -7,8 +7,8 @@ import {
   type PortfolioCard,
   type PortfolioStory,
 } from "@/lib/portfolio-api";
-import { PublicApiError } from "@/lib/api";
-import { currentLocale } from "@/lib/i18n";
+import { PublicApiError, messageFor } from "@/lib/api";
+import { currentLocale, tStatic } from "@/lib/i18n";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { p } from "@/lib/base-path";
 
 /**
  * `/public/portfolio` and `/public/portfolio/:slug` — published case notes, from
@@ -57,7 +58,7 @@ export function PortfolioIndexPage() {
         if (!alive) return;
         if (e instanceof PublicApiError && (e.isNotFound || e.status === 403))
           setRows([]);
-        else setError(e instanceof Error ? e.message : String(e));
+        else setError(messageFor(e, tStatic("errors.loadFailed")));
       });
     return () => {
       alive = false;
@@ -100,7 +101,7 @@ export function PortfolioIndexPage() {
                 imageAlt={s.client_name || s.title}
                 eyebrow={s.client_name || undefined}
                 title={s.title}
-                to={`/public/portfolio/${encodeURIComponent(s.slug)}`}
+                to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
                 linkLabel={t("site.proof.more")}
               >
                 {s.service_category ? <Chip>{s.service_category}</Chip> : null}
@@ -137,7 +138,7 @@ export function PortfolioStoryPage() {
         }
         setState({
           kind: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: messageFor(e, tStatic("errors.loadFailed")),
         });
       });
     return () => {
@@ -183,7 +184,7 @@ export function PortfolioStoryPage() {
               {t("site.portfolioPage.empty")}
             </p>
             <div className="mt-5">
-              <MoreLink to="/public/portfolio">
+              <MoreLink to={p("/portfolio")}>
                 {t("site.portfolioPage.back")}
               </MoreLink>
             </div>
@@ -214,7 +215,7 @@ export function PortfolioStoryPage() {
           <PageContainer size="reading">
             <nav aria-label={t("site.portfolioPage.title")} className="mb-6">
               <Link
-                to="/public/portfolio"
+                to={p("/portfolio")}
                 className="text-sm text-muted-foreground underline-offset-4 hover:underline"
               >
                 {t("site.portfolioPage.back")}
@@ -324,7 +325,7 @@ export function PortfolioStoryPage() {
                   </div>
                 </Card>
               ) : null}
-              <MoreLink to="/public#quote">{t("site.hero.cta")}</MoreLink>
+              <MoreLink to={p("#quote")}>{t("site.hero.cta")}</MoreLink>
             </div>
           </div>
         </Section>

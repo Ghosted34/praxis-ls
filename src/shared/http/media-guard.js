@@ -36,6 +36,10 @@ const PUBLIC_SEGMENTS = new Set([
   "login", // login background image (pre-auth)
   "entity", // corporate-entity letterhead logos
   "avatars", // user profile pictures
+  // The tenant's own marketing artwork — the hero behind the headline on
+  // /public. Public by definition: it is the first thing a stranger sees, and
+  // it has to render before anyone has a token or a session.
+  "site",
 ]);
 
 /**

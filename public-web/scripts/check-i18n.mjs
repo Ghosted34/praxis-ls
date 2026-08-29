@@ -375,6 +375,55 @@ for (const file of allFiles) {
   }
 }
 
+/* ── 6. no user-facing SENTENCE outside the dictionary ───────────────────── */
+
+/**
+ * Rule 5 looks for text between JSX tags in `.tsx` files, and that shape is
+ * exactly what it catches: a paragraph typed into a component. It cannot see a
+ * sentence that is a STRING — a `.ts` module's error message, a `hint=` prop, an
+ * argument to `tr()` — and that blind spot held fourteen English sentences in
+ * `lib/` plus eight more in the portal, every one of them shown to French readers
+ * in English while this gate reported both languages complete.
+ *
+ * The signal is punctuation. A user-facing sentence ends in `.`, `?` or `!` and
+ * contains a space; code almost never does — a path, an identifier, a class list
+ * or a format string does not end in a full stop. Run against the whole app
+ * before it was wired in, this found twenty-two real strings and no false ones.
+ *
+ * It also closes the `tr()` trap: `tr("A sentence.")` looks up
+ * `strings.A sentence.`, which i18next splits on "." and can never resolve, so it
+ * returns English silently. Sentences need a dotted key of their own.
+ *
+ * An `i18n-exempt` comment on the line above opts out a genuine exception — a
+ * developer-facing `throw` no visitor can reach, for instance.
+ */
+const SENTENCE = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+for (const file of allFiles) {
+  if (!/\.tsx?$/.test(file)) continue;
+  if (/i18n-dict\.ts$/.test(file)) continue; // the dictionary IS the copy
+  if (/\.test\.tsx?$/.test(file)) continue;
+  const src = stripComments(readFileSync(file, "utf8"));
+  const rel = path.relative(ROOT, file);
+  const lines = src.split("\n");
+  for (const m of src.matchAll(SENTENCE)) {
+    const text = m[2];
+    if (text.length < 15) continue;
+    if (!/\s/.test(text)) continue;
+    if (!/[.?!]$/.test(text)) continue;
+    // A template's `${…}` holes are code, not prose; judge what is left.
+    if (/[<>{}/\\|]/.test(text.replace(/\$\{[^}]*\}/g, ""))) continue;
+    const at = src.slice(0, m.index).split("\n").length;
+    if (/i18n-exempt/.test(lines[at - 2] || "")) continue;
+    fail(
+      rel,
+      at,
+      "prose",
+      `a sentence outside the dictionary — "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`,
+    );
+  }
+}
+
 /* ── report ─────────────────────────────────────────────────────────────── */
 if (failures.length) {
   const byRule = new Map();

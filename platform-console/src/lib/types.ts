@@ -58,6 +58,17 @@ export interface TenantDatabase {
 export interface Subdomain {
   host: string;
   is_primary?: boolean | null;
+  is_custom_domain?: boolean | null;
+  /**
+   * What this host serves. 'erp' is the tenant workspace — the default, and what
+   * every host meant before 0103. 'public' is the marketing site and external
+   * portal at that host's ROOT, with the staff workspace not served there at
+   * all: the shape a tenant wants for a domain their own clients visit.
+   */
+  surface?: "erp" | "public" | null;
+  /** Path prefix the marketing site is served at on this host — `/public`,
+   *  `/site`. The portal is always `/portal` and is not settable. */
+  public_base?: string | null;
   [k: string]: unknown;
 }
 

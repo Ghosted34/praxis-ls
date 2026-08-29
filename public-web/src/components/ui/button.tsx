@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { p } from "@/lib/base-path";
 
 /**
  * Buttons, and the one link that has to LOOK like one.
@@ -43,7 +44,9 @@ const SIZES: Record<Size, string> = {
 const BASE = [
   "inline-flex items-center justify-center gap-2 rounded-[calc(var(--radius)-2px)]",
   "font-semibold transition-colors select-none",
-  "disabled:pointer-events-none disabled:opacity-55",
+  // No `disabled:opacity-*`: the recipes in index.css paint the disabled state
+  // properly, and an opacity laid over them would fade THAT too.
+  "disabled:pointer-events-none",
 ].join(" ");
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -114,7 +117,7 @@ export function ButtonLink({
     );
   }
   return (
-    <Link to={to || "/public"} className={cls} {...rest}>
+    <Link to={to || p()} className={cls} {...rest}>
       {children}
     </Link>
   );

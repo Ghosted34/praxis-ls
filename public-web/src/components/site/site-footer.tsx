@@ -8,6 +8,7 @@ import { BrandGlyph } from "@/components/ui/icons";
 import { LangToggle } from "./site-header";
 import { ThemeToggle } from "./theme-toggle";
 import { NewsletterForm } from "./newsletter-form";
+import { p } from "@/lib/base-path";
 
 /**
  * The footer. Four columns and a small print line, which is what a logistics
@@ -35,20 +36,35 @@ export function SiteFooter() {
 
   const links = {
     services: [
-      { to: "/public/services", label: t("site.services.all") },
-      { to: "/public#quote", label: t("site.footer.quote") },
-      { to: "/public/track", label: t("site.footer.track") },
+      { to: p("/services"), label: t("site.services.all") },
+      { to: p("#quote"), label: t("site.footer.quote") },
     ],
+    // Tracking moved out of `services` and into this column: it is something a
+    // CLIENT does, not something the tenant sells, and it was appearing in both.
+    //
+    // The portal had two entries — `site.footer.portal` and
+    // `site.chrome.portalEntry` are different keys that render the same two
+    // words, pointing at /portal and /portal/login — so the column read "Client
+    // portal / Client portal / Track a shipment". check:i18n cannot catch that:
+    // both keys exist in both languages, and it looks for missing text, not for
+    // two keys that happen to agree.
+    //
+    // Two links, not three. The obvious third — /portal/set-password, for an
+    // invited user — is a dead end from here: that page needs the `?token=`
+    // from the invitation email and, reached bare, can only answer "that link
+    // is incomplete". The marketing page's portal band offers it correctly,
+    // under the sentence "Have an invitation link?"; a footer has no room for
+    // that condition, and a link that can only fail is worse than the
+    // duplicate it would replace.
     clients: [
-      { to: "/portal", label: t("site.footer.portal") },
-      { to: "/portal/login", label: t("site.chrome.portalEntry") },
-      { to: "/public/track", label: t("site.hero.cta2") },
+      { to: "/portal/login", label: t("site.footer.portal") },
+      { to: p("/track"), label: t("site.footer.track") },
     ],
     company: [
-      { to: "/public#how", label: t("site.how.title") },
-      { to: "/public/portfolio", label: t("site.footer.portfolio") },
-      { to: "/public/careers", label: t("site.footer.careers") },
-      { to: "/public#contact", label: t("site.footer.contact") },
+      { to: p("#how"), label: t("site.how.title") },
+      { to: p("/portfolio"), label: t("site.footer.portfolio") },
+      { to: p("/careers"), label: t("site.footer.careers") },
+      { to: p("#contact"), label: t("site.footer.contact") },
     ],
   };
 
@@ -57,7 +73,7 @@ export function SiteFooter() {
       <div className="wrap py-12 md:py-16">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
           <div>
-            <Link to="/public" className="flex items-center gap-2.5">
+            <Link to={p()} className="flex items-center gap-2.5">
               {branding.logoAltUrl || branding.logoUrl ? (
                 <img
                   src={branding.logoAltUrl || branding.logoUrl || undefined}
@@ -119,7 +135,7 @@ export function SiteFooter() {
           <div className="flex items-center gap-3">
             <LangToggle onDark />
             <ThemeToggle onDark />
-            <span className="opacity-70">{t("site.footer.powered")}</span>
+            <span>{t("site.footer.powered")}</span>
           </div>
         </div>
       </div>
@@ -140,7 +156,7 @@ function PublishedServiceLinks() {
       {services.slice(0, 6).map((s) => (
         <li key={s.service_type_id}>
           <Link
-            to={`/public/services/${pickSlug(s, lang)}`}
+            to={p(`/services/${pickSlug(s, lang)}`)}
             className="text-sm text-[var(--hero-foreground)] underline-offset-4 hover:underline"
           >
             {pickText(s, "name", lang)}

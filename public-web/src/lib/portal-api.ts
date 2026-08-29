@@ -12,6 +12,8 @@
  * (2h, `portal_auth.service` TOKEN_TTL); when it expires the user signs in again.
  */
 
+import { tStatic } from "./i18n";
+
 const TOKEN_KEY = "praxis.portal.token";
 
 /**
@@ -245,10 +247,10 @@ export async function portalClientDocumentDownload(
   if (!res.ok) {
     const message =
       res.status === 404
-        ? "That document is no longer available."
+        ? tStatic("errors.docGone")
         : res.status === 401
-          ? "Your session has expired — sign in again."
-          : "Download failed.";
+          ? tStatic("errors.sessionExpired")
+          : tStatic("errors.downloadFailed");
     throw new PortalError("DOWNLOAD_FAILED", message, res.status);
   }
   const url = URL.createObjectURL(await res.blob());
@@ -430,8 +432,8 @@ export async function portalClientMessagesExport(): Promise<void> {
   if (!res.ok) {
     const message =
       res.status === 401
-        ? "Your session has expired — sign in again."
-        : "Couldn't export the conversation.";
+        ? tStatic("errors.sessionExpired")
+        : tStatic("errors.exportFailed");
     throw new PortalError("EXPORT_FAILED", message, res.status);
   }
   const url = URL.createObjectURL(await res.blob());
@@ -474,10 +476,10 @@ export async function portalDataRoomDownload(
   if (!res.ok) {
     const message =
       res.status === 404
-        ? "That document is no longer in the data room."
+        ? tStatic("errors.roomDocGone")
         : res.status === 401
-          ? "Your session has expired — sign in again."
-          : "Download failed.";
+          ? tStatic("errors.sessionExpired")
+          : tStatic("errors.downloadFailed");
     throw new PortalError("DOWNLOAD_FAILED", message, res.status);
   }
   const url = URL.createObjectURL(await res.blob());

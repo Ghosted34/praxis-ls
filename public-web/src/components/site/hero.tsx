@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useBranding } from "@/app/branding";
 import { TrackWidget } from "./track-widget";
 import { RouteGraphic } from "./graphics";
+import { p } from "@/lib/base-path";
 
 /**
  * The hero — a dark plate, one promise, two ways out.
@@ -39,8 +40,15 @@ import { RouteGraphic } from "./graphics";
  */
 export function Hero() {
   const { t } = useTranslation();
-  const { login } = useBranding();
-  const image = login?.backgroundUrl || null;
+  const { branding, login } = useBranding();
+  // The tenant's own marketing artwork first; their login backdrop second.
+  //
+  // The fallback is not tidiness — it is the migration. Until `site/hero` existed
+  // this band could only show `login.backgroundUrl`, so every tenant who wanted a
+  // photograph here set one there. Preferring the new field without the fallback
+  // would blank the hero for all of them on deploy, to fix a problem they had
+  // already worked around.
+  const image = branding?.siteHeroUrl || login?.backgroundUrl || null;
 
   return (
     <section className="band-hero relative overflow-hidden">
@@ -52,12 +60,45 @@ export function Hero() {
             aria-hidden
             className="absolute inset-0 h-full w-full object-cover"
           />
+          {/*
+            THE SCRIM, AND THE NUMBERS IN IT.
+
+            What was here was a flat wash, carbon 95% → 72% across the band. It
+            kept every pixel of copy safe and made the photograph invisible: 72%
+            carbon over even a bright image is still, to the eye, a black
+            rectangle. A tenant could upload artwork and see no difference, and
+            the hero read as a SaaS band rather than a freight company's door.
+
+            The binding constraint is the EYEBROW, not the headline — which is
+            the opposite of what it looks like. Measured against the worst case a
+            tenant can upload (a blown-out, near-white photo), the minimum scrim
+            opacity for each piece of hero copy is:
+
+              headline  #edeeee  large   3.0:1 needed   α ≥ 0.48
+              sub-line  #9ea1a4  normal  4.5:1 needed   α ≥ 0.82
+              eyebrow   #ff5a00  small   4.5:1 needed   α ≥ 0.87   ← binds
+
+            So 0.90 is the floor anywhere copy sits, and the reveal has to come
+            from where copy ISN'T. Two layers rather than one, because the layout
+            changes shape: at lg the copy is a left column and the track card
+            holds the right, so the scrim can fall away horizontally; below lg the
+            two stack and copy spans the full width, so it can only fall away
+            downward, under the card.
+          */}
           <div
             aria-hidden
-            className="absolute inset-0"
+            className="absolute inset-0 lg:hidden"
             style={{
               background:
-                "linear-gradient(100deg, color-mix(in srgb, var(--hero) 95%, transparent) 34%, color-mix(in srgb, var(--hero) 72%, transparent) 100%)",
+                "linear-gradient(180deg, color-mix(in srgb, var(--hero) 94%, transparent) 0%, color-mix(in srgb, var(--hero) 90%, transparent) 58%, color-mix(in srgb, var(--hero) 55%, transparent) 100%)",
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 hidden lg:block"
+            style={{
+              background:
+                "radial-gradient(118% 130% at 20% 50%, color-mix(in srgb, var(--hero) 95%, transparent) 0%, color-mix(in srgb, var(--hero) 92%, transparent) 44%, color-mix(in srgb, var(--hero) 46%, transparent) 74%, color-mix(in srgb, var(--hero) 20%, transparent) 100%)",
             }}
           />
         </>
@@ -97,7 +138,7 @@ export function Hero() {
               {t("site.hero.cta")}
             </a>
             <Link
-              to="/public/track"
+              to={p("/track")}
               className="btn-ghost-hero inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold"
             >
               {t("site.hero.cta2")}

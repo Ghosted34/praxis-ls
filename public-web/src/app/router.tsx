@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { NotFoundPage } from "@/features/not-found/not-found-page";
 import { Skeleton } from "@/components/ui/skeleton";
+import { p, BASE_IS_DEFAULT, LEGACY_BASE } from "@/lib/base-path";
 
 /**
  * The route table for the stranger-facing app.
@@ -143,60 +144,71 @@ export function AppRouter() {
   return (
     <React.Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<Navigate to="/public" replace />} />
+        <Route path="/" element={<Navigate to={p()} replace />} />
 
         {/* ── the public site ── */}
-        <Route path="/public" element={<Marketing />} />
-        <Route path="/public/track" element={<Track />} />
-        <Route path="/public/services" element={<ServicesIndex />} />
-        <Route path="/public/services/:slug" element={<ServiceDetail />} />
-        <Route path="/public/portfolio" element={<PortfolioIndex />} />
-        <Route path="/public/portfolio/:slug" element={<PortfolioStory />} />
-        <Route path="/public/proposals/:token" element={<Proposal />} />
-        <Route path="/public/careers" element={<Careers />} />
-        <Route path="/public/careers/:token" element={<Vacancy />} />
+        <Route path={p()} element={<Marketing />} />
+        <Route path={p("/track")} element={<Track />} />
+        <Route path={p("/services")} element={<ServicesIndex />} />
+        <Route path={p("/services/:slug")} element={<ServiceDetail />} />
+        <Route path={p("/portfolio")} element={<PortfolioIndex />} />
+        <Route path={p("/portfolio/:slug")} element={<PortfolioStory />} />
+        <Route path={p("/proposals/:token")} element={<Proposal />} />
+        <Route path={p("/careers")} element={<Careers />} />
+        <Route path={p("/careers/:token")} element={<Vacancy />} />
         {/* The form used to live at its own path; the band on the home page is the
             same fields, and a bookmark should reach it rather than 404. */}
         <Route
-          path="/public/quote"
-          element={<Navigate to="/public#quote" replace />}
+          path={p("/quote")}
+          element={<Navigate to={p("#quote")} replace />}
         />
         <Route
-          path="/public/contact"
-          element={<Navigate to="/public#contact" replace />}
+          path={p("/contact")}
+          element={<Navigate to={p("#contact")} replace />}
         />
 
         {/* ── the external portal ── */}
         <Route path="/portal/*" element={<PortalApp />} />
 
         {/* ── legacy redirects, kept because the ERP published these URLs ── */}
-        <Route path="/track" element={<LegacyQuery to="/public/track" />} />
-        <Route path="/tracking" element={<LegacyQuery to="/public/track" />} />
+        <Route path="/track" element={<LegacyQuery to={p("/track")} />} />
+        <Route path="/tracking" element={<LegacyQuery to={p("/track")} />} />
         <Route
           path="/portfolio"
-          element={<Navigate to="/public/portfolio" replace />}
+          element={<Navigate to={p("/portfolio")} replace />}
         />
         <Route
           path="/portfolio/:slug"
-          element={<LegacyParam to="/public/portfolio" />}
+          element={<LegacyParam to={p("/portfolio")} />}
         />
         <Route
           path="/proposal/:token"
-          element={<LegacyParam to="/public/proposals" />}
+          element={<LegacyParam to={p("/proposals")} />}
         />
         <Route
           path="/proposals/:token"
-          element={<LegacyParam to="/public/proposals" />}
+          element={<LegacyParam to={p("/proposals")} />}
         />
         <Route
           path="/careers"
-          element={<Navigate to="/public/careers" replace />}
+          element={<Navigate to={p("/careers")} replace />}
         />
         <Route
           path="/careers/:token"
-          element={<LegacyParam to="/public/careers" />}
+          element={<LegacyParam to={p("/careers")} />}
         />
         <Route path="/client-portal/*" element={<LegacySplat to="/portal" />} />
+        {/* The ORIGINAL prefix, kept for good.
+            `/public` was the only prefix until it became a per-tenant setting, so
+            a tenant who renames to `/site` would otherwise strand every URL
+            already printed on a card, sent in an email or indexed by Google.
+            `shared/http/public-web-paths.js` claims `/public` on the server
+            whatever the base is, precisely so this route can answer it.
+            Skipped when the base IS `/public`, where it would redirect to
+            itself. */}
+        {BASE_IS_DEFAULT ? null : (
+          <Route path={`${LEGACY_BASE}/*`} element={<LegacySplat to={p()} />} />
+        )}
         {/* `/login` and `/reset-password` are NOT redirected: they belong to the
             ERP and are served by `client/dist` on the same origin. Landing them
             here would put a staff sign-in behind a marketing app. */}

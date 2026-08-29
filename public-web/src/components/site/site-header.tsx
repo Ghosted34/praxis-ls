@@ -5,6 +5,7 @@ import { getLang, setLang } from "@/lib/i18n";
 import { useBranding } from "@/app/branding";
 import { BrandGlyph, CloseIcon, MenuIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+import { p } from "@/lib/base-path";
 
 /**
  * The header: a utility strip, then the brand nav.
@@ -31,11 +32,11 @@ import { cn } from "@/lib/cn";
  * into a contrast gamble on whatever photo scrolls under them.
  */
 const NAV = [
-  { to: "/public/services", labelKey: "site.nav.services" },
-  { to: "/public/track", labelKey: "site.nav.track" },
-  { to: "/public/portfolio", labelKey: "site.nav.portfolio" },
-  { to: "/public/careers", labelKey: "site.nav.careers" },
-  { to: "/public#contact", labelKey: "site.nav.contact" },
+  { to: p("/services"), labelKey: "site.nav.services" },
+  { to: p("/track"), labelKey: "site.nav.track" },
+  { to: p("/portfolio"), labelKey: "site.nav.portfolio" },
+  { to: p("/careers"), labelKey: "site.nav.careers" },
+  { to: p("#contact"), labelKey: "site.nav.contact" },
 ] as const;
 
 export function SiteHeader() {
@@ -66,7 +67,7 @@ export function SiteHeader() {
       <div className="site-utility">
         <div className="wrap flex h-10 items-center justify-between gap-4 text-xs">
           <Link
-            to="/public/track"
+            to={p("/track")}
             className="font-medium text-[var(--hero-foreground)] transition-opacity hover:opacity-80"
           >
             {t("site.hero.cta2")}
@@ -89,7 +90,7 @@ export function SiteHeader() {
       <div className="site-header">
         <div className="wrap flex items-center justify-between gap-4 py-3">
           <Link
-            to="/public"
+            to={p()}
             className="flex min-w-0 items-center gap-2.5"
             aria-label={name}
           >
@@ -119,7 +120,7 @@ export function SiteHeader() {
 
           <div className="flex items-center gap-2">
             <Link
-              to="/public#quote"
+              to={p("#quote")}
               className="btn-primary hidden h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold md:inline-flex"
             >
               {t("site.hero.cta")}
@@ -167,7 +168,7 @@ export function SiteHeader() {
               </li>
               <li className="py-3">
                 <Link
-                  to="/public#quote"
+                  to={p("#quote")}
                   className="btn-primary flex h-11 items-center justify-center rounded-[calc(var(--radius)-2px)] font-semibold"
                 >
                   {t("site.hero.cta")}

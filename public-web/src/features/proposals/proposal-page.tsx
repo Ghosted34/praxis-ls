@@ -6,9 +6,9 @@ import {
   proposalPdfUrl,
   type ProposalPresentation,
 } from "@/lib/proposal-api";
-import { PublicApiError } from "@/lib/api";
+import { PublicApiError, messageFor } from "@/lib/api";
 import { useBranding } from "@/app/branding";
-import { getLang, setLang } from "@/lib/i18n";
+import { getLang, setLang, tStatic } from "@/lib/i18n";
 import { BrandGlyph, DownloadIcon, DocumentIcon } from "@/components/ui/icons";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -83,7 +83,7 @@ export function ProposalPage() {
         else
           setState({
             kind: "error",
-            message: e instanceof Error ? e.message : String(e),
+            message: messageFor(e, tStatic("errors.loadFailed")),
           });
       });
     return () => {

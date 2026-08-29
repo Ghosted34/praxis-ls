@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { ErrorState } from "@/components/ui/states";
 import { enumText } from "@/lib/format";
+import { tList } from "@/lib/i18n";
 import {
   portalToken,
   portalLogin,
@@ -34,6 +35,7 @@ import {
   portalAccept,
 } from "@/lib/portal-api";
 import { PortalFrame, msg } from "./portal-chrome";
+import { p } from "@/lib/base-path";
 
 export function PortalLogin() {
   const { t } = useTranslation();
@@ -84,6 +86,20 @@ export function PortalLogin() {
         {t("portal.signInSub")}
       </p>
 
+      {/* What is actually behind the form.
+          This screen is one of the two a paying client opens every week, and it
+          was a bare pair of inputs on white: no statement of what the account is
+          for, no route onward for someone who has arrived without one. Three
+          lines of plain fact, not decoration — a stranger who cannot sign in
+          should still learn what they are looking at. */}
+      <ul className="mt-5 space-y-2 border-l-2 border-border pl-4">
+        {tList<string>("portal.signInPromise").map((line) => (
+          <li key={line} className="text-sm text-muted-foreground">
+            {line}
+          </li>
+        ))}
+      </ul>
+
       {sent ? (
         <p className="mt-6 rounded-[calc(var(--radius)+4px)] border border-border bg-card p-4 text-sm text-muted-foreground">
           {t("portal.forgotSent")}
@@ -125,6 +141,29 @@ export function PortalLogin() {
           {t("portal.forgotPassword")}
         </button>
       </form>
+
+      {/* The two ways out. Someone who has an invitation but no password lands
+          here first and had nowhere to go; someone with no account at all was
+          left at a dead end on a page that only offered to sign them in. */}
+      <div className="mt-8 border-t border-border pt-5 text-sm text-muted-foreground">
+        <p>
+          {t("portal.invited")}{" "}
+          <Link
+            to="/portal/set-password"
+            className="text-primary-ink underline underline-offset-4"
+          >
+            {t("portal.setPasswordTitle")}
+          </Link>
+        </p>
+        <p className="mt-2">
+          <Link
+            to={p("/track")}
+            className="text-primary-ink underline underline-offset-4"
+          >
+            {t("portal.trackWithout")}
+          </Link>
+        </p>
+      </div>
     </PortalFrame>
   );
 }

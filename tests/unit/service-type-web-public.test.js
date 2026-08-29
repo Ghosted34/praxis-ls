@@ -48,22 +48,36 @@ describe("public surface wiring (guide §3.2, §6)", () => {
     expect(routesSrc).not.toMatch(/req\.tenantDb\(/);
   });
 
-  test("every route is rate-limited (120 / 15 min)", () => {
+  test("every route is rate-limited — JSON at 120/15min, images on their own larger budget", () => {
     expect(routesSrc).toMatch(/makeLimiter\(\{\s*name:\s*"services-public",\s*max:\s*120,\s*windowMs:\s*15\s*\*\s*60\s*\*\s*1000/);
+    // Images have a SEPARATE, larger budget, and that is deliberate: one visit
+    // to a page of cards spends a request here per card, so sharing the JSON
+    // budget made the page with the most images the one most likely to have
+    // them refused — and a refused image is a broken frame on a sales page, not
+    // a retry-later banner. Still bounded, because each one is read out of the
+    // vault into a Buffer by this process.
+    expect(routesSrc).toMatch(/makeLimiter\(\{\s*name:\s*"services-public-media",\s*max:\s*600,\s*windowMs:\s*15\s*\*\s*60\s*\*\s*1000/);
     for (const method of ["router.get(\"/\"", "router.get(\"/:slug\"", "router.get(\"/media/:id\""]) {
       const callSite = routesSrc.indexOf(method);
       expect(callSite).toBeGreaterThan(-1);
-      // The limiter is referenced in the chain between route declaration and handler.
+      // Some limiter is referenced in the chain between route declaration and
+      // handler — `limit` for the JSON reads, `mediaLimit` for the byte-serve.
       const chain = routesSrc.slice(callSite, callSite + 400);
-      expect(chain).toMatch(/limit,/);
+      expect(chain).toMatch(/[Ll]imit,/);
     }
   });
 
-  test("media responses carry nosniff + Cache-Control public,max-age=300 (same shape as portfolio_public)", () => {
+  test("media responses carry nosniff + a year of immutable caching, keyed on the vault doc id", () => {
     expect(routesSrc).toContain("X-Content-Type-Options");
     expect(routesSrc).toContain("nosniff");
     expect(routesSrc).toContain("Cache-Control");
-    expect(routesSrc).toContain("public, max-age=300");
+    // Deliberately NOT `max-age=300`. The id in this URL is the vault
+    // DOCUMENT's id, so the bytes behind a given URL never change — replacing a
+    // cover uploads a new document, which gets a new id, which is a new URL.
+    // Five minutes meant every visitor re-read every image out of the vault
+    // twice an hour, through a Node process that buffers each one whole.
+    expect(routesSrc).toContain("public, max-age=31536000, immutable");
+    expect(routesSrc).toContain("ETag");
   });
 });
 
@@ -85,7 +99,15 @@ describe("public list (guide §4.6)", () => {
     // and prove there is no Buffer / data-url in the list shape.
     expect(routesSrc).toContain("cover_url:");
     expect(routesSrc).toContain("icon_url:");
-    expect(routesSrc).not.toMatch(/cover_url:[\s\S]*Buffer/);
+    // Scoped to the list handler rather than the whole file. `[\s\S]*` across
+    // the file matched the FIRST `cover_url:` and the LAST `Buffer` anywhere
+    // after it, so a mention of Buffer in the byte-serve route's own comment —
+    // two hundred lines below the list shape — read as bytes in the list.
+    const listStart = routesSrc.indexOf("router.get(\"/\"");
+    const listEnd = routesSrc.indexOf("router.get(\"/:slug\"");
+    expect(listStart).toBeGreaterThan(-1);
+    expect(listEnd).toBeGreaterThan(listStart);
+    expect(routesSrc.slice(listStart, listEnd)).not.toMatch(/cover_url:[\s\S]*Buffer/);
   });
 });
 
@@ -116,6 +138,17 @@ describe("public detail", () => {
     const fakeReq = {
       params: { id: UUID },
       ip: "127.0.0.1",
+      // express-rate-limit reads `req.headers` in its own validation pass
+      // (it warns when X-Forwarded-For is set but `trust proxy` is not).
+      // That pass runs ONCE per limiter instance, so it never fired for
+      // `limit` — an earlier test in this file had already used it up —
+      // and fired on the first call through the new `mediaLimit`, throwing
+      // on `undefined.x-forwarded-for` before the handler ran.
+      headers: {},
+      // …and `req.app`, for the sibling validation that warns when Express
+      // is behind a proxy it has not been told to trust. Both are cheap to
+      // provide and keep the limiter silent in a unit test.
+      app: { get: () => undefined },
       tenantDbIn: jest.fn(async (env, fn) => fn({})),
     };
     const fakeRes = {
@@ -151,6 +184,17 @@ describe("public detail", () => {
     const fakeReq = {
       params: { id: UUID },
       ip: "127.0.0.1",
+      // express-rate-limit reads `req.headers` in its own validation pass
+      // (it warns when X-Forwarded-For is set but `trust proxy` is not).
+      // That pass runs ONCE per limiter instance, so it never fired for
+      // `limit` — an earlier test in this file had already used it up —
+      // and fired on the first call through the new `mediaLimit`, throwing
+      // on `undefined.x-forwarded-for` before the handler ran.
+      headers: {},
+      // …and `req.app`, for the sibling validation that warns when Express
+      // is behind a proxy it has not been told to trust. Both are cheap to
+      // provide and keep the limiter silent in a unit test.
+      app: { get: () => undefined },
       tenantDbIn: jest.fn(async (env, fn) => fn({})),
     };
     const fakeRes = {
@@ -164,7 +208,11 @@ describe("public detail", () => {
     }
     expect(fakeRes.setHeader).toHaveBeenCalledWith("Content-Type", "image/png");
     expect(fakeRes.setHeader).toHaveBeenCalledWith("X-Content-Type-Options", "nosniff");
-    expect(fakeRes.setHeader).toHaveBeenCalledWith("Cache-Control", "public, max-age=300");
+    expect(fakeRes.setHeader).toHaveBeenCalledWith(
+      "Cache-Control",
+      "public, max-age=31536000, immutable",
+    );
+    expect(fakeRes.setHeader).toHaveBeenCalledWith("ETag", expect.any(String));
     expect(fakeRes.send).toHaveBeenCalledWith(expect.any(Buffer));
   });
 

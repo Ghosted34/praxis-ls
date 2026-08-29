@@ -9,6 +9,7 @@
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { tStatic } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useBranding } from "@/app/branding";
 import { LangToggle } from "@/components/site/site-header";
@@ -26,7 +27,7 @@ import { portalToken, PortalError } from "@/lib/portal-api";
 export const msg = (e: unknown, fallback?: string) =>
   e instanceof PortalError
     ? e.message
-    : fallback || "Something went wrong. Please try again.";
+    : fallback || tStatic("errors.generic");
 
 /* ── chrome ─────────────────────────────────────────────────────────────── */
 
@@ -57,9 +58,16 @@ export function PortalFrame({
                 {name}
               </span>
             )}
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              {t("portal.portalName")}
-            </span>
+            {/* Only when the wordmark is the TENANT. With no name and no logo
+                the wordmark already falls back to "Client portal" above, and the
+                eyebrow repeated it verbatim — the header read
+                "Client portal CLIENT PORTAL", which is what an unconfigured
+                workspace showed every one of its clients. */}
+            {branding?.name || branding?.logoUrl ? (
+              <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                {t("portal.portalName")}
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <LangToggle />

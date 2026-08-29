@@ -9,8 +9,8 @@ import {
   pickText,
   type ServiceProfile,
 } from "@/lib/services-api";
-import { PublicApiError } from "@/lib/api";
-import { currentLocale, getLang, setLang } from "@/lib/i18n";
+import { PublicApiError, messageFor } from "@/lib/api";
+import { currentLocale, getLang, setLang, tStatic } from "@/lib/i18n";
 import { usePublishedServices } from "@/lib/use-services";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
@@ -23,6 +23,7 @@ import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { Markdown } from "@/components/ui/markdown";
 import { QuoteForm } from "@/components/site/quote-form";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { p } from "@/lib/base-path";
 
 /**
  * `/public/services` and `/public/services/:slug` — the tenant's published service
@@ -74,7 +75,7 @@ export function ServicesIndexPage() {
                 imageAlt={pickText(s, "name", lang) || ""}
                 eyebrow={s.published_month || undefined}
                 title={pickText(s, "name", lang) || pickSlug(s, lang)}
-                to={`/public/services/${encodeURIComponent(pickSlug(s, lang))}`}
+                to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
                 linkLabel={t("site.services.more")}
               >
                 {pickText(s, "short_description", lang)}
@@ -85,7 +86,7 @@ export function ServicesIndexPage() {
           <EmptyState
             title={t("site.servicesPage.empty")}
             action={
-              <ButtonLink to="/public#quote" size="lg">
+              <ButtonLink to={p("#quote")} size="lg">
                 {t("site.quote.submit")}
               </ButtonLink>
             }
@@ -131,7 +132,7 @@ export function ServiceDetailPage() {
         }
         setState({
           kind: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: messageFor(e, tStatic("errors.loadFailed")),
         });
       });
     return () => {
@@ -152,8 +153,8 @@ export function ServiceDetailPage() {
             `${pickText(profile, "name", lang)} · ${t("site.services.eyebrow")}`,
           description: pickText(profile, "meta_description", lang) || undefined,
           alternates: {
-            en: `/public/services/${encodeURIComponent(profile.slug_en)}?lang=en`,
-            fr: `/public/services/${encodeURIComponent(profile.slug_fr)}?lang=fr`,
+            en: p(`/services/${encodeURIComponent(profile.slug_en)}?lang=en`),
+            fr: p(`/services/${encodeURIComponent(profile.slug_fr)}?lang=fr`),
           },
         }
       : { title: t("site.servicesPage.unavailable") },
@@ -188,7 +189,7 @@ export function ServiceDetailPage() {
               {t("site.servicesPage.empty")}
             </p>
             <div className="mt-5">
-              <MoreLink to="/public/services">
+              <MoreLink to={p("/services")}>
                 {t("site.services.all")}
               </MoreLink>
             </div>
@@ -223,7 +224,7 @@ export function ServiceDetailPage() {
         <PageContainer size="reading">
           <nav aria-label={t("site.services.eyebrow")} className="mb-6">
             <Link
-              to="/public/services"
+              to={p("/services")}
               className="text-sm text-muted-foreground underline-offset-4 hover:underline"
             >
               {t("site.servicesPage.back")}
@@ -252,7 +253,7 @@ export function ServiceDetailPage() {
                   // language too, and the new page must boot with the new `lang`
                   // already in effect rather than re-render on stale state.
                   window.location.assign(
-                    `/public/services/${encodeURIComponent(altSlug)}`,
+                    p(`/services/${encodeURIComponent(altSlug)}`),
                   );
                 }}
                 className="text-primary-ink underline underline-offset-4"
@@ -338,7 +339,7 @@ export function ServiceDetailPage() {
               </Card>
             ) : null}
             <ButtonLink
-              to="/public#quote"
+              to={p("#quote")}
               size="lg"
               className="w-full justify-center"
             >
@@ -373,7 +374,7 @@ export function ServiceDetailPage() {
               <MediaCard
                 key={r.slug_en}
                 title={pickText(r, "name", lang) || ""}
-                to={`/public/services/${encodeURIComponent(pickSlug(r, lang))}`}
+                to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
                 linkLabel={t("site.services.more")}
               />
             ))}

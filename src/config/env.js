@@ -177,6 +177,7 @@ const Schema = z.object({
    */
   SERVE_PUBLIC_WEB: bool(false),
 
+
   DB_HOST: z.string().default(urlParts.host || "localhost"),
   DB_PORT: int(urlParts.port || 5432),
   DB_NAME: z.string().default(urlParts.database || "praxis_platform"),

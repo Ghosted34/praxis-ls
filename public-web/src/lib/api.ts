@@ -24,6 +24,8 @@
  * URL here contains a slug and nothing in the browser needs to know one.
  */
 
+import { tStatic } from "./i18n";
+
 export type FieldErrors = Record<string, string[] | string>;
 
 export class PublicApiError extends Error {
@@ -67,12 +69,12 @@ export class PublicApiError extends Error {
  *  not name the endpoint or the status: on a public page those are for logs. */
 export function readFailMessage(
   e: unknown,
-  fallback = "We could not load this page.",
+  fallback = tStatic("errors.loadFailed"),
 ): string {
   if (e instanceof PublicApiError) {
     if (e.isNotFound) return fallback;
     if (e.isRateLimited) {
-      return "Too many attempts from this connection. Please try again in a few minutes.";
+      return tStatic("errors.rateLimited");
     }
     if (e.message) return e.message;
   }
@@ -124,7 +126,7 @@ export async function publicApi<T = unknown>(
     // fetch` is the browser's whole message, which no visitor can act on.
     throw new PublicApiError(
       "NETWORK_ERROR",
-      "We could not reach the server. Check your connection and try again.",
+      tStatic("errors.network"),
       0,
     );
   }
@@ -139,7 +141,7 @@ export async function publicApi<T = unknown>(
       // content state — surface it rather than rendering "undefined".
       throw new PublicApiError(
         "BAD_RESPONSE",
-        "The server answered in a way we could not read.",
+        tStatic("errors.badResponse"),
         res.status,
       );
     }

@@ -38,12 +38,53 @@ export const en = {
     status: "Status",
     none: "—",
   },
+  /**
+   * Sentences shown when something FAILS.
+   *
+   * They live here, and not next to the code that throws them, for the reason
+   * the rest of this file exists: this app is bilingual and a French visitor who
+   * loses their connection should not be told about it in English. They were the
+   * last English strings in the app, and they survived because `check:i18n`
+   * scans `.tsx` files for text between JSX tags — a literal in a `.ts` module
+   * was structurally invisible to it. The gate now reads `.ts` too.
+   */
+  errors: {
+    loadFailed: "We could not load this page. Please try again in a moment.",
+    rateLimited:
+      "Too many attempts from this connection. Please try again in a few minutes.",
+    network: "We could not reach the server. Check your connection and try again.",
+    badResponse: "The server answered in a way we could not read.",
+    intakeRateLimited: "Too many attempts. Please try again later.",
+    generic: "Something went wrong. Please try again.",
+    docGone: "That document is no longer available.",
+    roomDocGone: "That document is no longer in the data room.",
+    sessionExpired: "Your session has expired — sign in again.",
+    downloadFailed: "Download failed.",
+    exportFailed: "We could not export the conversation.",
+    fileTooLarge: "That file is {{size}} MB — the limit is {{limit}} MB.",
+    fileUnreadable:
+      "That file could not be read. Try saving it again, or pick another.",
+  },
   shell: {
     signOut: "Sign out",
   },
 
   /* ── The portal: verbatim from the staff app (see the header note) ────── */
   portal: {
+    signInPromise: [
+      "Live status on every shipment we are moving for you.",
+      "Every document we hold on your file, ready to download.",
+      "A message line straight to the team handling your cargo.",
+    ],
+    invited: "Have an invitation link?",
+    trackWithout: "Track a shipment without signing in",
+    hintTreasury: "Class-5 balances will appear here.",
+    hintLedger: "No ledger movements for this period.",
+    hintTrail: "Financial and document postings for the period will appear here.",
+    hintRooms: "Requests you make and the documents shared in answer appear here.",
+    describeFirst: "Describe the document you need first.",
+    accessRunsTo: "Your access runs to {{date}}.",
+    yourShipments: "Your current shipments and invoices.",
     portalName: "Client portal",
     signIn: "Sign in",
     signingIn: "Signing in…",
@@ -631,11 +672,44 @@ export const fr = {
     status: "Statut",
     none: "—",
   },
+  errors: {
+    loadFailed:
+      "Nous n’avons pas pu charger cette page. Veuillez réessayer dans un instant.",
+    rateLimited:
+      "Trop de tentatives depuis cette connexion. Veuillez réessayer dans quelques minutes.",
+    network:
+      "Nous n’avons pas pu joindre le serveur. Vérifiez votre connexion et réessayez.",
+    badResponse: "Le serveur a répondu d’une manière que nous n’avons pas pu lire.",
+    intakeRateLimited: "Trop de tentatives. Veuillez réessayer plus tard.",
+    generic: "Une erreur est survenue. Veuillez réessayer.",
+    docGone: "Ce document n’est plus disponible.",
+    roomDocGone: "Ce document n’est plus dans la data room.",
+    sessionExpired: "Votre session a expiré — reconnectez-vous.",
+    downloadFailed: "Échec du téléchargement.",
+    exportFailed: "Nous n’avons pas pu exporter la conversation.",
+    fileTooLarge: "Ce fichier fait {{size}} Mo — la limite est de {{limit}} Mo.",
+    fileUnreadable:
+      "Ce fichier n’a pas pu être lu. Enregistrez-le à nouveau ou choisissez-en un autre.",
+  },
   shell: {
     signOut: "Se déconnecter",
   },
 
   portal: {
+    signInPromise: [
+      "Le statut en direct de chaque expédition que nous traitons pour vous.",
+      "Tous les documents de votre dossier, prêts à télécharger.",
+      "Une ligne directe vers l’équipe qui gère votre marchandise.",
+    ],
+    invited: "Vous avez un lien d’invitation ?",
+    trackWithout: "Suivre une expédition sans se connecter",
+    hintTreasury: "Les soldes de classe 5 apparaîtront ici.",
+    hintLedger: "Aucun mouvement comptable pour cette période.",
+    hintTrail: "Les écritures financières et documentaires de la période apparaîtront ici.",
+    hintRooms: "Vos demandes et les documents transmis en réponse apparaîtront ici.",
+    describeFirst: "Décrivez d’abord le document dont vous avez besoin.",
+    accessRunsTo: "Votre accès court jusqu’au {{date}}.",
+    yourShipments: "Vos expéditions et factures en cours.",
     portalName: "Portail client",
     signIn: "Connexion",
     signingIn: "Connexion…",

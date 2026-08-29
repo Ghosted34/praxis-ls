@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import type { ComponentType } from "react";
 import { useLang } from "@/lib/i18n";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { useAuth } from "@/app/auth/auth-context";
 import { AppShell } from "@/app/layout/app-shell";
@@ -61,15 +61,16 @@ const ResetPasswordPage = lazyNamed(
   () => import("@/features/auth/reset-password-page"),
   "ResetPasswordPage",
 );
-const PortalApp = lazyNamed(
-  () => import("@/features/portal/portal-app"),
-  "PortalApp",
-);
-// Public careers. Lazy like everything else — it is the one route most visitors
-// to this origin will never load, and staff never load it at all.
-const PublicTrackingPage = lazyNamed(() => import("@/features/operations/public-tracking"), "PublicTrackingPage");
-const PublicPortfolioPage = lazyNamed(() => import("@/features/sales/public-portfolio"), "PublicPortfolioPage");
-const PublicProposalPage = lazyNamed(() => import("@/features/sales/public-proposal"), "PublicProposalPage");
+// The stranger-facing surfaces — the marketing site (/public/*) and the external
+// portal (/portal/*) — used to be lazy routes in THIS app. They are now their own
+// application (public-web/), served on the same origin by src/server.js. Two
+// implementations of one URL is how a visitor ends up on whichever copy their
+// cache happens to hold, so the copies here are gone rather than deprecated.
+//
+// What stays below is deliberately NOT part of that move: verification and
+// signing are stranger-facing too, but they belong to the vault, are reached from
+// a printed QR or a one-time token, and were never part of the marketing site.
+//
 // The verification portal. Two routes, one component: `/v/:code` is what a
 // printed QR resolves to, `/verify` is the manual-entry form for someone
 // reading the code off the page (or down a phone line).
@@ -77,10 +78,6 @@ const VerifyPage = lazyNamed(() => import("@/features/public/verify-page"), "Ver
 // The public signing page. `/sign/:token`, and short for the same reason `/v`
 // is: the link is read off a phone screen and occasionally typed.
 const SignPage = lazyNamed(() => import("@/features/public/sign-page"), "SignPage");
-const CareersPage = lazyNamed(
-  () => import("@/features/careers/careers-page"),
-  "CareersPage",
-);
 const PortalAccessPage = lazyNamed(
   () => import("@/features/portal/pages"),
   "PortalAccessPage",
@@ -97,11 +94,6 @@ const SelfServicePage = lazyNamed(
   () => import("@/features/hr/self-service"),
   "SelfServicePage",
 );
-const PublicSitePage = lazyNamed(
-  () => import("@/features/public/public-site"),
-  "PublicSitePage",
-);
-
 const DashboardPage = lazyNamed(
   () => import("@/features/dashboard"),
   "DashboardPage",
@@ -377,35 +369,6 @@ function OfflineBootGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/**
- * Redirect a pre-rename public/portal slug to its new home, preserving the
- * rest of the path (`/client-portal/login` → `/portal/login`,
- * `/proposal/abc` → `/public/proposals/abc`). <Navigate to> cannot do this
- * because it does not substitute route params, and the old URLs are already
- * in circulation (invite emails, share links, SEO).
- */
-function OldPathRedirect() {
-  const loc = useLocation();
-  const [seg, ...rest] = loc.pathname.split("/").filter(Boolean);
-  const map: Record<string, string> = {
-    "client-portal": "/portal",
-    track: "/public/track",
-    portfolio: "/public/portfolio",
-    proposal: "/public/proposals",
-    careers: "/public/careers",
-  };
-  const base = map[seg || ""];
-  if (!base) return <Navigate to="/" replace />;
-  const suffix = rest.map(encodeURIComponent).join("/");
-  // loc.search carries the token for set-password links — dropping it would
-  // break the one-time invite/reset flow.
-  return (
-    <Navigate
-      to={`${base}${suffix ? `/${suffix}` : ""}${loc.search}`}
-      replace
-    />
-  );
-}
 
 export function App() {
   useLang();
@@ -431,61 +394,18 @@ export function App() {
             <Route path="/login" element={<LandingPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-            {/* External portal (client / investor / auditor). OUTSIDE RequireAuth
-            and AppShell on purpose: a portal user has no app_user row, no role
-            and no refresh token, so it authenticates against its own token store
-            (lib/portal-api.ts) and never renders staff navigation. The wildcard
-            keeps every path inside the portal — an external user should never
-            fall through to a staff screen or a staff 404.
+            {/* The external portal and the marketing site are served from
+            public-web/ now (src/server.js mounts them on this same origin), so
+            their routes are not declared here any more. Removing them rather
+            than leaving them behind a flag is the point: while both existed, which
+            one a visitor got depended on this app's service worker cache, and the
+            copy it held was the older one — a wrong page that looked right.
 
-            The audience-neutral `/portal/*` prefix (it serves investors and
-            auditors too, not just clients) matches the API namespace
-            `/api/tenant/portal/...`. The staff grant-management screen moved to
-            `/settings/portal-access`, so there is no overlap to score around. */}
-            <Route path="/portal/*" element={<PortalApp />} />
-            {/* Redirect the pre-rename slug: invite emails already in the wild
-                carry `/client-portal/set-password?...` (7-day TTL), so keep the
-                old prefix working while preserving the subpath. */}
-            <Route
-              path="/client-portal/*"
-              element={<OldPathRedirect />}
-            />
+            The staff side of the portal is unaffected and stays in this app:
+            /settings/portal-access, /settings/client-support and the audit room
+            are where a member of staff invites portal users, answers their
+            tickets and publishes documents to them. */}
 
-            {/* Public pages — the marketing-site surfaces. OUTSIDE RequireAuth
-            and OUTSIDE AppShell, for the same reason the portal is: the visitor
-            is a stranger with no account. The shell would put the icon rail, the
-            ribbon, the LIVE/TEST toggle, the clock and the copilot in front of a
-            job applicant — several of which fire authenticated requests on mount
-            and would send an anonymous visitor down the session-death path.
-
-            Grouped under `/public/*` to mirror the API namespace
-            (`/api/tenant/public/...`), so the stranger-facing surface is visibly
-            separate from the app in URLs, logs and analytics. The old top-level
-            slugs redirect for links already in circulation (SEO, emails).
-
-            The token in a URL is the record's minted public token (careers,
-            proposals), which is the ONLY credential the public endpoint accepts.
-            It is never an internal id: ids appear in staff URLs and logs, and
-            accepting one here would make every internal identifier a public
-            credential. Two routes rather than a splat, so `/public/careers/
-            anything/else` falls to the catch-all rather than rendering a detail
-            view for a token that has a slash in it. */}
-            <Route path="/public" element={<PublicSitePage />} />
-            <Route path="/public/track" element={<PublicTrackingPage />} />
-            <Route path="/public/portfolio" element={<PublicPortfolioPage />} />
-            <Route
-              path="/public/portfolio/:slug"
-              element={<PublicPortfolioPage />}
-            />
-            <Route
-              path="/public/proposals/:token"
-              element={<PublicProposalPage />}
-            />
-            <Route path="/public/careers" element={<CareersPage />} />
-            <Route
-              path="/public/careers/:token"
-              element={<CareersPage />}
-            />
             {/* The verification portal. Deliberately NOT under `/public/*`,
             which every other stranger-facing surface uses — and the exception
             is measured, not stylistic. This path is printed inside a QR that
@@ -518,13 +438,10 @@ export function App() {
             every internal identifier a signing credential. */}
             <Route path="/sign/:token" element={<SignPage />} />
 
-            {/* Old public slugs → /public/* (links already in circulation). */}
-            <Route path="/track" element={<OldPathRedirect />} />
-            <Route path="/portfolio" element={<OldPathRedirect />} />
-            <Route path="/portfolio/:slug" element={<OldPathRedirect />} />
-            <Route path="/proposal/:token" element={<OldPathRedirect />} />
-            <Route path="/careers" element={<OldPathRedirect />} />
-            <Route path="/careers/:token" element={<OldPathRedirect />} />
+            {/* The old public slugs (/track, /portfolio, /proposal/:token,
+            /careers, /client-portal/*) are redirected by public-web's router now,
+            which is also what answers the paths they redirect TO. Keeping a second
+            redirect table here would mean two answers to one URL again. */}
 
             {/* ShellProvider sits INSIDE RequireAuth (its two reads need a token) and
           OUTSIDE AppShell, so the routed screens are inside it too — the rail

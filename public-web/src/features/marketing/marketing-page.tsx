@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRightIcon } from "@/components/ui/icons";
 import { QuoteForm } from "@/components/site/quote-form";
 import { ContactForm } from "@/components/site/contact-form";
+import { p } from "@/lib/base-path";
 
 /**
  * The marketing home — `/public`.
@@ -85,13 +86,22 @@ function ServicesBand() {
         key: s.service_type_id,
         title: pickText(s, "name", lang),
         desc: pickText(s, "short_description", lang),
-        to: `/public/services/${pickSlug(s, lang)}`,
+        // The API returns a cover per service type and `MediaCard` has always
+        // accepted one — this band was the only caller that dropped it, so the
+        // home page showed four text boxes for services the /public/services
+        // index renders as image cards. `ProofBand` below passes the same field
+        // to the same component.
+        image: s.cover_url,
+        to: p(`/services/${pickSlug(s, lang)}`),
       }))
     : tList<{ t: string; d: string }>("site.services.items").map((i) => ({
         key: i.t,
         title: i.t,
         desc: i.d,
-        to: "/public#quote",
+        // The dict fallback describes what a service TYPE does; there is no
+        // tenant artwork behind it, and N12 forbids inventing one.
+        image: null as string | null,
+        to: p("#quote"),
       }));
 
   return (
@@ -102,7 +112,7 @@ function ServicesBand() {
       lead={t("site.services.sub")}
       aside={
         services.length ? (
-          <MoreLink to="/public/services">{t("site.services.all")}</MoreLink>
+          <MoreLink to={p("/services")}>{t("site.services.all")}</MoreLink>
         ) : undefined
       }
       divided
@@ -111,6 +121,8 @@ function ServicesBand() {
         {items.map((s) => (
           <MediaCard
             key={s.key}
+            image={s.image}
+            imageAlt={s.title || ""}
             title={s.title}
             to={s.to}
             linkLabel={t("site.services.more")}
@@ -173,7 +185,7 @@ function ProofBand() {
       title={t("site.proof.title")}
       lead={t("site.proof.sub")}
       aside={
-        <MoreLink to="/public/portfolio">{t("site.services.all")}</MoreLink>
+        <MoreLink to={p("/portfolio")}>{t("site.services.all")}</MoreLink>
       }
       divided
     >
@@ -196,7 +208,7 @@ function ProofBand() {
               imageAlt={s.client_name || s.title}
               eyebrow={s.client_name || undefined}
               title={s.title}
-              to={`/public/portfolio/${encodeURIComponent(s.slug)}`}
+              to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
               linkLabel={t("site.proof.more")}
             >
               {s.published_month ? (

@@ -15,6 +15,9 @@ export type Branding = {
   primaryForeground: string | null;
   logoUrl: string | null;
   logoAltUrl?: string | null;
+  /** The marketing hero on /public. Its own field since the tenant stopped
+   *  having to reuse their login backdrop for it. */
+  siteHeroUrl?: string | null;
   faviconUrl?: string | null;
   secondary?: string | null;
   accent?: string | null;

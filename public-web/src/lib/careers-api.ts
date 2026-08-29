@@ -11,7 +11,7 @@
  * careers link is this workspace's own domain and carries no slug.
  */
 import { publicApi, publicGet } from "./api";
-import { currentLocale } from "./i18n";
+import { currentLocale, tStatic } from "./i18n";
 
 /** What the server chooses to make public — an allow-list built in
  *  `careers.service`, never a database row. Anything absent here is absent on
@@ -93,7 +93,10 @@ export function fileToDataUrl(file: File): Promise<string> {
     if (file.size > CV_MAX_BYTES) {
       return reject(
         new Error(
-          `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 8 MB.`,
+          tStatic("errors.fileTooLarge", {
+            size: (file.size / 1024 / 1024).toFixed(1),
+            limit: CV_MAX_BYTES / 1024 / 1024,
+          }),
         ),
       );
     }
@@ -101,7 +104,7 @@ export function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () =>
       reject(
         new Error(
-          "That file could not be read. Try saving it again, or pick another.",
+          tStatic("errors.fileUnreadable"),
         ),
       );
     reader.onload = () => resolve(String(reader.result));

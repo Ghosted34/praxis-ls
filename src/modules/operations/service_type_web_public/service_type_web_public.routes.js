@@ -38,6 +38,19 @@ const repo = require("../service_type_web/service_type_web.repo");
 
 const router = express.Router();
 const limit = makeLimiter({ name: "services-public", max: 120, windowMs: 15 * 60 * 1000 });
+/**
+ * Images get their own budget, and a large one.
+ *
+ * A marketing page carries a cover per card, so ONE visit to the case-note index
+ * spends as many requests here as a dozen visits spend on the JSON. Sharing the
+ * 120/15min read budget meant the page that shows the most images was the page
+ * most likely to have them refused — and a refused image is a broken frame on a
+ * sales page, not a retry-later banner.
+ *
+ * Still limited rather than open: these read from the vault, so an unbounded
+ * loop is a way to make this process do work on someone else's behalf.
+ */
+const mediaLimit = makeLimiter({ name: "services-public-media", max: 600, windowMs: 15 * 60 * 1000 });
 
 /** The shape the public list returns (guide §4.6): no bodies, no bytes —
  *  just the addressable identity, the card teaser, the cover/icon URLs
@@ -112,7 +125,7 @@ router.get("/:slug", limit, asyncHandler(async (req, res) => {
   });
 }));
 
-router.get("/media/:id", limit, asyncHandler(async (req, res) => {
+router.get("/media/:id", mediaLimit, asyncHandler(async (req, res) => {
   // publicMediaForServe is the fail-closed allowlist re-check — it joins
   // the owning profile + service_type and asserts the parent is published
   // AND active, the role is one of COVER/ICON/GALLERY, and the doc is
@@ -124,7 +137,17 @@ router.get("/media/:id", limit, asyncHandler(async (req, res) => {
   const buffer = await storage.get(doc.storage_path);
   res.setHeader("Content-Type", doc.public_media_content_type);
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Cache-Control", "public, max-age=300");
+  // A YEAR, and immutable. The id in this URL is the VAULT DOCUMENT's id, so the
+  // bytes behind a given URL never change: replacing a cover, icon or gallery image uploads a new
+  // document, which gets a new id, which is a new URL. `max-age=300` — five
+  // minutes, the shape of a cache header for a JSON list — meant every visitor
+  // re-fetched every image twice an hour from the Node process, which reads each
+  // one into a Buffer to serve it.
+  //
+  // An ETag as well, so the first revalidation after a year is a 304 rather than
+  // another full read: the id plus the byte length identifies these exactly.
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  res.setHeader("ETag", `"${req.params.id}-${buffer.length}"`);
   res.send(buffer);
 }));
 

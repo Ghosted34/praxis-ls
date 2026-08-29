@@ -109,6 +109,24 @@ export default defineConfig({
           /^\/media/,
           /^\/manifest\.webmanifest$/,
           /^\/icons\//,
+          // The stranger-facing app (public-web/) is served by the API on these
+          // SAME tenant hosts, under its own prefixes (src/server.js,
+          // PUBLIC_WEB_PATH). Without these entries this service worker answers
+          // those navigations from ITS cache before the request ever reaches the
+          // server, and what the mount does is irrelevant to anyone who has
+          // loaded the ERP once.
+          //
+          // The failure is silent rather than loud, which is why it is worth the
+          // comment: this app still has its own /public/* and /portal/* routes
+          // below, so the shadowed visitor is not shown an error — they are shown
+          // an OLDER implementation of the same page, at the same URL, looking
+          // plausible. Whoever is testing the new site from a browser that has
+          // used the ERP may never realise they are not looking at it.
+          /^\/public(\/|$)/,
+          /^\/public-assets\//,
+          /^\/portal(\/|$)/,
+          // The legacy paths the mount also claims, kept in step with it.
+          /^\/(track|tracking|portfolio|proposal|proposals|careers|client-portal)(\/|$)/,
         ],
         // woff2 is NOT precached. The glob used to include it, which was right
         // when one family was bundled and became wrong the moment fifteen were:

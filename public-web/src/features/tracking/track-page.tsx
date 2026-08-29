@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { PublicApiError } from "@/lib/api";
+import { PublicApiError, messageFor } from "@/lib/api";
 import { trackShipment, type TrackingResult } from "@/lib/tracking-api";
-import { currentLocale } from "@/lib/i18n";
+import { currentLocale, tStatic } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
@@ -79,7 +79,7 @@ export function TrackPage() {
         } else {
           setState({
             kind: "error",
-            message: e instanceof Error ? e.message : String(e),
+            message: messageFor(e, tStatic("errors.loadFailed")),
           });
         }
       });

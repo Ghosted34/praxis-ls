@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
+import { p } from "@/lib/base-path";
 
 /**
  * Track & trace — the one functional object on the homepage, and the reason this
@@ -50,7 +51,7 @@ export function TrackWidget({
       setParams({ ref: v });
       return;
     }
-    nav(`/public/track?ref=${encodeURIComponent(v)}`);
+    nav(p(`/track?ref=${encodeURIComponent(v)}`));
   }
 
   return (
@@ -89,7 +90,7 @@ export function TrackWidget({
         type="submit"
         disabled={!value.trim()}
         className={cn(
-          "min-h-11 shrink-0 rounded-[calc(var(--radius)-2px)] px-6 text-sm font-semibold transition-colors disabled:opacity-55",
+          "min-h-11 shrink-0 rounded-[calc(var(--radius)-2px)] px-6 text-sm font-semibold transition-colors",
           onDark ? "btn-onhero" : "btn-primary",
         )}
       >

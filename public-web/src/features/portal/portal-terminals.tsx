@@ -9,6 +9,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
+import { tStatic } from "@/lib/i18n";
 import { Panel } from "@/components/ui/panel";
 import { num, dateFmt } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -186,7 +187,7 @@ export function InvestorTerminal({ me }: { me: PortalMe }) {
           {cash.accounts.length === 0 ? (
             <EmptyState
               title={tr("No treasury accounts")}
-              hint={tr("Class-5 balances will appear here.")}
+              hint={t("portal.hintTreasury")}
             />
           ) : (
             <>
@@ -250,7 +251,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
 
   async function createRoom() {
     const trimmed = note.trim();
-    if (!trimmed) return setRoomError("Describe the document you need first.");
+    if (!trimmed) return setRoomError(tStatic("portal.describeFirst"));
     setRoomBusy("create");
     setRoomError(null);
     try {
@@ -348,7 +349,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
           {tb.rows.length === 0 ? (
             <EmptyState
               title={tr("No movements")}
-              hint={tr("No ledger movements for this period.")}
+              hint={t("portal.hintLedger")}
             />
           ) : (
             <div className="max-h-80 overflow-auto">
@@ -403,9 +404,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
           {trail.length === 0 ? (
             <EmptyState
               title={tr("No postings")}
-              hint={tr(
-                "Financial and document postings for the period will appear here.",
-              )}
+              hint={t("portal.hintTrail")}
             />
           ) : (
             <div className="max-h-96 overflow-auto">
@@ -482,9 +481,7 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
           ) : rooms.length === 0 ? (
             <EmptyState
               title={tr("No requests yet")}
-              hint={tr(
-                "Requests you make and the documents shared in answer appear here.",
-              )}
+              hint={t("portal.hintRooms")}
             />
           ) : (
             <ul className="divide-y divide-border">
@@ -740,8 +737,10 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {me.grants.CLIENT.expires_at
-          ? `Your access runs to ${dateFmt(me.grants.CLIENT.expires_at)}.`
-          : "Your current shipments and invoices."}
+          ? t("portal.accessRunsTo", {
+              date: dateFmt(me.grants.CLIENT.expires_at),
+            })
+          : t("portal.yourShipments")}
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">

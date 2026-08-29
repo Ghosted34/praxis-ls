@@ -47,6 +47,11 @@ const KEYS = {
   logoUrl: "logo_url",
   logoAltUrl: "logo_alt_url",
   faviconUrl: "favicon_url",
+  // The marketing hero on /public. Separate from the login background, which it
+  // used to borrow: one uploaded file was doing two unrelated jobs, and it lived
+  // under Settings → Login, which is not where anyone looks for the photograph on
+  // their public website.
+  siteHeroUrl: "site_hero_url",
   // typography + shape
   fontDisplay: "font_display",
   fontBody: "font_body",
@@ -153,6 +158,40 @@ async function setLogin(client, { actorId, ...fields }) {
 
 /** Store an uploaded login background (base64 data URL), namespaced per tenant.
  *  Does NOT persist background_url — the caller sets it via setLogin() on Save. */
+/**
+ * The marketing hero for /public.
+ *
+ * Same shape as `uploadLoginBackground` below — deliberately, because a second
+ * way of accepting an image is a second way of getting it wrong — with two
+ * differences.
+ *
+ * A LARGER CAP, because 512 KB is a login backdrop and this is the first thing a
+ * visitor sees. Not much larger: the ceiling is the API's 2 MB JSON body limit
+ * and base64 inflates by a third, so anything over ~1.4 MB could not arrive at
+ * all. 1 MB is also the right answer on its own terms — a hero is the heaviest
+ * thing on the page, and this app's whole payload budget is 128 KB for a reason.
+ *
+ * ITS OWN STORAGE SEGMENT, `site/`, added to the public allow-list in
+ * shared/http/media-guard.js. Under `login/` it would have been served, but the
+ * two would have been indistinguishable in the bucket a year from now.
+ */
+const MAX_HERO_BYTES = 1024 * 1024;
+
+async function uploadSiteHero({ dataUrl, slug }) {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
+  if (!m) throw new AppError("BAD_IMAGE", "Expected a base64 image data URL", 400);
+  const contentType = m[1].toLowerCase();
+  const ext = LOGO_EXT[contentType];
+  if (!ext) throw new AppError("UNSUPPORTED_IMAGE", `Unsupported image type: ${contentType}`, 400);
+  const buffer = Buffer.from(m[2], "base64");
+  if (buffer.length > MAX_HERO_BYTES) {
+    throw new AppError("IMAGE_TOO_LARGE", "The hero image must be 1 MB or smaller", 413);
+  }
+  const key = `tenant_${slug}/site/hero_${crypto.randomBytes(6).toString("hex")}.${ext}`;
+  const stored = await storage.put(buffer, { key, contentType });
+  return { siteHeroUrl: stored.public_url };
+}
+
 async function uploadLoginBackground({ dataUrl, slug }) {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
   if (!m) throw new AppError("BAD_IMAGE", "Expected a base64 image data URL", 400);
@@ -331,6 +370,7 @@ module.exports = {
   getLogin,
   setLogin,
   uploadLoginBackground,
+  uploadSiteHero,
   getPwa,
   setPwa,
   uploadAppIcon,

@@ -60,6 +60,9 @@ router.post("/logo", authMiddleware, requirePermission("MOD-70", "edit"), valida
 router.get("/login", controller.getLogin);
 router.put("/login", authMiddleware, requirePermission("MOD-70", "edit"), validator.putLogin, controller.putLogin);
 router.post("/login/background", authMiddleware, requirePermission("MOD-70", "edit"), validator.upload, controller.uploadLoginBackground);
+// The marketing hero on /public. Same gate as every other brand asset — the
+// upload is staff-only; only the RESULT is public.
+router.post("/site/hero", authMiddleware, requirePermission("MOD-70", "edit"), validator.upload, controller.uploadSiteHero);
 
 // Installed-app (PWA) design — manifest identity, home-screen icon, boot splash
 // and the install/offline copy. GET is PUBLIC (the boot splash paints pre-auth);

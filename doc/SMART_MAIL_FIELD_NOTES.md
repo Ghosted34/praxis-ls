@@ -10,6 +10,136 @@ Newest first.
 
 ---
 
+## FN-5 · 2026-08-29 · Eighteen finished capabilities that no screen could reach — and the two gates that were both looking the wrong way
+
+**Severity:** the mailbox worked, and a substantial part of what had been built
+for it was invisible. Nothing was broken; a great deal was unreachable.
+**Found by:** a walk of the product against §5.6, §8.3, §8.7 and §5.6.3, then a
+walk of every mail route against the client.
+
+**The eighteen**, so the number is checkable rather than rhetorical: `bcc_address`;
+the `color`, `highlight`, `textAlign` and `image` marks; the `starred`, `unread`,
+`vip` and `has_attachment` thread filters; `GET /mail/drafts` and
+`DELETE /mail/drafts/:id`; `GET /mail/outbox` and `POST /mail/send/:id/cancel`
+outside the composer; `DELETE /mail/threads/:id` and `POST /mail/folders/empty`;
+the bulk `"delete"` verb; `label_fr` on every action card; and
+`services/ai/transcription.service`, which mail needed and could not reach.
+
+A separate group — reply-all, forward, remote-image blocking, quoted-history
+folding, and disconnecting a mailbox — was specified and simply not built, on
+either side. Those are ordinary unfinished work. The eighteen above are the
+interesting ones, because every gate we have was green over them.
+
+### The shape
+
+FN-3 named this class — "three finished features that no screen could reach" —
+and fixed the three it found. It did not ask how many more there were. There
+were eighteen, and they fall into three groups.
+
+**Things the server has accepted for several PRs, that nothing ever asked for.**
+`listThreads` has taken `starred`, `unread`, `vip` and `has_attachment` since
+PR-1A: the repo builds a predicate for each, `thread.service` parses each,
+`ThreadQuery` declares all four. The rail offered none. So a person could star a
+conversation — the list draws a star on every row, and it flips optimistically,
+so people used it — and then had no way to ever see what they had starred. The
+VIP lane §5.6 specifies did not exist as a lane at all, though `thread.repo`
+already orders `is_vip DESC` and the row already draws the pill.
+
+Same shape, five more times: `bcc_address` (column, draft field, send payload,
+serializer case — no box to type it into, so the one recipient a forwarder most
+often needs to hide could only go in Cc, where the counterparty sees them);
+`Color`, `Highlight`, `TextAlign` and `Image` (loaded in the editor, rendered by
+`compose.js`, no toolbar control); `"delete"` on the bulk verb list.
+
+**Halves of a feature.** §8.7's voice is audio → transcript → toned email. The
+second half was built, tested and reachable. The first did not exist, so the
+composer shipped a button labelled **Dictate** over a textarea you had to TYPE
+into — not a smaller version of dictation, the opposite of it, under a label
+promising the thing it could not do.
+
+`POST /assist/compose` is the same story from the other side. It reached the
+model with the operator's draft and the thread transcript, and never with the
+SUBJECT — which on a new message is the only thing that has been typed, and is
+almost always the topic in full. So "Write it for me" on a blank composer asked
+a model to write about nothing and got courteous filler back, every time.
+
+**Whole features with no wrapper at all.** H-1's deletion is retention-aware,
+ledgered, and tells the mail server so a deleted message does not return on the
+next sync. It had no client wrapper, so Trash accumulated for ever and §9.6's
+promise that "deletion of an archived message is blocked in the service layer"
+protected nothing — nothing could delete anything, so nothing needed blocking.
+The draft list and the outbox were the same: `GET /mail/drafts`,
+`DELETE /mail/drafts/:id`, `GET /mail/outbox` and `POST /mail/send/:id/cancel`
+all worked, and the composer told people in as many words "you can cancel it
+from the outbox until then" while there was no outbox.
+
+### Why both gates were green
+
+`mail-client-api-wiring.test.js` walks the WRAPPERS in `mail-api.ts` and asks
+who calls them. It is a good gate and it found three real defects. It cannot ask
+its question of an endpoint that has no wrapper — so deletion was invisible to
+it, and it had even grandfathered `listOutbox` with the reason "superseded by
+the thread list", which is not merely stale but wrong: the queue is precisely
+the mail that is NOT in the thread list yet.
+
+`mail-orphan-sweep`, `orphan-wiring-sweep`, `mail-send-point-wiring` and
+`mail-feature-gating` all ask their question of `src/`. None can see a query
+parameter the server accepts and no client sends, because from `src/`'s side
+`q.starred` IS referenced — by the repo that implements it.
+
+So the whole class sits in the gap: a capability is declared in one place,
+implemented in a second, and never named in a third, and every gate is looking
+at the first two.
+
+### The two shapes worth internalising
+
+**A default that looks harmless is a decision nobody made.** `ActionCards` took
+`language = "en"`. Every card carries `label_en` and `label_fr`, the server has
+always sent both, and no caller ever passed the prop — so `label_fr` was never
+once rendered and a French operator read English card names in an otherwise
+French rail. Nothing failed. Nothing could fail. The English default WAS the
+behaviour, and it was chosen by a parameter list.
+
+**A promise in the UI is a test that nobody wrote.** Three sentences on screen
+described behaviour that did not exist: "you can cancel it from the outbox
+until then", "Dictate", and — before FN-3 — "the composer checks this list
+before a send". Each was written by somebody implementing the server half, in
+good faith, in the same week. A sentence in the interface is a claim about the
+system, and the cheapest place to catch a false one is a test that pins the
+sentence to its call site, the way FN-3's `mail-client-api-wiring` now pins the
+Trust tab's.
+
+### What now prevents it
+
+- `mail-client-api-wiring.test.js` asks its question from **both ends**. Every
+  `router.<verb>` under `src/modules/mail` has a wrapper, or is named in one of
+  two lists with a reason: routes a browser must never call (webhooks, OAuth
+  redirect targets, the public secure-link page) and endpoints ahead of their
+  screen — the latter capped, like the wrapper-side allowance, so it can only
+  shrink. Path normalisation counts braces rather than pattern-matching them,
+  because the interpolations in `mail-api.ts` nest; a `\$\{[^}]*\}` stops at the
+  first `}` and reports six wired routes as orphans.
+- The wrapper-side allowance went 23 → 21, and both entries came off because a
+  screen now calls them rather than because the reason was rewritten.
+- `message-body.test.ts` pins §5.6.3's two reading-pane rules — remote images
+  held back, quoted history folded, in both languages — as pure functions,
+  which is what let them be written at all.
+- `pending.test.tsx` pins the outbox's promise: Cancel is offered only on a
+  HELD row, because `repo.cancel` is `UPDATE … WHERE status = 'HELD'` and a
+  button on any other status can only ever 409.
+
+### One thing this exposed and did not close
+
+FN-1's second open item still stands: `mail.service.explainSendError` and
+`smtp-error.map.js` are two SMTP classifiers, and the send path uses the one
+FN-1 diagnosed as wrong. This sweep touched the send path only to add Bcc, and
+a behaviour change there deserves its own review with its own fixtures.
+
+`tests/integration/mail-model-backfill.test.js`, named by §5.9, is still absent
+for the reason FN-3 recorded: it needs a CI harness change, not a test file.
+
+---
+
 ## FN-4 · 2026-08-22 · The backfill split the recipients on the message and not on the thread
 
 **Severity:** every conversation that arrived with two recipients before 10731

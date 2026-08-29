@@ -245,10 +245,34 @@ table-based HTML — our own `compose.js` emits a table layout. A body that bega
 mid-table would have lost its cells. `<template>` parses in template context,
 which keeps them, and is inert for the same reason.
 
+**A third, and then a fourth inside the fix for it.** `srcset` is a
+comma-separated CANDIDATE LIST — `cid:logo 1x, https://track.example/p.gif 2x`
+— and the blocker tested it as a single URL. Since the test answers "local" to
+a `cid:` prefix, a srcset whose FIRST entry was local let every remote entry
+after it through, and a retina screen picks the 2x one. Nothing flagged this:
+CodeQL had no opinion, the rewrite did not disturb it, and the existing test
+used a single-candidate srcset — the example the code was written against. It
+surfaced only from re-reading `isRemote`'s callers and asking what each
+attribute actually contains.
+
+The obvious fix — split on commas — was also wrong, in the opposite direction.
+Every base64 `data:` URI contains a comma, so `data:image/png;base64,AAAB`
+splits into a local half and a tail with no scheme, and an inline logo gets
+blocked behind "Show images" for no reason. Splitting on WHITESPACE instead
+fails the other way: `url1,url2` is a valid candidate list with no descriptors
+and therefore no spaces, so a leading `cid:` masks a trailing `https:` — and
+that direction leaks. The attribute needs both splits, with `data:` exempted
+from the second, and all four shapes are now tests rather than reasoning.
+
 The shape: **a defence of a shortcut is not a test of it.** The comment was
 specific, plausible, and load-bearing in review — and it was reasoning about
 the wrong risk. What settled it was a tool that does not read comments, and
-then three tests that state the two failures in the form of inputs.
+then tests that state each failure in the form of an input.
+
+And the corollary, from the third one: **a test written from the example in
+your head tests the example.** `srcset="https://…/1.png 1x"` passes on an
+implementation that only ever looks at the first candidate, because it only
+HAS one. The list form is the one the attribute exists for.
 
 ### One thing this exposed and did not close
 

@@ -76,6 +76,54 @@ describe("remote content", () => {
     );
     expect(out.blocked).toBe(2);
   });
+
+  /*
+   * `srcset` is the one attribute here holding MORE THAN ONE url, and the two
+   * obvious ways to split it are each wrong in a different direction. These
+   * four shapes are the ones that decide it — the first two were both bugs.
+   */
+  describe("srcset, which is a candidate list", () => {
+    const srcset = (v: string) => blockRemoteContent(`<img srcset="${v}">`);
+
+    it("READS EVERY CANDIDATE, not just the first", () => {
+      // Testing the value as one URL asks only about the first entry, so a
+      // list starting `cid:` let every remote entry after it through — and a
+      // retina screen picks the 2x one.
+      const out = srcset("cid:logo@x 1x, https://track.example/p.gif 2x");
+      expect(out.blocked).toBe(1);
+      expect(out.html).not.toContain(" srcset=");
+      expect(restoreRemoteContent(out.html)).toContain("https://track.example/p.gif 2x");
+    });
+
+    it("DOES NOT SPLIT A data: URI ON ITS OWN COMMA", () => {
+      // Every base64 data URI contains one. Splitting on commas leaves `AAAB`,
+      // which has no local scheme and so reads as remote — blocking an inline
+      // logo behind "Show images" for no reason.
+      const out = srcset("data:image/png;base64,AAAB 1x");
+      expect(out.blocked).toBe(0);
+      expect(out.html).toContain("srcset=");
+    });
+
+    it("still splits a comma-only list, which has no spaces to split on", () => {
+      // `url1,url2` is a valid two-candidate list with no descriptors. Relying
+      // on whitespace alone would test it as a single URL — and this is the
+      // dangerous direction, because a leading cid: would mask the https:.
+      const out = srcset("cid:logo@x,https://track.example/p.gif");
+      expect(out.blocked).toBe(1);
+    });
+
+    it("does not mistake a descriptor for a URL", () => {
+      // `1x,cid:b@x` arrives as one whitespace token holding both.
+      const out = srcset("cid:a@x 1x,cid:b@x 2x");
+      expect(out.blocked).toBe(0);
+    });
+
+    it("leaves an all-local srcset alone", () => {
+      const out = srcset("cid:a@x 1x, cid:b@x 2x");
+      expect(out.blocked).toBe(0);
+      expect(out.html).toContain("srcset=");
+    });
+  });
 });
 
 describe("quoted history", () => {

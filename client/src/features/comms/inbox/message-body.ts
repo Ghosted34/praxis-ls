@@ -75,6 +75,59 @@ const isRemote = (url: string): boolean => {
   return !/^(cid:|data:|blob:)/i.test(v);
 };
 
+/** A srcset descriptor: `2x`, `1.5x`, `640w`. Everything else is a URL. */
+const DESCRIPTOR = /^\d+(?:\.\d+)?[wx]$/i;
+
+/**
+ * The URLs inside a `srcset`, which is the one attribute here that holds more
+ * than one.
+ *
+ * ── WHY NEITHER OBVIOUS SPLIT IS CORRECT ────────────────────────────────────
+ *
+ * A srcset is a comma-separated candidate list, each candidate a URL and an
+ * optional whitespace-separated descriptor:
+ *
+ *     cid:logo 1x, https://track.example/p.gif 2x
+ *
+ * Splitting on COMMAS breaks `data:image/png;base64,AAAB` in half, and the tail
+ * (`AAAB`) has no local scheme, so an inline image reads as remote and gets
+ * blocked — a false positive that hides a legitimate logo behind "Show images".
+ *
+ * Splitting on WHITESPACE breaks `url1,url2`, a candidate list with no
+ * descriptors and therefore no spaces — and there the failure is the dangerous
+ * direction: the whole thing is tested as one URL, so a leading `cid:` makes a
+ * trailing `https://` look local.
+ *
+ * So: split on whitespace first (a URL never contains any), then split each
+ * remaining token on commas — except a `data:` token, which is the one URL that
+ * legitimately contains a comma and cannot contain a space. Descriptors are
+ * dropped at both levels, because `1x,cid:b` is one token holding both.
+ */
+function srcsetUrls(value: string): string[] {
+  const urls: string[] = [];
+  for (const token of value.split(/\s+/)) {
+    const t = token.replace(/,+$/, "");
+    if (!t || DESCRIPTOR.test(t)) continue;
+    if (/^data:/i.test(t)) { urls.push(t); continue; }
+    for (const piece of t.split(",")) {
+      if (piece && !DESCRIPTOR.test(piece)) urls.push(piece);
+    }
+  }
+  return urls;
+}
+
+/**
+ * Does this attribute value reference anything remote?
+ *
+ * Any remote candidate makes the whole attribute remote. There is no
+ * per-candidate blocking to do: the attribute is moved aside whole, so a mixed
+ * list is held back entirely and restored entirely.
+ */
+function referencesRemote(attr: string, value: string): boolean {
+  if (attr !== "srcset") return isRemote(value);
+  return srcsetUrls(value).some(isRemote);
+}
+
 /**
  * Parse a message body into an inert fragment.
  *
@@ -130,7 +183,7 @@ export function blockRemoteContent(html: string): BodyScan {
   for (const el of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
     for (const attr of URL_ATTRS) {
       const value = el.getAttribute(attr);
-      if (value == null || !isRemote(value)) continue;
+      if (value == null || !referencesRemote(attr, value)) continue;
       el.removeAttribute(attr);
       el.setAttribute(`data-blocked-${attr}`, value);
       blocked += 1;

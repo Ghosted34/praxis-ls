@@ -123,6 +123,20 @@ async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
         + "SPF/DKIM setup is not being honoured by the inbox provider yet.",
       moduleKey: "mail-setup-wizard",
     });
+    // A withheld send throws nothing, so "no exception" is not proof a message
+    // left. Reporting ok:true here told an admin their outbound mail was working
+    // while the sandbox was dropping every message — the one answer this screen
+    // must never give. Not `ok`, but not an SMTP failure either: nothing is
+    // misconfigured, so the wizard should say what happened, not offer a fix guide.
+    if (info && info.suppressed) {
+      return {
+        ok: false,
+        to,
+        suppressed: true,
+        code: "SANDBOX_SUPPRESSED",
+        error: "This tenant is in the sandbox environment, so the test message was withheld rather than sent (PRD §5.5). Run the test in the live environment to prove outbound email.",
+      };
+    }
     return { ok: true, to, message_id: (info && (info.messageId || info.message_id)) || null };
   } catch (err) {
     const mapped = isSmtpError(err) ? mapSmtpError(err) : null;

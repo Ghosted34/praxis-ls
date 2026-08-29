@@ -217,6 +217,22 @@ async function respond(client, { id, body, subject = null, actor = {} }) {
     throw isSmtpError(err) ? mapSmtpError(err) : new AppError("EMAIL_SEND_FAILED", "The reply could not be sent: " + (err && err.message), 502);
   }
 
+  // 4c. WITHHELD — the environment refused to mail a real prospect (sandbox,
+  // PRD §5.5). `send` returns rather than throws for this, so it lands here and
+  // not in the catch above, and settling SENT + moving to RESPONDED is precisely
+  // the lie step 4b exists to prevent: the desk would show the enquiry answered
+  // with a message nobody received. Same treatment as a bounce — the attempt is
+  // recorded unsent and THE STATUS DOES NOT MOVE. It is not thrown, because the
+  // operator did nothing wrong and there is no SMTP setting for them to fix.
+  if (info && info.suppressed) {
+    const held = await repo.settleResponse(client, attempt.contact_enquiry_response_id, {
+      send_status: "FAILED",
+      error: "withheld: " + (info.reason || "suppressed by environment policy") + " — not sent, the enquiry remains unanswered",
+    });
+    logger.warn({ enquiryId: id, reason: info.reason }, "[enquiry] reply withheld by environment policy");
+    return { enquiry: before, response: held, suppressed: true };
+  }
+
   const settled = await repo.settleResponse(client, attempt.contact_enquiry_response_id, {
     send_status: "SENT",
     provider_message_id: (info && (info.messageId || info.message_id)) || null,

@@ -135,6 +135,11 @@ administrator creates.
 
 1. **Mailbox → Inbox**. Left rail (folder rail): the connected mailbox, its
    folders (Inbox / Sent / Drafts / …) and **Labels** (FR : *Étiquettes*).
+   The rail always opens on one mailbox — the person's default, else their own
+   personal address — because folders and their unread counts belong to a
+   single mailbox. Someone who works more than one gets a **Mailbox** picker
+   above the rail to switch between them; the whole screen, folders and
+   conversation list alike, follows that choice.
 2. The message list splits into two streams: **HUMAN** (people writing to
    you) and **SYSTEM** (automated notices, bounces, receipts). Open the seeded
    supplier email from the HUMAN stream; briefly open the system notice too.

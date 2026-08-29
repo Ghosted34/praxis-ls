@@ -473,6 +473,22 @@ describe("the folder rail", () => {
     expect(screen.getByLabelText("Mailbox")).toBeInTheDocument();
   });
 
+  it("OFFERS ONLY MAILBOXES — there is no 'no mailbox' to choose", () => {
+    // The picker used to open with "All my mailboxes", which is not a rail this
+    // component can draw: folders, their counts and the stream totals all
+    // belong to one connection, so the option resolved to an empty list under
+    // "No folders yet — sync the mailbox to discover them."
+    render(
+      <RailHarness
+        folders={[folder()]}
+        mailboxes={[mailbox(), mailbox({ email_connection_id: "c2", email_address: "ops@co.cm" })]}
+      />,
+    );
+    const picker = screen.getByLabelText("Mailbox") as HTMLSelectElement;
+    expect(within(picker).getAllByRole("option")).toHaveLength(2);
+    expect(picker.value).toBeTruthy();
+  });
+
   it("A MAILBOX WITH NO FOLDERS EXPLAINS ITSELF RATHER THAN LEAVING A GAP", () => {
     render(<RailHarness folders={[]} />);
     expect(screen.getByText(/sync the mailbox to discover them/i)).toBeInTheDocument();

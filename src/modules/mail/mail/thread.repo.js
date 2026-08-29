@@ -438,6 +438,40 @@ const seedStateForMembers = (client, messageId, connectionId) =>
 
 /* ── Folders ──────────────────────────────────────────────────────────────── */
 
+/**
+ * The mailbox a person means when they have not said which.
+ *
+ * The rail is mailbox-scoped — `listFolders` fails closed on a missing
+ * connection id — so "no mailbox chosen" used to render as "no folders yet",
+ * which reads as a broken sync rather than as an unmade choice. Nobody with one
+ * mailbox should ever see that: their one mailbox IS the answer.
+ *
+ * The order is the order a person would give it:
+ *   1. the one they marked default (`is_default`),
+ *   2. their own personal address, which is the mailbox they own rather than
+ *      one they were granted,
+ *   3. a mailbox that is actually connected, over one that is broken or
+ *      pending — a rail on a dead mailbox helps nobody,
+ *   4. the oldest, so the answer is stable across calls.
+ *
+ * Scoped by the same `accessible` predicate as everything else here: this can
+ * only ever resolve to a mailbox the caller may already open.
+ */
+const defaultConnectionFor = (client, userId) => {
+  if (!userId) return Promise.resolve(null);
+  return client.query(
+    `SELECT c.email_connection_id
+       FROM email_connection c
+      WHERE c.email_connection_id IN ${accessible(1)}
+      ORDER BY COALESCE(c.is_default, false) DESC,
+               (c.kind = 'PERSONAL' AND c.owner_user_id = $1) DESC,
+               (c.status = 'CONNECTED') DESC,
+               c.created_at
+      LIMIT 1`,
+    [userId],
+  ).then((r) => (r.rows[0] ? r.rows[0].email_connection_id : null));
+};
+
 const listFolders = (client, connectionId, userId = null) => {
   // P1A-2. A connection_id with no accessible-connection check enumerated
   // folder names and message counts for any mailbox in the tenant. Fail
@@ -824,7 +858,7 @@ module.exports = {
   listThreads, getThread, getThreadUnrestricted, getThreadById, updateThread, upsertThread, refreshThreadCounts,
   insertMessage, getMessage, moveThread,
   setThreadRead, setThreadStarred, seedStateForMembers,
-  listFolders, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
+  listFolders, defaultConnectionFor, streamUnread, upsertFolder, ensureCanonicalFolder, syncableFolders, setFolderCursor, setFolderError,
   listLabels, createLabel, deleteLabel, applyLabel,
   streamRules, knownParty, timelineByEntity,
   headIfVisible, messageIfVisible, attachmentIfVisible, filterVisibleThreadIds,

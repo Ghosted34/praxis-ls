@@ -450,6 +450,35 @@ export type CpanelPreset = {
 /* Capabilities + inventory */
 export const mailCapabilities = () => tenant<MailCapabilities>("/mail/me");
 export const myMailboxes = () => tenant<Mailbox[]>("/mail/mailboxes/mine");
+
+/**
+ * The mailbox a screen should open on when the person has not chosen one.
+ *
+ * The inbox is mailbox-scoped — folders, folder counts and the two stream
+ * totals all belong to one connection — so "nothing selected" is not a neutral
+ * state, it is an empty rail. The rail must therefore always be pointed at a
+ * mailbox, and this is the one to point it at:
+ *
+ *   1. the mailbox the person marked as their default,
+ *   2. their PERSONAL address — the one that is theirs rather than a shared
+ *      mailbox they hold a grant on,
+ *   3. one that is actually connected, over one that is broken or still
+ *      pending,
+ *   4. the first the server returned, which already orders personal first.
+ *
+ * The same order as `defaultConnectionFor` on the server, so the mailbox the
+ * client opens on and the mailbox an unqualified API call answers for are the
+ * same mailbox.
+ */
+export function primaryMailbox(mailboxes: Mailbox[]): Mailbox | null {
+  if (!mailboxes.length) return null;
+  return (
+    mailboxes.find((m) => m.is_default) ??
+    mailboxes.find((m) => m.kind === "PERSONAL") ??
+    mailboxes.find((m) => m.status === "CONNECTED") ??
+    mailboxes[0]
+  );
+}
 export const allMailboxes = (q: { kind?: MailboxKind; include_archived?: boolean } = {}) => {
   const p = new URLSearchParams();
   if (q.kind) p.set("kind", q.kind);
@@ -820,6 +849,12 @@ export const emptyFolder = (folder: "TRASH" | "SPAM") =>
 export type FolderRailData = {
   folders: Folder[];
   streams: { HUMAN: number; SYSTEM: number };
+  /**
+   * Which mailbox the rail is describing. Echoed back because a call that names
+   * no mailbox is answered for the caller's default one rather than with
+   * nothing, and the caller has to be able to show which that was.
+   */
+  connection_id?: string | null;
 };
 export const listFolders = (connectionId?: string) =>
   tenant<FolderRailData>(`/mail/folders${qs({ connection_id: connectionId })}`);

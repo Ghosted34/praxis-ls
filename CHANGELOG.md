@@ -59,6 +59,59 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The desktop layout gate no longer measures a page a service worker is racing it for.** The built
+  app registers one (`registerType: "prompt"`, `clientsClaim: true`), so in every one of the gate's
+  thirty browser contexts it installed, took control of the page, and precached 153 entries — 4.7 MB
+  — into `workbox-precache-v2`. Probed directly: `navigator.serviceWorker.controller` is non-null by
+  the time a spec measures anything. Three consequences, all of them nondeterminism a measurement
+  gate cannot afford: a navigation answered from the precache via `navigateFallback` rather than by
+  the preview server, at a moment that varies with machine load; requests issued by a service worker
+  bypassing `page.route`, which is what the fixture's API mock is built on, so a screen can render
+  with no data through no fault of the app; and 4.7 MB of precache per context, two workers, two
+  cores. It surfaced as two chart-of-accounts specs failing on CI — an `<h1>` that never appeared and
+  a selection bar that stayed empty — then failing their retry with "Target page, context or browser
+  has been closed", while all thirty passed locally and on the previous commit of the same branch.
+  `serviceWorkers: "block"` weakens no assertion: the gate measures layout numbers, the app lays out
+  identically, and what goes away is a PWA cache being rebuilt thirty times in a throwaway profile.
+
+- **The Error Centre's AI explanations are about this codebase now.** The explanation prompt was
+  taken verbatim from `PROMPT_ErrorMonitor_Module.md` §7.4, which opens "specializing in
+  Node.js/NestJS debugging" — the spec's assumed stack, and the one place §0's divergence table had
+  not reached. So a production 422 on `POST /api/tenant/mail/send` was explained in terms of a
+  `SendMailDto`, a `MailModule`, class-validator decorators and a NestJS `ValidationPipe`: fluent,
+  authoritative, and about somebody else's system, with nothing on the page to tell an ops lead
+  otherwise. `src/services/ai/codebase-brief.js` now states what this repo actually is — Node 20 +
+  Express + CommonJS, Zod validators, `AppError` through one error handler, `src/modules/<area>/<module>/`
+  with its five conventional files, the tenant/platform DB split — names the frameworks that are
+  absent so the model stops reaching for them, and explains that a `ValidationError: VALIDATION_ERROR:
+  <fields>` report is SYNTHETIC (its only frame is the route, and the failing values are not in it).
+  It also resolves the failing route to the directory that serves it, read from the module tree at
+  runtime rather than from a hand-kept map — `POST /api/tenant/mail/send` →
+  `src/modules/mail/mail/ — mail.routes.js, mail.controller.js, mail.validator.js, …`, with 95% of
+  the mounted surface resolving and silence, never a guess, for the rest. Every claim in the brief is
+  pinned against the tree by `tests/unit/error-explain-grounding.test.js` (no `@nestjs`/class-validator/
+  ORM in any manifest, the helpers and paths it names exist, each file it offers can be opened),
+  because a description of the stack that nobody re-reads is the same failure with a different accent.
+  And `prompt_version` — written to `platform.error_explanation` since day one and never read — is now
+  part of the Redis key and the stored lookup, so improving the prompt actually reaches the signatures
+  someone has already asked about instead of only the ones nobody has.
+
+- **A copy field you can put two people in, and a send that says which address is wrong.** Cc and
+  Bcc were one plain text input holding a comma-separated string, and the comma was the entire
+  mechanism — nothing on screen said a second recipient was possible ("no plus button, nothing"), so
+  a row typed the way anyone would type one (`ops@camrail.cm billing@camrail.cm`, or an address
+  pasted with its display name) reached `POST /mail/send`, where `cc` and `bcc` accepted an array of
+  already-bare addresses and nothing else. The answer was a 422 whose whole text was `Invalid body`,
+  reported as `VALIDATION_ERROR: bcc, cc` — the offending address appeared in neither. Each address
+  is now a CHIP, added by Enter, Tab, comma, semicolon or leaving the field, removed by its × or by
+  Backspace (which puts it back in the field, because a mistyped address is corrected more often
+  than retyped); the server parses the row the same way the composer does — separators outside `"…"`
+  and `<…>`, a space between two addresses, `Jean Dupont <jean@acme.cm>` reduced to what SMTP needs,
+  a cleared row read as "copy nobody", the same person twice read as once — and what is still
+  refused is refused BY NAME, in the composer before the send and in `error.message` after it:
+  `Cc: "jean dupont" is not an email address`. The mail module's other 28 schemas gained the same named
+  message in place of `Invalid body`.
+
 - **Two adjacent attendance screens no longer shout a status at different volumes.** The reconciled-
   days table pre-split `ON_LEAVE` into `"ON LEAVE"` before handing it to `Pill`, which defeated the
   shared `enumLabel` (it only recognises the underscored form) — so it printed `ON LEAVE` where the

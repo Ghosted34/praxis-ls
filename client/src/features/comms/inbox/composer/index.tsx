@@ -44,6 +44,7 @@ import { ComposerToolbar, FontNote } from "./toolbar";
 import { SlashMenu } from "./slash-menu";
 import { AttachmentTray, AttachButton } from "./attachment-tray";
 import { RecipientField, type ExtraRecipient } from "./recipient-field";
+import { isAddress, parseAddresses } from "./addresses";
 import { UndoSendToast } from "./undo-toast";
 import { AssistToolbar } from "../work/assist";
 import { GuardrailBar } from "../work/guardrails";
@@ -114,8 +115,16 @@ export type ComposerProps = {
   slots?: ComposerSlots;
 };
 
-const splitAddresses = (s: string) =>
-  s.split(/[,;]/).map((a) => a.trim()).filter(Boolean);
+/**
+ * The addresses in a recipient row.
+ *
+ * `parseAddresses` and not `split(/[,;]/)`: the row can carry a display-name
+ * form (`Jean Dupont <jean@acme.cm>` — what a mail client puts on the
+ * clipboard) whose own comma is not a separator, and the server's `send`
+ * schema parses it the same way. Two definitions of "two recipients" is how a
+ * pasted address became `VALIDATION_ERROR: cc`.
+ */
+const splitAddresses = parseAddresses;
 
 const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -527,6 +536,25 @@ export function Composer({
     setError(null);
     const recipients = splitAddresses(to);
     if (!recipients.length) { setError(tr("Add at least one recipient.")); return; }
+
+    /* Said here, in the composer, rather than by the server twenty milliseconds
+     * later as `VALIDATION_ERROR: cc`. The server still refuses the same
+     * addresses — it has to, this check is a client's opinion — but a refusal
+     * that names the address and the row it is in is one the operator can act
+     * on, and it arrives with the field still on screen. */
+    const rows: [string, string[]][] = [
+      [tr("To"), recipients],
+      [tr("Cc"), showCc ? splitAddresses(cc) : []],
+      [tr("Bcc"), showBcc ? splitAddresses(bcc) : []],
+    ];
+    for (const [label, list] of rows) {
+      const bad = list.filter((a) => !isAddress(a));
+      if (bad.length) {
+        setError(`${label}: ${bad.map((a) => `"${a}"`).join(", ")} ${
+          bad.length > 1 ? tr("are not email addresses") : tr("is not an email address")}`);
+        return;
+      }
+    }
 
     setBusy(true);
     // Minted ONCE per message: a replay, a retry and a second tab all carry this

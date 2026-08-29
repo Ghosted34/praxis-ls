@@ -2,6 +2,135 @@
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
 
+/* ── Recipient lists ────────────────────────────────────────────────────────
+ *
+ * WHAT THE CLIENT ACTUALLY SENDS IS NOT ALWAYS AN ARRAY OF BARE ADDRESSES.
+ *
+ * `to` accepted a single string or an array; `cc` and `bcc` accepted an array
+ * and nothing else, each item having to be a bare address. Everything a person
+ * naturally does in a copy field therefore came back as a 422 whose whole text
+ * was "Invalid body" and whose fields were `["cc"]` — no offending address, no
+ * hint of what was wrong with it:
+ *
+ *   "ops@camrail.cm, billing@camrail.cm"   one field, two addresses, no comma
+ *                                          split anywhere on the way out
+ *   "Jean Dupont <jean@acme.cm>"           what every mail client puts on the
+ *                                          clipboard, and what reply-all carries
+ *                                          when the stored header kept the name
+ *   null                                   a field the caller cleared
+ *   ["a@b.cm", ""]                         a trailing separator
+ *
+ * None of those is a message anyone would refuse to send, so none of them is
+ * refused here any more. The list is PARSED first — split outside quotes and
+ * angle brackets, so `"Dupont, Jean" <j@acme.cm>` stays one recipient rather
+ * than becoming two broken ones — and only then are the addresses checked.
+ *
+ * What is still refused is an address that is not one, and it is refused BY
+ * NAME: `"jean dupont" is not an email address` next to the Cc field beats a
+ * bounce twenty minutes later, phrased by a mail server.
+ */
+
+/** Split a recipient list on separators that are not inside "…" or <…>. */
+const splitAddressList = (raw) => {
+  const out = [];
+  let buf = "";
+  let quoted = false;
+  let angled = false;
+  for (const ch of String(raw)) {
+    if (ch === '"') { quoted = !quoted; buf += ch; continue; }
+    if (!quoted && ch === "<") { angled = true; buf += ch; continue; }
+    if (!quoted && ch === ">") { angled = false; buf += ch; continue; }
+    if (!quoted && !angled && (ch === "," || ch === ";" || ch === "\n" || ch === "\r")) {
+      out.push(buf); buf = ""; continue;
+    }
+    buf += ch;
+  }
+  out.push(buf);
+  return out;
+};
+
+/**
+ * `a@b.cm c@d.cm` → two recipients; `Jean Dupont` → one bad one.
+ *
+ * A space is a separator ONLY when every piece either side of it is already an
+ * address, which is the one reading with no second interpretation. A display
+ * name is full of spaces and is not two recipients, so a token carrying `<` or
+ * a quote is left alone whatever is in it.
+ */
+const expandSpaced = (token) => {
+  const t = String(token).trim();
+  if (!/\s/.test(t) || t.includes("<") || t.includes('"')) return [t];
+  const parts = t.split(/\s+/);
+  return parts.every((x) => /^[^\s@]+@[^\s@]+$/.test(x)) ? parts : [t];
+};
+
+/** "Jean Dupont <jean@acme.cm>" → "jean@acme.cm". Anything else, trimmed. */
+const bareAddress = (raw) => {
+  const s = String(raw === null || raw === undefined ? "" : raw).trim();
+  const angled = s.match(/<([^<>]*)>\s*$/);
+  return (angled ? angled[1] : s).trim().replace(/^["']|["']$/g, "").trim();
+};
+
+/**
+ * Whatever the caller sent → a list of addresses, in the order they were given.
+ *
+ * `undefined` is left alone so `.optional()` still means optional; `null` and
+ * `""` become an empty list, because a cleared copy field is a request to send
+ * to nobody rather than a malformed one.
+ */
+const parseAddresses = (v) => {
+  if (v === undefined) return undefined;
+  if (v === null) return [];
+  const items = (Array.isArray(v) ? v : [v])
+    .flatMap((x) => splitAddressList(x))
+    .flatMap(expandSpaced);
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const a = bareAddress(item);
+    if (!a) continue;
+    // Case-insensitively, and keeping the first spelling: the same person twice
+    // in one Cc is one recipient who would otherwise get the message twice.
+    const k = a.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(a);
+  }
+  return out;
+};
+
+/** The same parse, minus the de-duplication — see `draft` below. */
+const parseDraftAddresses = (v) => {
+  if (v === undefined) return undefined;
+  if (v === null) return [];
+  return (Array.isArray(v) ? v : [v])
+    .flatMap((x) => splitAddressList(x))
+    .flatMap(expandSpaced)
+    .filter(Boolean);
+};
+
+const EMAIL = z.string().email();
+
+/** One address, refused by name rather than by field. */
+const address = z.string().trim().max(320)
+  .refine((v) => EMAIL.safeParse(v).success, (v) => ({ message: `"${v}" is not an email address` }));
+
+/** A recipient list that has to hold real addresses — a send, not a draft. */
+const addressList = ({ min = 0, max = 100 } = {}) => z.preprocess(
+  // A required list reads "absent" as "empty" so the refusal is the sentence
+  // below rather than zod's "Required", which names no field a person can see.
+  min > 0 ? (v) => parseAddresses(v) || [] : parseAddresses,
+  z.array(address).min(min, { message: "Add at least one recipient." }).max(max, {
+    message: `No more than ${max} recipients at a time.`,
+  }),
+);
+
+/** A recipient list on a work in progress, where half an address is normal. */
+const draftAddressList = (max = 100) => z.preprocess(
+  parseDraftAddresses,
+  z.array(z.string().trim().max(320)).max(max),
+);
+
 const schemas = {
   // SEC H3 guard. The two provider webhooks passed req.body straight into the
   // notification handlers with nothing checking it.
@@ -228,9 +357,14 @@ const schemas = {
     email_thread_id: z.string().uuid().nullable().optional(),
     reply_to_message_id: z.string().uuid().nullable().optional(),
     kind: z.enum(["NEW", "REPLY", "REPLY_ALL", "FORWARD"]).optional(),
-    to_address: z.array(z.string().trim().max(320)).max(100).optional(),
-    cc_address: z.array(z.string().trim().max(320)).max(100).optional(),
-    bcc_address: z.array(z.string().trim().max(320)).max(100).optional(),
+    // Half an address is normal here — the field is being typed into — so these
+    // only get the SHAPE parse: a string is split into a list, a cleared field
+    // becomes an empty one, and nothing is checked for being an address. A
+    // draft that refused what a person had typed so far would be a draft that
+    // refused to save.
+    to_address: draftAddressList().optional(),
+    cc_address: draftAddressList().optional(),
+    bcc_address: draftAddressList().optional(),
     subject: z.string().max(998).nullable().optional(),   // RFC 5322 line limit
     body_json: z.object({}).passthrough().nullable().optional(),
     send_point_key: z.string().trim().max(64).nullable().optional(),
@@ -249,9 +383,12 @@ const schemas = {
     email_draft_id: z.string().uuid().nullable().optional(),
     email_thread_id: z.string().uuid().nullable().optional(),
     reply_to_message_id: z.string().uuid().nullable().optional(),
-    to: z.union([z.string().email(), z.array(z.string().email()).min(1).max(100)]),
-    cc: z.array(z.string().email()).max(100).optional(),
-    bcc: z.array(z.string().email()).max(100).optional(),
+    to: addressList({ min: 1 }),
+    // Optional, and `null` is one of the things "optional" has to mean: a Cc
+    // row the operator opened and then cleared arrives as null from more than
+    // one client, and refusing the send over it taught nobody anything.
+    cc: addressList().optional(),
+    bcc: addressList().optional(),
     subject: z.string().max(998).nullable().optional(),
     body_json: z.object({}).passthrough().nullable().optional(),
     html: z.string().max(2_000_000).nullable().optional(),
@@ -337,9 +474,38 @@ const schemas = {
   ),
 };
 
+/**
+ * The field a person sees, for the fields a person can see.
+ *
+ * Only the composer's rows are named: the message below is shown IN the
+ * composer, so `Cc: "jean dupont" is not an email address` reads as an answer
+ * about the field the operator is looking at. Anything not listed keeps its
+ * own key, which is the honest thing to show for a body no human typed.
+ */
+const LABELS = { to: "To", cc: "Cc", bcc: "Bcc", subject: "Subject", body_json: "Message" };
+
+/**
+ * "Invalid body" is true of every one of these and useful about none of them.
+ *
+ * The composer shows `err.message` verbatim, so that string WAS the whole
+ * explanation an operator got for a refused send — while `error.fields` carried
+ * the real one and nothing rendered it. Naming the first failure costs one line
+ * here and turns a mystery into an instruction; `fields` still carries every
+ * failure for a client that wants to mark each row.
+ */
+const firstMessage = (error) => {
+  const issue = error.issues && error.issues[0];
+  if (!issue) return "Invalid body";
+  const key = issue.path.find((seg) => typeof seg === "string");
+  const label = key ? (LABELS[key] || key) : null;
+  return label ? `${label}: ${issue.message}` : issue.message;
+};
+
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
-  if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
+  if (!p.success) {
+    return next(new AppError("VALIDATION_ERROR", firstMessage(p.error), 422, p.error.flatten().fieldErrors));
+  }
   req.body = p.data;
   return next();
 };

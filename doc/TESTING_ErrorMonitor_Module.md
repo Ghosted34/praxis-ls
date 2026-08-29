@@ -43,6 +43,7 @@ paths deliberately resolve elsewhere.
 | `/api/admin/errors/*`            | `/api/platform/errors/*`                                           | The admin API is `/api/platform`. There is no `/api/admin` namespace in this codebase.                                         |
 | Route `/admin/error-center`      | `#/error-center` (+ `#/admin/error-center` redirects)              | `platform-console` **is** the admin app, host-gated to `admin.praxisls.com`. The `/admin` prefix would be doubled.             |
 | NestJS exception filters         | Express `middleware/error-handler.js`                              | The backend is plain JS/Express, not NestJS.                                                                                   |
+| §7.4 system prompt, verbatim     | Four sections verbatim, over `services/ai/codebase-brief.js`       | Same assumed stack, inside the prompt: it told the model "Node.js/NestJS" and the model answered about NestJS. See §13.3.     |
 | Tailwind + Zustand + React Query | Console's existing `ui.tsx` + `useAsync` + CSS vars                | The console is a deliberately 4-dependency app. Only `socket.io-client` was added.                                             |
 | New error-capture layer          | Extended the **existing** `shared/observability/error-reporter.js` | Capture, fingerprinting, dedupe and rate limiting already existed and were already wired into the error handler.               |
 | `admin_error_logs` table         | `platform.error_event` in the **platform** DB                      | Isolation is one DB per tenant; platform-wide errors have no tenant DB to live in, and the console holds no tenant connection. |
@@ -62,6 +63,7 @@ platform-console/src/components/NotificationBell.tsx
 src/shared/observability/error-store.js
 src/services/platform/errors.service.js
 src/services/platform/error-explain.service.js
+src/services/ai/codebase-brief.js
 src/services/platform/error-escalation.service.js
 src/services/platform/error-share.service.js
 src/realtime/platform-ns.js
@@ -73,6 +75,7 @@ platform-console/src/components/{ErrorDetailDrawer,ShareErrorModal,SystemHealthW
 platform-console/src/types/socket.io-client.d.ts
 src/services/platform/platform-mail.service.js
 tests/unit/error-monitor.test.js
+tests/unit/error-explain-grounding.test.js
 tests/unit/platform-notifications-health.test.js
 tests/unit/platform-mail.test.js
 ```
@@ -1017,7 +1020,7 @@ This section is the re-read: every spec section opened and compared.
 | §5.1 rule shape, §5.2 settings page, §5.3 flow                                   | ✓ delay clock added §10                                           |
 | §6 all 14 REST endpoints                                                         | ✓ present, renamed per §0                                         |
 | §6 §4.1 WebSocket `new_error` / `error_resolved` / subscribe / unsubscribe       | ✓                                                                 |
-| §7 DeepSeek→Gemini, Redis 1h TTL, 4-point system prompt                          | ✓ prompt matches the spec's wording verbatim                      |
+| §7 DeepSeek→Gemini, Redis 1h TTL, 4-point system prompt                          | ✓ four sections verbatim; the stack sentence corrected — §13.3    |
 | §9.1 severity colour tokens                                                      | ✓ hex values match exactly                                        |
 | §13 all 14 acceptance criteria                                                   | ✓ (#1 subject to the realtime budget — §12.2)                     |
 
@@ -1028,6 +1031,7 @@ This section is the re-read: every spec section opened and compared.
 | Appendix A.3 — show all files where an error occurs             | Not built                                              | The fingerprint deliberately includes the top stack frame, so the same message thrown from two places stays TWO problems (see `error-reporter.fingerprint`). Multi-location aggregation would require the opposite decision. The drawer shows every frame of one error; it cannot show every location of one message. **Revisiting this means changing the fingerprint, which changes every existing signature.** |
 | §2.3 pt 4 — capture API validation failures                     | Not captured                                           | A 422 is a client mistake. Routing them to the feed buries real faults under "email is required" and gets the channel muted (OBS-A1). Asserted in `error-reporting.test.js`.                                                                                                                                                                                                                                      |
 | §4.3 `admin.errors.view/resolve/configure`                      | `errors.read/resolve/configure`                        | The platform tier has no `admin.` prefix on any capability; adding one for this module alone would break the console's permission matrix rendering.                                                                                                                                                                                                                                                               |
+| §7.4 system prompt "specializing in Node.js/NestJS debugging"   | Four sections verbatim; the stack sentence replaced by a checked codebase brief | The spec's assumed stack, inside the prompt — the one place §0's table had not reached. A production 422 on `POST /api/tenant/mail/send` came back explained in terms of a `SendMailDto`, a `MailModule`, class-validator decorators and a NestJS `ValidationPipe`; none exist here, and the ops lead the explanation is written for cannot tell. `services/ai/codebase-brief.js` states the real stack, layout and error contract, plus the module directory that serves the failing route, read from the tree at runtime. Every claim in it is checked against the repo by `tests/unit/error-explain-grounding.test.js`, because a brief nobody re-reads is the same failure with a different accent. `PROMPT_VERSION` is 2 and is now READ BACK from both cache tiers — it was written and never checked, so the old answers would have outlived the old prompt. |
 | §7.1 `recent_occurrences` (last 3 timestamps) in the AI context | Sends `first_seen` + `last_seen` + `occurrence_count`  | The grain is one row per signature; individual occurrence timestamps are not stored, by the design decision in `0090` that keeps the table bounded. Storing them would undo the aggregation the whole feature rests on.                                                                                                                                                                                           |
 | §8.3 eleven named component files                               | Inlined in `ErrorCenter.tsx` / `ErrorDetailDrawer.tsx` | The console is a flat four-dependency app with no `features/*/components/` convention. Eleven files for one screen would be the only such tree in the codebase.                                                                                                                                                                                                                                                   |
 | §9.2 typography: Inter                                          | Montserrat + JetBrains Mono                            | `npm run check:fonts` **fails the build** on any font not in the approved list, and Inter is not in it. The mono choice matches the spec.                                                                                                                                                                                                                                                                         |

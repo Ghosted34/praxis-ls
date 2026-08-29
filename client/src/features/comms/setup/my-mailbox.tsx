@@ -293,7 +293,7 @@ export function MyMailboxTab() {
               <div className="flex items-center gap-2">
                 <span className="num text-base font-medium">{personal.email_address}</span>
                 <Pill tone={tone(personal.status)}>{personal.status}</Pill>
-                <HealthPill health={personal.health} />
+                <HealthPill health={personal.health} showReason />
               </div>
               <p className="micro mt-1 text-muted-foreground">
                 {personal.display_name ? `${tr("Sending as")} “${personal.display_name}”. ` : ""}
@@ -342,7 +342,7 @@ export function MyMailboxTab() {
                 <Pill tone={m.access_role === "VIEWER" ? "mute" : "blue"}>
                   {m.access_role === "VIEWER" ? tr("Read only") : m.access_role === "MANAGER" ? tr("Manager") : tr("Can send")}
                 </Pill>
-                <HealthPill health={m.health} />
+                <HealthPill health={m.health} showReason />
               </li>
             ))}
           </ul>

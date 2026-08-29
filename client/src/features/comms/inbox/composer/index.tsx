@@ -68,6 +68,20 @@ export type ComposerProps = {
   threadId?: string | null;
   replyToMessageId?: string | null;
   kind?: api.Draft["kind"];
+  /**
+   * A saved draft to reopen, rather than a set of initial values.
+   *
+   * The composer autosaves every 1.5 seconds and, until the Drafts screen
+   * existed, could never open on what it had saved. Passing the ROW rather than
+   * an id matters: the composer adopts its `email_draft_id`, so the first
+   * autosave after reopening updates that row instead of forking a second draft
+   * of the same message — which is how a Drafts list fills up with three copies
+   * of one unfinished email.
+   *
+   * Its fields win over the `initial*` props below, which are for a composer
+   * opened from a record.
+   */
+  draft?: api.Draft | null;
   initialTo?: string[];
   initialCc?: string[];
   initialBcc?: string[];
@@ -116,6 +130,7 @@ export function Composer({
   threadId = null,
   replyToMessageId = null,
   kind = "NEW",
+  draft = null,
   initialTo = [],
   initialCc = [],
   initialBcc = [],
@@ -130,19 +145,20 @@ export function Composer({
   onClose,
   slots = {},
 }: ComposerProps) {
-  const [from, setFrom] = React.useState(connectionId);
-  const [to, setTo] = React.useState(initialTo.join(", "));
-  const [cc, setCc] = React.useState(initialCc.join(", "));
-  const [showCc, setShowCc] = React.useState(initialCc.length > 0);
+  const [from, setFrom] = React.useState(draft?.email_connection_id || connectionId);
+  const [to, setTo] = React.useState((draft?.to_address || initialTo).join(", "));
+  const [cc, setCc] = React.useState((draft?.cc_address || initialCc).join(", "));
+  const [showCc, setShowCc] = React.useState((draft?.cc_address || initialCc).length > 0);
   /* Bcc. The column, the draft field, the send payload and the serializer have
    * carried it since PR-1B; the only thing missing was a box to type it into,
    * so the one address a forwarder most often needs to hide — the colleague
    * copied on a rate quotation, the accountant on a payment chase — could only
    * be added by putting them in Cc, where the counterparty sees them. */
-  const [bcc, setBcc] = React.useState<string>(initialBcc.join(", "));
-  const [showBcc, setShowBcc] = React.useState(initialBcc.length > 0);
-  const [subject, setSubject] = React.useState(initialSubject || "");
-  const [draftId, setDraftId] = React.useState<string | null>(null);
+  const [bcc, setBcc] = React.useState<string>((draft?.bcc_address || initialBcc).join(", "));
+  const [showBcc, setShowBcc] = React.useState((draft?.bcc_address || initialBcc).length > 0);
+  const [subject, setSubject] = React.useState(draft?.subject || initialSubject || "");
+  // Adopted, not minted. See the `draft` prop.
+  const [draftId, setDraftId] = React.useState<string | null>(draft?.email_draft_id || null);
   const [tray, setTray] = React.useState<api.AttachmentTray | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -166,6 +182,13 @@ export function Composer({
   const [override, setOverride] = React.useState("");
   const [schedule, setSchedule] = React.useState<ScheduleChoice>({ kind: "NOW" });
 
+  /* Drag-and-drop onto the body (§5.6, "attachment-bar.tsx drag-drop"). The
+   * Attach button worked; dropping a file did nothing at all — and dropping a
+   * file on a compose window is what most people try first, so "nothing at all"
+   * reads as the composer being broken rather than as a feature that is
+   * missing. `dragging` only draws the ring; the drop handler does the work. */
+  const [dragging, setDragging] = React.useState(false);
+
   const [slash, setSlash] = React.useState<{ open: boolean; query: string }>({ open: false, query: "" });
   const commands = useResource(() => api.listCommands(), []);
 
@@ -175,6 +198,11 @@ export function Composer({
   draftIdRef.current = draftId;
 
   const editor = useComposerEditor({
+    // Read once, at mount — `useComposerEditor` builds the instance with an
+    // empty dependency list so a keystroke never rebuilds it and loses the
+    // caret. Reopening a different draft therefore needs a new component, which
+    // is what the `key` on the composer's call sites provides.
+    initial: (draft?.body_json as JSONContent | undefined) || undefined,
     placeholder: tr("Write your message — type / to insert from the system"),
     onChange: (doc) => {
       docRef.current = doc;
@@ -292,6 +320,16 @@ export function Composer({
     return id;
   }, [flush, from, threadId, kind]);
 
+  /* A reopened draft brings its files back. Without this the tray is empty and
+   * the operator, seeing no attachment, adds the PDF a second time — and the
+   * server still has the first, so the message goes out with two. */
+  const reopened = React.useRef(false);
+  React.useEffect(() => {
+    if (reopened.current || !draft?.email_draft_id) return;
+    reopened.current = true;
+    void reloadTray(draft.email_draft_id);
+  }, [draft?.email_draft_id, reloadTray]);
+
   /* ── Seeded attachments ───────────────────────────────────────────────────
    *
    * Runs once, on open. The PDF was rendered and vaulted by the endpoint that
@@ -366,6 +404,36 @@ export function Composer({
       await api.removeAttachment(draftId, attachmentId);
       await reloadTray(draftId);
     } catch (err) { reportActionError(err); } finally { setBusy(false); }
+  }
+
+  /**
+   * Throw this draft away.
+   *
+   * Asked before, not undone after: `DELETE /mail/drafts/:id` takes the row and
+   * its attachments with it, and there is no restore. The autosave timer is
+   * cleared first — a pending flush landing after the delete would recreate the
+   * draft the person just discarded, which is the sort of thing that only shows
+   * up once somebody types fast and then changes their mind.
+   */
+  async function discard() {
+    if (!draftId) { onClose?.(); return; }
+    const ok = window.confirm(
+      `${tr("Discard this draft?")}\n\n${tr("It is deleted, along with anything attached to it. This cannot be undone.")}`,
+    );
+    if (!ok) return;
+    if (timer.current) clearTimeout(timer.current);
+    dirtyRef.current = {};
+    setBusy(true);
+    try {
+      await api.discardDraft(draftId);
+      setDraftId(null);
+      onSent?.();   // the list this was opened from has one fewer row
+      onClose?.();
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
   }
 
   /* ── Slash commands ─────────────────────────────────────────────────────── */
@@ -625,8 +693,41 @@ export function Composer({
 
       <ComposerToolbar editor={editor} slotRight={slots["composer.toolbar.right"]} />
 
-      <div className="relative" id="composer-body">
+      {/* Drag-and-drop layered over the Attach button below, which is what a
+          keyboard or AT user activates — the same bargain `ui/file-drop.tsx`
+          makes. The drop target is a pointer shortcut and does not replace the
+          control, so giving this div a role would announce a button that does
+          nothing to a screen reader rather than help anyone. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div
+        className="relative"
+        id="composer-body"
+        // `dragOver` must preventDefault or the browser navigates away to the
+        // file — the single most common way a drop target silently does not
+        // work. `dragLeave` fires on every child too, so the ring is cleared on
+        // the drop and on leaving the container, not on every internal crossing.
+        onDragOver={(e) => { e.preventDefault(); if (!dragging) setDragging(true); }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setDragging(false);
+        }}
+        onDrop={(e) => {
+          const files = [...(e.dataTransfer?.files || [])];
+          if (!files.length) return; // dragging text inside the editor: let it be
+          e.preventDefault();
+          setDragging(false);
+          void attach(files);
+        }}
+      >
         <EditorSurface editor={editor} />
+        {dragging && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 grid place-items-center rounded-lg border-2 border-dashed border-primary bg-primary/5 text-sm font-medium text-foreground"
+          >
+            {tr("Drop to attach")}
+          </div>
+        )}
         {slash.open && (
           <SlashMenu
             commands={commands.data || []}
@@ -716,6 +817,15 @@ export function Composer({
         <span className="ml-auto flex items-center gap-2">
           {slots["composer.footer.right"]}
           {savedAt && <Pill tone="mute">{tr("Draft saved")}</Pill>}
+          {/* Close KEEPS the draft — that is what autosave is for, and it is now
+              findable in My drafts. Discard is the other half of that bargain,
+              offered here so somebody who has decided against a message does
+              not have to go and find it in a list to throw it away. */}
+          {draftId && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={discard}>
+              {tr("Discard")}
+            </Button>
+          )}
           {onClose && <Button size="sm" variant="ghost" onClick={onClose}>{tr("Close")}</Button>}
         </span>
       </footer>

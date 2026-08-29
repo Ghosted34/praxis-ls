@@ -58,15 +58,13 @@ const GRANDFATHERED = new Map(Object.entries({
   /* Superseded by the 10731 thread model; the screens read threads. */
   listInbox: "superseded by the thread list (10731)",
   listSent: "superseded by the thread list (10731)",
-  listOutbox: "superseded by the thread list (10731)",
   linkThread: "superseded by binding/, which writes entity_ref on the thread",
   clientTimeline: "superseded by the dossier drawer's Interactions tab",
   /* Duplicates of a wrapper that IS used. */
   microsoftStartUrl: "duplicate of startMicrosoft, which the setup screen uses",
   googleStartUrl: "duplicate of startGoogle, which the setup screen uses",
   /* Endpoints ahead of their screen. */
-  getDraft: "no draft-list screen: the composer autosaves and never re-opens by id",
-  discardDraft: "no draft-list screen",
+  getDraft: "the Drafts list opens the row it already has, so nothing re-fetches by id",
   deleteLabel: "labels can be created and listed; no delete affordance yet",
   putSetting: "generic settings writer, unused by the comms screens",
   updateSender: "the senders tab is read-only today",
@@ -142,7 +140,11 @@ describe("every mail endpoint with a client wrapper is reachable from a screen",
   test("the grandfathered list can only shrink", () => {
     // Its size is the ratchet. Adding a wrapper and parking it here is exactly
     // the move this gate exists to refuse.
-    expect(GRANDFATHERED.size).toBeLessThanOrEqual(23);
+    // 23 → 21. `listOutbox` and `discardDraft` came off when `pending.tsx`
+    // gave the send queue and the draft list a screen; `listOutbox`'s entry was
+    // also WRONG, not merely stale — it read "superseded by the thread list",
+    // and the queue is precisely the mail that is NOT in the thread list yet.
+    expect(GRANDFATHERED.size).toBeLessThanOrEqual(21);
   });
 
   test("nothing sits on the list that is now wired", () => {

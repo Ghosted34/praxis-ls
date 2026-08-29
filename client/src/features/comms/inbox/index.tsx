@@ -41,6 +41,7 @@ import { FolderRail, type RailSelection } from "./folder-rail";
 import { ThreadList } from "./thread-list";
 import { ThreadView } from "./thread-view";
 import { SemanticResults } from "./work/semantic-search";
+import { DraftList, OutboxList } from "./pending";
 
 const PAGE = 50;
 
@@ -68,6 +69,11 @@ export function InboxPage() {
   const [meaning, setMeaning] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [composeOpen, setComposeOpen] = React.useState(false);
+  /* A draft being continued, from the Drafts list. Separate from `composeOpen`
+   * because they are different intents and the dialog is titled differently:
+   * "New message" opens a blank one, "Continue this draft" adopts the saved
+   * `email_draft_id` so the next autosave updates it rather than forking. */
+  const [resuming, setResuming] = React.useState<api.Draft | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
   const [bulkFailures, setBulkFailures] = React.useState<
@@ -139,7 +145,7 @@ export function InboxPage() {
     setSelected(new Set());
     setBulkFailures([]);
     setLimit(PAGE);
-  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view]);
+  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, sel.pending]);
 
   const rows = React.useMemo(
     () =>
@@ -266,6 +272,7 @@ export function InboxPage() {
             <span className="hidden sm:inline">{tr("Compose")}</span>
           </Button>
         </div>
+        {!sel.pending && (
         <form
           role="search"
           onSubmit={(e) => {
@@ -309,8 +316,9 @@ export function InboxPage() {
             </Button>
           )}
         </form>
+        )}
 
-        {meaning && (
+        {meaning && !sel.pending && (
           <SemanticResults
             query={meaning}
             onOpen={(id) => { setMeaning(""); open(id); }}
@@ -318,6 +326,22 @@ export function InboxPage() {
           />
         )}
 
+        {/* Neither of these is a conversation, so neither goes through the
+            thread list: a draft has no read state, no star, no folder and no
+            counterparty yet, and a queued send has a status and an error
+            instead. See `pending.tsx`. */}
+        {sel.pending === "DRAFTS" && (
+          <div className="rounded-xl border border-border">
+            <DraftList onOpen={(d) => setResuming(d)} />
+          </div>
+        )}
+        {sel.pending === "OUTBOX" && (
+          <div className="rounded-xl border border-border">
+            <OutboxList />
+          </div>
+        )}
+
+        {!sel.pending && (
         <SplitPane
           storageKey="comms.inbox"
           label={tr("Conversation list width")}
@@ -365,12 +389,20 @@ export function InboxPage() {
             onWorkChanged={reload}
           />
         </SplitPane>
+        )}
 
-        {composeOpen && (
+        {(composeOpen || resuming) && (
           <NewMessageDialog
             open
-            onClose={() => setComposeOpen(false)}
-            onSent={reload}
+            draft={resuming}
+            onClose={() => { setComposeOpen(false); setResuming(null); }}
+            onSent={() => {
+              setResuming(null);
+              // The Drafts list has one fewer row after a send, and the Outbox
+              // has one more. Remounting the pane is what refreshes both.
+              setSel((cur) => ({ ...cur }));
+              reload();
+            }}
           />
         )}
 

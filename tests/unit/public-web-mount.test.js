@@ -204,6 +204,29 @@ describe("public-web mount path", () => {
     // is `z.string().min(1)`, so an empty field never reaches the service.
   });
 
+  test("a host the site OWNS serves it at the root, not under a prefix", () => {
+    // The prefix exists to keep the marketing site out of the ERP's way on a
+    // shared origin. On a domain the client brought there is no ERP on the host
+    // at all, so honouring `public_base` there would put a word in front of
+    // every URL that client prints — `smartls.cm/public/services` — that means
+    // nothing to them or to their customers, and `/` would merely redirect into
+    // it. So the surface decides, and the column applies to workspace hosts.
+    expect(paths.ROOT_BASE).toBe("/");
+    expect(paths.isRoot(paths.ROOT_BASE)).toBe(true);
+    expect(paths.isRoot("/public")).toBe(false);
+    // The server picks between them on the surface, not on the column.
+    const block = serverSrc.slice(
+      serverSrc.indexOf("req.hostSurface = meta"),
+      serverSrc.indexOf("host surface lookup failed"),
+    );
+    expect(block).toMatch(/publicWebPaths\.ROOT_BASE/);
+    expect(block).toMatch(/req\.hostSurface === "public"/);
+    // …and the console never offers "/" as a prefix, because it is not a value
+    // anyone types — it is what being a public-surface host means.
+    expect(paths.normaliseBase("/")).toBeNull();
+    expect(paths.baseProblem("/")).toBeTruthy();
+  });
+
   test("bases normalise to one leading slash, lowercase", () => {
     expect(paths.normaliseBase("Site")).toBe("/site");
     expect(paths.normaliseBase("/site/")).toBe("/site");

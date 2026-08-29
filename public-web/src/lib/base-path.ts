@@ -45,13 +45,29 @@ function read(): string {
       : null;
   const raw = (fromMeta || FALLBACK).trim().toLowerCase();
   const segment = raw.replace(/^\/+/, "").replace(/\/+$/, "");
-  // Same shape the server's `normaliseBase` enforces. A value that fails it is a
+  // "" is the ROOT MOUNT, and the one case where an empty segment is a real
+  // answer rather than a malformed one: the server sends "/" on a host whose
+  // surface is 'public' — a domain the client brought, where this app is the
+  // only thing served and a prefix would put a meaningless word in front of
+  // every URL they print. Everything else must be one path segment, the same
+  // shape the server's `normaliseBase` enforces; a value that fails it is a
   // deployment fault, not something to render a broken navigation over.
+  if (raw === "/" || raw === "") return "";
   return /^[a-z0-9][a-z0-9-]{0,30}$/.test(segment) ? `/${segment}` : FALLBACK;
 }
 
-/** The prefix, with a leading slash and no trailing one: `/public`, `/site`. */
+/**
+ * The prefix, with a leading slash and no trailing one: `/public`, `/site` —
+ * or `""` when this host serves the site at its root.
+ *
+ * Never interpolate it directly. `${BASE}/track` is `"/track"` at the root and
+ * looks right; `${BASE}` alone is `""`, which as a react-router `to` means
+ * "the current path" rather than "the home page". Use `p()`.
+ */
 export const BASE = read();
+
+/** True when the site owns this host and lives at its root. */
+export const IS_ROOT = BASE === "";
 
 /** True when this host still uses the original prefix — the router uses it to
  *  decide whether `/public/*` needs a redirect to somewhere else. */
@@ -63,10 +79,18 @@ export const LEGACY_BASE = FALLBACK;
 /**
  * Build a path under the marketing prefix.
  *
- *   p()            → "/site"
- *   p("/track")    → "/site/track"
- *   p("#quote")    → "/site#quote"
+ *   p()            → "/site"      · at the root: "/"
+ *   p("/track")    → "/site/track" · at the root: "/track"
+ *   p("#quote")    → "/site#quote" · at the root: "/#quote"
+ *
+ * The root cases are why this is a function and not a template literal at each
+ * call site. `BASE + ""` is `""` and `BASE + "#quote"` is `"#quote"`; react-router
+ * resolves both RELATIVE to whatever page you are on, so the home link on
+ * `/careers/abc` would navigate to `/careers/abc` and the quote anchor would
+ * scroll a page that has no quote form on it. Every result here is absolute.
  */
 export function p(rest = ""): string {
-  return `${BASE}${rest}`;
+  if (BASE) return `${BASE}${rest}`;
+  if (!rest) return "/";
+  return rest.startsWith("/") ? rest : `/${rest}`;
 }

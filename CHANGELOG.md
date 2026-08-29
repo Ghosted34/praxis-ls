@@ -46,6 +46,18 @@ Dates are ISO-8601, UTC.
   does not move: invitation emails point at it with a seven-day expiry. `/public` stays claimed whatever
   the base is and redirects to it, so renaming cannot strand a URL already in circulation. Prefixes the
   workspace answers — every ERP section, `/login`, `/api`, `/portal` — are refused with a reason.
+- **A domain the client brings serves the site at its ROOT, not under the prefix.** The prefix exists to
+  keep the marketing site out of the workspace's way on a shared origin; on `smartls.cm`, where
+  `surface = 'public'` and the ERP is not served at all, there is nothing to stay out of the way of. The
+  first cut honoured `public_base` there anyway, so the client's homepage was `smartls.cm/public` with `/`
+  redirecting into it, and every URL they printed carried a word that means nothing to their customers.
+  The surface now decides the base and the column applies to workspace hosts, which took three latent
+  self-redirects with it: `/` → `/`, each legacy alias → itself, and `LegacySplat` joining `"/"` with a
+  tail to make `//track` — a protocol-relative URL a browser reads as the host `track`. Two things that
+  were already wrong on a RENAMED prefix are fixed by the same change: the head injector's route table
+  matched a literal `/public/…`, so a `/site` tenant silently lost every link preview, and `robots.txt`
+  disallowed `/public/proposals/` on hosts that serve proposals somewhere else — a rule that reads as
+  covered and protects nothing. `public-web/src/app/root-mount.test.tsx` pins all of it.
 - **A CV over about 1.4 MB was refused after the applicant had waited for the upload.** The form
   advertises 8 MB and `careers.service.CV_MAX_BYTES` enforces 8 MB, but the file is base64-encoded into a
   JSON body — a third larger on the wire — against a 2 MB global limit, so most phone-scanned CVs were

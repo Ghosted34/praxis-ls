@@ -49,15 +49,64 @@ const RESERVED_BASES = new Set([
 const DEFAULT_BASE = "/public";
 
 /**
+ * The base a host serves the marketing site at when the site OWNS that host.
+ *
+ * A prefix exists to keep the marketing site out of the ERP's way on a shared
+ * origin. On a domain the client brought — `surface = 'public'`, where the ERP is
+ * not served at all — there is nothing to stay out of the way of, and the prefix
+ * becomes a word in every URL they print that means nothing to them or their
+ * customers. So those hosts serve at the root, and `public_base` applies to
+ * workspace hosts only.
+ *
+ * `normaliseBase` still REFUSES "/" from the console, deliberately: it is not a
+ * value anyone chooses, it is what being a public-surface host means.
+ */
+const ROOT_BASE = "/";
+
+/** True for the root mount, where the base contributes nothing to a path. */
+const isRoot = (base) => base === ROOT_BASE || base === "";
+
+/**
+ * Join a base and a path without producing "//track" at the root.
+ *
+ * Every caller that builds a URL from the base — the sitemap, the head's route
+ * table, the app's own `p()` — needs this exact rule, so it lives once.
+ */
+function joinBase(base, rest = "") {
+  const b = isRoot(base) ? "" : String(base || DEFAULT_BASE);
+  if (!rest) return b || "/";
+  return b + rest;
+}
+
+/**
+ * The path with the host's base removed, or null when it is not under it.
+ *
+ * `/site/portfolio/x` on a `/site` host and `/portfolio/x` on a root host are the
+ * same page, and anything keyed on the path — head tags, canonical links — has to
+ * see them that way. Before this existed the head's route table matched a literal
+ * `/public/...`, so a tenant who renamed the prefix silently lost every link
+ * preview.
+ */
+function stripBase(urlPath, base) {
+  const path = String(urlPath || "/");
+  if (isRoot(base)) return path;
+  const b = String(base);
+  if (path === b) return "/";
+  return path.startsWith(b + "/") ? path.slice(b.length) : null;
+}
+
+/**
  * `/Site/` → `/site`. One leading slash, no trailing one, lowercase.
  * Returns null when the input could not be a path segment at all.
  */
 function normaliseBase(input) {
-  // `== null` catches undefined as well as null, and that is load-bearing: a
-  // host row read before migration 0104 has no `public_base` property at all,
-  // so `String(undefined)` would produce the base "/undefined" and mount the
+  // BOTH null and undefined, spelled out — `eqeqeq` is on, so the `== null`
+  // shorthand is a lint error here. Catching undefined is load-bearing: a host
+  // row read before migration 0104 has no `public_base` property at all, and
+  // `String(undefined)` produces the base "/undefined", which mounts the
   // marketing app on a path no link points at.
-  const raw = String(input == null ? "" : input).trim().toLowerCase();
+  const empty = input === null || input === undefined;
+  const raw = String(empty ? "" : input).trim().toLowerCase();
   if (!raw) return DEFAULT_BASE;
   const segment = raw.replace(/^\/+/, "").replace(/\/+$/, "");
   if (!segment) return null; // "/" — the app cannot own a host's root here
@@ -107,4 +156,14 @@ function matcherFor(base) {
   return re;
 }
 
-module.exports = { DEFAULT_BASE, RESERVED_BASES, normaliseBase, baseProblem, matcherFor };
+module.exports = {
+  DEFAULT_BASE,
+  ROOT_BASE,
+  RESERVED_BASES,
+  isRoot,
+  joinBase,
+  stripBase,
+  normaliseBase,
+  baseProblem,
+  matcherFor,
+};

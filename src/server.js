@@ -428,10 +428,9 @@ function buildApp() {
       publicWebStatic(req, res, () => sendHtml(req, res, () => sendShell(req, res)));
     const isPublicSurface = (req) => req.hostSurface === "public";
 
-    // The canonical prefix. Hardcoded for now because the app's router is: `/`
-    // redirects to `/public` even on a tenant's own domain, so that IS where the
-    // pages live. It moves here when the base path becomes configurable.
     // The canonical prefix for THIS request's host, for robots/sitemap below.
+    // "/" on a host the site owns, the configured prefix on a workspace host —
+    // see the surface middleware immediately below, which is what decides.
     const baseOf = (req) => req.publicBase || publicWebPaths.DEFAULT_BASE;
 
     /**
@@ -446,7 +445,13 @@ function buildApp() {
       res
         .type("text/plain")
         .set("Cache-Control", "public, max-age=3600")
-        .send(publicHead.robots(origin, isPublicSurface(req) || config.SERVE_PUBLIC_WEB));
+        .send(
+          publicHead.robots(
+            origin,
+            isPublicSurface(req) || config.SERVE_PUBLIC_WEB,
+            baseOf(req),
+          ),
+        );
     });
 
     app.get("/sitemap.xml", async (req, res, next) => {
@@ -491,8 +496,17 @@ function buildApp() {
       try {
         const meta = await registry.resolveByHost(host);
         req.hostSurface = meta && meta.surface === "public" ? "public" : "erp";
+        // A host the site OWNS serves it at the root. `public_base` is the
+        // prefix that keeps the marketing site out of the ERP's way on a shared
+        // origin, and on a domain the client brought there is no ERP to avoid —
+        // so honouring the column there would put a meaningless `/public` in
+        // front of every URL that client prints. The column still applies the
+        // moment the host is flipped back to serving the workspace.
         req.publicBase =
-          publicWebPaths.normaliseBase(meta && meta.public_base) || publicWebPaths.DEFAULT_BASE;
+          req.hostSurface === "public"
+            ? publicWebPaths.ROOT_BASE
+            : publicWebPaths.normaliseBase(meta && meta.public_base) ||
+              publicWebPaths.DEFAULT_BASE;
       } catch (err) {
         logger.warn({ err, host }, "host surface lookup failed — serving the workspace");
         req.hostSurface = "erp";

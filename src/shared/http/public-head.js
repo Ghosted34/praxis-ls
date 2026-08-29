@@ -27,6 +27,7 @@ const fs = require("fs");
 const path = require("path");
 const registry = require("../../services/tenant/registry.service");
 const { logger } = require("../../config/logger");
+const paths = require("./public-web-paths");
 
 const TTL_MS = 5 * 60 * 1000;
 const MAX_ENTRIES = 500;
@@ -79,10 +80,18 @@ async function withTenant(host, fn) {
  * Each entry turns a path into `{ title, description, image }`, or null when the
  * record is not published — in which case the shell's own defaults stand rather
  * than a card describing a page the reader cannot open.
+ *
+ * The patterns are BASE-RELATIVE — `/portfolio/:slug`, not
+ * `/public/portfolio/:slug` — and `headFor` strips the host's base before
+ * matching. They were absolute once, which meant a tenant who renamed the prefix
+ * to `/site`, or brought their own domain (where the site is served at the
+ * root), silently lost every link preview: the regex stopped matching and every
+ * page fell back to the shell's generic title. Nothing errored; the cards just
+ * went blank.
  */
 const ROUTES = [
   {
-    test: /^\/public\/proposals\/([^/]+)\/?$/,
+    test: /^\/proposals\/([^/]+)\/?$/,
     load: (client, token) =>
       require("../../modules/sales/proposal_public/proposal_public.service").get(
         client,
@@ -97,7 +106,7 @@ const ROUTES = [
           },
   },
   {
-    test: /^\/public\/careers\/([^/]+)\/?$/,
+    test: /^\/careers\/([^/]+)\/?$/,
     load: (client, token) =>
       require("../../modules/hr/careers/careers.service").findByToken(
         client,
@@ -112,7 +121,7 @@ const ROUTES = [
           },
   },
   {
-    test: /^\/public\/portfolio\/([^/]+)\/?$/,
+    test: /^\/portfolio\/([^/]+)\/?$/,
     load: (client, slug) =>
       require("../../modules/sales/portfolio_public/portfolio_public.service").get(
         client,
@@ -135,9 +144,15 @@ async function headFor(host, urlPath, origin, base) {
   ).catch(() => null);
   const name = (branding && branding.name) || "Praxis";
 
+  // The path as the ROUTES table sees it: with this host's base removed, so
+  // `/site/portfolio/x`, `/public/portfolio/x` and (on the tenant's own domain)
+  // `/portfolio/x` all reach the same entry. null means the path is not under
+  // the base at all, and nothing here describes it.
+  const rel = paths.stripBase(urlPath, base);
+
   let page = null;
   for (const r of ROUTES) {
-    const m = r.test.exec(urlPath);
+    const m = rel === null ? null : r.test.exec(rel);
     if (!m) continue;
     page = await withTenant(host, (client) => r.load(client, m[1]))
       .then((row) => r.shape(row))
@@ -157,7 +172,7 @@ async function headFor(host, urlPath, origin, base) {
     // rides in the head because the head is already being rewritten per request
     // for the tags below — one pass, no extra request, and no build-time
     // variable that could disagree with the database.
-    '<meta name="praxis:public-base" content="' + esc(base || "/public") + '" />',
+    '<meta name="praxis:public-base" content="' + esc(base || paths.DEFAULT_BASE) + '" />',
     "<title>" + esc(title) + "</title>",
     '<link rel="canonical" href="' + esc(canonical) + '" />',
     '<meta property="og:type" content="website" />',
@@ -197,7 +212,7 @@ function applyHead(html, tags) {
     .replace("</head>", "  " + tags + "\n  </head>");
 }
 
-function robots(origin, servesPublic) {
+function robots(origin, servesPublic, base) {
   if (!servesPublic) {
     // A workspace host has nothing a crawler should index, and saying so is
     // cheaper than letting one discover a login wall by crawling into it.
@@ -209,7 +224,12 @@ function robots(origin, servesPublic) {
     // Tokenised documents are shared deliberately, with one recipient. They stay
     // reachable by anyone holding the link — that is the point — but they should
     // not accumulate in a search index.
-    "Disallow: /public/proposals/",
+    //
+    // Built from THIS host's base, not the literal "/public": a Disallow line
+    // naming a path the host does not serve protects nothing, and the paths that
+    // needed protecting stay open. That is the failure this file is otherwise
+    // full of guards against.
+    "Disallow: " + paths.joinBase(base, "/proposals/"),
     "Disallow: /portal/",
     "",
     "Sitemap: " + origin + "/sitemap.xml",
@@ -218,7 +238,11 @@ function robots(origin, servesPublic) {
 }
 
 async function sitemap(host, origin, base) {
-  const fixed = [base, base + "/track", base + "/services", base + "/portfolio", base + "/careers"];
+  // `joinBase` and not `base + …`: on a host the site owns, the base is "/"
+  // and naive concatenation emits "//track" — a URL a crawler treats as a
+  // protocol-relative address, i.e. a different site.
+  const at = (rest) => paths.joinBase(base, rest);
+  const fixed = [at(""), at("/track"), at("/services"), at("/portfolio"), at("/careers")];
   const rows = await withTenant(host, async (client) => {
     const services = require("../../modules/operations/service_type_web_public/service_type_web_public.service");
     const portfolio = require("../../modules/sales/portfolio_public/portfolio_public.service");
@@ -227,9 +251,9 @@ async function sitemap(host, origin, base) {
     // Each section is independent: a tenant with no case notes should still get a
     // sitemap of their services, not a 500.
     const sections = [
-      [() => services.list(client), (r) => base + "/services/" + encodeURIComponent(r.slug_en || r.slug_fr || "")],
-      [() => portfolio.list(client), (r) => base + "/portfolio/" + encodeURIComponent(r.slug || "")],
-      [() => careers.list(client), (r) => base + "/careers/" + encodeURIComponent(r.public_token || r.token || "")],
+      [() => services.list(client), (r) => at("/services/" + encodeURIComponent(r.slug_en || r.slug_fr || ""))],
+      [() => portfolio.list(client), (r) => at("/portfolio/" + encodeURIComponent(r.slug || ""))],
+      [() => careers.list(client), (r) => at("/careers/" + encodeURIComponent(r.public_token || r.token || ""))],
     ];
     for (const [read, make] of sections) {
       try {

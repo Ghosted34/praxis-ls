@@ -370,25 +370,42 @@ function DomainsCard({ slug, t, onSaved }: { slug: string; t: TDetail; onSaved: 
                       : <Pill tone="mute">Workspace</Pill>}
                   </td>
                   <td>
-                    {/* The prefix appears in every URL the tenant prints, so it is
-                        theirs to choose — from a bounded set. The server refuses
-                        anything the workspace already answers (/settings, /login,
-                        every ERP section) and /portal, which invitation emails
-                        point at and which never moves. */}
-                    <BaseCell
-                      slug={slug}
-                      host={sd.host}
-                      value={sd.public_base || "/public"}
-                      onSaved={onSaved}
-                    />
+                    {/* A prefix exists to keep the marketing site out of the
+                        workspace's way on a shared origin. A host that serves the
+                        PUBLIC site has no workspace on it, so the site takes the
+                        root and there is nothing to choose — showing an editable
+                        `/public` there would offer a setting the server ignores,
+                        and put a word in the client's URLs that means nothing to
+                        their customers.
+
+                        On a workspace host it is theirs to choose, from a bounded
+                        set: the server refuses anything the ERP already answers
+                        (/settings, /login, every section) and /portal, which
+                        invitation emails point at and which never moves. */}
+                    {isPublic ? (
+                      <span className="mono muted" title="This host serves the site at its root — the prefix applies to workspace hosts only.">
+                        /
+                      </span>
+                    ) : (
+                      <BaseCell
+                        slug={slug}
+                        host={sd.host}
+                        value={sd.public_base || "/public"}
+                        onSaved={onSaved}
+                      />
+                    )}
                   </td>
                   <td>{sd.is_primary ? <Pill tone="ok">Primary</Pill> : <span className="muted">—</span>}</td>
                   <td style={{ textAlign: "right" }}>
                     {/* The primary host is where staff sign in. Flipping it to the
                         public site would take the workspace off the only address
-                        anyone has for it, so it is not offered here. */}
+                        anyone has for it, so it is not offered here — and it says
+                        so, because a bare dash in an actions column reads as
+                        "nothing here yet" rather than "deliberately not offered". */}
                     {sd.is_primary ? (
-                      <span className="muted">—</span>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        Sign-in host
+                      </span>
                     ) : (
                       <Button
                         size="sm"
@@ -416,11 +433,24 @@ function DomainsCard({ slug, t, onSaved }: { slug: string; t: TDetail; onSaved: 
             style={{ width: 220 }}
             className="mono"
           />
-          <select value={surface} onChange={(e) => setSurface(e.target.value as "public" | "erp")}>
+          {/* `width: auto` like every other select on this screen. Without it the
+              flex row stretches it across the whole card, next to a 220px host
+              box, and the eye reads the widest control as the important one. */}
+          <select
+            value={surface}
+            onChange={(e) => setSurface(e.target.value as "public" | "erp")}
+            style={{ width: "auto" }}
+          >
             <option value="public">serves the public site</option>
             <option value="erp">serves the workspace</option>
           </select>
           <Button size="sm" onClick={add} loading={busy === "add"}>Add</Button>
+        </dd>
+        <dt>Site lives at</dt>
+        <dd className="muted">
+          The prefix saves when you press Enter or leave the box; Escape puts it
+          back. A host that serves the public site uses its root, so there is
+          nothing to set on that row.
         </dd>
         <dt>Still needed</dt>
         <dd className="muted">

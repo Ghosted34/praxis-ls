@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import { NotFoundPage } from "@/features/not-found/not-found-page";
 import { Skeleton } from "@/components/ui/skeleton";
-import { p, BASE_IS_DEFAULT, LEGACY_BASE } from "@/lib/base-path";
+import { p, BASE_IS_DEFAULT, IS_ROOT, LEGACY_BASE } from "@/lib/base-path";
 
 /**
  * The route table for the stranger-facing app.
@@ -40,6 +40,23 @@ import { p, BASE_IS_DEFAULT, LEGACY_BASE } from "@/lib/base-path";
  * (there is no other sensible thing to put there), a deep link never does. A
  * forwarded `/public/proposals/xyz?lang=FR` must land on exactly that page in
  * that language, or the shared link the sales team sent is wrong.
+ *
+ * ── AND ON A HOST THE SITE OWNS, `/` DOES NOT REDIRECT EITHER ──────────────
+ *
+ * `IS_ROOT` is true on a domain the client brought, where this app is the only
+ * thing served and `p()` is `/`. Two things then have to change, and both are
+ * about the same trap — a redirect whose source and target have become the same
+ * string:
+ *
+ *   · `/` would redirect to `/`, which is a loop the browser reports as
+ *     "too many redirects" and no stack trace explains.
+ *   · the legacy block below would do it again per path: `/track` redirecting to
+ *     `p("/track")`, which at the root IS `/track`.
+ *
+ * So both are skipped at the root, where those paths are not legacy aliases —
+ * they are the canonical URLs. `/tracking`, `/proposal/:token` (singular) and
+ * `/client-portal/*` still redirect there, because those spellings are wrong on
+ * every host.
  */
 
 const lazy = (
@@ -94,6 +111,16 @@ function LegacyQuery({ to }: { to: string }) {
   return <Navigate to={`${to}${search}`} replace />;
 }
 
+/** Join a redirect target with its tail without emitting `//track`.
+ *
+ *  `to` is `"/"` on a host serving the site at its root, and `"/" + "/" + tail`
+ *  is a protocol-relative URL — a browser reads `//track` as the host `track`,
+ *  so the redirect leaves the site entirely. */
+function under(to: string, tail: string): string {
+  if (!tail) return to;
+  return to === "/" ? `/${tail}` : `${to}/${tail}`;
+}
+
 /** `/portfolio/:slug` → `/public/portfolio/:slug`. The slug is re-encoded rather
  *  than pasted back raw, because a French slug contains spaces and accents and
  *  some of these links were typed by hand into an email months ago. */
@@ -103,7 +130,7 @@ function LegacyParam({ to }: { to: string }) {
     .filter((v): v is string => !!v)
     .map(encodeURIComponent)
     .join("/");
-  return <Navigate to={rest ? `${to}/${rest}` : to} replace />;
+  return <Navigate to={under(to, rest)} replace />;
 }
 
 /** `/client-portal/anything/deeper?x=1` → `/portal/anything/deeper?x=1`.
@@ -117,9 +144,7 @@ function LegacySplat({ to }: { to: string }) {
     .filter(Boolean)
     .map(encodeURIComponent)
     .join("/");
-  return (
-    <Navigate to={`${to}${tail ? `/${tail}` : ""}${search}${hash}`} replace />
-  );
+  return <Navigate to={`${under(to, tail)}${search}${hash}`} replace />;
 }
 
 /** The chunk-loading frame. Not the full `PageShell`: mounting the header during
@@ -144,7 +169,9 @@ export function AppRouter() {
   return (
     <React.Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<Navigate to={p()} replace />} />
+        {/* At the root `p()` IS "/", and the marketing route below already
+            claims it — a redirect here would point at itself. */}
+        {IS_ROOT ? null : <Route path="/" element={<Navigate to={p()} replace />} />}
 
         {/* ── the public site ── */}
         <Route path={p()} element={<Marketing />} />
@@ -170,32 +197,40 @@ export function AppRouter() {
         {/* ── the external portal ── */}
         <Route path="/portal/*" element={<PortalApp />} />
 
-        {/* ── legacy redirects, kept because the ERP published these URLs ── */}
-        <Route path="/track" element={<LegacyQuery to={p("/track")} />} />
+        {/* ── legacy redirects, kept because the ERP published these URLs ──
+            Skipped at the root, where these ARE the canonical paths and each
+            line would be a route redirecting to itself. */}
+        {IS_ROOT ? null : (
+          <>
+            <Route path="/track" element={<LegacyQuery to={p("/track")} />} />
+            <Route
+              path="/portfolio"
+              element={<Navigate to={p("/portfolio")} replace />}
+            />
+            <Route
+              path="/portfolio/:slug"
+              element={<LegacyParam to={p("/portfolio")} />}
+            />
+            <Route
+              path="/proposals/:token"
+              element={<LegacyParam to={p("/proposals")} />}
+            />
+            <Route
+              path="/careers"
+              element={<Navigate to={p("/careers")} replace />}
+            />
+            <Route
+              path="/careers/:token"
+              element={<LegacyParam to={p("/careers")} />}
+            />
+          </>
+        )}
+        {/* Wrong on EVERY host, root included: `/tracking` was the ERP's spelling
+            and `/proposal` the singular the sales team still types. */}
         <Route path="/tracking" element={<LegacyQuery to={p("/track")} />} />
-        <Route
-          path="/portfolio"
-          element={<Navigate to={p("/portfolio")} replace />}
-        />
-        <Route
-          path="/portfolio/:slug"
-          element={<LegacyParam to={p("/portfolio")} />}
-        />
         <Route
           path="/proposal/:token"
           element={<LegacyParam to={p("/proposals")} />}
-        />
-        <Route
-          path="/proposals/:token"
-          element={<LegacyParam to={p("/proposals")} />}
-        />
-        <Route
-          path="/careers"
-          element={<Navigate to={p("/careers")} replace />}
-        />
-        <Route
-          path="/careers/:token"
-          element={<LegacyParam to={p("/careers")} />}
         />
         <Route path="/client-portal/*" element={<LegacySplat to="/portal" />} />
         {/* The ORIGINAL prefix, kept for good.

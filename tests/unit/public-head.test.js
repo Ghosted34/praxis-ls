@@ -84,18 +84,63 @@ describe("public head injection", () => {
   });
 });
 
+describe("the base a host serves the site at", () => {
+  const paths = require("../../src/shared/http/public-web-paths");
+
+  test("robots names the proposals path THIS host actually serves", () => {
+    // The Disallow line was the literal "/public/proposals/" whatever the host
+    // served. On a `/site` host, or on a domain the client brought (where the
+    // site is at the root), that line names a path that does not exist — so it
+    // protects nothing, and the tokenised proposals it was written to keep out
+    // of search engines stay crawlable. A rule that is present and wrong is
+    // worse than one that is absent, because it reads as covered.
+    expect(head.robots("https://x.cm", true, "/public")).toContain(
+      "Disallow: /public/proposals/",
+    );
+    expect(head.robots("https://x.cm", true, "/site")).toContain(
+      "Disallow: /site/proposals/",
+    );
+    expect(head.robots("https://smartls.cm", true, "/")).toContain(
+      "Disallow: /proposals/",
+    );
+    // …and never the doubled slash, which a crawler reads as another host.
+    expect(head.robots("https://smartls.cm", true, "/")).not.toContain("//proposals");
+  });
+
+  test("joinBase never emits a protocol-relative path at the root", () => {
+    expect(paths.joinBase("/site", "/track")).toBe("/site/track");
+    expect(paths.joinBase("/", "/track")).toBe("/track");
+    expect(paths.joinBase("/", "")).toBe("/");
+    expect(paths.joinBase("/site", "")).toBe("/site");
+  });
+
+  test("stripBase turns a host's URL into the path the head table matches", () => {
+    // The three spellings of the same page, on three kinds of host.
+    expect(paths.stripBase("/public/portfolio/x", "/public")).toBe("/portfolio/x");
+    expect(paths.stripBase("/site/portfolio/x", "/site")).toBe("/portfolio/x");
+    expect(paths.stripBase("/portfolio/x", "/")).toBe("/portfolio/x");
+    // The base itself is the home page.
+    expect(paths.stripBase("/site", "/site")).toBe("/");
+    // Not under the base at all — nothing here describes it.
+    expect(paths.stripBase("/login", "/site")).toBeNull();
+    // A prefix match that is not a segment boundary is NOT under the base:
+    // /sitemap.xml must not read as /site + "map.xml".
+    expect(paths.stripBase("/sitemap.xml", "/site")).toBeNull();
+  });
+});
+
 describe("robots.txt", () => {
   test("a workspace host asks not to be indexed at all", () => {
     // There is nothing behind a staff login for a crawler to find, and saying so
     // is cheaper than letting one discover the login wall by crawling into it.
-    const txt = head.robots("https://smartls.praxisls.com", false);
+    const txt = head.robots("https://smartls.praxisls.com", false, "/public");
     expect(txt).toContain("Disallow: /");
     expect(txt).not.toContain("Allow: /");
     expect(txt).not.toContain("Sitemap:");
   });
 
   test("a public host allows crawling but keeps tokenised links out of the index", () => {
-    const txt = head.robots("https://smartls.cm", true);
+    const txt = head.robots("https://smartls.cm", true, "/public");
     expect(txt).toContain("Allow: /");
     // Shared deliberately with one recipient; reachable by link, not by search.
     expect(txt).toContain("Disallow: /public/proposals/");

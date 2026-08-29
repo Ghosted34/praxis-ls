@@ -79,6 +79,8 @@ export function InboxPage() {
   const [bulkFailures, setBulkFailures] = React.useState<
     { email_thread_id: string; error: string }[]
   >([]);
+  /** What a deletion actually did — see `emptyFolder`. */
+  const [note, setNote] = React.useState<string | null>(null);
   const [limit, setLimit] = React.useState(PAGE);
   // Local overlay for the two optimistic flags, keyed by thread id. Cleared on
   // every reload, so the server's answer always wins in the end.
@@ -144,6 +146,7 @@ export function InboxPage() {
   React.useEffect(() => {
     setSelected(new Set());
     setBulkFailures([]);
+    setNote(null);
     setLimit(PAGE);
   }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, sel.pending]);
 
@@ -203,12 +206,85 @@ export function InboxPage() {
 
   async function bulk(op: api.BulkOp, folder?: api.MailFolder) {
     if (!selected.size) return;
+    // Deletion is the one bulk verb with no undo, so it is the one that asks.
+    // A message sealed into the compliance archive is retained rather than
+    // deleted — said here, before, rather than reported afterwards as a
+    // surprise.
+    if (op === "delete") {
+      const ok = window.confirm(
+        `${tr("Delete")} ${selected.size} ${selected.size === 1 ? tr("conversation") : tr("conversations")} ${tr("for ever?")}\n\n` +
+        tr("This cannot be undone. Anything sealed into the compliance archive is kept and will be reported."),
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setBulkFailures([]);
+    setNote(null);
     try {
       const res = await api.bulkThreads({ ids: [...selected], op, folder });
       setBulkFailures(res.failed || []);
       setSelected(new Set());
+      if (op === "delete") setNote(`${res.succeeded} ${tr("deleted.")}`);
+      reload();
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** One conversation, for ever. The retained count is reported, never hidden. */
+  async function deleteOne(id: string) {
+    const ok = window.confirm(
+      `${tr("Delete this conversation for ever?")}\n\n` +
+      tr("This cannot be undone. Anything sealed into the compliance archive is kept."),
+    );
+    if (!ok) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.deleteThread(id);
+      setNote(
+        res.retained_archived
+          ? `${res.deleted} ${tr("deleted.")} ${res.retained_archived} ${tr("kept — sealed into the compliance archive.")}`
+          : `${res.deleted} ${tr("deleted.")}`,
+      );
+      // Only drop the open thread when the row itself went. A conversation
+      // holding sealed messages survives, and closing the pane on it would say
+      // "gone" about something that is still there.
+      if (res.thread_removed) setOpenId(null);
+      reload();
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Empty Trash or Spam.
+   *
+   * The report afterwards is the point, not the confirmation before it.
+   * `emptyFolder` returns `retained_archived` — the messages under retention
+   * that stayed — and a success toast over a partial result would tell somebody
+   * their correspondence is gone when it is not.
+   */
+  async function emptyFolder(folder: "TRASH" | "SPAM") {
+    const ok = window.confirm(
+      `${folder === "TRASH" ? tr("Empty the bin?") : tr("Empty spam?")}\n\n` +
+      tr("Every conversation in it is deleted for ever. This cannot be undone. Anything sealed into the compliance archive is kept."),
+    );
+    if (!ok) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.emptyFolder(folder);
+      setNote(
+        res.retained_archived
+          ? `${res.deleted} ${tr("deleted.")} ${res.retained_archived} ${tr("kept — sealed into the compliance archive.")}`
+          : `${res.deleted} ${tr("deleted.")}`,
+      );
+      setBulkFailures(res.failed || []);
       reload();
     } catch (err) {
       reportActionError(err);
@@ -318,6 +394,12 @@ export function InboxPage() {
         </form>
         )}
 
+        {note && (
+          <p role="status" className="rounded-md bg-muted px-3 py-2 text-xs">
+            {note}
+          </p>
+        )}
+
         {meaning && !sel.pending && (
           <SemanticResults
             query={meaning}
@@ -360,6 +442,12 @@ export function InboxPage() {
             onOpen={(t) => open(t.email_thread_id)}
             onStar={(t, on) => star(t.email_thread_id, on)}
             onBulk={bulk}
+            folder={sel.view || sel.label ? undefined : sel.folder}
+            onEmptyFolder={
+              sel.folder === "TRASH" || sel.folder === "SPAM"
+                ? () => emptyFolder(sel.folder as "TRASH" | "SPAM")
+                : undefined
+            }
             bulkBusy={busy}
             bulkFailures={bulkFailures}
             onLoadMore={() => setLimit((n) => n + PAGE)}
@@ -384,6 +472,11 @@ export function InboxPage() {
             }
             onToggleRead={(read) =>
               openId && run(() => api.setThreadRead(openId, read))
+            }
+            onDelete={
+              openId && (sel.folder === "TRASH" || sel.folder === "SPAM") && !sel.view
+                ? () => deleteOne(openId)
+                : undefined
             }
             onReplied={reload}
             onWorkChanged={reload}

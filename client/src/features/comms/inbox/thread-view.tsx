@@ -341,6 +341,7 @@ export function ThreadView({
   onStream,
   onLabel,
   onToggleRead,
+  onDelete,
   onClose,
   onReplied,
   onWorkChanged,
@@ -354,6 +355,16 @@ export function ThreadView({
   onStream: (stream: MailStream) => void;
   onLabel: (labelId: string) => void;
   onToggleRead: (read: boolean) => void;
+  /**
+   * Delete this conversation for ever. Absent = not offered.
+   *
+   * Only supplied while reading Trash or Spam, where "move to Trash" is a
+   * no-op and permanent deletion is the only remaining thing to want. The
+   * server is retention-aware — anything sealed into `email_archive` is kept
+   * and counted — so the caller reports what actually happened rather than
+   * assuming a success.
+   */
+  onDelete?: () => void;
   onClose: () => void;
   /** Called once a reply is accepted into the send queue, so the list refreshes. */
   onReplied?: () => void;
@@ -485,6 +496,11 @@ export function ThreadView({
           >
             {thread.stream === "SYSTEM" ? tr("This is a person") : tr("This is a notice")}
           </Button>
+          {onDelete && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={onDelete}>
+              {tr("Delete for ever")}
+            </Button>
+          )}
           {labels.length > 0 && (
             <Select
               aria-label={tr("Add a label")}

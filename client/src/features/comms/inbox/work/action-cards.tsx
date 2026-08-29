@@ -38,7 +38,7 @@ import { Pill } from "@/components/ui/pill";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
 import { fieldLabel, smartCell } from "@/lib/format";
-import { tr } from "@/lib/i18n";
+import { currentLocale, tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 
 /**
@@ -129,11 +129,28 @@ function Card({ card, language }: { card: api.ActionCard; language: "en" | "fr" 
 
 export function ActionCards({
   threadId,
-  language = "en",
+  language,
 }: {
   threadId: string;
+  /**
+   * Which language to LABEL the cards in. Defaults to the workspace's, not to
+   * English.
+   *
+   * Every card comes back with `label_en` and `label_fr`; the server has always
+   * sent both. This prop defaulted to `"en"` and no caller passed it, so
+   * `label_fr` was never once rendered and a French operator read English card
+   * names in an otherwise French rail — a straightforward EN/FR parity miss
+   * (§3.9) hidden behind a default that looked harmless.
+   *
+   * The workspace language rather than the thread's or the party's: these
+   * labels name OUR modules to the person reading, not the counterparty. What
+   * gets written TO the client resolves separately, through
+   * `signature/language.resolveLanguage`, which is the one that must follow the
+   * party's preference.
+   */
   language?: "en" | "fr";
 }) {
+  const lang = language ?? (currentLocale().startsWith("fr") ? "fr" : "en");
   const res = useResource(() => api.listCards(threadId), [threadId]);
 
   if (res.loading) return <LoadingRow label={tr("Working out what you could do…")} />;
@@ -152,7 +169,7 @@ export function ActionCards({
     <section aria-label={tr("Things you can start from this email")}>
       <ul className="space-y-1.5">
         {cards.map((c) => (
-          <Card key={c.card} card={c} language={language} />
+          <Card key={c.card} card={c} language={lang} />
         ))}
       </ul>
       <p className="mt-2 text-xs text-muted-foreground">

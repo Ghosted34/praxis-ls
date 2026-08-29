@@ -22,6 +22,16 @@ const client = {
 beforeEach(() => {
   repo.insertForUser.mockReset().mockResolvedValue({ notification_id: "n-1" });
   repo.isChannelEnabled.mockReset();
+  // The recipient's address now arrives with the delivery plan, resolved by
+  // `activeEmailsFor` in ONE query for the whole fan-out, instead of a
+  // per-recipient `SELECT ... FROM app_user` inside the send loop — which is
+  // the round-trip PERF S5 removed and which the delivery rework must not
+  // reintroduce. The contract these tests assert is unchanged; only where the
+  // address is read from has moved.
+  repo.activeEmailsFor
+    .mockReset()
+    .mockResolvedValue(new Map([["u", { user_id: "u", email: "user@acme.com", full_name: "Ada" }]]));
+  repo.unreadCount.mockReset().mockResolvedValue(0);
   email.send.mockReset().mockResolvedValue({});
   client.query.mockClear();
 });

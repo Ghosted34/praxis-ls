@@ -40,31 +40,31 @@ function notificationEmailHtml({ name, title, body }) {
 }
 
 /**
- * Best-effort EMAIL fan-out for a notification. Fetches the recipient's address,
- * honours the per-(EMAIL, category) preference (default OFF — email is opt-in),
- * and sends via the tenant's NOTIFICATIONS identity. Security categories email
- * unconditionally. NEVER throws — a missing SMTP config, no address, or a send
- * failure must not affect the in-app notification or the caller's transaction.
+ * Send ONE notification email, via the tenant's NOTIFICATIONS identity. NEVER
+ * throws — a missing SMTP config, no address, or a send failure must not affect
+ * the in-app notification or the caller's transaction.
+ *
+ * ── WHY IT NEITHER CHECKS THE PREFERENCE NOR LOOKS UP THE ADDRESS ───────────
+ *
+ * Both were done here, once per recipient, which put the per-user preference
+ * query and a per-user `app_user` SELECT back on a path that PERF S5 had
+ * deliberately batched — a fan-out to fifty finance users meant a hundred extra
+ * round-trips. The decision and the address now arrive with the delivery plan,
+ * resolved in one query each by the producer, and this function does the one
+ * thing its name says.
  *
  * NOTE: this performs a network (SMTP) call. Transactional producers should call
- * notify() AFTER their commit so the DB transaction isn't held open across it.
+ * notify() AFTER their commit so the DB transaction isn't held open across it —
+ * or pass `ctx.tenantMeta`, which moves the whole of delivery onto the queue.
  */
-async function deliverEmail(client, { userId, category, isSecurity, title, body }) {
+async function deliverEmail(client, { userId, person, isSecurity, title, body }) {
   try {
-    if (!isSecurity) {
-      const allowed = await repo.isChannelEnabled(client, userId, "EMAIL", category, false);
-      if (!allowed) return;
-    }
-    const { rows } = await client.query(
-      "SELECT email, full_name FROM app_user WHERE user_id = $1 AND status = 'ACTIVE'",
-      [userId],
-    );
-    const to = rows[0] && rows[0].email;
-    if (!to) return;
+    const to = person && person.email;
+    if (!to) return false;
     await emailService.send(client, {
       to,
       subject: title,
-      html: notificationEmailHtml({ name: rows[0].full_name, title, body }),
+      html: notificationEmailHtml({ name: person.full_name, title, body }),
       text: body ? `${title}\n\n${body}` : title,
       purpose: "NOTIFICATIONS",
       moduleKey: events.MODULE,
@@ -74,8 +74,10 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body 
       // silence, so the From matters more, not less.
       sendPoint: isSecurity ? "notification.security" : "notification.alert",
     });
+    return true;
   } catch (err) {
     logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
+    return false;
   }
 }
 
@@ -85,12 +87,209 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body 
  * only when the in-app notification was actually delivered. sendToUser reads the
  * tenant push_subscription table on the caller's client and no-ops cleanly when
  * push isn't configured (no VAPID / web-push). NEVER throws.
+ *
+ * Returns sendToUser's result so the caller can tell "no device registered"
+ * from "three devices, all failed" — the email fallback turns on that
+ * distinction.
  */
-async function deliverPush(client, { userId, title, body }) {
+async function deliverPush(client, { userId, title, body, url = "/notifications", tag, renotify, requireInteraction, urgency, badgeCount, data, actions }) {
   try {
-    await pushService.sendToUser(client, { user_id: userId, title, body, url: "/notifications", tag: userId });
+    return await pushService.sendToUser(client, {
+      user_id: userId,
+      title, body, url,
+      // The old code sent `tag: userId` here, which told the OS that every
+      // notification for a user REPLACED the previous one — five urgent mails
+      // arrived and the phone showed one. Undefined unless a caller asks for
+      // collapsing on a key that means something (a mail thread), which is the
+      // only kind of collapsing that is ever right.
+      tag,
+      renotify, requireInteraction, urgency, badgeCount, data, actions,
+    });
   } catch (err) {
     logger.error({ err, user_id: userId }, "[notify] push delivery skipped/failed");
+    return { sent: 0, failed: 0, total: 0, reason: "threw" };
+  }
+}
+
+/**
+ * The outbound half of a notification: push to every registered device, email
+ * where the recipient wants it, and email ANYWAY where push reached nothing.
+ *
+ * ── WHY THIS IS ONE FUNCTION AND NOT TWO LOOPS AT THE CALL SITES ────────────
+ *
+ * It runs from two places — inline, on the caller's connection, and from the
+ * `notification-deliver` job on a fresh one. Those must not be two
+ * implementations: the queued path is the one that runs in production and the
+ * inline path is the one the tests exercise, so a divergence between them is a
+ * bug that only ever shows up live.
+ *
+ * ── THE FALLBACK RULE ───────────────────────────────────────────────────────
+ *
+ * When `emailFallback` is set and push delivered to ZERO devices, the email
+ * goes out regardless of the EMAIL preference. That is the difference between
+ * "we tried" and "they know". Two carve-outs, and both matter:
+ *
+ *   - It does NOT fire when the recipient SILENCED this category (`push:
+ *     false`). Push was never attempted for them, and emailing anyway would
+ *     route around an opt-out the user made on purpose.
+ *   - It does NOT fire when push is unconfigured DEPLOYMENT-wide (`reason:
+ *     "push not configured"`). That is an operations problem — no VAPID
+ *     keypair — and papering over it with an email per notification would hide
+ *     it while flooding every inbox. It is logged at error level instead.
+ */
+async function deliverOutbound(client, { recipients, notification }) {
+  const {
+    title, body = null, isSecurity = false,
+    url = "/notifications", tag, renotify = false, requireInteraction = false,
+    urgency = "normal", data = null, actions = null, emailFallback = false,
+  } = notification || {};
+
+  const list = (recipients || []).filter((r) => r.userId || r.user_id);
+  if (!list.length) return { pushed: 0, emailed: 0, fellBack: 0, recipients: 0 };
+
+  // Every address that could be needed, in ONE query — the recipients who want
+  // email, plus (when the fallback is armed) the ones who might turn out to
+  // need it because push reached nothing. Doing this per recipient inside the
+  // loop is what PERF S5 removed and what an earlier draft of this function
+  // quietly reintroduced.
+  const mayEmail = list
+    .filter((r) => r.email || emailFallback)
+    .map((r) => r.userId || r.user_id);
+  // `Promise.resolve(...)` because a repo double in a test may answer
+  // synchronously, and calling `.catch` on a bare value throws.
+  const people = mayEmail.length
+    ? (await Promise.resolve(repo.activeEmailsFor(client, mayEmail)).catch(() => null)) || new Map()
+    : new Map();
+
+  let pushed = 0;
+  let emailed = 0;
+  let fellBack = 0;
+
+  for (const r of list) {
+    const userId = r.userId || r.user_id;
+
+    // `push: false` means the recipient silenced this category in the product.
+    // Not attempted, and — critically — NOT a trigger for the email fallback:
+    // falling back for somebody who opted out would route around the opt-out.
+    const suppressed = r.push === false;
+     
+    const push = suppressed
+      ? { sent: 0, reason: "suppressed by preference" }
+       
+      : await deliverPush(client, {
+        userId, title, body, url, tag, renotify, requireInteraction, urgency,
+        badgeCount: Number.isFinite(r.badgeCount) ? r.badgeCount : null,
+        data, actions,
+      });
+    pushed += push.sent || 0;
+
+    if (push.reason === "push not configured") {
+      logger.error(
+        { user_id: userId },
+        "[notify] web-push is not configured on this deployment — no VAPID keypair. " +
+        "Notifications cannot reach a closed app until one is generated in the Platform Console.",
+      );
+    }
+
+    const person = people.get(userId);
+    if (r.email) {
+       
+      if (await deliverEmail(client, { userId, person, isSecurity, title, body })) emailed += 1;
+    } else if (
+      emailFallback
+      && !suppressed
+      && !(push.sent > 0)
+      && push.reason !== "push not configured"
+    ) {
+      // Nothing reached a device, and the recipient did not ask for silence.
+      // Email is the last channel that can still reach this person today, so it
+      // goes out over the (opt-in, default-off) email preference.
+       
+      if (await deliverEmail(client, { userId, person, isSecurity, title, body })) {
+        emailed += 1;
+        fellBack += 1;
+      }
+    }
+  }
+
+  return { pushed, emailed, fellBack, recipients: list.length };
+}
+
+/**
+ * The tenant this delivery belongs to, for the queue — or null when we cannot
+ * tell, in which case delivery stays inline.
+ *
+ * A caller inside a worker already holds `tenantMeta` and passes it through
+ * `ctx`. A caller on a request path does not, but the ambient request context
+ * carries the tenant slug (config/request-context, set by the tenant-context
+ * middleware), which resolves to the same metadata. The result is memoised for
+ * a minute because it is a platform-database read on the path of every
+ * notification and the answer changes about never.
+ */
+const TENANT_META_TTL_MS = 60_000;
+const tenantMetaCache = new Map();
+
+async function resolveTenantMeta(ctx = {}) {
+  if (ctx && ctx.tenantMeta) return ctx.tenantMeta;
+  try {
+     
+    const requestContext = require("../../config/request-context");
+    const slug = requestContext.getTenant();
+    if (!slug) return null;
+    const hit = tenantMetaCache.get(slug);
+    if (hit && Date.now() - hit.at < TENANT_META_TTL_MS) return hit.meta;
+     
+    const registry = require("../../services/tenant/registry.service");
+    const meta = await registry.resolveBySlug(slug);
+    tenantMetaCache.set(slug, { meta, at: Date.now() });
+    return meta;
+  } catch {
+    /* @silent:storage the platform lookup failed; inline delivery is the
+       defined degradation and is what happened before the queue existed. */
+    return null;
+  }
+}
+
+/**
+ * Hand the outbound half to the worker, or report that we could not.
+ *
+ * ── WHY THE QUEUE, AND WHY IT MATTERS MOST FOR MAIL ─────────────────────────
+ *
+ * Inline, an SMTP send and one HTTPS request per registered device happen while
+ * the producer's WRITE TRANSACTION IS STILL OPEN — pinning a pooled connection
+ * and holding locks on the business row for the length of two network calls to
+ * third parties. Worse, there is no retry: a transient 500 from FCM meant the
+ * notification was logged at warn level and gone for ever. For the one category
+ * the product cannot afford to drop, "best-effort, once" is not good enough.
+ *
+ * Queued, delivery gets BullMQ's five attempts with exponential backoff and a
+ * dead-letter, and the transaction closes as soon as the in-app rows are
+ * written.
+ *
+ * Returns false when there is no tenant context or no Redis — the caller then
+ * delivers inline, exactly as before, so nothing depends on the queue being up.
+ */
+async function enqueueDelivery(ctx, { recipients, notification }) {
+  if (!recipients || !recipients.length) return true;
+  const tenantMeta = await resolveTenantMeta(ctx);
+  if (!tenantMeta) return false;
+  try {
+     
+    const { enqueue } = require("../../jobs/queue-producer");
+    await enqueue(
+      "notification-deliver",
+      "deliver",
+      { tenantMeta, env: (ctx && ctx.env) || "live", recipients, notification },
+      // The default five attempts with exponential backoff. A push service
+      // returning 5xx is the case this exists for and it is usually over in
+      // seconds; `removeOnFail` is kept so a persistent failure stays visible
+      // in the queue rather than being swept away.
+      { removeOnComplete: 500, removeOnFail: 500 },
+    );
+    return true;
+  } catch (err) {
+    logger.warn({ err }, "[notify] could not queue delivery — falling back to inline");
+    return false;
   }
 }
 
@@ -129,7 +328,11 @@ async function deliverPush(client, { userId, title, body }) {
  * already exists (BullMQ) and is the right home for them; this change removes
  * the ~246 unnecessary DATABASE round-trips without touching that question.
  */
-async function notifyMany(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+async function notifyMany(client, userIds, {
+  eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null,
+  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
+} = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
   if (ids.length === 0 || !title) return 0;
 
@@ -149,39 +352,33 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
     eventTypeKey, title, body, entityRef, priority, category: cat,
   });
 
-  // 3. one lookup for all the addresses.
-  const emailUsers = ids.filter(wantsEmail);
-  const people = await repo.activeEmailsFor(client, emailUsers);
+  // 3. the badge number each recipient's phone should show, one query. Read
+  //    AFTER the insert so the count includes the notification being delivered.
+  const badges = await repo.unreadCountsFor(client, ids).catch(() => new Map());
 
-  // 4. external I/O, per recipient by necessity. Best-effort, exactly as
-  //    before: one bad address must not roll back a posted invoice.
-  for (const userId of emailUsers) {
-    const person = people.get(userId);
-    if (!person || !person.email) continue;
-    try {
-       
-      await emailService.send(client, {
-        to: person.email,
-        subject: title,
-        html: notificationEmailHtml({ name: person.full_name, title, body }),
-        text: body ? `${title}\n\n${body}` : title,
-        purpose: "NOTIFICATIONS",
-        moduleKey: events.MODULE,
-        sendPoint: isSecurity ? "notification.security" : "notification.alert",
-      });
-    } catch (err) {
-      logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
-    }
-  }
+  // 4. the outbound plan. Push mirrors the in-app decision (delivered in-app,
+  //    or security) exactly as it did before — a user who silenced a category
+  //    in the product has not asked to be woken by it on a phone.
+  const inAppSet = new Set(inAppUsers);
+  const recipients = ids.map((userId) => ({
+    userId,
+    email: wantsEmail(userId),
+    push: isSecurity || inAppSet.has(userId),
+    badgeCount: badges.get(userId) ?? null,
+  })).filter((r) => r.email || r.push);
 
-  const pushUsers = ids.filter((u) => isSecurity || inAppUsers.includes(u));
-  for (const userId of pushUsers) {
-    try {
-       
-      await deliverPush(client, { userId, title, body });
-    } catch (err) {
-      logger.error({ err, user_id: userId }, "[notify] push delivery skipped/failed");
-    }
+  const notification = {
+    title, body, category: cat, isSecurity,
+    url, tag: pushTag, renotify, requireInteraction, urgency,
+    data: pushData, actions, emailFallback,
+  };
+
+  // 5. delivery. Queued where we can tell which tenant this is — that takes the
+  //    SMTP and web-push calls out of the caller's open transaction and buys
+  //    them retries. Inline otherwise, which is what always happened and what
+  //    the unit tests exercise.
+  if (!(await enqueueDelivery(ctx, { recipients, notification }))) {
+    await deliverOutbound(client, { recipients, notification });
   }
 
   return inserted.length;
@@ -234,7 +431,12 @@ async function claimDedupe(key) {
   return shouldDedupe(key);
 }
 
-async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null, dedupeKey = null }) {
+async function notify(client, {
+  userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL",
+  category = null, dedupeKey = null,
+  url = "/notifications", pushTag = undefined, renotify = false, requireInteraction = false,
+  urgency = "normal", pushData = null, actions = null, emailFallback = false, ctx = {},
+} = {}) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
   const isSecurity = isSecurityCategory(cat);
@@ -247,13 +449,28 @@ async function notify(client, { userId, eventTypeKey = null, title, body = null,
     inApp = await repo.insertForUser(client, { userId, eventTypeKey, title, body, entityRef, priority, category: cat });
   }
 
-  // EMAIL fan-out (best-effort, own preference check). Runs even when in-app was
-  // suppressed, since a user may prefer email-only for a category.
-  await deliverEmail(client, { userId, category: cat, isSecurity, title, body });
+  // The recipient's badge number, read after the insert so it counts this one.
+  let badgeCount = null;
+  try {
+    badgeCount = await repo.unreadCount(client, userId);
+  } catch {
+    /* @silent:storage the badge is an enrichment; a notification without one
+       still arrives, it just does not update the number on the app icon. */
+  }
 
-  // PUSH fan-out — mirror the in-app decision (delivered in-app, or security).
-  if (inApp || isSecurity) {
-    await deliverPush(client, { userId, title, body });
+  // EMAIL fan-out honours its own preference (checked inside deliverOutbound
+  // via the `email` flag below); PUSH mirrors the in-app decision, since a user
+  // who silenced a category in the product has not asked for it on a phone.
+  const wantsEmail = isSecurity || (await repo.isChannelEnabled(client, userId, "EMAIL", cat, false));
+  const recipients = [{ userId, email: wantsEmail, push: Boolean(inApp) || isSecurity, badgeCount }];
+  const notification = {
+    title, body, category: cat, isSecurity,
+    url, tag: pushTag, renotify, requireInteraction, urgency,
+    data: pushData, actions, emailFallback,
+  };
+
+  if (!(await enqueueDelivery(ctx, { recipients, notification }))) {
+    await deliverOutbound(client, { recipients, notification });
   }
 
   return inApp;
@@ -297,7 +514,7 @@ async function unsubscribePush(client, actor, { endpoint }) {
 
 module.exports = {
   DEDUPE_MS, DEDUPE_TTL_S, shouldDedupe, claimDedupe, recentDedupe,
-  notifyMany,
+  notifyMany, deliverOutbound, resolveTenantMeta,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
   pushPublicKey, subscribePush, unsubscribePush,
 };

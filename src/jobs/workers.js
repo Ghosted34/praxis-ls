@@ -28,6 +28,11 @@ const PROCESSORS = [
   { name: "regie-aging-scheduler", concurrency: 1, handler: require("./handlers/regie-aging-scheduler") },
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
   { name: "email", concurrency: 3, handler: require("./handlers/email-send") },
+  // Outbound notification delivery (push + email). Concurrency 4 because the
+  // work is almost entirely waiting on two third parties — a push service and
+  // an SMTP server — and a mail arriving for a shared mailbox with a dozen
+  // members is one job with a dozen sequential sends inside it.
+  { name: "notification-deliver", concurrency: 4, handler: require("./handlers/notification-deliver") },
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
   { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },

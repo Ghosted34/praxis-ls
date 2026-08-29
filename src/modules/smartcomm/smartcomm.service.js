@@ -122,10 +122,36 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
       if (others.length) {
         await require("../../notification/notification.service").notifyMany(client, others, {
           eventTypeKey: "comms.message_posted",
-          title: String(body || "New message in Smart Comms").slice(0, 120),
-          body: body ? String(body).slice(0, 500) : "New message",
+          // The SENDER is the headline and the message is the body — the shape
+          // every messaging app uses, and the one that reads correctly on a
+          // lock screen. It used to put the message text in BOTH, so a
+          // notification showed the same sentence twice and never said who
+          // wrote it.
+          // `req.user` carries `display_name`, not `full_name` (middleware/auth.js).
+          // Falling back to the message text keeps this no worse than what it
+          // replaced for a caller that passes neither — a system-posted card,
+          // say, which has no human sender to name.
+          title: String(
+            (actor && (actor.display_name || actor.email))
+            || body
+            || "New message in Smart Comms",
+          ).slice(0, 90),
+          body: body ? String(body).slice(0, 500) : "Sent an attachment",
           entityRef: "comms_message:" + m.message_id,
           category: "comms",
+          // Straight into the channel the message was posted in. `?channel=`
+          // is the param the chat page already reads (features/comms/team-chat.tsx),
+          // so no client change is needed to make this land.
+          url: `/comms?channel=${groupId}`,
+          // Collapse per CHANNEL: a fast back-and-forth in one channel becomes
+          // one notification showing the latest message, while a message in a
+          // different channel stays its own. `renotify` keeps the replacement
+          // audible rather than silently swapping the text.
+          pushTag: `comms:${groupId}`,
+          renotify: true,
+          // Somebody in the company is talking to this person right now.
+          urgency: "high",
+          pushData: { kind: "comms", group_id: groupId, message_id: m.message_id },
         });
       }
     } catch {

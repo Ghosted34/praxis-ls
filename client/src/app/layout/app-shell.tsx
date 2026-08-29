@@ -61,6 +61,7 @@ import { TENANT_KEY } from "@/lib/query-client";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
+import { setAppBadge } from "@/lib/app-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LangToggle } from "@/components/lang-toggle";
 import { navT } from "@/lib/i18n";
@@ -315,11 +316,21 @@ function useUnreadCounts(env: string): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc, env]);
 
-  return {
-    messages: q.data?.messages ?? 0,
-    notifications: q.data?.notifications ?? 0,
-    reload,
-  };
+  const messages = q.data?.messages ?? 0;
+  const notifications = q.data?.notifications ?? 0;
+
+  /* The number on the installed app's icon follows the same count the bell
+     shows. This is the half of the badge the PAGE owns: whenever the user reads
+     something the count drops here, so the home-screen icon has to drop with
+     it. The other half — advancing the badge when a push lands on a closed app
+     — belongs to the service worker (public/push-handler.js). Without this one,
+     a user who cleared their notifications on a laptop would come back to a
+     phone icon still claiming four. */
+  React.useEffect(() => {
+    if (q.isSuccess) setAppBadge(messages + notifications);
+  }, [q.isSuccess, messages, notifications]);
+
+  return { messages, notifications, reload };
 }
 
 /**

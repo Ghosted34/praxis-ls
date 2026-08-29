@@ -20,6 +20,13 @@
 const CATEGORIES = [
   { key: "security", label: "Security", security: true },
   { key: "approvals", label: "Approvals", security: false },
+  // Mail and in-house messaging. Its own bucket rather than a corner of
+  // "system": this is the category a user is most likely to want pushed to a
+  // phone and least likely to want silenced, and it was previously
+  // untunable — `smartcomm` wrote `category: "comms"` and the mail mention
+  // fan-out wrote `"MENTION"`, neither of which was a key here, so neither
+  // appeared in Preferences and neither could be switched on for email/push.
+  { key: "comms", label: "Mail & Messages", security: false },
   { key: "finance", label: "Finance", security: false },
   { key: "operations", label: "Operations", security: false },
   { key: "sales", label: "Sales & CRM", security: false },
@@ -83,8 +90,17 @@ const DOMAIN_TO_CATEGORY = {
    */
   qes: "compliance",
 
+  // mail & in-house messaging
+  //
+  // `email` is the mail engine's own domain (`email.thread.created`,
+  // `email.thread.replied`), `mail` covers the triage events (SLA, follow-up),
+  // `comms` is Smart Comms and `mention` is being @-named on a thread. All four
+  // are the same thing to a human — "somebody is trying to reach me" — and a
+  // user tuning that expects one switch, not four buckets.
+  email: "comms", mail: "comms", comms: "comms", mention: "comms",
+
   // system / misc
-  ai: "system", comms: "system", dashboard: "system", dictionary_item: "system", notification: "system",
+  ai: "system", dashboard: "system", dictionary_item: "system", notification: "system",
   branding: "system",
 };
 

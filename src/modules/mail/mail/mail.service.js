@@ -14,6 +14,7 @@ const events = require("./mail.events");
 const settings = require("../../security/setting/setting.service");
 const jwt = require("jsonwebtoken");
 const { emitEvent } = require("../../../shared/events/emit");
+const mailNotify = require("./mail-notify.service");
 const { AppError } = require("../../../utils/errors");
 // Shared SMTP-error classifier — the connection-test path and the system-email
 // paths (email.service, platform probes) share one map so the UI's fix guides
@@ -531,6 +532,21 @@ async function syncConnection(client, id, ctx = {}) {
             from: m.from, subject: m.subject, folder: folder.canonical,
             connection: conn.email_connection_id, attachments: (m.attachments || []).length,
           },
+        });
+        // "A mail arrived" → the people who work this mailbox get told, on
+        // every channel they have turned on, including a push to a phone with
+        // the app closed. This is a SEPARATE call and not a NOTIFIABLE entry
+        // against the event above, because the event above fires for outbound
+        // too and its audience would be "everyone holding MOD-64 view" rather
+        // than "whoever holds this mailbox". See mail-notify.service.js.
+        //
+        // Best-effort by contract — it swallows its own failures — but awaited,
+        // so the in-app row joins the sync's transaction exactly as every other
+        // producer's does.
+        await mailNotify.onInboundMessage(client, {
+          conn, message: m, row, ctx,
+          // A first sync backfills history; see the note in mail-notify.
+          isFirstSync: !folder.last_sync_at,
         });
       }
       await threadRepo.setFolderCursor(client, folder.email_folder_id, nextCursor);

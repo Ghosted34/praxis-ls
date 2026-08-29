@@ -1,12 +1,53 @@
 /*
  * Web-Push display handler, imported into the generated Workbox service worker
  * (vite.config.ts → workbox.importScripts). The generated SW handles precache +
- * navigation fallback; this adds the two listeners it doesn't: showing an
- * incoming push, and focusing/opening the app when the user taps it.
+ * navigation fallback; this adds what it doesn't: showing an incoming push,
+ * focusing/opening the app when the user taps it, keeping the home-screen badge
+ * honest, and re-subscribing when the browser rotates a subscription.
  *
- * Payload shape is what the server sends (shared/push/push.service.js sendToUser):
- *   { title, body, url, tag }
+ * Payload shape is what the server sends (shared/push/push.service.js
+ * buildPayload — the two files must be changed together):
+ *   { title, body, url, tag, renotify, requireInteraction,
+ *     badgeCount, actions, data, timestamp }
+ *
+ * ── WHY `tag` IS USUALLY ABSENT NOW ─────────────────────────────────────────
+ *
+ * This handler used to receive `tag: <userId>` on every notification, which
+ * told the OS "replace the one already showing". Every alert for a user
+ * replaced the previous one, so five urgent mails arrived and the phone showed
+ * one. The server now sends a tag only where collapsing means something — all
+ * activity on ONE mail thread shares `mail:<threadId>` — and pairs it with
+ * `renotify` so the replacement still alerts instead of swapping in silently.
  */
+
+/**
+ * The unread count on the app icon.
+ *
+ * This is the safety net under everything else: a banner can be swiped away
+ * unread, a phone can be off past the push TTL, a doze can delay a wake. The
+ * badge survives all three, so a user who missed the notification still opens
+ * their phone to a "4" on the icon.
+ *
+ * Not supported everywhere (notably iOS Safari, at the time of writing, outside
+ * an installed home-screen app), and `setAppBadge` rejects rather than throwing
+ * in some builds — so both failure shapes are swallowed. A missing badge is a
+ * cosmetic loss; letting it reject would abort the waitUntil and take the
+ * notification with it.
+ */
+function applyBadge(count) {
+  try {
+    if (typeof count !== "number" || count < 0) return Promise.resolve();
+    if (!self.navigator || typeof self.navigator.setAppBadge !== "function") {
+      return Promise.resolve();
+    }
+    const p = count > 0
+      ? self.navigator.setAppBadge(count)
+      : self.navigator.clearAppBadge();
+    return p && typeof p.catch === "function" ? p.catch(() => {}) : Promise.resolve();
+  } catch (_e) {
+    return Promise.resolve();
+  }
+}
 
 self.addEventListener("push", (event) => {
   let data = {};
@@ -19,15 +60,47 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "",
     tag: data.tag || undefined,
-    data: { url: data.url || "/notifications" },
+    // Only meaningful alongside a tag. Without it, a replacing notification
+    // updates in place with no sound or vibration — indistinguishable, to
+    // someone whose phone is in their pocket, from never having arrived.
+    renotify: data.tag ? Boolean(data.renotify) : false,
+    // Keeps the notification on screen until it is acted on, rather than
+    // auto-dismissing. Reserved for HIGH priority by the server; on a
+    // notification nobody has to act on it is just something to swipe away.
+    requireInteraction: Boolean(data.requireInteraction),
+    // The time the EVENT happened, not the time the phone woke up to hear
+    // about it. A push delayed twenty minutes by doze otherwise timestamps
+    // itself as "now" and misrepresents when the mail actually landed.
+    timestamp: typeof data.timestamp === "number" ? data.timestamp : Date.now(),
+    data: {
+      url: data.url || "/notifications",
+      ...(data.data || {}),
+    },
+    // Per-tenant icons, rendered from that tenant's branding by the API
+    // (src/routes/pwa.js) and resolved by Host — subdomain-per-tenant means
+    // these paths are already this workspace's own.
     icon: "/icons/app-icon-192.png",
     badge: "/icons/app-icon-192.png",
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Up to two, because that is what a notification shade will actually render.
+  if (Array.isArray(data.actions) && data.actions.length) {
+    options.actions = data.actions.slice(0, 2);
+  }
+
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      applyBadge(data.badgeCount),
+    ]),
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  // "dismiss" is an explicit "I have seen this and I am not opening it".
+  // Focusing the app anyway would be the opposite of what was asked.
+  if (event.action === "dismiss") return;
+
   const target =
     (event.notification.data && event.notification.data.url) ||
     "/notifications";
@@ -46,4 +119,66 @@ self.addEventListener("notificationclick", (event) => {
         return undefined;
       }),
   );
+});
+
+/**
+ * The browser has replaced this device's subscription — which it does on its
+ * own schedule, when a push service rotates keys or expires an endpoint.
+ *
+ * The old endpoint stops working at that moment. Until the server hears about
+ * the new one, this device is silently unreachable: no error anywhere, just a
+ * phone that has quietly stopped receiving notifications.
+ *
+ * Re-subscribing here restores the browser side. The SERVER side needs an
+ * authenticated call, and a service worker holds no session — access tokens
+ * live in the page, not here — so it cannot make one. Instead the new
+ * subscription is handed to any open tab, and `registerPushSync` in the client
+ * (components/pwa/push-sync.ts) re-registers it on the next app load whether a
+ * tab was open or not. That is what closes the loop, and it is why that sync
+ * runs on every boot rather than only when the user visits Settings.
+ */
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const old = event.oldSubscription || (await self.registration.pushManager.getSubscription());
+        const key =
+          (event.newSubscription && event.newSubscription.options
+            && event.newSubscription.options.applicationServerKey)
+          || (old && old.options && old.options.applicationServerKey);
+        const sub =
+          event.newSubscription
+          || (key
+            ? await self.registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: key,
+            })
+            : null);
+        if (!sub) return;
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of clients) {
+          client.postMessage({
+            type: "PUSH_SUBSCRIPTION_CHANGED",
+            subscription: sub.toJSON(),
+            oldEndpoint: old ? old.endpoint : null,
+          });
+        }
+      } catch (_e) {
+        /* Nothing useful to do here — the boot-time sync in the client is the
+           backstop, and it runs regardless of whether this succeeded. */
+      }
+    })(),
+  );
+});
+
+/**
+ * The page telling us the badge has changed — the user read their
+ * notifications, so the number on the icon should follow. Sent by the client
+ * (lib/app-badge.ts); the worker owns the badge because on some platforms only
+ * the service worker's origin-scoped call sticks once the app is closed.
+ */
+self.addEventListener("message", (event) => {
+  const msg = event.data;
+  if (!msg || msg.type !== "SET_APP_BADGE") return;
+  event.waitUntil(applyBadge(msg.count));
 });

@@ -59,6 +59,22 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **A copy field you can put two people in, and a send that says which address is wrong.** Cc and
+  Bcc were one plain text input holding a comma-separated string, and the comma was the entire
+  mechanism — nothing on screen said a second recipient was possible ("no plus button, nothing"), so
+  a row typed the way anyone would type one (`ops@camrail.cm billing@camrail.cm`, or an address
+  pasted with its display name) reached `POST /mail/send`, where `cc` and `bcc` accepted an array of
+  already-bare addresses and nothing else. The answer was a 422 whose whole text was `Invalid body`,
+  reported as `VALIDATION_ERROR: bcc, cc` — the offending address appeared in neither. Each address
+  is now a CHIP, added by Enter, Tab, comma, semicolon or leaving the field, removed by its × or by
+  Backspace (which puts it back in the field, because a mistyped address is corrected more often
+  than retyped); the server parses the row the same way the composer does — separators outside `"…"`
+  and `<…>`, a space between two addresses, `Jean Dupont <jean@acme.cm>` reduced to what SMTP needs,
+  a cleared row read as "copy nobody", the same person twice read as once — and what is still
+  refused is refused BY NAME, in the composer before the send and in `error.message` after it:
+  `Cc: "jean dupont" is not an email address`. The mail module's other 28 schemas gained the same named
+  message in place of `Invalid body`.
+
 - **Two adjacent attendance screens no longer shout a status at different volumes.** The reconciled-
   days table pre-split `ON_LEAVE` into `"ON LEAVE"` before handing it to `Pill`, which defeated the
   shared `enumLabel` (it only recognises the underscored form) — so it printed `ON LEAVE` where the

@@ -27,6 +27,7 @@
 "use strict";
 
 const { config } = require("../config/env");
+const { logger } = require("../config/logger");
 const { getSetting } = require("../shared/config/settings");
 const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
@@ -70,37 +71,113 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
     // legacy plaintext settings.smtp_pass is kept only as a back-compat fallback.
     encPass = await settingService.readSecret(client, "email_smtp_pass");
   }
-  // Tenant's own transport wins. When the tenant has configured NO SMTP host
-  // (no email_identity / email setting), resolve the deploy-wide FALLBACK
-  // sender (platform `mail.fallback` → env) so system emails still go out from
-  // a Praxis-owned address instead of failing. `client` being null is the
-  // injectable-transport test path — skip the platform round-trip there.
+  // ── TIERS: a transport is resolved WHOLE, or not at all ────────────────────
   //
-  // Deliverability: when we fall back on TRANSPORT we also fall back on the
-  // SENDER. Sending a tenant-domain From (e.g. billing@acme.cm) through the
-  // deploy SMTP would fail SPF/DKIM/DMARC and bounce — a tenant that hasn't set
-  // up their own host hasn't verified their domain either, so the From must be
-  // the Praxis one. Only once the tenant supplies their own SMTP host do we
-  // trust their From/identity.
+  // A tier answers the entire question — host, port, credentials AND sender —
+  // or it does not answer. Nothing is ever borrowed across the boundary.
+  //
+  // It used to be that host and From fell back together (correctly, for the
+  // deliverability reason below) while smtp_user/smtp_pass had a chain of their
+  // own: `settings → fallback → env`. Two configurations that occur constantly
+  // therefore authenticated to one server with a different server's credentials:
+  //
+  //   • the tenant saved an SMTP username/password but no host → the Praxis
+  //     relay, reached with the TENANT's credentials;
+  //   • the tenant has an email_identity carrying smtp_host but never filled in
+  //     the `email.default` settings → the TENANT's host, reached with the
+  //     PRAXIS RELAY's credentials.
+  //
+  // Both surface as a 535 the admin cannot act on, because the screen shows the
+  // credentials they typed while the rejection came from a host they never
+  // named. `smtp_port` split the same way (identity's host, settings' port),
+  // and the port is what decides `secure` down in transportFrom.
+  //
+  // Deliverability is why the tiers exist at all: a tenant-domain From
+  // (billing@acme.cm) sent through the deploy relay fails SPF/DKIM/DMARC. A
+  // tenant that has not set up their own host has not verified their domain
+  // either, so on the fallback transport the From must be the Praxis one. Only
+  // once the tenant supplies their own SMTP host do we trust their From.
   const tenantFrom = (identity && fmtFrom(identity)) || settings.from || null;
   const tenantReply = (identity && identity.reply_to) || settings.reply_to || null;
-  const ownHost = (identity && identity.smtp_host) || settings.smtp_host;
-  const fb = client && !ownHost ? await mailFallback.resolve() : null;
+  const idHost = (identity && identity.smtp_host) || null;
+  const tenantHost = idHost || settings.smtp_host || null;
+  const tenantTier = tenantHost
+    ? {
+      sender_source: idHost ? "identity" : "settings",
+      from: tenantFrom,
+      reply_to: tenantReply,
+      smtp_host: tenantHost,
+      // The port belongs to whichever record supplied the host. Reading it off
+      // the other one is how a leftover 465 in settings came to decide `secure`
+      // for an identity host that only speaks 587.
+      smtp_port: Number((idHost ? identity.smtp_port : settings.smtp_port) || 587),
+      // The tenant's ONE SMTP account (vault first; the plaintext setting is the
+      // back-compat path). Null is a legitimate answer — a host that accepts
+      // unauthenticated relay from this server — and is now honoured as such
+      // rather than topped up from the relay's account.
+      smtp_user: settings.smtp_user || null,
+      smtp_pass: encPass || settings.smtp_pass || null,
+    }
+    : null;
+  // Resolved ONLY when no tenant tier answered: the deploy-wide sender that
+  // keeps OTPs, invites, invoices and notifications flowing for tenants who have
+  // configured no mail of their own. mail-fallback.service already folds env in
+  // underneath the platform setting, so this one object is both lower tiers.
+  // `client` being null is the injectable-transport test path — skip the
+  // platform round-trip there.
+  const fb = client && !tenantHost ? await mailFallback.resolve() : null;
   const fbAddr = fb ? (purpose === "SUPPORT" && fb.support_from ? fb.support_from : fb.from) : null;
   // G-8: give the fallback sender its display name (e.g. `"Praxis" <no-reply@praxisls.com>`).
   const fbFrom = fbAddr ? (fb.from_name ? `"${fb.from_name}" <${fbAddr}>` : fbAddr) : null;
+  const fbTier = fb && fb.smtp_host
+    ? {
+      sender_source: fb.source === "env" ? "env" : "fallback",
+      from: fbFrom,
+      reply_to: fb.reply_to || null,
+      smtp_host: fb.smtp_host,
+      smtp_port: Number(fb.smtp_port || 587),
+      smtp_user: fb.smtp_user || null,
+      smtp_pass: fb.smtp_pass || null,
+    }
+    : null;
+  // Only reachable on the no-client test path; with a client, env already came
+  // through mailFallback above and must not be re-entered here as a third
+  // source of half a transport.
+  const envTier = !client && config.SMTP_HOST
+    ? {
+      sender_source: "env",
+      from: config.MAIL_DEFAULT_FROM || null,
+      reply_to: null,
+      smtp_host: config.SMTP_HOST,
+      smtp_port: Number(config.SMTP_PORT || 587),
+      smtp_user: config.SMTP_USER || null,
+      smtp_pass: config.SMTP_PASS || null,
+    }
+    : null;
+  const tier = tenantTier || fbTier || envTier;
+  // Credentials with nowhere to go are a misconfiguration the admin cannot see:
+  // the settings screen shows what they typed, and it is now — correctly — used
+  // by nothing. Say so once, rather than presenting it to a host they never
+  // named and leaving them to read the 535 as their own password being wrong.
+  if (!tenantTier && (settings.smtp_user || encPass || settings.smtp_pass)) {
+    logger.warn(
+      { sender_source: tier ? tier.sender_source : "none", has_user: Boolean(settings.smtp_user) },
+      "[email] tenant SMTP credentials are configured but no SMTP host is — credentials ignored, sending on the fallback transport",
+    );
+  }
   return {
-    from: (ownHost && tenantFrom) || fbFrom || config.MAIL_DEFAULT_FROM || ("no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com")),
-    reply_to: (ownHost && tenantReply) || (fb && fb.reply_to) || null,
-    smtp_host: ownHost || (fb && fb.smtp_host) || config.SMTP_HOST || null,
-    smtp_port: Number((identity && identity.smtp_port) || settings.smtp_port || (fb && fb.smtp_port) || config.SMTP_PORT || 587),
-    smtp_user: settings.smtp_user || (fb && fb.smtp_user) || config.SMTP_USER || null,
-    smtp_pass: encPass || settings.smtp_pass || (fb && fb.smtp_pass) || config.SMTP_PASS || null,
+    from: (tier && tier.from) || config.MAIL_DEFAULT_FROM || ("no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com")),
+    reply_to: (tier && tier.reply_to) || null,
+    smtp_host: (tier && tier.smtp_host) || null,
+    smtp_port: (tier && tier.smtp_port) || Number(config.SMTP_PORT || 587),
+    smtp_user: tier ? tier.smtp_user : null,
+    smtp_pass: tier ? tier.smtp_pass : null,
     identity_purpose: identity ? identity.purpose : null,
     email_identity_id: identity ? identity.email_identity_id : null,
     module_key: moduleKey,
-    // Metadata for logging/UI: which sender path won, and the fallback's detail.
-    sender_source: ownHost ? (identity ? "identity" : "settings") : fb ? "fallback" : "env",
+    // Metadata for logging/UI: which tier answered. Since one tier now answers
+    // the whole question, this also names where the credentials came from.
+    sender_source: tier ? tier.sender_source : "none",
     // PR-0: which tier chose the sender, and a sentence saying so. "Why did that
     // go out from the wrong address?" is the most-asked email question; this is
     // what lets the admin screen answer it without anyone reading code.
@@ -129,8 +206,15 @@ function transportFrom(cfg) {
  * document emailed / its vault copy); `tx` is an injectable transport for tests.
  *
  * Every attempt is recorded to email_send_log (G-1): SENT with the provider
- * message-id on success, FAILED with the error on failure. When `client` is null
- * (injectable-transport test path) no log is written.
+ * message-id on success, FAILED with the error on failure, SUPPRESSED when the
+ * environment withheld it. When `client` is null (injectable-transport test
+ * path) no log is written.
+ *
+ * RETURNS either nodemailer's `info` (the message left) or, when the send was
+ * withheld, `{ suppressed: true, reason, messageId: null, ... }`. A caller that
+ * reports an outcome to a human MUST check `suppressed` — it is not an error,
+ * so nothing throws, and treating "did not throw" as "delivered" is exactly how
+ * a suppressed message came to be reported as sent.
  */
 async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null, sendPoint = null, entityId = null, actorUserId = null, tenantSlug = null, signature = "auto", language = null, partyLanguage = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
@@ -142,6 +226,21 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
   // are covered without threading `env` through every caller. Suppressed =
   // no transport resolved, nothing leaves the server; the send-log records
   // SUPPRESSED so the trail shows what would have gone out.
+  //
+  // THE RETURN VALUE HAS TO SAY SO, and it did not. `{ suppressed: true }` is
+  // truthy and throws nothing, so every caller read it as a successful send:
+  // the mail-setup wizard reported `ok: true`, and an enquiry reply settled
+  // SENT and moved the enquiry to RESPONDED. Nothing left the server and every
+  // surface said it had. Callers now branch on `suppressed`; `messageId` is
+  // spelled out as null so anything reading only that field also gets nothing
+  // rather than a plausible-looking id.
+  //
+  // The log row is likewise load-bearing and was silently absent: `SUPPRESSED`
+  // was not in email_send_log's status CHECK until 12751, so every one of these
+  // inserts raised 23514 into a `.catch(() => {})` and the trail this block
+  // exists to leave was never written. The catch now says when that happens —
+  // a swallowed write inside the caller's transaction is also what poisons it
+  // on the pooled sandbox path, where withTenantConnection holds a BEGIN.
   const connEnv = client ? client[Symbol.for("praxis.conn.env")] : null;
   if (connEnv === "sandbox") {
     if (client) {
@@ -153,9 +252,18 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
         document_vault_id: documentVaultId || null,
         status: "SUPPRESSED",
         error: "suppressed: sandbox environment (PRD §5.5)",
-      }).catch(() => { /* log write is best-effort */ });
+      }).catch((err) => {
+        logger.error({ err, to, subject }, "[email] could not record a SUPPRESSED send — the sandbox trail is incomplete");
+      });
     }
-    return { suppressed: true, env: connEnv, to, subject: subject || null };
+    return {
+      suppressed: true,
+      reason: "sandbox environment (PRD §5.5)",
+      messageId: null,
+      env: connEnv,
+      to,
+      subject: subject || null,
+    };
   }
 
   const cfg = await resolveMail(client, { purpose, moduleKey, sendPoint, entityId });

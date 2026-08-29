@@ -161,16 +161,19 @@ export function FolderRail({
 
   return (
     <nav aria-label={tr("Mail folders")} className="space-y-1">
-      {/* A person with one mailbox should not be asked to choose it. */}
+      {/* A person with one mailbox should not be asked to choose it — but the
+          rail is still SCOPED to that mailbox, whether or not the picker is
+          drawn. There is no "all my mailboxes" option, because there is no such
+          rail to draw: folders, their counts and the two stream totals belong
+          to one connection, and the option only ever resolved to an empty rail
+          under a message about syncing. Two mailboxes means a choice between
+          them, not a choice between them and nothing. */}
       {mailboxes.length > 1 && (
         <Field label={tr("Mailbox")}>
           <Select
-            value={selection.connectionId ?? ""}
-            onChange={(e) =>
-              set({ connectionId: e.target.value || undefined, label: undefined })
-            }
+            value={selection.connectionId ?? mailboxes[0].email_connection_id}
+            onChange={(e) => set({ connectionId: e.target.value, label: undefined })}
           >
-            <option value="">{tr("All my mailboxes")}</option>
             {mailboxes.map((m) => (
               <option key={m.email_connection_id} value={m.email_connection_id}>
                 {m.email_address}
@@ -259,9 +262,17 @@ export function FolderRail({
           {folderLabel(f)}
         </RailButton>
       ))}
-      {canonical.length === 0 && (
-        // Not an error. A mailbox that has never synced has no folders yet, and
-        // saying so is more useful than an empty gap the user has to interpret.
+      {canonical.length === 0 && mailboxes.length > 0 && (
+        // Not an error, and now it means what it says. This used to be what
+        // EVERYONE saw: the rail opened with no mailbox selected, an
+        // unqualified folder call answered with nothing, and a mailbox that had
+        // synced fine was reported as never synced. The rail is pointed at a
+        // mailbox from the first render now, so reaching this line means that
+        // mailbox genuinely has no folders yet.
+        //
+        // Gated on knowing WHICH mailbox, because "this mailbox has no folders"
+        // is a claim, and for the half-second before the mailbox list arrives
+        // there is no mailbox to make it about.
         <p className="px-2.5 text-xs text-muted-foreground">
           {tr("No folders yet — sync the mailbox to discover them.")}
         </p>

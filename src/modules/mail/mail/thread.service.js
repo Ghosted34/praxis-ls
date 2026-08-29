@@ -225,6 +225,21 @@ async function applyLabel(client, actor, threadId, labelId, on = true) {
  * Returned together rather than as two endpoints because they are drawn as one
  * thing and a rail whose halves arrive separately flickers through a state
  * where the numbers disagree.
+ *
+ * ── NO MAILBOX NAMED IS NOT "NO MAILBOX" ────────────────────────────────────
+ *
+ * `listFolders` is mailbox-scoped and fails closed, so a call with no
+ * connection id used to answer with an empty rail — and the client, which had
+ * no mailbox selected until somebody picked one from a dropdown that only
+ * appears for people with two or more, drew "No folders yet — sync the mailbox
+ * to discover them" over a mailbox that had synced perfectly well. A person
+ * with one mailbox could never get out of that state.
+ *
+ * So an unqualified call now answers for the caller's default mailbox rather
+ * than for nothing, and says which one it picked (`connection_id`) so the
+ * caller can show the choice it did not make. Naming a mailbox you cannot open
+ * is still an empty rail, not a 403 — that refusal is about not confirming the
+ * mailbox exists, and it stands.
  */
 async function folders(client, actor, connectionId) {
   // P1A-2. The repo now applies `accessible`; this is the named refusal so a
@@ -232,13 +247,14 @@ async function folders(client, actor, connectionId) {
   // than a 403 that confirms the mailbox exists.
   if (connectionId) {
     const role = await access.roleFor(client, connectionId, actor.user_id);
-    if (!role) return { folders: [], streams: { HUMAN: 0, SYSTEM: 0 } };
+    if (!role) return { folders: [], streams: { HUMAN: 0, SYSTEM: 0 }, connection_id: null };
   }
+  const scope = connectionId || (await repo.defaultConnectionFor(client, actor.user_id)) || null;
   const [list, streams] = await Promise.all([
-    repo.listFolders(client, connectionId || null, actor.user_id),
-    repo.streamUnread(client, actor.user_id, connectionId || null),
+    repo.listFolders(client, scope, actor.user_id),
+    repo.streamUnread(client, actor.user_id, scope),
   ]);
-  return { folders: list, streams };
+  return { folders: list, streams, connection_id: scope };
 }
 const labels = (client, actor) => repo.listLabels(client, actor.user_id);
 const createLabel = (client, actor, body) => repo.createLabel(client, actor.user_id, body);

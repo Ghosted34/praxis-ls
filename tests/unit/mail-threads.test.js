@@ -312,7 +312,7 @@ describe("P1A-2: folder rail is mailbox-scoped", () => {
     access.roleFor.mockResolvedValue(null);
     repo.listFolders.mockResolvedValue([{ canonical: "INBOX" }]);
     const out = await service.folders({}, ME, "conn-secret");
-    expect(out).toEqual({ folders: [], streams: { HUMAN: 0, SYSTEM: 0 } });
+    expect(out).toEqual({ folders: [], streams: { HUMAN: 0, SYSTEM: 0 }, connection_id: null });
     expect(repo.listFolders).not.toHaveBeenCalled();
   });
 
@@ -324,5 +324,33 @@ describe("P1A-2: folder rail is mailbox-scoped", () => {
     expect(repo.listFolders).toHaveBeenCalledWith({}, "conn-1", "user-1");
     expect(out.folders).toEqual([{ canonical: "INBOX" }]);
     expect(out.streams.HUMAN).toBe(2);
+    expect(out.connection_id).toBe("conn-1");
+  });
+
+  test("naming no mailbox answers for the caller's default one, not with nothing", async () => {
+    // The bug this closes: `listFolders` fails closed on a missing connection
+    // id, so an unqualified call returned an empty rail — and the inbox, which
+    // had nothing selected until somebody used a picker that only appears for
+    // people with two mailboxes or more, drew "No folders yet, sync the
+    // mailbox" over a mailbox that had synced fine.
+    repo.defaultConnectionFor.mockResolvedValue("conn-primary");
+    repo.listFolders.mockResolvedValue([{ canonical: "INBOX" }]);
+    repo.streamUnread.mockResolvedValue({ HUMAN: 3, SYSTEM: 1 });
+    const out = await service.folders({}, ME, undefined);
+    expect(repo.listFolders).toHaveBeenCalledWith({}, "conn-primary", "user-1");
+    expect(repo.streamUnread).toHaveBeenCalledWith({}, "user-1", "conn-primary");
+    expect(out.folders).toEqual([{ canonical: "INBOX" }]);
+    // Said out loud, so the caller can show the choice it did not make.
+    expect(out.connection_id).toBe("conn-primary");
+    // Not an access check: nobody named a mailbox, so there is nothing to refuse.
+    expect(access.roleFor).not.toHaveBeenCalled();
+  });
+
+  test("a caller with no mailbox at all still gets a rail rather than a crash", async () => {
+    repo.defaultConnectionFor.mockResolvedValue(null);
+    repo.listFolders.mockResolvedValue([]);
+    repo.streamUnread.mockResolvedValue({ HUMAN: 0, SYSTEM: 0 });
+    const out = await service.folders({}, ME, undefined);
+    expect(out).toEqual({ folders: [], streams: { HUMAN: 0, SYSTEM: 0 }, connection_id: null });
   });
 });

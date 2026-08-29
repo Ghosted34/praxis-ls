@@ -109,9 +109,27 @@ export function InboxPage() {
     Record<string, { unread_count?: number; is_starred?: boolean }>
   >({});
 
+  /* ── THE RAIL IS ALWAYS POINTED AT A MAILBOX ──────────────────────────────
+   *
+   * Folders, folder counts and the two stream totals all belong to ONE
+   * connection — the rail has no "across every mailbox" shape to draw. So the
+   * selection starting empty was not a neutral default, it was an empty rail:
+   * every person landed on "No folders yet — sync the mailbox to discover
+   * them" over a mailbox that had synced fine, and someone with a single
+   * mailbox never got out of it, because the mailbox picker only appears once
+   * there are two.
+   *
+   * The mailbox is therefore DERIVED, not stored: whatever the person picked,
+   * or their primary mailbox until they pick. Derived rather than written back
+   * into `sel` by an effect, so there is no first render with no mailbox and
+   * no wasted fetch that answers for nothing. */
+  const boxes = React.useMemo(() => mailboxes.data || [], [mailboxes.data]);
+  const connectionId =
+    sel.connectionId ?? api.primaryMailbox(boxes)?.email_connection_id;
+
   const folders = useResource(
-    () => api.listFolders(sel.connectionId),
-    [sel.connectionId],
+    () => (connectionId ? api.listFolders(connectionId) : Promise.resolve(null)),
+    [connectionId],
   );
   const labels = useResource(() => api.listLabels(), []);
 
@@ -124,7 +142,7 @@ export function InboxPage() {
     () =>
       api.listThreads({
         q: applied || undefined,
-        connection_id: sel.connectionId,
+        connection_id: connectionId,
         folder: sel.view ? undefined : sel.folder,
         stream: sel.stream,
         label: sel.label,
@@ -134,7 +152,7 @@ export function InboxPage() {
         has_attachment: sel.view === "ATTACHMENT" || undefined,
         limit,
       }),
-    [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, limit],
+    [applied, connectionId, sel.folder, sel.stream, sel.label, sel.view, limit],
   );
 
   const thread = useResource(
@@ -169,7 +187,7 @@ export function InboxPage() {
     setBulkFailures([]);
     setNote(null);
     setLimit(PAGE);
-  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, sel.pending]);
+  }, [applied, connectionId, sel.folder, sel.stream, sel.label, sel.view, sel.pending]);
 
   const rows = React.useMemo(
     () =>
@@ -316,7 +334,6 @@ export function InboxPage() {
 
   if (mailboxes.error) return <ErrorState message={mailboxes.error} />;
 
-  const boxes = mailboxes.data || [];
   if (!mailboxes.loading && boxes.length === 0) {
     return (
       <div className={pageShell.wide}>
@@ -339,7 +356,7 @@ export function InboxPage() {
           mailboxes={boxes}
           folders={folderRows}
           labels={labels.data || []}
-          selection={sel}
+          selection={{ ...sel, connectionId }}
           onChange={(next) => {
             setSel(next);
             setOpenId(null);

@@ -42,6 +42,40 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    /*
+     * NO SERVICE WORKER IN THE GATE, and this is a correctness decision rather
+     * than a speed one.
+     *
+     * The built app registers one (`registerType: "prompt"`, `clientsClaim:
+     * true`), so in every context here it installed, TOOK CONTROL of the page,
+     * and precached 153 entries — 4.7 MB — into `workbox-precache-v2`. Probed
+     * directly: `navigator.serviceWorker.controller` is non-null by the time a
+     * spec measures anything.
+     *
+     * Three consequences, all of them nondeterminism this gate cannot afford:
+     *
+     *   · once it controls the page, a navigation is answered from the
+     *     precache via `navigateFallback` rather than by the preview server,
+     *     and WHEN it takes control varies with how loaded the machine is;
+     *   · a request issued by a service worker is not intercepted by
+     *     `page.route`, which is what `fixtures.fakeApi` is built on — so the
+     *     screen can render with no data through no fault of the app;
+     *   · 4.7 MB of precache per context, thirty contexts, two workers, on a
+     *     two-core runner.
+     *
+     * It showed up as exactly that: two chart-of-accounts specs failing on CI
+     * (an <h1> that never appeared, a selection bar that stayed empty) and then
+     * failing their retry with "Target page, context or browser has been
+     * closed", while all thirty passed locally and on the previous commit of
+     * the same PR.
+     *
+     * Blocking it weakens no assertion. This gate measures layout numbers, and
+     * the app lays out identically; what goes away is a PWA cache being built
+     * thirty times in a throwaway browser profile. The service worker's own
+     * behaviour is not what this file is for — if it is ever worth a gate, it
+     * needs its own spec that opts back in.
+     */
+    serviceWorkers: "block",
   },
 
   projects: [

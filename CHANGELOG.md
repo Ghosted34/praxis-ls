@@ -59,6 +59,21 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **The desktop layout gate no longer measures a page a service worker is racing it for.** The built
+  app registers one (`registerType: "prompt"`, `clientsClaim: true`), so in every one of the gate's
+  thirty browser contexts it installed, took control of the page, and precached 153 entries — 4.7 MB
+  — into `workbox-precache-v2`. Probed directly: `navigator.serviceWorker.controller` is non-null by
+  the time a spec measures anything. Three consequences, all of them nondeterminism a measurement
+  gate cannot afford: a navigation answered from the precache via `navigateFallback` rather than by
+  the preview server, at a moment that varies with machine load; requests issued by a service worker
+  bypassing `page.route`, which is what the fixture's API mock is built on, so a screen can render
+  with no data through no fault of the app; and 4.7 MB of precache per context, two workers, two
+  cores. It surfaced as two chart-of-accounts specs failing on CI — an `<h1>` that never appeared and
+  a selection bar that stayed empty — then failing their retry with "Target page, context or browser
+  has been closed", while all thirty passed locally and on the previous commit of the same branch.
+  `serviceWorkers: "block"` weakens no assertion: the gate measures layout numbers, the app lays out
+  identically, and what goes away is a PWA cache being rebuilt thirty times in a throwaway profile.
+
 - **The Error Centre's AI explanations are about this codebase now.** The explanation prompt was
   taken verbatim from `PROMPT_ErrorMonitor_Module.md` §7.4, which opens "specializing in
   Node.js/NestJS debugging" — the spec's assumed stack, and the one place §0's divergence table had

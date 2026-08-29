@@ -213,11 +213,42 @@ Trust tab's.
 - The wrapper-side allowance went 23 → 21, and both entries came off because a
   screen now calls them rather than because the reason was rewritten.
 - `message-body.test.ts` pins §5.6.3's two reading-pane rules — remote images
-  held back, quoted history folded, in both languages — as pure functions,
-  which is what let them be written at all.
+  held back, quoted history folded, in both languages.
 - `pending.test.tsx` pins the outbox's promise: Cancel is offered only on a
   HELD row, because `repo.cancel` is `UPDATE … WHERE status = 'HELD'` and a
   button on any other status can only ever 409.
+
+
+### Addendum · the scanner found two bugs the reviewer would not have
+
+The first version of the reading pane did its work with regular expressions,
+with a comment defending the choice: the HTML is sanitized on ingest, so
+"the one thing a regex must not be trusted with is SECURITY, and it is not
+doing security here."
+
+CodeQL's `js/bad-tag-filter` failed the PR at high severity. It was right, and
+the argument in that comment was wrong in a way worth recording, because it is
+the kind of argument that sounds careful.
+
+**It was wrong on the merits.** The attribute pattern required QUOTES —
+`\ssrc\s*=\s*("[^"]*"|'[^']*')` — and `<img src=https://track.example/p.gif>`
+is valid HTML that needs none. Every unquoted pixel went straight through the
+control whose entire job is to stop pixels. The comment reasoned about whether
+a regex could be trusted with the SANITIZER's job, and never asked whether it
+could do its OWN.
+
+**And rewriting it surfaced a second bug the scanner had not flagged.** Parsing
+through `DOMParser.parseFromString(html, "text/html")` uses BODY context, where
+the HTML tree-construction algorithm silently discards a `<td>` with no table
+ancestor. That function's output is what the pane renders, and mail is
+table-based HTML — our own `compose.js` emits a table layout. A body that began
+mid-table would have lost its cells. `<template>` parses in template context,
+which keeps them, and is inert for the same reason.
+
+The shape: **a defence of a shortcut is not a test of it.** The comment was
+specific, plausible, and load-bearing in review — and it was reasoning about
+the wrong risk. What settled it was a tool that does not read comments, and
+then three tests that state the two failures in the form of inputs.
 
 ### One thing this exposed and did not close
 

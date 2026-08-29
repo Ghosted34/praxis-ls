@@ -29,13 +29,45 @@ describe("remote content", () => {
     const html = '<img src="cid:logo@praxis"><img src=\'data:image/png;base64,AAA\'>';
     const out = blockRemoteContent(html);
     expect(out.blocked).toBe(0);
-    expect(out.html).toBe(html);
+    // Asserted semantically, not byte-for-byte: the body goes through the
+    // browser's parser now, which normalises `'` to `"` on the way out. What
+    // matters is that both `src` attributes SURVIVE — a byte-exact assertion
+    // here would fail on a re-quote while passing on a dropped attribute.
+    expect(out.html).toContain('src="cid:logo@praxis"');
+    expect(out.html).toContain('src="data:image/png;base64,AAA"');
+    expect(out.html).not.toContain("data-blocked");
+  });
+
+  it("CATCHES AN UNQUOTED SRC — the hole the regex version had", () => {
+    // `<img src=https://track.example/p.gif>` is valid HTML that needs no
+    // quotes, and the pattern this replaced required them. Every unquoted
+    // pixel went straight through the control whose job is to stop pixels.
+    const out = blockRemoteContent("<p>hi</p><img src=https://track.example/p.gif>");
+    expect(out.blocked).toBe(1);
+    expect(out.html).toContain('data-blocked-src="https://track.example/p.gif"');
+  });
+
+  it("KEEPS TABLE CELLS, which mail HTML is made of", () => {
+    // Body-context parsing silently discards a `<td>` with no table ancestor,
+    // and this function's output is what the reading pane renders — so that
+    // would drop content out of a table-based message. Template context keeps
+    // it. (Our own compose.js emits a table layout.)
+    const out = blockRemoteContent('<td style="background:url(https://x.example/bg.png)">cell</td>');
+    expect(out.html).toContain("<td");
+    expect(out.html).toContain("cell");
+    expect(out.blocked).toBe(1);
   });
 
   it("catches the background image people forget", () => {
-    const out = blockRemoteContent('<td style="background:url(https://x.example/bg.png)">a</td>');
+    const out = blockRemoteContent('<table><tr><td style="background:url(https://x.example/bg.png)">a</td></tr></table>');
     expect(out.blocked).toBe(1);
     expect(out.html).toContain("background:none");
+  });
+
+  it("leaves a local background image alone", () => {
+    const out = blockRemoteContent('<div style="background:url(cid:bg@praxis)">a</div>');
+    expect(out.blocked).toBe(0);
+    expect(out.html).toContain("cid:bg@praxis");
   });
 
   it("catches srcset and poster too", () => {

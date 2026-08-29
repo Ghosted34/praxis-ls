@@ -67,7 +67,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ACTION` | 422 | 4× | — |
 | `BAD_AMOUNT` | 422 | 14× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
-| `BAD_AUDIO` | 400 | 3× | — |
+| `BAD_AUDIO` | 400, 422 | 5× | — |
 | `BAD_AUDIO_TYPE` | — | 1× | — |
 | `BAD_CATEGORY` | 422 | 1× | — |
 | `BAD_CODE` | 422 | 2× | — |
@@ -168,7 +168,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
-| `EMPTY_AUDIO` | 422 | 3× | — |
+| `EMPTY_AUDIO` | 422 | 4× | — |
 | `EMPTY_DRAFT` | 422 | 2× | — |
 | `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
@@ -247,7 +247,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LOW_MARGIN_JUSTIFICATION_REQUIRED` | 422 | 1× | — |
 | `MAILBOX_ARCHIVED` | 422 | 1× | — |
 | `MAILBOX_AUTH_FAILED` | — | 1× | — |
-| `MAILBOX_FORBIDDEN` | 403 | 1× | — |
+| `MAILBOX_FORBIDDEN` | 403 | 2× | — |
 | `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MANDATORY_ITEMS_OUTSTANDING` | 422 | 1× | — |
@@ -278,7 +278,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 561× | — |
+| `NOT_FOUND` | 404, 422 | 563× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -453,8 +453,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
 | `SLUG_TAKEN` | 422 | 1× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
-| `SMTP_SEND_FAILED` | 502 | 2× | — |
-| `SMTP_SEND_REJECTED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 3× | — |
+| `SMTP_SEND_REJECTED` | 502 | 2× | — |
 | `SOP_HAS_NO_TEXT` | — | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SPAM_REJECTED` | 422 | 1× | — |
@@ -483,7 +483,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOO_MANY_UNITS` | 422 | 1× | — |
 | `TRAINING_FULL` | 422 | 2× | — |
 | `TRAINING_NOT_JOINABLE` | 422 | 1× | — |
-| `TRANSCRIPTION_UNAVAILABLE` | 502 | 2× | — |
+| `TRANSCRIPTION_UNAVAILABLE` | 502 | 3× | — |
 | `UNEXPECTED_FIELD` | 422 | 2× | — |
 | `UNKNOWN_ACTION` | 422 | 2× | — |
 | `UNKNOWN_CLIENT_TYPE` | 422 | 1× | — |

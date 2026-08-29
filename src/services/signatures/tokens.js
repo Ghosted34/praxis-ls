@@ -104,9 +104,24 @@ function isValidCode(input) {
 /** `A4B7K92MXQ1P` → `A4B7-K92M-XQ1P`. Grouping is display-only; never stored. */
 const formatCode = (code) => normaliseCode(code).replace(/(.{4})(?=.)/g, "$1-");
 
-/** The URL the QR encodes. Short by design — see the header. */
+/** The URL the QR encodes. Short by design — see the header.
+ *
+ *  The trailing-slash trim is a LOOP, not `replace(/\/+$/, "")` — the last live
+ *  copy of the pattern `verify-link.normaliseBase` and `qes.service` both record
+ *  removing (CodeQL js/polynomial-redos). A quantifier anchored at the end of a
+ *  string makes the engine re-scan from every start position when the match
+ *  ultimately fails, which is quadratic in the length of the run: measured in
+ *  this repo at 1.4 s for sixty thousand characters, on a single-threaded
+ *  server.
+ *
+ *  Not reachable with a long run TODAY — the only caller is verify-link.js:97,
+ *  which passes a base its own loop has already trimmed. But this function is
+ *  exported, the origin behind it begins life as `req.get("host")`, and "safe
+ *  because of what the one current caller happens to do" is exactly the property
+ *  that stops holding without anyone noticing. Linear costs nothing here. */
 function verifyUrl(code, baseUrl) {
-  const base = String(baseUrl || "").replace(/\/+$/, "");
+  let base = String(baseUrl || "");
+  while (base.endsWith("/")) base = base.slice(0, -1);
   return `${base}/v/${normaliseCode(code)}`;
 }
 

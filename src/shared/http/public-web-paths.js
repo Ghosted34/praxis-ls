@@ -63,6 +63,16 @@ const DEFAULT_BASE = "/public";
  */
 const ROOT_BASE = "/";
 
+/**
+ * The longest string `normaliseBase` will look at.
+ *
+ * A base is ONE short word — the column allows 31 characters — so 64 is already
+ * generous, and anything past it is not a value to analyse, it is a value to
+ * refuse. This exists so the refusal happens before any per-character work,
+ * rather than depending on a cap in the validator two modules away.
+ */
+const MAX_BASE_INPUT = 64;
+
 /** True for the root mount, where the base contributes nothing to a path. */
 const isRoot = (base) => base === ROOT_BASE || base === "";
 
@@ -108,8 +118,34 @@ function normaliseBase(input) {
   const empty = input === null || input === undefined;
   const raw = String(empty ? "" : input).trim().toLowerCase();
   if (!raw) return DEFAULT_BASE;
-  const segment = raw.replace(/^\/+/, "").replace(/\/+$/, "");
-  if (!segment) return null; // "/" — the app cannot own a host's root here
+
+  // ── WHY THE SLASHES ARE NOT TRIMMED WITH A REGEX ────────────────────────
+  //
+  // This was `raw.replace(/^\/+/, "").replace(/\/+$/, "")`. CodeQL fails the
+  // build on it (js/polynomial-redos) and is right to: `\/+$` is QUADRATIC on a
+  // string of slashes that does not end in one, because the engine re-runs the
+  // whole slash run from every start position. Measured on this repo's Node 22:
+  // 20k slashes 168 ms, 100k 4.0 s, 200k 15.8 s — of a single-threaded server's
+  // event loop, which means every other tenant's requests as well.
+  //
+  // It happens to be bounded today by two guards, neither visible from this
+  // file: `domainBase` in platform.validator.js caps the field at 32 characters
+  // and migration 0104's CHECK caps the column at 31. That is safety at a
+  // distance, and the next caller — a CLI, a seed script, a backfill — inherits
+  // none of it. The gate and the split make the property local and linear.
+  //
+  // House precedent for removing rather than fencing this shape:
+  // `signatures/verify-link.js` (a while loop, with the reasoning written out),
+  // `vault/qes/qes.service.js`, `spreadsheet/build.js` and
+  // `spreadsheet/helpers.js`. A split is used here instead of a loop because
+  // this function needs the segments anyway.
+  if (raw.length > MAX_BASE_INPUT) return null;
+  const parts = raw.split("/").filter(Boolean);
+  // Exactly one segment. "" and "/" give none — the app cannot own a host's
+  // root through this function, that is what `surface = 'public'` means —
+  // and "/a/b" gives two.
+  if (parts.length !== 1) return null;
+  const segment = parts[0];
   if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(segment)) return null;
   return "/" + segment;
 }

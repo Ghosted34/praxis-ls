@@ -44,7 +44,13 @@ function read(): string {
           ?.getAttribute("content")
       : null;
   const raw = (fromMeta || FALLBACK).trim().toLowerCase();
-  const segment = raw.replace(/^\/+/, "").replace(/\/+$/, "");
+  // Split rather than `replace(/\/+$/, "")` — the same quadratic trim the
+  // server's `normaliseBase` was failing CodeQL on, removed the same way. This
+  // copy reads a tag our own server wrote rather than anything a visitor sends,
+  // so it is the less exposed of the two; that is a reason to keep the pair
+  // identical, not a reason to leave one of them slow.
+  const parts = raw.length > 64 ? [] : raw.split("/").filter(Boolean);
+  const segment = parts.length === 1 ? parts[0] : "";
   // "" is the ROOT MOUNT, and the one case where an empty segment is a real
   // answer rather than a malformed one: the server sends "/" on a host whose
   // surface is 'public' — a domain the client brought, where this app is the

@@ -227,6 +227,22 @@ describe("public-web mount path", () => {
     expect(paths.baseProblem("/")).toBeTruthy();
   });
 
+  test("a hostile base is refused in linear time, not quadratic", () => {
+    // CodeQL failed the build on the trim this replaced (js/polynomial-redos,
+    // High). `\/+$` re-scans the slash run from every start position once the
+    // match fails, so it is quadratic in the length of the run: this input took
+    // ~16 s on the old code and ~1 ms on the new one, and 16 s is the whole
+    // process, every tenant, not just the caller who sent it.
+    //
+    // A budget rather than a benchmark. Two seconds is far above any plausible
+    // linear time on the slowest CI runner and far below the quadratic one, so
+    // this fails on a REINTRODUCTION and never on a slow machine.
+    const hostile = "/".repeat(200000) + "x";
+    const started = Date.now();
+    expect(paths.normaliseBase(hostile)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   test("bases normalise to one leading slash, lowercase", () => {
     expect(paths.normaliseBase("Site")).toBe("/site");
     expect(paths.normaliseBase("/site/")).toBe("/site");

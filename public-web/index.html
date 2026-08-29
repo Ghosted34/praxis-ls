@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!--
+      PRE-PAINT THEME.
+
+      lib/theme-mode.ts owns the toggle, but this has to run INLINE and blocking:
+      `src/main.tsx` is a `type="module"` script, so it is DEFERRED — the browser
+      paints the first frame before any module has executed. A dark-mode visitor
+      would see a white page flash and then flip. Reading the stored choice here
+      is what removes that frame, and it is idempotent with the module: `.dark`
+      on <html> is the only thing either of them writes.
+
+      Default is LIGHT on purpose. `packages/brand` documents dark as Praxis's
+      primary expression for praxisls.com; this app is a tenant's front door and
+      a working portal, both read in daylight, on phones, by people who have no
+      idea whose product it is. A public surface should not need a theme setting
+      to be legible.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("praxis.public.theme");
+          if (stored === "dark") document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* private mode / storage disabled — light stands */
+        }
+      })();
+    </script>
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)" />
+    <!--
+      Title, description and the favicon are tenant-owned and are set at runtime
+      from GET /branding (app/branding.tsx). What is here is the fallback for the
+      frame before that fetch resolves — and for a route with no tenant, which is
+      what a crawler sees first.
+    -->
+    <title>Praxis</title>
+    <meta
+      name="description"
+      content="Freight, customs clearance, warehousing and hinterland transport — with shipment tracking, a client portal and a quote desk."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="robots" content="index, follow" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; font: 16px/1.6 system-ui, sans-serif">
+        <p>
+          This site needs JavaScript for tracking, quotes and the client
+          portal. To track a shipment or request a quote right now, contact us
+          by phone or email and we will handle it from there.
+        </p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

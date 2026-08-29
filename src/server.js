@@ -331,6 +331,42 @@ function buildApp() {
     logger.info({ consoleHost }, "serving platform console at admin host root");
   }
 
+  // The public web app — marketing site (/public/*) and external portal
+  // (/portal/*). Same tenant origin as the ERP, and deliberately so: a client who
+  // is emailed a tracking link must not be sent to a second domain whose cookies,
+  // CSP and tenant Host resolution the ERP knows nothing about.
+  //
+  // It is mounted BEFORE the client block below, which is the part that matters:
+  // `client/dist` answers `app.get("*")`, so anything registered after it is
+  // unreachable for page requests. Two rules follow from that and are enforced in
+  // the path test:
+  //
+  //   · Only this app's own prefixes and the legacy paths it replaces are claimed
+  //     — everything else, including /login and /reset-password, still goes to the
+  //     ERP. The portal's sign-in lives at /portal/login; the staff sign-in stays
+  //     where every bookmark in the company points.
+  //   · /api and /media are never handled here, so a mistyped deep link under
+  //     /public returns the API's 404 JSON rather than an HTML body an SDK will
+  //     try to parse.
+  //
+  // `index: false` on the static handler keeps /public resolving to the SPA
+  // route rather than to a dist/index.html the browser would otherwise fetch
+  // directly, and the fallback sendFile is what makes a forwarded
+  // /public/proposals/<token> load at all — a 404 on a deep link is a broken
+  // sales document, not a missing page.
+  const publicWebDir = path.resolve(__dirname, "../public-web/dist");
+  const PUBLIC_WEB_PATH =
+    /^\/(public|portal)(\/|$)|^\/(track|tracking|portfolio|proposal|proposals|careers|client-portal)(\/|$)/;
+  if (config.SERVE_PUBLIC_WEB && fs.existsSync(path.join(publicWebDir, "index.html"))) {
+    const publicWebStatic = express.static(publicWebDir, { index: false, maxAge: "1h" });
+    app.use((req, res, next) => {
+      if (!PUBLIC_WEB_PATH.test(req.path)) return next();
+      if (req.path.startsWith("/api") || req.path.startsWith("/media")) return next();
+      publicWebStatic(req, res, () => res.sendFile(path.join(publicWebDir, "index.html")));
+    });
+    logger.info({ publicWebDir }, "serving public web at /public and /portal (single-origin)");
+  }
+
   // Single-origin: when client/dist exists, serve the built PWA alongside /api.
   // Skipped on the admin console host so the tenant app never renders there.
   const clientDist = path.resolve(__dirname, "../client/dist");

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    // Emit OUTSIDE the project root — the same trap client/ documents: a
+    // composite project must emit, and `vite.config.js` next to
+    // `vite.config.ts` shadows it, so every later edit to the .ts becomes a
+    // silent no-op until someone runs `tsc -b` again.
+    "outDir": "./node_modules/.tmp/tsconfig-node",
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "tailwind.config.ts"]
+}

@@ -164,6 +164,19 @@ const Schema = z.object({
   // console is not served by the API at all (use its Vite dev server locally).
   PLATFORM_CONSOLE_HOST: z.string().default(""),
 
+  /**
+   * Serve the public web app (public-web/dist) on the TENANT host, at /public/*
+   * and /portal/* only. Default off, like PLATFORM_CONSOLE_HOST's "not served".
+   *
+   * Off by default rather than on-if-dist-exists because this mount takes over
+   * paths the tenant app already answers — /track, /portfolio, /careers and
+   * /client-portal/* — and redirects them to the new prefixes. A deployment that
+   * builds public-web by accident must not silently move those entry points out
+   * from under the ERP in the same release that was supposed to be a schema
+   * migration. One variable, deliberately set, is the switch.
+   */
+  SERVE_PUBLIC_WEB: bool(false),
+
   DB_HOST: z.string().default(urlParts.host || "localhost"),
   DB_PORT: int(urlParts.port || 5432),
   DB_NAME: z.string().default(urlParts.database || "praxis_platform"),

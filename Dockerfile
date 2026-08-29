@@ -78,9 +78,29 @@ COPY platform-console/ ./platform-console/
 RUN npm install --prefix platform-console --no-audit --no-fund \
  && npm run build --prefix platform-console
 
+# ---- Public web build ------------------------------------------------------
+# The stranger-facing app (public-web/): /public/* marketing and /portal/* for
+# external users, served on the tenant host when SERVE_PUBLIC_WEB is on.
+#
+# `COPY . .` rather than the app directory alone, because the app depends on
+# `file:../packages/brand` (`@praxis/brand/tokens.css` is imported by its
+# index.css), and npm needs the package's own folder present at install time —
+# the same reason the clientbuild stage above copies the whole repo.
+#
+# `npm install` and not `npm ci`: public-web/package-lock.json is committed, but
+# a lockfile generated on Windows resolves the optional esbuild/rollup binaries
+# for win32, and this stage builds on linux-musl. That is the identical caveat the
+# clientbuild comment records; `install` keeps the build reproducible where it
+# matters (the app's own sources) without breaking on the platform it does not.
+FROM base AS publicwebbuild
+COPY . .
+RUN npm install --prefix public-web --no-audit --no-fund \
+ && npm run build --prefix public-web
+
 FROM base AS runtime
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+COPY --from=publicwebbuild /app/public-web/dist ./public-web/dist
 COPY --from=clientbuild /app/client/dist ./client/dist
 COPY --from=consolebuild /app/platform-console/dist ./platform-console/dist
 ENV NODE_ENV=production

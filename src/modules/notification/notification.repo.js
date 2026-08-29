@@ -194,6 +194,30 @@ async function insertForUsers(client, userIds, { eventTypeKey = null, title, bod
   return rows;
 }
 
+/**
+ * Unread counts for many users in one round-trip — the number the phone's app
+ * icon shows.
+ *
+ * The badge is what makes a missed notification recoverable: a user who swiped
+ * a banner away, or whose phone was off when it expired, still sees a "4" on
+ * the home screen. Sent with the push rather than computed in the service
+ * worker, because the worker has no session and cannot ask.
+ *
+ * Users with nothing unread are absent from the map, not zero — the caller
+ * knows its own default and a row per user would be a row per user.
+ */
+async function unreadCountsFor(client, userIds) {
+  if (!userIds || userIds.length === 0) return new Map();
+  const { rows } = await client.query(
+    `SELECT user_id, COUNT(*)::int AS n
+       FROM notification
+      WHERE user_id = ANY($1::uuid[]) AND read_at IS NULL
+      GROUP BY user_id`,
+    [userIds],
+  );
+  return new Map(rows.map((r) => [r.user_id, r.n]));
+}
+
 /** PERF S5. Deliverable addresses for many users in one round-trip. */
 async function activeEmailsFor(client, userIds) {
   if (!userIds || userIds.length === 0) return new Map();
@@ -207,7 +231,7 @@ async function activeEmailsFor(client, userIds) {
 module.exports = {
   mine, insertForUser, unreadCount, markRead, markAllRead,
   getPreferences, putPreferences, isChannelEnabled,
-  preferencesFor, insertForUsers, activeEmailsFor,
+  preferencesFor, insertForUsers, activeEmailsFor, unreadCountsFor,
   savePushSubscription, deletePushSubscription,
   roleRecipients, requesterFor, recipientsWithPermission,
 };

@@ -72,7 +72,12 @@ describe("all three channels fire", () => {
     expect(notify.notify).toHaveBeenCalledTimes(1);
     const n = notify.notify.mock.calls[0][1];
     expect(n.userId).toBe("u-marie");
-    expect(n.category).toBe("MENTION");
+    // "comms", not "MENTION". `MENTION` was never one of the keys in
+    // shared/notifications/categories.js, so a mention matched no row of the
+    // Preferences table, showed up in no switch, and could not be turned on for
+    // email or push — the fan-out this file is about had one channel it could
+    // never actually reach. This assertion is what stops it regressing.
+    expect(n.category).toBe("comms");
     expect(n.entityRef).toBe("email_thread:t-1");
 
     // (2) chat.

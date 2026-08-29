@@ -105,7 +105,21 @@ async function fanOut(client, {
     title: "You were mentioned on a mail thread",
     body: text,
     entityRef: `email_thread:${threadId}`,
-    category: "MENTION",
+    // "comms", not "MENTION". `MENTION` was not one of the keys in
+    // shared/notifications/categories.js, so it appeared in no row of the
+    // Preferences table and could not be switched on for email or push — a
+    // mention was silently untunable. Being @-named on a thread belongs in the
+    // same bucket a user tunes for mail and messages.
+    category: "comms",
+    // Straight to the conversation. A mention that lands on the notifications
+    // list makes the reader find the thread a second time, which is most of the
+    // work of answering it.
+    url: `/comms/mail?thread=${threadId}`,
+    // Collapse with the thread's other traffic, and stay audible when it does.
+    pushTag: `mail:${threadId}`,
+    renotify: true,
+    // Somebody typed this person's name on purpose. That earns a wake.
+    urgency: "high",
     // The NOTE, not the thread: two notes that mention you are two events.
     dedupeKey: `MENTION:email_thread_note:${noteId}:${target.user_id}`,
   });

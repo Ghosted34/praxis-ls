@@ -67,7 +67,28 @@ export function InboxPage() {
   /* §8.9. A second ANSWER to the same box, not a second screen — results open
    * the same thread view the keyword list does. */
   const [meaning, setMeaning] = React.useState("");
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  /* `?thread=<id>` opens that conversation on arrival. This is what a push
+   * notification taps through to (server side: mail-notify.service.js builds
+   * `/comms/mail?thread=…`) — without it every mail alert landed on the folder
+   * list and made the reader find the message a second time. Read once, as the
+   * initial state, so navigating away inside the app doesn't get overridden by
+   * a stale query string, and stripped from the URL below so a refresh or a
+   * shared link doesn't keep re-opening it. */
+  const [openId, setOpenId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return new URLSearchParams(window.location.search).get("thread");
+    } catch {
+      return null;
+    }
+  });
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("thread")) return;
+    url.searchParams.delete("thread");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
   const [composeOpen, setComposeOpen] = React.useState(false);
   /* A draft being continued, from the Drafts list. Separate from `composeOpen`
    * because they are different intents and the dialog is titled differently:

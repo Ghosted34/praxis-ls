@@ -137,6 +137,98 @@ self.addEventListener("notificationclick", (event) => {
  * tab was open or not. That is what closes the loop, and it is why that sync
  * runs on every boot rather than only when the user visits Settings.
  */
+/**
+ * Read this device's rotation token out of IndexedDB.
+ *
+ * Written by the page at subscribe time (lib/push-token-store.ts) precisely so
+ * that this context can read it: a service worker has no `localStorage` and no
+ * session, and IndexedDB is the only store both sides share. Resolves null on
+ * any failure — the caller then leaves the repair to the next app boot.
+ */
+function readRotationToken() {
+  return new Promise((resolve) => {
+    try {
+      if (typeof indexedDB === "undefined") return resolve(null);
+      const open = indexedDB.open("praxis-push", 1);
+      open.onupgradeneeded = () => {
+        // The page normally creates this. If we got here first there is no
+        // token to find, but the store must exist or the read below throws.
+        if (!open.result.objectStoreNames.contains("tokens")) {
+          open.result.createObjectStore("tokens");
+        }
+      };
+      open.onerror = () => resolve(null);
+      open.onblocked = () => resolve(null);
+      open.onsuccess = () => {
+        try {
+          const req = open.result.transaction("tokens", "readonly")
+            .objectStore("tokens").get("rotation");
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        } catch (_e) {
+          resolve(null);
+        }
+      };
+    } catch (_e) {
+      resolve(null);
+    }
+  });
+}
+
+/** Persist the replacement token the server hands back after a rotation. */
+function writeRotationToken(token) {
+  return new Promise((resolve) => {
+    try {
+      if (typeof indexedDB === "undefined" || !token) return resolve();
+      const open = indexedDB.open("praxis-push", 1);
+      open.onupgradeneeded = () => {
+        if (!open.result.objectStoreNames.contains("tokens")) {
+          open.result.createObjectStore("tokens");
+        }
+      };
+      open.onerror = () => resolve();
+      open.onblocked = () => resolve();
+      open.onsuccess = () => {
+        try {
+          const req = open.result.transaction("tokens", "readwrite")
+            .objectStore("tokens").put(token, "rotation");
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        } catch (_e) {
+          resolve();
+        }
+      };
+    } catch (_e) {
+      resolve();
+    }
+  });
+}
+
+/**
+ * The browser has replaced this device's subscription — which it does on its
+ * own schedule, when a push service rotates keys or expires an endpoint.
+ *
+ * The old endpoint stops working at that moment, and nothing reports it: the
+ * server keeps sending to a dead address, the phone keeps not receiving, and
+ * neither side sees an error. The device just goes quiet.
+ *
+ * ── WHY THIS CAN RE-REGISTER WITHOUT A SESSION ──────────────────────────────
+ *
+ * `/notifications/push/subscribe` is authenticated, and a worker cannot reach
+ * the Bearer token that lives in the page. So the repair used to wait for the
+ * user to next open the app — and the reason they were not opening it was that
+ * their notifications had stopped. The fix was gated behind the thing it broke.
+ *
+ * `/notifications/push/rotate` is public and authorised by a single-use token
+ * this device was given when it subscribed, kept in IndexedDB, which the server
+ * stores only as a SHA-256. Possession proves same-device; nothing else about
+ * the caller is trusted, and the server answers identically for an unknown,
+ * spent or deleted token so it cannot be probed.
+ *
+ * The boot-time sync in the client remains the backstop for every case this
+ * cannot cover — no token stored, IndexedDB unavailable, the device offline at
+ * the moment it rotated.
+ */
 self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     (async () => {
@@ -155,6 +247,32 @@ self.addEventListener("pushsubscriptionchange", (event) => {
             })
             : null);
         if (!sub) return;
+
+        const token = await readRotationToken();
+        if (token) {
+          // `/api/tenant/...`, not `/api/...`. The tenant surface is mounted
+          // under /tenant (routes/index.js) and the client's `tenant()` helper
+          // adds that segment for every other call — a worker composing the URL
+          // by hand has to add it too. Getting this wrong 404s, and because
+          // everything in here is swallowed by design that would have been a
+          // rotation repair which never once worked and never once complained.
+          const res = await fetch("/api/tenant/notifications/push/rotate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rotation_token: token, subscription: sub.toJSON() }),
+          });
+          if (res.ok) {
+            // Single-use: the server issued a replacement, and without storing
+            // it the NEXT rotation has nothing to present.
+            const body = await res.json().catch(() => null);
+            const next = body && body.data && body.data.rotation_token;
+            if (next) await writeRotationToken(next);
+          }
+        }
+
+        // Tell any open tab either way. When the rotation call succeeded this
+        // lets the page refresh what it shows; when it did not, the page's own
+        // authenticated re-registration is the fallback.
         const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         for (const client of clients) {
           client.postMessage({

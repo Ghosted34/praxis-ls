@@ -18,6 +18,14 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 const tenantMock = vi.fn();
 vi.mock("@/lib/api-client", () => ({ tenant: (...a: unknown[]) => tenantMock(...a) }));
 
+// Typed with a rest parameter so the mock factory below can spread into it.
+const saveTokenMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock("@/lib/push-token-store", () => ({
+  saveRotationToken: (...a: unknown[]) => saveTokenMock(...a),
+  readRotationToken: vi.fn(async () => null),
+  clearRotationToken: vi.fn(async () => undefined),
+}));
+
 const { syncPushSubscription } = await import("./push-sync");
 
 type Perm = "granted" | "denied" | "default";
@@ -50,6 +58,7 @@ const existingSub = {
 beforeEach(() => {
   tenantMock.mockReset();
   tenantMock.mockResolvedValue({});
+  saveTokenMock.mockClear();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -122,5 +131,26 @@ describe("syncPushSubscription", () => {
     vi.stubGlobal("Notification", undefined);
     await expect(syncPushSubscription()).resolves.toBe("skipped");
     expect(tenantMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the rotation token", () => {
+  it("is stored so the service worker can repair this device without a session", async () => {
+    // This is the whole mechanism: /push/subscribe is authenticated and a
+    // worker cannot reach the Bearer token in the page, so it presents this
+    // instead when the browser rotates the subscription. Without it the repair
+    // waits for the user to open an app that has stopped notifying them.
+    setup({ subscription: existingSub });
+    tenantMock.mockResolvedValue({ rotation_token: "ROT-TOKEN-1" });
+
+    await syncPushSubscription();
+    expect(saveTokenMock).toHaveBeenCalledWith("ROT-TOKEN-1");
+  });
+
+  it("a server that issues none (migration not run) does not break the sync", async () => {
+    setup({ subscription: existingSub });
+    tenantMock.mockResolvedValue({ rotation_token: null });
+    await expect(syncPushSubscription()).resolves.toBe("synced");
+    expect(saveTokenMock).not.toHaveBeenCalled();
   });
 });

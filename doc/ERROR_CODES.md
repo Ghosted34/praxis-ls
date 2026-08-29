@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (499)
+## All codes (501)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -226,6 +226,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_PUBLIC_MEDIA` | 422 | 1× | — |
 | `INVALID_QTY` | 422 | 3× | — |
 | `INVALID_RESET_TOKEN` | 400 | 1× | — |
+| `INVALID_ROTATION` | 422 | 1× | — |
 | `INVALID_SORT` | — | 1× | — |
 | `INVALID_STATE` | 422 | 1× | — |
 | `INVALID_SUBSCRIPTION` | 422 | 1× | — |
@@ -434,6 +435,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROLE_ESCALATION` | — | 1× | — |
 | `ROLE_IN_USE` | 409 | 1× | — |
 | `ROOT_LOCKED` | 409 | 1× | — |
+| `ROTATION_REJECTED` | 404 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
 | `SAME_PASSWORD` | 422 | 1× | — |

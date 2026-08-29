@@ -23,6 +23,16 @@ const schemas = {
     }),
   }),
   pushUnsubscribe: z.object({ endpoint: z.string().url().max(1024) }),
+  // The rotation call is UNAUTHENTICATED (a service worker has no session), so
+  // the schema is the first gate: a bounded, well-formed token and a real
+  // subscription, or a 422 before anything touches the database.
+  pushRotate: z.object({
+    rotation_token: z.string().min(20).max(512),
+    subscription: z.object({
+      endpoint: z.string().url().max(1024),
+      keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(256) }),
+    }),
+  }),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -36,6 +46,7 @@ module.exports = {
   preferences: mw("preferences"),
   pushSubscribe: mw("pushSubscribe"),
   pushUnsubscribe: mw("pushUnsubscribe"),
+  pushRotate: mw("pushRotate"),
   CHANNELS,
   schemas,
 };

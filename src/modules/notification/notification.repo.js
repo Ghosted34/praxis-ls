@@ -128,6 +128,85 @@ async function savePushSubscription(client, userId, { endpoint, p256dh, auth, us
   );
   return rows[0];
 }
+/**
+ * Store a rotation token against a subscription, by endpoint.
+ *
+ * Only the SHA-256 lands in the table. The plaintext is returned to the caller
+ * once, handed to the browser, and kept in IndexedDB where the service worker
+ * can read it without a session — see migration 12752 for why possession of a
+ * token, rather than of the old endpoint, is what proves same-device.
+ */
+async function setRotationToken(client, endpoint, tokenHash) {
+  const { rowCount } = await client.query(
+    "UPDATE push_subscription SET rotation_token_hash = $2 WHERE endpoint = $1",
+    [endpoint, tokenHash],
+  );
+  return rowCount;
+}
+
+/**
+ * Move a subscription onto its new endpoint, proven by a rotation token.
+ *
+ * The token is the WHOLE authorisation: this runs unauthenticated, because the
+ * service worker making the call has no session. So the statement is written to
+ * be the entire check — it matches on the hash and nothing else, and it clears
+ * the token in the same UPDATE, which makes it single-use even against two
+ * concurrent callers (the second matches no row). The new token is written by
+ * the caller afterwards.
+ *
+ * Returns the owning user_id when a row moved, or null when the token was
+ * unknown, already spent, or the subscription is gone.
+ */
+async function rotatePushSubscription(client, { tokenHash, endpoint, p256dh, auth }) {
+  const { rows } = await client.query(
+    `UPDATE push_subscription
+        SET endpoint = $2, p256dh = $3, auth = $4,
+            rotation_token_hash = NULL, last_used_at = now()
+      WHERE rotation_token_hash = $1
+      RETURNING user_id, subscription_id`,
+    [tokenHash, endpoint, p256dh, auth],
+  );
+  return rows[0] || null;
+}
+
+/** How many devices this user currently has registered. */
+async function countPushSubscriptions(client, userId) {
+  const { rows } = await client.query(
+    "SELECT COUNT(*)::int AS n FROM push_subscription WHERE user_id = $1",
+    [userId],
+  );
+  return rows[0].n;
+}
+
+/**
+ * Claim the right to tell this user their last device went quiet, at most once
+ * per COOLDOWN.
+ *
+ * `ON CONFLICT ... WHERE` makes the claim atomic: two workers pruning two of
+ * the same user's devices in the same moment cannot both send the notice. A
+ * cooldown rather than a one-time flag because a device CAN lapse again months
+ * later, and that is worth saying again — just not twice in an afternoon.
+ *
+ * Returns true when this caller won the claim and should send.
+ */
+async function claimDeviceLapseNotice(client, userId, endpoint, cooldownHours = 24) {
+  const { rows } = await client.query(
+    `INSERT INTO push_device_lapse (user_id, notified_at, last_endpoint)
+     VALUES ($1, now(), $2)
+     ON CONFLICT (user_id) DO UPDATE
+       SET notified_at = now(), last_endpoint = EXCLUDED.last_endpoint
+     WHERE push_device_lapse.notified_at < now() - ($3 || ' hours')::interval
+     RETURNING user_id`,
+    [userId, endpoint || null, String(cooldownHours)],
+  );
+  return rows.length > 0;
+}
+
+/** A user who registers a device again is no longer lapsed. */
+async function clearDeviceLapse(client, userId) {
+  await client.query("DELETE FROM push_device_lapse WHERE user_id = $1", [userId]);
+}
+
 async function deletePushSubscription(client, userId, endpoint) {
   const { rowCount } = await client.query(
     "DELETE FROM push_subscription WHERE user_id = $1 AND endpoint = $2",
@@ -233,5 +312,7 @@ module.exports = {
   getPreferences, putPreferences, isChannelEnabled,
   preferencesFor, insertForUsers, activeEmailsFor, unreadCountsFor,
   savePushSubscription, deletePushSubscription,
+  setRotationToken, rotatePushSubscription, countPushSubscriptions,
+  claimDeviceLapseNotice, clearDeviceLapse,
   roleRecipients, requesterFor, recipientsWithPermission,
 };

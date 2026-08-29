@@ -112,6 +112,45 @@ async function deliverPush(client, { userId, title, body, url = "/notifications"
 }
 
 /**
+ * Tell a user, once, that the last device they had registered has stopped
+ * receiving notifications.
+ *
+ * ── WHY THIS IS AN EMAIL AND NOT JUST A BANNER ──────────────────────────────
+ *
+ * The self-perpetuating failure: a browser silently rotates a subscription, the
+ * old endpoint 410s, we prune it, and the user is unreachable by push. The
+ * repair runs when they next open the app — but the reason they open the app is
+ * usually that something notified them, and nothing can any more. The banner in
+ * Settings is honest and useless on its own, because it only reaches somebody
+ * who was already coming back.
+ *
+ * Rate-limited to once a day per user by an atomic claim in the repo, so two
+ * workers pruning two devices in the same second cannot both send, and a device
+ * that lapses again months later can still be reported.
+ *
+ * Never throws: this is a courtesy on the failure path of a notification, and
+ * it must not be what stops the fallback email that follows it.
+ */
+async function noticeDeviceLapse(client, userId) {
+  const remaining = await repo.countPushSubscriptions(client, userId);
+  if (remaining > 0) return false;
+  if (!(await repo.claimDeviceLapseNotice(client, userId))) return false;
+
+  const people = await repo.activeEmailsFor(client, [userId]);
+  const person = people.get(userId);
+  if (!person || !person.email) return false;
+
+  const title = "Your device stopped receiving notifications";
+  const body =
+    "The browser or phone you had notifications set up on is no longer registered — "
+    + "this usually happens on its own, without anything being changed. "
+    + "Open the app once to turn them back on.";
+  await deliverEmail(client, { userId, person, isSecurity: false, title, body });
+  logger.warn({ user_id: userId }, "[push] last registered device lapsed; user notified by email");
+  return true;
+}
+
+/**
  * The outbound half of a notification: push to every registered device, email
  * where the recipient wants it, and email ANYWAY where push reached nothing.
  *
@@ -189,6 +228,22 @@ async function deliverOutbound(client, { recipients, notification }) {
         "[notify] web-push is not configured on this deployment — no VAPID keypair. " +
         "Notifications cannot reach a closed app until one is generated in the Platform Console.",
       );
+    }
+
+    // EVERY device this user had is gone — the push services returned 404/410
+    // for all of them and they have just been pruned. Usually a rotation the
+    // service worker could not report, sometimes an uninstall or cleared site
+    // data. Either way the user is now unreachable by push and nothing else
+    // would ever tell them: the in-app banner only helps someone who already
+    // came back, and the reason they are not coming back is that the
+    // notifications stopped. So one email breaks that loop.
+    if (push.pruned > 0 && push.sent === 0) {
+      try {
+         
+        await noticeDeviceLapse(client, userId);
+      } catch {
+        /* @silent:storage best-effort; the fallback email below still goes */
+      }
     }
 
     const person = people.get(userId);
@@ -495,6 +550,19 @@ const setPreferences = (client, { actor, prefs }) => repo.putPreferences(client,
 // (resolved by shared/push/push.service). null when push isn't configured yet.
 const pushPublicKey = async () => ({ public_key: await pushService.getPublicKey() });
 
+/**
+ * A rotation token and its hash. The plaintext is shown to the browser exactly
+ * once; only the hash is ever stored. See migration 12752.
+ */
+function mintRotationToken() {
+  const crypto = require("node:crypto");
+  const token = crypto.randomBytes(32).toString("base64url");
+  return { token, hash: crypto.createHash("sha256").update(token).digest("hex") };
+}
+
+const hashRotationToken = (token) =>
+  require("node:crypto").createHash("sha256").update(String(token)).digest("hex");
+
 async function subscribePush(client, actor, { subscription, userAgent }) {
   const s = subscription || {};
   const keys = s.keys || {};
@@ -504,7 +572,78 @@ async function subscribePush(client, actor, { subscription, userAgent }) {
   await repo.savePushSubscription(client, actor.user_id, {
     endpoint: s.endpoint, p256dh: keys.p256dh, auth: keys.auth, userAgent,
   });
-  return { subscribed: true };
+
+  // This user has a working device again, so any standing "you went quiet"
+  // state is stale. Cleared here rather than on the next notification so the
+  // Settings banner disappears the moment the user fixes it.
+  try {
+    await repo.clearDeviceLapse(client, actor.user_id);
+  } catch {
+    /* @silent:storage the subscription is the outcome; the lapse row is a hint */
+  }
+
+  // The token that lets the SERVICE WORKER re-register this device on its own
+  // when the browser rotates the subscription, with no session to authenticate
+  // with. Issued fresh on every subscribe, which also re-arms a device whose
+  // token was spent.
+  let rotation_token = null;
+  try {
+    const minted = mintRotationToken();
+    await repo.setRotationToken(client, s.endpoint, minted.hash);
+    rotation_token = minted.token;
+  } catch (err) {
+    // A deployment whose 12752 migration has not run yet still subscribes; it
+    // just falls back to repairing rotations on the next app boot.
+    logger.warn({ err }, "[push] rotation token not issued");
+  }
+  return { subscribed: true, rotation_token };
+}
+
+/**
+ * Move a device's subscription to its new endpoint. UNAUTHENTICATED by
+ * necessity — the caller is a service worker, which holds no session — and
+ * authorised entirely by the rotation token.
+ *
+ * The token is single-use and cleared inside the same UPDATE that moves the
+ * row, so a replay finds nothing. A fresh token is issued and returned for the
+ * next rotation; if issuing it fails the rotation still stands, and that device
+ * falls back to boot-time repair from then on.
+ */
+async function rotatePush(client, { rotationToken, subscription }) {
+  const s = subscription || {};
+  const keys = s.keys || {};
+  if (!rotationToken || !s.endpoint || !keys.p256dh || !keys.auth) {
+    throw new AppError("INVALID_ROTATION", "A rotation token and a valid PushSubscription are required", 422);
+  }
+  const moved = await repo.rotatePushSubscription(client, {
+    tokenHash: hashRotationToken(rotationToken),
+    endpoint: s.endpoint, p256dh: keys.p256dh, auth: keys.auth,
+  });
+  // Deliberately the same answer for an unknown token, a spent one, and a
+  // deleted subscription: this endpoint is unauthenticated, and distinguishing
+  // them would turn it into an oracle for probing tokens.
+  if (!moved) throw new AppError("ROTATION_REJECTED", "That rotation token is not valid", 404);
+
+  try {
+    await repo.clearDeviceLapse(client, moved.user_id);
+  } catch {
+    /* @silent:storage the rotation is the outcome */
+  }
+
+  let rotation_token = null;
+  try {
+    const minted = mintRotationToken();
+    await repo.setRotationToken(client, s.endpoint, minted.hash);
+    rotation_token = minted.token;
+  } catch (err) {
+    logger.warn({ err }, "[push] replacement rotation token not issued");
+  }
+  return { rotated: true, rotation_token };
+}
+
+/** How many devices the caller has registered — 0 means push reaches nobody. */
+async function pushDevices(client, actor) {
+  return { devices: await repo.countPushSubscriptions(client, actor.user_id) };
 }
 
 async function unsubscribePush(client, actor, { endpoint }) {
@@ -516,5 +655,5 @@ module.exports = {
   DEDUPE_MS, DEDUPE_TTL_S, shouldDedupe, claimDedupe, recentDedupe,
   notifyMany, deliverOutbound, resolveTenantMeta,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
-  pushPublicKey, subscribePush, unsubscribePush,
+  pushPublicKey, subscribePush, unsubscribePush, rotatePush, pushDevices,
 };

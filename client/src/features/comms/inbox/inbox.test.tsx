@@ -67,11 +67,15 @@ function ListHarness({
   bulkFailures = [],
   onBulk = vi.fn(),
   onStar = vi.fn(),
+  folder,
+  onEmptyFolder,
 }: {
   threads: Thread[];
   bulkFailures?: { email_thread_id: string; error: string }[];
   onBulk?: (op: never, folder?: never) => void;
   onStar?: (t: Thread, on: boolean) => void;
+  folder?: "INBOX" | "TRASH" | "SPAM";
+  onEmptyFolder?: () => void;
 }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   return (
@@ -84,6 +88,8 @@ function ListHarness({
       onOpen={vi.fn()}
       onStar={onStar}
       onBulk={onBulk as never}
+      folder={folder}
+      onEmptyFolder={onEmptyFolder}
       bulkBusy={false}
       bulkFailures={bulkFailures}
       onLoadMore={vi.fn()}
@@ -232,6 +238,57 @@ const detail = (over: Partial<ThreadDetail> = {}): ThreadDetail => ({
   ...over,
 });
 
+/**
+ * ── DELETION (H-1), WHICH HAD NO CLIENT SURFACE AT ALL ──────────────────────
+ *
+ * `DELETE /mail/threads/:id` and `POST /mail/folders/empty` were built,
+ * retention-aware, ledgered and told to the mail server — and neither had a
+ * wrapper in `mail-api.ts`, which is also why `mail-client-api-wiring.test.js`
+ * never flagged them: that gate walks the wrappers and asks who calls them, so
+ * an endpoint with no wrapper is invisible to it. Trash accumulated for ever,
+ * and `thread.service`'s own comment called the endpoint "the Empty Trash the
+ * product did not have".
+ */
+describe("deleting for ever", () => {
+  it("is offered in Trash, where moving to Trash is a no-op", async () => {
+    const onBulk = vi.fn();
+    render(<ListHarness threads={[thread()]} folder="TRASH" onBulk={onBulk} />);
+    await userEvent.click(screen.getByLabelText("Select all conversations"));
+    expect(screen.getByRole("button", { name: "Delete for ever" })).toBeInTheDocument();
+    // …and the no-op is not.
+    expect(screen.queryByRole("button", { name: "Trash" })).toBeNull();
+  });
+
+  it("IS NOT OFFERED IN THE INBOX, where Trash is the reversible verb", async () => {
+    render(<ListHarness threads={[thread()]} folder="INBOX" />);
+    await userEvent.click(screen.getByLabelText("Select all conversations"));
+    expect(screen.queryByRole("button", { name: "Delete for ever" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Trash" })).toBeInTheDocument();
+  });
+
+  it("asks the server for the delete verb the validator has always accepted", async () => {
+    const onBulk = vi.fn();
+    render(<ListHarness threads={[thread()]} folder="SPAM" onBulk={onBulk} />);
+    await userEvent.click(screen.getByLabelText("Select all conversations"));
+    await userEvent.click(screen.getByRole("button", { name: "Delete for ever" }));
+    expect(onBulk).toHaveBeenCalledWith("delete");
+  });
+
+  it("offers Empty the bin only in Trash, and only when there is something in it", () => {
+    const onEmpty = vi.fn();
+    const { rerender } = render(
+      <ListHarness threads={[thread()]} folder="TRASH" onEmptyFolder={onEmpty} />,
+    );
+    expect(screen.getByRole("button", { name: "Empty the bin" })).toBeInTheDocument();
+
+    rerender(<ListHarness threads={[]} folder="TRASH" onEmptyFolder={onEmpty} />);
+    expect(screen.queryByRole("button", { name: "Empty the bin" })).toBeNull();
+
+    rerender(<ListHarness threads={[thread()]} folder="INBOX" onEmptyFolder={onEmpty} />);
+    expect(screen.queryByRole("button", { name: "Empty the bin" })).toBeNull();
+  });
+});
+
 describe("the conversation view", () => {
   /** The rail's endpoints, answered with nothing — these tests are about the
    *  correspondence, and an empty rail is a valid rail. */
@@ -255,6 +312,17 @@ describe("the conversation view", () => {
     onToggleRead: vi.fn(),
     onClose: vi.fn(),
   };
+
+  it("offers permanent deletion only when the caller supplies it", () => {
+    // The inbox passes `onDelete` only while reading Trash or Spam; everywhere
+    // else "Move to… Trash" is the reversible verb and this must not appear.
+    const { unmount } = renderView(<ThreadView thread={detail()} {...props} />);
+    expect(screen.queryByRole("button", { name: "Delete for ever" })).toBeNull();
+    unmount();
+
+    renderView(<ThreadView thread={detail()} {...props} onDelete={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Delete for ever" })).toBeInTheDocument();
+  });
 
   it("opens the newest message and leaves the history collapsed", () => {
     renderView(<ThreadView thread={detail()} {...props} />);

@@ -70,8 +70,28 @@ module.exports = {
   listConnections: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listConnections(c, { ...req.query, ownerUserId: actor(req).user_id })) })),
   connect: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.connect(c, { ...req.body, actor: actor(req) })) })),
   updateConnection: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateImapConnection(c, req.params.id, { ...req.body, ownerUserId: actor(req).user_id, actor: actor(req) })) })),
-  testConnection: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.testConnection(c, req.params.id)) })),
-  syncNow: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.syncConnection(c, req.params.id, { slug: req.tenant && req.tenant.slug })) })),
+  /* `access.assertCanOperate` before each of these three: MOD-72 "edit" is what
+   * marking a thread READ needs in this product, so the route gate alone let
+   * any mail user test, sync or archive a colleague's personal mailbox by id.
+   * See the long note on `assertCanOperate`. */
+  testConnection: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb(async (c) => {
+      await access.assertCanOperate(c, req.params.id, actor(req));
+      return service.testConnection(c, req.params.id);
+    }),
+  })),
+  syncNow: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb(async (c) => {
+      await access.assertCanOperate(c, req.params.id, actor(req));
+      return service.syncConnection(c, req.params.id, { slug: req.tenant && req.tenant.slug });
+    }),
+  })),
+  disconnectConnection: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb(async (c) => {
+      await access.assertCanOperate(c, req.params.id, actor(req));
+      return mailbox.disconnect(c, req.params.id, actor(req));
+    }),
+  })),
   setDefaultMailbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setDefaultMailbox(c, req.params.id, actor(req).user_id)) })),
   // The CALLER is what decides which address books are searched — see
   // mail.service.searchRecipients. Passing only the term is what let a mail
@@ -230,7 +250,12 @@ module.exports = {
   addCatalogueEntry: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => mailbox.addCatalogueEntry(c, req.body || {}, actor(req))) })),
   toggleCatalogueEntry: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => mailbox.setCatalogueEnabled(c, req.params.key, req.body.is_enabled, actor(req))) })),
   createShared: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.connect(c, { ...req.body, kind: "SHARED", actor: actor(req) })) })),
-  archiveMailbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => mailbox.archive(c, req.params.id, actor(req))) })),
+  archiveMailbox: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb(async (c) => {
+      await access.assertCanOperate(c, req.params.id, actor(req));
+      return mailbox.archive(c, req.params.id, actor(req));
+    }),
+  })),
   handoverMailbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => mailbox.handover(c, req.params.id, { catalogueKey: req.body.catalogue_key || null, department: req.body.department || null, actor: actor(req) })) })),
   setMailboxLimits: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => mailbox.setLimits(c, req.params.id, req.body || {}, actor(req))) })),
   sendAllowance: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => mailbox.checkSendAllowance(c, req.params.id, Number(req.query.count) || 1)) })),

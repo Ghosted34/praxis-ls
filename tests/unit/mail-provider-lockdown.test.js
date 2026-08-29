@@ -157,6 +157,63 @@ describe("provider lockdown", () => {
     });
     expect(mailRepo.insertConnection).toHaveBeenCalled();
   });
+
+  /* ── THE GATE HAS TO BE ON THE OAUTH PATH TOO ────────────────────────────
+   *
+   * Everything above proves `connect()` is gated, and `connect()` is the
+   * IMAP path. The OAuth path never goes through it: `startOAuth` mints a
+   * consent URL and `completeOAuth` calls `repo.insertConnection` itself. So
+   * for as long as the check lived only in `connect()`, P4's "gated off —
+   * server-side, not only in the UI" was false for the two providers it was
+   * written about, and hiding the two buttons in `setup/mailboxes.tsx` was
+   * the entire enforcement. A stale tab, a bookmarked
+   * `/mail/oauth/google/start`, or a curl walked straight past it.
+   *
+   * Asserted at BOTH ends on purpose. The start check is what stops a person
+   * being sent to Microsoft to consent to something we will refuse; the
+   * complete check is what stops a state token minted while the flag was on
+   * from landing a mailbox after an administrator turned it off. */
+  test.each([
+    ["startMicrosoftOAuth", "microsoft_graph"],
+    ["startGoogleOAuth", "google_gmail"],
+  ])("%s refuses before anyone is redirected to consent", async (fn) => {
+    await expect(
+      service[fn](clientWithFlag("off"), {
+        slug: "smartls",
+        redirectUri: "https://smartls.example/cb",
+        actor: { user_id: "u1" },
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_NOT_ENABLED", status: 403 });
+  });
+
+  test.each([
+    ["completeMicrosoftOAuth", "microsoft_graph"],
+    ["completeGoogleOAuth", "google_gmail"],
+  ])("%s refuses on the way back, and writes no connection", async (fn) => {
+    await expect(
+      service[fn](clientWithFlag("off"), {
+        code: "x",
+        state: "y",
+        slug: "smartls",
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_NOT_ENABLED", status: 403 });
+    // The point of checking before the token exchange: no row, and nothing
+    // sent to the provider either.
+    expect(mailRepo.insertConnection).not.toHaveBeenCalled();
+  });
+
+  test("with the flag ON, start gets past the lockdown", async () => {
+    // It still fails — the IdP is not configured in a unit test — but NOT
+    // here, which is what makes this a flag rather than a rewrite.
+    const err = await service
+      .startMicrosoftOAuth(clientWithFlag("on"), {
+        slug: "smartls",
+        redirectUri: "https://smartls.example/cb",
+        actor: {},
+      })
+      .catch((e) => e);
+    expect(err && err.code).not.toBe("PROVIDER_NOT_ENABLED");
+  });
 });
 
 describe("one personal mailbox, enforced on connect", () => {

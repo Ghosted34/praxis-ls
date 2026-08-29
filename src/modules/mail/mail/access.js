@@ -77,6 +77,50 @@ const assertCanSend = (client, connectionId, userId) =>
 const assertCanManage = (client, connectionId, userId) =>
   assertAtLeast(client, connectionId, userId, "MANAGER", "manage members or settings");
 
+/**
+ * May this caller act on this mailbox as a THING — test it, sync it, retire it,
+ * disconnect it?
+ *
+ * ── THE HOLE THIS CLOSES ────────────────────────────────────────────────────
+ *
+ * `POST /mail/connections/:id/test`, `/sync` and `POST /mail/mailboxes/:id/
+ * archive` were gated on `requirePermission("MOD-72", "edit")` and nothing
+ * else. In this product MOD-72 edit is what marking a thread read needs
+ * (`threadRead`, `threadStar`, `threadMove` all require it), so every mail user
+ * holds it — which meant any mail user who had, or guessed, a connection id
+ * could sync a colleague's personal mailbox, run a connection test that
+ * overwrites their `last_error`, or ARCHIVE it: sync stopped, mailbox gone
+ * from their workspace, every grant on it revoked. `updateImapConnection` had
+ * the ownership check all along; its three neighbours did not.
+ *
+ * ── WHY THE RULE IS ASYMMETRIC BETWEEN PERSONAL AND SHARED ──────────────────
+ *
+ * A PERSONAL mailbox is one person's correspondence and one person's password,
+ * and nobody else has business touching the transport. A SHARED mailbox is
+ * company infrastructure — billing@, operations@ — that an administrator is
+ * expected to look after even when they are not a member of it, and the
+ * Mailboxes screen is admin-only precisely so they can. Requiring MANAGER on a
+ * shared mailbox would lock a second administrator out of a mailbox the first
+ * one created, which is a regression to a working surface rather than a fix.
+ *
+ * So: a personal mailbox belongs to its owner; a shared mailbox stays with the
+ * MOD-72 administrator gate the route already applies. A CEO passes either way,
+ * as they do everywhere else (`middleware/rbac`).
+ */
+async function assertCanOperate(client, connectionId, actor = {}) {
+  const userId = actor && actor.user_id;
+  const conn = await repo.getConnection(client, connectionId);
+  if (!conn) throw new AppError("NOT_FOUND", "mailbox not found", 404);
+  if (actor && actor.is_ceo === true) return conn;
+  if (conn.kind !== "PERSONAL") return conn;
+  if (userId && conn.owner_user_id === userId) return conn;
+  throw new AppError(
+    "MAILBOX_FORBIDDEN",
+    "That is somebody else's personal mailbox. Only the person it belongs to can test, sync or disconnect it.",
+    403,
+  );
+}
+
 const listMembers = (client, connectionId, opts) => repo.listMembers(client, connectionId, opts);
 
 /**
@@ -181,6 +225,6 @@ const listAudit = (client, opts) => repo.listAccessAudit(client, opts);
 
 module.exports = {
   MODULE, ROLES, roleFor, rank,
-  assertCanRead, assertCanSend, assertCanManage,
+  assertCanRead, assertCanSend, assertCanManage, assertCanOperate,
   listMembers, grant, revoke, recordSentAs, listAudit,
 };

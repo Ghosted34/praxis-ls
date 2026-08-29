@@ -51,6 +51,7 @@ export function NewMessageDialog({
   recipientExtras = [],
   entityRef = null,
   languageNote = null,
+  draft = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -73,6 +74,15 @@ export function NewMessageDialog({
    * document. One line of text is cheaper than that.
    */
   languageNote?: string | null;
+  /**
+   * A saved draft to reopen, from the Drafts list.
+   *
+   * It carries its own mailbox, so the picker below is skipped rather than
+   * offered: a draft written from billing@ reopening on the personal mailbox,
+   * because that one happens to be the default, would change who the message
+   * comes from without saying so.
+   */
+  draft?: api.Draft | null;
 }) {
   const conns = useResource(() => api.listConnections(), []);
   const connected = (conns.data || []).filter((c) => c.status === "CONNECTED");
@@ -81,16 +91,23 @@ export function NewMessageDialog({
   React.useEffect(() => {
     if (connId) return;
     const preferred =
-      connected.find((c) => c.is_default)?.email_connection_id
+      // A reopened draft's own mailbox first — see the `draft` prop.
+      draft?.email_connection_id
+      || connected.find((c) => c.is_default)?.email_connection_id
       || connected[0]?.email_connection_id
       || "";
     if (preferred) setConnId(preferred);
-  }, [connected, connId]);
+  }, [connected, connId, draft?.email_connection_id]);
 
   if (!open) return null;
 
   return (
-    <Dialog open onClose={onClose} size="lg" title={title || tr("New message")}>
+    <Dialog
+      open
+      onClose={onClose}
+      size="lg"
+      title={title || (draft ? tr("Continue this draft") : tr("New message"))}
+    >
       <div className="space-y-3">
         {conns.error && <ErrorState message={conns.error} />}
 
@@ -103,7 +120,7 @@ export function NewMessageDialog({
           </Callout>
         )}
 
-        {connected.length > 1 && (
+        {connected.length > 1 && !draft && (
           <Field label={tr("From mailbox")}>
             <Select value={connId} onChange={(e) => setConnId(e.target.value)}>
               {connected.map((c) => (
@@ -125,8 +142,15 @@ export function NewMessageDialog({
           <React.Suspense fallback={<LoadingRow label={tr("Opening the composer…")} />}>
             <div className="rounded-lg border border-border">
               <Composer
+                // A different draft is a different message: remounting is what
+                // re-seeds the editor, whose instance is built once so a
+                // keystroke never costs the caret.
+                key={draft?.email_draft_id || "new"}
                 connectionId={connId}
-                kind="NEW"
+                draft={draft}
+                kind={draft?.kind || "NEW"}
+                threadId={draft?.email_thread_id || null}
+                replyToMessageId={draft?.reply_to_message_id || null}
                 initialTo={to}
                 initialCc={cc}
                 initialSubject={subject}

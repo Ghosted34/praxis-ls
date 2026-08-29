@@ -21,6 +21,18 @@
  * database. Offering a control that can only ever fail would teach people to
  * distrust the ones that work, so the page shows the mailbox they have and how
  * to change it instead.
+ *
+ * ── THERE IS, HOWEVER, A WAY OUT ────────────────────────────────────────────
+ *
+ * There was not. A person could connect their mailbox here and then had no way
+ * to disconnect it — this page pointed at "Mailbox → Mailboxes", an
+ * administrator's screen most people cannot open, where the only action was
+ * "Retire": it stopped the sync and left the stored IMAP password behind.
+ *
+ * "Disconnect" is the action people actually mean. It archives the connection
+ * AND deletes the credential, and it says plainly that no mail is deleted —
+ * because "disconnect" reads as "delete my email" to most people, and the
+ * difference matters the first time somebody needs last March's bill of lading.
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -223,6 +235,27 @@ const tone = (s?: string | null): Tone =>
 export function MyMailboxTab() {
   const mine = useResource(() => api.myMailboxes(), []);
   const [wizard, setWizard] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function disconnect(m: api.Mailbox) {
+    // The sentence is the feature. See the header.
+    const ok = window.confirm(
+      `${tr("Disconnect")} ${m.email_address}?\n\n` +
+      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.disconnectMailbox(m.email_connection_id);
+      mine.reload();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const rows = mine.data || [];
   const personal = rows.find((m) => m.kind === "PERSONAL") || null;
@@ -241,6 +274,7 @@ export function MyMailboxTab() {
       />
 
       {mine.error && <ErrorState message={mine.error} />}
+      {error && <ErrorState message={error} />}
 
       {!personal && !mine.loading && (
         <div className="rounded-xl border border-dashed border-border p-6 text-center">
@@ -259,7 +293,7 @@ export function MyMailboxTab() {
               <div className="flex items-center gap-2">
                 <span className="num text-base font-medium">{personal.email_address}</span>
                 <Pill tone={tone(personal.status)}>{personal.status}</Pill>
-                <HealthPill health={personal.health} />
+                <HealthPill health={personal.health} showReason />
               </div>
               <p className="micro mt-1 text-muted-foreground">
                 {personal.display_name ? `${tr("Sending as")} “${personal.display_name}”. ` : ""}
@@ -271,7 +305,7 @@ export function MyMailboxTab() {
                 <p className="micro mt-1 text-[rgb(var(--danger))]">{personal.last_error}</p>
               )}
             </div>
-            <div className="text-right">
+            <div className="flex flex-col items-end gap-2 text-right">
               {allowance.data && (
                 <p className="micro text-muted-foreground">
                   {allowance.data.allowed
@@ -279,10 +313,20 @@ export function MyMailboxTab() {
                     : `${tr("Sending paused until")} ${dateFmt(allowance.data.retryAt || undefined)}`}
                 </p>
               )}
+              {/* Quiet, and last. It is the only control on this page that
+                  cannot be undone by pressing it again. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => disconnect(personal)}
+              >
+                {tr("Disconnect")}
+              </Button>
             </div>
           </div>
           <p className="micro mt-3 border-t border-border pt-3 text-muted-foreground">
-            {tr("Each person has one personal mailbox. To change the address, edit this one in Mailbox → Mailboxes rather than connecting a second. If you need another address for a team — billing, operations, support — ask an administrator to set up a shared mailbox and add you to it.")}
+            {tr("Each person has one personal mailbox. To move to a different address, disconnect this one and connect the new one — the mail already here stays. If you need another address for a team — billing, operations, support — ask an administrator to set up a shared mailbox and add you to it.")}
           </p>
         </div>
       )}
@@ -298,7 +342,7 @@ export function MyMailboxTab() {
                 <Pill tone={m.access_role === "VIEWER" ? "mute" : "blue"}>
                   {m.access_role === "VIEWER" ? tr("Read only") : m.access_role === "MANAGER" ? tr("Manager") : tr("Can send")}
                 </Pill>
-                <HealthPill health={m.health} />
+                <HealthPill health={m.health} showReason />
               </li>
             ))}
           </ul>

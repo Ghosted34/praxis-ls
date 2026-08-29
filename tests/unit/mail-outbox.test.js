@@ -468,16 +468,42 @@ describe("what is retried and what is not", () => {
     expect(at(1)).toBeLessThan(at(2));
   });
 
+  /*
+   * `AUTH_FAILED` used to be one of these rows, with a made-up 401.
+   *
+   * Nothing has ever thrown it — `mail.service.explainSendError` emits
+   * `MAILBOX_AUTH_FAILED` — so the row asserted that a string in a list matched
+   * the same string in another list. It passed for as long as both were wrong
+   * together, which is exactly what made the dead name look covered. FN-1
+   * spotted it in the source; this test was the reason nobody spotted it here.
+   *
+   * The codes below are now the ones the send path actually produces, and
+   * `mail-send-classifier.test.js` reaches each of them from a real SMTP
+   * rejection rather than by writing the code on an Error by hand.
+   */
   test.each([
     ["SENDER_NOT_AUTHORIZED", 422],
     ["RECIPIENT_REJECTED", 422],
-    ["AUTH_FAILED", 401],
+    ["MAILBOX_AUTH_FAILED", 422],
     ["MAILBOX_ARCHIVED", 422],
+    // The one that changed behaviour: a hard 5xx refusal carries a 502, so
+    // before it was named here the status check let it through and it was
+    // retried three times.
+    ["SMTP_SEND_REJECTED", 502],
   ])("A PERMANENT REFUSAL (%s) IS NOT RETRIED", (code, status) => {
     // Trying a rejected sender three times does not make it work; it delays
     // telling the person something only they can fix, and burns three more
     // entries in the mail host's abuse log.
     expect(outbox.retryPlan(Object.assign(new Error("no"), { code, status }), 0).retryAt).toBeNull();
+  });
+
+  test("A TRANSIENT DEFERRAL IS STILL RETRIED — the case that must not be lost", () => {
+    // Same 502 as the row above, opposite meaning. Making the hard refusal
+    // permanent must not sweep greylisting in with it.
+    const grey = Object.assign(new Error("451 greylisted"), {
+      code: "SMTP_SEND_FAILED", status: 502,
+    });
+    expect(outbox.retryPlan(grey, 0).retryAt).toBeInstanceOf(Date);
   });
 
   test("retries stop after the third attempt", () => {

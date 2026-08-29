@@ -41,12 +41,17 @@ import { FolderRail, type RailSelection } from "./folder-rail";
 import { ThreadList } from "./thread-list";
 import { ThreadView } from "./thread-view";
 import { SemanticResults } from "./work/semantic-search";
+import { DraftList, OutboxList } from "./pending";
 
 const PAGE = 50;
 
 /** What an empty list means depends on why it is empty. Say the right thing. */
 function emptyHintFor(sel: RailSelection, query: string): string {
   if (query.trim()) return `${tr("Nothing matches")} “${query.trim()}”. ${tr("Try fewer words, or drop an operator like from: or has:.")}`;
+  if (sel.view === "STARRED") return tr("Nothing is starred. Tap the star on a conversation to keep it here.");
+  if (sel.view === "UNREAD") return tr("Everything is read.");
+  if (sel.view === "VIP") return tr("No VIP conversations. A client or supplier marked VIP in their record lands here.");
+  if (sel.view === "ATTACHMENT") return tr("No conversation here carries a file.");
   if (sel.label) return `${tr("Nothing carries the label")} “${sel.label}” ${tr("yet.")}`;
   if (sel.stream === "SYSTEM") return tr("No automated mail — carrier notices and system reports will collect here.");
   if (sel.stream === "HUMAN") return tr("No mail from people yet.");
@@ -64,11 +69,18 @@ export function InboxPage() {
   const [meaning, setMeaning] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [composeOpen, setComposeOpen] = React.useState(false);
+  /* A draft being continued, from the Drafts list. Separate from `composeOpen`
+   * because they are different intents and the dialog is titled differently:
+   * "New message" opens a blank one, "Continue this draft" adopts the saved
+   * `email_draft_id` so the next autosave updates it rather than forking. */
+  const [resuming, setResuming] = React.useState<api.Draft | null>(null);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [busy, setBusy] = React.useState(false);
   const [bulkFailures, setBulkFailures] = React.useState<
     { email_thread_id: string; error: string }[]
   >([]);
+  /** What a deletion actually did — see `emptyFolder`. */
+  const [note, setNote] = React.useState<string | null>(null);
   const [limit, setLimit] = React.useState(PAGE);
   // Local overlay for the two optimistic flags, keyed by thread id. Cleared on
   // every reload, so the server's answer always wins in the end.
@@ -82,17 +94,26 @@ export function InboxPage() {
   );
   const labels = useResource(() => api.listLabels(), []);
 
+  /* A saved view cuts ACROSS folders — a starred conversation that has been
+   * archived is still starred — so it sends its flag and NO folder. Pinning it
+   * to the inbox would rebuild the dead end it exists to remove. The four flags
+   * have been supported by `listThreads` since PR-1A; only the rail was
+   * missing. See `RailSelection.view`. */
   const threads = useResource(
     () =>
       api.listThreads({
         q: applied || undefined,
         connection_id: sel.connectionId,
-        folder: sel.folder,
+        folder: sel.view ? undefined : sel.folder,
         stream: sel.stream,
         label: sel.label,
+        starred: sel.view === "STARRED" || undefined,
+        unread: sel.view === "UNREAD" || undefined,
+        vip: sel.view === "VIP" || undefined,
+        has_attachment: sel.view === "ATTACHMENT" || undefined,
         limit,
       }),
-    [applied, sel.connectionId, sel.folder, sel.stream, sel.label, limit],
+    [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, limit],
   );
 
   const thread = useResource(
@@ -125,8 +146,9 @@ export function InboxPage() {
   React.useEffect(() => {
     setSelected(new Set());
     setBulkFailures([]);
+    setNote(null);
     setLimit(PAGE);
-  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label]);
+  }, [applied, sel.connectionId, sel.folder, sel.stream, sel.label, sel.view, sel.pending]);
 
   const rows = React.useMemo(
     () =>
@@ -184,12 +206,85 @@ export function InboxPage() {
 
   async function bulk(op: api.BulkOp, folder?: api.MailFolder) {
     if (!selected.size) return;
+    // Deletion is the one bulk verb with no undo, so it is the one that asks.
+    // A message sealed into the compliance archive is retained rather than
+    // deleted — said here, before, rather than reported afterwards as a
+    // surprise.
+    if (op === "delete") {
+      const ok = window.confirm(
+        `${tr("Delete")} ${selected.size} ${selected.size === 1 ? tr("conversation") : tr("conversations")} ${tr("for ever?")}\n\n` +
+        tr("This cannot be undone. Anything sealed into the compliance archive is kept and will be reported."),
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setBulkFailures([]);
+    setNote(null);
     try {
       const res = await api.bulkThreads({ ids: [...selected], op, folder });
       setBulkFailures(res.failed || []);
       setSelected(new Set());
+      if (op === "delete") setNote(`${res.succeeded} ${tr("deleted.")}`);
+      reload();
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** One conversation, for ever. The retained count is reported, never hidden. */
+  async function deleteOne(id: string) {
+    const ok = window.confirm(
+      `${tr("Delete this conversation for ever?")}\n\n` +
+      tr("This cannot be undone. Anything sealed into the compliance archive is kept."),
+    );
+    if (!ok) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.deleteThread(id);
+      setNote(
+        res.retained_archived
+          ? `${res.deleted} ${tr("deleted.")} ${res.retained_archived} ${tr("kept — sealed into the compliance archive.")}`
+          : `${res.deleted} ${tr("deleted.")}`,
+      );
+      // Only drop the open thread when the row itself went. A conversation
+      // holding sealed messages survives, and closing the pane on it would say
+      // "gone" about something that is still there.
+      if (res.thread_removed) setOpenId(null);
+      reload();
+    } catch (err) {
+      reportActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Empty Trash or Spam.
+   *
+   * The report afterwards is the point, not the confirmation before it.
+   * `emptyFolder` returns `retained_archived` — the messages under retention
+   * that stayed — and a success toast over a partial result would tell somebody
+   * their correspondence is gone when it is not.
+   */
+  async function emptyFolder(folder: "TRASH" | "SPAM") {
+    const ok = window.confirm(
+      `${folder === "TRASH" ? tr("Empty the bin?") : tr("Empty spam?")}\n\n` +
+      tr("Every conversation in it is deleted for ever. This cannot be undone. Anything sealed into the compliance archive is kept."),
+    );
+    if (!ok) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.emptyFolder(folder);
+      setNote(
+        res.retained_archived
+          ? `${res.deleted} ${tr("deleted.")} ${res.retained_archived} ${tr("kept — sealed into the compliance archive.")}`
+          : `${res.deleted} ${tr("deleted.")}`,
+      );
+      setBulkFailures(res.failed || []);
       reload();
     } catch (err) {
       reportActionError(err);
@@ -253,6 +348,7 @@ export function InboxPage() {
             <span className="hidden sm:inline">{tr("Compose")}</span>
           </Button>
         </div>
+        {!sel.pending && (
         <form
           role="search"
           onSubmit={(e) => {
@@ -296,8 +392,15 @@ export function InboxPage() {
             </Button>
           )}
         </form>
+        )}
 
-        {meaning && (
+        {note && (
+          <p role="status" className="rounded-md bg-muted px-3 py-2 text-xs">
+            {note}
+          </p>
+        )}
+
+        {meaning && !sel.pending && (
           <SemanticResults
             query={meaning}
             onOpen={(id) => { setMeaning(""); open(id); }}
@@ -305,6 +408,22 @@ export function InboxPage() {
           />
         )}
 
+        {/* Neither of these is a conversation, so neither goes through the
+            thread list: a draft has no read state, no star, no folder and no
+            counterparty yet, and a queued send has a status and an error
+            instead. See `pending.tsx`. */}
+        {sel.pending === "DRAFTS" && (
+          <div className="rounded-xl border border-border">
+            <DraftList onOpen={(d) => setResuming(d)} />
+          </div>
+        )}
+        {sel.pending === "OUTBOX" && (
+          <div className="rounded-xl border border-border">
+            <OutboxList />
+          </div>
+        )}
+
+        {!sel.pending && (
         <SplitPane
           storageKey="comms.inbox"
           label={tr("Conversation list width")}
@@ -323,6 +442,12 @@ export function InboxPage() {
             onOpen={(t) => open(t.email_thread_id)}
             onStar={(t, on) => star(t.email_thread_id, on)}
             onBulk={bulk}
+            folder={sel.view || sel.label ? undefined : sel.folder}
+            onEmptyFolder={
+              sel.folder === "TRASH" || sel.folder === "SPAM"
+                ? () => emptyFolder(sel.folder as "TRASH" | "SPAM")
+                : undefined
+            }
             bulkBusy={busy}
             bulkFailures={bulkFailures}
             onLoadMore={() => setLimit((n) => n + PAGE)}
@@ -348,16 +473,29 @@ export function InboxPage() {
             onToggleRead={(read) =>
               openId && run(() => api.setThreadRead(openId, read))
             }
+            onDelete={
+              openId && (sel.folder === "TRASH" || sel.folder === "SPAM") && !sel.view
+                ? () => deleteOne(openId)
+                : undefined
+            }
             onReplied={reload}
             onWorkChanged={reload}
           />
         </SplitPane>
+        )}
 
-        {composeOpen && (
+        {(composeOpen || resuming) && (
           <NewMessageDialog
             open
-            onClose={() => setComposeOpen(false)}
-            onSent={reload}
+            draft={resuming}
+            onClose={() => { setComposeOpen(false); setResuming(null); }}
+            onSent={() => {
+              setResuming(null);
+              // The Drafts list has one fewer row after a send, and the Outbox
+              // has one more. Remounting the pane is what refreshes both.
+              setSel((cur) => ({ ...cur }));
+              reload();
+            }}
           />
         )}
 

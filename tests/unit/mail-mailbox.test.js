@@ -9,6 +9,7 @@
 const mockEmit = jest.fn(async () => {});
 const mockAudit = jest.fn(async () => {});
 const mockGetSetting = jest.fn(async () => ({}));
+const mockRemoveSecret = jest.fn(async () => ({ deleted: true }));
 
 jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: (...a) => mockEmit(...a),
@@ -17,6 +18,10 @@ jest.mock("../../src/shared/events/emit", () => ({
 }));
 jest.mock("../../src/shared/config/settings", () => ({
   getSetting: (...a) => mockGetSetting(...a),
+}));
+jest.mock("../../src/modules/security/setting/setting.service", () => ({
+  SECRET_SECTION: "integration_secret",
+  remove: (...a) => mockRemoveSecret(...a),
 }));
 jest.mock("../../src/modules/mail/mail/mailbox.repo", () => ({
   listCatalogue: jest.fn(async () => []),
@@ -69,6 +74,7 @@ beforeEach(() => {
   // a test sets would leak into the next one. Re-establish the defaults here.
   jest.clearAllMocks();
   mockGetSetting.mockResolvedValue({});
+  mockRemoveSecret.mockResolvedValue({ deleted: true });
   repo.personalFor.mockResolvedValue(null);
   repo.connectionForCatalogue.mockResolvedValue(null);
   repo.getCatalogueEntry.mockResolvedValue(null);
@@ -178,6 +184,70 @@ describe("archive", () => {
     repo.getConnection.mockResolvedValue({ ...PERSONAL, status: "ARCHIVED" });
     await mailbox.archive(C, "c1", {});
     expect(repo.updateConnection).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ── DISCONNECT ──────────────────────────────────────────────────────────────
+ *
+ * The action that had no button. A person could connect their mailbox in
+ * Comms → Setup → My mailbox and then had no way to un-connect it: the page
+ * pointed at an administrator's screen most people cannot open, where the only
+ * control was "Retire" — which stops the sync and leaves the stored IMAP
+ * password sitting in `integration_secret`.
+ *
+ * The two halves are tested separately because they fail differently, and one
+ * of them is the whole reason the action exists.
+ */
+describe("disconnect", () => {
+  test("archives AND forgets the credential — the half Retire never did", async () => {
+    repo.getConnection.mockResolvedValue({ ...PERSONAL, secret_key: "mail_conn:c1" });
+    await mailbox.disconnect(C, "c1", { user_id: "ada" });
+
+    expect(repo.updateConnection).toHaveBeenCalledWith(
+      C, "c1", expect.objectContaining({ status: "ARCHIVED" }),
+    );
+    expect(mockRemoveSecret).toHaveBeenCalledWith(
+      C, expect.objectContaining({ section: "integration_secret", key: "mail_conn:c1" }),
+    );
+    expect(repo.updateConnection).toHaveBeenCalledWith(
+      C, "c1", expect.objectContaining({ secret_key: null, token_expires_at: null }),
+    );
+  });
+
+  test("it is a separate audited event, not an archive wearing a hat", async () => {
+    repo.getConnection.mockResolvedValue({ ...PERSONAL, secret_key: "k" });
+    await mailbox.disconnect(C, "c1", { user_id: "ada" });
+    expect(repo.recordAccessAudit).toHaveBeenCalledWith(
+      C, expect.objectContaining({ action: "MAILBOX_DISCONNECTED" }),
+    );
+    expect(mockAudit).toHaveBeenCalledWith(
+      C, expect.objectContaining({ action: "mailbox.disconnected", isSensitive: true }),
+    );
+  });
+
+  test("an ALREADY archived mailbox still gets its credential cleared", async () => {
+    // The reason the two halves are separate: "Retire" left a live password on
+    // a dead mailbox, and disconnecting one of those has to finish the job
+    // rather than short-circuit on the status.
+    repo.getConnection.mockResolvedValue({ ...PERSONAL, status: "ARCHIVED", secret_key: "k" });
+    await mailbox.disconnect(C, "c1", { user_id: "ada" });
+    expect(mockRemoveSecret).toHaveBeenCalled();
+  });
+
+  test("a settings row that is already gone is the state we wanted", async () => {
+    repo.getConnection.mockResolvedValue({ ...PERSONAL, secret_key: "k" });
+    const gone = new Error("no such setting");
+    gone.code = "NOT_FOUND";
+    mockRemoveSecret.mockRejectedValueOnce(gone);
+    await expect(mailbox.disconnect(C, "c1", {})).resolves.toBeTruthy();
+  });
+
+  test("an unknown mailbox is a 404", async () => {
+    repo.getConnection.mockResolvedValue(null);
+    await expect(mailbox.disconnect(C, "nope", {})).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });
 

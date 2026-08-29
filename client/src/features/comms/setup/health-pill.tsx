@@ -28,13 +28,36 @@ const LABEL: Record<string, string> = {
   ARCHIVED: "Retired",
 };
 
-export function HealthPill({ health }: { health?: MailboxHealth | null }) {
+export function HealthPill({
+  health,
+  showReason,
+}: {
+  health?: MailboxHealth | null;
+  /**
+   * Put the reason on screen, not only in the tooltip.
+   *
+   * `title` is the right amount for a healthy mailbox in a dense list. It is
+   * the wrong amount for a broken one: a red "Not working" with the WHY behind
+   * a hover is unreachable on a phone or a tablet, and unfindable on a desktop
+   * by anyone who does not already suspect there is something to hover over.
+   * The one place a person goes to ask "why is my mail not arriving?" has to
+   * answer without them guessing at the interaction.
+   */
+  showReason?: boolean;
+}) {
   if (!health) return null;
+  const pill = (
+    <Pill tone={TONE[health.level] || "mute"}>
+      {LABEL[health.level] ? tr(LABEL[health.level]) : health.level}
+    </Pill>
+  );
+  if (!showReason || !health.reason || health.level === "OK") {
+    return <span title={health.reason}>{pill}</span>;
+  }
   return (
-    <span title={health.reason}>
-      <Pill tone={TONE[health.level] || "mute"}>
-        {LABEL[health.level] ? tr(LABEL[health.level]) : health.level}
-      </Pill>
+    <span className="inline-flex flex-wrap items-baseline gap-1.5">
+      {pill}
+      <span className="micro text-muted-foreground">{health.reason}</span>
     </span>
   );
 }

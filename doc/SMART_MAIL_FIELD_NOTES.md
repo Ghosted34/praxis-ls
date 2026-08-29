@@ -10,6 +10,282 @@ Newest first.
 
 ---
 
+## FN-6 · 2026-08-29 · The send path threw away the classifier's verdict, so the outbox retried what a mail server had already refused
+
+**Severity:** every permanently-rejected message sent three more times over ten
+minutes before anyone was told. **Found by:** closing FN-1's last open item, and
+discovering it was two-thirds stale and one-third worse than recorded.
+
+### What FN-1 said, and what was actually true
+
+FN-1 recorded two SMTP classifiers with different verdicts and recommended
+fixing the send path "as the first item of PR-2". By the time anyone read it,
+one and a half of its three claims had expired:
+
+| FN-1's claim | State on 2026-08-29 |
+| --- | --- |
+| `explainSendError` calls every 550 `SENDER_NOT_AUTHORIZED` | **Fixed** by 5829185, hours after the note. Both 550 cases are pinned in `mail-service.test.js`. |
+| `retryPlan` names `RECIPIENT_REJECTED`, which nothing emits | **Fixed** by the same commit — the send path emits it now. |
+| `retryPlan` names `AUTH_FAILED`, which nothing emits | **Still true.** Nothing has ever thrown it. |
+
+A stale note is not a harmless one. Anybody who checked the first row would have
+concluded the item was done and stopped reading, and the thing underneath it had
+been costing sends the whole time.
+
+### The defect that was actually there
+
+`mapSmtpError` sorts a rejection into five verdicts. `explainSendError` — which
+only needs to reword them for a person's own mailbox — collapsed four of them
+into two codes:
+
+```
+map                     explainSendError        retryPlan
+SENDER_NOT_AUTHORIZED → SENDER_NOT_AUTHORIZED → permanent   ✓
+RECIPIENT_REJECTED    → RECIPIENT_REJECTED    → permanent   ✓
+SMTP_AUTH_FAILED      → MAILBOX_AUTH_FAILED   → permanent   ✓ (by status, not by name)
+SMTP_SEND_FAILED    ┐                         ┌ RETRIED     ✓ transient
+                    ├→ MAIL_SEND_FAILED     ──┤
+SMTP_SEND_REJECTED  ┘                         └ RETRIED     ✗ PERMANENT
+```
+
+The merged pair is the whole bug. A greylisting and a hard 5xx refusal carry the
+same HTTP status — both 502, because to an API both are "the remote server did
+not take it" — and they are opposite operational facts. `retryPlan` decides from
+the **code**, so once they shared one it could not tell them apart.
+
+A message the recipient's server refused for being over its size limit was
+therefore sent again at 30 seconds, two minutes and eight minutes, against a
+server that had already said no in RFC-defined language, before the person who
+could have shortened it or sent a secure link instead heard anything. Which is
+precisely what `retryPlan`'s own header says it exists to prevent.
+
+It also made two of the client's fix guides — `SMTP_SEND_REJECTED` and
+`SMTP_SEND_FAILED` in `smtp-errors.ts` — unreachable from a send, because no
+send could produce those codes.
+
+### The shape worth internalising
+
+**A function that only means to reword something must not also re-decide it.**
+`explainSendError` exists to change WORDING for a mailbox the user owns. It was
+written as an if-ladder that rebuilt the AppError from scratch, and rebuilding
+meant re-choosing a code — so a presentational function silently acquired an
+operational opinion, and the operational layer downstream believed it.
+
+It is now a wording TABLE keyed on the map's verdict. The code passes through
+unless a row overrides it, and the one override is documented at the row.
+
+**Two lists that must agree will not, unless something makes them.** FN-1 caught
+`AUTH_FAILED` by reading. Nobody caught it by testing, because
+`mail-outbox.test.js` asserted `retryPlan("AUTH_FAILED", 401)` is permanent —
+a test that passed for as long as the list and the test were wrong together. A
+test written from the same list it is testing proves nothing.
+
+### What now prevents it
+
+- `tests/unit/mail-send-classifier.test.js` walks a real SMTP rejection —
+  cPanel's sender-verify, Postfix's sender-address-rejected, a greylisting, a
+  552 over-size, a dropped socket — through all three functions and asserts they
+  agree. It reaches every code from an ERROR rather than from a list, so a
+  verdict that exists only in a list fails.
+- `retryPlan`'s permanent set is named `PERMANENT_CODES`, `AUTH_FAILED` is gone,
+  and every remaining member is asserted to be something a real rejection
+  produces.
+- `explainSendError` passes an `AppError` straight through. Nothing throws one
+  down that path today, but rebuilding one would have kept its status and
+  replaced its code — quietly turning `MAILBOX_ARCHIVED` into the generic one.
+- Its generic branch is now unreachable, and the test says so. `mapSmtpError` is
+  total, so the branch can only be reached by a sixth verdict added without
+  wording — which the same test catches.
+- The outbox screen renders the fix guide for a failed row, which is only worth
+  doing now that the code reaching it means something.
+
+---
+
+## FN-5 · 2026-08-29 · Eighteen finished capabilities that no screen could reach — and the two gates that were both looking the wrong way
+
+**Severity:** the mailbox worked, and a substantial part of what had been built
+for it was invisible. Nothing was broken; a great deal was unreachable.
+**Found by:** a walk of the product against §5.6, §8.3, §8.7 and §5.6.3, then a
+walk of every mail route against the client.
+
+**The eighteen**, so the number is checkable rather than rhetorical: `bcc_address`;
+the `color`, `highlight`, `textAlign` and `image` marks; the `starred`, `unread`,
+`vip` and `has_attachment` thread filters; `GET /mail/drafts` and
+`DELETE /mail/drafts/:id`; `GET /mail/outbox` and `POST /mail/send/:id/cancel`
+outside the composer; `DELETE /mail/threads/:id` and `POST /mail/folders/empty`;
+the bulk `"delete"` verb; `label_fr` on every action card; and
+`services/ai/transcription.service`, which mail needed and could not reach.
+
+A separate group — reply-all, forward, remote-image blocking, quoted-history
+folding, and disconnecting a mailbox — was specified and simply not built, on
+either side. Those are ordinary unfinished work. The eighteen above are the
+interesting ones, because every gate we have was green over them.
+
+### The shape
+
+FN-3 named this class — "three finished features that no screen could reach" —
+and fixed the three it found. It did not ask how many more there were. There
+were eighteen, and they fall into three groups.
+
+**Things the server has accepted for several PRs, that nothing ever asked for.**
+`listThreads` has taken `starred`, `unread`, `vip` and `has_attachment` since
+PR-1A: the repo builds a predicate for each, `thread.service` parses each,
+`ThreadQuery` declares all four. The rail offered none. So a person could star a
+conversation — the list draws a star on every row, and it flips optimistically,
+so people used it — and then had no way to ever see what they had starred. The
+VIP lane §5.6 specifies did not exist as a lane at all, though `thread.repo`
+already orders `is_vip DESC` and the row already draws the pill.
+
+Same shape, five more times: `bcc_address` (column, draft field, send payload,
+serializer case — no box to type it into, so the one recipient a forwarder most
+often needs to hide could only go in Cc, where the counterparty sees them);
+`Color`, `Highlight`, `TextAlign` and `Image` (loaded in the editor, rendered by
+`compose.js`, no toolbar control); `"delete"` on the bulk verb list.
+
+**Halves of a feature.** §8.7's voice is audio → transcript → toned email. The
+second half was built, tested and reachable. The first did not exist, so the
+composer shipped a button labelled **Dictate** over a textarea you had to TYPE
+into — not a smaller version of dictation, the opposite of it, under a label
+promising the thing it could not do.
+
+`POST /assist/compose` is the same story from the other side. It reached the
+model with the operator's draft and the thread transcript, and never with the
+SUBJECT — which on a new message is the only thing that has been typed, and is
+almost always the topic in full. So "Write it for me" on a blank composer asked
+a model to write about nothing and got courteous filler back, every time.
+
+**Whole features with no wrapper at all.** H-1's deletion is retention-aware,
+ledgered, and tells the mail server so a deleted message does not return on the
+next sync. It had no client wrapper, so Trash accumulated for ever and §9.6's
+promise that "deletion of an archived message is blocked in the service layer"
+protected nothing — nothing could delete anything, so nothing needed blocking.
+The draft list and the outbox were the same: `GET /mail/drafts`,
+`DELETE /mail/drafts/:id`, `GET /mail/outbox` and `POST /mail/send/:id/cancel`
+all worked, and the composer told people in as many words "you can cancel it
+from the outbox until then" while there was no outbox.
+
+### Why both gates were green
+
+`mail-client-api-wiring.test.js` walks the WRAPPERS in `mail-api.ts` and asks
+who calls them. It is a good gate and it found three real defects. It cannot ask
+its question of an endpoint that has no wrapper — so deletion was invisible to
+it, and it had even grandfathered `listOutbox` with the reason "superseded by
+the thread list", which is not merely stale but wrong: the queue is precisely
+the mail that is NOT in the thread list yet.
+
+`mail-orphan-sweep`, `orphan-wiring-sweep`, `mail-send-point-wiring` and
+`mail-feature-gating` all ask their question of `src/`. None can see a query
+parameter the server accepts and no client sends, because from `src/`'s side
+`q.starred` IS referenced — by the repo that implements it.
+
+So the whole class sits in the gap: a capability is declared in one place,
+implemented in a second, and never named in a third, and every gate is looking
+at the first two.
+
+### The two shapes worth internalising
+
+**A default that looks harmless is a decision nobody made.** `ActionCards` took
+`language = "en"`. Every card carries `label_en` and `label_fr`, the server has
+always sent both, and no caller ever passed the prop — so `label_fr` was never
+once rendered and a French operator read English card names in an otherwise
+French rail. Nothing failed. Nothing could fail. The English default WAS the
+behaviour, and it was chosen by a parameter list.
+
+**A promise in the UI is a test that nobody wrote.** Three sentences on screen
+described behaviour that did not exist: "you can cancel it from the outbox
+until then", "Dictate", and — before FN-3 — "the composer checks this list
+before a send". Each was written by somebody implementing the server half, in
+good faith, in the same week. A sentence in the interface is a claim about the
+system, and the cheapest place to catch a false one is a test that pins the
+sentence to its call site, the way FN-3's `mail-client-api-wiring` now pins the
+Trust tab's.
+
+### What now prevents it
+
+- `mail-client-api-wiring.test.js` asks its question from **both ends**. Every
+  `router.<verb>` under `src/modules/mail` has a wrapper, or is named in one of
+  two lists with a reason: routes a browser must never call (webhooks, OAuth
+  redirect targets, the public secure-link page) and endpoints ahead of their
+  screen — the latter capped, like the wrapper-side allowance, so it can only
+  shrink. Path normalisation counts braces rather than pattern-matching them,
+  because the interpolations in `mail-api.ts` nest; a `\$\{[^}]*\}` stops at the
+  first `}` and reports six wired routes as orphans.
+- The wrapper-side allowance went 23 → 21, and both entries came off because a
+  screen now calls them rather than because the reason was rewritten.
+- `message-body.test.ts` pins §5.6.3's two reading-pane rules — remote images
+  held back, quoted history folded, in both languages.
+- `pending.test.tsx` pins the outbox's promise: Cancel is offered only on a
+  HELD row, because `repo.cancel` is `UPDATE … WHERE status = 'HELD'` and a
+  button on any other status can only ever 409.
+
+
+### Addendum · the scanner found two bugs the reviewer would not have
+
+The first version of the reading pane did its work with regular expressions,
+with a comment defending the choice: the HTML is sanitized on ingest, so
+"the one thing a regex must not be trusted with is SECURITY, and it is not
+doing security here."
+
+CodeQL's `js/bad-tag-filter` failed the PR at high severity. It was right, and
+the argument in that comment was wrong in a way worth recording, because it is
+the kind of argument that sounds careful.
+
+**It was wrong on the merits.** The attribute pattern required QUOTES —
+`\ssrc\s*=\s*("[^"]*"|'[^']*')` — and `<img src=https://track.example/p.gif>`
+is valid HTML that needs none. Every unquoted pixel went straight through the
+control whose entire job is to stop pixels. The comment reasoned about whether
+a regex could be trusted with the SANITIZER's job, and never asked whether it
+could do its OWN.
+
+**And rewriting it surfaced a second bug the scanner had not flagged.** Parsing
+through `DOMParser.parseFromString(html, "text/html")` uses BODY context, where
+the HTML tree-construction algorithm silently discards a `<td>` with no table
+ancestor. That function's output is what the pane renders, and mail is
+table-based HTML — our own `compose.js` emits a table layout. A body that began
+mid-table would have lost its cells. `<template>` parses in template context,
+which keeps them, and is inert for the same reason.
+
+**A third, and then a fourth inside the fix for it.** `srcset` is a
+comma-separated CANDIDATE LIST — `cid:logo 1x, https://track.example/p.gif 2x`
+— and the blocker tested it as a single URL. Since the test answers "local" to
+a `cid:` prefix, a srcset whose FIRST entry was local let every remote entry
+after it through, and a retina screen picks the 2x one. Nothing flagged this:
+CodeQL had no opinion, the rewrite did not disturb it, and the existing test
+used a single-candidate srcset — the example the code was written against. It
+surfaced only from re-reading `isRemote`'s callers and asking what each
+attribute actually contains.
+
+The obvious fix — split on commas — was also wrong, in the opposite direction.
+Every base64 `data:` URI contains a comma, so `data:image/png;base64,AAAB`
+splits into a local half and a tail with no scheme, and an inline logo gets
+blocked behind "Show images" for no reason. Splitting on WHITESPACE instead
+fails the other way: `url1,url2` is a valid candidate list with no descriptors
+and therefore no spaces, so a leading `cid:` masks a trailing `https:` — and
+that direction leaks. The attribute needs both splits, with `data:` exempted
+from the second, and all four shapes are now tests rather than reasoning.
+
+The shape: **a defence of a shortcut is not a test of it.** The comment was
+specific, plausible, and load-bearing in review — and it was reasoning about
+the wrong risk. What settled it was a tool that does not read comments, and
+then tests that state each failure in the form of an input.
+
+And the corollary, from the third one: **a test written from the example in
+your head tests the example.** `srcset="https://…/1.png 1x"` passes on an
+implementation that only ever looks at the first candidate, because it only
+HAS one. The list form is the one the attribute exists for.
+
+### One thing this exposed and did not close
+
+FN-1's second open item — the two SMTP classifiers — was left standing by this
+sweep, which touched the send path only to add Bcc. It was taken up immediately
+afterwards and is **closed in FN-6**, where the diagnosis turned out to be two
+thirds stale and the third worse than recorded.
+
+`tests/integration/mail-model-backfill.test.js`, named by §5.9, is still absent
+for the reason FN-3 recorded: it needs a CI harness change, not a test file.
+
+---
+
 ## FN-4 · 2026-08-22 · The backfill split the recipients on the message and not on the thread
 
 **Severity:** every conversation that arrived with two recipients before 10731
@@ -409,3 +685,9 @@ authoritative.
 **Not fixed here**, because it is a behaviour change on the send path with its
 own test expectations and deserves its own review. Recommended as the first item
 of PR-2.
+
+> **CLOSED 2026-08-29, and the diagnosis above was half right.** See FN-6.
+> The 550 half was fixed by 5829185 four hours after this note was written, and
+> this paragraph went stale rather than wrong. The `retryPlan` half was real and
+> survived: `RECIPIENT_REJECTED` is emitted now, `AUTH_FAILED` never was, and a
+> third defect — the one that actually cost sends — was hiding underneath both.

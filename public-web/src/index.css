@@ -1,0 +1,701 @@
+/**
+ * public-web — the token layer and the two component recipes this app needs.
+ *
+ * ── WHY THIS FILE LOOKS FAMILIAR, AND WHY IT IS NOT A COPY ────────────────
+ *
+ * The SEMANTIC contract is `client`'s: `--background`, `--card`, `--primary`,
+ * `--primary-ink`, `--border`, `--ok/--warn/--bad` as bare `R G B` triplets so
+ * the slash-opacity syntax resolves. That is what lets the portal screens in
+ * `src/features/portal/` come across unchanged and still be painted by the same
+ * tenant brand — a client contact must not see a different company in the
+ * portal than on the marketing page.
+ *
+ * The VALUES are not. `client/src/index.css` is 2,100 lines of instrument-panel
+ * rules: 13px body, 32px table rows, a density attribute, a service-worker
+ * scrollbar, the Control Tower's marching ants. This app is a publication and a
+ * doorway, and it carries the ~180 lines it actually uses. The one thing
+ * genuinely duplicated is the STATUS PILL recipe and `--primary-ink`'s
+ * light/dark split — both because `lib/theme.ts` (vendored from `client`) writes
+ * exactly those names, and a token it writes but this file does not define is a
+ * silent no-op.
+ *
+ * ── THE COLOUR RULES, BRIEFLY (the long version is doc/BRAND_GUIDELINES.md) ─
+ *
+ *   · `--brand-*` is Praxis's and is NEVER tenant-overridden. It comes from
+ *     `@praxis/brand/tokens.css`; the `@import` below is the only place brand
+ *     values enter this app.
+ *   · `--primary` and friends are the tenant's, painted at runtime by
+ *     `applyBrand()` from `GET /branding`. `@praxis/brand`'s rule —
+ *     "if you want to write `--brand-orange: var(--primary)`, you are on a
+ *     tenant surface" — is honoured here by keeping the two layers in separate
+ *     custom properties rather than aliasing one to the other.
+ *   · No raw hex in a component. Not one. A grep for `#[0-9a-f]{3,6}` in
+ *     `src/**` should come back empty apart from this file and tokens.css.
+ */
+
+/* The `@import` has to be the first thing in the file (CSS forbids it after any
+   other rule), and `@tailwind` therefore follows it — worth a comment because the
+   build error you get by swapping them, "an @import rule must precede all other
+   rules", is filed under CSS and reads like a Tailwind problem. */
+@import "@praxis/brand/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Token layer. Named `base` and not `tokens` because Tailwind only recognises
+   base/components/utilities/variants as layer names — a custom one is a build
+   error, and the alternative (`@layer tokens;` declared by hand) opts this block
+   out of the utilities-win cascade Tailwind is relying on, which is exactly what
+   makes `text-[var(--brand-orange)]` able to override the `.eyebrow` recipe. */
+@layer base {
+  :root {
+    /* ── Tenant layer, light ───────────────────────────────────────────────
+       The fallback values below ARE the brand palette (Optical Orange as the
+       fill, `--brand-slate-900` as ink), so a tenant that has never opened
+       Settings → Appearance renders a site that looks like a Praxis product
+       rather than like an unstyled form. */
+    --background: #ffffff;
+    --foreground: #191a1b;
+    --card: #ffffff;
+    --card-foreground: #191a1b;
+    --secondary: #f7f8f8; /* --brand-surface */
+    --secondary-foreground: #191a1b;
+    --muted: #f2f3f4;
+    --muted-foreground: #626569; /* --brand-slate-600, 5.9:1 on white */
+    --accent: #edeeee; /* --brand-slate-100 */
+    --accent-foreground: #191a1b;
+    --border: rgb(10 10 10 / 0.12);
+    --input: rgb(10 10 10 / 0.22);
+    --ring: rgb(255 90 0);
+
+    /* Text on an orange FILL is carbon, not white (white on #FF5A00 is 3.13:1)
+       — so `--primary-foreground` is `--brand-on-orange`, and a tenant that
+       paints a pale primary gets a dark label rather than an invisible one.
+       `lib/theme.ts` overwrites this with the tenant's own choice, which is why
+       the brand rule "never alias the two layers" is enforced by reading the
+       brand value here rather than hardcoding #0a0a0a. */
+    --primary: #ff5a00;
+    --primary-foreground: var(--brand-on-orange);
+    /* Orange AS TEXT. #FF5A00 on white is 3.13:1 and fails AA, so type uses the
+       stepped-down value; `lib/theme.ts` re-derives both per tenant, which is
+       why the split is into -light/-dark sources rather than one value. */
+    --primary-ink-light: #c74600;
+    --primary-ink-dark: #ff5a00;
+    --primary-ink: var(--primary-ink-light);
+
+    /* The dark band a hero and the footer are painted on — brand carbon, and
+       deliberately NOT a tenant token: a stranger's first impression of the
+       site should not depend on a tenant picking a legible text colour for a
+       surface they cannot see in the editor. */
+    --hero: var(--brand-carbon);
+    --hero-foreground: #edeeee;
+    --hero-muted: #9ea1a4; /* --brand-slate-400, 6.9:1 on carbon */
+    --hero-line: rgb(237 238 238 / 0.16);
+
+    /* Bare triplets, consumed as `rgb(var(--x) / a)`. */
+    --brand-orange: 255 90 0;
+    --brand-blue: 24 132 196;
+    --brand-blue-ink: 20 108 161;
+    --ink: 25 26 27;
+    --ink-3: 98 101 105;
+    /* TRANSPORT MODES — sea green, air blue, road orange, rail violet. Ported so
+       the hero's lanes mean the same thing as the Control Tower's lanes: a mode is
+       not decoration and it is not brand, it is what the cargo is ON, which is why
+       these are fixed hues and never derived from --primary (see the long note in
+       client/src/index.css). */
+    --mode-sea: 40 148 94;
+    --mode-air: 28 155 215;
+    --mode-road: 224 122 26;
+    --mode-rail: 147 51 234;
+    /* Text/fill split, same reasoning as --primary/--primary-ink: a status pill
+       sits on a 12-14% tint of itself, and the saturated value misses 4.5:1
+       there. Measured on the ground they are actually read on. */
+    --ok: 25 117 73;
+    --warn: 133 95 11;
+    --bad: 181 58 50;
+    --ok-fill: 40 148 94;
+    --warn-fill: 176 128 24;
+    --bad-fill: 210 68 58;
+    --destructive: rgb(179 36 27); /* --brand-danger */
+    --destructive-foreground: #ffffff;
+
+    --font-display: var(--brand-font-display);
+    --font-body: var(--brand-font-body);
+    --font-mono: var(--brand-font-mono);
+
+    /* Slightly rounder than the ERP's 8px: a public page is not a data grid.
+       A tenant's own `radius` from the branding endpoint overrides it. */
+    --radius: 10px;
+    --shadow-s: 0 1px 2px rgb(10 10 10 / 0.05);
+    --shadow-m: 0 6px 20px rgb(10 10 10 / 0.07);
+    --shadow-l: 0 18px 50px rgb(10 10 10 / 0.12);
+    --ease: cubic-bezier(0.2, 0, 0.13, 1);
+    --dur: 0.15s;
+  }
+
+  /**
+   * Dark theme — a designed second expression, not a CSS filter (N6 in the web
+   * build brief). Reached by `.dark` (the app's own toggle, persisted in
+   * localStorage, see `lib/theme-mode.ts`) or, for a page rendered without the
+   * controller, by the reader's OS setting.
+   *
+   * `data-theme="light"` on <html> opts OUT of the OS default. The inline script
+   * in index.html writes that attribute, so a first-time visitor in a dark OS
+   * gets light — the deliberate difference from praxisls.com, where dark is the
+   * brand's primary expression. A portal login and a job advert are read in
+   * daylight; a SaaS marketing page is not.
+   */
+  .dark,
+  [data-theme="dark"] {
+    --background: #0b0d11;
+    --foreground: #edeeee;
+    --card: #12161e; /* --brand-surface */
+    --card-foreground: #edeeee;
+    --secondary: #12161e;
+    --secondary-foreground: #edeeee;
+    --muted: #191d26;
+    --muted-foreground: #bfc1c3;
+    --accent: #1c222c;
+    --accent-foreground: #edeeee;
+    --border: rgb(237 238 238 / 0.14);
+    --input: rgb(237 238 238 / 0.22);
+    --primary-foreground: var(--brand-on-orange);
+    --primary-ink: var(--primary-ink-dark);
+    /* On dark, lifting the hero one step off the page is the only way to keep a
+       full-bleed band readable; white type on carbon is 17:1 and needs nothing. */
+    --hero: #06070a;
+    --hero-foreground: #f4f5f5;
+    --hero-muted: #9ea1a4;
+    --hero-line: rgb(237 238 238 / 0.14);
+    --ink: 237 238 238;
+    --ink-3: 158 161 164;
+    /* Lifted for dark grounds, exactly as in the ERP: 1.5px of dash carries far
+       less colour than a filled pill, so the light values read as grey. */
+    --mode-sea: 74 190 133;
+    --mode-air: 98 196 245;
+    --mode-road: 247 158 66;
+    --mode-rail: 192 132 252;
+    --ok: 79 203 134;
+    --warn: 240 179 74;
+    --bad: 240 131 123;
+    --ok-fill: 79 203 134;
+    --warn-fill: 240 179 74;
+    --bad-fill: 240 131 123;
+    --destructive: rgb(240 131 123);
+    --destructive-foreground: #0a0a0a;
+    --shadow-s: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-m: 0 6px 20px rgb(0 0 0 / 0.45);
+    --shadow-l: 0 18px 50px rgb(0 0 0 / 0.55);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not(.light) {
+      --border: rgb(237 238 238 / 0.14);
+    }
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* A marketing page is one continuous document — the ERP's `overflow: hidden`
+       + shell-scroller pattern is wrong here, and it is the difference between a
+       page that scrolls and one that silently clips at the fold. */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  img,
+  svg,
+  video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* The only focus treatment: brand orange, offset, 2px. Removing outlines and
+     substituting nothing is the single most common way an otherwise accessible
+     site becomes unusable by keyboard, so this is global rather than opt-in. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 6px);
+  }
+
+  ::selection {
+    background: rgb(var(--brand-orange) / 0.24);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+}
+
+@layer components {
+  /* ── Type recipes ──────────────────────────────────────────────────────── */
+
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+  }
+
+  /* Tabular figures for anything in a column — amounts, dates, references. The
+     brand sheet requires it; a KPI column that jitters as it loads is the tell
+     of a template. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .micro,
+  .text-micro {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: rgb(var(--ink-3));
+  }
+
+  /* The eyebrow: uppercase, tracked, set above every section heading. Tracking
+     is the brand sheet's eyebrow value, not the wordmark's. */
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: var(--brand-tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--primary-ink);
+  }
+
+  .hero-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(2.25rem, 5.4vw, 4.25rem);
+    line-height: 1.02;
+    letter-spacing: var(--brand-tracking-display);
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(1.75rem, 3.1vw, 2.5rem);
+    line-height: 1.12;
+    letter-spacing: var(--brand-tracking-display);
+  }
+
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+
+  .lux-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-s);
+  }
+
+  /* A full-bleed band: one place decides the max width and the gutters, so
+     sections line up without every page re-typing the container. */
+  .band {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .band-muted {
+    background: var(--secondary);
+  }
+
+  .band-hero {
+    background: var(--hero);
+    color: var(--hero-foreground);
+  }
+
+  .wrap {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 88rem;
+    padding-inline: clamp(1rem, 4vw, 2.5rem);
+  }
+
+  /* The Maersk-style content page: a hairline above each section, one column of
+     prose, generous vertical air. The rule is the design — no card needed. */
+  .rule-top {
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Buttons ───────────────────────────────────────────────────────────── */
+
+  .btn-primary {
+    color: var(--primary-foreground);
+    background: var(--primary);
+    border: 1px solid transparent;
+    transition: background-color var(--dur) var(--ease);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 88%, #000);
+  }
+
+  .btn-surface {
+    color: var(--foreground);
+    background: var(--card);
+    border: 1px solid var(--border);
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .btn-surface:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+  }
+
+  /* On the hero: a light button on a dark ground, which the tenant's fill cannot
+     be trusted to provide (a pale tenant brand on carbon is unreadable), so it
+     is structural rather than brand. */
+  .btn-onhero {
+    color: var(--hero);
+    background: var(--hero-foreground);
+    border: 1px solid transparent;
+    transition: background-color var(--dur) var(--ease);
+  }
+  .btn-onhero:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--hero-foreground) 86%, transparent);
+  }
+
+  .btn-ghost-hero {
+    color: var(--hero-foreground);
+    border: 1px solid var(--hero-line);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .btn-ghost-hero:hover:not(:disabled) {
+    background: rgb(237 238 238 / 0.08);
+  }
+
+  /* ── Status pills (identical recipe to client, see the header note) ───── */
+
+  .status {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    gap: 5px;
+  }
+  .status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .st-blue {
+    color: rgb(var(--brand-blue-ink));
+    background: rgb(var(--brand-blue) / 0.12);
+  }
+  .st-orange {
+    color: var(--primary-ink);
+    background: rgb(var(--brand-orange) / 0.14);
+  }
+  .st-ok {
+    color: rgb(var(--ok));
+    background: rgb(var(--ok-fill) / 0.13);
+  }
+  .st-warn {
+    color: rgb(var(--warn));
+    background: rgb(var(--warn-fill) / 0.14);
+  }
+  .st-bad {
+    color: rgb(var(--bad));
+    background: rgb(var(--bad-fill) / 0.12);
+  }
+  .st-mute {
+    color: rgb(var(--ink) / 0.72);
+    background: rgb(var(--ink) / 0.06);
+  }
+  .st-info {
+    color: rgb(var(--brand-blue-ink));
+    background: rgb(var(--brand-blue) / 0.12);
+  }
+
+  /* ── The sticky header ─────────────────────────────────────────────────── */
+
+  /* Blur rather than opacity-only: the header sits over full-bleed photography,
+     and a semi-transparent fill without a blur turns the nav labels into a
+     contrast gamble that depends on whatever image is behind them. */
+  .site-header {
+    background: color-mix(in srgb, var(--background) 92%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* The utility strip above the nav — sign-in, language, phone. Two lines of
+     chrome in a 40px band is what tells a visitor which half of the page is for
+     THEM (portal, tracking) and which half is for the salesman. */
+  .site-utility {
+    background: var(--hero);
+    color: var(--hero-muted);
+  }
+
+  .navlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: calc(var(--radius) - 4px);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--foreground) 82%, transparent);
+    transition:
+      color var(--dur) var(--ease),
+      background-color var(--dur) var(--ease);
+  }
+  .navlink:hover {
+    color: var(--foreground);
+    background: var(--accent);
+  }
+  .navlink[aria-current="page"],
+  .navlink[data-active="true"] {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  .navlink[aria-current="page"]::after,
+  .navlink[data-active="true"]::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
+  /* A link that is a link and not a button: the arrow is the convention this
+     category uses for "there is a page here", and it keeps 20 of them from
+     competing for the same attention a page can afford once. */
+  .more-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--primary-ink);
+  }
+  .more-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .more-link svg {
+    transition: transform var(--dur) var(--ease);
+  }
+  .more-link:hover svg {
+    transform: translateX(2px);
+  }
+
+  /* ── The track widget ─────────────────────────────────────────────────── */
+
+  /* The one functional object on the homepage, lifted onto the hero's edge.
+     Elevated rather than inlined because on maersk.com the tracking box IS the
+     page's purpose, and the fold should not have to be scrolled to reach it. */
+  .track-widget {
+    background: var(--card);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 6px);
+    box-shadow: var(--shadow-l);
+  }
+
+  /* ── Fields ───────────────────────────────────────────────────────────── */
+
+  .field {
+    width: 100%;
+    border: 1px solid var(--input);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--card);
+    padding: 12px 14px;
+    font-size: 1rem;
+    line-height: 1.4;
+    transition:
+      border-color var(--dur) var(--ease),
+      box-shadow var(--dur) var(--ease);
+  }
+  .field::placeholder {
+    color: color-mix(in srgb, var(--muted-foreground) 90%, transparent);
+  }
+  .field:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+  .field:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .field-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  /* ── Long-form copy (job adverts, success stories) ────────────────────── */
+
+  .prose-site {
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  }
+  .prose-site h2 {
+    margin: 1.8em 0 0.5em;
+    font-size: 1.375rem;
+    line-height: 1.25;
+    color: var(--foreground);
+  }
+  .prose-site h3 {
+    margin: 1.6em 0 0.4em;
+    font-size: 1.125rem;
+    color: var(--foreground);
+  }
+  .prose-site p,
+  .prose-site ul,
+  .prose-site ol {
+    margin: 0.9em 0;
+  }
+  .prose-site ul,
+  .prose-site ol {
+    padding-left: 1.25rem;
+  }
+  .prose-site li + li {
+    margin-top: 0.3em;
+  }
+  .prose-site a {
+    color: var(--primary-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-site strong {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  .prose-site code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  /* Screen-reader-only. Present in `client` as a Tailwind utility; stated here
+     because this app's labels are frequently visual-free (a search field with a
+     placeholder needs a real label). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 12px;
+    top: -48px;
+    z-index: 60;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--shadow-m);
+    transition: top var(--dur) var(--ease);
+  }
+  .skip-link:focus-visible {
+    top: 12px;
+  }
+}
+
+@layer utilities {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* A shared proposal is printed — at the client's office, into a file, often
+     for a procurement committee. The screen chrome goes, the paper layout
+     stays. */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    body {
+      background: #fff;
+      color: #000;
+      font-size: 11pt;
+    }
+    .wrap {
+      max-width: none;
+      padding-inline: 0;
+    }
+    a[href]::after {
+      content: "";
+    }
+  }
+}

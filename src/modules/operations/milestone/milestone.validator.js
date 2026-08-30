@@ -20,6 +20,11 @@ const stage = z.object({
   is_anchor: z.boolean().optional(),
   is_target_lock: z.boolean().optional(),
   is_client_visible: z.boolean().optional(),
+  // The clearance clock (12754). A property of the stage's ROLE in the chain,
+  // like the three above — which is why they live together. At most one of
+  // each per template; the partial unique indexes refuse the ambiguity.
+  is_clearance_start: z.boolean().optional(),
+  is_clearance_end: z.boolean().optional(),
   is_optional: z.boolean().optional(),
   chain_segment: z.string().max(32).optional(),
   cadence: CADENCE.optional(),

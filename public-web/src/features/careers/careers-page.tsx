@@ -13,7 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState, SuccessState } from "@/components/ui/states";
+import { EmptyState, ErrorState, SuccessState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { Markdown } from "@/components/ui/markdown";

@@ -35,6 +35,7 @@ const { AppError, asyncHandler } = require("../../../utils/errors");
 const storage = require("../../../services/storage.service");
 const { publishedMonth } = require("../../../shared/date/published-month");
 const repo = require("../service_type_web/service_type_web.repo");
+const grouping = require("./service_type_web_public.service");
 
 const router = express.Router();
 const limit = makeLimiter({ name: "services-public", max: 120, windowMs: 15 * 60 * 1000 });
@@ -59,23 +60,43 @@ const mediaUrl = (id) => (id ? `/api/tenant/public/services/media/${id}` : null)
 
 const notFound = (msg) => new AppError("NOT_FOUND", msg, 404);
 
+/**
+ * Grouped, because a services page is pillars and not a list (12755).
+ *
+ * The repo returns flat rows already ordered pillar-then-card; this walks them
+ * once and folds them into groups, which is why insertion order is the render
+ * order and nothing here sorts again. Services with no pillar — the state every
+ * tenant is in the day the column ships, and the state a service returns to
+ * when its pillar is retired — collect into a TRAILING group whose key is null.
+ * They are never dropped: an unassigned service is a content gap, not a reason
+ * to hide something the tenant published.
+ *
+ * The response is an object rather than the flat array it used to be. That is a
+ * shape change with no consumer to break: the route is gated on the `website`
+ * feature, which ships `default_state = 'off'` (seed 9116), so it has never
+ * answered 200 in production.
+ */
 router.get("/", limit, asyncHandler(async (req, res) => {
   const rows = await req.tenantDbIn("live", (client) => repo.publicList(client));
-  const data = rows.map((row) => ({
-    service_type_id: row.service_type_id,
-    slug_fr: row.slug_fr,
-    slug_en: row.slug_en,
-    name_fr: row.name_fr,
-    name_en: row.name_en,
-    short_description_fr: row.short_description_fr,
-    short_description_en: row.short_description_en,
-    cover_url: row.cover_allowed ? mediaUrl(row.cover_vault_id) : null,
-    icon_url: row.icon_allowed ? mediaUrl(row.icon_vault_id) : null,
-    has_video: row.has_video,
-    sort_order: row.sort_order,
-    published_month: publishedMonth(row.published_at),
-  }));
-  res.json({ data });
+  res.json({
+    data: grouping.groupServices(rows, (row) => ({
+      service_type_id: row.service_type_id,
+      slug_fr: row.slug_fr,
+      slug_en: row.slug_en,
+      name_fr: row.name_fr,
+      name_en: row.name_en,
+      short_description_fr: row.short_description_fr,
+      short_description_en: row.short_description_en,
+      claim_fr: row.claim_fr,
+      claim_en: row.claim_en,
+      accent: row.accent,
+      cover_url: row.cover_allowed ? mediaUrl(row.cover_vault_id) : null,
+      icon_url: row.icon_allowed ? mediaUrl(row.icon_vault_id) : null,
+      has_video: row.has_video,
+      sort_order: row.sort_order,
+      published_month: publishedMonth(row.published_at),
+    })),
+  });
 }));
 
 router.get("/:slug", limit, asyncHandler(async (req, res) => {

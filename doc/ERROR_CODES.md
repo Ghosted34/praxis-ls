@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (501)
+## All codes (504)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -175,6 +175,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_FILE` | 422 | 2× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
+| `EMPTY_PAGE` | 422 | 1× | — |
 | `EMPTY_RECON` | 422 | 1× | — |
 | `EMPTY_SET` | 422 | 1× | — |
 | `EMPTY_SIGNATURE_MENU` | 422 | 2× | — |
@@ -240,6 +241,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ITINERARY_LEG_REQUIRED` | — | 1× | — |
 | `JOIN_LINK_REQUIRED` | — | 1× | — |
 | `KEY_IMMUTABLE` | 422 | 1× | — |
+| `KEY_TAKEN` | 422 | 4× | — |
 | `KPI_NOT_PARTITIONED` | 500 | 4× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
@@ -282,7 +284,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 565× | — |
+| `NOT_FOUND` | 404, 422 | 577× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -405,6 +407,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
+| `PUBLISHED` | 422 | 1× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `QES_CANCEL_REFUSED` | 409 | 1× | — |
 | `QES_LEDGER_FAILED` | 500 | 1× | — |
@@ -519,7 +522,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 224× | — |
+| `VALIDATION_ERROR` | 422 | 229× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

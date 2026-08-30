@@ -31,9 +31,38 @@ export type PublicMilestone = {
   progress_note: string | null;
 };
 
+/**
+ * The service type behind the file, as the API sends it.
+ *
+ * Both names, unresolved: the visitor's language changes without a request, and
+ * a server that picked one would make the language toggle refetch the page to
+ * change a single word. `mode` is derived from the key server-side so the icon
+ * and the origin/destination labels cannot disagree about what kind of shipment
+ * this is — the browser does not re-guess it.
+ *
+ * Null on a file the desk has opened and not yet classified.
+ */
+export type PublicServiceType = {
+  key: string;
+  name_fr: string | null;
+  name_en: string | null;
+  mode: "SEA" | "AIR" | "RAIL" | "ROAD" | "WAREHOUSE" | "CUSTOMS" | "OTHER";
+};
+
 export type TrackingResult = {
   reference: string;
   computed_status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+  service_type: PublicServiceType | null;
+  /**
+   * The latest milestone completion — NOT `dossier.updated_at`.
+   *
+   * The distinction is the whole value of the field: the dossier's timestamp
+   * moves when anyone edits the file, so a corrected internal note would tell a
+   * visitor their cargo had progressed. Null while nothing has completed, and
+   * the page says so rather than printing the file's creation date under a
+   * heading that reads "last update".
+   */
+  last_update: string | null;
   current_stage: PublicMilestone | null;
   origin: string | null;
   destination: string | null;

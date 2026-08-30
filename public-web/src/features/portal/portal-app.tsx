@@ -9,7 +9,7 @@ import * as React from "react";
 import { useLang } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/state";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { portalToken, portalMe, type PortalMe } from "@/lib/portal-api";
 import {

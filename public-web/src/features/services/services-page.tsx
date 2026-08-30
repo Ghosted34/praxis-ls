@@ -17,7 +17,7 @@ import { MediaCard, MoreLink, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
-import { EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { Markdown } from "@/components/ui/markdown";

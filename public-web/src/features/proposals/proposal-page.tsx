@@ -12,7 +12,7 @@ import { getLang, setLang, tStatic } from "@/lib/i18n";
 import { BrandGlyph, DownloadIcon, DocumentIcon } from "@/components/ui/icons";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ErrorState, EmptyState } from "@/components/ui/states";
+import { ErrorState, EmptyState } from "@/components/state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 

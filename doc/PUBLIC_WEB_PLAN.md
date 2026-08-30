@@ -19,9 +19,13 @@ and the headline statistics are literals — `data-counter="41850"`. Four PHP
 endpoints are the only living things on it: tracking, quote, contact,
 partnership.
 
-So "better" does not mean "prettier". Their design is fine and we should respect
-it. Better means **the page knows things**, because it is rendered by the ERP
-that already holds the answers.
+"Better" means three things at once, and none of them is optional:
+
+1. **Prettier.** Their design is good; ours has to be visibly better, not merely
+   equivalent. Design quality is a shipping requirement, not a finishing touch.
+2. **More capable.** Every page should do more than its counterpart does.
+3. **Wired to the ERP.** The page *knows things*, because it is rendered by the
+   system that already holds the answers.
 
 If a decision in your workstream comes down to "match their page" versus "use
 what the ERP knows", **use what the ERP knows** and note the divergence in your
@@ -33,7 +37,8 @@ PR.
 
 ### What their site does well — keep these
 
-- Clear IA: Home · Services · Kaizen Hub · Smart Track · About · GET A QUOTE.
+- Clear IA: Home · Services · Insights · Smart Track · About · GET A QUOTE.
+  (their "Kaizen Hub" is renamed **Insights** — ours, and the display label.)
 - Tracking is the hero CTA. The home hero is a reference input that hands off to
   `smart-track?ref=…`. That instinct is right; a logistics customer's first
   question is "where is my cargo".
@@ -51,7 +56,7 @@ times:
 1. **`alert()` is the error state.** A bad tracking reference, a failed quote
    submission, a network blip — all surface as a browser alert. There is no
    designed failure anywhere on the site.
-2. **There are no empty states.** Filter the Kaizen grid to nothing and you get a
+2. **There are no empty states.** Filter the insights grid to nothing and you get a
    blank page with no message. Track a reference with no milestones and you get
    one grey row.
 3. **There is no structured data.** No `Organization`, no `Article`, no
@@ -334,7 +339,7 @@ done.
 screenshot). We render PDFs server-side with Puppeteer. Ours should be properly
 typeset documents.
 
-### WS5 — Insights (Kaizen Hub)
+### WS5 — Insights
 
 **Nothing exists.** New module on the `portfolio_public` shape (list / media /
 `:slug` detail), with `service_type_web_profile` as the content-model template.
@@ -367,9 +372,9 @@ insight_article
 records we already hold and author attribution, photos and author pages come for
 nothing — the website rendering ERP data again.
 
-**Naming:** call the module `insights`. pixie-girl-hub has an unrelated
-`ops/kaizen` console; "Kaizen Hub" is SmartLS's display label, not our internal
-name.
+**Naming:** `insights` everywhere — module, route, and the label users see. The
+"Kaizen Hub" name is retired. (pixie-girl-hub also has an unrelated `ops/kaizen`
+console, so the name was ambiguous in two directions.)
 
 ---
 
@@ -382,26 +387,44 @@ WS3 Services ──┘
                     WS4 Site content ── WS5 Insights
 ```
 
-Do **WS1 first** regardless of who takes what. It needs no migration and no
-feature flag, it is the site's primary call to action, and it is where the state
-vocabulary of §3.3 gets settled — which the client portal then reuses.
+**Started 2026-08-30: WS3 + WS4 together.** They are both content-model work on
+the same public surface and they share a reviewer's context — WS4's `card_grid`
+and pillar blocks reference the service groups WS3 introduces, so building them
+apart means guessing at the join.
+
+WS1 remains the piece that settles the §3.3 state vocabulary, so whoever takes it
+owns those shared components; until then WS3/WS4 build the components they need
+and WS1 adopts them rather than the reverse.
 
 The shared components of §3.3 are a prerequisite for everything. First person in
 builds them.
 
 ---
 
-## 6. Open decisions — not ours to make alone
+## 6. Decisions — RESOLVED 2026-08-30
 
-1. **Client name on the public tracking page?** Theirs shows it. Default here is
-   **no**. Changing it is a one-line change and a disclosure choice.
-2. **Public risk badges?** Theirs has DELAYED / RISK / DUE. Ours returns only
-   COMPLETED / IN_PROGRESS / PENDING, because delay attribution is internal.
-   Default **no**.
-3. **Incoterm** — required field, or relax the schema? Recommend requiring it.
-4. **Geocoding** — keep a third-party lookup and actually use the coordinates, or
-   drop it?
-5. **Attachment on quote** — recommend optional; theirs is mandatory.
+These are settled. Do not reopen them in a PR; raise them here if circumstances
+change.
+
+1. **Client name on public tracking — NO.** The reference alone must not reveal
+   who the shipper is. `tracking_public.service` already withholds it; keep it
+   that way.
+2. **Public risk badges — NO.** No DELAYED / RISK / DUE on a public surface.
+   Delay attribution stays internal. Public vocabulary is COMPLETED /
+   IN_PROGRESS / PENDING only.
+3. **Incoterm — REQUIRED.** Keep `incoterm: z.string().min(1)` and add the field
+   to the wizard. It is a real datum a forwarder needs, and asking for it signals
+   competence. N/A for the warehousing branch.
+4. **Geocoding — use our own.** `src/services/geoapify.service.js` already
+   exists: `searchPlaces`, `forwardGeocode`, `reverseGeocode`, keyed via the
+   platform console (`GEOAPIFY_API_KEY`, section `geocoding`), with its own
+   cache. **Do not call a third-party geocoder from the browser.** The existing
+   place-search endpoint is permission-gated (`attendance` `edit`), so WS2 needs
+   a *public, rate-limited* wrapper on the same service. Unlike theirs, the
+   coordinates must actually be submitted and stored — `operations/geo_place`
+   and the `GEO_PLACE` field type are the model to bind to.
+5. **Attachment on quote — OPTIONAL.** Theirs is mandatory; that loses every
+   prospect still shopping.
 
 ---
 

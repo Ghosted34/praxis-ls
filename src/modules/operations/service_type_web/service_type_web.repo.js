@@ -289,8 +289,12 @@ async function publicList(client) {
     `SELECT p.service_type_id, p.slug_fr, p.slug_en,
             st.name_fr, st.name_en,
             p.short_description_fr, p.short_description_en,
+            p.claim_fr, p.claim_en, p.accent,
             p.cover_vault_id, p.icon_vault_id,
             p.video_url, p.sort_order, p.published_at,
+            g.group_id, g.key AS group_key, g.icon AS group_icon,
+            g.name_fr AS group_name_fr, g.name_en AS group_name_en,
+            g.sort_order AS group_sort_order,
             EXISTS (
               SELECT 1 FROM document_vault v
                WHERE v.doc_id = p.cover_vault_id
@@ -314,8 +318,17 @@ async function publicList(client) {
             (p.video_url IS NOT NULL) AS has_video
        FROM service_type_web_profile p
        JOIN service_type st ON st.service_type_id = p.service_type_id
+       -- LEFT, and is_active folded into the ON rather than the WHERE: an
+       -- ungrouped service, or one whose pillar was retired, must still be
+       -- listed. Putting either test in WHERE would turn the outer join back
+       -- into an inner one and silently drop those services from the page.
+       LEFT JOIN service_type_web_group g
+              ON g.group_id = p.group_id AND g.is_active = true
       WHERE p.is_published = true AND st.is_active = true
-      ORDER BY p.sort_order ASC, st.name_fr ASC`,
+      -- Ungrouped sorts last (NULLS LAST) so the named pillars lead the page
+      -- and the leftovers trail it, which is the order the renderer assumes.
+      ORDER BY g.sort_order ASC NULLS LAST, g.key ASC NULLS LAST,
+               p.sort_order ASC, st.name_fr ASC`,
     [IMAGE_TYPES],
   );
   return rows;

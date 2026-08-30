@@ -32,17 +32,33 @@ export class PublicApiError extends Error {
   code: string;
   status: number;
   fields?: FieldErrors;
+  /**
+   * `X-Request-Id` from the failed response, where there was one.
+   *
+   * `middleware/request-id.js` stamps every response with it and every log line
+   * carries it, so it is the single string that turns "the tracking page failed"
+   * into the actual request. `ErrorState` prints it for that reason and no
+   * other: it identifies nothing about the visitor, and it means nothing to
+   * anyone who cannot read our logs.
+   *
+   * Null when the request never reached a response (offline, DNS), and null
+   * cross-origin unless the header is advertised — it is, in `exposedHeaders`
+   * in src/server.js.
+   */
+  requestId: string | null;
   constructor(
     code: string,
     message: string,
     status: number,
     fields?: FieldErrors,
+    requestId: string | null = null,
   ) {
     super(message);
     this.name = "PublicApiError";
     this.code = code;
     this.status = status;
     this.fields = fields;
+    this.requestId = requestId;
   }
 
   /** A 404 on a public surface is a normal content state — an expired proposal
@@ -63,6 +79,21 @@ export class PublicApiError extends Error {
   get isPublicMessage(): boolean {
     return this.status === 0 || this.isNotFound || this.isRateLimited;
   }
+}
+
+/**
+ * The request id to print beside a failed read, or null.
+ *
+ * Deliberately null for the states that are ANSWERS rather than faults: a 404 is
+ * the correct response to a reference nobody recognises, and a 429 is the
+ * rate limit doing its job. Printing a diagnostic id under either would tell a
+ * visitor something went wrong when nothing did — and would train the desk to
+ * chase request ids that lead to a perfectly ordinary log line.
+ */
+export function requestIdFor(e: unknown): string | null {
+  if (!(e instanceof PublicApiError)) return null;
+  if (e.isNotFound || e.isRateLimited) return null;
+  return e.requestId;
 }
 
 /** The message a stranger should be shown for a failed read. Deliberately does
@@ -131,6 +162,7 @@ export async function publicApi<T = unknown>(
     );
   }
 
+  const requestId = res.headers.get("X-Request-Id");
   const text = await res.text();
   let json: unknown = null;
   if (text) {
@@ -143,6 +175,8 @@ export async function publicApi<T = unknown>(
         "BAD_RESPONSE",
         tStatic("errors.badResponse"),
         res.status,
+        undefined,
+        requestId,
       );
     }
   }
@@ -161,6 +195,7 @@ export async function publicApi<T = unknown>(
       err?.message || res.statusText || "Request failed",
       res.status,
       err?.fields,
+      requestId,
     );
   }
 

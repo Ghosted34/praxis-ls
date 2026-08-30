@@ -39,6 +39,24 @@ export const en = {
     none: "—",
   },
   /**
+   * The four presentation states and the shipment vocabulary
+   * (`components/state/`, doc/PUBLIC_WEB_PLAN.md §3.3).
+   *
+   * These sit at the top level rather than under `site` because the client
+   * portal renders the same milestone chain: a stage that reads "In progress"
+   * on the public page and something else once the client signs in is the
+   * inconsistency §3.3 exists to prevent.
+   */
+  states: {
+    loading: "Loading…",
+    requestRef: "Support reference:",
+    milestone: {
+      completed: "Completed",
+      current: "In progress",
+      upcoming: "Upcoming",
+    },
+  },
+  /**
    * Sentences shown when something FAILS.
    *
    * They live here, and not next to the code that throws them, for the reason
@@ -529,6 +547,15 @@ export const en = {
       needAccount:
         "Only the stages your account manager makes visible appear here. For anything else, your portal shows the documents.",
       openPortal: "Open the client portal",
+      service: "Service",
+      lastUpdate: "Last update",
+      lastUpdateNone: "No stage completed yet",
+      closed: "All visible stages are complete",
+      noStages: "This file has no client-visible stages yet",
+      noStagesHint:
+        "The desk publishes each stage as it is confirmed. Come back once the first one is marked, or open the portal for the documents already on file.",
+      loading: "Looking up that reference…",
+      searchAgain: "Try another reference",
     },
     notFound: {
       title: "That page does not exist",
@@ -671,6 +698,15 @@ export const fr = {
     send: "Envoyer",
     status: "Statut",
     none: "—",
+  },
+  states: {
+    loading: "Chargement…",
+    requestRef: "Référence support :",
+    milestone: {
+      completed: "Terminée",
+      current: "En cours",
+      upcoming: "À venir",
+    },
   },
   errors: {
     loadFailed:
@@ -1158,6 +1194,15 @@ export const fr = {
       needAccount:
         "Seules les étapes rendues visibles par votre gestionnaire de compte apparaissent ici. Pour le reste, votre portail contient les documents.",
       openPortal: "Ouvrir le portail client",
+      service: "Service",
+      lastUpdate: "Dernière mise à jour",
+      lastUpdateNone: "Aucune étape encore terminée",
+      closed: "Toutes les étapes visibles sont terminées",
+      noStages: "Ce dossier n’a pas encore d’étape visible par le client",
+      noStagesHint:
+        "Le bureau publie chaque étape à mesure qu’elle est confirmée. Revenez une fois la première validée, ou ouvrez le portail pour les documents déjà au dossier.",
+      loading: "Recherche de cette référence…",
+      searchAgain: "Essayer une autre référence",
     },
     notFound: {
       title: "Cette page n’existe pas",

@@ -33,7 +33,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/state";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";

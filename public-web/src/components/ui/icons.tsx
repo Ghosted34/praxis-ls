@@ -168,6 +168,17 @@ export const BoxIcon = (p: Props) => (
   </Svg>
 );
 
+/** The not-found state's glyph. A magnifier, not a warning triangle: nothing
+ *  went wrong when a reference does not match — the visitor mistyped it, or the
+ *  desk has not opened the file yet, and an alert icon would tell them their
+ *  cargo is in trouble. */
+export const SearchIcon = (p: Props) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m16 16 4.5 4.5" />
+  </Svg>
+);
+
 /** A mark for surfaces with no tenant logo: the initial, in a filled square —
  *  the same construction the staff app uses, so a tenant with no logo looks the
  *  same in the portal as on their own marketing page. */

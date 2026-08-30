@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
-import { ErrorState } from "@/components/ui/states";
+import { ErrorState } from "@/components/state";
 import { enumText } from "@/lib/format";
 import { tList } from "@/lib/i18n";
 import {

@@ -92,7 +92,14 @@ function buildCorsOptions() {
     // browser JS cross-origin unless it is advertised here — without this the
     // client reads null and silently falls back to "one page", which is the
     // very bug the header exists to fix.
-    exposedHeaders: ["X-Total-Count"],
+    //
+    // X-Request-Id for the same reason, one surface further out: middleware/
+    // request-id.js stamps every response with it, and public-web prints it in
+    // the error state so a visitor who reports "the tracking page failed" hands
+    // over the one string that finds their request in the logs. A tenant on a
+    // custom domain calling the API on another origin would otherwise read null
+    // and show an error with nothing to quote.
+    exposedHeaders: ["X-Total-Count", "X-Request-Id"],
     origin(origin, cb) {
       if (!origin) return cb(null, true);
       let host;

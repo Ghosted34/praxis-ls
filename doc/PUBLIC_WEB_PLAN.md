@@ -134,6 +134,25 @@ Build these as shared components in `public-web/src/components/state/` before
 building any page that needs them. Whoever gets to them first owns them; the rest
 import.
 
+**BUILT 2026-08-30 (WS1).** `public-web/src/components/state/` now holds all of
+it, imported as `@/components/state` — never by file. `components/ui/states.tsx`
+moved into it wholesale rather than being duplicated: two modules both exporting
+`EmptyState` is how the four states start disagreeing again.
+
+- `presentation.tsx` — `LoadingState`, `EmptyState`, `NotFoundState`,
+  `ErrorState`, plus `SuccessState` / `Spinner` / `LoadingRow` from the old file.
+  `LoadingState` is a wrapper, not a skeleton: only the page knows its own shape,
+  and a generic skeleton is a spinner with rounded corners. It contributes the
+  `aria-busy` live region and the label; the page supplies the `<Skeleton>`s.
+  `ErrorState` takes a `requestId` — `lib/api.ts` keeps `X-Request-Id` on every
+  `PublicApiError`, and `requestIdFor()` returns it for faults only, never for a
+  404 or a 429, which are answers rather than failures.
+- `shipment-state.tsx` — the vocabulary: `milestoneState()`, `isClosed()`,
+  `MilestoneStatePill`, `MilestoneMarker`, `ModeIcon`. The three milestone states
+  get their own tone table rather than `ui/pill.tsx`'s ERP map, in which `CURRENT`
+  and `UPCOMING` do not appear at all and would both fall to neutral — leaving the
+  stage a visitor came to find looking exactly like the six after it.
+
 ### 3.4 Design tokens
 
 Take SmartLS's palette as the tenant's brand, but **tokenised, never inline**:
@@ -205,7 +224,7 @@ Every public page ships with, no exceptions:
 
 Each is independently shippable. 1–3 do not depend on 4.
 
-### WS1 — Tracking ✅ backend exists
+### WS1 — Tracking ✅ DONE 2026-08-30
 
 **Endpoint:** `GET /api/tenant/public/tracking/:reference` — `feature: null`, so
 it works today regardless of the `website` package flag. Rate limited 30/15min.
@@ -215,8 +234,22 @@ it works today regardless of the `website` package flag. Rate limited 30/15min.
 `public_state`, `is_complete`, `is_current`, `due_date`, `completed_at`,
 `location`, `stage_reference`, `progress_note`.
 
-**Add to the payload:** `service_type` (drives the mode icon) and `last_update`
-(derive from the latest `completed_at`).
+**Added to the payload:** `service_type {key, name_fr, name_en, mode}` and
+`last_update`.
+
+`mode` is derived server-side from `service_type.key` (`serviceMode()`), not in
+the browser, so the icon and the origin/destination labels — which `routeLabels`
+picks by the same table — cannot disagree about what kind of shipment this is.
+Service types are user-creatable, so an unrecognised key answers `OTHER` and gets
+a neutral box rather than a wrong ship. `service_type` is null on a file the desk
+has not classified yet, and the page renders that.
+
+`last_update` is the latest milestone `completed_at`, **not** `dossier.updated_at`
+— that column moves when anyone edits the file, so a corrected internal note would
+tell a visitor their cargo had progressed. Max rather than last, because
+`stage_seq` order is not completion order. Null while nothing has completed, and
+the page says so rather than printing the file's creation date under a heading
+that reads "last update".
 
 **Build:**
 - reference input, and the `?ref=` handoff from a hero input on any page
@@ -232,6 +265,17 @@ use `alert()`.
 designed not-found, not an alert; a reference with no milestones renders a
 designed empty state; the API being down renders a retryable inline error; every
 state is reachable in Storybook or an equivalent fixture page.
+
+**Met.** `public-web/src/features/tracking/track-page.test.tsx` is the fixture
+set — sixteen cases, one per outcome, each asserting the sentence a visitor
+reads rather than the markup. Two are there because they are the easy ones to get
+wrong: a file with no client-visible stages must not read as an unknown
+reference, and the rate limit offers **no** retry button, because retrying is the
+thing it is asking the visitor to stop doing.
+
+`tests/unit/tracking-public-payload.test.js` covers the API side, including the
+absences — no client name, no internal status — that are the point of the
+endpoint.
 
 ### WS2 — Intake ✅ backend exists
 
@@ -458,12 +502,17 @@ the same public surface and they share a reviewer's context — WS4's `card_grid
 and pillar blocks reference the service groups WS3 introduces, so building them
 apart means guessing at the join.
 
-WS1 remains the piece that settles the §3.3 state vocabulary, so whoever takes it
-owns those shared components; until then WS3/WS4 build the components they need
-and WS1 adopts them rather than the reverse.
+**WS1 landed 2026-08-30**, and with it the §3.3 components described above. They
+are now a dependency rather than a plan: WS2's intake forms, WS4b's success
+stories and careers pages, and the client portal all import
+`@/components/state` instead of writing their own loading and error blocks. A new
+page that reaches past the barrel, or reintroduces an `EmptyState` of its own, is
+the regression to catch in review.
 
-The shared components of §3.3 are a prerequisite for everything. First person in
-builds them.
+**Next: WS2 — intake.** The incoterm field, the five missing quote fields, the
+optional attachment, and the public rate-limited wrapper on our own
+`src/services/geoapify.service.js` (§6.4 — the existing place-search endpoint is
+permission-gated on attendance `edit`, so it cannot serve a stranger).
 
 ---
 

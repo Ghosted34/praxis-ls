@@ -13,7 +13,7 @@ import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
 import { Panel } from "@/components/ui/panel";
-import { EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/state";
 import { PageSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { useDocumentMeta } from "@/lib/use-document-meta";

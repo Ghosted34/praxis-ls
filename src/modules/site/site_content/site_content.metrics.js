@@ -148,6 +148,12 @@ register({
    */
   async resolve(client) {
     const { rows } = await client.query(
+      // Every table gets its own alias. `s` for the template stage AND for a
+      // milestone instance would run — the CTE and the outer query are separate
+      // scopes — but tests/db/query-columns.test.js reads it the way a person
+      // does and resolves both to the last binding. It was right to complain:
+      // one letter meaning two tables in one statement is a trap for whoever
+      // edits this next.
       `WITH tpl AS (
          SELECT DISTINCT ON (t.service_type_id)
                 t.milestone_template_id, t.service_type_id
@@ -157,26 +163,26 @@ register({
        ),
        clock AS (
          SELECT tpl.service_type_id,
-                MAX(s.code) FILTER (WHERE s.is_clearance_start) AS start_code,
-                MAX(s.code) FILTER (WHERE s.is_clearance_end)   AS end_code
+                MAX(stg.code) FILTER (WHERE stg.is_clearance_start) AS start_code,
+                MAX(stg.code) FILTER (WHERE stg.is_clearance_end)   AS end_code
            FROM tpl
-           JOIN milestone_template_stage s
-             ON s.milestone_template_id = tpl.milestone_template_id
+           JOIN milestone_template_stage stg
+             ON stg.milestone_template_id = tpl.milestone_template_id
           GROUP BY tpl.service_type_id
-         HAVING COUNT(*) FILTER (WHERE s.is_clearance_start) = 1
-            AND COUNT(*) FILTER (WHERE s.is_clearance_end) = 1
+         HAVING COUNT(*) FILTER (WHERE stg.is_clearance_start) = 1
+            AND COUNT(*) FILTER (WHERE stg.is_clearance_end) = 1
        )
-       SELECT AVG(EXTRACT(EPOCH FROM (e.completed_at - s.completed_at)) / 3600.0)::float AS hours
+       SELECT AVG(EXTRACT(EPOCH FROM (m_end.completed_at - m_start.completed_at)) / 3600.0)::float AS hours
          FROM dossier_visible d
          JOIN clock c ON c.service_type_id = d.service_type_id
-         JOIN milestone_instance s
-           ON s.dossier_id = d.dossier_id AND s.code = c.start_code
-         JOIN milestone_instance e
-           ON e.dossier_id = d.dossier_id AND e.code = c.end_code
+         JOIN milestone_instance m_start
+           ON m_start.dossier_id = d.dossier_id AND m_start.code = c.start_code
+         JOIN milestone_instance m_end
+           ON m_end.dossier_id = d.dossier_id AND m_end.code = c.end_code
         WHERE d.status = 'COMPLETED'
-          AND s.completed_at IS NOT NULL
-          AND e.completed_at IS NOT NULL
-          AND e.completed_at >= s.completed_at`,
+          AND m_start.completed_at IS NOT NULL
+          AND m_end.completed_at IS NOT NULL
+          AND m_end.completed_at >= m_start.completed_at`,
     );
     // NULL when no service type has a pair marked, or none has completed a file
     // through both stages. resolveMetric turns that into a fallback to the

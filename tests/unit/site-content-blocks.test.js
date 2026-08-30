@@ -280,9 +280,19 @@ describe("the clearance clock", () => {
     expect(clause).not.toMatch(/DECLARATION_LODGED|CUSTOMS_RELEASED|ARRIVAL|FLIGHT_ARRIVED|BORDER_CROSSING/);
   });
 
+  it("gives each table its own alias", () => {
+    // `s` for the template stage AND a milestone instance runs — separate
+    // scopes — but query-columns.test.js resolves both to the last binding and
+    // was right to: one letter meaning two tables is a trap for the next editor.
+    expect(clause).toMatch(/milestone_template_stage stg/);
+    expect(clause).toMatch(/milestone_instance m_start/);
+    expect(clause).toMatch(/milestone_instance m_end/);
+    expect(clause).not.toMatch(/milestone_instance s\b/);
+  });
+
   it("reads the pair from the template flags", () => {
-    expect(clause).toMatch(/FILTER \(WHERE s\.is_clearance_start\)/);
-    expect(clause).toMatch(/FILTER \(WHERE s\.is_clearance_end\)/);
+    expect(clause).toMatch(/FILTER \(WHERE stg\.is_clearance_start\)/);
+    expect(clause).toMatch(/FILTER \(WHERE stg\.is_clearance_end\)/);
   });
 
   it("consults only the latest active template per service type", () => {
@@ -294,14 +304,14 @@ describe("the clearance clock", () => {
   });
 
   it("declines to measure when the pair is ambiguous", () => {
-    expect(clause).toMatch(/HAVING COUNT\(\*\) FILTER \(WHERE s\.is_clearance_start\) = 1/);
-    expect(clause).toMatch(/AND COUNT\(\*\) FILTER \(WHERE s\.is_clearance_end\) = 1/);
+    expect(clause).toMatch(/HAVING COUNT\(\*\) FILTER \(WHERE stg\.is_clearance_start\) = 1/);
+    expect(clause).toMatch(/AND COUNT\(\*\) FILTER \(WHERE stg\.is_clearance_end\) = 1/);
   });
 
   it("drops files whose stages completed out of order", () => {
     // A backfill or a correction would otherwise contribute a negative
     // duration and pull the average below the truth.
-    expect(clause).toMatch(/e\.completed_at >= s\.completed_at/);
+    expect(clause).toMatch(/m_end\.completed_at >= m_start\.completed_at/);
   });
 
   it("counts completed files only, from dossier_visible", () => {

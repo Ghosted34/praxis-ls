@@ -85,6 +85,14 @@ const PortfolioStory = lazy(
   () => import("@/features/portfolio/portfolio-page"),
   "PortfolioStoryPage",
 );
+const Insights = lazy(
+  () => import("@/features/insights/insights-page"),
+  "InsightsPage",
+);
+const Insight = lazy(
+  () => import("@/features/insights/insight-page"),
+  "InsightPage",
+);
 const Proposal = lazy(
   () => import("@/features/proposals/proposal-page"),
   "ProposalPage",
@@ -181,6 +189,8 @@ export function AppRouter() {
         <Route path={p("/portfolio")} element={<PortfolioIndex />} />
         <Route path={p("/portfolio/:slug")} element={<PortfolioStory />} />
         <Route path={p("/proposals/:token")} element={<Proposal />} />
+        <Route path={p("/insights")} element={<Insights />} />
+        <Route path={p("/insights/:slug")} element={<Insight />} />
         <Route path={p("/careers")} element={<Careers />} />
         <Route path={p("/careers/:token")} element={<Vacancy />} />
         {/* The form used to live at its own path; the band on the home page is the
@@ -225,6 +235,12 @@ export function AppRouter() {
             />
           </>
         )}
+        {/* The Kaizen Hub was renamed to Insights (WS5's resolved naming). The
+            old path is redirected on every host rather than deleted: a URL that
+            has been shared or indexed outlives the decision to rename it, and a
+            404 is how a rename loses the readers it already had. */}
+        <Route path="/kaizen" element={<Navigate to={p("/insights")} replace />} />
+        <Route path="/kaizen/:slug" element={<LegacyParam to={p("/insights")} />} />
         {/* Wrong on EVERY host, root included: `/tracking` was the ERP's spelling
             and `/proposal` the singular the sales team still types. */}
         <Route path="/tracking" element={<LegacyQuery to={p("/track")} />} />

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import { CheckIcon } from "@/components/ui/icons";
+import { BoltIcon, CheckIcon } from "@/components/ui/icons";
 
 /**
  * The wizard's step indicator, and its back-navigation.
@@ -29,6 +29,7 @@ export function Stepper({
   furthest,
   onGoTo,
   label,
+  counter,
   className,
 }: {
   steps: Step[];
@@ -38,11 +39,15 @@ export function Stepper({
   furthest: number;
   onGoTo: (index: number) => void;
   label: string;
+  /** "Step 2 of 4", already composed by the caller so the count is translated. */
+  counter?: string;
   className?: string;
 }) {
+  const percent = Math.round(((current + 1) / steps.length) * 100);
   return (
     <nav aria-label={label} className={cn("min-w-0", className)}>
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-2">
         {steps.map((step, i) => {
           const done = i < current;
           const here = i === current;
@@ -87,9 +92,43 @@ export function Stepper({
           );
         })}
       </ol>
+
+        {/* The counter their portal carries and ours did not: on a form with
+            four screens, "how much is left" is the question a visitor asks
+            before deciding to start, and a row of dots answers it only if you
+            count them. Hidden below md, where the dots are already numbers and
+            the line below says which step this is. */}
+        {counter && (
+          <p className="hidden shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium text-muted-foreground md:inline-flex">
+            <BoltIcon size={14} className="text-[var(--brand-orange)]" />
+            {counter}
+          </p>
+        )}
+      </div>
+
+      {/*
+        The progress bar. Not decoration and not a duplicate of the dots: the
+        dots say WHICH step, the bar says HOW FAR, and on a phone — where the
+        labels are hidden and the dots are four small numbers — it is the only
+        thing that answers the second question at a glance.
+
+        `aria-hidden`, because the counter above and `aria-current` on the dots
+        already state the same fact to a screen reader; a third announcement of
+        it is noise.
+      */}
+      <div
+        aria-hidden
+        className="mt-4 h-1 overflow-hidden rounded-full bg-[rgb(var(--ink)/0.08)]"
+      >
+        <div
+          className="h-full rounded-full bg-[var(--brand-orange)] transition-[width] duration-500 ease-[var(--ease)]"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+
       {/* The label the dots cannot carry on a phone, where they are numbers
           only. Announced politely so it is not read over the step's heading. */}
-      <p className="mt-2 text-sm text-muted-foreground sm:hidden" aria-live="polite">
+      <p className="mt-3 text-sm text-muted-foreground sm:hidden" aria-live="polite">
         {steps[current]?.label}
       </p>
     </nav>

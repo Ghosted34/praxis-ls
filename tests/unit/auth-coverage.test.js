@@ -50,6 +50,10 @@ const PUBLIC_BY_DESIGN = new Map([
     "The quote wizard's place picker (WS2). Anonymous by design and rate-limited 60/15min. It opens NO tenant connection: answers come from Geoapify, never from the tenant's geo_place catalogue, which holds customer doors and would otherwise be enumerable three letters at a time.",
   ],
   [
+    "content/insight_public",
+    "The tenant website's Insights (12757). Anonymous by design — a knowledge hub nobody can read is not one. Every route is pinned to LIVE so an internet caller cannot select sandbox, rate-limited (120/15min for JSON, 600 for covers), and gated on the `website` package; an unpublished article and an unknown slug are the same 404, and the cover route re-checks the allowlist so a draft's image cannot be fetched at a guessed URL before its date.",
+  ],
+  [
     "site/site_public",
     "The tenant website's own pages (12753). Anonymous by design — the public site IS the feature. Every route is pinned to LIVE so an internet caller cannot select sandbox, rate-limited 240/15min, and gated on the `website` package; unpublished and unknown pages are the same 404, so nothing unreleased is enumerable.",
   ],

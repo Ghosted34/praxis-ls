@@ -384,7 +384,7 @@ business centre or an internet café — an ordinary way to reach this site in t
 region this product serves — `localStorage` would still hold it tomorrow. Losing
 a draft when the tab closes is the cheaper failure.
 
-### WS3 — Services
+### WS3 — Services ✅ DONE 2026-08-30
 
 **Endpoint:** `GET /api/tenant/public/services` and `/:slug` — **gated on
 `feature: "website"`**, which is `default_state = 'off'` by design
@@ -409,7 +409,7 @@ optional icon) + nullable `group_id` on `service_type_web_profile`; group in
 gallery, video and related services; their page has none of them. Use them —
 that is the argument for switching, not parity.
 
-### WS4 — Site content (Home + About)
+### WS4 — Site content (Home + About) ✅ DONE 2026-08-30
 
 The largest piece, and the one with no backend at all yet.
 
@@ -489,7 +489,7 @@ either of these two moments" has no defensible reading.
 screenshot). We render PDFs server-side with Puppeteer. Ours should be properly
 typeset documents.
 
-### WS4b — Success stories and Careers
+### WS4b — Success stories and Careers ✅ DONE 2026-08-30
 
 Both already exist as public modules and neither is in SmartLS's current site,
 so they are additions rather than replacements:
@@ -516,7 +516,7 @@ second content model.
 what puts a listing into Google Jobs, and it is the cheapest reach a careers
 page can buy.
 
-### WS5 — Insights
+### WS5 — Insights ✅ DONE 2026-08-30
 
 **Nothing exists.** New module on the `portfolio_public` shape (list / media /
 `:slug` detail), with `service_type_web_profile` as the content-model template.
@@ -576,12 +576,22 @@ stories and careers pages, and the client portal all import
 page that reaches past the barrel, or reintroduces an `EmptyState` of its own, is
 the regression to catch in review.
 
-**WS2 landed 2026-08-30.** WS1 and WS2 together mean every public surface a
-stranger can act on — track a shipment, ask for a price — is built and wired.
+**All five workstreams landed 2026-08-30.**
 
-**Next: WS5 — Insights** (the renamed Kaizen hub), plus WS4b's success stories
-and careers pages, both of which now inherit `@/components/state` and the
-wizard's field components rather than writing their own.
+WS4b needed no new pages: success stories are `portfolio_public` and careers is
+`hr/careers`, both already built and both already on the shared state components.
+What it actually needed was the SEO baseline of §3.7, which had no JSON-LD at
+all — so `JobPosting` (which WS4b calls "not optional"), `Organization`,
+`Article` and `BreadcrumbList` are built server-side in `public-head.js`, where a
+crawler that never runs the app can read them.
+
+**What remains is not a workstream — it is `doc/UI_UPGRADE_PLAN.md`.** This plan
+studied smartls.cm for behaviour and data and got that right; it did not study
+their DESIGN, and the instruction was "better also means prettier". The result
+was a site that is more correct than theirs and plainer than theirs. That
+document is the correction, written from their actual markup: their design
+grammar itemised, our token mapping, component specs, per-page work and
+acceptance. Read it before touching any public page.
 
 ---
 

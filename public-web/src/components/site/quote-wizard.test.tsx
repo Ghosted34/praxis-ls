@@ -69,9 +69,20 @@ const type = (label: string, value: string) =>
 const press = (name: string) =>
   fireEvent.click(screen.getByRole("button", { name }));
 
+/**
+ * Pick a transport mode.
+ *
+ * A RADIO, not a button: the mode is one choice among four, which is what a
+ * radio group is, and the semantics buy arrow-key navigation, one tab stop and
+ * an "n of 4" announcement. Asserting on the role is what keeps that from being
+ * quietly reverted to four toggle buttons.
+ */
+const chooseMode = (name: string) =>
+  fireEvent.click(screen.getByRole("radio", { name: new RegExp("^" + name) }));
+
 /** Fill step 0 and advance. */
 async function stepNeed(mode = en.site.quote.modeSEA) {
-  press(mode);
+  chooseMode(mode);
   type(en.site.quote.service, "Sea freight import");
   press(en.site.quote.next);
   await act(async () => {
@@ -156,12 +167,57 @@ describe("a step will not advance while it is incomplete", () => {
   });
 });
 
+describe("the mode selector is a radio group, and says what each mode covers", () => {
+  it("offers four radios in one group, not four toggle buttons", async () => {
+    // One tab stop, arrow-key navigation, and "2 of 4" announced — none of
+    // which four aria-pressed buttons give a keyboard or screen-reader user.
+    await mount();
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
+  });
+
+  it("describes every mode, so a prospect is not guessing what one covers", async () => {
+    // The line our first version left out entirely. Somebody who does not know
+    // whether "By road or rail" covers a Douala → N'Djamena run picks nothing,
+    // and picking nothing is where this form loses them.
+    await mount();
+    expect(screen.getByText(en.site.quote.modeSEAHint)).toBeInTheDocument();
+    expect(screen.getByText(en.site.quote.modeROADHint)).toBeInTheDocument();
+    expect(screen.getByText(en.site.quote.modeWAREHOUSEHint)).toBeInTheDocument();
+  });
+
+  it("marks the chosen mode as checked", async () => {
+    await mount();
+    chooseMode(en.site.quote.modeAIR);
+    expect(screen.getByRole("radio", { name: new RegExp("^" + en.site.quote.modeAIR) }))
+      .toBeChecked();
+  });
+});
+
+describe("the step indicator", () => {
+  it("says how far through the form the visitor is", async () => {
+    // "How much is left" is the question somebody asks before deciding to
+    // start, and a row of dots answers it only if you count them.
+    await mount();
+    expect(
+      screen.getByText(en.site.quote.stepCounter.replace("{{step}}", "1").replace("{{total}}", "4")),
+    ).toBeInTheDocument();
+  });
+
+  it("advances the counter with the step", async () => {
+    await mount();
+    await stepNeed();
+    expect(
+      screen.getByText(en.site.quote.stepCounter.replace("{{step}}", "2").replace("{{total}}", "4")),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("the branch", () => {
   it("asks a warehousing enquiry for storage, not for a route", async () => {
     // Asking a storage prospect for an Incoterm is asking a question with no
     // answer.
     await mount();
-    press(en.site.quote.modeWAREHOUSE);
+    chooseMode(en.site.quote.modeWAREHOUSE);
     type(en.site.quote.service, "Warehousing");
     press(en.site.quote.next);
     expect(
@@ -175,7 +231,7 @@ describe("the branch", () => {
     // Port of loading for sea, Airport of departure for air. Their site does
     // this and it is right.
     await mount();
-    press(en.site.quote.modeAIR);
+    chooseMode(en.site.quote.modeAIR);
     type(en.site.quote.service, "Air freight");
     press(en.site.quote.next);
     expect(
@@ -239,7 +295,7 @@ describe("what reaches the endpoint", () => {
     // The schema requires one and a warehousing enquiry genuinely has none.
     // Blank would be a 422; N/A is the truth.
     await mount();
-    press(en.site.quote.modeWAREHOUSE);
+    chooseMode(en.site.quote.modeWAREHOUSE);
     type(en.site.quote.service, "Warehousing");
     press(en.site.quote.next);
     await screen.findByLabelText(labelRe(en.site.quote.warehouseLocation));

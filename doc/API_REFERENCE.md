@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1455 |
-| Modules mounted | 133 |
+| Routes | 1490 |
+| Modules mounted | 138 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1455 mounted routes, grouped by path prefix.
+All 1490 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -202,6 +202,10 @@ All 1455 mounted routes, grouped by path prefix.
 | GET | `/api/platform/tenants/:slug` | — |
 | POST | `/api/platform/tenants/:slug/admin` | — |
 | PATCH | `/api/platform/tenants/:slug/capacity` | — |
+| PATCH | `/api/platform/tenants/:slug/domains` | — |
+| POST | `/api/platform/tenants/:slug/domains` | — |
+| PATCH | `/api/platform/tenants/:slug/domains/base` | — |
+| GET | `/api/platform/tenants/:slug/domains/dns` | — |
 | GET | `/api/platform/tenants/:slug/features` | — |
 | DELETE | `/api/platform/tenants/:slug/features/:featureKey` | — |
 | PATCH | `/api/platform/tenants/:slug/features/:featureKey` | — |
@@ -375,6 +379,7 @@ All 1455 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/branding/pwa` | — |
 | PUT | `/api/tenant/branding/pwa` | — |
 | POST | `/api/tenant/branding/pwa/icon` | — |
+| POST | `/api/tenant/branding/site/hero` | — |
 
 ### `tenant/campaigns`
 
@@ -942,6 +947,17 @@ All 1455 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/incidents/:id` | — |
 | POST | `/api/tenant/incidents/:id/status` | — |
 
+### `tenant/insights`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/insights/` | — |
+| POST | `/api/tenant/insights/` | — |
+| DELETE | `/api/tenant/insights/:id` | yes |
+| GET | `/api/tenant/insights/:id` | — |
+| PATCH | `/api/tenant/insights/:id` | — |
+| POST | `/api/tenant/insights/:id/publish` | — |
+
 ### `tenant/intake`
 
 | Method | Path | Body validated |
@@ -1048,6 +1064,7 @@ All 1455 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/assist/rewrite` | — |
 | POST | `/api/tenant/mail/assist/search` | — |
 | POST | `/api/tenant/mail/assist/summary` | — |
+| POST | `/api/tenant/mail/assist/transcribe` | — |
 | POST | `/api/tenant/mail/assist/translate` | — |
 | POST | `/api/tenant/mail/assist/voice` | — |
 | GET | `/api/tenant/mail/attachments/:attachmentId/download` | — |
@@ -1068,6 +1085,7 @@ All 1455 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/mail/connections` | — |
 | PATCH | `/api/tenant/mail/connections/:id` | — |
 | POST | `/api/tenant/mail/connections/:id/default` | — |
+| POST | `/api/tenant/mail/connections/:id/disconnect` | — |
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
 | GET | `/api/tenant/mail/context` | — |
@@ -1260,7 +1278,9 @@ All 1455 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/notifications/categories` | — |
 | GET | `/api/tenant/notifications/preferences` | — |
 | PUT | `/api/tenant/notifications/preferences` | — |
+| GET | `/api/tenant/notifications/push/devices` | — |
 | GET | `/api/tenant/notifications/push/public-key` | — |
+| POST | `/api/tenant/notifications/push/rotate` | — |
 | DELETE | `/api/tenant/notifications/push/subscribe` | — |
 | POST | `/api/tenant/notifications/push/subscribe` | — |
 | POST | `/api/tenant/notifications/read-all` | — |
@@ -1501,10 +1521,14 @@ All 1455 mounted routes, grouped by path prefix.
 
 | Method | Path | Body validated |
 |---|---|---|
+| GET | `/api/tenant/public/insights/` | — |
+| GET | `/api/tenant/public/insights/:slug` | — |
+| GET | `/api/tenant/public/insights/media/:id` | — |
 | POST | `/api/tenant/public/intake/contact-enquiries` | — |
 | POST | `/api/tenant/public/intake/newsletter` | — |
 | POST | `/api/tenant/public/intake/partnerships` | — |
 | POST | `/api/tenant/public/intake/quote-requests` | — |
+| GET | `/api/tenant/public/places/` | — |
 | GET | `/api/tenant/public/portfolio/` | — |
 | GET | `/api/tenant/public/portfolio/:slug` | — |
 | GET | `/api/tenant/public/portfolio/media/:id` | — |
@@ -1522,6 +1546,8 @@ All 1455 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/public/sign/:token/document` | — |
 | POST | `/api/tenant/public/sign/:token/otp` | — |
 | POST | `/api/tenant/public/sign/:token/verify` | — |
+| GET | `/api/tenant/public/site/pages` | — |
+| GET | `/api/tenant/public/site/pages/:key` | — |
 | GET | `/api/tenant/public/tracking/:reference` | — |
 
 ### `tenant/purchase-orders`
@@ -1720,6 +1746,10 @@ All 1455 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/service-types/:id/web/publish` | — |
 | PUT | `/api/tenant/service-types/:id/web/related` | — |
 | POST | `/api/tenant/service-types/:id/web/unpublish` | — |
+| GET | `/api/tenant/service-types/web/groups` | — |
+| POST | `/api/tenant/service-types/web/groups` | — |
+| DELETE | `/api/tenant/service-types/web/groups/:groupId` | — |
+| PATCH | `/api/tenant/service-types/web/groups/:groupId` | — |
 
 ### `tenant/sessions`
 
@@ -1782,6 +1812,21 @@ All 1455 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/signatures/qes/usage` | — |
 | GET | `/api/tenant/signatures/reasons` | — |
 | GET | `/api/tenant/signatures/stats` | — |
+
+### `tenant/site`
+
+| Method | Path | Body validated |
+|---|---|---|
+| DELETE | `/api/tenant/site/blocks/:blockId` | yes |
+| PATCH | `/api/tenant/site/blocks/:blockId` | — |
+| GET | `/api/tenant/site/pages` | — |
+| POST | `/api/tenant/site/pages` | — |
+| DELETE | `/api/tenant/site/pages/:pageId` | yes |
+| GET | `/api/tenant/site/pages/:pageId` | — |
+| PATCH | `/api/tenant/site/pages/:pageId` | — |
+| POST | `/api/tenant/site/pages/:pageId/blocks` | — |
+| POST | `/api/tenant/site/pages/:pageId/blocks/reorder` | — |
+| POST | `/api/tenant/site/pages/:pageId/publish` | — |
 
 ### `tenant/smartcomm`
 

@@ -118,6 +118,26 @@ const Schema = z.object({
   CORS_ORIGINS: z.string().default(""),
 
   /**
+   * Hosts whose public pages must never be indexed. Comma-separated.
+   *
+   * `doc/PUBLIC_WEB_PLAN.md` §3.7: "a staging copy competing with production is
+   * worse than no staging at all". A staging host serves the same content under
+   * a different name, so a crawler that finds it treats it as a duplicate and
+   * may rank it INSTEAD of the real site — and the tenant discovers this from a
+   * customer who booked against a test database.
+   *
+   * Environment rather than a registry column on purpose: which host is the
+   * rehearsal is a deployment fact, not a tenant's content decision, and the
+   * people who stand up a staging host are the people who edit this file. It
+   * also means a host can be marked before any tenant row exists for it.
+   *
+   * Matching is on the bare hostname, lowercased, port excluded. Empty (the
+   * default) means every LIVE host is indexable, which is the right default for
+   * a fresh deployment that has no staging yet.
+   */
+  SEO_NOINDEX_HOSTS: z.string().default(""),
+
+  /**
    * How many reverse-proxy hops sit in front of this process (audit SEC-H5).
    *
    * `app.set("trust proxy", true)` used to be unconditional, which tells Express

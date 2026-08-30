@@ -35,6 +35,7 @@ const NAV = [
   { to: p("/services"), labelKey: "site.nav.services" },
   { to: p("/track"), labelKey: "site.nav.track" },
   { to: p("/portfolio"), labelKey: "site.nav.portfolio" },
+  { to: p("/insights"), labelKey: "site.nav.insights" },
   { to: p("/careers"), labelKey: "site.nav.careers" },
   { to: p("#contact"), labelKey: "site.nav.contact" },
 ] as const;

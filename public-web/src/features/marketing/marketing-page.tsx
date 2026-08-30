@@ -17,7 +17,7 @@ import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRightIcon } from "@/components/ui/icons";
-import { QuoteForm } from "@/components/site/quote-form";
+import { QuoteWizard } from "@/components/site/quote-wizard";
 import { ContactForm } from "@/components/site/contact-form";
 import { p } from "@/lib/base-path";
 
@@ -293,7 +293,7 @@ function QuoteBand() {
     >
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <Card padded>
-          <QuoteForm services={services} />
+          <QuoteWizard services={services} />
         </Card>
         <div>
           <ol className="space-y-5">

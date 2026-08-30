@@ -281,8 +281,15 @@ async function search(client, { q = null, country = null, kinds = null, limit = 
  * load"). The failure mode is visible and recoverable: a suggestion that has
  * aged out of the provider's ranking yields SUGGESTION_EXPIRED, and the picker
  * re-searches rather than storing something nobody confirmed.
+ *
+ * WHO CONFIRMED IT IS PART OF THE RECORD. `confirmedBy` names them in the
+ * stored provenance, and it exists because the public quote wizard (WS2) uses
+ * this same path: a prospect picking their own port from the list is a real
+ * confirmation and the re-query gives it the same coordinate guarantee, but it
+ * is NOT an operator's judgement and the row must not claim it was. The default
+ * is the operator, because that was the only caller when this was written.
  */
-async function confirmSuggestion(client, { query, providerPlaceId, country = null, kind = null, isReferencePoint = false, actor = {} }) {
+async function confirmSuggestion(client, { query, providerPlaceId, country = null, kind = null, isReferencePoint = false, confirmedBy = "an operator", actor = {} }) {
   const found = await geoapify.searchPlaces(query, {
     limit: geoapify.MAX_RESULTS,
     bias: DEFAULT_BIAS,
@@ -324,7 +331,7 @@ async function confirmSuggestion(client, { query, providerPlaceId, country = nul
       isReferencePoint: !!isReferencePoint,
       // A human looked at this and chose it. That is what verified means here.
       verified: true,
-      provenance: "Geoapify autocomplete, confirmed by an operator",
+      provenance: `Geoapify autocomplete, confirmed by ${confirmedBy}`,
     },
     // Disambiguators, tried in order, for the rare case where two different
     // addresses normalise to one key.

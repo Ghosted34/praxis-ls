@@ -19,6 +19,8 @@ const WRITABLE = [
   "service_category", "service_type", "origin_location", "destination_location",
   "warehouse_location", "warehouse_duration", "estimated_weight",
   "project_cargo_flag", "cargo_description", "incoterm", "owner_user_id",
+  // 12756 — what a website request can carry that a phone call cannot.
+  "additional_notes", "origin_place_id", "destination_place_id", "attachment_doc_id",
 ];
 
 /**
@@ -53,6 +55,13 @@ function insert(client, data) {
     estimated_weight: data.estimated_weight ?? null,
     project_cargo_flag: data.project_cargo_flag || false,
     cargo_description: blankToNull(data.cargo_description),
+    additional_notes: blankToNull(data.additional_notes),
+    // Geocoded server-side or not at all — see public_intake.service. The text
+    // columns above stay authoritative for reading; these are the enrichment
+    // beside them, and NULL is the ordinary case rather than a broken one.
+    origin_place_id: blankToNull(data.origin_place_id),
+    destination_place_id: blankToNull(data.destination_place_id),
+    attachment_doc_id: blankToNull(data.attachment_doc_id),
     incoterm: data.incoterm,
     status: "RECEIVED",
     owner_user_id: blankToNull(data.owner_user_id),

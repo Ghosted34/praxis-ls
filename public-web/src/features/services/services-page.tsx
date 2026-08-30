@@ -21,7 +21,7 @@ import { EmptyState, ErrorState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { Markdown } from "@/components/ui/markdown";
-import { QuoteForm } from "@/components/site/quote-form";
+import { QuoteWizard } from "@/components/site/quote-wizard";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { p } from "@/lib/base-path";
 
@@ -389,7 +389,7 @@ export function ServiceDetailPage() {
         divided
       >
         <Card padded className="max-w-reading">
-          <QuoteForm />
+          <QuoteWizard />
         </Card>
       </Section>
     </PageShell>

@@ -277,25 +277,36 @@ thing it is asking the visitor to stop doing.
 absences — no client name, no internal status — that are the point of the
 endpoint.
 
-### WS2 — Intake ✅ backend exists
+### WS2 — Intake ✅ DONE 2026-08-30
 
 **Endpoints:** `POST /api/tenant/public/intake/{quote-requests,contact-enquiries,partnerships,newsletter}` — `feature: null`.
 
 Covers all four of their forms. Three of the four can be wired with no schema
 change at all.
 
-**Two blockers on the quote form:**
+**Both blockers cleared:**
 
-1. `incoterm` is the **only required field** in the quote schema
-   (`z.string().min(1).max(30)`), and their wizard never asks for it. A port
-   would 422 on every submission. **Decide:** add an Incoterm field (natural for
-   freight, N/A for warehousing) or relax it to optional. Recommend adding it —
-   it is a real datum a forwarder needs, and asking for it signals competence.
-2. **No file upload.** The route takes JSON and the validator is `.strict()`.
-   Supporting an attachment means a multipart path plus vault storage.
+1. `incoterm` stays **required** (resolved decision 3). The wizard asks for it on
+   the freight branch and sends `N/A` on the warehousing branch — a real answer
+   rather than a blank, since a storage enquiry genuinely has no delivery term.
+2. **The attachment is a base64 data URL in the JSON body, not multipart.** That
+   is the house pattern for the one public upload that already exists
+   (`careers`, `cv_data_url`), and it keeps the whole intake body inside one
+   `.strict()` schema instead of adding multipart middleware to an anonymous
+   endpoint. `document_vault.createDocument` does the real work with
+   `sniff: true`, so a `.exe` renamed `.pdf` is refused on its bytes; PDF, PNG
+   and JPEG only, because those are the three `sniffContentType` can verify.
 
-**Add to the quote schema:** `estimated_weight`, `project_cargo_flag`,
-`warehouse_location`, `warehouse_duration`, `additional_notes`.
+**Grown, not added: four of the five fields were already columns.**
+`estimated_weight`, `project_cargo_flag`, `warehouse_location` and
+`warehouse_duration` have been on `quote_request` since migration 0683 and in
+the repo's `WRITABLE` list; only the PUBLIC Zod schema refused them, which is
+why the shipped marketing page was 422'd on every submit. Only
+`additional_notes` needed a column.
+
+**Migration 12756** adds `additional_notes`, `origin_place_id` /
+`destination_place_id` (FK `geo_place`, `ON DELETE SET NULL`) and
+`attachment_doc_id` (FK `document_vault`).
 
 **Build:** the four-step wizard — Need → Route → Details → Contact — with their
 good ideas kept (branching labels per mode: Airport/Port/Place of Loading;
@@ -308,14 +319,70 @@ steps).
 - Real validation per §3.6.
 - Persist wizard state so a refresh does not wipe four steps of input.
 - Designed error states, not `alert()`.
-- **Decide on geocoding.** Theirs calls `photon.komoot.io` — an unkeyed public
-  instance, every keystroke of a prospect's route sent to a third party — and
-  then never submits the coordinates it captures. Either send lat/lng and use
-  them, or drop the dependency and take plain text.
+- **Geocoding is ours, and the coordinates are actually stored** (resolved
+  decision 4). `GET /api/tenant/public/places` wraps our own keyed
+  `geoapify.service`, rate-limited 60/15min.
+
+**Three decisions inside that endpoint worth knowing before touching it:**
+
+- **It returns provider suggestions ONLY — never the tenant's `geo_place`
+  catalogue.** `geo_place.search` answers from the catalogue first, which is
+  right for an operator and a data leak here: the catalogue is where the desk
+  saves customer doors and named clients' yards. A public wrapper on that
+  function would let anyone enumerate a forwarder's client addresses three
+  letters at a time. This service takes no `client` argument at all.
+- **Provider failure modes are collapsed to one `UNAVAILABLE`.** NO_KEY,
+  UNAUTHORISED, RATE_LIMITED, TIMEOUT and PROVIDER_ERROR are sentences about our
+  configuration, addressed to the internet. The real status is logged. No message
+  travels either — the site is bilingual, so a sentence composed on the server is
+  English on a French page.
+- **The browser never posts a coordinate.** It sends the provider's place id and
+  the text that produced it; `geo_place.confirmSuggestion` re-runs the search
+  server-side and stores the provider's own answer. A body that could carry a
+  coordinate could carry any coordinate and have it stored as provider-vouched,
+  which is a provenance forgery. `confirmSuggestion` gained a `confirmedBy`
+  parameter so a row minted from an anonymous form records "the requester" rather
+  than claiming a colleague vouched for it.
+
+**Two failure asymmetries, both deliberate:**
+
+- A place that will not resolve costs the **pin**, never the enquiry — the typed
+  text is already the field the desk reads.
+- A **rejected file** is the requester's problem and is raised to them (they can
+  fix a 20 MB scan in ten seconds); a **storage failure** is ours and the quote
+  is filed without the attachment. `status < 500` is the line, and it is spelled
+  that way because `AppError` has no `httpStatus` — reading the wrong property is
+  what made every rejection look like our outage in `careers`.
 
 **Acceptance:** all four forms submit against the real endpoints; validation
 failures are inline and specific; the honeypot and time trap are wired; a
 submission returns and displays the reference the API generates.
+
+**Met.** `quote-wizard.test.tsx` (17 cases) covers the refusals, which is where a
+wizard hides its bugs: a step that will not advance, an incoterm that cannot be
+skipped, a warehousing branch that never asks for one, and no forward jump past a
+step's validation. Backend: `public-intake-quote-fields.test.js` (17) pins the
+schema against the CHECK constraint it writes to and both failure asymmetries;
+`geo-place-public-search.test.js` (17) pins the collapse and the catalogue's
+absence.
+
+Two things the tests found that review would not have:
+
+- `useWizardDraft`'s persist effect wrote the empty draft back over the removal
+  `clear()` had just done, so a submitted form reappeared "restored". The fix is
+  that an untouched draft stores nothing at all, which is also better behaviour:
+  a visitor who reads the page and leaves has nothing left on the machine.
+- The honeypot's empty string never travelled — `intake-api`'s payload cleaner
+  drops empty values, and `useIntake`'s comment claimed otherwise. Harmless (the
+  schema marks it `.optional()`, so omitted and empty pass alike, and a FILLED
+  one still travels and still fails `max(0)`), but the comment was wrong and is
+  now corrected.
+
+**Draft persistence is `sessionStorage`, not `localStorage`.** A quote draft names
+a company, a route, a cargo and a phone number; on the shared machine in a hotel
+business centre or an internet café — an ordinary way to reach this site in the
+region this product serves — `localStorage` would still hold it tomorrow. Losing
+a draft when the tab closes is the cheaper failure.
 
 ### WS3 — Services
 
@@ -509,10 +576,12 @@ stories and careers pages, and the client portal all import
 page that reaches past the barrel, or reintroduces an `EmptyState` of its own, is
 the regression to catch in review.
 
-**Next: WS2 — intake.** The incoterm field, the five missing quote fields, the
-optional attachment, and the public rate-limited wrapper on our own
-`src/services/geoapify.service.js` (§6.4 — the existing place-search endpoint is
-permission-gated on attendance `edit`, so it cannot serve a stranger).
+**WS2 landed 2026-08-30.** WS1 and WS2 together mean every public surface a
+stranger can act on — track a shipment, ask for a price — is built and wired.
+
+**Next: WS5 — Insights** (the renamed Kaizen hub), plus WS4b's success stories
+and careers pages, both of which now inherit `@/components/state` and the
+wizard's field components rather than writing their own.
 
 ---
 

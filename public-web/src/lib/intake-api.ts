@@ -12,13 +12,18 @@
  *
  *   **A form may send only the keys below. Not one more.**
  *
- * `client/src/features/public/public-site.tsx` currently sends `service_type`
- * and `estimated_weight` on the quote form. Neither is in `schemas.quote`, so
- * every quote request from the shipped marketing page is refused with a generic
- * "Something went wrong". See `public-web/README.md` (FINDINGS) — the fix is
- * either to grow the schema or to keep the two fields out of the form; this app
- * keeps them out, because a field the API cannot store is a promise nobody can
- * keep.
+ * `client/src/features/public/public-site.tsx` sent `service_type` and
+ * `estimated_weight` on the quote form when neither was in `schemas.quote`, so
+ * every quote request from the shipped marketing page was refused with a
+ * generic "Something went wrong" (see `public-web/README.md` › FINDINGS). WS2
+ * took the other branch of that fix and GREW the schema: `estimated_weight`,
+ * `project_cargo_flag`, `warehouse_location`, `warehouse_duration` and
+ * `additional_notes` are accepted now, and all but the last were already
+ * columns on `quote_request` (migration 0683) waiting for a caller.
+ *
+ * `service_type` remains absent on purpose. On that table it is the INCOTERM
+ * under a misleading name, and `incoterm` is the field this form actually
+ * sends.
  *
  * ── THE SPAM TRAP ───────────────────────────────────────────────────────────
  *
@@ -36,6 +41,7 @@
  * behind one NAT address shares it.
  */
 import { publicApi, PublicApiError, type FieldErrors } from "./api";
+import type { PlacePick } from "./places-api";
 
 export type IntakeReceipt = { received: boolean; reference: string };
 
@@ -52,6 +58,29 @@ export type QuoteRequest = Trap & {
   destination_location?: string;
   cargo_description?: string;
   incoterm?: string;
+  /* ── WS2 (migration 12756 + the grown public schema) ───────────────────── */
+  estimated_weight?: number;
+  project_cargo_flag?: boolean;
+  warehouse_location?: string;
+  warehouse_duration?:
+    | "LESS_THAN_7_DAYS"
+    | "DAYS_7_TO_14"
+    | "DAYS_15_TO_30"
+    | "OVER_30_DAYS"
+    | "UNKNOWN";
+  additional_notes?: string;
+  /**
+   * A place picked from `/public/places` — the provider's id and the text that
+   * produced it, and deliberately NOT the coordinates the picker displayed.
+   * The server re-asks the provider and stores ITS answer, so a body that could
+   * carry a coordinate could carry any coordinate and have it stored as
+   * provider-vouched. The schema rejects one if it is sent.
+   */
+  origin_place?: PlacePick;
+  destination_place?: PlacePick;
+  /** One optional file, as a base64 data URL. See `components/ui/file-input`. */
+  attachment_data_url?: string;
+  attachment_filename?: string;
 };
 
 export type ContactEnquiry = Trap & {
@@ -73,6 +102,11 @@ const submit = <T>(
 ): Promise<IntakeReceipt> => {
   // Empty strings are dropped: `.strict()` accepts the key, but the services
   // write `data.x || null` and an empty subject on a lead is noise in a queue.
+  //
+  // `false` and `0` are NOT dropped, and the filter is written to compare
+  // against the three empties explicitly for that reason. `project_cargo_flag:
+  // false` is a real answer to a real question — a filter on falsiness would
+  // silently turn "no, this is ordinary cargo" into "unanswered".
   const clean = Object.fromEntries(
     Object.entries({ ...body, form_started_at: startedAt }).filter(
       ([, v]) => v !== "" && v !== undefined && v !== null,

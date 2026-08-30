@@ -16,15 +16,11 @@ import { dateFmt } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { p } from "@/lib/base-path";
 import { useDocumentMeta } from "@/lib/use-document-meta";
-import { PageShell } from "@/components/site/page-shell";
-import { Band } from "@/components/ui/band";
-import { BadgePill } from "@/components/ui/badge-pill";
+import { PageContainer, PageShell } from "@/components/site/page-shell";
+import { Section } from "@/components/site/section";
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/pill";
-import { DocumentIcon } from "@/components/ui/icons";
-import { IconTile } from "@/components/ui/icon-tile";
-import { SectionHead } from "@/components/ui/section-head";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Chip } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingState } from "@/components/state";
 
 /**
@@ -109,44 +105,44 @@ export function InsightsPage() {
 
   return (
     <PageShell label={t("site.insights.title")} footer>
-      <Band surface="hero" className="relative overflow-hidden">
-        <div className="flex flex-col items-center text-center">
-          <BadgePill>{t("site.insights.kicker")}</BadgePill>
-          <SectionHead
-            title={t("site.insights.titleBeforeAccent")}
-            accent={t("site.insights.titleAccent")}
-            lead={t("site.insights.sub")}
-            align="center"
-            titleAs="h1"
-            className="mt-3 text-[var(--hero-foreground)] [&_p]:text-[var(--hero-muted)]"
-          />
+      <section className="band-hero">
+        <PageContainer>
+          <p className="eyebrow text-[var(--brand-orange)]">
+            {t("site.insights.kicker")}
+          </p>
+          <h1 className="hero-title mt-3 text-[var(--hero-foreground)]">
+            {t("site.insights.title")}
+          </h1>
+          <p className="mt-4 max-w-measure text-[var(--hero-muted)]">
+            {t("site.insights.sub")}
+          </p>
+        </PageContainer>
+      </section>
 
-          {state.kind === "ready" && state.view.tags.length > 0 && (
-            <nav aria-label={t("site.insights.filterLabel")} className="mt-8 w-full">
-              <ul className="flex flex-wrap justify-center gap-2">
-                <li>
-                  <FilterButton active={!tag} onClick={() => choose("")}>
-                    {t("site.insights.all")}
+      <Section>
+        {state.kind === "ready" && state.view.tags.length > 0 && (
+          <nav aria-label={t("site.insights.filterLabel")} className="mb-8">
+            <ul className="flex flex-wrap gap-2">
+              <li>
+                <FilterButton active={!tag} onClick={() => choose("")}>
+                  {t("site.insights.all")}
+                </FilterButton>
+              </li>
+              {state.view.tags.map((entry) => (
+                <li key={entry.tag}>
+                  <FilterButton
+                    active={tag === entry.tag}
+                    onClick={() => choose(entry.tag)}
+                  >
+                    {entry.tag}
+                    <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
                   </FilterButton>
                 </li>
-                {state.view.tags.map((entry) => (
-                  <li key={entry.tag}>
-                    <FilterButton
-                      active={tag === entry.tag}
-                      onClick={() => choose(entry.tag)}
-                    >
-                      {entry.tag}
-                      <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
-                    </FilterButton>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
-        </div>
-      </Band>
+              ))}
+            </ul>
+          </nav>
+        )}
 
-      <Band surface="plain">
         {state.kind === "loading" ? (
           <LoadingState
             label={t("site.insights.loading")}
@@ -216,7 +212,7 @@ export function InsightsPage() {
             )}
           </>
         )}
-      </Band>
+      </Section>
     </PageShell>
   );
 }
@@ -268,7 +264,7 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
 
   const body = (
     <>
-      {src && coverOk ? (
+      {src && coverOk && (
         <img
           src={src}
           alt=""
@@ -276,10 +272,6 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
           onError={() => setCoverOk(false)}
           className="h-40 w-full object-cover"
         />
-      ) : (
-        <div className="flex h-40 items-center justify-center bg-muted">
-          <IconTile icon={DocumentIcon} size="lg" />
-        </div>
       )}
       <div className="p-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

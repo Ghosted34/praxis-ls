@@ -21,8 +21,12 @@ import { en } from "@/lib/i18n-dict";
 
 const responses: Array<{ url: RegExp; body: unknown; status?: number }> = [];
 
+// Both parameters are declared, not just `url`: `sentBody` below reads the
+// RequestInit to see what was posted, and a one-parameter mock gives call
+// tuples of length 1 that no cast can index.
 const stubFetch = () =>
-  vi.fn(async (url: unknown) => {
+  vi.fn(async (url: unknown, init?: RequestInit) => {
+    void init;
     const u = String(url);
     const match = responses.find((r) => r.url.test(u));
     const body = match ? match.body : { error: { code: "NOT_FOUND", message: "no" } };
@@ -106,7 +110,7 @@ const sentBody = () => {
   const call = fetchMock.mock.calls.find((c) =>
     String(c[0]).includes("/public/intake/quote-requests"),
   );
-  return JSON.parse(String((call?.[1] as RequestInit)?.body));
+  return JSON.parse(String(call?.[1]?.body));
 };
 
 describe("a step will not advance while it is incomplete", () => {

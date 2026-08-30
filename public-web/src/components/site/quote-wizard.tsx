@@ -13,13 +13,13 @@ import {
   TruckIcon,
   WarehouseIcon,
 } from "@/components/ui/icons";
-import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
+import { type IconComponent } from "@/components/ui/icon-tile";
+import { SelectCard } from "@/components/ui/select-card";
 import { quoteRequests, type QuoteRequest } from "@/lib/intake-api";
 import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
 import { useWizardDraft } from "@/lib/use-wizard-draft";
 import { getLang } from "@/lib/i18n";
-import { cn } from "@/lib/cn";
 import type { ServiceCard } from "@/lib/services-api";
 import { pickText, pickSlug } from "@/lib/services-api";
 
@@ -356,56 +356,27 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
               focus ring is drawn on the card via `peer-focus-visible` and the
               real control keeps the keyboard behaviour.
             */}
+            {/* The shared component, not a hand-rolled copy of it. This block
+                WAS the hand-roll the plan's acceptance list tells a reviewer to
+                catch: the card, the ring and the three-signal selected state
+                were written here, and `--pick-ring` — the token §5 added for
+                exactly this — sat unused while the same two shadow values were
+                spelled out inline. One implementation, one token. */}
             <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {MODES.map((m) => (
-                <label key={m} className="group relative block cursor-pointer">
-                  <input
-                    type="radio"
-                    name="quote-mode"
-                    value={m}
-                    checked={f.mode === m}
-                    onChange={() => set("mode", m)}
-                    className="peer sr-only"
-                  />
-                  <span
-                    className={cn(
-                      "flex h-full flex-col rounded-[var(--radius)] border p-4 transition-all duration-200",
-                      "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--brand-orange)]",
-                      f.mode === m
-                        ? // Three things change at once, deliberately. A
-                          // selected state carried by border colour alone is
-                          // invisible on a phone in sunlight and invisible to
-                          // anyone who does not see that hue — which is what our
-                          // first version did.
-                          "border-[var(--brand-orange)] bg-[rgb(var(--brand-orange)/0.06)] shadow-[0_0_0_1px_var(--brand-orange),0_8px_24px_-12px_var(--brand-orange)]"
-                        : "hover:border-[rgb(var(--ink)/0.25)] hover:bg-[rgb(var(--ink)/0.03)]",
-                    )}
-                  >
-                    {/* The shared IconTile, not a hand-rolled one. This card
-                        WAS the hand-rolled instance the plan's acceptance list
-                        tells a reviewer to catch. */}
-                    <IconTile
-                      icon={MODE_ICONS[m]}
-                      active={f.mode === m}
-                      className="mb-3"
-                    />
-                    <span
-                      className={cn(
-                        "font-medium leading-snug",
-                        f.mode === m && "font-semibold",
-                      )}
-                    >
-                      {t(`site.quote.mode${m}`)}
-                    </span>
-                    {/* The line ours was missing entirely. A prospect who does
-                        not know whether "By road or rail" covers a Douala →
-                        N'Djamena run picks nothing, and picking nothing is where
-                        this form loses them. */}
-                    <span className="mt-1 text-sm text-muted-foreground">
-                      {t(`site.quote.mode${m}Hint`)}
-                    </span>
-                  </span>
-                </label>
+                <SelectCard
+                  key={m}
+                  name="quote-mode"
+                  value={m}
+                  checked={f.mode === m}
+                  onChange={(v) => set("mode", v as Mode)}
+                  icon={MODE_ICONS[m]}
+                  title={t(`site.quote.mode${m}`)}
+                  // A prospect who does not know whether "By road or rail"
+                  // covers a Douala → N'Djamena run picks nothing, and picking
+                  // nothing is where this form loses them.
+                  description={t(`site.quote.mode${m}Hint`)}
+                />
               ))}
             </div>
             {err("mode") && (

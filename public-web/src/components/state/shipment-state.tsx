@@ -5,13 +5,13 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import {
   BoxIcon,
   CheckIcon,
-  ClockIcon,
   PlaneIcon,
   ShipIcon,
   TruckIcon,
   WarehouseIcon,
   DocumentIcon,
 } from "@/components/ui/icons";
+import { type IconComponent } from "@/components/ui/icon-tile";
 
 /**
  * The shipment state vocabulary — `doc/PUBLIC_WEB_PLAN.md` §3.3.
@@ -111,12 +111,17 @@ export function MilestoneStatePill({
 export function MilestoneMarker({
   state,
   index,
+  icon,
 }: {
   state: MilestoneState;
   index: number;
+  /** The glyph for the CURRENT stage. Defaults to the truck; a page that knows
+   *  the file's mode should pass `motionIcon(mode)` (UI_UPGRADE_PLAN §7.4). */
+  icon?: IconComponent;
 }) {
   const done = state === "COMPLETED";
   const current = state === "CURRENT";
+  const Motion = icon || TruckIcon;
   return (
     <span
       aria-hidden
@@ -131,7 +136,11 @@ export function MilestoneMarker({
       {done ? (
         <CheckIcon size={13} />
       ) : current ? (
-        <ClockIcon size={13} />
+        // A MOVING glyph, not a clock. The clock that was here read as
+        // "waiting" — the one thing the stage a file is actually on is not —
+        // and it is the marker a visitor's eye goes to first
+        // (UI_UPGRADE_PLAN §7.4; their own page uses `fa-truck-moving`).
+        <Motion size={13} />
       ) : (
         <span className="num text-[10px] font-semibold">{index + 1}</span>
       )}
@@ -168,6 +177,33 @@ const MODE_ICON: Record<ServiceMode, React.ComponentType<{ size?: number; classN
   CUSTOMS: DocumentIcon,
   OTHER: BoxIcon,
 };
+
+/**
+ * The glyph for the stage a file is ON, from its service mode.
+ *
+ * Deliberately narrower than `MODE_ICON`: the marker has to say "moving", so a
+ * mode with no vehicle of its own — warehousing, customs, a tenant's own key —
+ * answers the truck rather than a warehouse or a document, which at 13px inside
+ * a ring read as another static badge. Sea and air are the two that carry more
+ * meaning as themselves than as "in transit".
+ */
+const MOTION_ICON: Partial<Record<ServiceMode, IconComponent>> = {
+  SEA: ShipIcon,
+  AIR: PlaneIcon,
+};
+
+/** The mode's glyph as a COMPONENT, for an `IconTile` — which owns the glyph's
+ *  size and so cannot take a rendered element. `ModeIcon` stays for the inline
+ *  case; this is the same table, read differently. */
+export function modeIconFor(mode?: string | null): IconComponent {
+  const key = String(mode || "OTHER").toUpperCase() as ServiceMode;
+  return MODE_ICON[key] || BoxIcon;
+}
+
+export function motionIcon(mode?: string | null): IconComponent {
+  const key = String(mode || "").toUpperCase() as ServiceMode;
+  return MOTION_ICON[key] || TruckIcon;
+}
 
 export function ModeIcon({
   mode,

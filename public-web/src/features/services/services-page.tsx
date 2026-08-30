@@ -19,7 +19,15 @@ import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { CheckIcon, ChevronDownIcon } from "@/components/ui/icons";
+import {
+  BoltIcon,
+  BoxIcon,
+  CheckIcon,
+  ChevronDownIcon,
+} from "@/components/ui/icons";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { Reveal } from "@/components/ui/reveal";
 import { Markdown } from "@/components/ui/markdown";
 import { QuoteWizard } from "@/components/site/quote-wizard";
 import { useDocumentMeta } from "@/lib/use-document-meta";
@@ -61,39 +69,62 @@ export function ServicesIndexPage() {
     <PageShell label={t("site.servicesPage.title")}>
       <Section
         eyebrow={t("site.services.eyebrow")}
+        eyebrowIcon={BoxIcon}
         title={t("site.servicesPage.title")}
         lead={t("site.servicesPage.sub")}
         // Index page with no hero band — this is the page h1.
         titleAs="h1"
       >
         {services.length ? (
-          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((s) => (
-              <MediaCard
+          <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+            {services.map((s, i) => (
+              <Reveal
+                as="li"
                 key={s.service_type_id}
-                image={s.cover_url}
-                imageAlt={pickText(s, "name", lang) || ""}
-                eyebrow={s.published_month || undefined}
-                title={pickText(s, "name", lang) || pickSlug(s, lang)}
-                to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
-                linkLabel={t("site.services.more")}
+                // Staggered by COLUMN, the way the insights grid is: a card in
+                // the fourth row must not wait for the three above it.
+                delay={(i % 3) as 0 | 1 | 2}
               >
-                {pickText(s, "short_description", lang)}
-              </MediaCard>
+                <MediaCard
+                  className="h-full"
+                  image={s.cover_url}
+                  imageAlt={pickText(s, "name", lang) || ""}
+                  // A tenant with one photograph and four services gets one
+                  // illustrated card and three text boxes without this.
+                  icon={BoxIcon}
+                  eyebrow={s.published_month || undefined}
+                  title={pickText(s, "name", lang) || pickSlug(s, lang)}
+                  to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
+                  linkLabel={t("site.services.more")}
+                >
+                  {pickText(s, "short_description", lang)}
+                </MediaCard>
+              </Reveal>
             ))}
-          </div>
+          </ul>
         ) : failed || disabled ? (
-          <EmptyState
-            title={t("site.servicesPage.empty")}
-            action={
-              <ButtonLink to={p("/quote")} size="lg">
-                {t("site.quote.submit")}
-              </ButtonLink>
-            }
-          />
+          // No quote button on this state: the band below is the same offer,
+          // and two CTAs a screen apart read as a page unsure what it wants.
+          <EmptyState title={t("site.servicesPage.empty")} />
         ) : (
           <PageSkeleton rows={3} cols={3} />
         )}
+      </Section>
+
+      {/* The alternating surface §4 pattern 6 asks for — and the one band this
+          page was missing: an index that ends on its own grid ends with no way
+          out. The copy is the quote desk's own, not a second version of it. */}
+      <Section
+        variant="muted"
+        divided
+        eyebrow={t("site.quote.kicker")}
+        eyebrowIcon={BoltIcon}
+        title={t("site.quote.title")}
+        lead={t("site.quote.sub")}
+      >
+        <ButtonLink to={p("/quote")} size="lg">
+          {t("site.quote.bandCta")}
+        </ButtonLink>
       </Section>
     </PageShell>
   );
@@ -218,9 +249,26 @@ export function ServiceDetailPage() {
       }).format(new Date(profile.published_month))
     : null;
 
+  /**
+   * The bands below the body alternate their surface (§4 pattern 6), and both
+   * the FAQ and the related list are optional — a profile with no FAQ would
+   * otherwise show two plain bands in a row, which is the flatness the pattern
+   * exists to break. So the surface is DERIVED from how many bands have
+   * actually been emitted, in render order, rather than typed onto each one.
+   */
+  const emitted: Array<"default" | "muted"> = [];
+  const nextSurface = (): "default" | "muted" => {
+    const v: "default" | "muted" =
+      emitted.length % 2 === 0 ? "muted" : "default";
+    emitted.push(v);
+    return v;
+  };
+
   return (
     <PageShell label={name}>
-      <section className="band">
+      {/* Muted: the body band below it is plain, and a plain hero over a plain
+          band is the two-adjacent-surfaces case §6.4 rules out. */}
+      <section className="band band-muted">
         <PageContainer size="reading">
           <nav aria-label={t("site.services.eyebrow")} className="mb-6">
             <Link
@@ -230,13 +278,18 @@ export function ServiceDetailPage() {
               {t("site.servicesPage.back")}
             </Link>
           </nav>
-          <p className="eyebrow">{t("site.services.eyebrow")}</p>
-          <h1 className="mt-3 text-h1 font-semibold leading-[1.08] tracking-tight">
-            {name}
-          </h1>
-          {shortText ? (
-            <p className="mt-4 text-lg text-muted-foreground">{shortText}</p>
-          ) : null}
+          {/* The shared heading block, not a hand-rolled eyebrow and h1 — the
+              regression §9 tells a reviewer to catch. The name is the tenant's
+              own row, so it carries no accent word: splitting somebody else's
+              service name across two colours is a decision we do not get to
+              make for them. */}
+          <BadgePill>{t("site.services.eyebrow")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            title={name}
+            lead={shortText || undefined}
+          />
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             {month ? (
               <span className="text-muted-foreground">
@@ -281,7 +334,8 @@ export function ServiceDetailPage() {
             )}
 
             {gallery.length > 0 && (
-              <figure className="mt-8">
+              <Reveal className="mt-8">
+                <figure>
                 <div className="grid grid-cols-2 gap-3">
                   {gallery.slice(0, 4).map((u) => (
                     <img
@@ -298,10 +352,11 @@ export function ServiceDetailPage() {
                     />
                   ))}
                 </div>
-                <figcaption className="mt-2 text-xs text-muted-foreground">
-                  {t("site.servicesPage.gallery")}
-                </figcaption>
-              </figure>
+                  <figcaption className="mt-2 text-xs text-muted-foreground">
+                    {t("site.servicesPage.gallery")}
+                  </figcaption>
+                </figure>
+              </Reveal>
             )}
           </div>
 
@@ -350,8 +405,8 @@ export function ServiceDetailPage() {
       </Section>
 
       {faq.length > 0 && (
-        <Section variant="muted" title={t("site.servicesPage.faq")} divided>
-          <div className="max-w-prose divide-y divide-[var(--border)]">
+        <Section variant={nextSurface()} title={t("site.servicesPage.faq")} divided>
+          <Reveal className="max-w-prose divide-y divide-[var(--border)]">
             {faq.map((f) => (
               <details key={f.faq_id} className="group py-4">
                 <summary className="flex cursor-pointer list-none items-start justify-between gap-4 font-medium">
@@ -363,27 +418,39 @@ export function ServiceDetailPage() {
                 </p>
               </details>
             ))}
-          </div>
+          </Reveal>
         </Section>
       )}
 
       {related.length > 0 && (
-        <Section title={t("site.servicesPage.related")} divided>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((r) => (
-              <MediaCard
-                key={r.slug_en}
-                title={pickText(r, "name", lang) || ""}
-                to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
-                linkLabel={t("site.services.more")}
-              />
+        <Section
+          variant={nextSurface()}
+          title={t("site.servicesPage.related")}
+          divided
+        >
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((r, i) => (
+              <Reveal as="li" key={r.slug_en} delay={(i % 3) as 0 | 1 | 2}>
+                <MediaCard
+                  className="h-full"
+                  // `related` carries a name and a slug and nothing else, so
+                  // every one of these cards is coverless by construction.
+                  icon={BoxIcon}
+                  title={pickText(r, "name", lang) || ""}
+                  to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
+                  linkLabel={t("site.services.more")}
+                />
+              </Reveal>
             ))}
-          </div>
+          </ul>
         </Section>
       )}
 
+      {/* Never two plain bands next to each other — which is most of why a long
+          page reads as one flat column (§6.4). */}
       <Section
         id="quote"
+        variant={nextSurface()}
         title={t("site.quote.title")}
         lead={t("site.quote.sub")}
         divided

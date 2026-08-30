@@ -80,6 +80,22 @@ async function mount(at: string, AppRouter: React.ComponentType) {
 
 const CRASH = /something went wrong|erreur inattendue|Something broke/i;
 
+/**
+ * The home hero's heading, matched across the accent span.
+ *
+ * `site.hero.title` is ONE sentence in the dictionary and TWO nodes in the DOM:
+ * `SectionHead` renders the accent word in its own `<span>`
+ * (doc/UI_UPGRADE_PLAN.md §4 pattern 2). `findByText` on the sentence therefore
+ * finds nothing — its default matcher reads a node's own text children, not its
+ * subtree — even though the reader sees exactly that sentence. So match the
+ * `h1` on its full `textContent`, which is what these cases are actually
+ * asserting: the home page rendered rather than redirecting to itself.
+ */
+const heroTitle =
+  () =>
+  (_: string, el: Element | null): boolean =>
+    el?.tagName === "H1" && el.textContent === dict("site.hero.title");
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -142,7 +158,7 @@ describe("routes on a host the site owns", () => {
     // The assertion that matters is the location: a redirect loop leaves the
     // path unchanged too, so the copy is checked as well.
     await waitFor(() => expect(getByTestId("loc").textContent).toBe("/"));
-    expect(await findByText(dict("site.hero.title"))).toBeTruthy();
+    expect(await findByText(heroTitle())).toBeTruthy();
     expect(queryByText(CRASH)).toBeNull();
   });
 
@@ -206,7 +222,7 @@ describe("routes on a renamed prefix", () => {
     const { AppRouter } = await routerAt("/site");
     const { getByTestId, findByText } = await mount("/site", AppRouter);
     await waitFor(() => expect(getByTestId("loc").textContent).toBe("/site"));
-    expect(await findByText(dict("site.hero.title"))).toBeTruthy();
+    expect(await findByText(heroTitle())).toBeTruthy();
 
     const second = await mount("/public/track?ref=Q", AppRouter);
     await waitFor(() =>

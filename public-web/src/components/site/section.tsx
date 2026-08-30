@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRightIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { SectionHead } from "@/components/site/section-head";
-import { type IconComponent } from "@/components/ui/icon-tile";
+import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
 
 /**
  * One band of the homepage, and the only place that decides how a band is
@@ -98,10 +98,21 @@ export function Section({
  *  and one arrow link. Media is only rendered when the server handed over a URL
  *  (`portfolio_public` and `service_type_web_public` both null out anything their
  *  allowlist would refuse) — a broken image frame on a sales page is worse than
- *  no image, which is why there is no `onError` fallback here. */
+ *  no image, which is why there is no `onError` fallback here.
+ *
+ *  ── WHY A CARD WITHOUT A COVER GETS AN ICON TILE ──────────────────────────
+ *
+ *  `icon` is the `__card-top` half of their grammar (UI_UPGRADE_PLAN §4 pattern
+ *  4, §7.3). It is drawn ONLY when there is no cover, and it is not decoration
+ *  for its own sake: a tenant who has published four services and uploaded one
+ *  photograph gets one illustrated card beside three text boxes, which reads as
+ *  three broken cards. A tinted plate with the section's glyph is the honest
+ *  placeholder — it says "a service", which is true, rather than standing in for
+ *  a photograph nobody took (N12). The insights grid sets the same precedent. */
 export function MediaCard({
   image,
   imageAlt,
+  icon: Icon,
   eyebrow,
   title,
   children,
@@ -112,6 +123,8 @@ export function MediaCard({
 }: {
   image?: string | null;
   imageAlt?: string;
+  /** Fallback glyph for a card with no cover. */
+  icon?: IconComponent;
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
   children?: React.ReactNode;
@@ -131,6 +144,10 @@ export function MediaCard({
             decoding="async"
             className="h-full w-full object-cover"
           />
+        </div>
+      ) : Icon ? (
+        <div className="flex aspect-[16/10] w-full items-center justify-center bg-[rgb(var(--ink)/0.04)]">
+          <IconTile icon={Icon} size="lg" />
         </div>
       ) : null}
       <div className="flex flex-1 flex-col p-5">

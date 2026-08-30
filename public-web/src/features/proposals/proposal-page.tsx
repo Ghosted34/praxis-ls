@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { ErrorState, EmptyState } from "@/components/state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentMeta } from "@/lib/use-document-meta";
+import { SectionHead } from "@/components/site/section-head";
 
 /**
  * `/public/proposals/:token` — a commercial proposal handed to a client.
@@ -194,10 +195,19 @@ function ProposalDocument({
   return (
     <article className="lux-card p-6 md:p-10 print:border-0 print:bg-transparent print:p-0">
       <header className="border-b border-border pb-6">
-        <p className="eyebrow">{p.document_number}</p>
-        <h1 className="mt-3 text-h1 font-semibold leading-[1.08] tracking-tight text-balance">
-          {p.title}
-        </h1>
+        {/* One implementation of eyebrow + title, shared with every other page
+            — but NO badge pill and no accent word. Those are the marketing
+            grammar, and this is a priced document addressed to one recipient:
+            colouring half of somebody's proposal title is a liberty a quote
+            does not get to take. The document number is the eyebrow because it
+            is what the reader checks first. */}
+        <SectionHead
+          as="h1"
+          className="max-w-none"
+          titleClass="section-title text-balance"
+          eyebrow={p.document_number}
+          title={p.title}
+        />
         <dl className="mt-6 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="micro">{t("site.proposals.client")}</dt>

@@ -5,8 +5,15 @@ import { Honeypot, Input, Select, Textarea } from "@/components/ui/field";
 import { PlaceInput } from "@/components/ui/place-input";
 import { FileInput, type Attachment } from "@/components/ui/file-input";
 import { Stepper, type Step } from "@/components/ui/stepper";
-import { ErrorState, ModeIcon, SuccessState } from "@/components/state";
-import { ArrowRightIcon } from "@/components/ui/icons";
+import { ErrorState, SuccessState } from "@/components/state";
+import {
+  ArrowRightIcon,
+  PlaneIcon,
+  ShipIcon,
+  TruckIcon,
+  WarehouseIcon,
+} from "@/components/ui/icons";
+import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
 import { quoteRequests, type QuoteRequest } from "@/lib/intake-api";
 import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
@@ -77,6 +84,21 @@ const WAREHOUSE_DURATIONS = [
  */
 type Mode = "SEA" | "AIR" | "ROAD" | "WAREHOUSE";
 const MODES: Mode[] = ["SEA", "AIR", "ROAD", "WAREHOUSE"];
+
+/**
+ * The glyph per mode, as a COMPONENT rather than an element.
+ *
+ * `IconTile` owns the glyph's size — see its own note on why. `ModeIcon` takes
+ * a mode string and picks internally, which is right where the mode comes from
+ * the API (the tracking page) and wrong here, where the four are a fixed local
+ * list and the tile needs the component itself.
+ */
+const MODE_ICONS: Record<Mode, IconComponent> = {
+  SEA: ShipIcon,
+  AIR: PlaneIcon,
+  ROAD: TruckIcon,
+  WAREHOUSE: WarehouseIcon,
+};
 
 const EMAIL_RE = /.+@.+\..+/;
 const DRAFT_KEY = "praxis.quote.draft";
@@ -359,20 +381,14 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
                         : "hover:border-[rgb(var(--ink)/0.25)] hover:bg-[rgb(var(--ink)/0.03)]",
                     )}
                   >
-                    {/* The icon TILE. Their cards fill it on selection, and the
-                        filled square is what reads as "chosen" from across a
-                        room — the glyph alone does not. */}
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "mb-3 inline-flex h-11 w-11 items-center justify-center rounded-[calc(var(--radius)-2px)] transition-colors",
-                        f.mode === m
-                          ? "bg-[var(--brand-orange)] text-[var(--primary-foreground)]"
-                          : "bg-[rgb(var(--ink)/0.06)] text-muted-foreground",
-                      )}
-                    >
-                      <ModeIcon mode={m} size={22} />
-                    </span>
+                    {/* The shared IconTile, not a hand-rolled one. This card
+                        WAS the hand-rolled instance the plan's acceptance list
+                        tells a reviewer to catch. */}
+                    <IconTile
+                      icon={MODE_ICONS[m]}
+                      active={f.mode === m}
+                      className="mb-3"
+                    />
                     <span
                       className={cn(
                         "font-medium leading-snug",

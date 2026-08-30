@@ -325,7 +325,7 @@ export function PortfolioStoryPage() {
                   </div>
                 </Card>
               ) : null}
-              <MoreLink to={p("#quote")}>{t("site.hero.cta")}</MoreLink>
+              <MoreLink to={p("/quote")}>{t("site.hero.cta")}</MoreLink>
             </div>
           </div>
         </Section>

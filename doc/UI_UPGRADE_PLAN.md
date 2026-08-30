@@ -1,7 +1,11 @@
 # UI upgrade plan — the tenant public website
 
-**Status:** drafted 2026-08-30. The quote wizard is done as the worked example
-(§7.1); everything else is open.
+**Status:** drafted 2026-08-30. **Steps 1–3 of §10 are built** — the tokens, the
+shared components, insights as their first consumer, and `Reveal` / `BgMap`
+measured. §7.3–7.5 (services, tracking, the remaining pages) are open.
+
+Two specs below were **wrong and are corrected in place** — §6.4 and §6.6. Both
+were written before the code was read, and building them proved them wrong.
 
 **Audience:** whoever picks up the next page. This is a build-from spec, not a
 sketch — where it gives a measurement or a state, build that.
@@ -312,15 +316,25 @@ heading blocks on every page.
 - `align`: `"left" | "center"`. Centre for hero and step headings, left for
   in-page sections.
 
-### 6.4 `Band`
+### 6.4 `Band` — **DO NOT BUILD. It already exists.**
 
-```
-<Band surface="plain" | "muted" | "hero">
-```
+`Section` has taken `variant="plain" | "muted" | "dark"` all along, and `muted`
+already paints the band surface. A separate `Band` would have been a second
+wrapper around the same element, drifting from the first — which is the fault
+this document tells a reviewer to catch.
 
-Wraps `<Section>`. `muted` paints `--band-surface`. **Alternate down every
-page** — two adjacent `plain` bands read as one long undifferentiated column,
-which is most of why our pages feel flat.
+What was actually missing was the token: `.band-muted` painted `var(--secondary)`
+directly and now paints `var(--band-surface)`, so a tenant who wants a tinted
+band changes one role rather than hunting for the recipe.
+
+**Use `<Section variant="muted">`. Alternate down every page** — two adjacent
+plain bands read as one long undifferentiated column, which is most of why a
+page feels flat.
+
+The same correction applies half-way to §6.3: `Section` already rendered an
+eyebrow, a title and a lead, so `SectionHead` is the ONE implementation and
+`Section` renders it internally. Heroes, which are not `Section`s, use it
+directly.
 
 ### 6.5 `BadgePill`
 
@@ -342,8 +356,17 @@ list.
 - **`prefers-reduced-motion: reduce` renders the settled state immediately** —
   not a shorter animation, none. Non-negotiable; `Skeleton` already sets this
   precedent.
-- Must render its children on first paint for a crawler and with JS disabled —
-  the animation is a class applied after mount, never a mount gate.
+- ~~Must render its children on first paint for a crawler and with JS disabled.~~
+  **Corrected.** That requirement is meaningless in this app and satisfying it
+  would have cost a flash of content on every block. `public-web` is
+  client-rendered — `public-head.js` says so in as many words, *"the body is
+  still empty, so this is not SSR and does not pretend to be"* — so with
+  JavaScript off nothing renders at all and there is no content for a hidden
+  class to hide. What a crawler reads is the `<head>`, built on the server and
+  untouched by any of this.
+
+  What DOES matter, and is built: an old browser with no `IntersectionObserver`
+  renders the settled state immediately rather than a page of invisible blocks.
 
 ### 6.7 `BgMap`
 
@@ -464,5 +487,17 @@ A page is done when:
 4. Services, tracking (§7.3–7.4).
 5. The remaining pages (§7.5).
 
-Steps 1 and 2 are one PR. Do not start step 3 before the budget has been checked
-with steps 1–2 merged.
+**Steps 1–3 are built.** The budget gate was honoured by measuring at each step
+rather than by waiting for a merge:
+
+| | first paint | of 128 kB |
+|---|---|---|
+| baseline | 116.0 kB | 91% |
+| after steps 1–2 | 116.4 kB | 91% |
+| after step 3 | 116.6 kB | 91% |
+
+`Reveal` and `BgMap` cost **0.2 kB** on first paint, because both are used only
+by lazily-loaded routes — only their CSS utilities reach the entry chunk. That is
+the number the gate existed to find, and it clears comfortably. **Re-measure
+before adopting either on a page in the shell** (header, footer), where they
+would land in the entry chunk instead.

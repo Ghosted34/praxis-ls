@@ -86,7 +86,7 @@ export function ServicesIndexPage() {
           <EmptyState
             title={t("site.servicesPage.empty")}
             action={
-              <ButtonLink to={p("#quote")} size="lg">
+              <ButtonLink to={p("/quote")} size="lg">
                 {t("site.quote.submit")}
               </ButtonLink>
             }
@@ -339,7 +339,7 @@ export function ServiceDetailPage() {
               </Card>
             ) : null}
             <ButtonLink
-              to={p("#quote")}
+              to={p("/quote")}
               size="lg"
               className="w-full justify-center"
             >

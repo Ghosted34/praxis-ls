@@ -257,6 +257,8 @@ export const en = {
     insights: {
       kicker: "Insights",
       title: "What we are learning",
+      titleMain: "What we are",
+      titleAccent: "learning",
       sub: "Notes from the desk on customs, freight and the corridors we work — written by the people doing the work.",
       filterLabel: "Filter by topic",
       all: "All",
@@ -369,6 +371,15 @@ export const en = {
     quote: {
       title: "Get a quote",
       sub: "Tell us about your shipment and we'll come back with a price.",
+      /* The standalone /quote page: an eyebrow pill, and a heading whose second
+         half carries the accent colour (UI_UPGRADE_PLAN §4 pattern 2). */
+      kicker: "Quote desk",
+      titleMain: "Tell us about",
+      titleAccent: "your shipment",
+      whatHappens: "What happens next",
+      bandLead:
+        "Four short steps — what you need, the route, the cargo, and where to send the answer. Most take under two minutes.",
+      bandCta: "Start a quote",
       name: "Your name",
       company: "Company",
       email: "Email",
@@ -989,6 +1000,8 @@ export const fr = {
     insights: {
       kicker: "Analyses",
       title: "Ce que nous apprenons",
+      titleMain: "Ce que nous",
+      titleAccent: "apprenons",
       sub: "Les notes du bureau sur la douane, le fret et les corridors où nous opérons — écrites par ceux qui font le travail.",
       filterLabel: "Filtrer par thème",
       all: "Tout",
@@ -1101,6 +1114,13 @@ export const fr = {
     quote: {
       title: "Demander un devis",
       sub: "Décrivez votre expédition et nous revenons vers vous avec un prix.",
+      kicker: "Service devis",
+      titleMain: "Parlez-nous de",
+      titleAccent: "votre expédition",
+      whatHappens: "La suite",
+      bandLead:
+        "Quatre étapes courtes — votre besoin, le trajet, la marchandise, et où envoyer la réponse. Comptez moins de deux minutes.",
+      bandCta: "Demander un devis",
       name: "Votre nom",
       company: "Société",
       email: "Courriel",

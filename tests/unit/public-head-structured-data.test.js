@@ -26,6 +26,28 @@ jest.mock("../../src/config/logger", () => ({
 
 const head = require("../../src/shared/http/public-head");
 
+/**
+ * The exact wrapper `ldScript` emits. Held as constants so the JSON can be
+ * sliced out by LENGTH rather than by a regex.
+ *
+ * CodeQL flagged the regex version of this (`.replace(/<\/script>$/, "")`) as a
+ * bad HTML-filtering pattern, and it was right to: the input here happens to be
+ * our own lowercase output, but a regex that strips a tag is a regex somebody
+ * later points at markup it does not fully match. Adding `/i` would have
+ * silenced the rule while keeping the pattern. Slicing on a known constant is
+ * not HTML parsing at all, and it asserts the wrapper's exact shape as a side
+ * effect — which is worth having.
+ */
+const LD_OPEN = '<script type="application/ld+json">';
+const LD_CLOSE = "</script>";
+
+/** The JSON payload inside an ldScript result, as an object. */
+const payloadOf = (out) => {
+  expect(out.startsWith(LD_OPEN)).toBe(true);
+  expect(out.endsWith(LD_CLOSE)).toBe(true);
+  return JSON.parse(out.slice(LD_OPEN.length, out.length - LD_CLOSE.length));
+};
+
 const BRANDING = { name: "Smart Logistics", logoUrl: "/media/logo.png" };
 const ORIGIN = "https://smartls.cm";
 
@@ -87,16 +109,16 @@ describe("the JSON-LD script block", () => {
     const out = head.ldScript({ name: "</script><img onerror=alert(1)>" });
     expect(out).not.toContain("</script><img");
     expect(out).toContain("\\u003c/script\\u003e");
-    // Exactly one closing tag: the real one.
-    expect(out.match(/<\/script>/g)).toHaveLength(1);
+    // Exactly one closing tag: the real one. Counted by splitting on the
+    // constant rather than by another tag-shaped regex, for the reason above.
+    expect(out.split(LD_CLOSE).length - 1).toBe(1);
   });
 
   it("escapes an ampersand as JSON, not as HTML", () => {
     // `&amp;` would be printed literally into the JSON and read back wrong.
     const out = head.ldScript({ name: "Freight & Customs" });
     expect(out).not.toContain("&amp;");
-    expect(JSON.parse(out.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "")).name)
-      .toBe("Freight & Customs");
+    expect(payloadOf(out).name).toBe("Freight & Customs");
   });
 
   it("emits nothing for nothing", () => {

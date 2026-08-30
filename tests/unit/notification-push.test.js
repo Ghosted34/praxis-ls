@@ -30,9 +30,14 @@ describe("notification push opt-in", () => {
       endpoint: "https://push.example/abc",
       keys: { p256dh: "k1", auth: "k2" },
     };
-    await expect(
-      svc.subscribePush(client, actor, { subscription, userAgent: "UA" }),
-    ).resolves.toEqual({ subscribed: true });
+    // Also returns a single-use ROTATION TOKEN now — what the service worker
+    // presents to re-register this device when the browser rotates its
+    // subscription, since a worker has no session to authenticate with.
+    // Covered in depth by push-rotation.test.js; asserted as present here so
+    // the opt-in contract cannot lose it.
+    const out = await svc.subscribePush(client, actor, { subscription, userAgent: "UA" });
+    expect(out).toMatchObject({ subscribed: true });
+    expect(out).toHaveProperty("rotation_token");
     expect(repo.savePushSubscription).toHaveBeenCalledWith(client, "u-1", {
       endpoint: "https://push.example/abc",
       p256dh: "k1",

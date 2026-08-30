@@ -11,6 +11,33 @@ module.exports = {
   getPreferences: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.getPreferences(c, actor(req))) })),
   setPreferences: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setPreferences(c, { actor: actor(req), prefs: req.body.preferences })) })),
   pushPublicKey: asyncHandler(async (_req, res) => res.json({ data: await service.pushPublicKey() })),
-  subscribePush: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.subscribePush(c, actor(req), { subscription: req.body.subscription, userAgent: req.headers["user-agent"] })) })),
-  unsubscribePush: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.unsubscribePush(c, actor(req), { endpoint: req.body.endpoint })) })),
+  /*
+   * ── PUSH SUBSCRIPTIONS ARE IDENTITY, NOT BUSINESS DATA ───────────────────
+   *
+   * These four use `identityDb` (always the LIVE schema), not `tenantDb`
+   * (whichever schema X-Praxis-Env names). tenant-context.js states the rule
+   * and names this case in so many words: "auth, sessions, DEVICES, 2FA, users
+   * and the RBAC grant matrix always resolve against the LIVE/identity schema
+   * regardless of X-Praxis-Env". A registered browser is a device.
+   *
+   * It was `tenantDb`, and that was a silent way to lose notifications: a user
+   * who happened to be in TEST when they enabled push had their subscription
+   * written to the sandbox schema, while every notification producer that
+   * matters — the mail sync above all — runs against live and reads the live
+   * table. Their phone was registered, the toggle said "on", and nothing was
+   * ever sent to it. Nothing anywhere reported that.
+   */
+  subscribePush: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.subscribePush(c, actor(req), { subscription: req.body.subscription, userAgent: req.headers["user-agent"] })) })),
+  unsubscribePush: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.unsubscribePush(c, actor(req), { endpoint: req.body.endpoint })) })),
+  devices: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.pushDevices(c, actor(req))) })),
+  // No `actor` — this one has no caller identity to read. The rotation token is
+  // the whole authorisation, and the tenant comes from the Host header like
+  // every other tenant-scoped request. identityDb for the reason above, and it
+  // is also what lets the service worker call this with no environment header.
+  rotatePush: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.rotatePush(c, {
+      rotationToken: req.body.rotation_token,
+      subscription: req.body.subscription,
+    })),
+  })),
 };

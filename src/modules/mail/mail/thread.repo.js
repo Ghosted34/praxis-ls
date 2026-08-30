@@ -363,7 +363,7 @@ const insertMessage = (client, row) =>
         size_bytes, has_attachment, sent_via, origin_user_id, origin_send_point, received_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
      ON CONFLICT (email_connection_id, external_message_id) WHERE external_message_id IS NOT NULL DO NOTHING
-     RETURNING email_message_id, email_thread_id`,
+     RETURNING email_message_id, email_thread_id, received_at`,
     [row.email_thread_id, row.email_connection_id, row.email_identity_id || null,
      row.external_message_id || null, row.message_id_header || null,
      row.direction || "IN", row.folder || "INBOX", row.provider_folder || null,

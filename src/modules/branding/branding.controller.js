@@ -91,6 +91,11 @@ module.exports = {
     const data = await req.tenantDb((c) => service.setLogin(c, { ...(req.body || {}), actorId: req.user.user_id }));
     res.json({ data });
   }),
+  uploadSiteHero: asyncHandler(async (req, res) => {
+    const data = await service.uploadSiteHero({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
+    res.json({ data });
+  }),
+
   uploadLoginBackground: asyncHandler(async (req, res) => {
     const data = await service.uploadLoginBackground({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
     res.json({ data });

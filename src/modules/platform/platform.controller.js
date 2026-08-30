@@ -140,6 +140,24 @@ const setCapacity = asyncHandler(async (req, res) =>
     data: await tenants.setCapacity(req.params.slug, req.body.tier, actor(req)),
   }),
 );
+const addDomain = asyncHandler(async (req, res) =>
+  res.status(201).json({
+    data: await tenants.addDomain(req.params.slug, req.body, actor(req)),
+  }),
+);
+
+const setDomainSurface = asyncHandler(async (req, res) =>
+  res.json({
+    data: await tenants.setDomainSurface(req.params.slug, req.body, actor(req)),
+  }),
+);
+
+const setDomainBase = asyncHandler(async (req, res) =>
+  res.json({
+    data: await tenants.setDomainBase(req.params.slug, req.body, actor(req)),
+  }),
+);
+
 const setSandbox = asyncHandler(async (req, res) =>
   res.json({
     data: await tenants.setSandboxInterval(
@@ -270,6 +288,9 @@ module.exports = {
   goLive,
   setPlan,
   setCapacity,
+  addDomain,
+  setDomainSurface,
+  setDomainBase,
   setSandbox,
   wipeSandbox,
   seedSandboxDemo,

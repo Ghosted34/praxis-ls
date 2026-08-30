@@ -160,16 +160,33 @@ function headerText(column, spec) {
  *  neutral default sets no name at all rather than a face we do not ship. */
 function firstFamily(stack) {
   if (!stack) return null;
-  // Single-alternative anchored trims, not `/^["']+|["']+$/`: the two-arm form
-  // is the ambiguous shape CodeQL flags (js/polynomial-regex), and the stack is
-  // tenant-configured text (font_display) with no schema length cap. The
-  // split(",") already bounds the work to the first family; these two are each
-  // one path, linear, and say what they do.
-  const name = String(stack)
-    .split(",")[0]
-    .replace(/^["']+/, "")
-    .replace(/["']+$/, "")
-    .trim();
+  // LOOPS, not `replace(/["']+$/, "")`. The note that stood here said splitting
+  // the two-arm `/^["']+|["']+$/` into two single-alternative anchored trims was
+  // enough, and that "the split(',') already bounds the work to the first
+  // family". Both halves of that were wrong:
+  //
+  //   · `["']+$` is quadratic on its own, two-arm or not — the engine re-scans
+  //     the quote run from each successive start position once the match fails.
+  //   · `split(",")[0]` bounds the number of FAMILIES, not the length. A stack
+  //     with no comma in it is carried through whole.
+  //
+  // The leading trim is what hid it: it removes a run that begins at position 0,
+  // so the obvious probe (`"""""…x`) comes back instantly. Put the run in the
+  // MIDDLE — `x"""""…x` — and the trailing trim is quadratic again: measured
+  // 158 ms at 20k characters and 1.4 s at 60k, on the event loop. `font_display`
+  // is tenant-configured branding text with no schema length cap, which this
+  // comment already said — so it is a value a tenant admin can store once and
+  // every export afterwards pays for.
+  //
+  // Same remedy as signatures/verify-link.js and vault/qes/qes.service.js: the
+  // pattern GOES rather than being fenced.
+  const QUOTES = "\"'";
+  const family = String(stack).split(",")[0];
+  let from = 0;
+  let to = family.length;
+  while (from < to && QUOTES.includes(family[from])) from += 1;
+  while (to > from && QUOTES.includes(family[to - 1])) to -= 1;
+  const name = family.slice(from, to).trim();
   return name || null;
 }
 

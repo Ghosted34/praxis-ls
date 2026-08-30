@@ -967,7 +967,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [client, platform-console]
+        app: [client, platform-console, public-web]
     steps:
       - uses: actions/checkout@v4
 
@@ -1159,6 +1159,14 @@ jobs:
         # manual chunking.
         if: matrix.app == 'client'
         run: npm run check:bundle --prefix client
+
+      - name: i18n dictionary gate
+        if: matrix.app == 'public-web'
+        run: npm run check:i18n --prefix public-web
+
+      - name: Bundle graph
+        if: matrix.app == 'public-web'
+        run: npm run check:bundle --prefix public-web
 
   docker-build:
     runs-on: ubuntu-latest

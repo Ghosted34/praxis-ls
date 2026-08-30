@@ -189,7 +189,12 @@ async function resolveByHost(hostHeader) {
   if (hit && hit.expires > Date.now()) return hit.meta;
 
   const { rows } = await platform().query(
+    // `s.surface` is the only column this query takes from the subdomain row,
+    // and it rides along here rather than in a second lookup because the answer
+    // is already cached per host — the static mounts in server.js ask on every
+    // page request, and a second round trip per asset is not worth one string.
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
+            s.surface, s.public_base,
             td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
             td.live_schema, td.sandbox_schema, td.pool_max
        FROM platform.subdomain s
@@ -228,6 +233,11 @@ async function resolveBySlug(slug) {
   const s = String(slug || "").toLowerCase().trim();
   if (!s) return null;
   const { rows } = await platform().query(
+    // No `surface` here: this path is keyed on the tenant, not on a host, so
+    // there is no subdomain row to read one from. Its only caller is the mail
+    // OAuth callback, which never serves an app — but leaving the field absent
+    // rather than guessing 'erp' keeps "we do not know" distinguishable from
+    // "we know it is the workspace".
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
             td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
             td.live_schema, td.sandbox_schema, td.pool_max

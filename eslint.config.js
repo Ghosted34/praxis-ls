@@ -15,6 +15,11 @@ module.exports = [
       "doc/**",
       "client/**",
       "platform-console/**",
+      // Same reason, same shape: public-web lints itself with public-web's config.
+      // Without this line the backend gate claims an ESM frontend's `scripts/*.mjs`
+      // under `sourceType: "commonjs"` and a rule set tuned for a logged API, and
+      // reports errors on files its own config would not have written this way.
+      "public-web/**",
       "assets/**",
       "media/**",
       "packages/**",

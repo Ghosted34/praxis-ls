@@ -24,6 +24,122 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **The stranger-facing app (`public-web/`), behind `SERVE_PUBLIC_WEB`.** A third Vite app beside
+  `client/` and `platform-console/`, carrying the tenant marketing site (`/public/*`) and the
+  external portal (`/portal/*`) on the tenant's own origin — a client emailed a tracking link must
+  not be sent to a second domain whose cookies, CSP and Host resolution the ERP knows nothing about.
+  Bilingual, gated in CI by `check:i18n` (457 keys, both languages) and `check:bundle` (110.8 kB gzip
+  first paint against a 128 kB budget, acyclic chunk graph). `SERVE_PUBLIC_WEB` is **off by default**:
+  the mount also claims `/track`, `/portfolio`, `/careers` and `/client-portal`, which the ERP
+  already answers, so the switch is a deliberate act rather than a side effect of building the image.
+  Turning it off restores the ERP's own versions of those pages; no schema or data is involved.
+
+### Fixed
+
+- **The marketing prefix is a per-host setting.** `/public` was typed into ninety-odd places, which made
+  it a decision the whole fleet shared and nobody could revisit — and it is one a tenant has an opinion
+  about, since the word is in every URL they print, email or hand to a search engine. Migration `0104` adds
+  `public_base` to `platform.subdomain`; the server builds its path matcher per request from the resolved
+  value, and `src/shared/http/public-web-paths.js` is the single definition the mount, the console
+  validation and the test all read. The browser learns it from a `<meta>` tag the head injector already
+  rewrites per request — no build-time constant, so one image serves every prefix. `/portal` deliberately
+  does not move: invitation emails point at it with a seven-day expiry. `/public` stays claimed whatever
+  the base is and redirects to it, so renaming cannot strand a URL already in circulation. Prefixes the
+  workspace answers — every ERP section, `/login`, `/api`, `/portal` — are refused with a reason.
+- **A domain the client brings serves the site at its ROOT, not under the prefix.** The prefix exists to
+  keep the marketing site out of the workspace's way on a shared origin; on `smartls.cm`, where
+  `surface = 'public'` and the ERP is not served at all, there is nothing to stay out of the way of. The
+  first cut honoured `public_base` there anyway, so the client's homepage was `smartls.cm/public` with `/`
+  redirecting into it, and every URL they printed carried a word that means nothing to their customers.
+  The surface now decides the base and the column applies to workspace hosts, which took three latent
+  self-redirects with it: `/` → `/`, each legacy alias → itself, and `LegacySplat` joining `"/"` with a
+  tail to make `//track` — a protocol-relative URL a browser reads as the host `track`. Two things that
+  were already wrong on a RENAMED prefix are fixed by the same change: the head injector's route table
+  matched a literal `/public/…`, so a `/site` tenant silently lost every link preview, and `robots.txt`
+  disallowed `/public/proposals/` on hosts that serve proposals somewhere else — a rule that reads as
+  covered and protects nothing. `public-web/src/app/root-mount.test.tsx` pins all of it.
+- **A CV over about 1.4 MB was refused after the applicant had waited for the upload.** The form
+  advertises 8 MB and `careers.service.CV_MAX_BYTES` enforces 8 MB, but the file is base64-encoded into a
+  JSON body — a third larger on the wire — against a 2 MB global limit, so most phone-scanned CVs were
+  impossible to send and the promise had never been keepable. A 12 MB parser now covers that one public
+  path, mounted BEFORE the global one because body-parser sets `req._body` and every later parser bails on
+  it. No other route's limit changes.
+- **The tenant's marketing hero had no home of its own.** It rendered whatever had been uploaded as the
+  LOGIN background — one file doing two unrelated jobs, configured in Settings → Login, which is not where
+  anyone looks for the photograph on their public website. `POST /branding/site/hero` now stores it under
+  its own `site/` segment (added to the public media allow-list) with a 1 MB cap, and the hero prefers it
+  while still falling back to the login background so no existing tenant's hero goes blank on deploy.
+  Service-type covers already had an upload; only this one was missing.
+- **The portal sign-in read "Client portal CLIENT PORTAL".** With no tenant name and no logo the wordmark
+  falls back to the portal's own noun, and the eyebrow beside it repeated the same two words — which is
+  what every unconfigured workspace showed its clients. The eyebrow now renders only when the wordmark is
+  the tenant. The screen also states what the account is for and offers the two ways out it lacked: the
+  invitation route for someone with a link but no password, and tracking for someone with no account at
+  all. It is one of the two screens a paying client opens every week and was a bare pair of inputs on white.
+- **Twenty-two user-facing sentences were English on the French site**, and the gate said both languages
+  were complete. `check-i18n` rule 5 reads text between JSX tags in `.tsx` files, so a sentence that is a
+  STRING — a `.ts` module's error message, a `hint=` prop, an argument to `tr()` — was structurally
+  invisible to it: the quote form's failure message, every portal session-expiry and download error, the
+  CV size limit, six portal empty states. All now carry dotted keys. Rule 6 fails the build on any
+  sentence outside the dictionary anywhere in `src/` — punctuation is the signal, and run against the app
+  before it was wired in it found twenty-two real strings and no false ones.
+- **`tr()` could never translate a sentence.** It looks a label up as `strings.<label>` and i18next's
+  default `keySeparator` is `.`, which this app does not disable because every other key is dotted. So a
+  label containing a full stop is parsed as a path with an empty final segment, never resolves, and
+  silently returns English. That is why all 41 `strings` entries are period-free column headings. Now
+  documented on the function, and enforced by rule 6.
+- **Marketing images were served as if they were a JSON list.** Case-study and service covers stream from
+  the Node process with `Cache-Control: max-age=300`, so every visitor re-fetched every image twice an
+  hour, and they counted against the same 120/15min budget as the page's data — meaning the page with the
+  most images was the one most likely to have them refused. The id in the URL is the vault document's, so
+  the bytes behind a URL never change: now a year, `immutable`, with an ETag, and images have their own
+  budget.
+- **Forwarded links previewed as a blank grey card.** The pages are assembled in the browser, so Slack,
+  WhatsApp, LinkedIn and Bing received the shell — one generic title, no description. `shared/http/public-head.js`
+  now injects a real title, description, canonical and Open Graph tags per page, reading the record for
+  proposals, vacancies and case notes; and the host serves `robots.txt` and `sitemap.xml`, with a
+  workspace host asking not to be indexed and tokenised documents kept out of the index. It is the head,
+  not the body — not SSR, and it does not pretend to be — but a preview card and a search result are built
+  from the head. Any failure serves the untouched shell.
+- **`public-web` served a blank page in production.** Vite's default `assetsDir` put the app's own
+  bundle at `/assets/*`, which `PUBLIC_WEB_PATH` did not claim — so every chunk, stylesheet and font
+  fell through to `client/dist` (a miss: different hashes) and then to the ERP's `app.get("*")`,
+  which answered `index.html` with `200 text/html`. The browser refuses to execute HTML as a module,
+  so the shell loaded and the app never started. Neither `vite dev` nor `vite preview` goes through
+  that mount, which is why it was invisible in development. The app now builds into `public-assets/`
+  and the mount claims it; `tests/unit/public-web-mount.test.js` reads the directory name out of
+  `vite.config.ts` and the matcher out of `server.js` and pins the two together, which is the test
+  the comment above the mount had been claiming existed.
+- **The ERP's service worker shadowed the new pages with its own older copies of them.**
+  `navigateFallbackDenylist` listed only `/api`, `/media`, the manifest and the icons, so for anyone
+  who had ever loaded the ERP the cached shell answered `/public/*` and `/portal/*` before the
+  request reached the server — and because `client/` still routes those paths itself, the visitor
+  saw not an error but a plausible older implementation at the same URL.
+- **Raw server messages reached public pages.** `lib/api.ts` exported `messageFor()` to keep driver
+  errors and status text away from strangers, and nothing called it: a job applicant hitting a 500
+  read "Internal Server Error". All seven read handlers now route through it with a translated
+  fallback (`common.loadFailed`), read via a new module-level `tStatic` so `t` does not become an
+  effect dependency and a language switch does not re-run a rate-limited tracking lookup.
+- **The home page discarded the service covers the API returns.** `ServicesBand` built its cards
+  without `cover_url` while the band eleven lines below passed the same field to the same component,
+  so the home page showed four text boxes for services that `/public/services` renders as image cards.
+- **The hero's scrim hid the tenant's artwork.** A flat carbon 95%→72% wash kept copy safe and made
+  any photograph invisible. Measured against the worst case a tenant can upload, the binding
+  constraint is the orange eyebrow at α ≥ 0.87 (not the headline, at 0.48), so the scrim now holds
+  ≥ 0.90 wherever copy sits and falls away where it does not — radially at `lg`, downward below it.
+- **A brand-token flash on dark-OS first paint.** The pre-paint script wrote only `.dark` and never
+  `data-theme`, so `@praxis/brand/tokens.css` followed `prefers-color-scheme` and painted dark brand
+  values under light app tokens until `main.tsx` ran — the exact mismatch `theme-mode.ts` says the
+  attribute exists to prevent.
+- **Disabled buttons read as broken.** `disabled:opacity-55` over a brand fill produced a washed-out
+  orange on the first two controls a visitor meets. Disabled now uses neutral tokens; a submitting
+  button keeps its fill via `aria-busy`.
+- **The footer listed "Client portal" twice** (two keys rendering the same words at two paths) and
+  "Track a shipment" in two columns. `check:i18n` cannot catch that: both keys exist in both
+  languages, and it looks for missing text rather than for two keys that agree.
+- **`check:bundle` hardcoded `dist/assets`** and would have reported "not found" on a correct build
+  the moment the output directory was renamed. It reads `assetsDir` from the config now.
+
 - **Weekly lateness queries and the authorised attendance map (clock-in revamp PR 3 — the last of
   the three).** After a week closes, an employee who was late on one or more EXPECTED WORKING
   DAYS is asked once about the pattern rather than five times about five mornings: `attendance.weekly`

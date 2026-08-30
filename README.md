@@ -15,11 +15,16 @@ Source of truth for all product decisions: the **PRD (Master Functional Spec v2)
 ## 1. Monorepo layout
 
 ```layout
-src             # NestJS backend.
-client          # React + Vite frontend (PWA)
-scripts         # Migration scripts, startup scripts and any other needed in the product
-doc/            # PRD, OHADA KB, RBAC/User-Journey, kickoff transcript
-packages/shared # Zod schemas, types, posting-rules & tax libraries, i18n dictionaries (shared FE/BE)
+src              # Node/Express backend.
+client           # The tenant ERP — React + Vite (PWA). Served at the root of <tenant>.praxisls.com
+platform-console # Praxis-side admin console. Served only at the root of PLATFORM_CONSOLE_HOST
+public-web       # The stranger-facing app: marketing site + external portal.
+                 #   Served on the tenant host at /public/* and /portal/* when
+                 #   SERVE_PUBLIC_WEB=true. Off by default — see .env.example.
+scripts          # Migration scripts, startup scripts and any other needed in the product
+doc/             # PRD, OHADA KB, RBAC/User-Journey, kickoff transcript
+packages/shared  # Zod schemas, types, posting-rules & tax libraries, i18n dictionaries (shared FE/BE)
+packages/brand   # Brand tokens (tokens.css), consumed by every surface
 ```
 
 Package manager: **pnpm** with **Turborepo**. Shared TypeScript types live in `packages/shared` so there is one definition of every entity across API and web.

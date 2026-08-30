@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+*.local
+.vite
+
+# `tsc -b` emits into node_modules/.tmp (see tsconfig.node.json); these two are
+# what the composite project used to drop next to the configs, shadowing them.
+vite.config.js
+vite.config.d.ts

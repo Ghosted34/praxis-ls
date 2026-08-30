@@ -72,7 +72,10 @@ for (const name of LIBRARY) {
 // the three font stacks every Praxis-owned surface renders with, which made it
 // the one place a family could be named entirely outside this gate — the exact
 // blind spot the gate exists to close, reopened one directory over.
-const SEARCH_DIRS = ["client/src", "src", "platform-console/src", "packages", "scripts", "migrations"];
+// public-web joined when the stranger-facing app landed: it writes its OWN type
+// ramp (maersk-scale) instead of importing the ERP's, so it is precisely the kind
+// of surface a family can be named inside without this gate ever seeing it.
+const SEARCH_DIRS = ["client/src", "src", "platform-console/src", "public-web/src", "packages", "scripts", "migrations"];
 
 const files = execSync(
   `git ls-files ${SEARCH_DIRS.join(" ")} | grep -E '\\.(css|ts|tsx|js|jsx|mjs|html|json|sql)$'`,

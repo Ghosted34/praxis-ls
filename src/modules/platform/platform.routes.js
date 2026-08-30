@@ -76,6 +76,12 @@ router.post("/tenants/:slug/go-live", requireCap("tenants.write"), c.goLive);
 router.patch("/tenants/:slug/plan", requireCap("tenants.write"), validate("plan"), c.setPlan);
 router.patch("/tenants/:slug/capacity", requireCap("tenants.write"), validate("capacity"), c.setCapacity);
 router.patch("/tenants/:slug/sandbox", requireCap("tenants.write"), validate("sandbox"), c.setSandbox);
+// Additional hosts for a tenant. The host travels in the BODY on both routes,
+// not the path: a hostname is full of dots and would have to be encoded into a
+// path parameter, and a half-encoded one is a 404 nobody can read.
+router.post("/tenants/:slug/domains", requireCap("tenants.write"), validate("domainAdd"), c.addDomain);
+router.patch("/tenants/:slug/domains", requireCap("tenants.write"), validate("domainSurface"), c.setDomainSurface);
+router.patch("/tenants/:slug/domains/base", requireCap("tenants.write"), validate("domainBase"), c.setDomainBase);
 router.post("/tenants/:slug/sandbox/wipe", requireCap("tenants.write"), c.wipeSandbox);
 router.post("/tenants/:slug/sandbox/seed", requireCap("tenants.write"), c.seedSandboxDemo);
 router.post("/tenants/:slug/migrate", requireCap("tenants.write"), c.migrate);

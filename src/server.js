@@ -32,6 +32,7 @@ const storage = require("./services/storage.service");
 const registry = require("./services/tenant/registry.service");
 const publicHead = require("./shared/http/public-head");
 const publicWebPaths = require("./shared/http/public-web-paths");
+const inlineScriptHashes = require("./shared/http/inline-script-hashes");
 
 /**
  * Lifetime of a presigned /media URL (s3 driver). Short on purpose: these are
@@ -103,7 +104,33 @@ function buildCorsOptions() {
       const onBaseDomain = host === base || host.endsWith("." + base);
       const devLocalhost = isDev && (host === "localhost" || host === "127.0.0.1");
       if (onBaseDomain || devLocalhost || extra.has(origin)) return cb(null, true);
-      return cb(rejected("Not allowed by CORS"), false);
+      // A tenant's own domain is DATA, not configuration.
+      //
+      // `platform.subdomain.surface = 'public'` is what makes a host serve the
+      // marketing site, and it is set in the platform console — no deploy, no
+      // restart. This allowlist was reading APP_BASE_DOMAIN and CORS_ORIGINS
+      // only, so a domain registered that way resolved, served its shell, and
+      // then 403'd every asset: Vite tags the module script and the stylesheet
+      // `crossorigin`, so both send an Origin, and both were refused. The page
+      // loaded and the app never started — the same failure mode as the
+      // /public-assets prefix, one layer up.
+      //
+      // That is the mistake the mount comment already names: an env var copied
+      // where a per-tenant fact belongs. So ask the registry the question the
+      // request path asks, and let registration be the whole of registration.
+      //
+      // Unknown origins are attacker-controlled input reaching a lookup, which
+      // is why resolveByHost caches MISSES too (HOST_MISS_TTL_MS) under an LRU
+      // bounded by HOST_CACHE_MAX — see the note on that cache. The cheap checks
+      // above still answer every first-party request without touching it.
+      return registry
+        .resolveByHost(host)
+        .then((meta) =>
+          meta && meta.surface === "public"
+            ? cb(null, true)
+            : cb(rejected("Not allowed by CORS"), false),
+        )
+        .catch(() => cb(rejected("Not allowed by CORS"), false));
     },
   };
 }
@@ -152,12 +179,31 @@ function buildApp() {
    * legitimately points at external https URLs, and `blob:`/`data:` are used by
    * generated previews. That is a real requirement, not a leftover.
    */
+  /**
+   * public-web ships ONE inline script — the no-flash theme block in its shell,
+   * which must write `data-theme` before first paint or a dark-OS visitor gets a
+   * frame of light tokens. `'self'` does not cover an inline block, so without
+   * this the browser refuses it and the site renders unstyled on the tenant's
+   * own domain. The allowance is a HASH OF THE BUILT FILE, not `'unsafe-inline'`
+   * and not a literal pasted from a console: the mitigation stays on for every
+   * other page, and editing the theme block moves the hash with it instead of
+   * failing silently in production. See shared/http/inline-script-hashes.js.
+   */
+  const cspDefaults = helmet.contentSecurityPolicy.getDefaultDirectives();
+  const publicWebShellHashes = inlineScriptHashes.hashesForFile(
+    path.resolve(__dirname, "../public-web/dist/index.html"),
+  );
+  const scriptSrc = [
+    ...(cspDefaults["script-src"] || ["'self'"]),
+    ...publicWebShellHashes,
+  ];
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
-          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          ...cspDefaults,
           "img-src": ["'self'", "data:", "blob:", "https:"],
+          "script-src": scriptSrc,
         },
       },
     }),
@@ -739,4 +785,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { buildApp, start };
+module.exports = { buildApp, start, buildCorsOptions };

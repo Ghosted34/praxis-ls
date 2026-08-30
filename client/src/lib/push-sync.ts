@@ -19,6 +19,7 @@
  * components/pwa/push-sync.tsx.
  */
 import { tenant } from "@/lib/api-client";
+import { saveRotationToken } from "@/lib/push-token-store";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -36,12 +37,20 @@ export const pushSupported = (): boolean =>
   "PushManager" in window &&
   "Notification" in window;
 
-/** The endpoint is the conflict key server-side, so this is an idempotent upsert. */
+/**
+ * The endpoint is the conflict key server-side, so this is an idempotent upsert.
+ *
+ * The response carries a fresh single-use ROTATION TOKEN, which goes into
+ * IndexedDB where the service worker can read it. That is what lets a device
+ * repair itself the moment the browser rotates its subscription, instead of
+ * waiting for the user to next open an app that has stopped notifying them.
+ */
 async function register(sub: PushSubscription): Promise<void> {
-  await tenant("/notifications/push/subscribe", {
-    method: "POST",
-    body: { subscription: sub.toJSON() },
-  });
+  const res = await tenant<{ rotation_token?: string | null }>(
+    "/notifications/push/subscribe",
+    { method: "POST", body: { subscription: sub.toJSON() } },
+  );
+  if (res && res.rotation_token) await saveRotationToken(res.rotation_token);
 }
 
 export type PushSyncOutcome = "synced" | "resubscribed" | "skipped";
@@ -88,5 +97,23 @@ export async function syncPushSubscription(): Promise<PushSyncOutcome> {
        an expired token, VAPID unset). All of them are recoverable on the next
        boot, and none is worth surfacing to somebody who just opened the app. */
     return "skipped";
+  }
+}
+
+/**
+ * How many devices the server can actually reach this user on.
+ *
+ * `0` while `Notification.permission === "granted"` is the shape of the silent
+ * failure this whole file exists for: the browser looks subscribed, the toggle
+ * reads "on", and every registered endpoint has been pruned as gone. Returns
+ * null when the question could not be asked.
+ */
+export async function countRegisteredDevices(): Promise<number | null> {
+  try {
+    const { devices } = await tenant<{ devices: number }>("/notifications/push/devices");
+    return typeof devices === "number" ? devices : null;
+  } catch {
+    /* @silent:storage — offline or unauthenticated; the caller shows nothing */
+    return null;
   }
 }

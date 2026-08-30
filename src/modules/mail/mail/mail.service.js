@@ -543,11 +543,7 @@ async function syncConnection(client, id, ctx = {}) {
         // Best-effort by contract — it swallows its own failures — but awaited,
         // so the in-app row joins the sync's transaction exactly as every other
         // producer's does.
-        await mailNotify.onInboundMessage(client, {
-          conn, message: m, row, ctx,
-          // A first sync backfills history; see the note in mail-notify.
-          isFirstSync: !folder.last_sync_at,
-        });
+        await mailNotify.onInboundMessage(client, { conn, message: m, row, ctx });
       }
       await threadRepo.setFolderCursor(client, folder.email_folder_id, nextCursor);
       perFolder.push({ folder: folder.canonical || folder.provider_path, fetched: messages.length });
@@ -560,6 +556,11 @@ async function syncConnection(client, id, ctx = {}) {
       perFolder.push({ folder: folder.canonical || folder.provider_path, error: err.message });
     }
   }
+
+  // Anything the per-run cap held back goes out now, as one digest for this
+  // mailbox. After the folder loop because the cap is per mailbox per run, not
+  // per folder — a runaway spread over four folders is still one runaway.
+  await mailNotify.flushRun(client, { conn, ctx });
 
   if (anyFolderSucceeded) {
     await mailbox.markSyncSuccess(client, conn.email_connection_id);

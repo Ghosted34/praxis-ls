@@ -39,6 +39,38 @@
  * it useful on a lock screen makes it visible to anyone holding the phone.
  * `mail.notification_preview` (tenant setting, default 'FULL') reduces it to
  * sender + subject for a tenant that would rather not.
+ *
+ * ── WHICH MESSAGES COUNT AS NEWS ────────────────────────────────────────────
+ *
+ * A FRESHNESS window on the message's own timestamp, not a test of whether the
+ * sync has run before.
+ *
+ * The first version asked `!folder.last_sync_at` — "is this the first time we
+ * have looked at this folder?" — to keep a ninety-day backfill from firing
+ * hundreds of alerts at once. That works for the backfill and is wrong twice
+ * over, because it is a question about the SYNC and the thing we need to know
+ * is a question about the MESSAGE:
+ *
+ *   - Mail that genuinely arrives DURING a first sync is silent. Connect a
+ *     mailbox at 09:00 and a client writes at 09:01; that message lands in the
+ *     same first pass and nobody is told.
+ *   - A folder created later is a "first sync" too. Someone makes a `Clients`
+ *     folder and moves two hundred old mails into it — rightly quiet — but a
+ *     new mail landing there during that pass is lost with them.
+ *
+ * `received_at` comes from the provider's own date header, so a backfill
+ * carries old timestamps and a mail that just arrived carries a fresh one. One
+ * window answers both cases, and keeps answering them for folders that do not
+ * exist yet.
+ *
+ * ── AND A CIRCUIT BREAKER BEHIND IT ─────────────────────────────────────────
+ *
+ * The window trusts a timestamp a third party wrote. A mail server with a
+ * skewed clock, or a message with no parseable date (which falls back to
+ * `now()` at ingest), can present old mail as new. So a run may notify
+ * individually at most PER_RUN_CAP times per mailbox; past that the remainder
+ * arrives as ONE digest — "18 more new messages in billing@". Nothing is
+ * hidden, and nothing can fire three hundred pushes at a phone.
  */
 "use strict";
 
@@ -48,6 +80,44 @@ const { logger } = require("../../../config/logger");
 const SNIPPET_MAX = 140;
 /** Notification titles are truncated hard by every OS; this is past the fold. */
 const TITLE_MAX = 90;
+
+/**
+ * How recently a message must have arrived to be worth a notification.
+ *
+ * An hour, not minutes: the window has to absorb a sync that was late rather
+ * than punish the mail it was late to fetch. A wedged IMAP connection, a worker
+ * restart, a provider having a bad ten minutes — all of them delay the fetch,
+ * none of them makes the mail less urgent, and a tight window would silently
+ * drop exactly the messages a recovery is catching up on. An hour is also far
+ * short of a backfill, which reaches back ninety days.
+ */
+const FRESH_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Individual notifications per mailbox per sync run, before the rest collapse
+ * into one digest. Twenty is comfortably above a busy morning on a shared
+ * inbox and far below what a repaired cursor or a skewed clock could produce.
+ */
+const PER_RUN_CAP = 20;
+
+/**
+ * Per-run, per-mailbox tally, carried on the sync run's own ctx object.
+ *
+ * On ctx rather than at module scope for the same reason the preview setting
+ * is: module state is shared by every tenant in the process, and one tenant's
+ * counters throttling another tenant's notifications would be both a bug and a
+ * cross-tenant leak.
+ */
+function runState(ctx, connectionId) {
+  if (!ctx || !connectionId) return null;
+  if (!ctx.__mailNotify) ctx.__mailNotify = new Map();
+  let state = ctx.__mailNotify.get(connectionId);
+  if (!state) {
+    state = { notified: 0, suppressed: 0, label: null };
+    ctx.__mailNotify.set(connectionId, state);
+  }
+  return state;
+}
 
 /**
  * Everyone who should hear about a message on this mailbox, in one round-trip.
@@ -178,6 +248,24 @@ function compose({ from, subject, bodyText, mailboxLabel = null, mode = "FULL" }
 }
 
 /**
+ * Is this message recent enough to be news?
+ *
+ * A missing or unparseable timestamp counts as FRESH. Ingest already defaults
+ * `received_at` to `now()` when the provider gave nothing usable, so a null
+ * here means something unusual rather than something old — and the failure to
+ * prefer is a notification too many, which the per-run cap bounds, over a
+ * silently dropped mail, which is the thing this whole path exists to prevent.
+ */
+function isFresh(receivedAt, now = Date.now()) {
+  if (!receivedAt) return true;
+  const t = receivedAt instanceof Date ? receivedAt.getTime() : Date.parse(receivedAt);
+  if (!Number.isFinite(t)) return true;
+  // A timestamp in the FUTURE is a skewed sender clock, not a message from
+  // tomorrow. Treated as fresh: it just arrived, whatever it claims.
+  return t >= now - FRESH_WINDOW_MS;
+}
+
+/**
  * Raise the notification for ONE inbound message. Best-effort by contract: it
  * is called from inside the sync loop, and a notification failure must never be
  * what stops a mailbox from syncing.
@@ -185,20 +273,21 @@ function compose({ from, subject, bodyText, mailboxLabel = null, mode = "FULL" }
  * Returns { notified } — the number of in-app rows written — or { notified: 0,
  * skipped } when there was nobody to tell or the message was outbound.
  */
-async function onInboundMessage(client, { conn, message, row, ctx = {}, isFirstSync = false }) {
+async function onInboundMessage(client, { conn, message, row, ctx = {} }) {
   try {
     if (!row || !conn) return { notified: 0, skipped: "nothing ingested" };
     // Outbound mail is not news to the people who sent it. The emit above this
     // call site does not make this distinction, which is exactly why the
     // notification is raised here rather than off the event.
     if (message && message.direction === "OUT") return { notified: 0, skipped: "outbound" };
-    // THE BACKFILL. A newly connected mailbox syncs its history — the folder
-    // has no `last_sync_at` exactly once, and that pass can be ninety days
-    // deep. Notifying on it would fire hundreds of pushes at once for mail
-    // that is weeks old and long since dealt with, and the only thing anybody
-    // would do about that is turn notifications off for good. The same
-    // narrowing the OCR queue makes for the same reason (ocr.enqueue.js).
-    if (isFirstSync) return { notified: 0, skipped: "first sync" };
+    // THE FRESHNESS WINDOW — see the header. A backfill carries the provider's
+    // own old timestamps and is filtered here by age, which also lets a mail
+    // that genuinely arrives mid-backfill through. `received_at` is preferred
+    // over the raw message because ingest has already applied its `|| now()`
+    // fallback, so there is one definition of when a message arrived.
+    if (!isFresh(row.received_at || (message && message.receivedAt))) {
+      return { notified: 0, skipped: "not fresh" };
+    }
 
     const { rows: threads } = await client.query(
       `SELECT email_thread_id, subject, assigned_user_id, is_vip, stream
@@ -229,6 +318,20 @@ async function onInboundMessage(client, { conn, message, row, ctx = {}, isFirstS
       mailboxLabel: conn.kind === "PERSONAL" ? null : conn.email_address,
       mode,
     });
+
+    // THE CIRCUIT BREAKER. Past the cap this run stops notifying one-by-one and
+    // starts counting; flushRun below turns the remainder into a single digest.
+    // Recipients and the mailbox label are remembered from the messages that
+    // DID notify, so the digest reaches the same people without another query.
+    const state = runState(ctx, conn.email_connection_id);
+    if (state) {
+      state.label = conn.kind === "PERSONAL" ? null : conn.email_address;
+      if (state.notified >= PER_RUN_CAP) {
+        state.suppressed += 1;
+        return { notified: 0, skipped: "capped" };
+      }
+      state.notified += 1;
+    }
 
     const notifications = require("../../notification/notification.service");
     return {
@@ -269,4 +372,76 @@ async function onInboundMessage(client, { conn, message, row, ctx = {}, isFirstS
   }
 }
 
-module.exports = { onInboundMessage, recipientsFor, compose, senderName, snippet, previewMode };
+/**
+ * End of a sync run for one mailbox: if the cap held anything back, say so once.
+ *
+ * ── WHY A DIGEST AND NOT SILENCE ────────────────────────────────────────────
+ *
+ * The cap exists to stop a runaway — a repaired cursor, a re-connected mailbox,
+ * a server stamping old mail with today's date — from firing three hundred
+ * pushes at somebody's phone. But "stop notifying" and "pretend it did not
+ * happen" are different things, and only the first one is defensible in a
+ * product whose whole promise here is that mail does not get missed. So the
+ * remainder arrives as one line: the user knows exactly how much is waiting and
+ * where, and one tap takes them to it.
+ *
+ * Called once per connection after its folder loop, and best-effort like
+ * everything else on this path.
+ */
+async function flushRun(client, { conn, ctx = {} } = {}) {
+  try {
+    const state = ctx && ctx.__mailNotify && conn
+      ? ctx.__mailNotify.get(conn.email_connection_id)
+      : null;
+    if (!state || state.suppressed <= 0) {
+      return { notified: 0, skipped: "nothing held back" };
+    }
+
+    // MAILBOX-scoped recipients, resolved fresh — not the audience of whichever
+    // message happened to be notified last. Per-message recipients include a
+    // thread's assignee and anyone it was individually shared with, and those
+    // people have no standing to be counted into a summary of a mailbox they do
+    // not otherwise work. Passing no thread reduces the same query to the
+    // mailbox's own owner and live members.
+    const recipients = await recipientsFor(client, {
+      connectionId: conn.email_connection_id,
+      ownerUserId: conn.owner_user_id,
+      threadId: null,
+      assignedUserId: null,
+    });
+    if (!recipients.length) return { notified: 0, skipped: "no recipients" };
+
+    const n = state.suppressed;
+    const where = state.label ? ` in ${state.label}` : "";
+    const notifications = require("../../notification/notification.service");
+    const notified = await notifications.notifyMany(client, recipients, {
+      eventTypeKey: "email.thread.created",
+      title: `${n} more new message${n === 1 ? "" : "s"}${where}`,
+      body: "Open the mailbox to read them.",
+      entityRef: `email_connection:${conn.email_connection_id}`,
+      category: "comms",
+      url: "/comms/mail",
+      // Collapse on the MAILBOX: a second run that also overflows should
+      // replace this line rather than stack a second count beside it, because
+      // the newer number already includes the older one.
+      pushTag: `mail-digest:${conn.email_connection_id}`,
+      renotify: true,
+      urgency: "high",
+      emailFallback: true,
+      pushData: { kind: "mail-digest", connection_id: conn.email_connection_id, count: n },
+      ctx,
+    });
+    // Reset so a long-lived ctx cannot re-send the same digest.
+    state.suppressed = 0;
+    state.notified = 0;
+    return { notified, digested: n };
+  } catch (err) {
+    logger.warn({ err }, "[mail-notify] digest skipped");
+    return { notified: 0, skipped: "error" };
+  }
+}
+
+module.exports = {
+  onInboundMessage, flushRun, recipientsFor, compose, senderName, snippet,
+  previewMode, isFresh, FRESH_WINDOW_MS, PER_RUN_CAP,
+};

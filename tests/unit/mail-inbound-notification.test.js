@@ -116,16 +116,26 @@ describe("an inbound message notifies the mailbox", () => {
     expect(mockNotifyMany).not.toHaveBeenCalled();
   });
 
-  test("the FIRST SYNC of a mailbox notifies nobody — it is a 90-day backfill", async () => {
-    // Without this a newly connected mailbox fires hundreds of pushes at once,
-    // for mail that is weeks old and already dealt with. The only thing anyone
-    // does about that is turn notifications off, permanently.
+  test("a message from the backfill is too old to be news", async () => {
+    // A newly connected mailbox syncs ninety days of history. Without a gate it
+    // fires hundreds of pushes for mail already dealt with, and the only thing
+    // anyone does about that is turn notifications off permanently.
     const client = makeClient();
-    const out = await mailNotify.onInboundMessage(client, {
-      conn, message, row, isFirstSync: true,
-    });
-    expect(out).toEqual({ notified: 0, skipped: "first sync" });
+    const old = { ...row, received_at: new Date(Date.now() - 30 * 24 * 3600 * 1000) };
+    const out = await mailNotify.onInboundMessage(client, { conn, message, row: old });
+    expect(out).toEqual({ notified: 0, skipped: "not fresh" });
     expect(mockNotifyMany).not.toHaveBeenCalled();
+  });
+
+  test("mail that arrives DURING a backfill still notifies — the old guard lost this", async () => {
+    // The first version tested `!folder.last_sync_at`, a question about the
+    // SYNC. Connect a mailbox at 09:00, a client writes at 09:01, and that
+    // message lands in the same first pass: silent. Asking the MESSAGE how old
+    // it is gets both cases right, and keeps working for folders created later.
+    const client = makeClient();
+    const fresh = { ...row, received_at: new Date() };
+    const out = await mailNotify.onInboundMessage(client, { conn, message, row: fresh });
+    expect(out.notified).toBe(2);
   });
 
   test("the preview setting is read once per sync run, not once per message", async () => {
@@ -245,11 +255,10 @@ describe("the call is actually wired into the sync loop", () => {
 
   test("syncConnection calls onInboundMessage for every ingested message", () => {
     expect(src).toMatch(/require\("\.\/mail-notify\.service"\)/);
-    expect(src).toMatch(/mailNotify\.onInboundMessage\(client, \{/);
-    expect(src).toMatch(/conn, message: m, row, ctx,/);
-    // The backfill guard has to be wired too, or a newly connected mailbox
-    // pushes its entire ninety-day history at once.
-    expect(src).toMatch(/isFirstSync: !folder\.last_sync_at/);
+    expect(src).toMatch(/mailNotify\.onInboundMessage\(client, \{ conn, message: m, row, ctx \}\)/);
+    // The digest has to be flushed too, or everything the cap held back is
+    // simply dropped — which is the failure the cap exists to avoid, not cause.
+    expect(src).toMatch(/mailNotify\.flushRun\(client, \{ conn, ctx \}\)/);
   });
 
   test("it is awaited, so the in-app row joins the sync's transaction", () => {
@@ -277,5 +286,128 @@ describe("the category is one the Preferences UI can actually show", () => {
     "mention.created",
   ])("%s files itself under comms, not the System catch-all", (key) => {
     expect(categoryFor(key)).toBe("comms");
+  });
+});
+
+describe("the freshness window", () => {
+  test.each([
+    ["arriving just now notifies", 0, true],
+    ["arriving 30 minutes ago notifies", 30 * 60 * 1000, true],
+    ["arriving 59 minutes ago notifies", 59 * 60 * 1000, true],
+    ["arriving 61 minutes ago is too old", 61 * 60 * 1000, false],
+    ["from a week ago is too old", 7 * 24 * 3600 * 1000, false],
+  ])("a message %s", (_label, ago, expected) => {
+    expect(mailNotify.isFresh(new Date(Date.now() - ago))).toBe(expected);
+  });
+
+  test("a missing or unparseable timestamp counts as fresh", () => {
+    // Ingest defaults received_at to now() when the provider gave nothing
+    // usable, so a null here is unusual rather than old — and the error to
+    // prefer is one notification too many (which the cap bounds) over a mail
+    // dropped in silence.
+    expect(mailNotify.isFresh(null)).toBe(true);
+    expect(mailNotify.isFresh("not a date")).toBe(true);
+  });
+
+  test("a future timestamp is a skewed sender clock, not tomorrow's mail", () => {
+    expect(mailNotify.isFresh(new Date(Date.now() + 86_400_000))).toBe(true);
+  });
+
+  test("the window is read from the ISO string a database returns, not just a Date", () => {
+    expect(mailNotify.isFresh(new Date(Date.now() - 5 * 60 * 1000).toISOString())).toBe(true);
+    expect(mailNotify.isFresh(new Date(Date.now() - 5 * 3600 * 1000).toISOString())).toBe(false);
+  });
+});
+
+describe("the per-run cap and its digest", () => {
+  const fresh = () => ({ ...row, received_at: new Date() });
+
+  test("notifies individually up to the cap, then counts", async () => {
+    const client = makeClient();
+    const ctx = {};
+    for (let i = 0; i < mailNotify.PER_RUN_CAP + 5; i++) {
+      /* eslint-disable-next-line no-await-in-loop */
+      await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    }
+    expect(mockNotifyMany).toHaveBeenCalledTimes(mailNotify.PER_RUN_CAP);
+    expect(ctx.__mailNotify.get("c-1").suppressed).toBe(5);
+  });
+
+  test("the remainder arrives as ONE digest naming the count and the mailbox", async () => {
+    const client = makeClient();
+    const ctx = {};
+    for (let i = 0; i < mailNotify.PER_RUN_CAP + 3; i++) {
+      /* eslint-disable-next-line no-await-in-loop */
+      await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    }
+    mockNotifyMany.mockClear();
+
+    const out = await mailNotify.flushRun(client, { conn, ctx });
+    expect(out.digested).toBe(3);
+    expect(mockNotifyMany).toHaveBeenCalledTimes(1);
+    const [, userIds, opts] = mockNotifyMany.mock.calls[0];
+    expect(userIds).toEqual(["u-1", "u-2"]);
+    // MAILBOX-scoped: the digest query passes no thread, so a thread's
+    // assignee or someone it was individually shared with is not swept into a
+    // summary of a mailbox they do not otherwise work.
+    const digestQuery = client.query.mock.calls
+      .filter(([sql]) => /FROM app_user/.test(sql))
+      .pop();
+    expect(digestQuery[1]).toEqual(["c-1", "u-1", null, null]);
+    expect(opts.title).toBe("3 more new messages in billing@praxisls.com");
+    expect(opts.url).toBe("/comms/mail");
+    // Collapses on the mailbox: a later overflow REPLACES this line, because
+    // the newer count already includes the older one.
+    expect(opts.pushTag).toBe("mail-digest:c-1");
+    expect(opts.emailFallback).toBe(true);
+  });
+
+  test("singular reads correctly", async () => {
+    const client = makeClient();
+    const ctx = {};
+    for (let i = 0; i < mailNotify.PER_RUN_CAP + 1; i++) {
+      /* eslint-disable-next-line no-await-in-loop */
+      await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    }
+    mockNotifyMany.mockClear();
+    await mailNotify.flushRun(client, { conn, ctx });
+    expect(mockNotifyMany.mock.calls[0][2].title).toBe("1 more new message in billing@praxisls.com");
+  });
+
+  test("nothing held back → no digest", async () => {
+    const client = makeClient();
+    const ctx = {};
+    await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    mockNotifyMany.mockClear();
+    const out = await mailNotify.flushRun(client, { conn, ctx });
+    expect(out).toEqual({ notified: 0, skipped: "nothing held back" });
+    expect(mockNotifyMany).not.toHaveBeenCalled();
+  });
+
+  test("flushing twice does not send the digest twice", async () => {
+    const client = makeClient();
+    const ctx = {};
+    for (let i = 0; i < mailNotify.PER_RUN_CAP + 2; i++) {
+      /* eslint-disable-next-line no-await-in-loop */
+      await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    }
+    await mailNotify.flushRun(client, { conn, ctx });
+    mockNotifyMany.mockClear();
+    await mailNotify.flushRun(client, { conn, ctx });
+    expect(mockNotifyMany).not.toHaveBeenCalled();
+  });
+
+  test("the tally is per MAILBOX, not shared across the run", async () => {
+    // Two mailboxes syncing in one run must not throttle each other.
+    const client = makeClient();
+    const ctx = {};
+    const other = { ...conn, email_connection_id: "c-2", email_address: "ops@praxisls.com" };
+    for (let i = 0; i < mailNotify.PER_RUN_CAP; i++) {
+      /* eslint-disable-next-line no-await-in-loop */
+      await mailNotify.onInboundMessage(client, { conn, message, row: fresh(), ctx });
+    }
+    mockNotifyMany.mockClear();
+    await mailNotify.onInboundMessage(client, { conn: other, message, row: fresh(), ctx });
+    expect(mockNotifyMany).toHaveBeenCalledTimes(1);
   });
 });

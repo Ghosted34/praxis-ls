@@ -96,21 +96,32 @@ function emptyProfile(serviceTypeId) {
  *     the validator strips unknown keys, so this is the belt to the
  *     `.strict()` braces.
  */
+/**
+ * The columns the patch may set on either branch.
+ *
+ * Hoisted and exported so the three lists that must agree — this one, the
+ * service's WRITABLE, and the validator's profileFields — can be asserted
+ * identical in one test. A key in the schema but missing here is a field the
+ * API accepts and can never write; the reverse is a column writable through
+ * PUT that no validator ever admits. Both are silent.
+ */
+const PROFILE_COLUMNS = [
+  "short_description_fr", "short_description_en",
+  "long_description_fr", "long_description_en",
+  "highlights_fr", "highlights_en",
+  "coverage_fr", "coverage_en",
+  "slug_fr", "slug_en",
+  "meta_title_fr", "meta_title_en",
+  "meta_description_fr", "meta_description_en",
+  "cover_vault_id", "icon_vault_id",
+  "gallery_vault_ids",
+  "video_url",
+  "sort_order",
+  "group_id", "claim_fr", "claim_en", "accent",
+];
+
 async function upsertProfile(client, serviceTypeId, patch) {
-  // The columns the patch may set on either branch.
-  const COLUMNS = [
-    "short_description_fr", "short_description_en",
-    "long_description_fr", "long_description_en",
-    "highlights_fr", "highlights_en",
-    "coverage_fr", "coverage_en",
-    "slug_fr", "slug_en",
-    "meta_title_fr", "meta_title_en",
-    "meta_description_fr", "meta_description_en",
-    "cover_vault_id", "icon_vault_id",
-    "gallery_vault_ids",
-    "video_url",
-    "sort_order",
-  ];
+  const COLUMNS = PROFILE_COLUMNS;
   // Build an INSERT with ONLY the keys the patch actually carries (so a
   // first write with one field does not insert NULLs over every other
   // column). The DO UPDATE only touches the columns in `sent` too — no
@@ -495,8 +506,91 @@ async function publicMediaForServe(client, docId) {
   return rows[0] || null;
 }
 
+/* ── Pillars (12752) ───────────────────────────────────────────────────────
+ * The marketing grouping for the public services page. Kept beside the
+ * profile queries because they are read together and drift apart otherwise.
+ */
+
+/** Admin list — INCLUDES inactive pillars, unlike the public read. */
+async function listGroups(client) {
+  const { rows } = await client.query(
+    `SELECT g.group_id, g.key, g.name_fr, g.name_en, g.icon,
+            g.sort_order, g.is_active,
+            COUNT(p.service_type_id)::int AS service_count
+       FROM service_type_web_group g
+       LEFT JOIN service_type_web_profile p ON p.group_id = g.group_id
+      GROUP BY g.group_id
+      ORDER BY g.sort_order ASC, g.key ASC`,
+  );
+  return rows;
+}
+
+async function getGroup(client, groupId) {
+  const { rows } = await client.query(
+    "SELECT * FROM service_type_web_group WHERE group_id = $1",
+    [groupId],
+  );
+  return rows[0] || null;
+}
+
+async function groupKeyTaken(client, key, exceptId = null) {
+  const { rowCount } = await client.query(
+    `SELECT 1 FROM service_type_web_group
+      WHERE key = $1 AND ($2::uuid IS NULL OR group_id <> $2) LIMIT 1`,
+    [key, exceptId],
+  );
+  return rowCount > 0;
+}
+
+async function createGroup(client, patch) {
+  const { rows } = await client.query(
+    `INSERT INTO service_type_web_group (key, name_fr, name_en, icon, sort_order, is_active)
+          VALUES ($1, $2, $3, $4, COALESCE($5, 100), COALESCE($6, true))
+       RETURNING *`,
+    [patch.key, patch.name_fr, patch.name_en ?? null, patch.icon ?? null,
+      patch.sort_order ?? null, patch.is_active ?? null],
+  );
+  return rows[0];
+}
+
+/** Omitted keys unchanged — same contract as upsertProfile. */
+async function updateGroup(client, groupId, patch) {
+  const COLUMNS = ["key", "name_fr", "name_en", "icon", "sort_order", "is_active"];
+  const sent = COLUMNS.filter((c) => Object.prototype.hasOwnProperty.call(patch, c));
+  if (sent.length === 0) return getGroup(client, groupId);
+  const set = sent.map((c, i) => `${c} = $${i + 2}`).join(", ");
+  const { rows } = await client.query(
+    `UPDATE service_type_web_group
+        SET ${set}, updated_at = now()
+      WHERE group_id = $1
+      RETURNING *`,
+    [groupId, ...sent.map((c) => patch[c])],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * The FK is ON DELETE SET NULL, so the services under a deleted pillar are
+ * not deleted with it — they fall back to the trailing unnamed group and keep
+ * rendering. Deleting a pillar is a layout change, never a content loss.
+ */
+async function deleteGroup(client, groupId) {
+  const { rows } = await client.query(
+    "DELETE FROM service_type_web_group WHERE group_id = $1 RETURNING *",
+    [groupId],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   IMAGE_TYPES,
+  PROFILE_COLUMNS,
+  listGroups,
+  getGroup,
+  groupKeyTaken,
+  createGroup,
+  updateGroup,
+  deleteGroup,
   getProfile,
   emptyProfile,
   upsertProfile,

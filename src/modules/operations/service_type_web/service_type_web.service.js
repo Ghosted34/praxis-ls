@@ -36,6 +36,7 @@ const WRITABLE = [
   "gallery_vault_ids",
   "video_url",
   "sort_order",
+  "group_id", "claim_fr", "claim_en", "accent",
 ];
 
 /** `pick` of the patch — every key present in the request body is sent
@@ -160,6 +161,18 @@ async function upsertProfile(client, { serviceTypeId, patch, actor = {} }) {
     }
   }
   const fields = pickWritable(patch || {});
+  // An unknown pillar would otherwise reach the FK and surface as a 500 with a
+  // Postgres string in it. Named field, 422, same shape as SLUG_TAKEN. Null is
+  // allowed through untouched — clearing the pillar is how a service returns to
+  // the trailing unnamed group.
+  if (fields.group_id) {
+    const group = await repo.getGroup(client, fields.group_id);
+    if (!group) {
+      throw new AppError("NOT_FOUND", "Pillar not found", 422, {
+        group_id: ["no such pillar"],
+      });
+    }
+  }
   if (before) {
     // Slug-uniqueness: drafts included, so two services cannot both want
     // the same /fr/<slug>. The partial unique index is the real guard; the
@@ -485,9 +498,95 @@ async function autoUnpublishForArchive(client, serviceTypeId) {
   return repo.autoUnpublishForServiceType(client, serviceTypeId);
 }
 
+/* ── Pillars (12752) ─────────────────────────────────────────────────────── */
+
+const groupRef = (id) => `service_type_web_group:${id}`;
+
+const listGroups = (client) => repo.listGroups(client);
+
+/**
+ * `key` is the anchor a shared link lands on (`/services#freight`), so a
+ * collision is a 422 with the field named rather than a raw 23505.
+ */
+async function createGroup(client, { patch, actor = {} }) {
+  if (await repo.groupKeyTaken(client, patch.key)) {
+    throw new AppError("KEY_TAKEN", `A pillar already uses the key "${patch.key}"`, 422, {
+      key: ["already in use"],
+    });
+  }
+  return atomically(client, async () => {
+    const row = await repo.createGroup(client, patch);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.GROUP_CREATED,
+      moduleKey: events.MODULE,
+      entityRef: groupRef(row.group_id),
+      before: null,
+      after: row,
+    });
+    return row;
+  });
+}
+
+async function updateGroup(client, { groupId, patch, actor = {} }) {
+  const before = await repo.getGroup(client, groupId);
+  if (!before) throw new AppError("NOT_FOUND", "Pillar not found", 404);
+  if (patch.key && patch.key !== before.key
+      && await repo.groupKeyTaken(client, patch.key, groupId)) {
+    throw new AppError("KEY_TAKEN", `A pillar already uses the key "${patch.key}"`, 422, {
+      key: ["already in use"],
+    });
+  }
+  return atomically(client, async () => {
+    const row = await repo.updateGroup(client, groupId, patch);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.GROUP_UPDATED,
+      moduleKey: events.MODULE,
+      entityRef: groupRef(groupId),
+      before,
+      after: row,
+    });
+    return row;
+  });
+}
+
+/**
+ * Deleting a pillar never deletes its services — the FK is ON DELETE SET NULL,
+ * so they fall back to the trailing unnamed group and keep rendering. The
+ * count is returned so the caller can say what moved rather than leaving the
+ * operator to discover it on the live page.
+ */
+async function deleteGroup(client, { groupId, actor = {} }) {
+  const before = await repo.getGroup(client, groupId);
+  if (!before) throw new AppError("NOT_FOUND", "Pillar not found", 404);
+  return atomically(client, async () => {
+    const { rows } = await client.query(
+      "SELECT COUNT(*)::int AS n FROM service_type_web_profile WHERE group_id = $1",
+      [groupId],
+    );
+    const released = rows[0] ? rows[0].n : 0;
+    await repo.deleteGroup(client, groupId);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.GROUP_DELETED,
+      moduleKey: events.MODULE,
+      entityRef: groupRef(groupId),
+      before,
+      after: null,
+    });
+    return { deleted: true, released_services: released };
+  });
+}
+
 module.exports = {
   // admin
   getTab,
+  // pillars (12752)
+  listGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
   upsertProfile,
   publish,
   unpublish,

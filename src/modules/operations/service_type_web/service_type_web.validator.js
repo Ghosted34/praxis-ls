@@ -58,6 +58,8 @@ const COVERAGE_MAX = 1000;
 const QUESTION_MAX = 300;
 const ANSWER_MAX = 4000;
 const GALLERY_MAX = 12;
+// One sentence, not a paragraph — the card closes on it (12752).
+const CLAIM_MAX = 200;
 const FAQ_MAX = 12;
 
 // The optional bilingual media-replace / FAQ / related shapes are scoped to
@@ -82,6 +84,14 @@ const profileFields = {
   gallery_vault_ids: z.array(z.string().uuid()).max(GALLERY_MAX).optional(),
   video_url: VIDEO_URL.nullable().optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
+  // 12752 — the pillar, the closing claim, and the brand token that tints the
+  // card. `group_id` is nullable on purpose: clearing it returns the service to
+  // the trailing unnamed group, which still renders. `accent` mirrors the CHECK
+  // on the column; a hex here would bake one tenant's palette into the data.
+  group_id: z.string().uuid().nullable().optional(),
+  claim_fr: z.string().trim().max(CLAIM_MAX).nullable().optional(),
+  claim_en: z.string().trim().max(CLAIM_MAX).nullable().optional(),
+  accent: z.enum(["PRIMARY", "ACCENT", "SUCCESS"]).optional(),
 };
 
 // `.partial()` so omitted keys are unchanged on update (one writer per
@@ -113,7 +123,41 @@ const replaceMedia = z.object({
   original_name: z.string().trim().min(1).max(255).optional(),
 }).strict();
 
-const schemas = { upsertProfile, replaceFaq, replaceRelated, replaceMedia };
+// Pillars (12752). `key` is the URL anchor a shared link lands on, so it is
+// constrained to a slug shape rather than free text — a pillar keyed "Freight
+// Solutions!" would produce /services#Freight%20Solutions! and break the jump
+// link the hero depends on.
+const GROUP_KEY = z.string().trim().toLowerCase().regex(
+  /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$|^[a-z0-9]$/,
+  "use lowercase letters, digits and hyphens",
+);
+const GROUP_NAME_MAX = 80;
+const groupFields = {
+  key: GROUP_KEY,
+  name_fr: z.string().trim().min(1).max(GROUP_NAME_MAX),
+  name_en: z.string().trim().max(GROUP_NAME_MAX).nullable().optional(),
+  // Icon NAME, resolved by the renderer against its own set. Never markup: a
+  // tenant-editable field reaching the DOM as HTML is stored XSS on a public
+  // page.
+  icon: z.string().trim().max(60).nullable().optional(),
+  sort_order: z.number().int().min(0).max(10000).optional(),
+  is_active: z.boolean().optional(),
+};
+const createGroup = z.object(groupFields).strict();
+// Every field optional on update, but at least one present — an empty PATCH is
+// a caller bug, and answering 200 to it hides the bug.
+const updateGroup = z.object({
+  key: GROUP_KEY.optional(),
+  name_fr: z.string().trim().min(1).max(GROUP_NAME_MAX).optional(),
+  name_en: z.string().trim().max(GROUP_NAME_MAX).nullable().optional(),
+  icon: z.string().trim().max(60).nullable().optional(),
+  sort_order: z.number().int().min(0).max(10000).optional(),
+  is_active: z.boolean().optional(),
+}).strict().refine((v) => Object.keys(v).length > 0, {
+  message: "send at least one field to change",
+});
+
+const schemas = { upsertProfile, replaceFaq, replaceRelated, replaceMedia, createGroup, updateGroup };
 
 /**
  * Bodyless action (publish, unpublish) — accept an empty body and refuse
@@ -141,6 +185,8 @@ module.exports = {
   replaceFaq: mw("replaceFaq"),
   replaceRelated: mw("replaceRelated"),
   replaceMedia: mw("replaceMedia"),
+  createGroup: mw("createGroup"),
+  updateGroup: mw("updateGroup"),
   validateNoBody: noBodyMw,
   schemas,
   // The share image and the share title/description both fall back to the
@@ -157,5 +203,7 @@ module.exports = {
     HIGHLIGHTS_MAX,
     GALLERY_MAX,
     FAQ_MAX,
+    CLAIM_MAX,
+    GROUP_NAME_MAX,
   },
 };

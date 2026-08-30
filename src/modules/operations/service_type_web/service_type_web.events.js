@@ -25,4 +25,7 @@ module.exports = {
   MEDIA_REMOVED: "service_type_web.media_removed",
   FAQ_UPDATED: "service_type_web.faq_updated",
   RELATED_UPDATED: "service_type_web.related_updated",
+  GROUP_CREATED: "service_type_web.group_created",
+  GROUP_UPDATED: "service_type_web.group_updated",
+  GROUP_DELETED: "service_type_web.group_deleted",
 };

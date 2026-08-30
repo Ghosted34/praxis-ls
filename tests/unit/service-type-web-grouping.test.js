@@ -152,3 +152,100 @@ describe("the public list route", () => {
     expect(repoSrc).toMatch(/g\.group_id, g\.key AS group_key/);
   });
 });
+
+/**
+ * Three lists must agree or a field silently stops working: the validator's
+ * profileFields (what the API accepts), the service's WRITABLE (what it passes
+ * on) and the repo's PROFILE_COLUMNS (what it writes). This is the same parity
+ * guard corporate-entity-create.test.js keeps over the master shape, and it is
+ * the reason adding group_id/claim/accent needed three edits rather than one.
+ */
+describe("profile field parity", () => {
+  const validator = require("../../src/modules/operations/service_type_web/service_type_web.validator");
+  const service = require("../../src/modules/operations/service_type_web/service_type_web.service");
+  const webRepo = require("../../src/modules/operations/service_type_web/service_type_web.repo");
+
+  const schemaKeys = Object.keys(validator.schemas.upsertProfile.shape).sort();
+
+  it("keeps validator, WRITABLE and PROFILE_COLUMNS identical", () => {
+    expect([...service.WRITABLE].sort()).toEqual(schemaKeys);
+    expect([...webRepo.PROFILE_COLUMNS].sort()).toEqual(schemaKeys);
+  });
+
+  it("carries the 12752 fields end to end", () => {
+    for (const key of ["group_id", "claim_fr", "claim_en", "accent"]) {
+      expect(schemaKeys).toContain(key);
+      expect(service.WRITABLE).toContain(key);
+      expect(webRepo.PROFILE_COLUMNS).toContain(key);
+    }
+  });
+
+  it("accepts only token names for accent, never a hex", () => {
+    const s = validator.schemas.upsertProfile;
+    expect(s.safeParse({ accent: "ACCENT" }).success).toBe(true);
+    expect(s.safeParse({ accent: "#EE7D04" }).success).toBe(false);
+  });
+
+  it("lets group_id be cleared, because ungrouped still renders", () => {
+    expect(validator.schemas.upsertProfile.safeParse({ group_id: null }).success).toBe(true);
+  });
+});
+
+describe("pillar validation", () => {
+  const { schemas } = require("../../src/modules/operations/service_type_web/service_type_web.validator");
+
+  it("constrains key to an anchor-safe slug", () => {
+    // key is what /services#<key> lands on; spaces and punctuation break the
+    // jump links the page hero depends on.
+    expect(schemas.createGroup.safeParse({ key: "freight", name_fr: "Fret" }).success).toBe(true);
+    expect(schemas.createGroup.safeParse({ key: "value-added", name_fr: "x" }).success).toBe(true);
+    expect(schemas.createGroup.safeParse({ key: "Freight Solutions!", name_fr: "x" }).success).toBe(false);
+    expect(schemas.createGroup.safeParse({ key: "-leading", name_fr: "x" }).success).toBe(false);
+  });
+
+  it("requires a French name — the fallback every renderer reads", () => {
+    expect(schemas.createGroup.safeParse({ key: "freight" }).success).toBe(false);
+    expect(schemas.createGroup.safeParse({ key: "freight", name_fr: "" }).success).toBe(false);
+  });
+
+  it("refuses an empty update rather than answering 200 to a caller bug", () => {
+    expect(schemas.updateGroup.safeParse({}).success).toBe(false);
+    expect(schemas.updateGroup.safeParse({ sort_order: 10 }).success).toBe(true);
+  });
+
+  it("rejects unknown keys instead of ignoring them", () => {
+    expect(schemas.createGroup.safeParse({
+      key: "freight", name_fr: "Fret", colour: "#fff",
+    }).success).toBe(false);
+  });
+});
+
+describe("pillar admin routes", () => {
+  const src = fs.readFileSync(
+    path.join(repo, "src/modules/operations/service_type/service_type.routes.js"),
+    "utf8",
+  );
+
+  it("registers the literal /web/groups paths before the /:id/web ones", () => {
+    const groups = src.indexOf('"/web/groups"');
+    const byId = src.indexOf('"/:id/web"');
+    expect(groups).toBeGreaterThan(-1);
+    expect(byId).toBeGreaterThan(-1);
+    expect(groups).toBeLessThan(byId);
+  });
+
+  it("gates reads on view and every write on edit", () => {
+    // From the section comment, not the path string: slicing at the path
+    // starts *inside* router.get(, so the verb token is already behind us.
+    const block = src.slice(src.indexOf("── Pillars (12752)"), src.indexOf('"/:id/web"'));
+    expect(block).toMatch(/router\.get\([\s\S]*?requirePermission\(MODULE, "view"\)/);
+    for (const verb of ["post", "patch", "delete"]) {
+      expect(block).toMatch(new RegExp(`router\\.${verb}\\([\\s\\S]*?requirePermission\\(MODULE, "edit"\\)`));
+    }
+  });
+
+  it("validates both bodied writes", () => {
+    expect(src).toContain("validateCreateGroup");
+    expect(src).toContain("validateUpdateGroup");
+  });
+});

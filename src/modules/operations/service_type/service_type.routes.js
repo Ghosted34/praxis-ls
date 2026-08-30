@@ -230,7 +230,63 @@ const {
   replaceRelated: validateReplaceRelated,
   replaceMedia: validateReplaceMedia,
   validateNoBody: validateWebAction,
+  createGroup: validateCreateGroup,
+  updateGroup: validateUpdateGroup,
 } = require("../service_type_web/service_type_web.validator");
+
+// ── Pillars (12752) ───────────────────────────────────────────────────────
+// The marketing grouping the public services page renders as named sections.
+//
+// Registered BEFORE `/:id/web` deliberately. Express matches in order, and
+// while `/web/groups` cannot actually collide with `/:id/web` (the second
+// segment is a literal "web" there and "groups" here), keeping the literal
+// path first means a future `/:id/...` route cannot start swallowing these by
+// accident. Same MOD-29 permission as the rest of the web tab: whoever governs
+// a service type's public face governs how it is grouped.
+router.get(
+  "/web/groups",
+  requirePermission(MODULE, "view"),
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.listGroups(c));
+    res.json({ data });
+  }),
+);
+router.post(
+  "/web/groups",
+  requirePermission(MODULE, "edit"),
+  validateCreateGroup,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.createGroup(c, {
+      patch: req.body, actor: req.user || {},
+    }));
+    res.status(201).json({ data });
+  }),
+);
+router.patch(
+  "/web/groups/:groupId",
+  requirePermission(MODULE, "edit"),
+  validateUpdateGroup,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.updateGroup(c, {
+      groupId: req.params.groupId, patch: req.body, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+// Deleting a pillar releases its services to the unnamed group rather than
+// deleting them (ON DELETE SET NULL). The response says how many moved, so the
+// operator learns it here instead of on the live page.
+router.delete(
+  "/web/groups/:groupId",
+  requirePermission(MODULE, "edit"),
+  validateWebAction,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => webService.deleteGroup(c, {
+      groupId: req.params.groupId, actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
 
 // GET — always 200 for an existing service type, `profile: null` before
 // creation. The tab never branches on a 404 (guide §3.1, §4.5 GET row).

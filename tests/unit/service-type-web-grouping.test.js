@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * The public services list, folded into pillars (migration 12752).
+ * The public services list, folded into pillars (migration 12755).
  *
  * The fold lives in its own module precisely so it can be pinned without a
  * database: every case below is a shape the SQL can genuinely produce, and the
@@ -98,9 +98,9 @@ describe("groupServices", () => {
   });
 });
 
-describe("migration 12752", () => {
+describe("migration 12755", () => {
   const sql = fs.readFileSync(
-    path.join(repo, "migrations/tenant/12752_service_type_web_group.sql"),
+    path.join(repo, "migrations/tenant/12755_service_type_web_group.sql"),
     "utf8",
   );
 
@@ -172,7 +172,7 @@ describe("profile field parity", () => {
     expect([...webRepo.PROFILE_COLUMNS].sort()).toEqual(schemaKeys);
   });
 
-  it("carries the 12752 fields end to end", () => {
+  it("carries the 12755 fields end to end", () => {
     for (const key of ["group_id", "claim_fr", "claim_en", "accent"]) {
       expect(schemaKeys).toContain(key);
       expect(service.WRITABLE).toContain(key);
@@ -237,7 +237,7 @@ describe("pillar admin routes", () => {
   it("gates reads on view and every write on edit", () => {
     // From the section comment, not the path string: slicing at the path
     // starts *inside* router.get(, so the verb token is already behind us.
-    const block = src.slice(src.indexOf("── Pillars (12752)"), src.indexOf('"/:id/web"'));
+    const block = src.slice(src.indexOf("── Pillars (12755)"), src.indexOf('"/:id/web"'));
     expect(block).toMatch(/router\.get\([\s\S]*?requirePermission\(MODULE, "view"\)/);
     for (const verb of ["post", "patch", "delete"]) {
       expect(block).toMatch(new RegExp(`router\\.${verb}\\([\\s\\S]*?requirePermission\\(MODULE, "edit"\\)`));

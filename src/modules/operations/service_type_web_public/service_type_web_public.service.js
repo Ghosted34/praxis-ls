@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Folding the flat public services list into pillars (migration 12752).
+ * Folding the flat public services list into pillars (migration 12755).
  *
  * Lives here rather than in the route so it can be tested without a database
  * and without booting the app — the same reason the mount rules got their own

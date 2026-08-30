@@ -61,7 +61,7 @@ const mediaUrl = (id) => (id ? `/api/tenant/public/services/media/${id}` : null)
 const notFound = (msg) => new AppError("NOT_FOUND", msg, 404);
 
 /**
- * Grouped, because a services page is pillars and not a list (12752).
+ * Grouped, because a services page is pillars and not a list (12755).
  *
  * The repo returns flat rows already ordered pillar-then-card; this walks them
  * once and folds them into groups, which is why insertion order is the render

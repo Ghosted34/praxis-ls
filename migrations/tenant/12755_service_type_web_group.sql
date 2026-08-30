@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT — 12752 Service pillars for the public website.
+-- TENANT — 12755 Service pillars for the public website.
 --
 -- ── WHY ────────────────────────────────────────────────────────────────────
 -- `publicList` returns a FLAT array of published services. Every real logistics

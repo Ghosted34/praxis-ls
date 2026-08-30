@@ -58,7 +58,7 @@ const COVERAGE_MAX = 1000;
 const QUESTION_MAX = 300;
 const ANSWER_MAX = 4000;
 const GALLERY_MAX = 12;
-// One sentence, not a paragraph — the card closes on it (12752).
+// One sentence, not a paragraph — the card closes on it (12755).
 const CLAIM_MAX = 200;
 const FAQ_MAX = 12;
 
@@ -84,7 +84,7 @@ const profileFields = {
   gallery_vault_ids: z.array(z.string().uuid()).max(GALLERY_MAX).optional(),
   video_url: VIDEO_URL.nullable().optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
-  // 12752 — the pillar, the closing claim, and the brand token that tints the
+  // 12755 — the pillar, the closing claim, and the brand token that tints the
   // card. `group_id` is nullable on purpose: clearing it returns the service to
   // the trailing unnamed group, which still renders. `accent` mirrors the CHECK
   // on the column; a hex here would bake one tenant's palette into the data.
@@ -123,7 +123,7 @@ const replaceMedia = z.object({
   original_name: z.string().trim().min(1).max(255).optional(),
 }).strict();
 
-// Pillars (12752). `key` is the URL anchor a shared link lands on, so it is
+// Pillars (12755). `key` is the URL anchor a shared link lands on, so it is
 // constrained to a slug shape rather than free text — a pillar keyed "Freight
 // Solutions!" would produce /services#Freight%20Solutions! and break the jump
 // link the hero depends on.

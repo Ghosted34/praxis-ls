@@ -498,7 +498,7 @@ async function autoUnpublishForArchive(client, serviceTypeId) {
   return repo.autoUnpublishForServiceType(client, serviceTypeId);
 }
 
-/* ── Pillars (12752) ─────────────────────────────────────────────────────── */
+/* ── Pillars (12755) ─────────────────────────────────────────────────────── */
 
 const groupRef = (id) => `service_type_web_group:${id}`;
 
@@ -582,7 +582,7 @@ async function deleteGroup(client, { groupId, actor = {} }) {
 module.exports = {
   // admin
   getTab,
-  // pillars (12752)
+  // pillars (12755)
   listGroups,
   createGroup,
   updateGroup,

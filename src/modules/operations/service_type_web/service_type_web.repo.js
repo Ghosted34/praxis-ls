@@ -295,6 +295,21 @@ async function replaceRelated(client, serviceTypeId, ids) {
  * The partial index ix_stwp_public_list covers the WHERE / ORDER BY so
  * EXPLAIN reads as an index scan, not a sort.
  */
+/**
+ * The pillar join, explained here rather than inside the query.
+ *
+ * `is_active` is folded into the ON, not the WHERE. In the WHERE it would turn
+ * the outer join back into an inner one and silently drop exactly what the LEFT
+ * is there to keep: an ungrouped service, or one whose pillar was retired.
+ * Both must still be listed.
+ *
+ * Ungrouped sorts last (NULLS LAST) so the named pillars lead and the leftovers
+ * trail, which is the order the renderer assumes.
+ *
+ * The prose lives out here because scripts/check-response-contract.js parses
+ * the SQL literal and reads a `-- ... from the page` comment as a FROM clause
+ * against a table called "the".
+ */
 async function publicList(client) {
   const { rows } = await client.query(
     `SELECT p.service_type_id, p.slug_fr, p.slug_en,
@@ -329,15 +344,9 @@ async function publicList(client) {
             (p.video_url IS NOT NULL) AS has_video
        FROM service_type_web_profile p
        JOIN service_type st ON st.service_type_id = p.service_type_id
-       -- LEFT, and is_active folded into the ON rather than the WHERE: an
-       -- ungrouped service, or one whose pillar was retired, must still be
-       -- listed. Putting either test in WHERE would turn the outer join back
-       -- into an inner one and silently drop those services from the page.
        LEFT JOIN service_type_web_group g
               ON g.group_id = p.group_id AND g.is_active = true
       WHERE p.is_published = true AND st.is_active = true
-      -- Ungrouped sorts last (NULLS LAST) so the named pillars lead the page
-      -- and the leftovers trail it, which is the order the renderer assumes.
       ORDER BY g.sort_order ASC NULLS LAST, g.key ASC NULLS LAST,
                p.sort_order ASC, st.name_fr ASC`,
     [IMAGE_TYPES],
@@ -506,7 +515,7 @@ async function publicMediaForServe(client, docId) {
   return rows[0] || null;
 }
 
-/* ── Pillars (12752) ───────────────────────────────────────────────────────
+/* ── Pillars (12755) ───────────────────────────────────────────────────────
  * The marketing grouping for the public services page. Kept beside the
  * profile queries because they are read together and drift apart otherwise.
  */

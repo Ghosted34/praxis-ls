@@ -17,9 +17,13 @@ import { fieldErrorsOf, type Trap } from "./intake-api";
  * first scraper of the day uses up the whole office's quota. Stamping mount time
  * is one line here and cannot be forgotten in four places.
  *
- * The same argument for `website_url`: it must be SENT, as an empty string, so a
- * bot that fills every field it finds gets a `max(0)` failure. An omitted key
- * passes; a filled key fails. Hence `honeypot` in state, not a discarded input.
+ * The same argument for `website_url`. It is kept in STATE rather than being a
+ * discarded input, because what matters is that a bot which fills every field
+ * it finds has its value TRAVEL: `z.string().max(0)` then fails it. A person
+ * leaves it empty, and `intake-api`'s payload cleaner drops empty strings, so
+ * the key never leaves the browser — which passes, exactly as an empty one
+ * would, because the schema marks it `.optional()`. Omitted and empty are the
+ * same outcome; filled is the one that is not, and that is the whole trap.
  *
  * On success the payload the server hands back (`{ received, reference }`) is
  * surfaced, because a quote reference is the one thing that lets a client chase

@@ -45,8 +45,16 @@ const base = {
   estimated_weight: z.number().nonnegative().optional().nullable(),
   project_cargo_flag: z.boolean().optional(),
   cargo_description: text5000,
+  additional_notes: text5000,
   incoterm: text255,
   owner_user_id: z.string().uuid().optional().nullable(),
+  // origin_place_id / destination_place_id / attachment_doc_id are in the
+  // repo's WRITABLE list but deliberately NOT here. They are written by
+  // public_intake.service, which earns them: the coordinates come from
+  // re-querying the provider and the document from the vault's own sniffing
+  // write. A PATCH that could set attachment_doc_id to any uuid would let a
+  // staff user hang any document in the vault off any quote request, which is
+  // not an edit anybody has asked for and is the shape of an IDOR.
 };
 
 const schemas = {

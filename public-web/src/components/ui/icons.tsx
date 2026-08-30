@@ -168,6 +168,14 @@ export const BoxIcon = (p: Props) => (
   </Svg>
 );
 
+/** The step counter's mark. A bolt, because the counter is about pace — how
+ *  much is left — rather than about status. */
+export const BoltIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12Z" />
+  </Svg>
+);
+
 /** The not-found state's glyph. A magnifier, not a warning triangle: nothing
  *  went wrong when a reference does not match — the visitor mistyped it, or the
  *  desk has not opened the file yet, and an alert icon would tell them their

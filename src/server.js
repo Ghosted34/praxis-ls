@@ -503,6 +503,9 @@ function buildApp() {
             origin,
             isPublicSurface(req) || config.SERVE_PUBLIC_WEB,
             baseOf(req),
+            // SEO_NOINDEX_HOSTS — a staging host refuses the whole crawl,
+            // whatever surface it serves.
+            String(req.headers.host || "").toLowerCase().split(":")[0],
           ),
         );
     });

@@ -6,6 +6,7 @@ import { PlaceInput } from "@/components/ui/place-input";
 import { FileInput, type Attachment } from "@/components/ui/file-input";
 import { Stepper, type Step } from "@/components/ui/stepper";
 import { ErrorState, ModeIcon, SuccessState } from "@/components/state";
+import { ArrowRightIcon } from "@/components/ui/icons";
 import { quoteRequests, type QuoteRequest } from "@/lib/intake-api";
 import type { PlacePick } from "@/lib/places-api";
 import { useIntake } from "@/lib/use-intake";
@@ -292,21 +293,25 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         furthest={furthest}
         onGoTo={goTo}
         label={t("site.quote.stepsLabel")}
+        counter={t("site.quote.stepCounter", { step: step + 1, total: STEPS.length })}
       />
 
       {intake.error && (
         <ErrorState message={intake.error} className="mt-2" />
       )}
 
-      <div>
+      {/* Centred, like every step on their portal. On a form this wide a
+          left-aligned question sits under the step dots and reads as a caption
+          for them; centred, it reads as the thing being asked. */}
+      <div className="text-center">
         <h3
           ref={headingRef}
           tabIndex={-1}
-          className="text-title font-semibold tracking-tight outline-none"
+          className="font-display text-h3 font-semibold tracking-tight outline-none"
         >
           {STEPS[step].label}
         </h3>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mx-auto mt-2 max-w-measure text-muted-foreground">
           {t(`site.quote.stepHint${step}`)}
         </p>
       </div>
@@ -315,30 +320,80 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
         <div className="space-y-4">
           <fieldset>
             <legend className="field-label">{t("site.quote.mode")}</legend>
-            <div className="mt-1 grid gap-2 sm:grid-cols-4">
+            {/*
+              A RADIO GROUP, not four toggle buttons.
+
+              This is a single choice among four, which is what a radio group
+              IS — and the semantics are not a formality: a group gives arrow-key
+              navigation, one tab stop instead of four, and a screen reader that
+              announces "2 of 4" rather than four unrelated pressed/unpressed
+              buttons. Their own markup gets this right (`<label>` wrapping an
+              `<input type="radio">`), and it was the thing worth copying from it.
+
+              The visible card is a sibling of a visually-hidden input, so the
+              focus ring is drawn on the card via `peer-focus-visible` and the
+              real control keeps the keyboard behaviour.
+            */}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {MODES.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  aria-pressed={f.mode === m}
-                  onClick={() => set("mode", m)}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-[calc(var(--radius)-2px)] border p-3 text-left text-sm transition-colors",
-                    f.mode === m
-                      ? "border-[var(--brand-orange)] bg-[rgb(var(--brand-orange)/0.06)] font-semibold"
-                      : "hover:bg-[rgb(var(--ink)/0.04)]",
-                  )}
-                >
-                  <ModeIcon
-                    mode={m}
-                    className={f.mode === m ? "text-[var(--brand-orange)]" : "text-muted-foreground"}
+                <label key={m} className="group relative block cursor-pointer">
+                  <input
+                    type="radio"
+                    name="quote-mode"
+                    value={m}
+                    checked={f.mode === m}
+                    onChange={() => set("mode", m)}
+                    className="peer sr-only"
                   />
-                  <span className="min-w-0 truncate">{t(`site.quote.mode${m}`)}</span>
-                </button>
+                  <span
+                    className={cn(
+                      "flex h-full flex-col rounded-[var(--radius)] border p-4 transition-all duration-200",
+                      "peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--brand-orange)]",
+                      f.mode === m
+                        ? // Three things change at once, deliberately. A
+                          // selected state carried by border colour alone is
+                          // invisible on a phone in sunlight and invisible to
+                          // anyone who does not see that hue — which is what our
+                          // first version did.
+                          "border-[var(--brand-orange)] bg-[rgb(var(--brand-orange)/0.06)] shadow-[0_0_0_1px_var(--brand-orange),0_8px_24px_-12px_var(--brand-orange)]"
+                        : "hover:border-[rgb(var(--ink)/0.25)] hover:bg-[rgb(var(--ink)/0.03)]",
+                    )}
+                  >
+                    {/* The icon TILE. Their cards fill it on selection, and the
+                        filled square is what reads as "chosen" from across a
+                        room — the glyph alone does not. */}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mb-3 inline-flex h-11 w-11 items-center justify-center rounded-[calc(var(--radius)-2px)] transition-colors",
+                        f.mode === m
+                          ? "bg-[var(--brand-orange)] text-[var(--primary-foreground)]"
+                          : "bg-[rgb(var(--ink)/0.06)] text-muted-foreground",
+                      )}
+                    >
+                      <ModeIcon mode={m} size={22} />
+                    </span>
+                    <span
+                      className={cn(
+                        "font-medium leading-snug",
+                        f.mode === m && "font-semibold",
+                      )}
+                    >
+                      {t(`site.quote.mode${m}`)}
+                    </span>
+                    {/* The line ours was missing entirely. A prospect who does
+                        not know whether "By road or rail" covers a Douala →
+                        N'Djamena run picks nothing, and picking nothing is where
+                        this form loses them. */}
+                    <span className="mt-1 text-sm text-muted-foreground">
+                      {t(`site.quote.mode${m}Hint`)}
+                    </span>
+                  </span>
+                </label>
               ))}
             </div>
             {err("mode") && (
-              <p role="alert" className="mt-1.5 text-sm text-[rgb(var(--bad))]">
+              <p role="alert" className="mt-2 text-sm text-[rgb(var(--bad))]">
                 {err("mode")}
               </p>
             )}
@@ -555,6 +610,7 @@ export function QuoteWizard({ services = [] }: { services?: ServiceCard[] }) {
           {step < STEPS.length - 1 ? (
             <Button type="button" size="lg" onClick={next}>
               {t("site.quote.next")}
+              <ArrowRightIcon size={16} className="ml-2" />
             </Button>
           ) : (
             <Button type="submit" size="lg" loading={intake.busy} disabled={intake.busy}>

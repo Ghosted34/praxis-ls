@@ -84,6 +84,16 @@ const ROUTES: Case[] = [
     shows: "site.portfolioPage.unavailable",
     h1: "max",
   },
+  { path: "/public/insights", shows: "site.insights.title", h1: 1 },
+  // Fetch is stubbed to 404 everything here, and a 404 on an article is a
+  // CONTENT state — the link is old or mistyped, or the piece is a draft, which
+  // the API refuses to distinguish. So the page must render its own designed
+  // not-found rather than an error, and this asserts the sentence a reader gets.
+  {
+    path: "/public/insights/la-douane-en-2026",
+    shows: "site.insights.gone",
+    h1: "max",
+  },
   { path: "/public/careers", shows: "site.careers.title", h1: 1 },
   {
     path: "/public/proposals/00000000-0000-4000-8000-000000000000",

@@ -26,8 +26,31 @@
 const fs = require("fs");
 const path = require("path");
 const registry = require("../../services/tenant/registry.service");
+const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const paths = require("./public-web-paths");
+
+/**
+ * Hosts that must answer `noindex` and a blanket robots Disallow.
+ *
+ * `doc/PUBLIC_WEB_PLAN.md` §3.7: a staging copy competing with production in
+ * search results is worse than no staging at all. It is the same content under
+ * a different name, so a crawler treats it as a duplicate and may rank the
+ * rehearsal instead of the real thing — discovered by the tenant when a
+ * customer books against a test database.
+ *
+ * Read once at module load: this is deployment configuration, and a process
+ * that needs a different answer is a process that needs restarting anyway.
+ */
+const NOINDEX_HOSTS = new Set(
+  String(config.SEO_NOINDEX_HOSTS || "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase().split(":")[0])
+    .filter(Boolean),
+);
+
+const isNoindexHost = (host) =>
+  NOINDEX_HOSTS.has(String(host || "").toLowerCase().split(":")[0]);
 
 const TTL_MS = 5 * 60 * 1000;
 const MAX_ENTRIES = 500;
@@ -89,6 +112,218 @@ async function withTenant(host, fn) {
  * page fell back to the shell's generic title. Nothing errored; the cards just
  * went blank.
  */
+/**
+ * JSON-LD, and why it is built here rather than in the browser.
+ *
+ * Structured data is read by crawlers that do not run JavaScript — the same
+ * readers this whole module exists for. A `<script type="application/ld+json">`
+ * appended by React is invisible to every one of them, which makes a
+ * client-side implementation of §3.7 look complete and do nothing.
+ *
+ * ── ESCAPING IS NOT THE SAME PROBLEM AS THE META TAGS ─────────────────────
+ *
+ * `esc()` above produces HTML-attribute-safe text. Inside a `<script>` block
+ * that is both wrong and unsafe: `&amp;` would be printed literally into the
+ * JSON, and — the real hazard — a value containing `</script>` would close the
+ * block early and everything after it would be parsed as markup. So the payload
+ * is JSON.stringify'd and only the one sequence that can break out is escaped.
+ * `<!--` gets the same treatment for the same reason.
+ */
+function ldScript(payload) {
+  if (!payload) return null;
+  const json = JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  return '<script type="application/ld+json">' + json + "</script>";
+}
+
+/** Drop null/undefined/empty members so a sparse record does not emit
+ *  `"description": null`, which validators flag and which tells a crawler the
+ *  field was answered rather than absent. */
+function compact(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined || v === "") continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+const absolute = (origin, url) =>
+  !url ? null : /^https?:\/\//i.test(url) ? url : origin + url;
+
+/**
+ * The tenant, sitewide. Every public page carries it.
+ *
+ * `Organization` rather than `LocalBusiness`: a freight forwarder operating
+ * through several ports is not one storefront, and claiming an address we do
+ * not hold would be worse than claiming none. Name and logo are what branding
+ * actually knows.
+ */
+function organizationLd(branding, origin) {
+  const name = (branding && branding.name) || null;
+  if (!name) return null;
+  return compact({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name,
+    url: origin,
+    logo: absolute(origin, branding && branding.logoUrl),
+  });
+}
+
+/**
+ * Where this page sits, for anything nested.
+ *
+ * Emitted only for a DETAIL page, because that is the only place a breadcrumb
+ * is true: the index is one level down from home and a two-item trail restating
+ * the page's own title is noise a validator will happily accept and no reader
+ * benefits from.
+ */
+function breadcrumbLd(origin, base, trail) {
+  if (!trail || trail.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: trail.map((step, i) => compact({
+      "@type": "ListItem",
+      position: i + 1,
+      name: step.name,
+      item: step.path === null ? undefined : origin + paths.joinBase(base, step.path),
+    })),
+  };
+}
+
+/**
+ * A vacancy, as Google Jobs reads it.
+ *
+ * WS4b calls this "not optional — it is what puts a listing into Google Jobs,
+ * and the cheapest reach a careers page can buy." The fields below are the ones
+ * that decide whether the listing is ACCEPTED: `title`, `description`,
+ * `datePosted` and `hiringOrganization` are required, and a posting with no
+ * `jobLocation` and no `jobLocationType` is rejected outright.
+ *
+ * Three judgements worth stating, because each has a wrong version that
+ * validates:
+ *
+ *   · **`description` must be the real text, not the card summary.** Google's
+ *     own guidance is the full HTML description; a 200-character teaser is a
+ *     posting that looks thin next to every competitor's.
+ *   · **A hidden salary emits NO `baseSalary`.** `publicVacancy` omits the
+ *     numbers when `salary_hidden` is set, and inferring a band from anything
+ *     else would republish exactly what the recruiter chose to withhold — into
+ *     the one place it cannot be retracted from.
+ *   · **`validThrough` only when the vacancy has a closing date.** Google
+ *     removes a posting the moment that date passes, so guessing one would
+ *     silently delist a role that is still open.
+ *
+ * The remote case uses `jobLocationType: "TELECOMMUTE"`, which is the only
+ * accepted way to say it; a `jobLocation` of "Remote" is a posting Google places
+ * in a town called Remote.
+ */
+function jobPostingLd(v, origin, branding) {
+  if (!v || !v.title) return null;
+  const name = (branding && branding.name) || null;
+
+  const remote = String(v.work_mode || "").toUpperCase() === "REMOTE";
+  const address = compact({
+    "@type": "PostalAddress",
+    addressLocality: v.location_city,
+    addressRegion: v.location_state,
+    addressCountry: v.location_country,
+  });
+  // More than just the "@type" key means at least one real component.
+  const hasAddress = Object.keys(address).length > 1;
+
+  const salary =
+    !v.salary_hidden && (v.salary_min || v.salary_max)
+      ? compact({
+          "@type": "MonetaryAmount",
+          currency: v.salary_currency || null,
+          value: compact({
+            "@type": "QuantitativeValue",
+            minValue: v.salary_min ? Number(v.salary_min) : null,
+            maxValue: v.salary_max ? Number(v.salary_max) : null,
+            unitText: "MONTH",
+          }),
+        })
+      : null;
+
+  return compact({
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: v.title,
+    // The full description, not the card's summary.
+    description: v.description || null,
+    datePosted: v.published_at || null,
+    validThrough: v.closes_on || null,
+    employmentType: v.employment_type || null,
+    hiringOrganization: name
+      ? compact({
+          "@type": "Organization",
+          name,
+          sameAs: origin,
+          logo: absolute(origin, branding && branding.logoUrl),
+        })
+      : null,
+    jobLocationType: remote ? "TELECOMMUTE" : null,
+    jobLocation: hasAddress
+      ? compact({ "@type": "Place", address })
+      : null,
+    baseSalary: salary,
+    skills: Array.isArray(v.skills_required) && v.skills_required.length
+      ? v.skills_required.join(", ")
+      : null,
+    experienceRequirements:
+      v.experience_years_min === null || v.experience_years_min === undefined
+        ? null
+        : compact({
+            "@type": "OccupationalExperienceRequirements",
+            monthsOfExperience: Number(v.experience_years_min) * 12,
+          }),
+  });
+}
+
+/**
+ * An article, for a reader that never runs the app.
+ *
+ * `datePublished` is the field WS5 exists to add: their site has no date on a
+ * card, no `article:published_time`, and `og:type` of `website` — so a knowledge
+ * hub with five pieces looks the same age forever, and a crawler has nothing to
+ * rank recency on.
+ *
+ * `author` is a `Person` and not a string, because the name comes from a staff
+ * record rather than from a translation key. Absent when the article is
+ * unattributed — an author who has left sets the FK null, and inventing "Staff"
+ * would be a byline nobody wrote.
+ */
+function articleLd(a, origin, branding, canonical) {
+  if (!a || !a.title) return null;
+  const name = (branding && branding.name) || null;
+  return compact({
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: a.title,
+    description: a.description || null,
+    datePublished: a.published_at || null,
+    image: absolute(origin, a.image),
+    mainEntityOfPage: canonical,
+    author: a.author
+      ? compact({ "@type": "Person", name: a.author.name, jobTitle: a.author.title })
+      : null,
+    publisher: name
+      ? compact({
+          "@type": "Organization",
+          name,
+          logo: absolute(origin, branding && branding.logoUrl),
+        })
+      : null,
+    keywords: Array.isArray(a.tags) && a.tags.length ? a.tags.join(", ") : null,
+  });
+}
+
 const ROUTES = [
   {
     test: /^\/proposals\/([^/]+)\/?$/,
@@ -118,6 +353,11 @@ const ROUTES = [
         : {
             title: v.title || null,
             description: summarise(v.summary || v.description),
+            trail: [
+              { name: "Careers", path: "/careers" },
+              { name: v.title || "Vacancy", path: null },
+            ],
+            ld: (origin, branding) => jobPostingLd(v, origin, branding),
           },
   },
   {
@@ -134,7 +374,56 @@ const ROUTES = [
             title: s.title || null,
             description: summarise(s.summary || s.body),
             image: s.cover_url || null,
+            trail: [
+              { name: "Success stories", path: "/portfolio" },
+              { name: s.title || "Story", path: null },
+            ],
           },
+  },
+  {
+    test: /^\/insights\/([^/]+)\/?$/,
+    load: (client, slug) =>
+      require("../../modules/content/insight/insight.service").getPublic(
+        client,
+        decodeURIComponent(slug),
+      ),
+    // `getPublic` THROWS a 404 for an unpublished or unknown slug rather than
+    // returning null, and `headFor` catches it — so a draft falls back to the
+    // shell's generic title instead of describing a page nobody can open.
+    shape: (a) => {
+      if (!a) return null;
+      // FR first: the tenant is Cameroonian and French is the default. The head
+      // is one document and cannot be bilingual, so it describes the article in
+      // the language it was primarily written in.
+      const title = a.title_fr || a.title_en || null;
+      const description = summarise(a.excerpt_fr || a.excerpt_en || a.body_fr || a.body_en);
+      return {
+        title,
+        description,
+        image: a.cover_id ? "/api/tenant/public/insights/media/" + a.cover_id : null,
+        trail: [
+          { name: "Insights", path: "/insights" },
+          { name: title || "Article", path: null },
+        ],
+        ld: (origin, branding, canonical) =>
+          articleLd(
+            {
+              title,
+              description,
+              published_at: a.published_at,
+              image: a.cover_id ? "/api/tenant/public/insights/media/" + a.cover_id : null,
+              author: a.author,
+              tags: a.tags,
+            },
+            origin,
+            branding,
+            canonical,
+          ),
+        // The one page on this site where og:type is genuinely `article`.
+        ogType: "article",
+        publishedTime: a.published_at || null,
+      };
+    },
   },
 ];
 
@@ -164,6 +453,7 @@ async function headFor(host, urlPath, origin, base) {
   const description = (page && page.description) || null;
   const image = (page && page.image) || (branding && branding.logoUrl) || null;
   const canonical = origin + urlPath;
+  const noindex = isNoindexHost(host);
 
   const tags = [
     // The marketing prefix this host is configured for. The app reads it at boot
@@ -175,7 +465,7 @@ async function headFor(host, urlPath, origin, base) {
     '<meta name="praxis:public-base" content="' + esc(base || paths.DEFAULT_BASE) + '" />',
     "<title>" + esc(title) + "</title>",
     '<link rel="canonical" href="' + esc(canonical) + '" />',
-    '<meta property="og:type" content="website" />',
+    '<meta property="og:type" content="' + esc((page && page.ogType) || "website") + '" />',
     '<meta property="og:site_name" content="' + esc(name) + '" />',
     '<meta property="og:title" content="' + esc(title) + '" />',
     '<meta property="og:url" content="' + esc(canonical) + '" />',
@@ -183,6 +473,19 @@ async function headFor(host, urlPath, origin, base) {
       (image ? "summary_large_image" : "summary") +
       '" />',
   ];
+  if (noindex) {
+    // `noindex, nofollow` and not merely a robots.txt Disallow: a Disallow
+    // stops a crawler READING the page but not INDEXING a URL it found linked
+    // elsewhere, which is how a staging host ends up in results as a bare title
+    // with no snippet. The meta tag is the one that removes it, and it is
+    // emitted first so a truncating reader sees it.
+    tags.unshift('<meta name="robots" content="noindex, nofollow" />');
+  }
+  if (page && page.publishedTime) {
+    // The tag a reader's feed and a crawler both use to date the piece. Only
+    // meaningful alongside og:type=article, which is why it rides with it.
+    tags.push('<meta property="article:published_time" content="' + esc(page.publishedTime) + '" />');
+  }
   if (description) {
     tags.push('<meta name="description" content="' + esc(description) + '" />');
     tags.push('<meta property="og:description" content="' + esc(description) + '" />');
@@ -192,6 +495,19 @@ async function headFor(host, urlPath, origin, base) {
     // what this page's origin was.
     const abs = /^https?:\/\//i.test(image) ? image : origin + image;
     tags.push('<meta property="og:image" content="' + esc(abs) + '" />');
+  }
+
+  // Structured data (§3.7). Skipped entirely on a noindex host: emitting rich
+  // results markup on a page we are asking not to be indexed is at best wasted
+  // bytes and at worst a staging vacancy in Google Jobs.
+  if (!noindex) {
+    const graphs = [organizationLd(branding, origin)];
+    if (page && typeof page.ld === "function") graphs.push(page.ld(origin, branding, canonical));
+    if (page && page.trail) graphs.push(breadcrumbLd(origin, base, page.trail));
+    for (const g of graphs) {
+      const script = ldScript(g);
+      if (script) tags.push(script);
+    }
   }
   return tags.join("\n    ");
 }
@@ -212,7 +528,13 @@ function applyHead(html, tags) {
     .replace("</head>", "  " + tags + "\n  </head>");
 }
 
-function robots(origin, servesPublic, base) {
+function robots(origin, servesPublic, base, host) {
+  if (isNoindexHost(host)) {
+    // The rehearsal. Nothing here should be crawled, and the meta tag in the
+    // head is what actually removes an already-indexed URL — this is the
+    // cheaper half that stops the crawl in the first place.
+    return "User-agent: *\nDisallow: /\n";
+  }
   if (!servesPublic) {
     // A workspace host has nothing a crawler should index, and saying so is
     // cheaper than letting one discover a login wall by crawling into it.
@@ -242,7 +564,7 @@ async function sitemap(host, origin, base) {
   // and naive concatenation emits "//track" — a URL a crawler treats as a
   // protocol-relative address, i.e. a different site.
   const at = (rest) => paths.joinBase(base, rest);
-  const fixed = [at(""), at("/track"), at("/services"), at("/portfolio"), at("/careers")];
+  const fixed = [at(""), at("/track"), at("/services"), at("/portfolio"), at("/careers"), at("/insights")];
   const rows = await withTenant(host, async (client) => {
     const services = require("../../modules/operations/service_type_web_public/service_type_web_public.service");
     const portfolio = require("../../modules/sales/portfolio_public/portfolio_public.service");
@@ -254,6 +576,13 @@ async function sitemap(host, origin, base) {
       [() => services.list(client), (r) => at("/services/" + encodeURIComponent(r.slug_en || r.slug_fr || ""))],
       [() => portfolio.list(client), (r) => at("/portfolio/" + encodeURIComponent(r.slug || ""))],
       [() => careers.list(client), (r) => at("/careers/" + encodeURIComponent(r.public_token || r.token || ""))],
+      // Published articles only — listPublic filters, and an unpublished slug in
+      // a sitemap is an invitation to crawl a 404.
+      [
+        async () => (await require("../../modules/content/insight/insight.service")
+          .listPublic(client, { page: 1, perPage: 500 })).articles,
+        (r) => at("/insights/" + encodeURIComponent(r.slug_fr || r.slug_en || "")),
+      ],
     ];
     for (const [read, make] of sections) {
       try {
@@ -316,4 +645,12 @@ module.exports = {
   invalidateHost,
   applyHead,
   summarise,
+  // Exported for the tests, which assert the structured data directly rather
+  // than by parsing it back out of a `<head>` string.
+  isNoindexHost,
+  organizationLd,
+  jobPostingLd,
+  articleLd,
+  breadcrumbLd,
+  ldScript,
 };

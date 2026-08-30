@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (504)
+## All codes (506)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -170,6 +170,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
 | `EMPLOYEE_NOT_FOUND` | 404, 422 | 2× | `NOT_FOUND` |
 | `EMPLOYEE_REQUIRED` | 422 | 1× | — |
+| `EMPTY_ARTICLE` | 422 | 1× | — |
 | `EMPTY_AUDIO` | 422 | 4× | — |
 | `EMPTY_DRAFT` | 422 | 2× | — |
 | `EMPTY_FILE` | 422 | 2× | — |
@@ -284,7 +285,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 577× | — |
+| `NOT_FOUND` | 404, 422 | 583× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -351,6 +352,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
 | `NO_SIGNED_COPY` | 422 | 2× | — |
+| `NO_SLUG` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 2× | — |
 | `NO_TENANT_CONTEXT` | 500 | 5× | — |
@@ -407,7 +409,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
-| `PUBLISHED` | 422 | 1× | — |
+| `PUBLISHED` | 422 | 2× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `QES_CANCEL_REFUSED` | 409 | 1× | — |
 | `QES_LEDGER_FAILED` | 500 | 1× | — |
@@ -460,7 +462,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SIGNER_IDENTITY_NOT_ACCEPTED` | — | 1× | — |
-| `SLUG_TAKEN` | 422 | 1× | — |
+| `SLUG_TAKEN` | 422 | 3× | — |
 | `SMTP_AUTH_FAILED` | 502 | 1× | — |
 | `SMTP_SEND_FAILED` | 502 | 3× | — |
 | `SMTP_SEND_REJECTED` | 502 | 2× | — |
@@ -522,7 +524,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `USER_INACTIVE` | 401 | 3× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 230× | — |
+| `VALIDATION_ERROR` | 422 | 232× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

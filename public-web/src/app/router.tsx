@@ -85,6 +85,10 @@ const PortfolioStory = lazy(
   () => import("@/features/portfolio/portfolio-page"),
   "PortfolioStoryPage",
 );
+const Quote = lazy(
+  () => import("@/features/quote/quote-page"),
+  "QuotePage",
+);
 const Insights = lazy(
   () => import("@/features/insights/insights-page"),
   "InsightsPage",
@@ -193,12 +197,15 @@ export function AppRouter() {
         <Route path={p("/insights/:slug")} element={<Insight />} />
         <Route path={p("/careers")} element={<Careers />} />
         <Route path={p("/careers/:token")} element={<Vacancy />} />
-        {/* The form used to live at its own path; the band on the home page is the
-            same fields, and a bookmark should reach it rather than 404. */}
-        <Route
-          path={p("/quote")}
-          element={<Navigate to={p("#quote")} replace />}
-        />
+        {/*
+          The quote form has its own route again, and the redirect it replaces
+          was the bug: the header's CTA pointed at `#quote`, which in an SPA
+          scrolls to an element the lazy marketing chunk has not rendered yet
+          (from another page) or re-renders what is already mounted without
+          moving (from the home page). Either way the button did nothing.
+          `features/quote/quote-page.tsx` records the rest.
+        */}
+        <Route path={p("/quote")} element={<Quote />} />
         <Route
           path={p("/contact")}
           element={<Navigate to={p("#contact")} replace />}

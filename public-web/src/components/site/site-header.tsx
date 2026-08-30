@@ -121,7 +121,7 @@ export function SiteHeader() {
 
           <div className="flex items-center gap-2">
             <Link
-              to={p("#quote")}
+              to={p("/quote")}
               className="btn-primary hidden h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold md:inline-flex"
             >
               {t("site.hero.cta")}
@@ -169,7 +169,7 @@ export function SiteHeader() {
               </li>
               <li className="py-3">
                 <Link
-                  to={p("#quote")}
+                  to={p("/quote")}
                   className="btn-primary flex h-11 items-center justify-center rounded-[calc(var(--radius)-2px)] font-semibold"
                 >
                   {t("site.hero.cta")}

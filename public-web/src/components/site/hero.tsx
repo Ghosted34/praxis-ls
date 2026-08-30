@@ -127,16 +127,16 @@ export function Hero() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            {/* A plain anchor for the in-page jump: the browser's own
-                `scroll-behavior: smooth` does the work, `#quote` survives being
-                pasted into a chat, and a router navigation to the same URL would
-                only re-render what is already mounted. */}
-            <a
-              href="#quote"
+            {/* A route, not an in-page jump. This was `href="#quote"` back when
+                the form was a band below — which meant the primary CTA on the
+                site depended on a scroll landing on an element the lazy chunk
+                had rendered. It is a page now, so the link is a link. */}
+            <Link
+              to={p("/quote")}
               className="btn-primary inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-6 text-[0.9375rem] font-semibold"
             >
               {t("site.hero.cta")}
-            </a>
+            </Link>
             <Link
               to={p("/track")}
               className="btn-ghost-hero inline-flex h-11 items-center rounded-[calc(var(--radius)-2px)] px-5 text-[0.9375rem] font-semibold"

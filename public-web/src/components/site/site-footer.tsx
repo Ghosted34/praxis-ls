@@ -37,7 +37,7 @@ export function SiteFooter() {
   const links = {
     services: [
       { to: p("/services"), label: t("site.services.all") },
-      { to: p("#quote"), label: t("site.footer.quote") },
+      { to: p("/quote"), label: t("site.footer.quote") },
     ],
     // Tracking moved out of `services` and into this column: it is something a
     // CLIENT does, not something the tenant sells, and it was appearing in both.

@@ -16,8 +16,8 @@ import { PortalPreview } from "@/components/site/graphics";
 import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ButtonLink } from "@/components/ui/button";
 import { ArrowRightIcon } from "@/components/ui/icons";
-import { QuoteWizard } from "@/components/site/quote-wizard";
 import { ContactForm } from "@/components/site/contact-form";
 import { p } from "@/lib/base-path";
 
@@ -101,7 +101,7 @@ function ServicesBand() {
         // The dict fallback describes what a service TYPE does; there is no
         // tenant artwork behind it, and N12 forbids inventing one.
         image: null as string | null,
-        to: p("#quote"),
+        to: p("/quote"),
       }));
 
   return (
@@ -276,12 +276,14 @@ function PortalBand() {
   );
 }
 
-/** The quote desk. `id="quote"` is the target of the hero CTA and the header
- *  button; `Section`'s `scroll-mt-24` is what keeps the sticky header off the
- *  first field after the jump. */
+/** The pitch for the quote desk, and the link to it.
+ *
+ *  `id="quote"` is kept because links to `…/#quote` are already in circulation
+ *  — the hero CTA and the header button pointed here until the form got its own
+ *  route — and this is where they should land. `Section`'s `scroll-mt-24` keeps
+ *  the sticky header off the heading when one of those old links is followed. */
 function QuoteBand() {
   const { t } = useTranslation();
-  const { services } = usePublishedServices();
   const steps = tList<{ t: string; d: string }>("site.quote.steps");
 
   return (
@@ -291,9 +293,32 @@ function QuoteBand() {
       lead={t("site.quote.sub")}
       divided
     >
+      {/*
+        A BAND that points at /quote, not the form itself.
+
+        The wizard lives at its own route now (features/quote/quote-page.tsx
+        records why the hash version was broken). Keeping a second copy here
+        would mean two places to keep in step and would put the wizard, the
+        place picker and the file reader into the home page's payload — which a
+        visitor who came to read about services would download to scroll past.
+
+        The `id="quote"` stays: links to `…/#quote` are already in circulation,
+        and this is where they should land.
+      */}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <Card padded>
-          <QuoteWizard services={services} />
+        <Card padded className="flex flex-col justify-center">
+          <p className="max-w-measure text-muted-foreground">
+            {t("site.quote.bandLead")}
+          </p>
+          <div className="mt-6">
+            <ButtonLink to={p("/quote")} size="lg">
+              {t("site.quote.bandCta")}
+              <ArrowRightIcon size={16} className="ml-2" />
+            </ButtonLink>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            {t("site.quote.privacy")}
+          </p>
         </Card>
         <div>
           <ol className="space-y-5">

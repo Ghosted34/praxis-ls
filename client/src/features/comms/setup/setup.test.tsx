@@ -80,7 +80,27 @@ describe("tab gating", () => {
   test("an administrator gets the full strip", async () => {
     caps.mockResolvedValue({ can_view: true, can_create: true, can_edit: true, can_administer: true, is_ceo: false });
     render(<CommsSetupPage />);
-    const nav = await screen.findByRole("navigation", { name: /email setup sections/i });
+    /*
+     * Wait for the CAPABILITIES, not for the strip.
+     *
+     * This was `await findByRole("navigation")`, and that stopped being a wait
+     * for anything when the Connections and Follow-ups tabs landed
+     * (5517e857): a non-admin now has three tabs, so the strip renders before
+     * `mailCapabilities()` answers. `findBy*` is `waitFor(getBy*)`, whose first
+     * poll is ~50ms — so when the answer beats that poll the strip is already
+     * full and this passes, and when it does not, `findByRole` resolves against
+     * the PRE-admin render and every synchronous assertion below reads that
+     * DOM. Locally the answer wins; on a runner carrying 1 888 tests across
+     * parallel workers it does not, which is the intermittent red this file
+     * produced in CI while passing on every desk.
+     *
+     * An admin-only label is the only thing whose presence proves the answer
+     * arrived, so it is what the wait is on.
+     */
+    await screen.findByText("Mailboxes");
+    const nav = screen.getByRole("navigation", {
+      name: /email setup sections/i,
+    });
     expect(nav).toBeInTheDocument();
     for (const label of [
       "My mailbox", "Follow-ups", "Mailboxes", "Secure links",

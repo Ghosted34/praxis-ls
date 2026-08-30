@@ -285,6 +285,8 @@ export const en = {
     hero: {
       eyebrow: "Logistics · Customs · Warehousing",
       title: "Freight that moves your business forward",
+      titleMain: "Freight that moves your business",
+      titleAccent: "forward",
       sub: "Sea, air and hinterland logistics across the OHADA/CEMAC region — with one team, one platform, and total visibility.",
       cta: "Request a quote",
       cta2: "Track a shipment",
@@ -629,6 +631,8 @@ export const en = {
     },
     portfolioPage: {
       title: "Success stories",
+      titleMain: "Success",
+      titleAccent: "stories",
       sub: "Operations we have run, in our own words.",
       empty: "Nothing published yet.",
       unavailable: "Story unavailable",
@@ -640,6 +644,8 @@ export const en = {
     },
     trackPage: {
       title: "Track a shipment",
+      titleMain: "Track a",
+      titleAccent: "shipment",
       sub: "Enter the exact file reference shown on your shipment documents.",
       progress: "Progress",
       ofStages: "client-visible stages",
@@ -1027,6 +1033,8 @@ export const fr = {
     hero: {
       eyebrow: "Logistique · Douane · Entreposage",
       title: "Le fret qui fait avancer votre entreprise",
+      titleMain: "Le fret qui fait avancer",
+      titleAccent: "votre entreprise",
       sub: "Logistique maritime, aérienne et terrestre dans la région OHADA/CEMAC — une équipe, une plateforme, une visibilité totale.",
       cta: "Demander un devis",
       cta2: "Suivre un envoi",
@@ -1370,6 +1378,8 @@ export const fr = {
     },
     portfolioPage: {
       title: "Nos réalisations",
+      titleMain: "Nos",
+      titleAccent: "réalisations",
       sub: "Des opérations que nous avons menées, dans nos propres mots.",
       empty: "Rien de publié pour l’instant.",
       unavailable: "Réalisation indisponible",
@@ -1381,6 +1391,8 @@ export const fr = {
     },
     trackPage: {
       title: "Suivre un envoi",
+      titleMain: "Suivre un",
+      titleAccent: "envoi",
       sub: "Saisissez la référence exacte indiquée sur vos documents d’expédition.",
       progress: "Avancement",
       ofStages: "étapes visibles par le client",

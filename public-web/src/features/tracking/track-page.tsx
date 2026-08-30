@@ -18,13 +18,19 @@ import {
   NotFoundState,
   MilestoneMarker,
   MilestoneStatePill,
-  ModeIcon,
+  modeIconFor,
   isClosed,
   milestoneState,
+  motionIcon,
 } from "@/components/state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/pill";
 import { TrackWidget } from "@/components/site/track-widget";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { BgMap } from "@/components/ui/bg-map";
+import { Reveal } from "@/components/ui/reveal";
+import { IconTile } from "@/components/ui/icon-tile";
 
 /**
  * `/public/track` — the public lookup, and the page most visitors of this whole
@@ -111,17 +117,23 @@ export function TrackPage() {
 
   return (
     <PageShell label={t("site.trackPage.title")} footer>
-      <section className="band-hero">
-        <PageContainer>
-          <p className="eyebrow text-[var(--brand-orange)]">
-            {t("site.track.kicker")}
-          </p>
-          <h1 className="hero-title mt-3 text-[var(--hero-foreground)]">
-            {t("site.trackPage.title")}
-          </h1>
-          <p className="mt-4 max-w-measure text-[var(--hero-muted)]">
-            {t("site.trackPage.sub")}
-          </p>
+      {/* The lane field behind the plate (§6.7), the same one the quote hero
+          carries. Inline SVG, so it is part of the first paint rather than a
+          texture that arrives over copy somebody is already reading. */}
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        {/* Positioned, so the copy sits above the map rather than under it. */}
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.track.kicker")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            title={t("site.trackPage.titleMain")}
+            accent={t("site.trackPage.titleAccent")}
+            lead={t("site.trackPage.sub")}
+          />
           <div className="mt-7 max-w-2xl">
             <TrackWidget variant="page" onDark />
           </div>
@@ -239,17 +251,21 @@ function TrackingView({
     <div className="space-y-6">
       <Card padded>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-start gap-4">
+            {/* The mode glyph in a tile rather than bare beside the service
+                name: §9 asks for a tile on every glyph that sits beside a
+                heading, and this one now leads the summary the way the
+                department tile leads a vacancy row. */}
+            {view.service_type ? (
+              <IconTile icon={modeIconFor(view.service_type.mode)} size="lg" />
+            ) : null}
+            <div className="min-w-0">
             <p className="micro">{t("site.track.reference")}</p>
             <h2 className="mt-1 break-words font-display text-h3 font-semibold tracking-tight">
               {view.reference || reference}
             </h2>
             {view.service_type ? (
-              <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                <ModeIcon
-                  mode={view.service_type.mode}
-                  className="text-[var(--brand-orange)]"
-                />
+              <p className="mt-2 text-sm text-muted-foreground">
                 <span className="min-w-0 truncate">
                   {serviceName || view.service_type.key}
                 </span>
@@ -278,6 +294,7 @@ function TrackingView({
                 ) : null}
               </p>
             ) : null}
+            </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             <StatusPill status={view.computed_status} />
@@ -334,7 +351,7 @@ function TrackingView({
       </Card>
 
       {milestones.length > 0 ? (
-        <div>
+        <Reveal>
           <h2 className="text-title font-semibold tracking-tight">
             {t("site.trackPage.timeline")}
           </h2>
@@ -358,7 +375,14 @@ function TrackingView({
                       )}
                     />
                   ) : null}
-                  <MilestoneMarker state={state} index={i} />
+                  <MilestoneMarker
+                    state={state}
+                    index={i}
+                    // The CURRENT stage of a sea file gets a ship, an air file
+                    // a plane, everything else the truck: a glyph that MOVES,
+                    // which is the fact this page exists to state (§7.4).
+                    icon={motionIcon(view.service_type?.mode)}
+                  />
                   <div
                     className={cn(
                       "min-w-0 flex-1",
@@ -395,7 +419,7 @@ function TrackingView({
               );
             })}
           </ol>
-        </div>
+        </Reveal>
       ) : (
         // Found the file, and it has no client-visible stages yet. This is the
         // state §3.3 insists must not read as "no such reference".

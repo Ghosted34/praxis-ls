@@ -1,11 +1,19 @@
 # UI upgrade plan — the tenant public website
 
-**Status:** drafted 2026-08-30. **Steps 1–3 of §10 are built** — the tokens, the
-shared components, insights as their first consumer, and `Reveal` / `BgMap`
-measured. §7.3–7.5 (services, tracking, the remaining pages) are open.
+**Status:** drafted 2026-08-30, **finished 2026-08-30. All five steps of §10 are
+built** — the tokens, the shared components, insights, `Reveal` / `BgMap`, and
+now §7.3–7.5 (services, tracking, success stories, careers). First paint is
+**116.7 kB of 128 kB**, measured; §10 carries the per-step table.
 
-Two specs below were **wrong and are corrected in place** — §6.4 and §6.6. Both
-were written before the code was read, and building them proved them wrong.
+Four specs below were **wrong and are corrected in place** — §6.4, §6.6, §7.3
+and §7.5. Each was written before the code was read, and building it proved it
+wrong. §7.1's "still open" list is also gone: those three items were done when
+the quote page got its own route.
+
+**§11 is the completeness sweep.** Finishing §7's page list is not the same as
+meeting §9, which is written about the whole app — the sweep found three real
+gaps behind a finished-looking §7, including a component §6 specifies that was
+never extracted. Read it before declaring the next section of this plan done.
 
 **Audience:** whoever picks up the next page. This is a build-from spec, not a
 sketch — where it gives a measurement or a state, build that.
@@ -173,6 +181,18 @@ this site will get.
 should have a screen you can point at. If an advantage has no screen, it has not
 been delivered to the client — it has only been delivered to the repository.
 
+**Where each one landed, now that §7 is finished:**
+
+| §2 item | The screen to point at |
+|---|---|
+| Draw the progress bar on tracking | `/track?ref=…` — the bar, and a current stage whose glyph is a ship, a plane or a truck rather than a clock. **Half-done:** §2.1 also says it "should be the largest object on the tracking result", and it is not — it is a 2px bar inside the summary card. That is a contained change to one card (a display-size percentage figure beside a thicker bar) and it is deliberately NOT in §7.4's three bullets, so it is left for whoever owns §2 |
+| Show a vacancy's age and closing date | `/careers`, on every row, and again on the advert |
+| Author photograph and job title on an article | `/insights` — name and job title ship. The **photograph does not**: `InsightAuthor.avatar_ref` is in the payload and no page reads it. It is the one row still owed a screen, and it is a backend question first — `avatar_ref` is a reference, not a URL, and this app does not build media URLs out of ids it can see (`portfolio-api` says why) |
+| The language toggle changes the URL | any service page, via `alternates` |
+| Designed empty / error / not-found states | `/track` with an unknown reference, a rate-limited lookup, a failed load |
+| Date the numbers | **no screen, and none is owed.** The backend exposes no public statistics, so there is no stat band to date — §2.1's own bullet was written against a band this product does not have. Build it with the freshness line, or not at all (N12) |
+| The tenant edits the content | the ERP's web editor, not a page here — the handover demo §2.5 describes |
+
 ---
 
 ## 3. The rule that governs every change here
@@ -197,23 +217,25 @@ value below is expressed as a token for that reason.
 
 ## 4. Their design grammar, itemised
 
-Eleven patterns repeat across all six pages. Ours uses four of them.
+Eleven patterns repeat across all six pages. Ours used four of them when this
+was written; the last column is where each one stands now.
 
-| # | Pattern | Their classes | Ours today |
+| # | Pattern | Their classes | Ours |
 |---|---|---|---|
-| 1 | **Eyebrow above every heading**, uppercase + tracked, often with an icon | `__kicker`, `__eyebrow`, `about-page__eyebrow` | `.eyebrow` exists, used in heroes only |
-| 2 | **Accent word in the title** — second word in the brand colour | `__h1-accent`, `__title-accent` | not used |
-| 3 | **Badge pill above the h1** | `quote-portal__badge-pill` | not used |
-| 4 | **Icon tile on cards** — glyph in a filled rounded square, colour variants | `__icon`, `__icon--orange`, `__icon--green`, `__svc-icon` | bare glyphs, no tile |
-| 5 | **Card with title + description line** | `__svc-title` + `__svc-text`, `__list-title` + `__list-text` | titles only in several places |
-| 6 | **Alternating section surfaces** | `__section` / `__section--surface` | one flat surface |
+| 1 | **Eyebrow above every heading**, uppercase + tracked, often with an icon | `__kicker`, `__eyebrow`, `about-page__eyebrow` | ✅ `SectionHead`, with `eyebrowIcon` |
+| 2 | **Accent word in the title** — second word in the brand colour | `__h1-accent`, `__title-accent` | ✅ `SectionHead accent` — see §7.5 on where it is NOT used |
+| 3 | **Badge pill above the h1** | `quote-portal__badge-pill` | ✅ `BadgePill`, one per page |
+| 4 | **Icon tile on cards** — glyph in a filled rounded square, colour variants | `__icon`, `__icon--orange`, `__icon--green`, `__svc-icon` | ✅ `IconTile`, incl. `MediaCard icon` |
+| 5 | **Card with title + description line** | `__svc-title` + `__svc-text`, `__list-title` + `__list-text` | ✅ `MediaCard`, description always shown |
+| 6 | **Alternating section surfaces** | `__section` / `__section--surface` | ✅ `Section variant="muted"`, derived where blocks are optional |
 | 7 | **Progress bar** on multi-step flows | `quote-portal__progress-bar` | ✅ added (§7.1) |
 | 8 | **Step counter chip** — "⚡ Step 1 of 4" | `quote-portal__step-counter` | ✅ added (§7.1) |
-| 9 | **Three designed states per milestone**, distinct icon AND badge | `__t-ico--done/--active/--pending` | ✅ `MilestoneMarker` |
-| 10 | **Decorative background map** behind hero bands | `quote-portal__bg-map`, `track-page__bg-map` | not used |
-| 11 | **Scroll reveal** on nearly every block | `data-reveal` | not used |
+| 9 | **Three designed states per milestone**, distinct icon AND badge | `__t-ico--done/--active/--pending` | ✅ `MilestoneMarker`, current stage moves (§7.4) |
+| 10 | **Decorative background map** behind hero bands | `quote-portal__bg-map`, `track-page__bg-map` | ✅ `BgMap` — quote, insights, tracking |
+| 11 | **Scroll reveal** on nearly every block | `data-reveal` | ✅ `Reveal`, staggered by column |
 
-Patterns 1–6, 10 and 11 are the work.
+~~Patterns 1–6, 10 and 11 are the work.~~ All eleven are adopted. What is
+deliberately NOT adopted from their build is in §8, and it has not moved.
 
 ---
 
@@ -265,7 +287,7 @@ The glyph-in-a-square that carries most of the difference in perceived quality.
 - `transition-colors` at 200ms. `aria-hidden` always — the tile is never the
   accessible name, the adjacent text is.
 
-### 6.2 `SelectCard`
+### 6.2 `SelectCard` — ✅ BUILT (late; see §11)
 
 A single choice among several, rendered as a card. **A radio group, not toggle
 buttons.**
@@ -291,6 +313,11 @@ hue; that was the defect in the shipped version.
 - Card: `rounded-[var(--radius)]`, `border`, `p-4`, `h-full`, flex column.
 - Selected: `border-[var(--brand-orange)]`,
   `bg-[rgb(var(--brand-orange)/0.06)]`, `shadow-[var(--pick-ring)]`.
+- **`--pick-ring`, not the two shadow values.** The wizard shipped with them
+  inline, so the token §5 added for this was dead for three steps. That is the
+  quiet version of the failure §3 warns about: not a raw hex, but a recipe
+  copied out of a token, which leaves a tenant re-tinting selection in a place
+  nobody thinks to look.
 - Resting hover: `hover:border-[rgb(var(--ink)/0.25)]`,
   `hover:bg-[rgb(var(--ink)/0.03)]`.
 - **The description is required, not optional.** A prospect who does not know
@@ -386,15 +413,17 @@ it was meant to decorate. Keep it under 3 kB; simplify the path until it is.
 `components/site/quote-wizard.tsx`, `components/ui/stepper.tsx`.
 
 - Mode selector rebuilt as a radio-group card set with icon tiles and
-  descriptions (`site.quote.mode*Hint`, both languages).
+  descriptions (`site.quote.mode*Hint`, both languages). It is now the shared
+  `SelectCard`; it was a hand-rolled copy of one until the sweep in §11.
 - Progress bar in `Stepper`, `aria-hidden` — the counter and `aria-current`
   already state the same fact, and a third announcement is noise.
 - Step counter chip with a bolt glyph, `hidden md:inline-flex`.
 - Step heading centred, `font-display text-h3`, lead at `max-w-measure`.
 - Continue carries a right arrow.
 
-**Still open on this page:** the badge pill and accent word on the standalone
-`/quote` hero, and `BgMap` behind it.
+~~Still open on this page: the badge pill and accent word on the standalone
+`/quote` hero, and `BgMap` behind it.~~ **Done** — `features/quote/quote-page.tsx`
+carries all three. Nothing is open on this page.
 
 ### 7.2 Insights index — highest value, newest code
 
@@ -410,30 +439,95 @@ it was meant to decorate. Keep it under 3 kB; simplify the path until it is.
 - Do **not** copy their search box until the API has search. A search that filters
   the current page of nine, client-side, is the bug their site has.
 
-### 7.3 Services
+### 7.3 Services — ✅ DONE
 
-`features/services/services-page.tsx`.
+`features/services/services-page.tsx`, and `ServicesBand` in
+`features/marketing/marketing-page.tsx`, which renders the same cards.
 
-- Pillars become `Band surface="muted"` alternating with plain.
-- `SectionHead` per pillar with the pillar's `icon` in an `IconTile`.
-- Service cards get `__card-top`-style icon tiles and their existing description
-  line promoted to always-visible.
+**"Pillars" do not exist here — corrected.** That line was written from their
+services page, which groups its offer into themed blocks. Ours does not: the
+index is one flat grid off `GET /public/services`, and the detail page's blocks
+are the tenant's own fields (long description, highlights, coverage, FAQ,
+related). There was no pillar to convert. What the line was *for* — alternating
+surfaces and a heading block per section — is built, on the sections that
+actually exist:
 
-### 7.4 Tracking
+- **Index**: eyebrow glyph in an `IconTile`, `Reveal` on the grid staggered by
+  column, and a muted quote band under it. That band is the alternation §4
+  pattern 6 asks for and it fixes a second thing: an index that ended on its own
+  grid offered a reader who had scrolled it no way out. Its copy is the quote
+  desk's own dictionary entries, not a second version of them.
+- **Detail**: `BadgePill` + `SectionHead` replace the hand-rolled eyebrow and
+  `h1`; the hero band is muted so it does not stack two plain surfaces with the
+  body band under it.
+- **The surfaces below the body are DERIVED, not typed.** The FAQ and the
+  related list are both optional, so `nextSurface()` assigns muted/plain in
+  render order. Hard-coding them — which is what the first pass did — puts two
+  plain bands together on every profile that has no FAQ, which is most of them
+  early on.
+- **Service cards get an icon tile**, drawn only when there is no cover
+  (`MediaCard`'s new `icon` prop). A tenant with four services and one uploaded
+  photograph had one illustrated card beside three text boxes; the home page's
+  dictionary fallback, which has no artwork by design (N12), was four of them.
 
-`features/tracking/track-page.tsx`.
+**Descriptions were already always-visible** in both places, so that bullet was
+a no-op against this codebase.
 
-- `MilestoneMarker` already does three designed states — **keep it**, and give the
-  CURRENT state a motion glyph the way theirs does (`fa-truck-moving`). Ours uses
-  a clock, which reads as "waiting" rather than "moving".
-- `SectionHead` + accent word on the hero.
-- `BgMap` behind the hero band, as theirs has.
+### 7.4 Tracking — ✅ DONE
 
-### 7.5 Success stories / careers / about
+`features/tracking/track-page.tsx`, `components/state/shipment-state.tsx`.
 
-- `SectionHead` and `Band` alternation throughout.
-- Careers: vacancy cards get an `IconTile` per department.
-- These pages are structurally fine; this is a typography-and-rhythm pass.
+- `MilestoneMarker` keeps its three designed states and takes an optional
+  `icon` for the CURRENT one; the page passes `motionIcon(view.service_type.mode)`
+  — a ship for a sea file, a plane for an air file, the truck for everything
+  else. Better than the literal borrow: theirs shows a truck on a vessel's
+  milestone because it is the only glyph they reached for. `MOTION_ICON` is
+  deliberately narrower than `MODE_ICON` — warehousing and customs answer the
+  truck, because at 13px inside a ring a warehouse or a document reads as
+  another static badge, and this marker's whole job is to say "moving".
+- `BadgePill` + `SectionHead` with the accent word on the hero
+  ("Track a **shipment**" / "Suivre un **envoi**"), and `BgMap` behind the plate.
+- `Reveal` on the timeline, which arrives after a fetch and now arrives rather
+  than appearing.
+
+### 7.5 Success stories / careers / ~~about~~ the home page — ✅ DONE
+
+**There is no about page — corrected.** Their site has one; this app has no
+`/about` route and no content source behind one (`app/router.tsx` is the list).
+Inventing a page of company history is N12 with a layout on top. The page that
+actually needed the rhythm pass is the home page, and it got it.
+
+- **Success stories** (`features/portfolio/portfolio-page.tsx`): accent word on
+  the index title, icon-tile fallback on cards — the allowlist nulls a cover the
+  tenant never marked public, so coverless is the *normal* case here, not the
+  exception — `Reveal` staggered by column, a muted quote band to close, and
+  `BadgePill` + `SectionHead` on the story hero, which is muted so the body band
+  reads as a second surface.
+- **Careers** (`features/careers/careers-page.tsx`): an `IconTile` per
+  department, and the posted-age line §2.1 asks for — "Posted 6 days ago ·
+  Applications close 14 September", on both the list row and the advert.
+  - The department glyph is a **keyword match, not a lookup**: `department` is
+    free text a recruiter typed in either language. That is acceptable only
+    because it is decoration — the department is printed as a chip two lines
+    below, so a miss costs a generic square and never a wrong fact. Unmatched
+    gets `BoxIcon`, the same "kind unstated" fallback `ModeIcon` uses.
+  - The age needed a formatter. The ERP's `fmtRelative` could not be ported
+    (`lib/format.ts` says port rather than re-derive): it returns "just now",
+    "2d ago" — English literals, on the surface whose claim is that it is
+    bilingual to the database column. `dateAgo` uses `Intl.RelativeTimeFormat`,
+    falls back to the exact date past a year, and costs nothing.
+- **Home page** (`features/marketing/marketing-page.tsx`): icon tiles and
+  `Reveal` on the services and proof grids, and the portal band turned muted —
+  proof → portal → quote were three plain bands in a row, which is the flat
+  middle third §6.4 describes.
+
+**One-word page titles carry no accent word.** Services and Careers are single
+words, and colouring an invented second word is writing copy rather than
+adopting a pattern (§3). The accent lands where the tenant's own heading already
+splits: "Track a **shipment**", "Success **stories**", "Nos **réalisations**".
+Tenant-authored nouns — a service name, a role title, a story title — are never
+split either: choosing which half of somebody else's name to colour is not our
+decision to make.
 
 ---
 
@@ -487,17 +581,120 @@ A page is done when:
 4. Services, tracking (§7.3–7.4).
 5. The remaining pages (§7.5).
 
-**Steps 1–3 are built.** The budget gate was honoured by measuring at each step
-rather than by waiting for a merge:
+**All five steps are built.** The budget gate was honoured by measuring at each
+step rather than by waiting for a merge:
 
 | | first paint | of 128 kB |
 |---|---|---|
 | baseline | 116.0 kB | 91% |
 | after steps 1–2 | 116.4 kB | 91% |
 | after step 3 | 116.6 kB | 91% |
+| after steps 4–5 | 116.7 kB | 91% |
 
 `Reveal` and `BgMap` cost **0.2 kB** on first paint, because both are used only
 by lazily-loaded routes — only their CSS utilities reach the entry chunk. That is
 the number the gate existed to find, and it clears comfortably. **Re-measure
 before adopting either on a page in the shell** (header, footer), where they
 would land in the entry chunk instead.
+
+Steps 4–5 cost **0.1 kB** for the same reason: services, tracking, careers,
+portfolio and the marketing page are all route chunks, and the two shared
+components they newly pull in (`IconTile`, `SectionHead`) were already in the
+graph from step 2. Every figure above is `npm run build && npm run check:bundle`
+on the branch, not an estimate.
+
+**Gate results at completion:** `lint` and `typecheck` clean; `check:i18n` 589
+keys, both languages, French typography clean, no hardcoded prose in 71 files;
+141 tests passing; `check:bundle` 116.7 kB of 128, 24 chunks, acyclic. The four
+presentation states of `PUBLIC_WEB_PLAN.md` §3.3 are untouched on every page
+that had them — `EmptyState`'s duplicate quote button on the services index is
+the one deliberate removal, because the band directly under it now makes the
+same offer.
+
+---
+
+## 11. The completeness sweep, and what it found
+
+§7 is a list of pages, and finishing a list of pages is not the same as meeting
+§9 — which is written about the WHOLE app. So the app was swept against §9's
+bullets mechanically (grep for `.eyebrow` outside `SectionHead`, for every
+`<h1>`, for raw hex, for each §5 token's consumers, for the §8 faults), not by
+re-reading the pages that had just been built. It found four things. Three were
+real and are fixed; the fourth is a deliberate no.
+
+**1. `SelectCard` was never extracted, and `--pick-ring` was dead.** §6.2
+specifies a shared component; the quote wizard implemented the whole pattern
+inline — radio group, three-signal selected state, icon tile, description — and
+spelled the ring as its two shadow values rather than the token §5 defines. Both
+are now what the spec says: `components/ui/select-card.tsx`, consumed by the
+wizard, drawing `var(--pick-ring)`. This is the exact regression §6's preamble
+tells a reviewer to catch, and it survived three steps because the hand-roll was
+*correct* — it read as finished work, which is what makes this class of fault
+hard to see.
+
+**2. The home hero hand-rolled its eyebrow and `h1`.** `components/site/hero.tsx`
+— the most-seen heading on the site, and the one a page-by-page sweep skips
+precisely because it lives in a component rather than under a `features/` route.
+It is `SectionHead` now, with the accent word ("Freight that moves your business
+**forward**" / "Le fret qui fait avancer **votre entreprise**").
+
+  - This broke two cases in `root-mount.test.tsx`, and the break was informative
+    rather than incidental: `findByText` matches a node's own text children, so
+    a heading split across an accent `<span>` is invisible to it even though the
+    reader sees one sentence. The cases now match the `h1` on its `textContent`.
+    Any future page that adopts pattern 2 will hit the same wall — that note is
+    in the test file, where somebody will meet it.
+
+**3. The proposal page hand-rolled the same block.** `features/proposals/` is not
+one of their six pages and never appears in §7, which is how it stayed hidden:
+it is a priced document on a token URL. It uses `SectionHead` now for the one
+mechanical reason — one implementation of eyebrow + title — and deliberately
+takes **no badge pill and no accent word**. Colouring half of somebody's
+proposal title is a liberty a quote does not get to take.
+
+**4. The article page keeps its own header — deliberate.**
+`features/insights/insight-page.tsx` renders date + tags + `h1` + byline. That
+is a document header, not an eyebrow and a title: converting it would call a
+publication date an eyebrow and put a marketing pill above somebody's article.
+§9's first bullet is about heading BLOCKS, and this is not one.
+
+**Where the sweep is still owed something:** the author photograph (§2's table).
+`InsightAuthor.avatar_ref` arrives in the payload and no page reads it, and it
+cannot be fixed here — a `ref` is not a URL, and this app does not build media
+URLs out of ids it can see (`portfolio-api` records why). It is a backend
+question first.
+
+**5. `Reveal` covered the grids and nothing else.** §9 asks for it on "the
+page's major blocks", and it was on card grids only — so a service profile, a
+case note and a job advert, which are mostly prose, had none at all. It now
+wraps the narrative blocks too: the services gallery and FAQ, the story's
+columns and its KPI panel (separately, because they stack on a phone and one
+wrapper would hold the figures hidden behind the prose), the advert copy, and
+the home page's how-it-works, portal and proof bands.
+
+  - **The rule that decides where it goes, written down because the next page
+    will ask:** `Reveal` wraps blocks a reader scrolls TO. It never wraps a
+    form, a control, or the direct answer to a query somebody just submitted. A
+    field that fades in under a thumb is a field that gets mis-tapped, and a
+    tracking result that fades in is a delay served to somebody who is already
+    waiting. So the contact form, the application form and the tracking summary
+    keep their plain first paint; the timeline below the summary does not,
+    because it is below the fold and the reader scrolls to it.
+
+**6. The tracking summary's mode glyph was bare.** §9 asks for a tile on every
+glyph beside a heading; the ship or plane sat inline next to the service name.
+It is an `IconTile` now, leading the summary the way the department tile leads a
+vacancy row (`modeIconFor`, the full mode table, as against `motionIcon`'s
+narrower one).
+
+**What is deliberately still absent on these pages:** the careers index has no
+closing CTA band, unlike services and success stories. Both of those close on
+the quote desk, which exists; the honest equivalent for careers would be a
+speculative-application invitation, and this product has no route behind one.
+Writing "send us your CV anyway" over a form that does not exist is N12 applied
+to a promise rather than to a number.
+
+**Gates after the sweep:** `lint` and `typecheck` clean; `check:i18n` 591 keys,
+both languages; 141 tests passing; `check:bundle` **116.7 kB of 128**, 24
+chunks, acyclic — `SelectCard` is in the quote chunk, not the entry, so the
+extraction cost nothing on first paint.

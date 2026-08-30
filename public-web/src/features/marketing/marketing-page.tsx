@@ -17,7 +17,8 @@ import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ButtonLink } from "@/components/ui/button";
-import { ArrowRightIcon } from "@/components/ui/icons";
+import { ArrowRightIcon, BoxIcon, DocumentIcon } from "@/components/ui/icons";
+import { Reveal } from "@/components/ui/reveal";
 import { ContactForm } from "@/components/site/contact-form";
 import { p } from "@/lib/base-path";
 
@@ -108,6 +109,7 @@ function ServicesBand() {
     <Section
       id="services"
       eyebrow={t("site.services.eyebrow")}
+      eyebrowIcon={BoxIcon}
       title={t("site.services.title")}
       lead={t("site.services.sub")}
       aside={
@@ -117,20 +119,26 @@ function ServicesBand() {
       }
       divided
     >
-      <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((s) => (
-          <MediaCard
-            key={s.key}
-            image={s.image}
-            imageAlt={s.title || ""}
-            title={s.title}
-            to={s.to}
-            linkLabel={t("site.services.more")}
-          >
-            {s.desc}
-          </MediaCard>
+      <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((s, i) => (
+          <Reveal as="li" key={s.key} delay={(i % 4) as 0 | 1 | 2 | 3}>
+            <MediaCard
+              className="h-full"
+              image={s.image}
+              imageAlt={s.title || ""}
+              // The dict fallback has no artwork by design (N12), and the four
+              // text boxes that produced were the flattest thing on the home
+              // page. A glyph tile is the honest stand-in (§7.3).
+              icon={BoxIcon}
+              title={s.title}
+              to={s.to}
+              linkLabel={t("site.services.more")}
+            >
+              {s.desc}
+            </MediaCard>
+          </Reveal>
         ))}
-      </div>
+      </ul>
       {(disabled || failed) && !services.length ? (
         <p className="mt-6 text-xs text-muted-foreground">
           {t("site.servicesPage.empty")}
@@ -158,7 +166,13 @@ function HowBand() {
       lead={t("site.how.sub")}
       divided
     >
-      <StepList steps={steps} />
+      {/* Reveal wraps blocks a reader scrolls TO. It never wraps a form, a
+          control, or the answer to a query somebody just submitted: a field
+          that fades in under a thumb is a field that gets mis-tapped, which is
+          why the contact form below keeps its plain first paint. */}
+      <Reveal>
+        <StepList steps={steps} />
+      </Reveal>
     </Section>
   );
 }
@@ -200,23 +214,26 @@ function ProofBand() {
           {t("site.proof.empty")}
         </p>
       ) : (
-        <div className="grid gap-5 md:grid-cols-3">
-          {stories.slice(0, 3).map((s) => (
-            <MediaCard
-              key={s.slug}
-              image={s.cover_url}
-              imageAlt={s.client_name || s.title}
-              eyebrow={s.client_name || undefined}
-              title={s.title}
-              to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
-              linkLabel={t("site.proof.more")}
-            >
-              {s.published_month ? (
-                <span className="num text-xs">{s.published_month}</span>
-              ) : null}
-            </MediaCard>
+        <ul className="grid gap-5 md:grid-cols-3">
+          {stories.slice(0, 3).map((s, i) => (
+            <Reveal as="li" key={s.slug} delay={(i % 3) as 0 | 1 | 2}>
+              <MediaCard
+                className="h-full"
+                image={s.cover_url}
+                imageAlt={s.client_name || s.title}
+                icon={DocumentIcon}
+                eyebrow={s.client_name || undefined}
+                title={s.title}
+                to={p(`/portfolio/${encodeURIComponent(s.slug)}`)}
+                linkLabel={t("site.proof.more")}
+              >
+                {s.published_month ? (
+                  <span className="num text-xs">{s.published_month}</span>
+                ) : null}
+              </MediaCard>
+            </Reveal>
           ))}
-        </div>
+        </ul>
       )}
     </Section>
   );
@@ -239,12 +256,15 @@ function PortalBand() {
   return (
     <Section
       id="portal"
+      // Muted: without it this band sits between two plain ones and the middle
+      // third of the home page reads as a single undifferentiated column (§6.4).
+      variant="muted"
       eyebrow={t("site.portalBand.eyebrow")}
       title={t("site.portalBand.title")}
       lead={t("site.portalBand.sub")}
       divided
     >
-      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <Reveal className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div>
           <div className="flex flex-wrap gap-3">
             <Link
@@ -271,7 +291,7 @@ function PortalBand() {
           statusLabel={t("site.preview.status")}
           stages={stages}
         />
-      </div>
+      </Reveal>
     </Section>
   );
 }

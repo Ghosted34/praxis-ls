@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import * as api from "@/lib/careers-api";
 import { PublicApiError, messageFor } from "@/lib/api";
 import { currentLocale, tStatic } from "@/lib/i18n";
-import { enumText, withScheme } from "@/lib/format";
+import { dateAgo, enumText, withScheme } from "@/lib/format";
 import { useIntake } from "@/lib/use-intake";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
@@ -17,7 +17,22 @@ import { EmptyState, ErrorState, SuccessState } from "@/components/state";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { Markdown } from "@/components/ui/markdown";
-import { AlertIcon, ClockIcon, DocumentIcon } from "@/components/ui/icons";
+import {
+  AlertIcon,
+  BoltIcon,
+  BoxIcon,
+  ClockIcon,
+  DocumentIcon,
+  PlaneIcon,
+  ShieldIcon,
+  ShipIcon,
+  TruckIcon,
+  WarehouseIcon,
+} from "@/components/ui/icons";
+import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { Reveal } from "@/components/ui/reveal";
 import { useDocumentMeta } from "@/lib/use-document-meta";
 import { p } from "@/lib/base-path";
 
@@ -85,6 +100,7 @@ export function CareersPage() {
     <PageShell label={t("site.careers.title")}>
       <Section
         eyebrow={t("site.careers.list")}
+        eyebrowIcon={BoltIcon}
         title={t("site.careers.title")}
         lead={t("site.careers.sub")}
         // No hero band on the list page: this heading is the page title, so
@@ -102,28 +118,105 @@ export function CareersPage() {
           />
         ) : (
           <ul className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
-            {rows.map((v) => (
-              <li key={v.token}>
+            {rows.map((v, i) => (
+              <Reveal as="li" key={v.token} delay={(i % 3) as 0 | 1 | 2}>
                 <Link
                   to={p(`/careers/${encodeURIComponent(v.token)}`)}
-                  className="group flex flex-col gap-2 py-6 transition-colors sm:flex-row sm:items-start sm:justify-between sm:gap-8"
+                  className="group flex items-start gap-4 py-6 transition-colors"
                 >
-                  <div className="min-w-0">
-                    <h2 className="text-title font-semibold leading-snug tracking-tight group-hover:text-primary-ink">
-                      {v.title}
-                    </h2>
-                    <VacancyFacts v={v} />
+                  <IconTile icon={departmentIcon(v.department)} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+                    <div className="min-w-0">
+                      <h2 className="text-title font-semibold leading-snug tracking-tight group-hover:text-primary-ink">
+                        {v.title}
+                      </h2>
+                      <VacancyFacts v={v} />
+                      <VacancyDates v={v} />
+                    </div>
+                    <span className="shrink-0 text-sm font-medium text-primary-ink underline-offset-4 group-hover:underline">
+                      {t("site.careers.apply")}
+                    </span>
                   </div>
-                  <span className="shrink-0 text-sm font-medium text-primary-ink underline-offset-4 group-hover:underline">
-                    {t("site.careers.apply")}
-                  </span>
                 </Link>
-              </li>
+              </Reveal>
             ))}
           </ul>
         )}
       </Section>
     </PageShell>
+  );
+}
+
+/**
+ * A glyph for a department (UI_UPGRADE_PLAN §7.5).
+ *
+ * `department` is free text a recruiter typed, in either language, so this is a
+ * keyword match and not a lookup — and it is DECORATION, which is what makes
+ * that acceptable: the department is printed as a chip two lines below, so a
+ * miss costs a slightly generic square and never a wrong fact. Anything
+ * unmatched gets the box, the same "freight, kind unstated" glyph `ModeIcon`
+ * falls back to, rather than a guess dressed up as a category.
+ */
+const DEPARTMENT_ICON: Array<[RegExp, IconComponent]> = [
+  [/sea|ocean|marit|fret marit|shipping/i, ShipIcon],
+  [/air|aérien|aerien|avia/i, PlaneIcon],
+  [
+    /transport|truck|road|route|routier|fleet|flotte|chauffeur|driver/i,
+    TruckIcon,
+  ],
+  [/warehouse|entrep|stock|magasin/i, WarehouseIcon],
+  [
+    /customs|douane|declar|déclar|compliance|conformité|conformite|legal|jurid|finance|comptab|admin/i,
+    DocumentIcon,
+  ],
+  [
+    /hr|rh|ressources|people|talent|qhse|hse|safety|sécurité|securite/i,
+    ShieldIcon,
+  ],
+  [/sales|commercial|business|marketing|client/i, BoltIcon],
+];
+
+function departmentIcon(department?: string | null): IconComponent {
+  const d = String(department || "");
+  for (const [re, icon] of DEPARTMENT_ICON) if (re.test(d)) return icon;
+  return BoxIcon;
+}
+
+/**
+ * Posted when, closes when — the line their site structurally cannot write
+ * (UI_UPGRADE_PLAN §2.1).
+ *
+ * The age is relative ("6 days ago"), because that is the fact a candidate is
+ * actually checking: a careers page whose listings are stale is the commonest
+ * failure of the genre, and ours cannot be stale — the vacancy closes itself.
+ * Past a year `dateAgo` returns null and the exact date stands in, because
+ * "13 months ago" is worse than the date it replaced.
+ */
+function VacancyDates({ v }: { v: api.PublicVacancy }) {
+  const { t } = useTranslation();
+  const exact = (d: string) =>
+    new Intl.DateTimeFormat(currentLocale(), { dateStyle: "long" }).format(
+      new Date(d),
+    );
+  const posted = v.published_at
+    ? dateAgo(v.published_at) || exact(v.published_at)
+    : null;
+  const closes = v.closes_on ? exact(v.closes_on) : null;
+  if (!posted && !closes) return null;
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {posted ? (
+        <span>
+          {t("site.careers.published")} <span className="num">{posted}</span>
+        </span>
+      ) : null}
+      {closes ? (
+        <span className="inline-flex items-center gap-1.5">
+          <ClockIcon size={14} />
+          {t("site.careers.closeNote")} <span className="num">{closes}</span>
+        </span>
+      ) : null}
+    </p>
   );
 }
 
@@ -223,20 +316,11 @@ export function VacancyPage() {
     );
   }
 
-  const published = v.published_at
-    ? new Intl.DateTimeFormat(currentLocale(), { dateStyle: "medium" }).format(
-        new Date(v.published_at),
-      )
-    : null;
-  const closes = v.closes_on
-    ? new Intl.DateTimeFormat(currentLocale(), { dateStyle: "long" }).format(
-        new Date(v.closes_on),
-      )
-    : null;
-
   return (
     <PageShell label={v.title}>
-      <section className="band">
+      {/* Muted, so the advert does not open with two plain bands stacked — the
+          hairline under the body band is not enough on its own (§6.4). */}
+      <section className="band band-muted">
         <PageContainer size="reading">
           <nav aria-label={t("site.careers.title")} className="mb-6">
             <Link
@@ -246,6 +330,8 @@ export function VacancyPage() {
               {t("site.careers.back")}
             </Link>
           </nav>
+
+          <BadgePill className="mb-4">{t("site.careers.list")}</BadgePill>
 
           {v.environment === "sandbox" && (
             <p
@@ -257,33 +343,26 @@ export function VacancyPage() {
             </p>
           )}
 
-          <h1 className="text-h1 font-semibold leading-[1.08] tracking-tight">
-            {v.title}
-          </h1>
-          <VacancyFacts v={v} />
-          {(published || closes) && (
-            <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
-              {published ? (
-                <span>
-                  {t("site.careers.published")}{" "}
-                  <span className="num">{published}</span>
-                </span>
-              ) : null}
-              {closes ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <ClockIcon size={14} />
-                  {t("site.careers.closeNote")}{" "}
-                  <span className="num">{closes}</span>
-                </span>
-              ) : null}
-            </p>
-          )}
+          <div className="flex items-start gap-4">
+            <IconTile icon={departmentIcon(v.department)} size="lg" />
+            <div className="min-w-0">
+              {/* The role's own name, so no accent word — see the service
+                  detail page for why we do not split somebody else's noun. */}
+              <SectionHead as="h1" title={v.title} />
+              <VacancyFacts v={v} />
+              <VacancyDates v={v} />
+            </div>
+          </div>
         </PageContainer>
       </section>
 
       <Section divided>
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <div className="min-w-0 max-w-prose">
+          {/* The advert copy is revealed; the form beside it is NOT. A candidate
+              who has scrolled to the application is a candidate reaching for a
+              field, and a field that fades in under a thumb is one that gets
+              mis-tapped. Same rule as the contact band on the home page. */}
+          <Reveal className="min-w-0 max-w-prose">
             {v.description ? (
               <div className="prose-site">
                 {/* Tenant-authored advert copy, rendered by the same dependency-free
@@ -313,7 +392,7 @@ export function VacancyPage() {
                 </ul>
               </Panel>
             ) : null}
-          </div>
+          </Reveal>
 
           <Card padded className="h-fit lg:sticky lg:top-24">
             <h2 className="text-title font-semibold tracking-tight">

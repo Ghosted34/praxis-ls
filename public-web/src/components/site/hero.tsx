@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useBranding } from "@/app/branding";
 import { TrackWidget } from "./track-widget";
+import { SectionHead } from "./section-head";
 import { RouteGraphic } from "./graphics";
 import { p } from "@/lib/base-path";
 
@@ -116,15 +117,22 @@ export function Hero() {
 
       <div className="wrap relative grid items-center gap-10 py-14 md:py-20 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:py-24">
         <div className="max-w-prose">
-          <p className="eyebrow text-[var(--brand-orange)]">
-            {t("site.hero.eyebrow")}
-          </p>
-          <h1 className="hero-title mt-4 text-[var(--hero-foreground)]">
-            {t("site.hero.title")}
-          </h1>
-          <p className="mt-5 max-w-measure text-lg text-[var(--hero-muted)]">
-            {t("site.hero.sub")}
-          </p>
+          {/* The shared heading block. This hero was the LAST hand-rolled
+              eyebrow + h1 in the app — the most-seen heading on the site, and
+              the one a sweep is most likely to skip because it lives in a
+              component rather than on a page. `onDark` is what makes the
+              eyebrow the brand fill rather than the AA-corrected ink: on carbon
+              the ink step-down measures 3.4:1 and fails, and the note at the top
+              of this file records why that is a property of the colour. */}
+          <SectionHead
+            onDark
+            as="h1"
+            titleClass="hero-title"
+            eyebrow={t("site.hero.eyebrow")}
+            title={t("site.hero.titleMain")}
+            accent={t("site.hero.titleAccent")}
+            lead={t("site.hero.sub")}
+          />
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
             {/* A route, not an in-page jump. This was `href="#quote"` back when

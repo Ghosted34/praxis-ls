@@ -132,6 +132,32 @@
     --shadow-l: 0 18px 50px rgb(10 10 10 / 0.12);
     --ease: cubic-bezier(0.2, 0, 0.13, 1);
     --dur: 0.15s;
+
+    /* ── Design roles (doc/UI_UPGRADE_PLAN.md §5) ──────────────────────────
+       Not one new colour between them: each is a ROLE assembled from tokens
+       above, so the dark block's redefinitions of --ink, --secondary and
+       --primary-foreground carry every one of these with them and none needs a
+       second definition below. That is the whole reason they are named here
+       rather than written inline at the four call sites. */
+
+    /* The icon tile — a glyph in a filled square. Two surfaces, resting and
+       selected, because the fill is what reads as "chosen" from across a room
+       when the glyph alone does not. */
+    --tile-bg: rgb(var(--ink) / 0.06);
+    --tile-fg: var(--muted-foreground);
+    --tile-bg-active: var(--brand-orange);
+    --tile-fg-active: var(--primary-foreground);
+
+    /* Selection: a hairline ring plus a coloured lift. Paired with a border
+       and a background tint at the call site, so a chosen card changes THREE
+       things — a selected state carried by border colour alone is invisible on
+       a phone in sunlight and invisible to anyone who does not see that hue. */
+    --pick-ring: 0 0 0 1px var(--brand-orange),
+      0 8px 24px -12px var(--brand-orange);
+
+    /* The alternating band. Two adjacent plain bands read as one long
+       undifferentiated column, which is most of why a page feels flat. */
+    --band-surface: var(--secondary);
   }
 
   /**
@@ -351,7 +377,10 @@
   }
 
   .band-muted {
-    background: var(--secondary);
+    /* The role, not the raw token: --band-surface is what UI_UPGRADE_PLAN §5
+       names, and pointing this at it means a tenant who wants a tinted band
+       changes one value rather than hunting for the recipe that uses it. */
+    background: var(--band-surface);
   }
 
   .band-hero {

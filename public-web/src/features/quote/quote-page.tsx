@@ -3,6 +3,9 @@ import { useDocumentMeta } from "@/lib/use-document-meta";
 import { tList } from "@/lib/i18n";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { Section } from "@/components/site/section";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { BgMap } from "@/components/ui/bg-map";
 import { Card } from "@/components/ui/card";
 import { QuoteWizard } from "@/components/site/quote-wizard";
 import { usePublishedServices } from "@/lib/use-services";
@@ -52,25 +55,24 @@ export function QuotePage() {
 
   return (
     <PageShell label={t("site.quote.title")} footer>
-      <section className="band-hero">
-        <PageContainer>
-          {/* The badge pill their portal carries above its h1, which
-              doc/UI_UPGRADE_PLAN.md §7.1 left open on this page. It marks what
-              KIND of page this is before the heading says what it is about. */}
-          <p className="eyebrow inline-flex items-center rounded-full border border-[rgb(237_238_238/0.25)] px-3 py-1 text-[var(--brand-orange)]">
-            {t("site.quote.kicker")}
-          </p>
-          <h1 className="hero-title mt-4 text-[var(--hero-foreground)]">
-            {t("site.quote.titleMain")}{" "}
-            {/* The accent word (§4 pattern 2). One <span> inside the heading,
-                so the h1 keeps a single accessible name. */}
-            <span className="text-[var(--brand-orange)]">
-              {t("site.quote.titleAccent")}
-            </span>
-          </h1>
-          <p className="mt-4 max-w-measure text-[var(--hero-muted)]">
-            {t("site.quote.sub")}
-          </p>
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        {/* The container is positioned so the copy sits ABOVE the map rather
+            than being painted over by it. */}
+        <PageContainer className="relative">
+          {/* The shared components, not a hand-rolled pill and heading — this
+              hero was written before they existed and was the second instance
+              the plan's acceptance list tells a reviewer to catch. */}
+          <BadgePill onDark>{t("site.quote.kicker")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            title={t("site.quote.titleMain")}
+            accent={t("site.quote.titleAccent")}
+            lead={t("site.quote.sub")}
+          />
         </PageContainer>
       </section>
 

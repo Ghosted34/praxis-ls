@@ -22,6 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingState } from "@/components/state";
+import { SectionHead } from "@/components/site/section-head";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { IconTile } from "@/components/ui/icon-tile";
+import { BgMap } from "@/components/ui/bg-map";
+import { Reveal } from "@/components/ui/reveal";
+import { DocumentIcon } from "@/components/ui/icons";
 
 /**
  * `/public/insights` — the tenant's own writing.
@@ -105,44 +111,57 @@ export function InsightsPage() {
 
   return (
     <PageShell label={t("site.insights.title")} footer>
-      <section className="band-hero">
-        <PageContainer>
-          <p className="eyebrow text-[var(--brand-orange)]">
-            {t("site.insights.kicker")}
-          </p>
-          <h1 className="hero-title mt-3 text-[var(--hero-foreground)]">
-            {t("site.insights.title")}
-          </h1>
-          <p className="mt-4 max-w-measure text-[var(--hero-muted)]">
-            {t("site.insights.sub")}
-          </p>
+      <section className="band-hero relative overflow-hidden">
+        <BgMap />
+        <PageContainer className="relative">
+          <BadgePill onDark>{t("site.insights.kicker")}</BadgePill>
+          <SectionHead
+            className="mt-4"
+            as="h1"
+            titleClass="hero-title"
+            onDark
+            title={t("site.insights.titleMain")}
+            accent={t("site.insights.titleAccent")}
+            lead={t("site.insights.sub")}
+          />
+
+          {/*
+            The filter bar lives IN the hero, which is where their Kaizen page
+            puts its search and filters — and it is right for the same reason
+            the wizard's step dots sit above the form: this is the page's
+            primary control, and below the hero it is under the fold on a phone,
+            where a reader has to scroll past three cards to discover the page
+            can be filtered at all.
+
+            Rendered only once the list has answered: a bar that appears empty
+            and then fills is a layout that jumps under somebody's thumb.
+          */}
+          {state.kind === "ready" && state.view.tags.length > 0 && (
+            <nav aria-label={t("site.insights.filterLabel")} className="mt-8">
+              <ul className="flex flex-wrap gap-2">
+                <li>
+                  <FilterButton active={!tag} onClick={() => choose("")}>
+                    {t("site.insights.all")}
+                  </FilterButton>
+                </li>
+                {state.view.tags.map((entry) => (
+                  <li key={entry.tag}>
+                    <FilterButton
+                      active={tag === entry.tag}
+                      onClick={() => choose(entry.tag)}
+                    >
+                      {entry.tag}
+                      <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
+                    </FilterButton>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
         </PageContainer>
       </section>
 
       <Section>
-        {state.kind === "ready" && state.view.tags.length > 0 && (
-          <nav aria-label={t("site.insights.filterLabel")} className="mb-8">
-            <ul className="flex flex-wrap gap-2">
-              <li>
-                <FilterButton active={!tag} onClick={() => choose("")}>
-                  {t("site.insights.all")}
-                </FilterButton>
-              </li>
-              {state.view.tags.map((entry) => (
-                <li key={entry.tag}>
-                  <FilterButton
-                    active={tag === entry.tag}
-                    onClick={() => choose(entry.tag)}
-                  >
-                    {entry.tag}
-                    <span className="num ml-1.5 text-xs opacity-70">{entry.count}</span>
-                  </FilterButton>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-
         {state.kind === "loading" ? (
           <LoadingState
             label={t("site.insights.loading")}
@@ -180,10 +199,17 @@ export function InsightsPage() {
         ) : (
           <>
             <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {state.view.articles.map((a) => (
-                <li key={a.slug_fr || a.slug_en || insightTitle(a, lang)}>
+              {state.view.articles.map((a, i) => (
+                <Reveal
+                  as="li"
+                  key={a.slug_fr || a.slug_en || insightTitle(a, lang)}
+                  // Staggered by COLUMN, not by index: a three-across grid
+                  // whose ninth card waits half a second is a grid the reader
+                  // has finished looking at. The row resets the delay.
+                  delay={(i % 3) as 0 | 1 | 2}
+                >
                   <ArticleCard article={a} lang={lang} />
-                </li>
+                </Reveal>
               ))}
             </ul>
 
@@ -238,7 +264,9 @@ function FilterButton({
         "inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm transition-colors",
         active
           ? "border-[var(--brand-orange)] bg-[var(--brand-orange)] font-semibold text-[var(--primary-foreground)]"
-          : "hover:bg-[rgb(var(--ink)/0.06)]",
+          // On the hero plate `--ink` is inverted, so a resting chip has to
+          // borrow the band's own foreground rather than the page's.
+          : "border-[rgb(237_238_238/0.25)] text-[var(--hero-muted)] hover:bg-[rgb(237_238_238/0.10)]",
       )}
     >
       {children}
@@ -264,7 +292,7 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
 
   const body = (
     <>
-      {src && coverOk && (
+      {src && coverOk ? (
         <img
           src={src}
           alt=""
@@ -272,6 +300,14 @@ function ArticleCard({ article, lang }: { article: InsightCard; lang: string }) 
           onError={() => setCoverOk(false)}
           className="h-40 w-full object-cover"
         />
+      ) : (
+        /* Not every article has a cover, and one that does not must not read as
+           a broken card beside three illustrated ones. A tinted plate with the
+           section's own glyph is an honest placeholder — it says "an article",
+           which is true, rather than standing in for a photograph nobody took. */
+        <div className="flex h-40 w-full items-center justify-center bg-[rgb(var(--ink)/0.04)]">
+          <IconTile icon={DocumentIcon} size="lg" />
+        </div>
       )}
       <div className="p-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

@@ -2,6 +2,8 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRightIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+import { SectionHead } from "@/components/site/section-head";
+import { type IconComponent } from "@/components/ui/icon-tile";
 
 /**
  * One band of the homepage, and the only place that decides how a band is
@@ -16,7 +18,9 @@ import { cn } from "@/lib/cn";
 export function Section({
   id,
   eyebrow,
+  eyebrowIcon,
   title,
+  accent,
   lead,
   children,
   variant = "default",
@@ -27,7 +31,11 @@ export function Section({
 }: {
   id?: string;
   eyebrow?: string;
+  /** A glyph in a tile before the eyebrow — their `__kicker` pattern. */
+  eyebrowIcon?: IconComponent;
   title?: React.ReactNode;
+  /** Rendered inside the heading, in the brand colour (UI_UPGRADE_PLAN §6.3). */
+  accent?: React.ReactNode;
   lead?: React.ReactNode;
   children: React.ReactNode;
   variant?: "default" | "muted" | "dark";
@@ -66,31 +74,17 @@ export function Section({
       <div className="wrap py-band">
         {(eyebrow || title || aside) && (
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-            <div className="max-w-prose">
-              {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-              {title && (
-                <Tag
-                  className={cn(
-                    "section-title mt-2",
-                    variant === "dark" ? "text-[var(--hero-foreground)]" : "",
-                  )}
-                >
-                  {title}
-                </Tag>
-              )}
-              {lead && (
-                <p
-                  className={cn(
-                    "mt-3 text-lg",
-                    variant === "dark"
-                      ? "text-[var(--hero-muted)]"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {lead}
-                </p>
-              )}
-            </div>
+            {/* One implementation of the heading block, shared with the heroes
+                — which are not Sections and used to hand-roll their own. */}
+            <SectionHead
+              eyebrow={eyebrow}
+              eyebrowIcon={eyebrowIcon}
+              title={title}
+              accent={accent}
+              lead={lead}
+              onDark={variant === "dark"}
+              as={Tag}
+            />
             {aside && <div className="shrink-0">{aside}</div>}
           </div>
         )}

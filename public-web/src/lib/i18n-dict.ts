@@ -257,6 +257,8 @@ export const en = {
     insights: {
       kicker: "Insights",
       title: "What we are learning",
+      titleMain: "What we are",
+      titleAccent: "learning",
       sub: "Notes from the desk on customs, freight and the corridors we work — written by the people doing the work.",
       filterLabel: "Filter by topic",
       all: "All",
@@ -998,6 +1000,8 @@ export const fr = {
     insights: {
       kicker: "Analyses",
       title: "Ce que nous apprenons",
+      titleMain: "Ce que nous",
+      titleAccent: "apprenons",
       sub: "Les notes du bureau sur la douane, le fret et les corridors où nous opérons — écrites par ceux qui font le travail.",
       filterLabel: "Filtrer par thème",
       all: "Tout",

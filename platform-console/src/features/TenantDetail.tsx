@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { platform } from "@/lib/api";
-import type { AuditRow, FeatureRow, Plan, TenantDatabase, TenantDetail as TDetail } from "@/lib/types";
+import type { AuditRow, DomainDnsRow, FeatureRow, Plan, TenantDatabase, TenantDetail as TDetail } from "@/lib/types";
 import { useAsync, type AsyncState } from "@/lib/useAsync";
 import { fmtDateTime, humanizeAction } from "@/lib/format";
 import { Button, Card, ConfirmModal, Empty, Field, Loading, Modal, Pill, SourcePill, StatusPill } from "@/components/ui";
@@ -322,6 +322,26 @@ function DomainsCard({ slug, t, onSaved }: { slug: string; t: TDetail; onSaved: 
   const [busy, setBusy] = useState<string | null>(null);
   const rows = t.subdomains || [];
 
+  /**
+   * Registering a domain does not make it resolve — that half is at the client's
+   * registrar, and it is the step most likely to be half-done. Without this the
+   * only instrument was loading the site and reading a TLS error, which cannot
+   * tell "not pointed yet" from "pointed at the old host".
+   *
+   * Loaded on open and re-runnable from the button: nothing is stored, so the
+   * answer is always as fresh as the lookup.
+   */
+  const [dns, setDns] = useState<Record<string, DomainDnsRow>>({});
+  const [checking, setChecking] = useState(false);
+  const checkDns = useCallback(() => {
+    setChecking(true);
+    platform.domainDns(slug)
+      .then((list) => setDns(Object.fromEntries((list || []).map((r) => [r.host, r]))))
+      .catch(() => setDns({}))   // a failed check is not a reason to break the card
+      .finally(() => setChecking(false));
+  }, [slug]);
+  useEffect(() => { checkDns(); }, [checkDns, rows.length]);
+
   const add = () => {
     const h = host.trim().toLowerCase();
     if (!h) { toast("Enter the hostname the client will use", "bad"); return; }
@@ -348,22 +368,50 @@ function DomainsCard({ slug, t, onSaved }: { slug: string; t: TDetail; onSaved: 
       .finally(() => setBusy(null));
   };
 
+  const DNS_PILL: Record<DomainDnsRow["state"], { tone: "ok" | "warn" | "bad" | "mute"; label: string }> = {
+    ok: { tone: "ok", label: "DNS OK" },
+    wrong_target: { tone: "bad", label: "Points elsewhere" },
+    unresolved: { tone: "warn", label: "Awaiting DNS" },
+    unconfigured: { tone: "mute", label: "No ingress IP set" },
+  };
+
   return (
-    <Card title="Domains">
+    <Card
+      title="Domains"
+      actions={
+        <Button onClick={checkDns} disabled={checking}>
+          {checking ? "Checking…" : "Check DNS"}
+        </Button>
+      }
+    >
       <div style={{ margin: "-16px -16px 0" }}>
         <table>
           <thead>
-            <tr><th>Host</th><th>Serves</th><th>Site lives at</th><th>Primary</th><th /></tr>
+            <tr><th>Host</th><th>DNS</th><th>Serves</th><th>Site lives at</th><th>Primary</th><th /></tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={5}><span className="muted">No hosts registered.</span></td></tr>
+              <tr><td colSpan={6}><span className="muted">No hosts registered.</span></td></tr>
             )}
             {rows.map((sd, i) => {
               const isPublic = sd.surface === "public";
               return (
                 <tr key={i}>
                   <td className="mono">{sd.host}</td>
+                  <td>
+                    {(() => {
+                      const d = dns[sd.host];
+                      if (!d) return <span className="muted">—</span>;
+                      const p = DNS_PILL[d.state];
+                      // The records actually found, on hover: "points elsewhere"
+                      // is only actionable if you can see WHERE.
+                      const title =
+                        d.state === "unconfigured"
+                          ? "Set PUBLIC_INGRESS_IP so this can be checked"
+                          : `expected ${d.expected || "—"} · found ${d.resolved.join(", ") || "nothing"}`;
+                      return <span title={title}><Pill tone={p.tone}>{p.label}</Pill></span>;
+                    })()}
+                  </td>
                   <td>
                     {isPublic
                       ? <Pill tone="info">Public site</Pill>

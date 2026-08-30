@@ -158,6 +158,17 @@ const setDomainBase = asyncHandler(async (req, res) =>
   }),
 );
 
+/**
+ * Read-only: is each registered host actually pointing at us?
+ *
+ * A GET because it changes nothing — the console calls it on open and behind a
+ * Check button, and a re-check must be as cheap and as safe to repeat as a
+ * refresh.
+ */
+const domainDns = asyncHandler(async (req, res) =>
+  res.json({ data: await tenants.checkDomainDns(req.params.slug) }),
+);
+
 const setSandbox = asyncHandler(async (req, res) =>
   res.json({
     data: await tenants.setSandboxInterval(
@@ -277,6 +288,7 @@ module.exports = {
   refresh,
   listModules,
   listFeatures,
+  domainDns,
   listPlans,
   list,
   audit,

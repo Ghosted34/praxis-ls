@@ -103,6 +103,12 @@ const Schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: int(8080),
   APP_BASE_DOMAIN: z.string().default("praxisls.com"),
+  // The A record we tell a client to point their own domain at. Used ONLY to
+  // answer "has this domain been pointed at us yet?" in the platform console —
+  // the DNS itself lives at the client's registrar and is not ours to change.
+  // Empty means we cannot judge, and the check says so rather than reporting a
+  // correctly-configured domain as broken. See shared/net/dns-target.js.
+  PUBLIC_INGRESS_IP: z.string().trim().default(""),
   // Dev-only convenience: when NODE_ENV=development, resolve a tenant on
   // localhost without a hosts-file entry. A request may still override per-call
   // with the `X-Praxis-Tenant: <slug>` header (see host-tenent-resolver.js).

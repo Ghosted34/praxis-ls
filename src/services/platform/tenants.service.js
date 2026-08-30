@@ -12,6 +12,8 @@ const provisioning = require("./provisioning.service");
 const registry = require("../tenant/registry.service");
 const publicHead = require("../../shared/http/public-head");
 const publicWebPaths = require("../../shared/http/public-web-paths");
+const dnsTarget = require("../../shared/net/dns-target");
+const dnsPromises = require("dns").promises;
 const { AppError } = require("../../utils/errors");
 
 async function withPlatform(fn) {
@@ -81,6 +83,45 @@ function get(slug) {
       [slug],
     );
     return { ...t.rows[0], database: db.rows[0] || null, subdomains: subs.rows };
+  });
+}
+
+/**
+ * Has each of this tenant's hosts actually been pointed at us?
+ *
+ * Registering a domain writes the row that makes it serve the public site; it
+ * does NOT make the domain resolve. That half lives at the client's registrar,
+ * and it is the step most likely to be half-done — added to the wrong zone,
+ * added as a CNAME on an apex that cannot take one, or simply not added yet.
+ * Until now the only way to find out was to load the site and interpret a TLS
+ * error, which is a bad instrument: it cannot tell "not pointed yet" from
+ * "pointed at the old host", and those need different replies.
+ *
+ * Read-only and computed live. Nothing is stored, so there is no cached verdict
+ * to go stale the moment somebody edits a zone — the answer is always as fresh
+ * as the lookup, which is the whole point of a Check button.
+ *
+ * Every host is resolved, not just custom ones: a workspace host that stopped
+ * resolving is worth seeing in the same list, and special-casing it would mean
+ * the one row you most want explained is the row that is missing.
+ */
+function checkDomainDns(slug, { resolveA } = {}) {
+  const lookup = resolveA || ((host) => dnsPromises.resolve4(host));
+  return withPlatform(async (pf) => {
+    const { rows } = await pf.query(
+      "SELECT s.host, s.surface, s.is_custom_domain, s.is_primary FROM platform.subdomain s " +
+        "JOIN platform.tenant t ON t.tenant_id=s.tenant_id WHERE t.slug=$1 ORDER BY s.host",
+      [slug],
+    );
+    const expected = config.PUBLIC_INGRESS_IP;
+    return Promise.all(
+      rows.map(async (row) => ({
+        ...(await dnsTarget.checkHost(row.host, expected, lookup)),
+        surface: row.surface,
+        is_custom_domain: row.is_custom_domain,
+        is_primary: row.is_primary,
+      })),
+    );
   });
 }
 
@@ -414,6 +455,7 @@ const listPlans = () =>
   );
 
 module.exports = {
+  checkDomainDns,
   addDomain,
   setDomainSurface,
   setDomainBase,

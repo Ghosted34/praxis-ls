@@ -160,3 +160,17 @@ export interface AuditRow {
   tenant_slug: string | null;
   tenant_name: string | null;
 }
+
+/** One host's DNS verdict — see src/shared/net/dns-target.js. `expected` is
+ *  null when PUBLIC_INGRESS_IP is unset, in which case state is "unconfigured"
+ *  and the console says so rather than blaming the client's zone. */
+export type DomainDnsRow = {
+  host: string;
+  resolved: string[];
+  expected: string | null;
+  state: "ok" | "wrong_target" | "unresolved" | "unconfigured";
+  ok: boolean;
+  surface: "erp" | "public";
+  is_custom_domain: boolean;
+  is_primary: boolean;
+};

@@ -82,6 +82,10 @@ router.patch("/tenants/:slug/sandbox", requireCap("tenants.write"), validate("sa
 router.post("/tenants/:slug/domains", requireCap("tenants.write"), validate("domainAdd"), c.addDomain);
 router.patch("/tenants/:slug/domains", requireCap("tenants.write"), validate("domainSurface"), c.setDomainSurface);
 router.patch("/tenants/:slug/domains/base", requireCap("tenants.write"), validate("domainBase"), c.setDomainBase);
+// Read-only DNS verdict per registered host. `tenants.read`, not
+// `tenants.write`: it resolves names and writes nothing, so anyone who can see
+// the tenant can see whether its domains point here.
+router.get("/tenants/:slug/domains/dns", requireCap("tenants.read"), c.domainDns);
 router.post("/tenants/:slug/sandbox/wipe", requireCap("tenants.write"), c.wipeSandbox);
 router.post("/tenants/:slug/sandbox/seed", requireCap("tenants.write"), c.seedSandboxDemo);
 router.post("/tenants/:slug/migrate", requireCap("tenants.write"), c.migrate);

@@ -348,20 +348,31 @@ delivered result.
 | `dossiers.completed_count` | Files delivered. |
 | `clients.served_count` | `COUNT(DISTINCT client_id)` — claims breadth, so repeat business counts once. |
 | `services.published_count` | How many services the tenant publishes. |
+| `operations.avg_clearance_hours` | Average hours between the two stages a service type **marks** as its clearance clock (12754). |
 
-**Two are deliberately absent and must not be guessed:**
+**One remains deliberately absent and must not be guessed:**
 
 - **Distance covered.** There is no distance anywhere in the tenant schema. The
   only such column in the database is `attendance_log.distance_m`, which is HR
-  geofencing. It stays a literal until routes carry a distance.
-- **Average clearance time.** Computable from `milestone_instance.completed_at`,
-  but only once operations names the two milestone codes it runs between — and
-  those differ per service type; the clearance clock on an air import is not the
-  one on a hinterland transit. The mechanism is in place; add the metric when
-  the pair is named.
-
+  geofencing. It stays a literal until routes carry a distance. This is the one
+  remaining gap, and it needs a schema change rather than a definition.
 A wrong number on a client's public page is worse than a literal somebody chose
 on purpose.
+
+**The clearance clock is marked, not coded.** There is no single defensible
+pair: `DECLARATION_LODGED → CUSTOMS_RELEASED` measures only the window the
+forwarder controls, while `ARRIVAL → CUSTOMS_RELEASED` includes the client being
+slow with documents. And the chain differs by service type — sea runs through
+`DISCHARGE`, air through `FLIGHT_ARRIVED`, transit through `BORDER_CROSSING`.
+
+So `is_clearance_start` / `is_clearance_end` are flags on
+`milestone_template_stage`, set per service type **in the template editor
+operations already uses**, beside `is_anchor` and `is_client_visible`. A
+service type with no pair marked contributes nothing. Partial unique indexes
+make two starts on one template unreachable, because "the average ran from
+either of these two moments" has no defensible reading.
+
+**Nobody needs to come back to engineering to define a clock.**
 
 **Policies:** they generate PDFs client-side with html2pdf (an html2canvas
 screenshot). We render PDFs server-side with Puppeteer. Ours should be properly

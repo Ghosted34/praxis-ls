@@ -188,13 +188,19 @@ describe("the metric definitions", () => {
     path.join(repoRoot, "src/modules/site/site_content/site_content.metrics.js"),
     "utf8",
   );
-  const dossierMetrics = ["dossiers.volume_cbm_total", "dossiers.completed_count", "clients.served_count"];
+  // Every metric that reads operational data. The clearance clock joins from
+  // dossier_visible too, so it counts here.
+  const dossierMetrics = [
+    "dossiers.volume_cbm_total", "dossiers.completed_count",
+    "clients.served_count", "operations.avg_clearance_hours",
+  ];
 
   it("registers the four settled metrics", () => {
     expect(metrics.metricKeys().sort()).toEqual([
       "clients.served_count",
       "dossiers.completed_count",
       "dossiers.volume_cbm_total",
+      "operations.avg_clearance_hours",
       "services.published_count",
     ]);
   });
@@ -209,8 +215,9 @@ describe("the metric definitions", () => {
 
   it("counts only COMPLETED work", () => {
     // An open file is work in progress, not a delivered result.
+    // Aliased or not — the clearance query joins, so it filters on d.status.
     for (const frag of src.split("FROM dossier_visible").slice(1)) {
-      expect(frag).toMatch(/WHERE status = 'COMPLETED'/);
+      expect(frag).toMatch(/\b(?:d\.)?status = 'COMPLETED'/);
     }
   });
 
@@ -225,8 +232,8 @@ describe("the metric definitions", () => {
     expect(metrics.metricKeys().join(" ")).not.toMatch(/distance|miles|km/i);
   });
 
-  it("registers nothing for clearance time until the milestone pair is named", () => {
-    expect(metrics.metricKeys().join(" ")).not.toMatch(/clearance/i);
+  it("still registers nothing for distance, which has no source at all", () => {
+    expect(metrics.metricKeys().join(" ")).not.toMatch(/distance|miles/i);
   });
 
   it("resolves a dossier metric through the client it is handed", async () => {
@@ -241,5 +248,106 @@ describe("the metric definitions", () => {
     const empty = { query: async () => ({ rows: [{ total: 0, n: 0 }] }) };
     await expect(metrics.resolveMetric(empty, "dossiers.volume_cbm_total")).resolves.toBe(0);
     await expect(metrics.resolveMetric(empty, "clients.served_count")).resolves.toBe(0);
+  });
+});
+
+/**
+ * The clearance clock (12754).
+ *
+ * The pair is marked per service type rather than hardcoded, because there is
+ * no single defensible pair — DECLARATION_LODGED → CUSTOMS_RELEASED measures
+ * what the forwarder controls, ARRIVAL → CUSTOMS_RELEASED includes the client
+ * being slow with documents. These pin the properties that keep the resulting
+ * number honest.
+ */
+describe("the clearance clock", () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, "src/modules/site/site_content/site_content.metrics.js"),
+    "utf8",
+  );
+  const migration = fs.readFileSync(
+    path.join(repoRoot, "migrations/tenant/12754_milestone_clearance_clock.sql"),
+    "utf8",
+  );
+  // The QUERY only. Slicing to end-of-file would swallow the comments that
+  // legitimately NAME the candidate codes while explaining why none is chosen.
+  const sqlStart = src.indexOf("`WITH tpl");
+  const clause = src.slice(sqlStart, src.indexOf("`,", sqlStart));
+
+  it("hardcodes no milestone code", () => {
+    // The moment a code appears here, one service type's chain has been
+    // imposed on every other.
+    expect(clause).not.toMatch(/DECLARATION_LODGED|CUSTOMS_RELEASED|ARRIVAL|FLIGHT_ARRIVED|BORDER_CROSSING/);
+  });
+
+  it("reads the pair from the template flags", () => {
+    expect(clause).toMatch(/FILTER \(WHERE s\.is_clearance_start\)/);
+    expect(clause).toMatch(/FILTER \(WHERE s\.is_clearance_end\)/);
+  });
+
+  it("consults only the latest active template per service type", () => {
+    // Several versions can be active; mixing their codes would average two
+    // different definitions into one number.
+    expect(clause).toMatch(/DISTINCT ON \(t\.service_type_id\)/);
+    expect(clause).toMatch(/ORDER BY t\.service_type_id, t\.version DESC/);
+    expect(clause).toMatch(/WHERE t\.is_active/);
+  });
+
+  it("declines to measure when the pair is ambiguous", () => {
+    expect(clause).toMatch(/HAVING COUNT\(\*\) FILTER \(WHERE s\.is_clearance_start\) = 1/);
+    expect(clause).toMatch(/AND COUNT\(\*\) FILTER \(WHERE s\.is_clearance_end\) = 1/);
+  });
+
+  it("drops files whose stages completed out of order", () => {
+    // A backfill or a correction would otherwise contribute a negative
+    // duration and pull the average below the truth.
+    expect(clause).toMatch(/e\.completed_at >= s\.completed_at/);
+  });
+
+  it("counts completed files only, from dossier_visible", () => {
+    expect(clause).toMatch(/FROM dossier_visible/);
+    expect(clause).toMatch(/d\.status = 'COMPLETED'/);
+  });
+
+  it("makes the ambiguous state unreachable in the database too", () => {
+    // Two starts is not a smaller version of one start.
+    expect(migration).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_one_clearance_start[\s\S]*WHERE is_clearance_start/);
+    expect(migration).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_one_clearance_end[\s\S]*WHERE is_clearance_end/);
+  });
+
+  it("defaults both flags off, so nothing starts measuring by itself", () => {
+    expect(migration).toMatch(/is_clearance_start boolean NOT NULL DEFAULT false/);
+    expect(migration).toMatch(/is_clearance_end\s+boolean NOT NULL DEFAULT false/);
+  });
+
+  it("returns null when nothing has a pair marked, so the literal stands", async () => {
+    const empty = { query: async () => ({ rows: [{ hours: null }] }) };
+    await expect(metrics.resolveMetric(empty, "operations.avg_clearance_hours")).resolves.toBeNull();
+  });
+
+  it("rounds to whole hours", async () => {
+    const client = { query: async () => ({ rows: [{ hours: 71.6 }] }) };
+    await expect(metrics.resolveMetric(client, "operations.avg_clearance_hours")).resolves.toBe(72);
+  });
+});
+
+describe("the stage write path carries the flags", () => {
+  const validator = fs.readFileSync(
+    path.join(repoRoot, "src/modules/operations/milestone/milestone.validator.js"), "utf8",
+  );
+  const service = fs.readFileSync(
+    path.join(repoRoot, "src/modules/operations/milestone/milestone.service.js"), "utf8",
+  );
+
+  it("accepts them beside their sibling role flags", () => {
+    expect(validator).toMatch(/is_clearance_start: z\.boolean\(\)\.optional\(\)/);
+    expect(validator).toMatch(/is_clearance_end: z\.boolean\(\)\.optional\(\)/);
+  });
+
+  it("writes them when a template is published", () => {
+    // Accepted by the validator but dropped before the insert is the exact
+    // silent failure the profile parity test exists to catch elsewhere.
+    expect(service).toMatch(/is_clearance_start: !!s\.is_clearance_start/);
+    expect(service).toMatch(/is_clearance_end: !!s\.is_clearance_end/);
   });
 });

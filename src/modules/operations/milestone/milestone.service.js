@@ -149,6 +149,8 @@ async function publishTemplate(client, { serviceTypeId, stages, actor = {} }) {
         is_anchor: !!s.is_anchor,
         is_target_lock: !!s.is_target_lock,
         is_client_visible: s.is_client_visible !== false,
+        is_clearance_start: !!s.is_clearance_start,
+        is_clearance_end: !!s.is_clearance_end,
         is_optional: !!s.is_optional,
         chain_segment: s.chain_segment || "MAIN",
         cadence: s.cadence || null,

@@ -120,6 +120,72 @@ register({
   },
 });
 
+register({
+  key: "operations.avg_clearance_hours",
+  unit: "hours",
+  /**
+   * Average hours between the two stages a service type marks as its clearance
+   * clock (12754).
+   *
+   * The pair is NOT hardcoded, because there is no single defensible pair:
+   * DECLARATION_LODGED → CUSTOMS_RELEASED measures only what the forwarder
+   * controls, while ARRIVAL → CUSTOMS_RELEASED includes the client being slow
+   * with documents. Operations marks the right two on each template, and a
+   * service type with no pair marked contributes nothing — correct for one
+   * nobody has defined a clock for.
+   *
+   * Only the LATEST ACTIVE template per service type is consulted. Several
+   * versions can be active at once, and mixing their codes would silently
+   * average two different definitions into one number.
+   *
+   * The HAVING is belt to the partial unique indexes' braces: the database
+   * already refuses two starts on one template, and if that guarantee were ever
+   * lost this would decline to measure rather than pick one arbitrarily.
+   *
+   * `e.completed_at >= s.completed_at` drops files where the stages were
+   * completed out of order — a backfill or a correction — which would otherwise
+   * contribute a negative duration and pull the average below the truth.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `WITH tpl AS (
+         SELECT DISTINCT ON (t.service_type_id)
+                t.milestone_template_id, t.service_type_id
+           FROM milestone_template t
+          WHERE t.is_active
+          ORDER BY t.service_type_id, t.version DESC
+       ),
+       clock AS (
+         SELECT tpl.service_type_id,
+                MAX(s.code) FILTER (WHERE s.is_clearance_start) AS start_code,
+                MAX(s.code) FILTER (WHERE s.is_clearance_end)   AS end_code
+           FROM tpl
+           JOIN milestone_template_stage s
+             ON s.milestone_template_id = tpl.milestone_template_id
+          GROUP BY tpl.service_type_id
+         HAVING COUNT(*) FILTER (WHERE s.is_clearance_start) = 1
+            AND COUNT(*) FILTER (WHERE s.is_clearance_end) = 1
+       )
+       SELECT AVG(EXTRACT(EPOCH FROM (e.completed_at - s.completed_at)) / 3600.0)::float AS hours
+         FROM dossier_visible d
+         JOIN clock c ON c.service_type_id = d.service_type_id
+         JOIN milestone_instance s
+           ON s.dossier_id = d.dossier_id AND s.code = c.start_code
+         JOIN milestone_instance e
+           ON e.dossier_id = d.dossier_id AND e.code = c.end_code
+        WHERE d.status = 'COMPLETED'
+          AND s.completed_at IS NOT NULL
+          AND e.completed_at IS NOT NULL
+          AND e.completed_at >= s.completed_at`,
+    );
+    // NULL when no service type has a pair marked, or none has completed a file
+    // through both stages. resolveMetric turns that into a fallback to the
+    // literal, which is exactly right: we have nothing to say yet.
+    const hours = rows[0] ? rows[0].hours : null;
+    return Number.isFinite(hours) ? Math.round(hours) : null;
+  },
+});
+
 /*
  * ── DELIBERATELY NOT REGISTERED ───────────────────────────────────────────
  *
@@ -129,15 +195,6 @@ register({
  *   geofencing — how far a person clocked in from their worksite — and has
  *   nothing to do with freight. This metric cannot be computed and must not be
  *   faked; it stays a literal the tenant types until routes carry a distance.
- *
- * "Average customs clearance time" (SmartLS advertises 72 hours).
- *   Computable in principle from `milestone_instance.completed_at`, but only
- *   once somebody names the two milestone codes it runs between, and those
- *   differ per service type — the clearance clock on an air import is not the
- *   one on a hinterland transit. Registering a guess would put a number on a
- *   client's public page that nobody could defend when a customer asks how it
- *   was measured. Add it when operations names the pair; the mechanism is
- *   already here.
  */
 
 register({

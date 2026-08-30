@@ -61,6 +61,7 @@ import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { VoiceInput } from "@/components/voice-input";
 import { useResource, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/hr-api";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 /** Where a `salary` question's two bounds land in the answers. The drafting
  *  service reads these keys by name, so they are a contract, not a convention. */
@@ -86,6 +87,7 @@ export function VacancyWizard({
   const [i, setI] = React.useState(0);
   const [thinking, setThinking] = React.useState(false);
   const [drafting, setDrafting] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const [error, setError] = React.useState<string | null>(null);
 
   const base = React.useMemo(
@@ -192,15 +194,17 @@ export function VacancyWizard({
 
   /** Answers are only in the browser until the draft is saved, so leaving
    *  mid-interview throws them away and should say so. */
-  function close() {
-    if (
-      Object.keys(answers).length &&
-      !drafting &&
-      !window.confirm(
-        "Leave the interview?\n\nYour answers haven't been saved yet — you'd start again from the first question.",
-      )
-    )
-      return;
+  async function close() {
+    if (Object.keys(answers).length && !drafting) {
+      const ok = await confirm({
+        title: "Leave the interview?",
+        body: "Your answers haven't been saved yet — you'd start again from the first question.",
+        confirmLabel: "Leave and lose them",
+        cancelLabel: "Stay here",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     onClose();
   }
 
@@ -209,11 +213,19 @@ export function VacancyWizard({
   return (
     <Modal
       open
-      onClose={close}
+      // `close` is async now (it may await a confirmation); the returned
+      // promise is intentionally not awaited here — Modal's onClose is void.
+      onClose={() => void close()}
       title={tr("New vacancy")}
       description="Answer a few questions — type or speak them — and AI writes the advert."
       size="lg"
     >
+      {/* Rendered INSIDE the wizard, but Radix portals it to the body and it
+          carries a higher stacking order, so the "leave the interview?" question
+          sits above the interview rather than behind it. The dialog.tsx header
+          warns against nesting dialogs generally; this is the exception it
+          names — a confirmation ABOUT closing the one underneath. */}
+      {confirmDialog}
       {start.error ? (
         <ErrorState
           message={start.error}

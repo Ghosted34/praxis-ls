@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
@@ -74,6 +75,8 @@ export function TemplateStudioPage() {
   const [html, setHtml] = React.useState<string>("");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /** The outcome of `generate()` — see the note there. */
+  const [notice, setNotice] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
 
   const list = React.useMemo(() => templates.data || [], [templates.data]);
@@ -170,6 +173,7 @@ export function TemplateStudioPage() {
   async function generate() {
     setBusy("gen");
     setError(null);
+    setNotice(null);
     try {
       const out = await tenant<{ verify?: string }>(
         `/document-templates/${docType}/generate`,
@@ -181,12 +185,16 @@ export function TemplateStudioPage() {
           },
         },
       );
-      alert(
-        "PDF generated & vaulted." +
-          (out.verify ? `\nVerify: ${out.verify}` : ""),
+      // Both branches were `alert()`, so "it worked" and "it failed" arrived in
+      // the same unbranded OS box. The verdict now lands on the page: a Callout
+      // for the success — carrying the verification URL, which people copy and
+      // which was unselectable inside an alert — and the existing error state
+      // for the failure.
+      setNotice(
+        "PDF generated & vaulted." + (out.verify ? ` Verify: ${out.verify}` : ""),
       );
     } catch (e) {
-      alert(errMsg(e));
+      setError(errMsg(e));
     } finally {
       setBusy(null);
     }
@@ -221,6 +229,20 @@ export function TemplateStudioPage() {
       {error && (
         <div className="mb-3">
           <ErrorState message={error} />
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3">
+          <Callout
+            tone="ok"
+            action={
+              <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {notice}
+          </Callout>
         </div>
       )}
 

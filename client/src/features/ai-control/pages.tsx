@@ -21,6 +21,7 @@ import { useBaseCurrency } from "@/lib/use-base-currency";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import * as api from "@/lib/ai-governance-api";
 import { reportActionError } from "@/lib/action-error";
+import { Callout } from "@/components/ui/callout";
 
 type GovUser = { user_id: string; full_name?: string | null; email: string };
 
@@ -891,6 +892,10 @@ export function AiVendorsPage() {
   const [editing, setEditing] = React.useState<api.Vendor | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [testing, setTesting] = React.useState<string | null>(null);
+  /** The verdict from `test()` — rendered as a Callout, not an OS alert. */
+  const [vendorTest, setVendorTest] = React.useState<
+    { vendor: string; ok: boolean; message: string } | null
+  >(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   async function toggleActive(v: api.Vendor) {
@@ -904,13 +909,29 @@ export function AiVendorsPage() {
       setBusy(null);
     }
   }
+  /**
+   * Test a vendor's credentials.
+   *
+   * The RESULT is the whole point of pressing this, so it belongs on the page —
+   * next to the row it describes — rather than in a box that has to be
+   * dismissed before the row can be looked at. Both branches used to be
+   * `alert()`, which meant a successful test and a network failure produced the
+   * identical OS dialog, neither of them branded and neither translatable.
+   */
   async function test(v: api.Vendor) {
     setTesting(v.vendor);
+    setVendorTest(null);
     try {
       const r = await api.testVendor(v.vendor);
-      alert(r.ok ? "Connection OK" : `Failed: ${r.message || "unknown"}`);
+      setVendorTest({
+        vendor: v.vendor,
+        ok: r.ok,
+        message: r.ok
+          ? tr("Connection OK")
+          : `${tr("Failed")}: ${r.message || tr("unknown")}`,
+      });
     } catch (e) {
-      alert(errMsg(e));
+      reportActionError(e);
     } finally {
       setTesting(null);
     }
@@ -998,6 +1019,21 @@ export function AiVendorsPage() {
         action={<Button onClick={() => setAdding(true)}>Add vendor</Button>}
       />
       <HubTabs />
+      {vendorTest && (
+        <div className="mb-3">
+          <Callout
+            tone={vendorTest.ok ? "ok" : "bad"}
+            title={vendorTest.vendor}
+            action={
+              <Button size="sm" variant="ghost" onClick={() => setVendorTest(null)}>
+                {tr("Dismiss")}
+              </Button>
+            }
+          >
+            {vendorTest.message}
+          </Callout>
+        </div>
+      )}
       <DataList
         columns={columns}
         rows={rows}

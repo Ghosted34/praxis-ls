@@ -175,6 +175,24 @@ export default tseslint.config(
        * uses.
        */
       "praxis/no-unmarked-silent-catch": "warn",
+
+      /**
+       * NO BROWSER-DRAWN POPUPS. Error from the day it lands, not "warn" —
+       * see client/eslint-local-rules/no-native-dialogs.cjs for why.
+       *
+       * The usual ratchet in this file is: land a rule at "warn", clear the
+       * backlog, then flip to "error". That is the right shape for a rule with
+       * a backlog someone still has to work through. This one has no backlog —
+       * the sweep that introduced the rule converted all 14 `window.confirm`
+       * sites in the same change — so landing it at "warn" would only create
+       * the possibility of a regression it exists to prevent.
+       *
+       * It is also, unlike most lint rules, USER-VISIBLE. A native confirm is
+       * not a style preference; it is the tenant's white-label branding being
+       * replaced by "app.praxis-ls.com says" at the exact moment the product
+       * asks them to destroy something.
+       */
+      "praxis/no-native-dialogs": "error",
     },
   },
   // Test files run under Vitest globals and legitimately use non-null assertions.
@@ -184,5 +202,26 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
     },
+  },
+  // THE BAN IS NOT TYPESCRIPT-ONLY.
+  //
+  // Every other block in this file is scoped to TS and TSX files, which is right
+  // for rules about types and hooks — but it means the dialog gate stops at a
+  // file extension. Nothing in this repo forbids a .jsx component, a .js helper
+  // or a .mjs build script that touches the DOM, and the gate would have had
+  // nothing to say about any of them. A ban a rename defeats is not a ban.
+  //
+  // Deliberately ONE rule and no `extends`. Pulling the recommended sets over
+  // these files would report a backlog that has nothing to do with dialogs, and
+  // the pressure to make THAT green is how the whole block gets deleted.
+  {
+    files: ["**/*.{js,jsx,mjs,cjs,mts,cts}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { praxis },
+    rules: { "praxis/no-native-dialogs": "error" },
   },
 );

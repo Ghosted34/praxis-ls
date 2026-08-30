@@ -81,13 +81,49 @@ describe("Drafts", () => {
     expect(await screen.findByText("No drafts")).toBeInTheDocument();
   });
 
-  it("discarding asks first, and says the attachments go too", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  /*
+   * This used to spy on `window.confirm`. It now asserts against the rendered
+   * dialog, which is a STRONGER check and not merely a port: the spy could only
+   * prove that some string was passed to the browser, whereas this proves the
+   * warning is on screen, names the draft it is about, and offers a button that
+   * says what it does. The old assertion would have passed against a confirm
+   * that said "cannot be undone" and nothing else.
+   */
+  it("discarding asks first, names the draft, and says the attachments go too", async () => {
     renderScreen(<DraftList onOpen={vi.fn()} />, { routes: { "/mail/drafts": [draft()] } });
     await screen.findByText("Demurrage on MSKU4567890");
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("cannot be undone"));
-    confirm.mockRestore();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Discard this draft?")).toBeInTheDocument();
+    // The draft is named inside the dialog, so a list of drafts cannot ask an
+    // ambiguous question about which one is about to go.
+    expect(within(dialog).getByText("Demurrage on MSKU4567890")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/deleted, along with anything attached to it/i),
+    ).toBeInTheDocument();
+    // Named actions, not OK/Cancel.
+    expect(
+      within(dialog).getByRole("button", { name: "Discard draft" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeping the draft closes the dialog and deletes nothing", async () => {
+    const del = vi.fn();
+    renderScreen(<DraftList onOpen={vi.fn()} />, {
+      routes: { "/mail/drafts": [draft()], "DELETE /mail/drafts/d1": del },
+    });
+    await screen.findByText("Demurrage on MSKU4567890");
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Keep editing",
+      }),
+    );
+    expect(del).not.toHaveBeenCalled();
   });
 
   it("has no accessibility violations", async () => {

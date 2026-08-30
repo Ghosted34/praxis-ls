@@ -20,6 +20,7 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { PageError } from "./shared";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 const CADENCES = ["daily", "weekly", "monthly", "quarterly", "on_event"];
 const REPORT_FORMATS = ["pdf", "csv", "xlsx"];
@@ -198,6 +199,7 @@ export function ScheduledReportsPage() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   async function toggle(id: string, active: boolean) {
     setRowBusy(id);
@@ -216,7 +218,13 @@ export function ScheduledReportsPage() {
   }
 
   async function remove(id: string, name: string) {
-    if (!window.confirm(`Delete the scheduled report "${name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete this scheduled report?",
+      body: `“${name}” stops being sent. Reports already delivered are unaffected.`,
+      confirmLabel: "Delete scheduled report",
+      destructive: true,
+    });
+    if (!ok) return;
     setRowBusy(id);
     setRowError(null);
     try {
@@ -231,6 +239,7 @@ export function ScheduledReportsPage() {
 
   return (
     <section className={pageShell.wide}>
+      {confirmDialog}
       <PageHeader
         eyebrow={<HubCrumb area="Settings" to="/settings" />}
         title="Scheduled reports"

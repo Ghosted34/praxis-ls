@@ -17,6 +17,7 @@ import { useList, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { money, num, dateFmt, enumLabel, humanizeRef } from "@/lib/format";
 import { RowActions } from "@/components/ui/row-actions";
+import { usePrompt } from "@/components/ui/use-prompt";
 
 type ApprovalTask = {
   approval_task_id?: string;
@@ -64,6 +65,7 @@ export function ApprovalsPage() {
   );
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actError, setActError] = React.useState<string | null>(null);
+  const [prompt, promptDialog] = usePrompt();
   const list = rows || [];
   const idOf = (r: ApprovalTask) => String(r.approval_task_id || r.id || "");
 
@@ -73,10 +75,22 @@ export function ApprovalsPage() {
   ) {
     const id = idOf(r);
     if (!id) return;
-    const note =
-      action === "reject"
-        ? (window.prompt("Reason for rejection (optional):") ?? undefined)
-        : undefined;
+    // The reason is what the requester reads to know what to change, so it gets
+    // a labelled textarea rather than a one-line OS box. Still optional: the
+    // validate hook is absent, so an empty answer submits.
+    let note: string | undefined;
+    if (action === "reject") {
+      const typed = await prompt({
+        title: "Reject this request?",
+        description: "The requester sees this note. Say what would need to change.",
+        label: "Reason for rejection",
+        hint: "Optional, but a rejection without one usually comes back.",
+        multiline: true,
+        confirmLabel: "Reject request",
+      });
+      if (typed === null) return;
+      note = typed || undefined;
+    }
     setBusy(id + action);
     // Was `alert(errMsg(e))`. The refusals this screen now produces —
     // SELF_APPROVAL, NOT_ELIGIBLE, WRONG_ACTION_FOR_STEP — are explanatory
@@ -183,6 +197,7 @@ export function ApprovalsPage() {
 
   return (
     <section className={pageShell.wide}>
+      {promptDialog}
       <PageHeader
         eyebrow={<HubCrumb area="Governance" to="/governance" />}
         title={tr("Approvals")}

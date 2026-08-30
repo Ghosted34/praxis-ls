@@ -18,6 +18,7 @@ import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { ContractEditor } from "./contract-editor";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
+import { reportActionError } from "@/lib/action-error";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { groupContracts, type ContractGroup } from "./contracts-grouping";
@@ -209,7 +210,10 @@ export function UploadSigned({
       );
       onDone();
     } catch (err) {
-      window.alert(errMsg(err));
+      // Was `window.alert(errMsg(err))` — an OS alert that blocked the event
+      // loop to report a failed upload. reportActionError is this codebase's
+      // route for exactly that: a toast, plus the taxonomy the error centre reads.
+      reportActionError(err);
     } finally {
       setBusy(false);
     }

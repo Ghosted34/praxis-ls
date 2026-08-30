@@ -54,6 +54,7 @@ import { useRecipientHealth } from "../work/use-recipient-health";
 import { SchedulePicker } from "../work/schedule";
 import { schedulePayload, type ScheduleChoice } from "../work/schedule-payload";
 import { newIdempotencyKey, rememberSend, forgetSend } from "./offline-queue";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 /** PR-2..PR-5 register into these rather than editing the markup. */
 export type ComposerSlots = {
@@ -171,6 +172,7 @@ export function Composer({
   const [tray, setTray] = React.useState<api.AttachmentTray | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
   const [error, setError] = React.useState<string | null>(null);
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
 
@@ -419,18 +421,37 @@ export function Composer({
    * Throw this draft away.
    *
    * Asked before, not undone after: `DELETE /mail/drafts/:id` takes the row and
-   * its attachments with it, and there is no restore. The autosave timer is
-   * cleared first — a pending flush landing after the delete would recreate the
-   * draft the person just discarded, which is the sort of thing that only shows
-   * up once somebody types fast and then changes their mind.
+   * its attachments with it, and there is no restore. A pending flush landing
+   * after the delete would recreate the draft the person just discarded, which
+   * is the sort of thing that only shows up once somebody types fast and then
+   * changes their mind.
+   *
+   * THE TIMER IS CLEARED BEFORE THE QUESTION, NOT AFTER IT. That ordering is
+   * load-bearing and it is the one thing the move off `window.confirm` had to
+   * get right here. The native confirm BLOCKED THE EVENT LOOP, so no autosave
+   * could fire while the question was on screen and clearing the timer
+   * afterwards was sufficient. An awaited dialog does not block anything: the
+   * 1500ms timer keeps running behind it, and a person who reads the sentence
+   * before answering is exactly the person who outlasts it. The flush that then
+   * fires is an UPSERT — `saveDraft` with no `email_draft_id` creates a row —
+   * so once `discard()` has nulled the id, a retry of that flush writes back a
+   * brand-new copy of the draft that was just thrown away.
+   *
+   * Clearing first closes the window. If they say "Keep editing", `touch()`
+   * re-arms it; a flush with nothing dirty returns immediately, so re-arming
+   * unconditionally is safe.
    */
   async function discard() {
     if (!draftId) { onClose?.(); return; }
-    const ok = window.confirm(
-      `${tr("Discard this draft?")}\n\n${tr("It is deleted, along with anything attached to it. This cannot be undone.")}`,
-    );
-    if (!ok) return;
     if (timer.current) clearTimeout(timer.current);
+    const ok = await confirm({
+      title: tr("Discard this draft?"),
+      body: tr("It is deleted, along with anything attached to it. This cannot be undone."),
+      confirmLabel: tr("Discard draft"),
+      cancelLabel: tr("Keep editing"),
+      destructive: true,
+    });
+    if (!ok) { touch(); return; }
     dirtyRef.current = {};
     setBusy(true);
     try {
@@ -636,6 +657,7 @@ export function Composer({
       className="flex min-h-0 flex-col rounded-xl border border-border bg-card"
       aria-label={tr("Compose a message")}
     >
+      {confirmDialog}
       <header className="space-y-1.5 border-b border-border px-3 py-2">
         {mailboxes.length > 1 && (
           <Field label={tr("From")}>

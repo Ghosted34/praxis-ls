@@ -35,6 +35,7 @@ import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { reportActionError } from "@/lib/action-error";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
+import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -826,22 +827,28 @@ export function ConnectionsTab() {
   /**
    * Disconnect — the action a person could not reach at all.
    *
-   * `window.confirm` rather than a modal, deliberately: this is destructive of
-   * a credential and the sentence has to be READ, and every dialog in this app
-   * is dismissible by clicking outside it. What the sentence says is the point
-   * — most people read "disconnect" as "delete my mail", and the difference
-   * matters the first time somebody needs last March's bill of lading.
+   * It used to be a `window.confirm`, deliberately, for one reason: this is
+   * destructive of a credential, the sentence has to be READ, and every dialog
+   * in this app is dismissible by clicking outside it. What the sentence says
+   * is the point — most people read "disconnect" as "delete my mail", and the
+   * difference matters the first time somebody needs last March's bill of
+   * lading.
+   *
+   * The reason was right; the remedy was the browser's. A native confirm has no
+   * brand, no type scale, no warning red and an OK/Cancel pair that does not
+   * name the action, and it is the only dialog in the product that looks like a
+   * different piece of software. `<DisconnectMailboxDialog>` keeps the property
+   * that mattered — `dismissible={false}`, so clicking away does not answer it
+   * — and states the consequences in the product's own voice and colour.
    */
+  const [confirmTarget, setConfirmTarget] = React.useState<api.Connection | null>(null);
+
   async function disconnect(c: api.Connection) {
-    const ok = window.confirm(
-      `${tr("Disconnect")} ${c.email_address}?\n\n` +
-      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
-    );
-    if (!ok) return;
     setBusyId(c.email_connection_id);
     setNote("");
     try {
       await api.disconnectMailbox(c.email_connection_id);
+      setConfirmTarget(null);
       setNote(`✓ ${tr("Disconnected")} — ${c.email_address}`);
       conns.reload();
     } catch (e) {
@@ -867,6 +874,13 @@ export function ConnectionsTab() {
 
   return (
     <div className="space-y-5">
+      <DisconnectMailboxDialog
+        open={!!confirmTarget}
+        address={confirmTarget?.email_address || ""}
+        busy={!!confirmTarget && busyId === confirmTarget.email_connection_id}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={() => confirmTarget && void disconnect(confirmTarget)}
+      />
       {/* ── Connect Microsoft 365 / Connect Google Workspace: HIDDEN ─────────
        *
        * Not deleted — hidden, because the adapters are not dead code. Q4 and
@@ -962,7 +976,7 @@ export function ConnectionsTab() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => disconnect(c)}
+                onClick={() => setConfirmTarget(c)}
                 disabled={busyId === c.email_connection_id}
               >
                 {tr("Disconnect")}

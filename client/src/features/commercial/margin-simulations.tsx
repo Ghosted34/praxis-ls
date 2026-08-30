@@ -46,6 +46,7 @@ import { Pill, StatusPill, type Tone } from "@/components/ui/pill";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import { listCurrencies } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
+import { usePrompt } from "@/components/ui/use-prompt";
 
 const MARGIN_AI: AiAction[] = [
   {
@@ -237,6 +238,7 @@ function MarginSimForm({
   const [dossierId, setDossierId] = React.useState("");
   const [costingId, setCostingId] = React.useState("");
   const [linking, setLinking] = React.useState(false);
+  const [prompt, promptDialog] = usePrompt();
   const costings = useResource<{ data?: Row[] } | Row[]>(
     () =>
       dossierId
@@ -401,16 +403,30 @@ function MarginSimForm({
           await tenant(`/margin-simulations/${id}/submit`, { method: "POST" });
         } catch (e) {
           if (!isLowMargin(e)) throw e;
-          const why = window.prompt(
-            tr(
-              "This is priced at or below cost. Why is it being submitted? (the approver reads this)",
+          // The 10-character minimum is now enforced BY THE DIALOG rather than
+          // after it: the old prompt accepted anything, and a too-short answer
+          // was punished with an error and a lost draft. `usePrompt` disables
+          // the submit button until the justification is long enough.
+          const why = await prompt({
+            title: tr("Priced at or below cost"),
+            description: tr(
+              "This is priced at or below cost. Why is it being submitted? The approver reads this.",
             ),
-            "",
-          );
-          if (!why || why.trim().length < 10) {
+            label: tr("Justification"),
+            hint: tr("At least 10 characters."),
+            multiline: true,
+            confirmLabel: tr("Submit for approval"),
+            validate: (v) =>
+              v.trim().length < 10
+                ? tr("At least 10 characters.")
+                : null,
+          });
+          if (why === null) {
+            // Cancelled. The draft is already saved, so nothing is lost —
+            // say so rather than leaving the screen silent.
             setError(
               tr(
-                "Submitting at or below cost needs a written justification of at least 10 characters. The draft has been saved.",
+                "Not submitted — a justification is required below cost. The draft has been saved.",
               ),
             );
             onSaved();
@@ -418,7 +434,7 @@ function MarginSimForm({
           }
           await tenant(`/margin-simulations/${id}/submit`, {
             method: "POST",
-            body: { justification: why.trim() },
+            body: { justification: why },
           });
         }
       }
@@ -458,6 +474,7 @@ function MarginSimForm({
       description="Rapid quote maths — margin on services only, débours pass-through. No GL (KB §6.7)."
       size="wide"
     >
+      {promptDialog}
       <div className="space-y-4">
         {/* Header: the file and its costing — cost the file, then price it. */}
         <div className="grid gap-4 sm:grid-cols-3">
@@ -742,6 +759,7 @@ function SimDetail({
   const [error, setError] = React.useState<string | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
   const [rejecting, setRejecting] = React.useState(false);
+  const [prompt, promptDialog] = usePrompt();
   const s = sim.data;
 
   async function act(path: string, body?: Record<string, unknown>) {
@@ -758,15 +776,21 @@ function SimDetail({
     } catch (e) {
       // §2.5 — the one refusal the screen can answer rather than just report.
       if (path === "submit" && isLowMargin(e)) {
-        const why = window.prompt(
-          tr(
-            "This is priced at or below cost. Why is it being submitted? (the approver reads this)",
+        const why = await prompt({
+          title: tr("Priced at or below cost"),
+          description: tr(
+            "This is priced at or below cost. Why is it being submitted? The approver reads this.",
           ),
-          "",
-        );
-        if (why && why.trim().length >= 10) {
+          label: tr("Justification"),
+          hint: tr("At least 10 characters."),
+          multiline: true,
+          confirmLabel: tr("Submit for approval"),
+          validate: (v) =>
+            v.trim().length < 10 ? tr("At least 10 characters.") : null,
+        });
+        if (why) {
           setBusy(false);
-          return act("submit", { justification: why.trim() });
+          return act("submit", { justification: why });
         }
         setError(
           tr(
@@ -858,6 +882,7 @@ function SimDetail({
       description="The saved workings — per-line margin and KPI, VAT, and the approval trail."
       size="wide"
     >
+      {promptDialog}
       {sim.error ? (
         <ErrorState message={sim.error} />
       ) : !s ? null : (

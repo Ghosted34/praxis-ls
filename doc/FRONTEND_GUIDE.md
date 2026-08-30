@@ -464,6 +464,83 @@ config and asserts the schemas resolve, parse, and share one Zod. And when you
 add a schema, export it as `exports.name = name` — `module.exports = { name }`
 is invisible to every bundler (see `packages/shared/README.md`).
 
+### 3.10 Dialogs — never the browser's
+
+**`window.confirm`, `window.alert` and `window.prompt` are banned.** Not
+discouraged — banned, by `praxis/no-native-dialogs`, which is an **error** in
+`client/`, `platform-console/` and `public-web/`. Lint fails; the PR does not
+merge.
+
+This is not a style preference. A native dialog is the one piece of UI a tenant
+sees that is drawn by the **browser** rather than by us:
+
+- It renders in OS chrome, titled "app.praxis-ls.com says". Whatever the
+  tenant's white-label settings are, this ignores them — at the exact moment the
+  product is asking them to destroy something.
+- It has no type scale, spacing, shadow or colour from `index.css`, so a warning
+  cannot be red and a destructive action cannot look destructive.
+- Its buttons are "OK" and "Cancel". They never name the action, which §6 of
+  this guide requires of every confirmation.
+- `alert` and `confirm` **block the event loop**. Timers, autosave flushes and
+  in-flight fetches stall until a human clicks — that produced a real defect
+  here, a draft autosave landing *after* a discard.
+- None of them can be translated by `tr()`, and none are reachable by the
+  focus-management and live-region work the a11y audit paid for.
+
+#### What to use instead
+
+| Instead of       | Use                                                        |
+| ---------------- | ---------------------------------------------------------- |
+| `window.confirm` | `useConfirm()` — or `<ConfirmDialog>` directly              |
+| `window.prompt`  | `usePrompt()` — or a `<Dialog>` with a `<Field>` + `<Input>` |
+| `window.alert`   | `<Callout>` for an outcome they are reading, `useToast()` for one they do not need to read to continue |
+
+`useConfirm()` is the one you will reach for most. It gives you an `await`-able
+call and the element to render, so the call site keeps reading top-to-bottom
+exactly like the `confirm()` it replaces:
+
+```tsx
+const [confirm, confirmDialog] = useConfirm();
+
+async function onDelete(row: Row) {
+  const ok = await confirm({
+    title: "Delete this conversation for ever?",
+    body: "The messages and their attachments go with it. This cannot be undone.",
+    confirmLabel: "Delete conversation", // names the ACTION, never "OK"
+    cancelLabel: "Keep it",
+    destructive: true,
+  });
+  if (!ok) return;
+  await api.remove(row.id);
+}
+
+return (
+  <>
+    {/* … */}
+    {confirmDialog}
+  </>
+);
+```
+
+Three rules for the copy, and they are the reason the ban is worth the trouble:
+
+1. **The title names the outcome, as a question.** "Delete this conversation for
+   ever?" — not "Are you sure?", which tells the reader nothing they can act on.
+2. **The buttons name the action.** `confirmLabel: "Delete conversation"`, not
+   "OK". A person who reads only the buttons must still know what happens.
+3. **`destructive` for anything irreversible.** It carries the warning colour,
+   the warning glyph (so the tone is never colour alone — WCAG §1.4.1) and it
+   defaults `dismissible` to `false`, so a click outside cannot half-answer a
+   question about deleting something.
+
+#### The escape hatch
+
+There isn't a good one, and that is deliberate. If you are genuinely the
+exception, `eslint-disable-next-line praxis/no-native-dialogs` still works and
+**must** carry a written reason next to it, the same shape every other exception
+in these configs uses. Nothing in the tree needs it today. `window.print()` and
+`beforeunload` are not matched by the rule and need no disable.
+
 ---
 
 ## 4. Accessibility — the floor, not the aspiration
@@ -527,6 +604,7 @@ it needs a formatter before it reaches the DOM.
 - [ ] `403` renders a permission message, not a blank screen.
 - [ ] No raw UUIDs, ISO dates, dotted event keys or SCREAMING_ENUMs on screen (§5).
 - [ ] No raw `<table>` / `<input>` / `<textarea>` / `role="menu"` — use the primitives (§3.5).
+- [ ] No `window.confirm` / `alert` / `prompt` — `useConfirm()`, `usePrompt()`, `<Callout>` or `useToast()` (§3.10).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
 - [ ] Row actions go in `<RowActions>` — that is what keeps the row at its density height (§7.1).
 - [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`.

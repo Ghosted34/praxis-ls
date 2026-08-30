@@ -31,6 +31,7 @@ import { LoadingRow } from "@/components/ui/states";
 import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
 import { VacancyWizard } from "./vacancy-wizard";
 import { VacancyEditor } from "./vacancy-editor";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = {
@@ -458,6 +459,7 @@ function Pipeline({
   const [copied, setCopied] = React.useState(false);
   const [rescored, setRescored] = React.useState<string | null>(null);
   const [criteriaOpen, setCriteriaOpen] = React.useState(false);
+  const [confirm, confirmDialog] = useConfirm();
 
   const paused = vacancy.status === "PAUSED";
   /**
@@ -482,13 +484,16 @@ function Pipeline({
 
   async function togglePublish() {
     const next = !vacancy.public_token;
-    if (
-      !next &&
-      !window.confirm(
-        "Unpublish this role?\n\nThe careers link stops working immediately, and re-publishing creates a DIFFERENT link — anyone holding the old one will not be able to apply again.",
-      )
-    )
-      return;
+    if (!next) {
+      const ok = await confirm({
+        title: "Unpublish this role?",
+        body: "The careers link stops working immediately, and re-publishing creates a DIFFERENT link — anyone holding the old one will not be able to apply again.",
+        confirmLabel: "Unpublish the role",
+        cancelLabel: "Keep it published",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setBusy("publish");
     setError(null);
     try {
@@ -616,6 +621,7 @@ function Pipeline({
 
   return (
     <div className="min-w-0 space-y-4">
+      {confirmDialog}
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-card p-5">
         <div>
           <div className="flex items-center gap-2">

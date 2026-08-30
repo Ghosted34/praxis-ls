@@ -42,6 +42,7 @@ import { ThreadList } from "./thread-list";
 import { ThreadView } from "./thread-view";
 import { SemanticResults } from "./work/semantic-search";
 import { DraftList, OutboxList } from "./pending";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 const PAGE = 50;
 
@@ -108,6 +109,13 @@ export function InboxPage() {
   const [flags, setFlags] = React.useState<
     Record<string, { unread_count?: number; is_starred?: boolean }>
   >({});
+  /**
+   * The three destructive verbs on this screen — bulk delete, delete one, empty
+   * a folder — all used to ask with `window.confirm`. One hook serves all three:
+   * see components/ui/use-confirm.tsx for why this shape rather than three
+   * pieces of dialog state.
+   */
+  const [confirm, confirmDialog] = useConfirm();
 
   /* ── THE RAIL IS ALWAYS POINTED AT A MAILBOX ──────────────────────────────
    *
@@ -250,10 +258,14 @@ export function InboxPage() {
     // deleted — said here, before, rather than reported afterwards as a
     // surprise.
     if (op === "delete") {
-      const ok = window.confirm(
-        `${tr("Delete")} ${selected.size} ${selected.size === 1 ? tr("conversation") : tr("conversations")} ${tr("for ever?")}\n\n` +
-        tr("This cannot be undone. Anything sealed into the compliance archive is kept and will be reported."),
-      );
+      const n = selected.size;
+      const ok = await confirm({
+        title: `${tr("Delete")} ${n} ${n === 1 ? tr("conversation") : tr("conversations")} ${tr("for ever?")}`,
+        body: tr("This cannot be undone. Anything sealed into the compliance archive is kept and will be reported."),
+        confirmLabel: n === 1 ? tr("Delete conversation") : `${tr("Delete")} ${n}`,
+        cancelLabel: tr("Keep them"),
+        destructive: true,
+      });
       if (!ok) return;
     }
     setBusy(true);
@@ -274,10 +286,13 @@ export function InboxPage() {
 
   /** One conversation, for ever. The retained count is reported, never hidden. */
   async function deleteOne(id: string) {
-    const ok = window.confirm(
-      `${tr("Delete this conversation for ever?")}\n\n` +
-      tr("This cannot be undone. Anything sealed into the compliance archive is kept."),
-    );
+    const ok = await confirm({
+      title: tr("Delete this conversation for ever?"),
+      body: tr("This cannot be undone. Anything sealed into the compliance archive is kept."),
+      confirmLabel: tr("Delete conversation"),
+      cancelLabel: tr("Keep it"),
+      destructive: true,
+    });
     if (!ok) return;
     setBusy(true);
     setNote(null);
@@ -309,10 +324,13 @@ export function InboxPage() {
    * their correspondence is gone when it is not.
    */
   async function emptyFolder(folder: "TRASH" | "SPAM") {
-    const ok = window.confirm(
-      `${folder === "TRASH" ? tr("Empty the bin?") : tr("Empty spam?")}\n\n` +
-      tr("Every conversation in it is deleted for ever. This cannot be undone. Anything sealed into the compliance archive is kept."),
-    );
+    const ok = await confirm({
+      title: folder === "TRASH" ? tr("Empty the bin?") : tr("Empty spam?"),
+      body: tr("Every conversation in it is deleted for ever. This cannot be undone. Anything sealed into the compliance archive is kept."),
+      confirmLabel: folder === "TRASH" ? tr("Empty the bin") : tr("Empty spam"),
+      cancelLabel: tr("Leave it"),
+      destructive: true,
+    });
     if (!ok) return;
     setBusy(true);
     setNote(null);
@@ -351,6 +369,7 @@ export function InboxPage() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+      {confirmDialog}
       <aside className="lg:sticky lg:top-4 lg:self-start">
         <FolderRail
           mailboxes={boxes}

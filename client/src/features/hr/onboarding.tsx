@@ -43,6 +43,7 @@ import { num, dateFmt, todayISO } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
 import { reportActionError } from "@/lib/action-error";
+import { usePrompt } from "@/components/ui/use-prompt";
 
 /** Five states, not a boolean `is_late`. DUE_SOON is the only one where acting
  *  now still prevents lateness, and UNDATED is its own thing — an item nobody
@@ -183,6 +184,7 @@ function ChecklistDrawer({
   const [newItem, setNewItem] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [prompt, promptDialog] = usePrompt();
   const c = detail.data;
 
   async function run(key: string, fn: () => Promise<unknown>) {
@@ -211,6 +213,7 @@ function ChecklistDrawer({
           : undefined
       }
     >
+      {promptDialog}
       {detail.error ? (
         <ErrorState message={detail.error} />
       ) : !c ? (
@@ -309,8 +312,23 @@ function ChecklistDrawer({
                     variant="outline"
                     loading={busy === "resched"}
                     onClick={() => {
-                      const next = window.prompt("New start date (YYYY-MM-DD)", c.starts_on || todayISO());
-                      if (next) run("resched", () => api.rescheduleChecklist(id, next));
+                      // Was a text prompt asking the user to type YYYY-MM-DD.
+                      // `type: "date"` gives the platform date picker and makes
+                      // the format the control's problem rather than a person's.
+                      void (async () => {
+                        const next = await prompt({
+                          title: "Change the start date",
+                          description:
+                            "Every task in the checklist shifts to keep its offset from day one.",
+                          label: "New start date",
+                          type: "date",
+                          defaultValue: c.starts_on || todayISO(),
+                          confirmLabel: "Reschedule checklist",
+                          validate: (v) =>
+                            /^\d{4}-\d{2}-\d{2}$/.test(v) ? null : "Pick a date.",
+                        });
+                        if (next) run("resched", () => api.rescheduleChecklist(id, next));
+                      })();
                     }}
                   >
                     Change start date

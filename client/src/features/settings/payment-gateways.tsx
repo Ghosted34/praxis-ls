@@ -21,6 +21,7 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
 import { PageError } from "./shared";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 function GatewayForm({
   open,
@@ -149,6 +150,7 @@ export function PaymentGatewaysPage() {
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   function openNew() {
     setEditing(null);
@@ -176,12 +178,13 @@ export function PaymentGatewaysPage() {
   }
 
   async function remove(provider: string) {
-    if (
-      !window.confirm(
-        `Delete the ${provider} gateway? Its stored credentials are removed.`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Delete the ${provider} gateway?`,
+      body: "Its stored credentials are removed. Payments already taken through it are unaffected.",
+      confirmLabel: "Delete gateway",
+      destructive: true,
+    });
+    if (!ok) return;
     setRowBusy(provider);
     setRowError(null);
     try {
@@ -198,6 +201,7 @@ export function PaymentGatewaysPage() {
 
   return (
     <section className={pageShell.wide}>
+      {confirmDialog}
       <PageHeader
         eyebrow={<HubCrumb area="Settings" to="/settings" />}
         title="Payment gateways"

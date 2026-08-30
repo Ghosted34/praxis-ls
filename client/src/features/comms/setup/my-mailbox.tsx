@@ -45,6 +45,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import { tr } from "@/lib/i18n";
 import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
+import { DisconnectMailboxDialog } from "@/components/mail/disconnect-mailbox-dialog";
 import * as api from "@/lib/mail-api";
 import { HealthPill } from "./health-pill";
 
@@ -238,17 +239,21 @@ export function MyMailboxTab() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  /**
+   * The sentence is the feature (see the header) — which is why it is no longer
+   * a `window.confirm`. That rendered the one paragraph people MUST read in the
+   * browser's own chrome: unbranded, unstyled, no warning red, "OK"/"Cancel".
+   * `<DisconnectMailboxDialog>` says the same thing in the product's voice and
+   * is likewise not dismissible by clicking away.
+   */
+  const [confirmTarget, setConfirmTarget] = React.useState<api.Mailbox | null>(null);
+
   async function disconnect(m: api.Mailbox) {
-    // The sentence is the feature. See the header.
-    const ok = window.confirm(
-      `${tr("Disconnect")} ${m.email_address}?\n\n` +
-      tr("New mail stops arriving and the saved password is deleted. Everything already received stays here and stays readable. You can connect the address again later.")
-    );
-    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
       await api.disconnectMailbox(m.email_connection_id);
+      setConfirmTarget(null);
       mine.reload();
     } catch (err) {
       setError(errMsg(err));
@@ -268,6 +273,13 @@ export function MyMailboxTab() {
 
   return (
     <section className="space-y-5">
+      <DisconnectMailboxDialog
+        open={!!confirmTarget}
+        address={confirmTarget?.email_address || ""}
+        busy={busy}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={() => confirmTarget && void disconnect(confirmTarget)}
+      />
       <PageHeader
         title={tr("My mailbox")}
         description={tr("Your own professional address, and the team mailboxes you have been given access to.")}
@@ -319,7 +331,7 @@ export function MyMailboxTab() {
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => disconnect(personal)}
+                onClick={() => setConfirmTarget(personal)}
               >
                 {tr("Disconnect")}
               </Button>

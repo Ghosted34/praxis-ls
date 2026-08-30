@@ -24,6 +24,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { reportActionError } from "@/lib/action-error";
+import { useConfirm } from "@/components/ui/use-confirm";
 
 const shell = pageShell.wide;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -600,15 +601,19 @@ function EditableLabel({
 function Devices() {
   const devices = useResource(() => api.listDevices(), []);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   async function decide(d: api.HrDevice, status: "TRUSTED" | "REVOKED") {
-    if (
-      status === "REVOKED" &&
-      !window.confirm(
-        `Block "${d.label}"?\n\nIt won't be able to clock ${d.employee_name || "this employee"} in, and it can't be re-approved — it has to be removed and registered again.`,
-      )
-    )
-      return;
+    if (status === "REVOKED") {
+      const ok = await confirm({
+        title: `Block “${d.label}”?`,
+        body: `It won't be able to clock ${d.employee_name || "this employee"} in, and it can't be re-approved — it has to be removed and registered again.`,
+        confirmLabel: "Block this device",
+        cancelLabel: "Leave it trusted",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setBusy(d.hr_device_id);
     try {
       await api.setDeviceStatus(d.hr_device_id, { status });
@@ -727,6 +732,7 @@ function Devices() {
 
   return (
     <div>
+      {confirmDialog}
       <div className="mb-2">
         <h2 className="text-sm font-semibold text-muted-foreground">
           Registered devices

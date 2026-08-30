@@ -41,7 +41,7 @@
 import * as React from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/cn";
-import { XIcon } from "@/components/ui/icons";
+import { XIcon, AlertTriangleIcon } from "@/components/ui/icons";
 
 export function Dialog({
   open,
@@ -53,6 +53,9 @@ export function Dialog({
   headerRight,
   size = "md",
   bodyClassName,
+  titleIcon,
+  accent,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -65,6 +68,21 @@ export function Dialog({
   headerRight?: React.ReactNode;
   size?: "md" | "lg" | "xl" | "wide";
   bodyClassName?: string;
+  /** Glyph shown left of the title — e.g. the warning mark on a destructive confirm. */
+  titleIcon?: React.ReactNode;
+  /**
+   * Tints the dialog's top hairline and header so the WHOLE surface carries the
+   * tone, not just the confirm button. `bad` is the brand red used for warnings.
+   */
+  accent?: "bad" | "warn";
+  /**
+   * Clicking the backdrop / pressing Escape closes the dialog. Default true.
+   *
+   * Set false for a confirmation whose SENTENCE has to be read before the
+   * answer — the one property `window.confirm` had that a dismissible modal
+   * does not. The close button and Cancel still work, so there is never a trap.
+   */
+  dismissible?: boolean;
 }) {
   // `wide` (1152px) is for dialogs whose body is a WIDE TABLE rather than a
   // form. At `xl` (768px) a seven-column register scrolls horizontally inside a
@@ -106,6 +124,9 @@ export function Dialog({
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-fade-in" />
         <RadixDialog.Content
+          onPointerDownOutside={(e) => !dismissible && e.preventDefault()}
+          onInteractOutside={(e) => !dismissible && e.preventDefault()}
+          onEscapeKeyDown={(e) => !dismissible && e.preventDefault()}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             const opener = openerRef.current;
@@ -123,8 +144,27 @@ export function Dialog({
             width,
           )}
         >
-          <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
-            <div className="min-w-0">
+          {accent && (
+            <div
+              aria-hidden
+              className={cn(
+                "h-1 shrink-0",
+                accent === "bad"
+                  ? "bg-[rgb(var(--bad-fill))]"
+                  : "bg-[rgb(var(--warn-fill))]",
+              )}
+            />
+          )}
+          <header
+            className={cn(
+              "flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4",
+              accent === "bad" && "bg-bad-fill/[0.06]",
+              accent === "warn" && "bg-warn-fill/[0.06]",
+            )}
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              {titleIcon}
+              <div className="min-w-0">
               {/* Radix wires this to aria-labelledby. The old Modal duplicated
                   the text into aria-label instead, so the accessible name and
                   the visible heading were two separate strings that could drift. */}
@@ -136,6 +176,7 @@ export function Dialog({
                   {description}
                 </RadixDialog.Description>
               )}
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {headerRight}
@@ -199,6 +240,7 @@ export function ConfirmDialog({
   destructive,
   busy,
   confirmDisabled,
+  dismissible,
 }: {
   open: boolean;
   onClose: () => void;
@@ -220,12 +262,26 @@ export function ConfirmDialog({
    * a dialog people click twice.
    */
   confirmDisabled?: boolean;
+  /** See `Dialog.dismissible` — false makes the sentence unskippable. */
+  dismissible?: boolean;
 }) {
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={title}
+      dismissible={dismissible}
+      titleIcon={
+        destructive ? (
+          <span
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-bad-fill/12 text-bad"
+            aria-hidden
+          >
+            <AlertTriangleIcon width={18} height={18} />
+          </span>
+        ) : undefined
+      }
+      accent={destructive ? "bad" : undefined}
       footer={
         <>
           <button
@@ -242,7 +298,9 @@ export function ConfirmDialog({
             disabled={busy || confirmDisabled}
             className={cn(
               "h-9 rounded-md px-3 text-sm font-semibold text-white transition-opacity disabled:opacity-50",
-              destructive ? "bg-[rgb(var(--bad))]" : "bg-primary",
+              destructive
+                ? "bg-[rgb(var(--bad-fill))] shadow-[var(--shadow-s)] hover:bg-[rgb(var(--bad))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgb(var(--bad))]"
+                : "bg-primary",
             )}
           >
             {busy ? "Working…" : confirmLabel}

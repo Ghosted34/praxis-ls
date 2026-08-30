@@ -46,6 +46,10 @@ const PUBLIC_BY_DESIGN = new Map([
   ["sales/public_intake", "Marketing website forms submit bounded, rate-limited CRM intake without accounts."],
   ["operations/tracking_public", "Exact-reference shipment tracking is public, allow-listed and rate-limited against guessing."],
   [
+    "site/site_public",
+    "The tenant website's own pages (12753). Anonymous by design — the public site IS the feature. Every route is pinned to LIVE so an internet caller cannot select sandbox, rate-limited 240/15min, and gated on the `website` package; unpublished and unknown pages are the same 404, so nothing unreleased is enumerable.",
+  ],
+  [
     "mail/public_secure",
     "Secure download links are intentionally reachable without an account; lookup is by minted token only, every refusal is a uniform 404, and the route is rate-limited.",
   ],

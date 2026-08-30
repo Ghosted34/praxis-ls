@@ -327,17 +327,72 @@ Block library, derived from their two pages:
 | `policies` | n × {title, rich text} → PDF |
 
 **The differentiator, and the point of the whole project:** `stat_counters`
-should be able to bind to a **live ERP query** instead of a literal. They
-hardcode `41850` CBM, `72` hours clearance, `123433` miles. We hold the dossiers
-that produce those numbers. A stat that is true this morning is something no web
-agency can sell them.
+binds to a **live ERP metric** instead of a literal. They hardcode `41850` CBM,
+`72` hours clearance, `123433` miles. We hold the dossiers.
 
-Start with literals, design the binding in. Do not ship literals-only and call it
-done.
+A block stores a `metric_key` naming an entry in `site_content.metrics.js`. It
+never stores a query, a table and column, or a filter — every one of those is
+arbitrary execution driven by tenant-editable content. An unregistered key is
+refused at save time. The literal stays required as the fallback.
+
+**Settled 2026-08-30.** All read `dossier_visible` (never `dossier` — the view
+excludes DRAFT, and its own comment says to read from it for anything that
+enumerates), all are all-time, all filtered to `COMPLETED`. All-time-completed
+is the only series that cannot go *down* between two visits, and a counter that
+falls reads as a bug to a visitor. An open file is work in progress, not a
+delivered result.
+
+| Key | Is |
+|---|---|
+| `dossiers.volume_cbm_total` | `SUM(volume_cbm)` over completed files. The equivalent of their 41,850. NULL volumes contribute nothing rather than zero — a brokerage-only file moved no cargo. |
+| `dossiers.completed_count` | Files delivered. |
+| `clients.served_count` | `COUNT(DISTINCT client_id)` — claims breadth, so repeat business counts once. |
+| `services.published_count` | How many services the tenant publishes. |
+
+**Two are deliberately absent and must not be guessed:**
+
+- **Distance covered.** There is no distance anywhere in the tenant schema. The
+  only such column in the database is `attendance_log.distance_m`, which is HR
+  geofencing. It stays a literal until routes carry a distance.
+- **Average clearance time.** Computable from `milestone_instance.completed_at`,
+  but only once operations names the two milestone codes it runs between — and
+  those differ per service type; the clearance clock on an air import is not the
+  one on a hinterland transit. The mechanism is in place; add the metric when
+  the pair is named.
+
+A wrong number on a client's public page is worse than a literal somebody chose
+on purpose.
 
 **Policies:** they generate PDFs client-side with html2pdf (an html2canvas
 screenshot). We render PDFs server-side with Puppeteer. Ours should be properly
 typeset documents.
+
+### WS4b — Success stories and Careers
+
+Both already exist as public modules and neither is in SmartLS's current site,
+so they are additions rather than replacements:
+
+| Page | Module | Gate |
+|---|---|---|
+| Success stories | `sales/success_story` → `/public/success-stories` | `feature: null` |
+| Careers | `hr/careers` → `/public/careers` | `feature: null` |
+
+**They follow the patterns, they do not invent any.** Same shared components of
+§3.3, same media rules of §3.5, same per-language URLs of §3.2, same SEO
+baseline of §3.7. A success story is card grid → detail, the same shape as
+services; a vacancy list is the same shape again with an application form that
+goes through `public_intake` rather than a new endpoint.
+
+Two things they get for free that are worth using: careers rides the HR module,
+so a vacancy on the website is the vacancy operations actually opened and closes
+itself when filled — no stale listings, which is the single most common failure
+of a careers page. And a success story is the natural place to point a
+`card_grid` block's `href` at, so the home page can feature them without a
+second content model.
+
+`JobPosting` structured data on a vacancy detail page is not optional — it is
+what puts a listing into Google Jobs, and it is the cheapest reach a careers
+page can buy.
 
 ### WS5 — Insights
 

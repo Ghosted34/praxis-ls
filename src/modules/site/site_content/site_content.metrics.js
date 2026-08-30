@@ -44,21 +44,107 @@ function register(metric) {
   return metric;
 }
 
-/**
- * Published services. Deliberately the first one: it is a single indexed count
- * over tables this module already owns, so it proves the mechanism end to end
- * without inventing dossier arithmetic that has not been agreed.
+/* ── The definitions ───────────────────────────────────────────────────────
+ * Settled 2026-08-30. Each states its window and its filter, because a number
+ * on a client's public website will eventually be questioned and the answer
+ * must be in the code rather than in somebody's memory.
  *
- * The operational metrics SmartLS advertises — cubic metres managed, average
- * clearance hours, distance covered — each need a definition signed off by
- * operations before they go on a client's public page ("managed" over what
- * window? clearance measured from which milestone to which?). They are
- * deliberately absent rather than guessed: a wrong number in public is worse
- * than a literal somebody chose on purpose.
+ * ALL of these read `dossier_visible`, never `dossier`. The view is
+ * `dossier WHERE status <> 'DRAFT'` and its own comment is explicit: read from
+ * here for "lists, counts, dashboards, the portal and anything that
+ * enumerates". A half-finished wizard state is not a file and must never reach
+ * a marketing statistic.
+ *
+ * All are ALL-TIME and filtered to COMPLETED. Two reasons. A counter that can
+ * go DOWN between two visits reads as an error to a visitor, and all-time
+ * completed only ever rises. And "completed" is the only claim that is
+ * unambiguously true — an open file is work in progress, not a delivered
+ * result, and counting it would be advertising work not yet done.
  */
+
+register({
+  key: "dossiers.volume_cbm_total",
+  unit: "CBM",
+  /**
+   * Total cubic metres across every completed file.
+   *
+   * This is the direct equivalent of the number SmartLS hardcodes as 41,850.
+   * `volume_cbm` sits on the dossier itself (0660), so this is a single indexed
+   * aggregate rather than a walk over cargo lines.
+   *
+   * Files with a NULL volume contribute nothing rather than zero — SUM ignores
+   * NULL — which is the honest treatment: a brokerage-only file has no volume,
+   * and coercing it to 0 would be arithmetically identical but semantically a
+   * claim that it moved nothing.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `SELECT COALESCE(SUM(volume_cbm), 0)::float AS total
+         FROM dossier_visible
+        WHERE status = 'COMPLETED'`,
+    );
+    return rows[0] ? Math.round(rows[0].total) : 0;
+  },
+});
+
+register({
+  key: "dossiers.completed_count",
+  unit: null,
+  /** Files delivered, all time. The plainest claim on the list. */
+  async resolve(client) {
+    const { rows } = await client.query(
+      "SELECT COUNT(*)::int AS n FROM dossier_visible WHERE status = 'COMPLETED'",
+    );
+    return rows[0] ? rows[0].n : 0;
+  },
+});
+
+register({
+  key: "clients.served_count",
+  unit: null,
+  /**
+   * Distinct clients with at least one completed file.
+   *
+   * DISTINCT on client_id, so a client with two hundred files counts once —
+   * the stat claims breadth, and inflating it with repeat business would be
+   * claiming the wrong thing. Files with no client attached are excluded
+   * rather than counted as an anonymous extra.
+   */
+  async resolve(client) {
+    const { rows } = await client.query(
+      `SELECT COUNT(DISTINCT client_id)::int AS n
+         FROM dossier_visible
+        WHERE status = 'COMPLETED' AND client_id IS NOT NULL`,
+    );
+    return rows[0] ? rows[0].n : 0;
+  },
+});
+
+/*
+ * ── DELIBERATELY NOT REGISTERED ───────────────────────────────────────────
+ *
+ * "Miles covered in land freight" (SmartLS advertises 123,433+).
+ *   There is no distance anywhere in the tenant schema. The only distance
+ *   column in the whole database is `attendance_log.distance_m`, which is HR
+ *   geofencing — how far a person clocked in from their worksite — and has
+ *   nothing to do with freight. This metric cannot be computed and must not be
+ *   faked; it stays a literal the tenant types until routes carry a distance.
+ *
+ * "Average customs clearance time" (SmartLS advertises 72 hours).
+ *   Computable in principle from `milestone_instance.completed_at`, but only
+ *   once somebody names the two milestone codes it runs between, and those
+ *   differ per service type — the clearance clock on an air import is not the
+ *   one on a hinterland transit. Registering a guess would put a number on a
+ *   client's public page that nobody could defend when a customer asks how it
+ *   was measured. Add it when operations names the pair; the mechanism is
+ *   already here.
+ */
+
 register({
   key: "services.published_count",
   unit: null,
+  /** How many services the tenant publishes. Not a dossier metric — no window
+   *  or status question to settle, so it needs no definition beyond itself. */
   async resolve(client) {
     const { rows } = await client.query(
       `SELECT COUNT(*)::int AS n

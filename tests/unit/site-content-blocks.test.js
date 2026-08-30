@@ -177,3 +177,69 @@ describe("migration 12753", () => {
     expect(sql).toMatch(/is_published\s+boolean NOT NULL DEFAULT false/);
   });
 });
+
+/**
+ * The settled definitions (2026-08-30). These are numbers that go on a client's
+ * public website, so the properties asserted here are the ones somebody will
+ * eventually be asked to defend: what was counted, and over what.
+ */
+describe("the metric definitions", () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, "src/modules/site/site_content/site_content.metrics.js"),
+    "utf8",
+  );
+  const dossierMetrics = ["dossiers.volume_cbm_total", "dossiers.completed_count", "clients.served_count"];
+
+  it("registers the four settled metrics", () => {
+    expect(metrics.metricKeys().sort()).toEqual([
+      "clients.served_count",
+      "dossiers.completed_count",
+      "dossiers.volume_cbm_total",
+      "services.published_count",
+    ]);
+  });
+
+  it("counts from dossier_visible, never the base table", () => {
+    // The view is `dossier WHERE status <> 'DRAFT'`, and its own comment says
+    // to read from it for anything that enumerates. Half-finished wizard state
+    // must never reach a marketing statistic.
+    expect(src).not.toMatch(/FROM dossier\b(?!_visible)/);
+    expect((src.match(/FROM dossier_visible/g) || []).length).toBe(dossierMetrics.length);
+  });
+
+  it("counts only COMPLETED work", () => {
+    // An open file is work in progress, not a delivered result.
+    for (const frag of src.split("FROM dossier_visible").slice(1)) {
+      expect(frag).toMatch(/WHERE status = 'COMPLETED'/);
+    }
+  });
+
+  it("counts each client once, however many files they have", () => {
+    // The stat claims breadth; repeat business would inflate the wrong thing.
+    expect(src).toMatch(/COUNT\(DISTINCT client_id\)/);
+    expect(src).toMatch(/client_id IS NOT NULL/);
+  });
+
+  it("registers nothing for distance, which the schema cannot produce", () => {
+    // The only distance column in the database is attendance geofencing.
+    expect(metrics.metricKeys().join(" ")).not.toMatch(/distance|miles|km/i);
+  });
+
+  it("registers nothing for clearance time until the milestone pair is named", () => {
+    expect(metrics.metricKeys().join(" ")).not.toMatch(/clearance/i);
+  });
+
+  it("resolves a dossier metric through the client it is handed", async () => {
+    const client = { query: async () => ({ rows: [{ total: 41850.4, n: 12 }] }) };
+    await expect(metrics.resolveMetric(client, "dossiers.volume_cbm_total")).resolves.toBe(41850);
+    await expect(metrics.resolveMetric(client, "dossiers.completed_count")).resolves.toBe(12);
+  });
+
+  it("gives zero, not null, when a tenant has no completed work yet", async () => {
+    // A new tenant's counter should read 0, not fall back to a literal that
+    // claims work they have not done.
+    const empty = { query: async () => ({ rows: [{ total: 0, n: 0 }] }) };
+    await expect(metrics.resolveMetric(empty, "dossiers.volume_cbm_total")).resolves.toBe(0);
+    await expect(metrics.resolveMetric(empty, "clients.served_count")).resolves.toBe(0);
+  });
+});

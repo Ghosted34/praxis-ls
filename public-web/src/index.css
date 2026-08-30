@@ -108,6 +108,20 @@
     --mode-air: 28 155 215;
     --mode-road: 224 122 26;
     --mode-rail: 147 51 234;
+
+    /* The icon tile (§4 pattern 4). Two surfaces: resting and selected. */
+    --tile-bg:        rgb(var(--ink) / 0.06);
+    --tile-fg:        var(--muted-foreground);
+    --tile-bg-active: var(--brand-orange);
+    --tile-fg-active: var(--primary-foreground);
+
+    /* Selection. Three signals at once — see §6.2 for why one is not enough. */
+    --pick-ring: 0 0 0 1px var(--brand-orange),
+                 0 8px 24px -12px var(--brand-orange);
+
+    /* Alternating band (§4 pattern 6). */
+    --band-surface: var(--secondary);
+
     /* Text/fill split, same reasoning as --primary/--primary-ink: a status pill
        sits on a 12-14% tint of itself, and the saturated value misses 4.5:1
        there. Measured on the ground they are actually read on. */
@@ -351,7 +365,7 @@
   }
 
   .band-muted {
-    background: var(--secondary);
+    background: var(--band-surface);
   }
 
   .band-hero {

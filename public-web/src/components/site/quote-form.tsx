@@ -2,7 +2,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Honeypot, Input, Select, Textarea } from "@/components/ui/field";
-import { SuccessState } from "@/components/ui/states";
+import { SuccessState } from "@/components/state";
 import { quoteRequests } from "@/lib/intake-api";
 import { useIntake } from "@/lib/use-intake";
 import { getLang } from "@/lib/i18n";

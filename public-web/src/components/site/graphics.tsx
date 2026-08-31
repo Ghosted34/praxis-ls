@@ -1,4 +1,3 @@
-import * as React from "react";
 import { cn } from "@/lib/cn";
 import { useRevealed } from "@/components/ui/reveal";
 
@@ -144,7 +143,11 @@ export function PortalPreview({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="micro">File</p>
-          <p className="num mt-1 truncate font-display text-title font-semibold tracking-tight">
+          {/* Mono, because a file reference is a code: it gets read down a
+              phone line and typed back, and it is the single most
+              product-feeling detail on the page. The tracking field, the quote
+              receipt and this mock now set it the same way. */}
+          <p className="num mt-1 truncate font-mono text-title font-semibold tracking-tight">
             {reference}
           </p>
         </div>

@@ -366,6 +366,11 @@ export const en = {
       lanesSub:
         "Completed files over the last 24 months, counted from the operations ledger.",
       files: "completed files",
+      /* The proof strip's accessible name. Every visible word in that band is
+         the tenant's own content, so this is the only string it needs — and it
+         needs one, because a landmark with no name is a landmark a screen
+         reader announces as "region". */
+      stripLabel: "Key figures",
     },
     portalBand: {
       eyebrow: "Client portal",
@@ -489,6 +494,22 @@ export const en = {
     contact: {
       title: "Talk to someone",
       sub: "Questions, partnership, or a shipment that is going wrong — this reaches the desk that handles it.",
+      /* The standalone /contact page: an eyebrow pill, and a heading whose
+         second half carries the accent colour (UI_UPGRADE_PLAN §4 pattern 2). */
+      kicker: "Contact desk",
+      titleMain: "Talk to",
+      titleAccent: "someone here",
+      bandLead:
+        "A question, a partnership, or a file that has gone wrong. Every message comes back with a reference, and nothing needs an account.",
+      bandCta: "Send a message",
+      otherTitle: "Faster than a message",
+      otherTrack:
+        "A reference is enough. The same milestones the desk would read back to you, without waiting for a reply.",
+      otherPortal:
+        "Already a client. Your files, documents and invoices, with nothing to look up.",
+      otherQuote:
+        "Pricing a shipment. Four short steps put it in front of the desk that quotes it.",
+      otherGo: "Open",
       subject: "Subject (optional)",
       type: "What is this about?",
       typeGeneral: "A shipment or a quote",
@@ -1118,6 +1139,7 @@ export const fr = {
       lanesSub:
         "Dossiers terminés sur les 24 derniers mois, comptés depuis le registre des opérations.",
       files: "dossiers terminés",
+      stripLabel: "Chiffres clés",
     },
     portalBand: {
       eyebrow: "Portail client",
@@ -1239,6 +1261,20 @@ export const fr = {
     contact: {
       title: "Parler à quelqu’un",
       sub: "Une question, un partenariat, un envoi qui déraille : ce message arrive au bureau qui le traite.",
+      kicker: "Nous contacter",
+      titleMain: "Parler à",
+      titleAccent: "quelqu’un",
+      bandLead:
+        "Une question, un partenariat, ou un dossier qui déraille. Chaque message revient avec une référence, et aucun compte n’est nécessaire.",
+      bandCta: "Envoyer un message",
+      otherTitle: "Plus rapide qu’un message",
+      otherTrack:
+        "Une référence suffit. Les mêmes jalons que le bureau vous lirait, sans attendre de réponse.",
+      otherPortal:
+        "Déjà client. Vos dossiers, documents et factures, sans rien à rechercher.",
+      otherQuote:
+        "Chiffrer une expédition. Quatre étapes courtes la placent devant le bureau qui la cote.",
+      otherGo: "Ouvrir",
       subject: "Objet (facultatif)",
       type: "De quoi s’agit-il ?",
       typeGeneral: "Une expédition ou un devis",

@@ -35,26 +35,54 @@ export function IconTile({
   icon: Icon,
   active = false,
   size = "md",
+  tint,
   className,
 }: {
   icon: IconComponent;
   /** Filled, for a chosen card. */
   active?: boolean;
   size?: keyof typeof SIZES;
+  /**
+   * A CSS colour the tile carries instead of the neutral tokens: the glyph at
+   * full strength, the plate at 12% of it.
+   *
+   * It takes a COLOUR STRING rather than a freight mode, because this is a
+   * generic primitive and the four `--mode-*` tokens are the marketing site's
+   * vocabulary, not the tile's. Pass a token reference
+   * (`rgb(var(--mode-sea))`), never a hex — a literal here would bake one
+   * tenant's palette into a component every tenant renders.
+   *
+   * `active` wins if both are given: a chosen state is a state, and a tint is
+   * an identity, and the state is the thing the reader is being told about.
+   */
+  tint?: string;
   className?: string;
 }) {
   const s = SIZES[size];
+  const tinted = !!tint && !active;
   return (
     <span
       aria-hidden
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-[calc(var(--radius)-2px)] transition-colors duration-200",
         s.box,
-        active
-          ? "bg-[var(--tile-bg-active)] text-[var(--tile-fg-active)]"
-          : "bg-[var(--tile-bg)] text-[var(--tile-fg)]",
+        !tinted &&
+          (active
+            ? "bg-[var(--tile-bg-active)] text-[var(--tile-fg-active)]"
+            : "bg-[var(--tile-bg)] text-[var(--tile-fg)]"),
         className,
       )}
+      style={
+        tinted
+          ? {
+              // 12% is the top of the work order's 10–12% range: below that the
+              // plate disappears on the muted band the cards sit on, and the
+              // tile stops being a tile.
+              backgroundColor: `color-mix(in srgb, ${tint} 12%, transparent)`,
+              color: tint,
+            }
+          : undefined
+      }
     >
       <Icon size={s.glyph} />
     </span>

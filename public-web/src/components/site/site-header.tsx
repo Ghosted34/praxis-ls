@@ -31,13 +31,21 @@ import { p } from "@/lib/base-path";
  * over full-bleed imagery, and a plain semi-transparent fill turns the labels
  * into a contrast gamble on whatever photo scrolls under them.
  */
+/**
+ * Every entry is a PATH. The last one used to be `p("#contact")`, and a
+ * fragment is exactly what `NavLink` throws away before it decides which item
+ * is current — so `/public#contact` matched the home route and the nav marked
+ * Contact as the page you were on the moment you arrived. Contact has its own
+ * route now (`features/contact/contact-page.tsx`); nothing in this list may go
+ * back to being an anchor.
+ */
 const NAV = [
   { to: p("/services"), labelKey: "site.nav.services" },
   { to: p("/track"), labelKey: "site.nav.track" },
   { to: p("/portfolio"), labelKey: "site.nav.portfolio" },
   { to: p("/insights"), labelKey: "site.nav.insights" },
   { to: p("/careers"), labelKey: "site.nav.careers" },
-  { to: p("#contact"), labelKey: "site.nav.contact" },
+  { to: p("/contact"), labelKey: "site.nav.contact" },
 ] as const;
 
 export function SiteHeader() {

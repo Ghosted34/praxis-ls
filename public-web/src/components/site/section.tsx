@@ -4,6 +4,7 @@ import { ArrowRightIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { SectionHead } from "@/components/site/section-head";
 import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
+import { modeColor, type FreightMode } from "@/lib/service-identity";
 
 /**
  * One band of the homepage, and the only place that decides how a band is
@@ -100,19 +101,26 @@ export function Section({
  *  allowlist would refuse) — a broken image frame on a sales page is worse than
  *  no image, which is why there is no `onError` fallback here.
  *
- *  ── WHY A CARD WITHOUT A COVER GETS AN ICON TILE ──────────────────────────
+ *  ── WHY A CARD WITHOUT A COVER GETS A DRAWN PANEL ─────────────────────────
  *
  *  `icon` is the `__card-top` half of their grammar (UI_UPGRADE_PLAN §4 pattern
  *  4, §7.3). It is drawn ONLY when there is no cover, and it is not decoration
  *  for its own sake: a tenant who has published four services and uploaded one
  *  photograph gets one illustrated card beside three text boxes, which reads as
- *  three broken cards. A tinted plate with the section's glyph is the honest
- *  placeholder — it says "a service", which is true, rather than standing in for
- *  a photograph nobody took (N12). The insights grid sets the same precedent. */
+ *  three broken cards. A drawn plate is the honest placeholder — it says "a
+ *  service", which is true, rather than standing in for a photograph nobody took
+ *  (N12).
+ *
+ *  There are two of them. A card that knows its `mode` composes a panel: a wash
+ *  of its own colour, its glyph bled off the corner, its code in the mono face.
+ *  A card that does not — an insight, a case note — keeps the centred tile it
+ *  always had, which is why the insights grid is untouched by any of this. */
 export function MediaCard({
   image,
   imageAlt,
   icon: Icon,
+  mode,
+  code,
   eyebrow,
   title,
   children,
@@ -125,6 +133,15 @@ export function MediaCard({
   imageAlt?: string;
   /** Fallback glyph for a card with no cover. */
   icon?: IconComponent;
+  /**
+   * The card's freight-mode identity (`lib/service-identity.ts`). Paints the
+   * 6px bar, the panel's gradient and its glyph — identity only, never an
+   * action: the arrow link below stays `--primary-ink` so orange remains the
+   * one colour on the page that means "you may press this".
+   */
+  mode?: FreightMode;
+  /** The mono code drawn top-left of the panel. Needs `mode` and `icon`. */
+  code?: string;
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
   children?: React.ReactNode;
@@ -133,8 +150,31 @@ export function MediaCard({
   footer?: React.ReactNode;
   className?: string;
 }) {
+  const accent = mode ? modeColor(mode) : null;
+  /**
+   * The composed panel, and the reason it replaces the centred tile.
+   *
+   * Four identical 16:10 plates carrying four identical thin glyphs is what
+   * read as unfinished — repetition is the thing a visitor notices, not
+   * absence. So a card that knows its identity draws a panel instead: a
+   * diagonal wash of its own colour at 8%, its glyph oversized and bled off the
+   * bottom-right corner, and its code set in the mono face top-left.
+   *
+   * Nothing here is thrown away when photography arrives. The panel occupies
+   * the same slot the cover will, and the bar and the code stay as overlay
+   * furniture above it — which is why the bar is drawn on the CARD rather than
+   * inside the panel.
+   */
+  const composed = !image && !!Icon && !!accent;
   const body = (
     <>
+      {accent ? (
+        <span
+          aria-hidden
+          className="block h-1.5 w-full shrink-0 opacity-90 transition-opacity duration-200 group-hover:opacity-100"
+          style={{ background: accent }}
+        />
+      ) : null}
       {image ? (
         <div className="aspect-[16/10] w-full overflow-hidden bg-muted">
           <img
@@ -145,12 +185,48 @@ export function MediaCard({
             className="h-full w-full object-cover"
           />
         </div>
+      ) : composed && Icon ? (
+        <div
+          className="relative aspect-[16/10] w-full overflow-hidden"
+          style={{
+            background: `linear-gradient(135deg, color-mix(in srgb, ${accent} 8%, transparent) 0%, transparent 62%), rgb(var(--ink) / 0.04)`,
+          }}
+        >
+          {code ? (
+            <span
+              className="absolute left-4 top-3.5 font-mono text-[11px] font-semibold tracking-tight"
+              style={{ color: accent }}
+            >
+              {code}
+            </span>
+          ) : null}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -bottom-7 -right-6 opacity-[0.55]"
+            style={{ color: accent }}
+          >
+            <Icon size={140} />
+          </span>
+        </div>
       ) : Icon ? (
         <div className="flex aspect-[16/10] w-full items-center justify-center bg-[rgb(var(--ink)/0.04)]">
           <IconTile icon={Icon} size="lg" />
         </div>
       ) : null}
       <div className="flex flex-1 flex-col p-5">
+        {/* The identity glyph appears ONCE per card. Bled into the panel where
+            we drew the panel; as a tinted chip here where the tenant's own
+            photograph took the panel's place — so a card with a cover is still
+            recognisable by colour before it is read, which is the whole point
+            of the palette. */}
+        {accent && Icon && image ? (
+          <IconTile
+            icon={Icon}
+            size="sm"
+            tint={accent}
+            className="mb-3"
+          />
+        ) : null}
         {eyebrow && <p className="micro mb-2">{eyebrow}</p>}
         <h3 className="text-title font-semibold leading-snug tracking-tight">
           {title}

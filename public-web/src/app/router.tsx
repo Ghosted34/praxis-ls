@@ -105,6 +105,10 @@ const Careers = lazy(
   () => import("@/features/careers/careers-page"),
   "CareersPage",
 );
+const Contact = lazy(
+  () => import("@/features/contact/contact-page"),
+  "ContactPage",
+);
 const Vacancy = lazy(
   () => import("@/features/careers/careers-page"),
   "VacancyPage",
@@ -206,10 +210,16 @@ export function AppRouter() {
           `features/quote/quote-page.tsx` records the rest.
         */}
         <Route path={p("/quote")} element={<Quote />} />
-        <Route
-          path={p("/contact")}
-          element={<Navigate to={p("#contact")} replace />}
-        />
+        {/*
+          A page, not a redirect back to `…#contact`. That redirect was the
+          same defect the quote CTA had: the fragment is discarded by
+          `NavLink`'s active test — so the header highlighted Contact on the
+          home page — and following it scrolls to an element the lazy marketing
+          chunk has not rendered. `features/contact/contact-page.tsx` records
+          the rest. The home page keeps `#contact` as a band that points here,
+          so links already in circulation still land somewhere sensible.
+        */}
+        <Route path={p("/contact")} element={<Contact />} />
 
         {/* ── the external portal ── */}
         <Route path="/portal/*" element={<PortalApp />} />

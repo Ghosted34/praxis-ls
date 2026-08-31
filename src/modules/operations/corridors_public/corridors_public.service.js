@@ -49,6 +49,12 @@ const WINDOW_MONTHS = 24;
 const MAX_ROWS = 8;
 
 /**
+ * The dossier side of the join is `dossier_visible`, never the base table. This
+ * is an enumeration — a GROUP BY over every file in a trailing window — and a
+ * half-typed wizard DRAFT is not a file the tenant ran. `d.status = 'COMPLETED'`
+ * already excludes drafts today, but the view is what keeps that true when the
+ * status filter is next relaxed (migration 0671, dossier-draft-isolation.test).
+ *
  * Only legs whose BOTH endpoints resolved to a `geo_place` are counted.
  *
  * The free-text `origin`/`destination` columns exist and are populated, but they
@@ -69,7 +75,7 @@ async function corridors(client) {
             COUNT(DISTINCT l.dossier_id)::int AS files,
             MAX(l.planned_arrival)            AS last_run
        FROM dossier_itinerary_leg l
-       JOIN dossier d
+       JOIN dossier_visible d
          ON d.dossier_id = l.dossier_id
        JOIN geo_place op
          ON op.geo_place_id = l.origin_place_id

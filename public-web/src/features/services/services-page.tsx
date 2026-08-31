@@ -25,6 +25,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
 } from "@/components/ui/icons";
+import { modeColor, serviceIdentity } from "@/lib/service-identity";
 import { SectionHead } from "@/components/site/section-head";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Reveal } from "@/components/ui/reveal";
@@ -77,30 +78,39 @@ export function ServicesIndexPage() {
       >
         {services.length ? (
           <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((s, i) => (
-              <Reveal
-                as="li"
-                key={s.service_type_id}
-                // Staggered by COLUMN, the way the insights grid is: a card in
-                // the fourth row must not wait for the three above it.
-                delay={(i % 3) as 0 | 1 | 2}
-              >
-                <MediaCard
-                  className="h-full"
-                  image={s.cover_url}
-                  imageAlt={pickText(s, "name", lang) || ""}
-                  // A tenant with one photograph and four services gets one
-                  // illustrated card and three text boxes without this.
-                  icon={BoxIcon}
-                  eyebrow={s.published_month || undefined}
-                  title={pickText(s, "name", lang) || pickSlug(s, lang)}
-                  to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
-                  linkLabel={t("site.services.more")}
+            {services.map((s, i) => {
+              // The same table the home page reads, indexed the same way, so a
+              // line keeps its colour, glyph and code between the two grids.
+              // `BoxIcon` on every card was the version of this that made an
+              // eleven-service index look like one card repeated eleven times.
+              const identity = serviceIdentity(i);
+              return (
+                <Reveal
+                  as="li"
+                  key={s.service_type_id}
+                  // Staggered by COLUMN, the way the insights grid is: a card in
+                  // the fourth row must not wait for the three above it.
+                  delay={(i % 3) as 0 | 1 | 2}
                 >
-                  {pickText(s, "short_description", lang)}
-                </MediaCard>
-              </Reveal>
-            ))}
+                  <MediaCard
+                    className="h-full"
+                    image={s.cover_url}
+                    imageAlt={pickText(s, "name", lang) || ""}
+                    // A tenant with one photograph and four services gets one
+                    // illustrated card and three text boxes without this.
+                    icon={identity.icon}
+                    mode={identity.mode}
+                    code={identity.code}
+                    eyebrow={s.published_month || undefined}
+                    title={pickText(s, "name", lang) || pickSlug(s, lang)}
+                    to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
+                    linkLabel={t("site.services.more")}
+                  >
+                    {pickText(s, "short_description", lang)}
+                  </MediaCard>
+                </Reveal>
+              );
+            })}
           </ul>
         ) : loading ? (
           <PageSkeleton rows={3} cols={3} />
@@ -151,6 +161,11 @@ export function ServiceDetailPage() {
   const { slug = "" } = useParams();
   const lang = getLang();
   const [state, setState] = React.useState<DetailState>({ kind: "loading" });
+  /* The published list, for identity only — it is the module-cached read the
+     index page and the footer already share, so this costs no request. A line's
+     colour has to be the SAME colour it had on the card the visitor clicked, and
+     the only stable key for that is its position in the published order. */
+  const { services } = usePublishedServices();
 
   React.useEffect(() => {
     let alive = true;
@@ -237,6 +252,15 @@ export function ServiceDetailPage() {
     );
   }
 
+  /* `-1` until the list arrives, or for a profile the list does not carry — a
+     slug reached directly while `GET /public/services` was refused, say. No
+     index, no colour: a bar in the wrong colour is worse than no bar, because
+     the whole claim of the palette is that the colour identifies the line. */
+  const identityIndex = services.findIndex(
+    (row) => row.service_type_id === profile.service_type_id,
+  );
+  const identity = identityIndex < 0 ? null : serviceIdentity(identityIndex);
+
   const name = pickText(profile, "name", lang) || "";
   const shortText = pickText(profile, "short_description", lang);
   const longText = pickText(profile, "long_description", lang);
@@ -274,8 +298,20 @@ export function ServiceDetailPage() {
   return (
     <PageShell label={name}>
       {/* Muted: the body band below it is plain, and a plain hero over a plain
-          band is the two-adjacent-surfaces case §6.4 rules out. */}
-      <section className="band band-muted">
+          band is the two-adjacent-surfaces case §6.4 rules out.
+
+          The 6px rule across the top is the same identity the card carried in
+          the grid, full-bleed: a reader who clicked a green card lands on a page
+          that is still green, which is what "recognisable by colour before it is
+          read" has to mean if it is to mean anything past the index. */}
+      <section
+        className="band band-muted"
+        style={
+          identity
+            ? { borderTop: `6px solid ${modeColor(identity.mode)}` }
+            : undefined
+        }
+      >
         <PageContainer size="reading">
           <nav aria-label={t("site.services.eyebrow")} className="mb-6">
             <Link
@@ -290,7 +326,17 @@ export function ServiceDetailPage() {
               own row, so it carries no accent word: splitting somebody else's
               service name across two colours is a decision we do not get to
               make for them. */}
-          <BadgePill>{t("site.services.eyebrow")}</BadgePill>
+          <div className="flex flex-wrap items-center gap-3">
+            <BadgePill>{t("site.services.eyebrow")}</BadgePill>
+            {identity ? (
+              <span
+                className="font-mono text-[11px] font-semibold tracking-tight"
+                style={{ color: modeColor(identity.mode) }}
+              >
+                {identity.code}
+              </span>
+            ) : null}
+          </div>
           <SectionHead
             className="mt-4"
             as="h1"
@@ -301,7 +347,7 @@ export function ServiceDetailPage() {
             {month ? (
               <span className="text-muted-foreground">
                 {t("site.servicesPage.updated")}{" "}
-                <span className="num">{month}</span>
+                <span className="num font-mono">{month}</span>
               </span>
             ) : null}
             {altSlug ? (
@@ -436,19 +482,30 @@ export function ServiceDetailPage() {
           divided
         >
           <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((r, i) => (
-              <Reveal as="li" key={r.slug_en} delay={(i % 3) as 0 | 1 | 2}>
-                <MediaCard
-                  className="h-full"
-                  // `related` carries a name and a slug and nothing else, so
-                  // every one of these cards is coverless by construction.
-                  icon={BoxIcon}
-                  title={pickText(r, "name", lang) || ""}
-                  to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
-                  linkLabel={t("site.services.more")}
-                />
-              </Reveal>
-            ))}
+            {related.map((r, i) => {
+              // `related` carries a name and two slugs and nothing else, so
+              // every one of these cards is coverless by construction — and its
+              // identity has to be looked up rather than derived from `i`, or a
+              // service would wear one colour in the grid and another in the
+              // "related" row of the page beside it.
+              const at = services.findIndex(
+                (row) => row.slug_en === r.slug_en,
+              );
+              const relId = at < 0 ? null : serviceIdentity(at);
+              return (
+                <Reveal as="li" key={r.slug_en} delay={(i % 3) as 0 | 1 | 2}>
+                  <MediaCard
+                    className="h-full"
+                    icon={relId ? relId.icon : BoxIcon}
+                    mode={relId ? relId.mode : undefined}
+                    code={relId ? relId.code : undefined}
+                    title={pickText(r, "name", lang) || ""}
+                    to={p(`/services/${encodeURIComponent(pickSlug(r, lang))}`)}
+                    linkLabel={t("site.services.more")}
+                  />
+                </Reveal>
+              );
+            })}
           </ul>
         </Section>
       )}

@@ -133,6 +133,14 @@
     --ease: cubic-bezier(0.2, 0, 0.13, 1);
     --dur: 0.15s;
 
+    /* A band's vertical rhythm, as a TOKEN rather than only as a Tailwind
+       spacing value, because one thing on the page has to measure against it:
+       the portal mock's deliberate overlap pulls itself up by this plus a
+       little, and a second copy of the clamp would be two numbers that drift.
+       `tailwind.config.ts` points `spacing.band` at this, so `py-band` and
+       `.band-overlap` cannot disagree. */
+    --py-band: clamp(3.5rem, 8vw, 7.5rem);
+
     /* ── Design roles (doc/UI_UPGRADE_PLAN.md §5) ──────────────────────────
        Not one new colour between them: each is a ROLE assembled from tokens
        above, so the dark block's redefinitions of --ink, --secondary and
@@ -342,6 +350,63 @@
     letter-spacing: var(--brand-tracking-eyebrow);
     text-transform: uppercase;
     color: var(--primary-ink);
+  }
+
+  /* ── The proof strip ───────────────────────────────────────────────────
+     Figures under the hero, on the hero's own ground. Every value here is a
+     token: the strip inherits a tenant's re-brand along with the band it sits
+     on. */
+
+  .stat-figure {
+    /* Mono, because a figure is a machine-shaped value and the mono face is
+       what makes an operations firm look like it runs systems. Tabular so the
+       width does not jitter while the counter runs. */
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: clamp(1.5rem, 3.2vw, 2rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--hero-foreground);
+  }
+
+  /* The label under a figure. Not `.micro`, which is coloured for a light
+     ground and would sit at 2.4:1 on carbon. */
+  .stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--brand-tracking-eyebrow);
+    color: var(--hero-muted);
+  }
+
+  /* A credential: bordered, not filled. A filled pill on carbon reads as a
+     button, and nothing in this row is pressable. */
+  .credential-pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    border: 1px solid var(--hero-line);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--hero-foreground);
+  }
+
+  /* ── The one deliberate overlap ────────────────────────────────────────
+     Everything on this page sits obediently inside its band, so the page has a
+     stack and no foreground. ONE element crosses a boundary — the portal mock —
+     and the device stops working the moment it is used twice.
+
+     The pull is the band's own top padding plus 48px, so the card clears the
+     boundary rather than merely sitting higher inside the padding. Dropped
+     below lg, where the two columns stack and an overlap would land the card on
+     top of the copy; the elevation stays there, which is what the shadow is
+     for. */
+  @media (min-width: 1024px) {
+    .band-overlap {
+      margin-top: calc((var(--py-band) + 48px) * -1);
+    }
   }
 
   .hero-title {

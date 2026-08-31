@@ -8,6 +8,8 @@ import {
   type PortfolioStory,
 } from "@/lib/portfolio-api";
 import { PublicApiError, messageFor } from "@/lib/api";
+import { listCorridors, type Corridor } from "@/lib/corridors-api";
+import { CorridorPanel } from "@/components/site/corridor-panel";
 import { currentLocale, tStatic } from "@/lib/i18n";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
@@ -54,6 +56,12 @@ export function PortfolioIndexPage() {
   const { t } = useTranslation();
   const [rows, setRows] = React.useState<PortfolioCard[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /* The lanes, for the empty case only — and fetched unconditionally beside the
+     stories rather than after them, because a page that waits for one empty
+     answer before asking the next question spends two round trips to show
+     nothing. The home page's proof band makes the same call for the same
+     reason. */
+  const [lanes, setLanes] = React.useState<Corridor[] | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -65,6 +73,11 @@ export function PortfolioIndexPage() {
           setRows([]);
         else setError(messageFor(e, tStatic("errors.loadFailed")));
       });
+    listCorridors()
+      .then((r) => alive && setLanes(Array.isArray(r) ? r : []))
+      // FEATURE_DISABLED is a configuration state, not an outage: no lanes, no
+      // noise.
+      .catch(() => alive && setLanes([]));
     return () => {
       alive = false;
     };
@@ -95,10 +108,24 @@ export function PortfolioIndexPage() {
             ))}
           </div>
         ) : !rows.length ? (
-          <EmptyState
-            title={t("site.portfolioPage.empty")}
-            hint={t("site.proof.empty")}
-          />
+          /* Two answers, in descending order of what they prove — the same pair
+             the home page's proof band offers, and deliberately the same
+             component rather than a second version of it.
+
+             No case notes does not mean nothing to show. The lanes are not copy:
+             they are a GROUP BY over completed itinerary legs, floored so that
+             no corridor can identify a client's shipment. N12 forbids inventing
+             proof; it does not forbid counting it. Below the floor, or before
+             the ledger has enough history, the honest sentence is still the
+             answer. */
+          lanes && lanes.length ? (
+            <CorridorPanel lanes={lanes} />
+          ) : (
+            <EmptyState
+              title={t("site.portfolioPage.empty")}
+              hint={t("site.proof.empty")}
+            />
+          )
         ) : (
           <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((s, i) => (

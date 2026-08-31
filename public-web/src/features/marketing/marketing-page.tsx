@@ -5,11 +5,7 @@ import { getLang, tList } from "@/lib/i18n";
 import { usePublishedServices } from "@/lib/use-services";
 import { pickSlug, pickText } from "@/lib/services-api";
 import { listStories, type PortfolioCard } from "@/lib/portfolio-api";
-import {
-  listCorridors,
-  MODE_ACCENT,
-  type Corridor,
-} from "@/lib/corridors-api";
+import { listCorridors, type Corridor } from "@/lib/corridors-api";
 import { Hero } from "@/components/site/hero";
 import {
   MediaCard,
@@ -17,21 +13,19 @@ import {
   Section,
   StepList,
 } from "@/components/site/section";
+import { CorridorPanel } from "@/components/site/corridor-panel";
 import { PortalPreview, RouteGraphic } from "@/components/site/graphics";
+import { ProofStrip } from "@/components/site/proof-strip";
 import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ButtonLink } from "@/components/ui/button";
+import { ArrowRightIcon, BoxIcon, DocumentIcon } from "@/components/ui/icons";
 import {
-  ArrowRightIcon,
-  BoxIcon,
-  DocumentIcon,
-  ShipIcon,
-  TruckIcon,
-  WarehouseIcon,
-} from "@/components/ui/icons";
+  IDENTITY_COUNT,
+  serviceIdentity,
+} from "@/lib/service-identity";
 import { Reveal } from "@/components/ui/reveal";
-import { ContactForm } from "@/components/site/contact-form";
 import { p } from "@/lib/base-path";
 
 /**
@@ -70,6 +64,10 @@ export function MarketingPage() {
   return (
     <PageShell label={t("site.hero.title")}>
       <Hero />
+      {/* Directly under the hero, on the hero's own ground: a visitor who
+          scrolls one screen has seen a number, a certification and a network
+          name — or, on a tenant who has authored none, nothing at all. */}
+      <ProofStrip />
       <ServicesBand />
       <HowBand />
       <ProofBand />
@@ -81,21 +79,20 @@ export function MarketingPage() {
 }
 
 /**
- * One glyph per card, cycling with position.
+ * One IDENTITY per card, cycling with position — glyph, mode colour and code
+ * together, from `lib/service-identity.ts`.
  *
- * §7.3 is right that a tinted tile is the honest stand-in for a cover the tenant
- * has not uploaded — but it was drawn with `BoxIcon` on all four cards, and four
- * identical glyphs in a row is the thing that reads as unfinished. Repetition is
- * what a visitor notices, not absence.
+ * It was a glyph cycle here, for the reason that still governs the table: four
+ * identical stroke icons in a row is what reads as unfinished, and repetition
+ * is what a visitor notices rather than absence. Colour and a code now travel
+ * with the glyph because the three have to agree — a card whose panel is green
+ * and whose tile is blue is not one card, it is two half-designed ones.
  *
- * The cycle is keyed on POSITION, never on what the card says. Matching a glyph
- * to a tenant-authored name ("a ship for the sea-freight profile") means this
- * file guessing at the meaning of strings it did not write, in two languages,
- * and being wrong on the first tenant who writes "Maritime & Air". Position is a
- * fact; the service's mode is not ours to infer. `BoxIcon` stays in the cycle as
- * the neutral member rather than as the default for everything.
+ * The cycle is keyed on POSITION, never on what the card says. Matching an
+ * identity to a tenant-authored name means guessing at the meaning of strings
+ * we did not write, in two languages, and being wrong on the first tenant who
+ * writes "Maritime & Air". The service-identity module records the rest.
  */
-const CARD_ICONS = [ShipIcon, DocumentIcon, WarehouseIcon, TruckIcon, BoxIcon];
 
 /** Dict fallback under the tenant's real profiles.
  *
@@ -149,26 +146,37 @@ function ServicesBand() {
       divided
     >
       <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((s, i) => (
-          <Reveal as="li" key={s.key} delay={(i % 4) as 0 | 1 | 2 | 3}>
-            <MediaCard
-              className="h-full"
-              image={s.image}
-              imageAlt={s.title || ""}
-              // The dict fallback has no artwork by design (N12), and the four
-              // text boxes that produced were the flattest thing on the home
-              // page. A glyph tile is the honest stand-in (§7.3) — one glyph
-              // PER CARD, so the row reads as four things rather than one
-              // repeated four times.
-              icon={CARD_ICONS[i % CARD_ICONS.length]}
-              title={s.title}
-              to={s.to}
-              linkLabel={t("site.services.more")}
-            >
-              {s.desc}
-            </MediaCard>
-          </Reveal>
-        ))}
+        {/* Four, and the aside links to the rest. Four is the width of the
+            identity palette, so this row is the one place on the site where no
+            two cards can share a colour — which is what makes the palette read
+            as four service lines rather than as decoration. A tenant with
+            eleven published services shows all eleven on /services, where
+            repetition past the fourth is the honest cost of a four-colour set. */}
+        {items.slice(0, IDENTITY_COUNT).map((s, i) => {
+          const identity = serviceIdentity(i);
+          return (
+            <Reveal as="li" key={s.key} delay={(i % 4) as 0 | 1 | 2 | 3}>
+              <MediaCard
+                className="h-full"
+                image={s.image}
+                imageAlt={s.title || ""}
+                // The dict fallback has no artwork by design (N12), and the
+                // four text boxes that produced were the flattest thing on the
+                // home page. The composed panel is the honest stand-in (§7.3):
+                // it says "a service, and that one", which is true, rather than
+                // standing in for a photograph nobody took.
+                icon={identity.icon}
+                mode={identity.mode}
+                code={identity.code}
+                title={s.title}
+                to={s.to}
+                linkLabel={t("site.services.more")}
+              >
+                {s.desc}
+              </MediaCard>
+            </Reveal>
+          );
+        })}
       </ul>
       {(disabled || failed) && !services.length ? (
         <p className="mt-6 text-xs text-muted-foreground">
@@ -290,7 +298,9 @@ function ProofBand() {
                 linkLabel={t("site.proof.more")}
               >
                 {s.published_month ? (
-                  <span className="num text-xs">{s.published_month}</span>
+                  <span className="num font-mono text-xs">
+                    {s.published_month}
+                  </span>
                 ) : null}
               </MediaCard>
             </Reveal>
@@ -301,84 +311,6 @@ function ProofBand() {
   );
 }
 
-/**
- * The lanes panel — the proof a tenant has before they have written any.
- *
- * ── WHY A LIST AND NOT A MAP ───────────────────────────────────────────────
- *
- * `geo_place` carries latitude and longitude, so a world map with arcs is one
- * projection away and it is the obvious thing to build. It is also the thing
- * that turns eight aggregated rows into a picture of somebody's network: an arc
- * drawn between two points invites the reader to trace it, and the endpoints are
- * exactly what the k-anonymity floor spent its design on protecting. A list
- * states the same fact — this lane, this often — and states it once.
- *
- * A list is also the honest shape for the data: these rows are ordered by volume
- * and that order is the information. A map has no first row.
- */
-function CorridorPanel({ lanes }: { lanes: Corridor[] }) {
-  const { t } = useTranslation();
-  return (
-    <div className="overflow-hidden rounded-[var(--radius)] border bg-[var(--secondary)]">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-5 pb-4 pt-5 md:px-6">
-        <h3 className="font-display text-title font-semibold tracking-tight">
-          {t("site.proof.lanes")}
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          {t("site.proof.lanesSub")}
-        </p>
-      </div>
-      {/* Hairline-separated rows rather than cards: eight cards is a grid of
-          boxes competing with the four service cards directly above, and these
-          are rows of a ledger, which is what they should look like. */}
-      <ul className="border-t">
-        {lanes.map((lane) => {
-          const accent = MODE_ACCENT[lane.mode];
-          return (
-            <li
-              key={`${lane.origin}-${lane.destination}-${lane.mode}`}
-              className="flex items-center gap-4 border-b bg-background px-5 py-3.5 last:border-b-0 md:px-6"
-            >
-              <span
-                aria-hidden
-                className="h-8 w-1 shrink-0 rounded-full"
-                style={{
-                  background: accent
-                    ? `rgb(var(--mode-${accent}))`
-                    : "var(--border)",
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-sm font-semibold tracking-tight">
-                  {lane.origin}
-                  <span aria-hidden className="mx-2 text-muted-foreground">
-                    &rarr;
-                  </span>
-                  {lane.destination}
-                </p>
-                {lane.origin_country || lane.destination_country ? (
-                  <p className="micro mt-0.5 normal-case">
-                    {[lane.origin_country, lane.destination_country]
-                      .filter(Boolean)
-                      .join(" \u2192 ")}
-                  </p>
-                ) : null}
-              </div>
-              <p className="shrink-0 text-right">
-                <span className="num font-mono text-sm font-semibold tabular-nums">
-                  {lane.files}
-                </span>
-                <span className="micro ml-2 normal-case">
-                  {t("site.proof.files")}
-                </span>
-              </p>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
 
 /** "Your account is here." Deliberately placed after the proof and before the
  *  form: a visitor who already has credentials should not be walked through a
@@ -397,13 +329,27 @@ function PortalBand() {
   return (
     <Section
       id="portal"
-      // Muted: without it this band sits between two plain ones and the middle
-      // third of the home page reads as a single undifferentiated column (§6.4).
-      variant="muted"
+      /*
+        CARBON, and it is the only band on the page that is.
+
+        Seven bands alternating #ffffff and #f7f8f8 — a 3% difference — divided
+        by the same hairline means that after the hero the page never changes
+        register again, and scrolling produces no events. This band is the right
+        one to spend the change on: the mock's orange ticks gain enormous
+        contrast on carbon, and the page acquires a landmark exactly halfway
+        down.
+
+        ONE dark band, not two. Two makes the page striped rather than
+        punctuated, which is why the proof strip under the hero butts against
+        the hero's own plate instead of standing as a second dark section.
+
+        `divided` comes off with it: `rule-top` is a light-ground hairline, and
+        a change of ground is already a stronger division than any rule.
+      */
+      variant="dark"
       eyebrow={t("site.portalBand.eyebrow")}
       title={t("site.portalBand.title")}
       lead={t("site.portalBand.sub")}
-      divided
     >
       <Reveal className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div>
@@ -416,11 +362,17 @@ function PortalBand() {
               <ArrowRightIcon size={16} />
             </Link>
           </div>
-          <p className="mt-4 text-sm text-muted-foreground">
+          {/* On carbon the light-ground text tokens do not carry: `--primary-ink`
+              is the AA-corrected orange for type on WHITE and measures about
+              3.4:1 here, while the brand fill measures 6.33:1. `hero.tsx`
+              records why that asymmetry is a property of the colour rather than
+              an oversight, and `SectionHead` makes the same swap for its
+              eyebrow. */}
+          <p className="mt-4 text-sm text-[var(--hero-muted)]">
             {t("site.portalBand.invited")}{" "}
             <Link
               to="/portal/set-password"
-              className="text-primary-ink underline underline-offset-4"
+              className="text-[var(--brand-orange)] underline underline-offset-4"
             >
               {t("portal.setPasswordTitle")}
             </Link>
@@ -431,6 +383,13 @@ function PortalBand() {
           percent={68}
           statusLabel={t("site.preview.status")}
           stages={stages}
+          /* The one deliberate overlap on the site. The card crosses the
+             boundary into the band above, carrying `--shadow-l`, so the page
+             acquires a foreground rather than a stack. `.band-overlap` is a
+             media query rather than a Tailwind prefix because the pull is
+             computed from `--py-band`, and it does not apply below lg, where
+             the columns stack and the card would land on the copy. */
+          className="band-overlap relative z-10"
         />
       </Reveal>
     </Section>
@@ -507,11 +466,11 @@ function QuoteBand() {
   );
 }
 
-/** The general enquiry — the form for a visitor who is NOT buying: a supplier, a
- *  journalist, someone whose file has gone wrong. Both write to the tenant's
- *  inbound queue and both come back with a reference, which is the part the
- *  current marketing page omits: a public form with no receipt is a form whose
- *  sender can never prove they sent it. */
+/** The general enquiry — for a visitor who is NOT buying: a supplier, a
+ *  journalist, someone whose file has gone wrong. It writes to the tenant's
+ *  inbound queue and comes back with a reference, which is the part the previous
+ *  marketing page omitted: a public form with no receipt is a form whose sender
+ *  can never prove they sent it. */
 function ContactBand() {
   const { t } = useTranslation();
   const promise = tList<{ t: string; d: string }>("site.contact.promise");
@@ -524,15 +483,33 @@ function ContactBand() {
       lead={t("site.contact.sub")}
       divided
     >
+      {/*
+        A BAND that points at /contact, not the form itself — the same move the
+        quote desk made two bands up, for the same two reasons: one copy of the
+        form to keep in step rather than two, and a home page that does not make
+        a visitor who came to read about services download it to scroll past.
+
+        The `id="contact"` stays. Links to `…/#contact` are already in
+        circulation — the header and the footer both pointed here until Contact
+        got its own route — and this is where they should land.
+      */}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <Card padded>
-          <ContactForm />
+        <Card padded className="flex flex-col justify-center">
+          <p className="max-w-measure text-muted-foreground">
+            {t("site.contact.bandLead")}
+          </p>
+          <div className="mt-6">
+            <ButtonLink to={p("/contact")} size="lg">
+              {t("site.contact.bandCta")}
+              <ArrowRightIcon size={16} className="ml-2" />
+            </ButtonLink>
+          </div>
         </Card>
         <dl className="space-y-5">
-          {promise.map((p) => (
-            <div key={p.t}>
-              <dt className="text-sm font-semibold">{p.t}</dt>
-              <dd className="mt-1 text-sm text-muted-foreground">{p.d}</dd>
+          {promise.map((item) => (
+            <div key={item.t}>
+              <dt className="text-sm font-semibold">{item.t}</dt>
+              <dd className="mt-1 text-sm text-muted-foreground">{item.d}</dd>
             </div>
           ))}
         </dl>

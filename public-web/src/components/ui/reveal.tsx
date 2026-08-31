@@ -95,7 +95,7 @@ const reduced = () =>
  * one.
  */
 export function useRevealed<T extends HTMLElement>(): readonly [
-  React.RefObject<T | null>,
+  React.RefObject<T>,
   boolean,
 ] {
   const ref = React.useRef<T | null>(null);
@@ -108,7 +108,10 @@ export function useRevealed<T extends HTMLElement>(): readonly [
     return watch(ref.current, () => setShown(true));
   }, [shown]);
 
-  return [ref, shown] as const;
+  // Handed back as `RefObject<T>` rather than `RefObject<T | null>`: the ref is
+  // only ever attached to the element it was made for, and the nullable form is
+  // not assignable to a JSX `ref` prop under the React 18 element typings.
+  return [ref as React.RefObject<T>, shown] as const;
 }
 
 export function Reveal({

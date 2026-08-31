@@ -64,7 +64,7 @@ export function SiteFooter() {
       { to: p("#how"), label: t("site.how.title") },
       { to: p("/portfolio"), label: t("site.footer.portfolio") },
       { to: p("/careers"), label: t("site.footer.careers") },
-      { to: p("#contact"), label: t("site.footer.contact") },
+      { to: p("/contact"), label: t("site.footer.contact") },
     ],
   };
 

@@ -564,10 +564,10 @@ async function sitemap(host, origin, base) {
   // and naive concatenation emits "//track" — a URL a crawler treats as a
   // protocol-relative address, i.e. a different site.
   const at = (rest) => paths.joinBase(base, rest);
-  // `/quote` is in here because it is a conversion page with its own route
-  // now, not a hash on the home page — a form somebody can be sent a link to is
-  // a form a crawler should know exists.
-  const fixed = [at(""), at("/track"), at("/quote"), at("/services"), at("/portfolio"), at("/careers"), at("/insights")];
+  // `/quote` and `/contact` are in here because they are conversion pages with
+  // their own routes now, not hashes on the home page — a form somebody can be
+  // sent a link to is a form a crawler should know exists.
+  const fixed = [at(""), at("/track"), at("/quote"), at("/contact"), at("/services"), at("/portfolio"), at("/careers"), at("/insights")];
   const rows = await withTenant(host, async (client) => {
     const services = require("../../modules/operations/service_type_web_public/service_type_web_public.service");
     const portfolio = require("../../modules/sales/portfolio_public/portfolio_public.service");

@@ -23,6 +23,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { ArrowRightIcon, BoxIcon, DocumentIcon } from "@/components/ui/icons";
 import {
   IDENTITY_COUNT,
+  serviceColor,
   serviceIdentity,
 } from "@/lib/service-identity";
 import { Reveal } from "@/components/ui/reveal";
@@ -119,6 +120,11 @@ function ServicesBand() {
         // index renders as image cards. `ProofBand` below passes the same field
         // to the same component.
         image: s.cover_url,
+        // The tenant's own brand token for this line (migration 12755). The
+        // positional palette below is what runs when this is null.
+        accent: s.accent as string | null,
+        // The one emphasised line closing the card, authored per service.
+        claim: pickText(s, "claim", lang),
         to: p(`/services/${pickSlug(s, lang)}`),
       }))
     : tList<{ t: string; d: string }>("site.services.items").map((i) => ({
@@ -128,6 +134,12 @@ function ServicesBand() {
         // The dict fallback describes what a service TYPE does; there is no
         // tenant artwork behind it, and N12 forbids inventing one.
         image: null as string | null,
+        // A dict card is not a tenant service, so it has no tenant choice to
+        // honour — it takes the positional colour and nothing else, and it has
+        // no claim, because a claim is a thing a tenant says about their own
+        // operation (N12).
+        accent: null as string | null,
+        claim: null as string | null,
         to: p("/quote"),
       }));
 
@@ -167,7 +179,18 @@ function ServicesBand() {
                 // standing in for a photograph nobody took.
                 icon={identity.icon}
                 mode={identity.mode}
+                accent={s.accent}
                 code={identity.code}
+                footer={
+                  s.claim ? (
+                    <p
+                      className="mt-3 text-sm font-semibold"
+                      style={{ color: serviceColor(s.accent, identity.mode) }}
+                    >
+                      {s.claim}
+                    </p>
+                  ) : undefined
+                }
                 title={s.title}
                 to={s.to}
                 linkLabel={t("site.services.more")}

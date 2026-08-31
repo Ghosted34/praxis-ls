@@ -18,6 +18,8 @@ import { PublicApiError, publicGet } from "./api";
 
 export type Lang = "en" | "fr";
 
+export type ServiceAccent = "PRIMARY" | "ACCENT" | "SUCCESS";
+
 export type ServiceCard = {
   service_type_id: string;
   slug_fr: string;
@@ -26,6 +28,14 @@ export type ServiceCard = {
   name_en: string;
   short_description_fr: string | null;
   short_description_en: string | null;
+  /** The one emphasised line closing the card. Migration 12755 is explicit that
+   *  this is NOT `highlights[0]` — a positional convention that survives exactly
+   *  until somebody reorders the list. */
+  claim_fr: string | null;
+  claim_en: string | null;
+  /** A brand TOKEN NAME, never a hex: the palette is tenant config, so a stored
+   *  colour would hardcode one tenant's brand into another's data. */
+  accent: ServiceAccent;
   cover_url: string | null;
   icon_url: string | null;
   has_video: boolean;
@@ -118,7 +128,40 @@ export const isFeatureDisabled = (e: unknown): boolean =>
   e instanceof PublicApiError &&
   (e.code === "FEATURE_DISABLED" || e.status === 403);
 
-export const listServices = () => publicGet<ServiceCard[]>("/public/services");
+/**
+ * A pillar, with its services under it.
+ *
+ * `key` is the anchor handle (`/services#freight`), stable across a rename, and
+ * it is `null` for the trailing bucket the server collects unassigned services
+ * into. That bucket is not an error state: it is where every tenant starts on
+ * the day the column ships, and where a service returns when its pillar is
+ * retired. It renders without a heading — it is never dropped.
+ */
+export type ServiceGroup = {
+  key: string | null;
+  name_fr: string | null;
+  name_en: string | null;
+  /** An icon NAME resolved by the renderer against its own set — not a URL and
+   *  not markup, because a tenant-editable field that reached the DOM as HTML
+   *  would be stored XSS on a public page. */
+  icon: string | null;
+  services: ServiceCard[];
+};
+
+/**
+ * `GET /public/services` answers an OBJECT, not the flat array it used to.
+ *
+ * This is the shape migration 12755 introduced and the reason the services page
+ * has been empty: the client asked for `ServiceCard[]`, got `{groups: […]}`,
+ * and every consumer guarded with `Array.isArray(rows) ? rows : []` — which is
+ * false for an object, so a tenant's published services were parsed as "none"
+ * and thrown away on every load. The type is the fix; the guard was doing
+ * exactly what it was written to do.
+ */
+export type ServicesIndex = { groups: ServiceGroup[] };
+
+export const listServices = () =>
+  publicGet<ServicesIndex>("/public/services");
 
 export const getService = (slug: string) =>
   publicGet<ServiceProfile>(`/public/services/${encodeURIComponent(slug)}`);

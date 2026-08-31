@@ -1,5 +1,10 @@
 import {
+  BoxIcon,
+  ClockIcon,
   DocumentIcon,
+  GlobeIcon,
+  PlaneIcon,
+  ShieldIcon,
   ShipIcon,
   TruckIcon,
   WarehouseIcon,
@@ -88,3 +93,80 @@ export function serviceIdentity(index: number): ServiceIdentity {
  *  call site paints with this, so a tenant re-brand that redefines `--mode-sea`
  *  repaints the bar, the tile and the panel together. */
 export const modeColor = (mode: FreightMode): string => `rgb(var(--mode-${mode}))`;
+
+/**
+ * The tenant's own choice, which outranks the positional palette above.
+ *
+ * `service_type_web_profile.accent` (migration 12755) stores a brand TOKEN NAME
+ * — PRIMARY | ACCENT | SUCCESS, never a hex, because the palette is tenant
+ * config and a stored `#EE7D04` would hardcode one tenant's brand into another
+ * tenant's data. When a service carries one, it wins: `serviceIdentity` guesses
+ * from position because it has nothing better, and a guess must never override
+ * an answer.
+ *
+ * The migration describes the mapping as PRIMARY → --brand-primary and so on;
+ * those token names do not exist in this app, and inventing them would paint
+ * with `var(--brand-primary)` — undefined, which resolves to nothing and paints
+ * transparent. These are the tokens `index.css` actually defines, as triplets so
+ * they compose with `rgb()` the way `modeColor` does:
+ *
+ *   PRIMARY  --brand-orange  the brand fill, the same orange as the CTA
+ *   ACCENT   --brand-blue    the secondary brand colour
+ *   SUCCESS  --ok            the semantic green, which is what SUCCESS means here
+ */
+const ACCENT_TOKEN: Record<string, string> = {
+  PRIMARY: "rgb(var(--brand-orange))",
+  ACCENT: "rgb(var(--brand-blue))",
+  SUCCESS: "rgb(var(--ok))",
+};
+
+/**
+ * The colour to paint a service card with: its own `accent` when the tenant set
+ * one, the positional mode colour otherwise.
+ *
+ * An unknown string falls back rather than throwing. The column has a CHECK
+ * constraint, so a fourth value can only arrive from a future migration this
+ * build has not seen — and a card in the wrong colour is a smaller failure than
+ * a card that does not render.
+ */
+export function serviceColor(
+  accent: string | null | undefined,
+  fallback: FreightMode,
+): string {
+  return (accent && ACCENT_TOKEN[accent]) || modeColor(fallback);
+}
+
+/**
+ * A pillar's icon, by NAME.
+ *
+ * `service_type_web_group.icon` stores a name and never markup — a
+ * tenant-editable field that reached the DOM as HTML would be stored XSS on a
+ * public page (migration 12755 says so in as many words). So the tenant picks
+ * from a set the renderer owns, and an unrecognised name resolves to null and
+ * draws nothing: a heading with no icon is a smaller failure than a heading
+ * whose icon is somebody's typo.
+ *
+ * Names are matched case-insensitively and on the bare word, so `SHIP`, `ship`
+ * and `ShipIcon` all land on the same glyph — a tenant typing into an admin
+ * field is not writing an identifier.
+ */
+const ICONS_BY_NAME: Record<string, IconComponent> = {
+  ship: ShipIcon,
+  plane: PlaneIcon,
+  air: PlaneIcon,
+  truck: TruckIcon,
+  road: TruckIcon,
+  warehouse: WarehouseIcon,
+  document: DocumentIcon,
+  customs: DocumentIcon,
+  shield: ShieldIcon,
+  clock: ClockIcon,
+  globe: GlobeIcon,
+  box: BoxIcon,
+};
+
+export function iconByName(name: string | null | undefined): IconComponent | null {
+  if (!name) return null;
+  const key = name.trim().toLowerCase().replace(/icon$/, "");
+  return ICONS_BY_NAME[key] || null;
+}

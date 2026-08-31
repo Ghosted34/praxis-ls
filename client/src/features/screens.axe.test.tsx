@@ -91,6 +91,8 @@ import { EmailSignaturesPage } from "./settings/email-signatures";
 import { BusinessPoliciesPage } from "./settings/business-policies";
 import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
+import { WebsitePagesPage } from "./settings/website-pages";
+import { WebsitePageEditorPage } from "./settings/website-page-editor";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
 import * as reconciliation from "./costing/reconciliation";
@@ -286,6 +288,17 @@ const USERS = [
 type ScreenCase = {
   name: string;
   render: () => React.ReactElement;
+  /**
+   * The address the router starts on, and the pattern that gives it params.
+   *
+   * Both are passed straight to `renderScreen`'s fixtures, which has always
+   * supported them — nothing in the register did, so a screen reading
+   * `useParams` could not be gated here at all and was simply left out. A
+   * screen missing from this file is a screen with no axe coverage and no
+   * four-state proof, which is the failure this register exists to prevent.
+   */
+  path?: string;
+  pattern?: string;
   /** Data that makes the populated state non-trivial. */
   routes?: Record<string, unknown>;
   /** Text proving the populated state rendered rows rather than an empty state. */
@@ -1326,6 +1339,79 @@ const AREAS: Area[] = [
         },
       },
       {
+        name: "Website pages",
+        render: () => <WebsitePagesPage />,
+        routes: {
+          "/site/meta": { website_enabled: true, metrics: [] },
+          "/site/pages": [
+            {
+              page_id: "sp1",
+              key: "home",
+              title_fr: "Accueil",
+              title_en: "Home",
+              slug_fr: null,
+              slug_en: null,
+              is_published: true,
+              sort_order: 10,
+            },
+          ],
+        },
+        populatedProof: /Accueil/,
+      },
+      {
+        name: "Website page editor",
+        render: () => <WebsitePageEditorPage />,
+        // Reads `useParams`, so it needs both halves — see ScreenCase.
+        path: "/settings/website/sp1",
+        pattern: "/settings/website/:pageId",
+        routes: {
+          "/site/meta": { website_enabled: true, metrics: [] },
+          "/site/pages/sp1": {
+            page: {
+              page_id: "sp1",
+              key: "home",
+              title_fr: "Accueil",
+              title_en: "Home",
+              slug_fr: null,
+              slug_en: null,
+              meta_title_fr: null,
+              meta_title_en: null,
+              meta_description_fr: null,
+              meta_description_en: null,
+              is_published: true,
+              published_at: null,
+              sort_order: 10,
+            },
+            blocks: [
+              {
+                block_id: "sb1",
+                type: "stat_counters",
+                sort_order: 10,
+                is_visible: true,
+                content: {
+                  items: [
+                    {
+                      label: { fr: "Volume géré", en: "CBM managed" },
+                      unit: "CBM",
+                      value: 41850,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        /*
+          A BLOCK-level proof, not an item-level one, and the distinction is
+          worth stating because it will catch the next person: this screen is a
+          FORM, so the item's label, unit and figure live in input VALUES —
+          which `container.textContent` cannot see. `/CBM managed/` passes
+          nowhere and would look like the fixture never arrived. The toggle's
+          label is rendered per block, so it fires only if the blocks landed.
+        */
+        populatedProof: /Shown on the page/,
+      },
+      {
         name: "Payment gateways",
         render: () => <PaymentGatewaysPage />,
         routes: {
@@ -1770,13 +1856,24 @@ const CASES = AREAS.flatMap((a) =>
 
 describe.each(CASES)(
   "$area › $name",
-  ({ render: renderCase, routes, populatedProof, states, rendersRows }) => {
+  ({
+    render: renderCase,
+    routes,
+    populatedProof,
+    states,
+    rendersRows,
+    path,
+    pattern,
+  }) => {
     const has = (s: string) => !states || states.includes(s as never);
+    // Every state renders at the same address, or a params screen would be on
+    // its route for one assertion and off it for the other three.
+    const at = { path, pattern };
 
     it.runIf(has("loading"))(
       "loading state is clean and announced",
       async () => {
-        const { container } = renderScreen(renderCase(), { pending: true });
+        const { container } = renderScreen(renderCase(), { ...at, pending: true });
         // F10: skeletons carry role="status" so the wait is announced rather than
         // being a silent blank region.
         expect(
@@ -1797,7 +1894,7 @@ describe.each(CASES)(
             ]),
           ),
         };
-        const { container } = renderScreen(renderCase(), f);
+        const { container } = renderScreen(renderCase(), { ...at, ...f });
         await waitFor(() =>
           expect(container.textContent).toMatch(
             /permission|failed|unable|error|wrong/i,
@@ -1815,7 +1912,7 @@ describe.each(CASES)(
           Object.keys(routes ?? {}).map((k) => [k, []]),
         ),
       };
-      const { container } = renderScreen(renderCase(), f);
+      const { container } = renderScreen(renderCase(), { ...at, ...f });
       await waitFor(() =>
         expect(container.querySelector('[aria-busy="true"]')).toBeFalsy(),
       );
@@ -1825,7 +1922,7 @@ describe.each(CASES)(
     });
 
     it("populated state is clean, with exactly one h1", async () => {
-      const { container } = renderScreen(renderCase(), { routes });
+      const { container } = renderScreen(renderCase(), { ...at, routes });
       if (populatedProof)
         await waitFor(() =>
           expect(container.textContent).toMatch(populatedProof),

@@ -149,6 +149,24 @@
       "actions": []
     },
     {
+      "id": "settings_website",
+      "title": "Website pages",
+      "route": "/settings/website",
+      "area": "settings",
+      "module_key": "MOD-29",
+      "purpose": "The tenant's public website content: pages (key, titles, slugs, SEO, publish state) and the ordered blocks on them. Only the two block types the marketing site renders have a form \u2014 the figures band and the credentials row \u2014 and a figure may bind to a metric in the registry so the number is recomputed from the ledger on every page view. Requires MOD-29 edit; not gated on the website package, so a site can be prepared before it is bought.",
+      "actions": []
+    },
+    {
+      "id": "settings_website_page",
+      "title": "Website page",
+      "route": "/settings/website/:pageId",
+      "area": "settings",
+      "module_key": "MOD-29",
+      "purpose": "One page of the public website: its identity and SEO fields, and its blocks \u2014 add, reorder, hide, delete, and edit the figures and credentials the marketing site draws. Block types with no editor here are listed and left untouched so they keep their place in the order.",
+      "actions": []
+    },
+    {
       "id": "settings_pwa",
       "title": "App & PWA",
       "route": "/settings/pwa",

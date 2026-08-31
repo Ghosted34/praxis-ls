@@ -230,6 +230,25 @@ jobs:
         # This moves the discovery to the PR.
         run: node scripts/check-env-template.js
 
+      - name: Workbook is not stale
+        # doc/PRAXIS_ENGINEERING_WORKBOOK.html is a 1.2 MB build output committed
+        # beside the sources that produce it, because a new engineer is handed ONE
+        # file they open in Chrome with no build step and no network. The cost of
+        # that trade is the failure mode every checked-in artefact has: someone
+        # edits a chapter in doc/workbook/src/, forgets to rebuild, and the file
+        # everyone READS silently stops matching the file everyone EDITS. Review
+        # cannot see it — the diff simply does not mention the HTML.
+        #
+        # Same argument as the frontend-guide gate above: a document nobody can
+        # check stays wrong for months because being wrong costs nothing. A
+        # generated workbook is worse, because it always looks freshly built.
+        #
+        # Also asserts the html2canvas/jspdf copies inlined into that HTML are the
+        # versions the root package.json declares. They are declared there purely
+        # so Dependabot and `npm audit` can see them — and a bump that nobody
+        # regenerates is a bump that never reached the file anyone opens.
+        run: npm run check:workbook
+
       - name: Font gate
         # No font from outside client/src/lib/fonts.ts may be NAMED anywhere —
         # UI, PDF templates, Excel exports, email shells, the platform console.

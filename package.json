@@ -19,6 +19,7 @@
     "lint": "eslint . --max-warnings 136",
     "lint:fix": "eslint . --fix",
     "check:fonts": "node scripts/check-fonts.mjs",
+    "check:workbook": "node doc/workbook/check-workbook.mjs",
     "marketing:capture": "node scripts/marketing/capture-screens.mjs",
     "format": "prettier --write .",
     "test": "jest",
@@ -118,12 +119,15 @@
   },
   "devDependencies": {
     "eslint": "^9.15.0",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
     "jest": "^29.7.0",
     "nodemon": "^3.1.7",
     "pino-pretty": "^13.0.0",
     "prettier": "^3.4.1",
     "supertest": "^7.0.0"
   },
+  "//workbook-vendor": "html2canvas and jspdf are NOT imported by the API. They are devDependencies so Dependabot and `npm audit` can see them: doc/workbook/tools/make-vendor.mjs inlines them into the offline workbook HTML and reads the pinned versions from devDependencies. Exact pins, no caret — the inlined copy in doc/workbook/src/vendor.mjs is a build output, so a floating range would let the committed artefact and the declared version drift apart silently. `npm run check:workbook` fails if they do.",
   "//puppeteer": "Chromium is installed by the Docker image (apt) and located via PUPPETEER_EXECUTABLE_PATH; set PUPPETEER_SKIP_DOWNLOAD=1 in CI to avoid the bundled download.",
   "//deepseek": "DeepSeek is OpenAI-API-compatible — the 'openai' SDK is pointed at DEEPSEEK_BASE_URL. Gemini uses @google/generative-ai; Groq uses groq-sdk (voice-to-text)."
 }

@@ -1,0 +1,628 @@
+<title>Smart Logistics Design System</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --blue-deep:#055B83;
+    --blue:#1F99D8;
+    --orange:#EE7D04;
+    --green:#2ECC71;
+    --ink:#231F20;
+    --surface:#F4F6F7;
+
+    --bg:#FBFCFD;
+    --panel:#FFFFFF;
+    --panel-2:#F4F6F7;
+    --text:#231F20;
+    --text-dim:rgba(35,31,32,.68);
+    --text-faint:rgba(35,31,32,.48);
+    --line:rgba(17,24,39,.12);
+    --line-soft:rgba(17,24,39,.07);
+    --accent:var(--blue);
+    --accent-2:var(--orange);
+    --shadow:0 12px 30px rgba(2,6,23,.08);
+    --code-bg:rgba(5,91,131,.06);
+    --swatch-ring:rgba(2,6,23,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141314;
+      --panel:#1C1B1C;
+      --panel-2:#232122;
+      --text:#F3F1EF;
+      --text-dim:rgba(243,241,239,.70);
+      --text-faint:rgba(243,241,239,.46);
+      --line:rgba(255,255,255,.14);
+      --line-soft:rgba(255,255,255,.08);
+      --accent:#44BDF2;
+      --accent-2:#FF9B3B;
+      --shadow:0 14px 34px rgba(0,0,0,.45);
+      --code-bg:rgba(68,189,242,.10);
+      --swatch-ring:rgba(255,255,255,.18);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141314;
+    --panel:#1C1B1C;
+    --panel-2:#232122;
+    --text:#F3F1EF;
+    --text-dim:rgba(243,241,239,.70);
+    --text-faint:rgba(243,241,239,.46);
+    --line:rgba(255,255,255,.14);
+    --line-soft:rgba(255,255,255,.08);
+    --accent:#44BDF2;
+    --accent-2:#FF9B3B;
+    --shadow:0 14px 34px rgba(0,0,0,.45);
+    --code-bg:rgba(68,189,242,.10);
+    --swatch-ring:rgba(255,255,255,.18);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Manrope",system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{font-family:"Montserrat",system-ui,sans-serif;text-wrap:balance;margin:0}
+  code,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+  /* ---------- masthead ---------- */
+  header.mast{
+    background:linear-gradient(135deg,#055B83 0%,#0A7AB0 55%,#1F99D8 100%);
+    color:#fff;
+    padding:64px 0 56px;
+    position:relative;
+    overflow:hidden;
+  }
+  header.mast::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(720px 320px at 82% 8%, rgba(238,125,4,.30), transparent 60%);
+    pointer-events:none;
+  }
+  .mast .wrap{position:relative;z-index:1}
+  .mast .kicker{
+    font-family:"Montserrat";font-weight:800;font-size:.72rem;letter-spacing:.18em;
+    text-transform:uppercase;color:rgba(255,255,255,.80);margin-bottom:14px;
+  }
+  .mast h1{font-size:clamp(2.1rem,1.4rem+2.8vw,3.2rem);font-weight:900;line-height:1.05;letter-spacing:-.01em}
+  .mast p{max-width:62ch;color:rgba(255,255,255,.88);margin:16px 0 0;font-size:1.05rem}
+  .mast .meta{
+    display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;
+  }
+  .mast .meta span{
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+    border-radius:999px;padding:6px 14px;font-size:.78rem;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;
+  }
+
+  /* ---------- layout ---------- */
+  .shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:56px;padding:56px 0 96px}
+  @media (max-width:900px){ .shell{grid-template-columns:1fr;gap:0;padding-top:36px} nav.toc{display:none} }
+
+  nav.toc{position:sticky;top:24px;align-self:start;font-size:.86rem}
+  nav.toc div{
+    font-family:"Montserrat";font-weight:800;font-size:.66rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--text-faint);margin:0 0 12px;
+  }
+  nav.toc a{
+    display:block;padding:5px 0 5px 12px;color:var(--text-dim);text-decoration:none;
+    border-left:2px solid var(--line-soft);
+  }
+  nav.toc a:hover{color:var(--accent);border-left-color:var(--accent)}
+
+  section.block{scroll-margin-top:24px;margin:0 0 68px}
+  section.block > h2{
+    font-size:1.55rem;font-weight:800;letter-spacing:-.01em;
+    padding-bottom:12px;border-bottom:2px solid var(--line);margin-bottom:8px;
+  }
+  .lede{color:var(--text-dim);max-width:68ch;margin:0 0 28px}
+  h3.sub{
+    font-size:.74rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);margin:34px 0 14px;
+  }
+  p{margin:0 0 14px}
+  ul{margin:0 0 14px;padding-left:20px}
+  li{margin:0 0 7px;color:var(--text-dim)}
+  li strong{color:var(--text)}
+  .note{color:var(--text-dim)}
+
+  code{
+    background:var(--code-bg);border-radius:5px;padding:1px 6px;font-size:.86em;
+    color:var(--text);
+  }
+
+  /* ---------- swatches ---------- */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px;margin-bottom:18px}
+  .sw{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel)}
+  .sw .chip{height:76px}
+  .sw .info{padding:11px 13px 13px}
+  .sw .name{font-family:"Montserrat";font-weight:800;font-size:.83rem}
+  .sw .hex{font-family:"JetBrains Mono";font-size:.76rem;color:var(--text-dim);margin-top:2px}
+  .sw .use{font-size:.76rem;color:var(--text-faint);margin-top:6px;line-height:1.45}
+
+  /* ---------- tables ---------- */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;font-size:.87rem;min-width:520px}
+  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{
+    font-family:"Montserrat";font-weight:800;font-size:.68rem;letter-spacing:.10em;
+    text-transform:uppercase;color:var(--text-faint);background:var(--panel-2);
+  }
+  tr:last-child td{border-bottom:none}
+  td.mono{font-family:"JetBrains Mono";font-size:.8rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+  td small{color:var(--text-faint);display:block;font-size:.78rem}
+
+  /* ---------- spec / demo panels ---------- */
+  .demo{
+    border:1px solid var(--line);border-radius:16px;background:var(--panel);
+    padding:24px;margin:0 0 18px;
+  }
+  .demo .label{
+    font-family:"Montserrat";font-weight:800;font-size:.64rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--text-faint);margin-bottom:16px;
+  }
+  .demo .stage{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+
+  /* replicated site components */
+  .btn-smart{
+    display:inline-flex;align-items:center;gap:8px;
+    background:#1F99D8;color:#fff;border:1px solid #1F99D8;border-radius:12px;
+    padding:10px 20px;font-weight:800;font-size:.95rem;cursor:pointer;
+    transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+  }
+  .btn-smart:hover{background:#EE7D04;border-color:#EE7D04;transform:translateY(-1px);box-shadow:0 12px 26px rgba(5,91,131,.18)}
+  .btn-ghost{
+    display:inline-flex;align-items:center;gap:8px;background:transparent;color:#1F99D8;
+    border:1px solid rgba(31,153,216,.45);border-radius:12px;padding:10px 20px;font-weight:800;font-size:.95rem;
+  }
+  .pill-glass{
+    display:inline-flex;align-items:center;gap:8px;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.36);
+    border-radius:999px;padding:7px 15px;color:#fff;font-weight:700;font-size:.85rem;
+  }
+  .pill-soft{
+    display:inline-flex;align-items:center;gap:7px;
+    background:rgba(5,91,131,.08);border:1px solid rgba(5,91,131,.14);color:#055B83;
+    border-radius:999px;padding:6px 12px;font-weight:700;font-size:.8rem;
+  }
+  .pill-eyebrow{
+    display:inline-flex;background:#EE7D04;color:#fff;border-radius:999px;
+    padding:7px 16px;font-family:"Montserrat";font-weight:800;font-size:.68rem;
+    letter-spacing:.14em;text-transform:uppercase;
+  }
+  .onblue{
+    background:linear-gradient(135deg,#055B83,#1F99D8);border-radius:16px;padding:22px;
+  }
+  .card-premium{
+    border:1px solid rgba(17,24,39,.10);border-radius:18px;background:rgba(255,255,255,.20);
+    box-shadow:0 12px 30px rgba(2,6,23,.08);padding:24px;
+  }
+  .statcard{
+    background:linear-gradient(140deg,#0A7AB0,#2FA7E0);color:#fff;border-radius:18px;padding:20px 22px;
+    min-width:210px;position:relative;
+  }
+  .statcard .k{font-size:.82rem;font-weight:700;opacity:.92}
+  .statcard .v{font-family:"Montserrat";font-weight:900;font-size:1.8rem;line-height:1.15;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+  .statcard .s{font-size:.78rem;opacity:.82}
+  .iconchip{
+    width:44px;height:44px;border-radius:14px;display:grid;place-items:center;
+    font-size:1.05rem;font-weight:800;
+  }
+
+  /* type specimen */
+  .spec{border-left:3px solid var(--accent);padding:2px 0 2px 18px;margin:0 0 18px}
+  .spec .t{margin:0;color:var(--text)}
+  .spec .d{font-family:"JetBrains Mono";font-size:.75rem;color:var(--text-faint);margin-top:5px}
+
+  /* findings */
+  .finding{
+    border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 14px 14px 0;
+    background:var(--panel);padding:16px 18px;margin:0 0 12px;
+  }
+  .finding h4{font-size:.95rem;font-weight:800;margin:0 0 5px}
+  .finding p{margin:0;color:var(--text-dim);font-size:.9rem}
+  .finding .where{font-family:"JetBrains Mono";font-size:.72rem;color:var(--text-faint);margin-top:7px}
+
+  footer.foot{
+    border-top:1px solid var(--line);padding:26px 0 60px;color:var(--text-faint);font-size:.82rem;
+  }
+  a{color:var(--accent)}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="kicker">Design capture &middot; smartls.cm &middot; 31 Aug 2026</div>
+    <h1>Smart Logistics<br>Design System</h1>
+    <p>The visual language of smartls.cm, reverse-engineered from the live site across all six pages at desktop (1280px) and mobile (375px) — tokens, type scale, components, layout rules, and the places the system breaks down.</p>
+    <div class="meta">
+      <span>Bootstrap 5.3.3</span>
+      <span>Montserrat + Manrope</span>
+      <span>6 pages</span>
+      <span>Light theme only</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap shell">
+  <nav class="toc">
+    <div>Contents</div>
+    <a href="#overview">Overview</a>
+    <a href="#color">Color</a>
+    <a href="#type">Typography</a>
+    <a href="#form">Shape &amp; depth</a>
+    <a href="#layout">Layout &amp; grid</a>
+    <a href="#components">Components</a>
+    <a href="#patterns">Page patterns</a>
+    <a href="#responsive">Responsive</a>
+    <a href="#motion">Motion</a>
+    <a href="#findings">Findings</a>
+  </nav>
+
+  <main>
+
+  <section class="block" id="overview">
+    <h2>Overview</h2>
+    <p class="lede">A corporate-blue B2B logistics site built on Bootstrap 5.3.3 with a single 98&nbsp;KB custom stylesheet layered on top. The system is <strong>photo-led</strong>: nearly every section either sits on a photograph with a blue-to-black scrim, or on a near-white wash. Content lives in soft-shadowed 18px-radius cards. Orange is used sparingly and always as the interruption — eyebrows, icons, hover states, the active carousel dot.</p>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Aspect</th><th>What the site does</th></tr>
+        <tr><td>Base framework</td><td>Bootstrap 5.3.3 (grid, navbar, carousel, modal, forms, utilities) + Font Awesome 6.5.2 icons</td></tr>
+        <tr><td>Custom layer</td><td><code>/css/style.css</code>, ~98&nbsp;KB, CSS custom properties on <code>:root</code>, BEM-ish page-scoped names (<code>.service-page__hero</code>)</td></tr>
+        <tr><td>Theme</td><td>Light only. No dark-mode tokens, no <code>prefers-color-scheme</code> handling</td></tr>
+        <tr><td>Page set</td><td>Home, Services, Kaizen Hub, Smart Track, About Us, Smart Quote (+ policy modals)</td></tr>
+        <tr><td>Tone</td><td>Heavy weights (800/900 dominate), uppercase display headings, wide tracking on labels, generous 80px section rhythm</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="color">
+    <h2>Color</h2>
+    <p class="lede">Six declared tokens do the whole job. Two blues carry structure and action, orange is the single accent, charcoal is the ink and the footer ground, and one pale grey separates alternating bands.</p>
+
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#055B83"></div><div class="info"><div class="name">Smart Blue 1</div><div class="hex">#055B83 · --smart-blue-1</div><div class="use">Deep brand blue. Hero scrims, footer accents, section overlays, dark headings on light.</div></div></div>
+      <div class="sw"><div class="chip" style="background:#1F99D8"></div><div class="info"><div class="name">Smart Blue 2</div><div class="hex">#1F99D8 · --smart-blue-2</div><div class="use">Action blue. Every primary button, nav link, focus ring, stat gradient.</div></div></div>
+      <div class="sw"><div class="chip" style="background:#EE7D04"></div><div class="info"><div class="name">Smart Orange</div><div class="hex">#EE7D04 · --smart-orange</div><div class="use">Accent only. Eyebrow pills, list bullets, industry icons, button hover, active dot.</div></div></div>
+      <div class="sw"><div class="chip" style="background:#231F20"></div><div class="info"><div class="name">Smart Charcoal</div><div class="hex">#231F20 · --smart-charcoal</div><div class="use">Body ink, footer background, testimonial card ground.</div></div></div>
+      <div class="sw"><div class="chip" style="background:#F4F6F7"></div><div class="info"><div class="name">Platinum Grey</div><div class="hex">#F4F6F7 · --platinum-grey</div><div class="use">Alternating section surface, applied at 65–72% opacity.</div></div></div>
+      <div class="sw"><div class="chip" style="background:#2ECC71"></div><div class="info"><div class="name">Eco Green</div><div class="hex">#2ECC71 · --eco-green</div><div class="use">Reserved for ESG / green-logistics content and one icon chip. Barely used.</div></div></div>
+    </div>
+
+    <h3 class="sub">Derived values in use</h3>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Role</th><th>Value</th><th>Notes</th></tr>
+        <tr><td>Hairline border</td><td class="mono">rgba(17,24,39,.10)</td><td><code>--border</code>; every card edge</td></tr>
+        <tr><td>Section surface</td><td class="mono">rgba(244,246,247,.65–.72)</td><td>Never opaque — the wash reads softer</td></tr>
+        <tr><td>Photo scrim</td><td class="mono">linear-gradient(rgba(5,91,131,.72), rgba(0,0,0,.55))</td><td>Blue → black; standard on industry and hero bands</td></tr>
+        <tr><td>Hero scrim (home)</td><td class="mono">rgba(5,91,131,.25) → .15</td><td>Much lighter than the inner-page scrim</td></tr>
+        <tr><td>Brand wash</td><td class="mono">radial-gradient(1200px 620px at 12% 10%, rgba(31,153,216,.10))</td><td><code>.section-bg--wash</code> tint behind white sections</td></tr>
+        <tr><td>Glass fill</td><td class="mono">rgba(255,255,255,.16–.22)</td><td>Cards over photos, mobile menu panel</td></tr>
+        <tr><td>Muted body</td><td class="mono">rgba(35,31,32,.70)</td><td><code>.section-sub</code>, capped at 70ch</td></tr>
+        <tr><td>Focus ring</td><td class="mono">0 0 0 .25rem rgba(31,153,216,.12)</td><td>Bootstrap ring recolored to brand blue</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="type">
+    <h2>Typography</h2>
+    <p class="lede">Two Google faces, cleanly divided: <strong>Montserrat</strong> for anything structural (headings, buttons, labels, stat figures) and <strong>Manrope</strong> for everything read as prose (body, nav links, form fields). Weight is the primary expressive tool — 800 and 900 appear 86 times in the stylesheet against 8 uses of 400.</p>
+
+    <div class="spec">
+      <h3 class="t" style="font-size:clamp(2rem,1.4rem+2.4vw,3.4rem);font-weight:800;line-height:1.02;letter-spacing:.4px;text-transform:uppercase">Smart Logistics &amp; Services Ltd</h3>
+      <div class="d">H1 hero · Montserrat 800 · 56px @1280 · lh 1.02 · ls .4px · uppercase · white</div>
+    </div>
+    <div class="spec">
+      <h3 class="t" style="font-size:2rem;font-weight:800;line-height:1.15;letter-spacing:.2px">Unlock Efficient Logistics Solutions</h3>
+      <div class="d">.section-title · Montserrat 800 · 32px · lh 1.15 · sentence case</div>
+    </div>
+    <div class="spec">
+      <div class="t" style="font-size:1.25rem;font-weight:900;font-family:Montserrat">Portal Form Fields</div>
+      <div class="d">Card heading (h3.h5) · Montserrat 900 · 20px</div>
+    </div>
+    <div class="spec">
+      <div class="t" style="font-size:.72rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase;font-family:Montserrat;color:var(--text-dim)">Trusted by global leaders</div>
+      <div class="d">Eyebrow / label · Montserrat 800 · 11.5–12.5px · ls .10–.18em · uppercase</div>
+    </div>
+    <div class="spec">
+      <p class="t" style="margin:0;max-width:62ch">Compliance-led logistics services including customs brokerage, import/export operations, and business representation — structured to reduce delays and control cost.</p>
+      <div class="d">Body · Manrope 400/500 · 16px · lh 1.6 · measure capped at 70ch</div>
+    </div>
+
+    <h3 class="sub">Scale actually in use</h3>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Role</th><th>Desktop</th><th>Mobile</th><th>Family / weight</th></tr>
+        <tr><td>Home H1</td><td class="mono">56px</td><td class="mono">30.4px</td><td>Montserrat 800, uppercase</td></tr>
+        <tr><td>Inner-page H1</td><td class="mono">40–50px</td><td class="mono">~30px</td><td>Montserrat 700–900, uppercase</td></tr>
+        <tr><td>Section title (h2)</td><td class="mono">32px</td><td class="mono">24.6px</td><td>Montserrat 800</td></tr>
+        <tr><td>Card title (h3)</td><td class="mono">20px</td><td class="mono">20px</td><td>Montserrat 900</td></tr>
+        <tr><td>Footer heading</td><td class="mono">16px</td><td class="mono">16px</td><td>Montserrat 700</td></tr>
+        <tr><td>Body</td><td class="mono">16px</td><td class="mono">16px</td><td>Manrope 400/500</td></tr>
+        <tr><td>Small / caption</td><td class="mono">12.5–15px</td><td class="mono">12.5–15px</td><td>Manrope 500–600</td></tr>
+        <tr><td>Eyebrow</td><td class="mono">11.5px</td><td class="mono">11.5px</td><td>Montserrat 800, ls .14–.18em</td></tr>
+      </table>
+    </div>
+    <p class="note">Fluid sizing appears only on the hero rule: <code>clamp(2.05rem, 1.55rem + 2.1vw, 2.95rem)</code>. Everything else steps at breakpoints or not at all. Sizes are authored in irregular rem values (<code>.78</code>, <code>.92</code>, <code>1.02</code>, <code>1.05</code>) rather than on a ratio — there is no formal scale to inherit, only conventions.</p>
+  </section>
+
+  <section class="block" id="form">
+    <h2>Shape &amp; depth</h2>
+    <p class="lede">Two radii carry almost everything: <code>999px</code> for anything pill-shaped (32 uses) and <code>16–18px</code> for anything card-shaped (27 uses). Elevation is a single soft, wide, low-opacity shadow — never a hard drop.</p>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Token</th><th>Value</th><th>Applied to</th></tr>
+        <tr><td>--radius</td><td class="mono">18px</td><td>Cards, testimonial panel, media tiles</td></tr>
+        <tr><td>Pill</td><td class="mono">999px</td><td>Badges, chips, filter tags, carousel dots, avatars</td></tr>
+        <tr><td>Button</td><td class="mono">12px</td><td>All <code>.btn-smart</code> variants</td></tr>
+        <tr><td>Icon chip</td><td class="mono">14–16px</td><td>44px tinted squircles ahead of feature text</td></tr>
+        <tr><td>Input</td><td class="mono">6px</td><td>Bootstrap default, not overridden — visibly tighter than everything around it</td></tr>
+        <tr><td>--shadow-soft</td><td class="mono">0 12px 30px rgba(2,6,23,.08)</td><td>Default card elevation (10 uses)</td></tr>
+        <tr><td>--shadow</td><td class="mono">0 18px 50px rgba(2,6,23,.10)</td><td>Raised / hover state (5 uses)</td></tr>
+        <tr><td>Brand shadow</td><td class="mono">0 12px 26px rgba(5,91,131,.18)</td><td>Buttons — tinted blue, not neutral</td></tr>
+        <tr><td>Testimonial</td><td class="mono">0 20px 60px rgba(2,6,23,.14)</td><td>Deepest elevation on the site</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="layout">
+    <h2>Layout &amp; grid</h2>
+    <p class="lede">A standard Bootstrap container inside a fixed 84px header, with sections alternating between white-with-wash and platinum surface. Section rhythm is 5.5rem (80px) top and bottom on the home page, 76px on inner pages.</p>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Measure</th><th>Value</th><th>Notes</th></tr>
+        <tr><td>Container</td><td class="mono">1160px @ 1280 viewport</td><td>Bootstrap container with widened max-width; 24px gutters</td></tr>
+        <tr><td>Header height</td><td class="mono">84px (--nav-h)</td><td>Fixed; hero uses <code>min-height: calc(100vh - 84px)</code></td></tr>
+        <tr><td>Section padding</td><td class="mono">80px 0 (home) / 76px 0 (inner)</td><td>Two different rhythms in one system</td></tr>
+        <tr><td>3-up cards</td><td class="mono">384px each · gap 16px</td><td><code>row g-3</code> · services, features, articles</td></tr>
+        <tr><td>2-up split</td><td class="mono">576 + 576</td><td>Text/media pairs</td></tr>
+        <tr><td>Asymmetric split</td><td class="mono">677 + 483 · 387 + 773</td><td>About page narrative blocks</td></tr>
+        <tr><td>Partner section</td><td class="mono">459 (intro) + 653 (form)</td><td>Intro card narrower than the form it introduces</td></tr>
+        <tr><td>Footer</td><td class="mono">387 / 193 / 290 / 290</td><td>Brand block wide, link columns narrow</td></tr>
+        <tr><td>Gaps</td><td class="mono">g-3 (16px) · g-4 (24px)</td><td>Only two gap sizes across the site</td></tr>
+      </table>
+    </div>
+
+    <h3 class="sub">Section band recipe</h3>
+    <ul>
+      <li><strong>White + wash</strong> — <code>.section-bg--wash</code>, a 1200×620 radial of <code>rgba(31,153,216,.10)</code> at 12% 10%.</li>
+      <li><strong>Platinum surface</strong> — <code>.section-bg--surface</code>, <code>#F4F6F7</code> at 65–72%.</li>
+      <li><strong>Fixed photo</strong> — <code>.section-bg--fixed</code>, parallax background image under the blue→black scrim. Used for Industries.</li>
+      <li><strong>Charcoal</strong> — footer and testimonial card only.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="components">
+    <h2>Components</h2>
+    <p class="lede">Reconstructed from computed styles on the live pages. Hover the buttons — the primary-to-orange flip is the system's signature interaction.</p>
+
+    <h3 class="sub">Buttons</h3>
+    <div class="demo">
+      <div class="label">.btn-smart — primary</div>
+      <div class="stage">
+        <button class="btn-smart">Get a Quote</button>
+        <button class="btn-smart">➤ Track</button>
+        <button class="btn-ghost">Explore Services</button>
+      </div>
+    </div>
+    <ul>
+      <li><strong>Fill</strong> <code>#1F99D8</code>, white label, Montserrat 800, 12px radius.</li>
+      <li><strong>Hover</strong> flips background and border to <code>#EE7D04</code> — the accent only ever appears on interaction or emphasis.</li>
+      <li><strong>Sizes</strong> come from Bootstrap utilities (<code>px-3 py-2</code>, <code>px-4 py-3</code>) rather than button variants, so padding is inconsistent between instances: 8/16, 16/24 and 6/12 all appear.</li>
+      <li><strong>Icons</strong> lead the label (paper plane for send, phone for call, crosshair for maps).</li>
+    </ul>
+
+    <h3 class="sub">Pills, badges &amp; eyebrows</h3>
+    <div class="demo">
+      <div class="label">Three pill registers</div>
+      <div class="stage" style="margin-bottom:14px">
+        <span class="pill-eyebrow">Interactive Portal</span>
+        <span class="pill-soft">✓ Partnership Intake</span>
+      </div>
+      <div class="onblue stage">
+        <span class="pill-glass">🛡 With Operational Excellence</span>
+        <span class="pill-glass">✈ Freight Forwarding</span>
+      </div>
+    </div>
+    <ul>
+      <li><strong>Solid orange eyebrow</strong> — page-level label above an H1 on light grounds (Smart Quote, Smart Track).</li>
+      <li><strong>Glass pill</strong> — <code>rgba(255,255,255,.16)</code> + 36% white border, used on photo heroes for eyebrows and in-page anchors.</li>
+      <li><strong>Soft brand pill</strong> — <code>rgba(5,91,131,.08)</code> on <code>rgba(5,91,131,.14)</code> border, for in-card status labels.</li>
+      <li>All are <code>999px</code>, Montserrat 700–800, uppercase for eyebrows with <code>.14–.20em</code> tracking.</li>
+    </ul>
+
+    <h3 class="sub">Cards</h3>
+    <div class="demo">
+      <div class="label">.card-premium / .service-card</div>
+      <div class="card-premium" style="max-width:420px">
+        <div class="stage" style="align-items:flex-start;flex-wrap:nowrap;gap:14px">
+          <div class="iconchip" style="background:rgba(31,153,216,.12);color:#1F99D8">✈</div>
+          <div>
+            <div style="font-family:Montserrat;font-weight:800;font-size:1rem;margin-bottom:3px">Multimodal expertise</div>
+            <div style="font-size:.9rem;color:var(--text-dim)">Air, Land, Sea freight forwarding with operational excellence.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <tr><th>Variant</th><th>Spec</th><th>Where</th></tr>
+        <tr><td>card-premium</td><td class="mono">18px · rgba(255,255,255,.20) · 1px rgba(17,24,39,.10) · shadow-soft · 24px pad</td><td>Features, contact, partner blocks</td></tr>
+        <tr><td>card-premium (large)</td><td class="mono">same, 48px pad via <code>p-lg-5</code></td><td>Partner intro + intake form</td></tr>
+        <tr><td>service-card</td><td class="mono">18px · 12% border · 24px pad · 368px wide</td><td>Services 3-up</td></tr>
+        <tr><td>Glass card</td><td class="mono">translucent white on photo, backdrop blur</td><td>Industries, service media tiles</td></tr>
+        <tr><td>Stat card</td><td class="mono">18px · blue gradient · white text · icon top-right</td><td>Home metrics</td></tr>
+        <tr><td>Testimonial</td><td class="mono">18px · #231F20 · 25.6px pad · 720px · deepest shadow</td><td>Home carousel</td></tr>
+      </table>
+    </div>
+
+    <div class="demo">
+      <div class="label">Stat card — counters animate from 0 on scroll into view</div>
+      <div class="stage">
+        <div class="statcard"><div class="k">CBM Managed</div><div class="v">41,850 +</div><div class="s">For internationally funded projects</div></div>
+        <div class="statcard"><div class="k">Clearance Time</div><div class="v">72 Hours</div><div class="s">Average customs clearance</div></div>
+      </div>
+    </div>
+
+    <h3 class="sub">Icon chips</h3>
+    <div class="demo">
+      <div class="label">44px squircle, 12% tint of its own hue</div>
+      <div class="stage">
+        <div class="iconchip" style="background:rgba(31,153,216,.12);color:#1F99D8">✈</div>
+        <div class="iconchip" style="background:rgba(238,125,4,.12);color:#EE7D04">🛡</div>
+        <div class="iconchip" style="background:rgba(46,204,113,.14);color:#2ECC71">♻</div>
+        <div class="iconchip" style="background:rgba(35,31,32,.06);color:#231F20">▤</div>
+      </div>
+    </div>
+    <p class="note">Hue encodes category: blue for freight/logistics capability, orange for compliance and industry markers, green for ESG, neutral grey for inactive wizard options.</p>
+
+    <h3 class="sub">Forms</h3>
+    <ul>
+      <li>Bootstrap <code>.form-control</code>, largely unstyled: <strong>6px radius</strong>, white fill, ~57px tall with 16px padding, 16.8px text.</li>
+      <li>Labels are Manrope 700, sentence case, sitting directly above the field.</li>
+      <li>Focus uses a brand-recolored ring, <code>0 0 0 .25rem rgba(31,153,216,.12)</code>.</li>
+      <li>File input is the raw browser control — the only unstyled element on the site.</li>
+      <li>Submit buttons are full-width on mobile, auto-width on desktop.</li>
+    </ul>
+
+    <h3 class="sub">Navigation</h3>
+    <ul>
+      <li><strong>Desktop</strong> — fixed white bar, 84px, logo left, five Manrope 700 links (<code>#1F99D8</code>), then an <code>EN</code> language pill and a solid blue <em>GET A QUOTE</em> button.</li>
+      <li><strong>Mobile</strong> — hamburger collapses into a translucent dropdown panel; active item sits in a pale pill with blue text, remaining items in charcoal; language pill and CTA stack beneath.</li>
+      <li>Toggler swaps to an X glyph when open.</li>
+    </ul>
+
+    <h3 class="sub">Carousel &amp; stepper</h3>
+    <ul>
+      <li><strong>Testimonials</strong> — charcoal card, circular blue initials avatar, name in Montserrat 700 with role beneath in muted grey, curly quotes on the body. Controls are dark circular chevrons; indicators are small squares, blue for inactive and <code>rgba(238,125,4,.85)</code> for active.</li>
+      <li><strong>Quote wizard</strong> — four numbered circular steps with uppercase Montserrat labels (NEED / ROUTE / DETAILS / CONTACT), active step filled blue, plus a thin orange→blue progress bar across the card top. Options are selectable cards with a centered icon chip; the selected card takes a blue border and tinted fill.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="patterns">
+    <h2>Page patterns</h2>
+    <p class="lede">Every page except Home opens with the same hero recipe: photo, blue→black scrim, glass eyebrow pill, uppercase Montserrat H1, one line of Manrope support copy, then either anchor pills or a CTA.</p>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Page</th><th>Hero</th><th>Body pattern</th><th>Height @1280</th></tr>
+        <tr><td><strong>Home</strong></td><td>Full-bleed photo, <code>100vh − 84px</code>, light scrim, inline track field + TRACK button</td><td>Logo marquee → intro + stat cards → fixed-photo Industries → 3 service pillars → testimonials → partner intake → contact + map</td><td class="mono">5020px</td></tr>
+        <tr><td><strong>Services</strong></td><td>302px band, glass anchor pills to §A/§B/§C</td><td>Three alternating sections; each = title + sub + sub-item list card + photo media tile with orange mode tags</td><td class="mono">2487px</td></tr>
+        <tr><td><strong>About Us</strong></td><td>425px band, three glass stat pills (Founded / Base / Focus) + Contact CTA</td><td>Overview card → photo with caption plate → mission &amp; vision → orange-bulleted principle rows → ESG → CTA</td><td class="mono">4239px</td></tr>
+        <tr><td><strong>Kaizen Hub</strong></td><td>334px band, search field + category filter pills (All / Strategy / Humanitarian / Technology)</td><td>Article cards: 16:9 image with floating category pills, Montserrat title, byline with avatar icon, hairline rule, "Read Article" + orange arrow</td><td class="mono">2122px</td></tr>
+        <tr><td><strong>Smart Track</strong></td><td>No photo — pale world-map background, orange eyebrow, two-tone "Smart <em>Track</em>" H1</td><td>Single centered lookup card: reference input + full-width TRACK button, three trust icons beneath. Footer sits immediately below</td><td class="mono">807px</td></tr>
+        <tr><td><strong>Smart Quote</strong></td><td>Same map ground, orange eyebrow, two-tone "Smart Quote <em>Wizard</em>"</td><td>Single wizard card: 4-step indicator, progress bar, option card grid, Continue button; ISO 9001 / SSL trust marks beneath</td><td class="mono">1263px</td></tr>
+      </table>
+    </div>
+
+    <p class="note">The two-tone H1 (charcoal word + blue word) is used only on the two utility pages, and marks them as "app" rather than "marketing" — a quiet, effective distinction.</p>
+  </section>
+
+  <section class="block" id="responsive">
+    <h2>Responsive behaviour</h2>
+    <p class="lede">Breakpoints are Bootstrap's, with custom rules concentrated at <code>991.98px</code> (nav collapse) and <code>575.98px</code> (type and padding compression).</p>
+
+    <div class="tablewrap">
+      <table>
+        <tr><th>Breakpoint</th><th>What changes</th></tr>
+        <tr><td class="mono">≥992px</td><td>Full horizontal nav; multi-column rows; <code>p-lg-5</code> raises card padding from 24px to 48px</td></tr>
+        <tr><td class="mono">≤991.98px</td><td>Navbar collapses to hamburger (measured 68px tall at 375px, min-height rule 56px); nav links shrink to .95rem; all rows stack to single column</td></tr>
+        <tr><td class="mono">≤767px</td><td>Card grids fully stacked; media tiles go full-width</td></tr>
+        <tr><td class="mono">≤575.98px</td><td>Hero type steps down via <code>clamp()</code> — H1 56→30.4px, section titles 32→24.6px; buttons go full-width. Section padding stays 80px, so vertical rhythm is not compressed on phones</td></tr>
+        <tr><td class="mono">hover: none</td><td>Transform-based hover lifts are disabled on touch</td></tr>
+        <tr><td class="mono">prefers-reduced-motion</td><td>Reveal animations and transitions suppressed</td></tr>
+      </table>
+    </div>
+
+    <h3 class="sub">Observed at 375px</h3>
+    <ul>
+      <li>Header stays fixed and white; content clears it correctly on every page.</li>
+      <li>Home hero keeps the full-viewport photo; the track field and TRACK button sit side by side rather than stacking, which keeps the input narrow.</li>
+      <li>Every card grid becomes one column with 16px gaps; card padding stays 24px.</li>
+      <li>Stat cards, industry cards, service pillars and article cards all reflow cleanly — no overflow, no horizontal scroll anywhere.</li>
+      <li>The Services anchor pills wrap to three rows and stay tappable.</li>
+      <li>Footer stacks brand block, then Quick Links, Corporate Policies, Contact.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="motion">
+    <h2>Motion</h2>
+    <ul>
+      <li><strong>Scroll reveal</strong> — <code>[data-reveal]</code> elements start at <code>opacity:0; translateY(18px)</code> and transition over <code>.6s ease</code> to visible, toggled by an <code>.is-visible</code> class.</li>
+      <li><strong>Card hover</strong> — <code>transform .18s ease, box-shadow .18s ease</code>, the single most repeated transition (8 uses).</li>
+      <li><strong>Button hover</strong> — background and border flip to orange over <code>.18s</code>, with a lift and a blue-tinted shadow.</li>
+      <li><strong>Counters</strong> — stat figures animate up from 0 when the section enters the viewport. A page scraped before the trigger fires reads <code>0+</code>.</li>
+      <li><strong>Header</strong> — <code>transition: height .2s ease</code>, with a <code>cubic-bezier(.2,.9,.2,1)</code> transform on the mobile panel.</li>
+      <li><strong>Marquee</strong> — client logos scroll continuously in the band under the hero.</li>
+    </ul>
+  </section>
+
+  <section class="block" id="findings">
+    <h2>Findings</h2>
+    <p class="lede">Things worth fixing, found while walking the pages at both widths.</p>
+
+    <div class="finding">
+      <h4>Mobile menu panel is too transparent</h4>
+      <p>The collapsed nav uses a translucent fill, so the hero photograph and its headline read straight through the menu items. Charcoal links over a moving photo is the weakest contrast on the site.</p>
+      <div class="where">375px · every page · .navbar-collapse.show</div>
+    </div>
+
+    <div class="finding">
+      <h4>Carousel arrows sit on top of the quote text</h4>
+      <p>At 375px the previous/next chevrons overlap the left and right edges of the testimonial card, clipping the first and last characters of several lines.</p>
+      <div class="where">375px · home · .testimonials-pro__control</div>
+    </div>
+
+    <div class="finding">
+      <h4>Body copy over busy photographs</h4>
+      <p>Several service and industry cards place white Manrope 400 over photographs where the scrim thins out — legible in places, marginal in others. A minimum scrim opacity, or a solid plate behind the text, would make it consistent.</p>
+      <div class="where">All widths · services, industries</div>
+    </div>
+
+    <div class="finding">
+      <h4>Input radius contradicts the system</h4>
+      <p>Every card is 18px and every button 12px, but form fields keep Bootstrap's 6px default. On the partner intake and quote wizard — the two places conversion happens — the inputs read as un-designed next to their container.</p>
+      <div class="where">All widths · .form-control</div>
+    </div>
+
+    <div class="finding">
+      <h4>Button padding is set per instance</h4>
+      <p><code>.btn-smart</code> appears with 8/16, 16/24 and 6/12 padding depending on which Bootstrap utilities were attached. Three named sizes on the class itself would remove the drift.</p>
+      <div class="where">All widths · site-wide</div>
+    </div>
+
+    <div class="finding">
+      <h4>Two page backgrounds hotlink Wikimedia</h4>
+      <p>Smart Track and Smart Quote both pull their world-map background from <code>upload.wikimedia.org</code>. That is a third-party dependency on two conversion pages, and Wikimedia's policy discourages hotlinking. Self-host the asset.</p>
+      <div class="where">All widths · smart-track, smart-quote</div>
+    </div>
+
+    <div class="finding">
+      <h4>Two section rhythms coexist</h4>
+      <p>Home sections use 80px vertical padding; Services and Kaizen use 76px. The difference is invisible in isolation and untraceable in maintenance — pick one and token it.</p>
+      <div class="where">≥992px · .section vs .service-page__section</div>
+    </div>
+
+    <div class="finding">
+      <h4>No dark theme</h4>
+      <p>No <code>prefers-color-scheme</code> rules exist. Given the palette already carries a charcoal ground (footer, testimonial card), a dark mode would be a small extension rather than a rebuild.</p>
+      <div class="where">Site-wide</div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Captured 31 August 2026 from smartls.cm at 1280×800 and 375×812. Values read from computed styles and <code>/css/style.css</code>; components above are reconstructions, not the site's own markup.
+  </footer>
+
+  </main>
+</div>

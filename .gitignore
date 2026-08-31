@@ -101,3 +101,4 @@ client/test-errors.txt
 # (scripts/dev/render-portal.js). The harness SOURCE is committed; its bundle is
 # rebuilt on every run and is several hundred kilobytes of noise in a diff.
 client/scripts/portal-preview/dist/
+tracking.html

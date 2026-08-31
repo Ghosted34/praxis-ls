@@ -58,7 +58,7 @@ import { p } from "@/lib/base-path";
 export function ServicesIndexPage() {
   const { t } = useTranslation();
   const lang = getLang();
-  const { services, disabled, failed } = usePublishedServices();
+  const { services, loading } = usePublishedServices();
 
   useDocumentMeta({
     title: `${t("site.servicesPage.title")} · ${t("site.hero.eyebrow")}`,
@@ -102,12 +102,19 @@ export function ServicesIndexPage() {
               </Reveal>
             ))}
           </ul>
-        ) : failed || disabled ? (
-          // No quote button on this state: the band below is the same offer,
-          // and two CTAs a screen apart read as a page unsure what it wants.
-          <EmptyState title={t("site.servicesPage.empty")} />
-        ) : (
+        ) : loading ? (
           <PageSkeleton rows={3} cols={3} />
+        ) : (
+          // Every not-loading, no-rows case lands here — a tenant who has
+          // published nothing, a disabled `website` feature, a failed fetch.
+          // They are one screen on purpose: the visitor's next move is the same
+          // in all three, and a skeleton that never resolves (which is what the
+          // old ordering produced for the 200-empty case) is the one answer that
+          // helps nobody.
+          //
+          // No quote button here: the band below is the same offer, and two CTAs
+          // a screen apart read as a page unsure what it wants.
+          <EmptyState title={t("site.servicesPage.empty")} />
         )}
       </Section>
 

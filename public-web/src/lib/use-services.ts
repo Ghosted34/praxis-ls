@@ -61,7 +61,19 @@ export function __resetServiceCache(): void {
   cache = null;
 }
 
-export function usePublishedServices(): ServiceCache {
+/**
+ * `loading` exists because the absence of services has two causes and they need
+ * two different screens. Before this flag the hook answered `{services: [],
+ * disabled: false, failed: false}` BOTH while the request was in flight and
+ * after a 200 that carried an empty array, so `/public/services` — whose ternary
+ * reads "rows, else failed/disabled, else skeleton" — fell through to the
+ * skeleton and stayed there for a tenant that has published nothing. A visitor
+ * saw grey placeholder bars pulsing forever on a page that had already finished
+ * loading. A caller that wants to distinguish "still asking" from "asked, and
+ * the answer was none" cannot do it from three booleans that are identical in
+ * both states.
+ */
+export function usePublishedServices(): ServiceCache & { loading: boolean } {
   const [state, setState] = React.useState<ServiceCache | null>(null);
   React.useEffect(() => {
     let alive = true;
@@ -70,5 +82,5 @@ export function usePublishedServices(): ServiceCache {
       alive = false;
     };
   }, []);
-  return state ?? EMPTY;
+  return { ...(state ?? EMPTY), loading: state === null };
 }

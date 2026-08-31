@@ -5,6 +5,11 @@ import { getLang, tList } from "@/lib/i18n";
 import { usePublishedServices } from "@/lib/use-services";
 import { pickSlug, pickText } from "@/lib/services-api";
 import { listStories, type PortfolioCard } from "@/lib/portfolio-api";
+import {
+  listCorridors,
+  MODE_ACCENT,
+  type Corridor,
+} from "@/lib/corridors-api";
 import { Hero } from "@/components/site/hero";
 import {
   MediaCard,
@@ -12,12 +17,19 @@ import {
   Section,
   StepList,
 } from "@/components/site/section";
-import { PortalPreview } from "@/components/site/graphics";
+import { PortalPreview, RouteGraphic } from "@/components/site/graphics";
 import { PageShell } from "@/components/site/page-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ButtonLink } from "@/components/ui/button";
-import { ArrowRightIcon, BoxIcon, DocumentIcon } from "@/components/ui/icons";
+import {
+  ArrowRightIcon,
+  BoxIcon,
+  DocumentIcon,
+  ShipIcon,
+  TruckIcon,
+  WarehouseIcon,
+} from "@/components/ui/icons";
 import { Reveal } from "@/components/ui/reveal";
 import { ContactForm } from "@/components/site/contact-form";
 import { p } from "@/lib/base-path";
@@ -67,6 +79,23 @@ export function MarketingPage() {
     </PageShell>
   );
 }
+
+/**
+ * One glyph per card, cycling with position.
+ *
+ * §7.3 is right that a tinted tile is the honest stand-in for a cover the tenant
+ * has not uploaded — but it was drawn with `BoxIcon` on all four cards, and four
+ * identical glyphs in a row is the thing that reads as unfinished. Repetition is
+ * what a visitor notices, not absence.
+ *
+ * The cycle is keyed on POSITION, never on what the card says. Matching a glyph
+ * to a tenant-authored name ("a ship for the sea-freight profile") means this
+ * file guessing at the meaning of strings it did not write, in two languages,
+ * and being wrong on the first tenant who writes "Maritime & Air". Position is a
+ * fact; the service's mode is not ours to infer. `BoxIcon` stays in the cycle as
+ * the neutral member rather than as the default for everything.
+ */
+const CARD_ICONS = [ShipIcon, DocumentIcon, WarehouseIcon, TruckIcon, BoxIcon];
 
 /** Dict fallback under the tenant's real profiles.
  *
@@ -128,8 +157,10 @@ function ServicesBand() {
               imageAlt={s.title || ""}
               // The dict fallback has no artwork by design (N12), and the four
               // text boxes that produced were the flattest thing on the home
-              // page. A glyph tile is the honest stand-in (§7.3).
-              icon={BoxIcon}
+              // page. A glyph tile is the honest stand-in (§7.3) — one glyph
+              // PER CARD, so the row reads as four things rather than one
+              // repeated four times.
+              icon={CARD_ICONS[i % CARD_ICONS.length]}
               title={s.title}
               to={s.to}
               linkLabel={t("site.services.more")}
@@ -181,12 +212,22 @@ function HowBand() {
 function ProofBand() {
   const { t } = useTranslation();
   const [stories, setStories] = React.useState<PortfolioCard[] | null>(null);
+  /* Corridors are the SECOND-choice proof and are fetched unconditionally
+     anyway: the request is one cheap aggregate, it starts in parallel with the
+     stories rather than after them, and a band that waits for one empty answer
+     before asking the next question spends two round trips to show nothing. */
+  const [lanes, setLanes] = React.useState<Corridor[] | null>(null);
 
   React.useEffect(() => {
     let alive = true;
     listStories()
       .then((rows) => alive && setStories(Array.isArray(rows) ? rows : []))
       .catch(() => alive && setStories([]));
+    listCorridors()
+      .then((rows) => alive && setLanes(Array.isArray(rows) ? rows : []))
+      // A tenant without the `website` feature answers FEATURE_DISABLED here,
+      // which is a configuration state and not an outage: no lanes, no noise.
+      .catch(() => alive && setLanes([]));
     return () => {
       alive = false;
     };
@@ -210,9 +251,30 @@ function ProofBand() {
           ))}
         </div>
       ) : !stories.length ? (
-        <p className="max-w-prose text-sm text-muted-foreground">
-          {t("site.proof.empty")}
-        </p>
+        /* Three answers, in descending order of what they prove.
+ 
+           No case notes does not mean nothing to show. The lanes below are not
+           copy — they are a GROUP BY over completed itinerary legs, floored so
+           that no corridor can identify a client's shipment — so they say
+           something true about this business without anybody writing a sentence.
+           N12 forbids inventing proof; it does not forbid counting it.
+ 
+           Below the floor, or before the ledger has enough history, the answer is
+           the honest sentence it always was — now inside a composed panel with
+           the brand's own route drawing, which names no port and no number,
+           rather than floating alone in a 200px band. */
+        lanes && lanes.length ? (
+          <CorridorPanel lanes={lanes} />
+        ) : (
+          <div className="grid items-center gap-8 rounded-[var(--radius)] border bg-[var(--secondary)] p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:p-8">
+            <p className="max-w-prose text-sm text-muted-foreground">
+              {t("site.proof.empty")}
+            </p>
+            <div aria-hidden className="opacity-[0.55]">
+              <RouteGraphic className="text-foreground" />
+            </div>
+          </div>
+        )
       ) : (
         <ul className="grid gap-5 md:grid-cols-3">
           {stories.slice(0, 3).map((s, i) => (
@@ -236,6 +298,85 @@ function ProofBand() {
         </ul>
       )}
     </Section>
+  );
+}
+
+/**
+ * The lanes panel — the proof a tenant has before they have written any.
+ *
+ * ── WHY A LIST AND NOT A MAP ───────────────────────────────────────────────
+ *
+ * `geo_place` carries latitude and longitude, so a world map with arcs is one
+ * projection away and it is the obvious thing to build. It is also the thing
+ * that turns eight aggregated rows into a picture of somebody's network: an arc
+ * drawn between two points invites the reader to trace it, and the endpoints are
+ * exactly what the k-anonymity floor spent its design on protecting. A list
+ * states the same fact — this lane, this often — and states it once.
+ *
+ * A list is also the honest shape for the data: these rows are ordered by volume
+ * and that order is the information. A map has no first row.
+ */
+function CorridorPanel({ lanes }: { lanes: Corridor[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="overflow-hidden rounded-[var(--radius)] border bg-[var(--secondary)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-5 pb-4 pt-5 md:px-6">
+        <h3 className="font-display text-title font-semibold tracking-tight">
+          {t("site.proof.lanes")}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t("site.proof.lanesSub")}
+        </p>
+      </div>
+      {/* Hairline-separated rows rather than cards: eight cards is a grid of
+          boxes competing with the four service cards directly above, and these
+          are rows of a ledger, which is what they should look like. */}
+      <ul className="border-t">
+        {lanes.map((lane) => {
+          const accent = MODE_ACCENT[lane.mode];
+          return (
+            <li
+              key={`${lane.origin}-${lane.destination}-${lane.mode}`}
+              className="flex items-center gap-4 border-b bg-background px-5 py-3.5 last:border-b-0 md:px-6"
+            >
+              <span
+                aria-hidden
+                className="h-8 w-1 shrink-0 rounded-full"
+                style={{
+                  background: accent
+                    ? `rgb(var(--mode-${accent}))`
+                    : "var(--border)",
+                }}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-display text-sm font-semibold tracking-tight">
+                  {lane.origin}
+                  <span aria-hidden className="mx-2 text-muted-foreground">
+                    &rarr;
+                  </span>
+                  {lane.destination}
+                </p>
+                {lane.origin_country || lane.destination_country ? (
+                  <p className="micro mt-0.5 normal-case">
+                    {[lane.origin_country, lane.destination_country]
+                      .filter(Boolean)
+                      .join(" \u2192 ")}
+                  </p>
+                ) : null}
+              </div>
+              <p className="shrink-0 text-right">
+                <span className="num font-mono text-sm font-semibold tabular-nums">
+                  {lane.files}
+                </span>
+                <span className="micro ml-2 normal-case">
+                  {t("site.proof.files")}
+                </span>
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

@@ -78,6 +78,39 @@ const reduced = () =>
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/**
+ * The same observer, for a component that animates its own INSIDES.
+ *
+ * `Reveal` fades a block in as one object, which is the right answer almost
+ * everywhere. It is the wrong answer for the portal preview, whose point is a
+ * sequence — a progress bar filling, then milestone ticks landing behind it — so
+ * that component needs to know WHEN it came into view rather than to be faded as
+ * a whole. Wrapping it in `Reveal` and animating inside it too would run two
+ * animations over one element.
+ *
+ * It shares `watch`, so this does not undo the one-observer rule above: a page
+ * using both still schedules a single callback per scroll frame. And it settles
+ * the same way — reduced motion or no `IntersectionObserver` reports true on
+ * first render, so the caller renders its finished state rather than an empty
+ * one.
+ */
+export function useRevealed<T extends HTMLElement>(): readonly [
+  React.RefObject<T | null>,
+  boolean,
+] {
+  const ref = React.useRef<T | null>(null);
+  const [shown, setShown] = React.useState(
+    () => reduced() || typeof IntersectionObserver === "undefined",
+  );
+
+  React.useEffect(() => {
+    if (shown || !ref.current) return undefined;
+    return watch(ref.current, () => setShown(true));
+  }, [shown]);
+
+  return [ref, shown] as const;
+}
+
 export function Reveal({
   children,
   /** 0–3. Beyond three the last card arrives after the reader has looked away. */

@@ -369,6 +369,15 @@
     box-shadow: var(--shadow-s);
   }
 
+  /* A disabled primary reads as "waiting for you", not as a dead control: the
+     brand fill stays, at a third strength, so the eye still finds the action on
+     first paint. `opacity` on the whole button would take the label with it. */
+  .btn-primary:disabled {
+    background: color-mix(in srgb, var(--primary) 34%, var(--secondary));
+    color: color-mix(in srgb, var(--primary-foreground) 62%, transparent);
+    cursor: not-allowed;
+  }
+
   /* A full-bleed band: one place decides the max width and the gutters, so
      sections line up without every page re-typing the container. */
   .band {

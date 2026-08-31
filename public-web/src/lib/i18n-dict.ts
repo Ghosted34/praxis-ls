@@ -362,6 +362,10 @@ export const en = {
       more: "Read the story",
       empty:
         "We publish case notes as work finishes. Nothing to show yet — ask us for references instead.",
+      lanes: "Lanes we run",
+      lanesSub:
+        "Completed files over the last 24 months, counted from the operations ledger.",
+      files: "completed files",
     },
     portalBand: {
       eyebrow: "Client portal",
@@ -1110,6 +1114,10 @@ export const fr = {
       more: "Lire le cas",
       empty:
         "Nous publions ces notes au fil des opérations terminées. Rien à montrer pour l’instant — demandez-nous des références.",
+      lanes: "Axes que nous opérons",
+      lanesSub:
+        "Dossiers terminés sur les 24 derniers mois, comptés depuis le registre des opérations.",
+      files: "dossiers terminés",
     },
     portalBand: {
       eyebrow: "Portail client",

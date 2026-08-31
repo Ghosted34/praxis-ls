@@ -72,10 +72,21 @@ export function ContactForm() {
     return (
       <SuccessState
         title={t("site.contact.sent")}
+        // The same value the quote desk hands back, and until now the only
+        // place on the site that rendered it as ordinary prose: interpolated
+        // into a sentence, in the body face, with proportional figures. A
+        // reference is a code — it gets read down a phone line and typed back —
+        // so it is set in the code face here exactly as it is in the quote
+        // receipt and in the tracking field, and for the same reason.
         hint={
-          intake.result.reference
-            ? `${t("site.quote.reference")} ${intake.result.reference}`
-            : undefined
+          intake.result.reference ? (
+            <>
+              {t("site.quote.reference")}{" "}
+              <span className="num font-mono font-semibold tracking-tight text-foreground">
+                {intake.result.reference}
+              </span>
+            </>
+          ) : undefined
         }
       />
     );

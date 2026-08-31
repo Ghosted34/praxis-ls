@@ -21,6 +21,7 @@ import { tr } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useCanOpenRoute } from "@/lib/route-access";
+import { useWebsiteEnabled } from "@/lib/site-content-api";
 
 type Card = { to: string; label: string; desc: string; icon: IconKey };
 type Section = { heading: string; cards: Card[] };
@@ -81,6 +82,12 @@ const SECTIONS: Section[] = [
         label: "App & PWA",
         desc: "Home-screen icon, launch screen & install prompts",
         icon: "palette",
+      },
+      {
+        to: "/settings/website",
+        label: "Website Pages",
+        desc: "Public site content — figures, credentials & publishing",
+        icon: "doc",
       },
       {
         to: "/settings/business-policies",
@@ -391,12 +398,31 @@ const SETTINGS_T: Record<string, { label: string; desc: string }> = {
 export function SettingsHub() {
   const { t } = useTranslation();
   const canOpen = useCanOpenRoute();
+  /*
+    The one card gated on a PACKAGE rather than on a grant.
+
+    `site_content` is deliberately not feature-gated server-side — an editor has
+    to be able to prepare a site before the website package is bought — so the
+    flag is a UI decision made here, and the screen itself stays reachable by
+    its address for whoever is preparing one.
+
+    `null` is UNKNOWN and is treated as "show", which is the rule
+    `route-access.ts` states for the unresolved permissions read: over-offering
+    for one frame is recoverable, a card that vanishes after the grid has
+    painted is not.
+  */
+  const websiteOn = useWebsiteEnabled(canOpen("/settings/website"));
+  const packaged = (to: string) =>
+    to === "/settings/website" ? websiteOn !== false : true;
+
   // Hidden first and unconditionally: `canOpen` deliberately passes everything
   // through while the permissions read is unresolved, and a hidden card must
   // not flash onto the grid for that first second.
   const sections = SECTIONS.map((s) => ({
     ...s,
-    cards: s.cards.filter((c) => !HIDDEN_CARDS.has(c.to) && canOpen(c.to)),
+    cards: s.cards.filter(
+      (c) => !HIDDEN_CARDS.has(c.to) && canOpen(c.to) && packaged(c.to),
+    ),
   })).filter((s) => s.cards.length > 0);
 
   return (

@@ -23,6 +23,13 @@ const router = express.Router();
 // module; nothing here is reachable without an account.
 router.use(authMiddleware);
 
+// What the editor needs to draw its own controls: the commercial flag (shown,
+// never enforced here) and the metric keys a stat may bind to. See
+// site_content.service.editorMeta.
+router.get("/meta", requirePermission(MODULE, "view"), asyncHandler(async (req, res) => {
+  res.json({ data: await req.tenantDb((c) => service.editorMeta(c)) });
+}));
+
 router.get("/pages", requirePermission(MODULE, "view"), asyncHandler(async (req, res) => {
   res.json({ data: await req.tenantDb((c) => service.listPages(c)) });
 }));

@@ -10,10 +10,48 @@ const { AppError } = require("../../../utils/errors");
 const events = require("./site_content.events");
 const repo = require("./site_content.repo");
 const { validateBlock } = require("./site_content.schema");
-const { resolveMetric } = require("./site_content.metrics");
+const { REGISTRY, resolveMetric } = require("./site_content.metrics");
 
 const pageRef = (id) => `site_page:${id}`;
 const blockRef = (id) => `site_block:${id}`;
+
+/* ── what the editor needs before it can draw anything ────────────────────── */
+
+/**
+ * Two facts the website editor cannot get anywhere else, in one read.
+ *
+ * ── `website_enabled` ─────────────────────────────────────────────────────
+ *
+ * The commercial switch, from `feature_state` — the same row `requireFeature`
+ * checks before it lets `site_public` answer. This module is deliberately NOT
+ * gated on it (an editor must be able to prepare a site before the package is
+ * bought), so the flag is INFORMATION here rather than enforcement: the client
+ * uses it to decide whether to offer the screen, and to say on the screen that
+ * the public site is dark. Nothing on this router refuses because of it.
+ *
+ * ── `metrics` ─────────────────────────────────────────────────────────────
+ *
+ * The keys a `stat_counters` item may legally bind to. The editor has to offer
+ * a CHOICE of them, and the only alternative to sending the list is a second
+ * copy of the registry typed into the client — which drifts the first time a
+ * metric is added, in the direction nobody notices: a key still in the dropdown
+ * after it stopped existing is a 422 at save time with no explanation, and one
+ * that exists but is missing from the dropdown is simply unreachable.
+ *
+ * `unit` travels with the key because it is the registry's own answer to "what
+ * is this number measured in", and the editor prefills the item's unit from it
+ * rather than expecting a marketing person to know that CBM is cubic metres.
+ */
+async function editorMeta(client) {
+  const { rows } = await client.query(
+    "SELECT state FROM feature_state WHERE feature_key = $1",
+    ["website"],
+  );
+  return {
+    website_enabled: !!(rows[0] && rows[0].state === "on"),
+    metrics: [...REGISTRY.values()].map((m) => ({ key: m.key, unit: m.unit })),
+  };
+}
 
 /* ── the public read ─────────────────────────────────────────────────────── */
 
@@ -332,6 +370,8 @@ async function reorderBlocks(client, { pageId, orderedIds, actor = {} }) {
 }
 
 module.exports = {
+  // the editor's own bootstrap
+  editorMeta,
   // public
   getPublicPage,
   listPublicPages,

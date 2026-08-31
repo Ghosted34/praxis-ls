@@ -240,6 +240,14 @@ const PwaPage = lazyNamed(
   () => import("@/features/settings/pwa-page"),
   "PwaPage",
 );
+const WebsitePagesPage = lazyNamed(
+  () => import("@/features/settings/website-pages"),
+  "WebsitePagesPage",
+);
+const WebsitePageEditorPage = lazyNamed(
+  () => import("@/features/settings/website-page-editor"),
+  "WebsitePageEditorPage",
+);
 const TemplateStudioPage = lazyNamed(
   () => import("@/features/settings/document-templates-page"),
   "TemplateStudioPage",
@@ -591,6 +599,16 @@ export function App() {
               />
               <Route path="settings/login" element={<LoginEditor />} />
               <Route path="settings/pwa" element={<PwaPage />} />
+              {/* The tenant's public website. The list and the page editor are
+                  two routes rather than one screen with a drawer: a page's
+                  identity and its blocks are edited at different rhythms, and a
+                  block save that re-rendered the identity form would lose a
+                  half-typed meta description. */}
+              <Route path="settings/website" element={<WebsitePagesPage />} />
+              <Route
+                path="settings/website/:pageId"
+                element={<WebsitePageEditorPage />}
+              />
               <Route
                 path="settings/business-policies"
                 element={<BusinessPoliciesPage />}

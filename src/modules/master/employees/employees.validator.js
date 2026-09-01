@@ -21,6 +21,10 @@ const base = {
   email: z.string().email().optional().or(z.literal("")),
   employment_type: z.union([z.enum(EMPLOYMENT_TYPES), z.string().max(40)]).optional(),
   cnps_number: z.string().max(40).optional(),
+  // Added in 12759. HR owns these; user_signature_profile overrides them on
+  // signatures only. Nullable so HR can clear a number, not just replace it.
+  phone_desk: z.string().trim().max(40).optional().nullable(),
+  phone_mobile: z.string().trim().max(40).optional().nullable(),
   // Date service started (0696). Leave accrues per month of SERVICE, so the
   // accrual job has no anchor without it; the migration backfills it from
   // created_at and this is how a real start date replaces that proxy.
@@ -33,6 +37,16 @@ const base = {
   is_driver: z.boolean().optional(),
 };
 
+/**
+ * Self-service (employees.self.js). `.strict()` so an unknown key is a 422
+ * rather than being quietly dropped: someone POSTing `base_salary` here should
+ * get a clear refusal, not a silent no-op that looks like it worked.
+ */
+const updateMine = z.object({
+  phone_desk: z.string().trim().max(40).nullable().optional().or(z.literal("")),
+  phone_mobile: z.string().trim().max(40).nullable().optional().or(z.literal("")),
+}).strict();
+
 const create = z.object(base);
 const update = z.object({ ...base, full_name: z.string().min(2).optional(), is_active: z.boolean().optional() });
 const setActive = z.object({ is_active: z.boolean() });
@@ -40,11 +54,14 @@ const setActive = z.object({ is_active: z.boolean() });
 const aiUpdate = update.extend({ employee_id: z.string().uuid() });
 const aiSetActive = setActive.extend({ employee_id: z.string().uuid() });
 
-const schemas = { create, update, setActive, aiUpdate, aiSetActive };
+const schemas = { create, update, setActive, updateMine, aiUpdate, aiSetActive };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data;
   return next();
 };
-module.exports = { create: mw("create"), update: mw("update"), setActive: mw("setActive"), schemas, EMPLOYMENT_TYPES };
+module.exports = {
+  create: mw("create"), update: mw("update"), setActive: mw("setActive"),
+  updateMine: mw("updateMine"), schemas, EMPLOYMENT_TYPES,
+};

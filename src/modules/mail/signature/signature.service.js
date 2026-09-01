@@ -10,21 +10,44 @@
 
 const repo = require("./signature.repo");
 const resolveMod = require("./signature.resolve");
+const paletteMod = require("./signature.palette");
+const gapsMod = require("./signature.gaps");
+const zipMod = require("./signature.zip");
 const htmlMod = require("./signature.html");
 const pngMod = require("./signature.png");
 const { resolveLanguage } = require("./language");
 const events = require("./signature.events");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const brandLogo = require("../../../services/brand-logo.service");
+const storage = require("../../../services/storage.service");
+const { config } = require("../../../config/env");
 
-function inputsFor(person, entity, profile, template, mailbox, language, identity, system) {
+/**
+ * The employee fields the renderer reads, projected out of `loadPerson`'s row.
+ *
+ * Shared by `inputsFor` and `modelFrom` because they must agree: a field the
+ * model renders but the hash does not cover is a field whose change never
+ * invalidates the cache, so the signature keeps showing the old value until
+ * something unrelated happens to move. They were two separate object literals
+ * and the phone columns would have been added to one of them.
+ */
+function employeeOf(person) {
+  if (!person) return null;
+  return {
+    full_name: person.employee_full_name || person.user_full_name,
+    job_title: person.job_title,
+    department: person.department,
+    email: person.employee_email || person.user_email || null,
+    phone_desk: person.employee_phone_desk || null,
+    phone_mobile: person.employee_phone_mobile || null,
+  };
+}
+
+function inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding) {
   return {
     employee_updated: person && (person.employee_id || person.job_title || person.department),
-    employee: person && {
-      full_name: person.employee_full_name || person.user_full_name,
-      job_title: person.job_title,
-      department: person.department,
-    },
+    employee: employeeOf(person),
     entity_id: entity && entity.entity_id,
     entity_updated: entity && entity.updated_at,
     profile_updated: profile && profile.updated_at,
@@ -35,16 +58,17 @@ function inputsFor(person, entity, profile, template, mailbox, language, identit
     mailbox: mailbox && mailbox.email_address,
     identity: identity && identity.purpose,
     system: Boolean(system),
+    // The card's colours and fonts come from tenant branding, so branding IS an
+    // input to the render. Leaving it out would mean a tenant changing their
+    // brand colour saw the old palette on every cached signature until something
+    // else happened to change — the exact staleness `source_hash` exists to stop.
+    branding: branding || null,
   };
 }
 
-function modelFrom(person, entity, profile, template, mailbox, language, identity, system) {
-  return resolveMod.resolve({
-    employee: person && {
-      full_name: person.employee_full_name || person.user_full_name,
-      job_title: person.job_title,
-      department: person.department,
-    },
+function modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras = {}) {
+  const model = resolveMod.resolve({
+    employee: employeeOf(person),
     user: person && { full_name: person.user_full_name },
     entity,
     profile,
@@ -52,7 +76,16 @@ function modelFrom(person, entity, profile, template, mailbox, language, identit
     mailbox,
     identity,
     system,
+    logo: extras.logo || null,
   }, language);
+
+  // The card renderer reads its palette and families off the model, so both are
+  // resolved once here rather than at each of the three call sites (preview,
+  // PNG, send) that would otherwise each have to remember to do it.
+  const layout = (template && template.layout) || {};
+  model.palette = paletteMod.resolve(extras.branding || {}, layout);
+  model.fonts = paletteMod.fonts(layout);
+  return model;
 }
 
 async function pickTemplate(client, { profile, person, templateId }) {
@@ -121,8 +154,16 @@ async function resolveFor(client, {
     mailbox = rows[0] || null;
   }
 
-  const hash = resolveMod.sourceHash(inputsFor(person, entity, profile, template, mailbox, language, identity, system));
+  const branding = await repo.loadBranding(client);
+  // Bytes, not a reference: the card renders in headless Chromium, which cannot
+  // resolve a relative /media URL. See services/brand-logo.service.js.
+  const logo = await brandLogo.entityLogo(client, entity);
+
+  const hash = resolveMod.sourceHash(
+    inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding),
+  );
   const identityKey = system ? `system:${(identity && identity.purpose) || "NOTIFICATIONS"}` : null;
+  const extras = { branding, logo };
   const cached = await repo.getCached(client, {
     userId: system ? null : userId,
     identityKey,
@@ -131,7 +172,8 @@ async function resolveFor(client, {
     scale,
   });
   if (cached && cached.source_hash === hash) {
-    const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system);
+    const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
+    model.card_png_url = cached.storage_path ? mediaUrl(cached.storage_path) : null;
     return {
       html: format === "HTML" ? cached.content : htmlMod.render(model),
       text: resolveMod.textContent(model),
@@ -142,19 +184,75 @@ async function resolveFor(client, {
     };
   }
 
-  const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system);
-  const html = htmlMod.render(model);
+  const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
   const text = resolveMod.textContent(model);
 
   if (format === "HTML") {
+    // A card's email body is an <img> plus the text fallback, so the PNG has to
+    // EXIST before the HTML that points at it is cached. Rendering it here — on
+    // the miss, not on every send — is what makes that ordering hold without a
+    // second pass. A failure to screenshot degrades to the text half rather than
+    // failing the send: an email that goes out with a plain signature is a far
+    // better outcome than one that does not go out.
+    if (model.kind === "card") {
+      model.card_png_url = await ensureCardPng(client, {
+        model, userId, identityKey, language, hash,
+      });
+    }
+    const html = htmlMod.render(model);
     await repo.putCached(client, {
       user_id: system ? null : userId,
       identity_key: identityKey,
       language, format, scale, content: html, source_hash: hash,
+      storage_path: model.card_png_url ? storagePathOf(model.card_png_url) : null,
     });
+    return { html, text, model, language, cached: false, source_hash: hash };
   }
 
-  return { html, text, model, language, cached: false, source_hash: hash };
+  return { html: htmlMod.render(model), text, model, language, cached: false, source_hash: hash };
+}
+
+/**
+ * The absolute URL an email client can fetch the card from.
+ *
+ * `storage.publicUrl` returns `/media/<key>` — correct for the app's own pages
+ * and useless in an email, where there is no page origin to resolve against. The
+ * tenant's own host is the right base: a signature on mail from
+ * smartls.praxisls.com should load from smartls.praxisls.com.
+ */
+function mediaUrl(key) {
+  const k = String(key || "").replace(/^\/media\//, "").replace(/^\/+/, "");
+  if (!k) return null;
+  if (/^https?:/i.test(k)) return k;
+  return `https://${config.APP_BASE_DOMAIN}/media/${k}`;
+}
+
+const storagePathOf = (url) => String(url || "").replace(/^https?:\/\/[^/]+\/media\//i, "") || null;
+
+/**
+ * Render the card at 2× and put it in storage, returning its absolute URL.
+ *
+ * 2× because the image is displayed at 650 CSS px and a 1× copy is visibly soft
+ * on the retina and HiDPI screens most people now read mail on; 3× would triple
+ * the bytes on every message for no visible gain at this size.
+ *
+ * PUBLIC key prefix, deliberately: this image is embedded in outbound email and
+ * has to be fetchable by a recipient who has no session here. It carries a
+ * person's name, title and work contact details — the same things the signature
+ * itself publishes to that recipient — and nothing else.
+ */
+async function ensureCardPng(client, { model, userId, identityKey, language, hash }) {
+  try {
+    const png = await pngMod.render(model, 2);
+    const who = userId || identityKey || "system";
+    const key = `public/signatures/${String(who).replace(/[^\w-]/g, "")}-${language}-${hash.slice(0, 12)}.png`;
+    const stored = await storage.put(png.buffer, { key, contentType: "image/png" });
+    return mediaUrl(stored.key || key);
+  } catch {
+    /* @silent:render the text half of the signature is still correct, and a
+       send must not fail because a screenshot did. */
+    return null;
+  }
 }
 
 async function renderPng(client, { userId, language = "en", scale = 1, shot = undefined }) {
@@ -172,6 +270,85 @@ async function renderPng(client, { userId, language = "en", scale = 1, shot = un
     source_hash: r.source_hash,
   });
   return png;
+}
+
+/**
+ * Render one PNG per selected member of staff and return them as one ZIP.
+ *
+ * WHY SEQUENTIALLY. `signature.png.js` keeps ONE Chromium and opens a page per
+ * shot. Rendering a 40-person team in parallel would open 40 pages against that
+ * single browser and spike memory on a box that is also serving requests; the
+ * screenshots are ~200 ms each, so a team completes in seconds either way. This
+ * is a manager clicking a button, not a hot path.
+ *
+ * WHY A PARTIAL RESULT IS RETURNED RATHER THAN AN ERROR. One person with no
+ * employee row, or a logo the storage backend cannot hand back, must not cost
+ * the other thirty-nine their signatures. Failures come back in `skipped` so the
+ * caller can say which, rather than being swallowed.
+ */
+async function renderBatch(client, { userIds = [], language = "en", scale = 2, shot = undefined } = {}) {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (!ids.length) throw new AppError("VALIDATION_ERROR", "Select at least one member of staff", 422);
+  if (ids.length > 200) throw new AppError("VALIDATION_ERROR", "Batch is limited to 200 people at a time", 422);
+
+  const files = [];
+  const skipped = [];
+
+  for (const userId of ids) {
+    try {
+      const r = await resolveFor(client, { userId, language, format: "PNG", scale });
+      if (!r.model) { skipped.push({ user_id: userId, reason: "no_signature" }); continue; }
+      const png = await pngMod.render(r.model, scale, shot);
+      const who = (r.model.person && r.model.person.full_name) || userId;
+      files.push({ name: `Signature_${String(who).trim().replace(/\s+/g, "_")}.png`, data: png.buffer });
+    } catch (err) {
+      skipped.push({ user_id: userId, reason: err && err.code ? err.code : "render_failed" });
+    }
+  }
+
+  if (!files.length) throw new AppError("NOT_FOUND", "No signature could be rendered for the selected staff", 404);
+  return { buffer: zipMod.build(files), count: files.length, skipped };
+}
+
+/**
+ * The card document, for the on-screen preview.
+ *
+ * Returns the SAME document `signature.png.js` screenshots, fonts and all, so
+ * the preview is not a reimplementation of the card in React that can drift
+ * from it — it is the card. The client renders it in a sandboxed iframe, which
+ * is also what keeps the card's own CSS (bare `.card`, `.person-name`) from
+ * leaking into the app's stylesheet.
+ *
+ * The embedded fonts make this ~270 kB. That is a real cost, paid on a preview
+ * the user explicitly opened, and it buys the one guarantee the screen exists
+ * to give: what you approve is what is sent.
+ */
+async function cardPreview(client, { userId, language = "en", can = {} } = {}) {
+  const r = await resolveFor(client, { userId, language, format: "PREVIEW" });
+  if (!r.model) throw new AppError("NOT_FOUND", "No signature to preview", 404);
+  if (r.model.kind !== "card") {
+    return {
+      kind: r.model.kind, document: null, html: r.html,
+      width: r.model.width_px, height: r.model.height_px,
+      gaps: gapsMod.gaps(r.model, can),
+    };
+  }
+  const fontsCss = require("./signature.fonts").fontFaceCss();
+  const cardMod = require("./signature.card");
+  return {
+    kind: "card",
+    document: cardMod.document(r.model, r.model.palette, r.model.fonts, fontsCss),
+    width: cardMod.CARD_W,
+    height: cardMod.CARD_H,
+    palette: r.model.palette,
+    fonts: r.model.fonts,
+    language: r.language,
+    gaps: gapsMod.gaps(r.model, can),
+  };
+}
+
+async function listStaff(client, query) {
+  return repo.listSignatureStaff(client, query || {});
 }
 
 async function getOwnProfile(client, userId) {
@@ -268,6 +445,6 @@ function bake(html, text, resolved) {
 }
 
 module.exports = {
-  resolveFor, renderPng, getOwnProfile, saveOwnProfile,
+  resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
   listTemplates, updateTemplate, invalidateForUser, invalidateForEntity, bake,
 };

@@ -30,6 +30,14 @@ const schemas = {
     language: z.enum(["en", "fr"]).optional(),
     scale: z.coerce.number().refine((n) => [1, 2, 3].includes(n), { message: "scale must be 1, 2 or 3" }).optional(),
   }).strict(),
+  // Capped at 200 because each entry is a headless-Chromium screenshot held in
+  // memory until the archive is built. The service enforces the same bound —
+  // this one keeps an absurd request from reaching it at all.
+  batch: z.object({
+    user_ids: z.array(z.string().uuid()).min(1).max(200),
+    language: z.enum(["en", "fr"]).optional(),
+    scale: z.coerce.number().refine((n) => [1, 2, 3].includes(n), { message: "scale must be 1, 2 or 3" }).optional(),
+  }).strict(),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -39,4 +47,7 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { profile: mw("profile"), templatePatch: mw("templatePatch"), png: mw("png"), schemas };
+module.exports = {
+  profile: mw("profile"), templatePatch: mw("templatePatch"),
+  png: mw("png"), batch: mw("batch"), schemas,
+};

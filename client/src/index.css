@@ -2110,3 +2110,37 @@
 .rail-jiggle {
   animation: rail-jiggle 240ms ease-in-out both;
 }
+
+/**
+ * The ring a `?field=` deep link leaves on the input it landed on.
+ *
+ * A signature gap ("no P.O. Box") links straight to the box that fills it, and
+ * on a form of a dozen inputs the person still has to be told WHICH one. The
+ * outline is the visible half; `useFieldHighlight` also moves focus, which is
+ * the half a screen reader uses.
+ *
+ * `outline`, not `ring` or a border: it draws outside the box, so a field does
+ * not shift by 2px when the highlight lands and shift back when it clears —
+ * and it composes with whatever focus style the input already has rather than
+ * fighting it. Token colour, so it follows the tenant's brand like everything
+ * else.
+ *
+ * The fade is covered by the global prefers-reduced-motion kill above; the
+ * outline itself is not animated, so a reader who has motion off still sees the
+ * field that was meant.
+ */
+.praxis-field-highlight {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+  animation: praxis-field-highlight-in 200ms ease-out both;
+}
+
+@keyframes praxis-field-highlight-in {
+  from {
+    outline-color: transparent;
+  }
+  to {
+    outline-color: var(--ring);
+  }
+}

@@ -4,6 +4,7 @@
  *  HTTP-only — internal callers (payroll roster) use the service and see real pay. */
 "use strict";
 const service = require("./employees.service");
+const self = require("./employees.self");
 const { maskForUserVia } = require("../../../shared/rbac/field-mask");
 const { withDepartment } = require("../../../shared/rbac/department-scope");
 const { asyncHandler, AppError } = require("../../../utils/errors");
@@ -21,6 +22,16 @@ module.exports = {
     if (!row) throw new AppError("NOT_FOUND", "Employee not found", 404);
     res.json({ data: await maskForUserVia(req.identityDb, req.user, row) });
   }),
+  // Self-service. No MOD-02 grant, no id parameter — see employees.self.js.
+  // NOT field-masked: the projection is the mask, and it is a fixed list rather
+  // than a role-dependent one, so a person always sees the same fields about
+  // themselves regardless of what field_visibility says about salaries.
+  mine: asyncHandler(async (req, res) => res.json({
+    data: await req.tenantDb((c) => self.getMine(c, { actor: actor(req) })),
+  })),
+  updateMine: asyncHandler(async (req, res) => res.json({
+    data: await req.tenantDb((c) => self.updateMine(c, { patch: req.body || {}, actor: actor(req) })),
+  })),
   references: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.references(c, req.params.id)) })),
 
   // The reporting line (0493). Masked like every other employee read — a team

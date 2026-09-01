@@ -1391,13 +1391,14 @@ CREATE TABLE IF NOT EXISTS signature_render (
 
 #### `10741_signature_seed.sql`
 
-Seeds three templates, `is_system = true`:
+Seeds three templates, `is_system = true` (a fourth, `signature_card`, arrives in `12758`):
 
 | key               | What it is                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `smartls_classic` | **The exact layout of the current standalone generator**: logo left in a bordered panel, name in the brand colour, job title beneath, then desk phone · mobile · email, then physical address and P.O. Box, website, and the motto as a full-width bottom bar. 650 × 325 at 1×. This is the one everyone gets on day one, so nothing visibly changes for staff already using the tool. |
+| `smartls_classic` | Logo left in a bordered panel, name in the brand colour, job title beneath, then desk phone · mobile · email, then physical address and P.O. Box, website, and the motto as a full-width bottom bar. 650 × 325 at 1×. **This was described here as "the exact layout of the standalone generator" and is not** — it is an email-safe table, which is why `signature_card` below was added rather than this row being rewritten. |
 | `compact`         | Three lines, no logo panel: **Name · Title**, then phone/mobile/email on one line, then company + website. For high-volume operational mail and mobile signatures.                                                                                                                                                                                                                     |
 | `formal_legal`    | `smartls_classic` plus a legal block derived from `corporate_entity` (legal form, share capital, RCCM, NIU) and a per-language confidentiality notice. Default for Finance and Legal departments.                                                                                                                                                                                      |
+| `signature_card`  | **The standalone generator's actual card**, transcribed: 5px three-stop accent bar, 225px logo panel beside a gradient rule, name at 25px/800 uppercase, an orange title dash, five icon contact rows, and the motto in a script face on a 52px pill. 650 × 325. Sent as a PNG with live text beneath it (§6.3a). Seeded by `12758` and the tenant-wide default. |
 
 Department defaults (`scope_kind='DEPARTMENT'`) are seeded for Operations, Commercial/Sales, Finance,
 HR and Customer Support, all pointing at `smartls_classic` except Finance → `formal_legal`.
@@ -1510,6 +1511,45 @@ Both **MUST** be idempotent (at-least-once delivery, per `src/orchestration/regi
 **MUST NOT:** rewrite a signature into an already-sent `email_message`. The signature is baked into
 `body_html` at send time and stays there. Option C in Q16 was explicitly rejected, and it also
 contradicts PR-5's archive.
+
+### 6.3a The card — a second renderer, and why
+
+`signature.html.js` emits what an email client can display: tables, inline styles, a web-safe
+stack, no flex, no gradients, no `@font-face`. The card the standalone generator draws is the
+opposite of every one of those. Both are correct, for different targets, so the card is a
+**second renderer** rather than a change to the first.
+
+```
+signature.palette.js   PURE: branding + layout  → the card's colours   (parametric)
+signature.card.js      PURE: model + palette    → the card document    (never sent)
+signature.fonts.js     embedded Montserrat + Brittany, as pdf.fonts.js does for documents
+signature.zip.js       PURE: store-only ZIP, for the batch export
+```
+
+**What a recipient gets.** The PNG (the design) *and* the email-safe table beneath it (the
+content). Not the image alone: Outlook and Gmail block remote images from unknown senders, so the
+first mail a new client receives would show a grey box where the phone number should be; a screen
+reader would get one alt string; and an image-only signature scores worse with spam filters.
+
+**The drift guard moved, it did not disappear.** For `classic` and `compact` the PNG is
+screenshotted from the email HTML, so they cannot diverge. The card cannot be expressed as email
+HTML at all, so instead both halves are computed from the same resolved model and
+`mail-signature-card.test.js` asserts their content matches.
+
+**Colours are parametric, and the mapping is the part to get right.** `ink ← branding.accentDeep`
+(name, website, motto), `glow ← branding.accentGlow` (borders, gradients), `warm ←
+branding.primary` (title dash, accent-bar tail). Mapping `ink` to `primary` — the obvious reading
+of "the brand colour" — renders an unbranded tenant's card with an orange name and a blue dash,
+i.e. the design with two colours transposed, because the Praxis fallback primary is an orange. The
+two background tints and the far warm stop are hand-picked in the original rather than functions
+of a brand colour, so the seeded template pins them and everyone else derives them from `glow`.
+
+**Two data bugs this fixed.** `loadEntity` selected from `corporate_entity` alone and
+`decorateEntity` read `row.po_box` / `row.city` / `row.postal_code` off it — columns that live on
+`entity_address`. Every signature since the engine shipped has been missing its P.O. Box and city.
+Separately, `show_logo` gated on an https-only check applied to `logo_light_ref`, which is a
+storage key, so it was false for every tenant: no signature has ever carried a logo. Both are
+fixed in `signature.repo.js` and `services/brand-logo.service.js`.
 
 ### 6.4 System-email identity (Q17)
 

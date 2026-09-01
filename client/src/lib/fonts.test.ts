@@ -17,10 +17,10 @@ import {
 beforeEach(() => __resetFontCache());
 
 describe("the library", () => {
-  it("ships the agreed fifteen families, with unique ids and names", () => {
-    expect(FONTS).toHaveLength(15);
-    expect(new Set(FONTS.map((f) => f.id)).size).toBe(15);
-    expect(new Set(FONTS.map((f) => f.name)).size).toBe(15);
+  it("ships the agreed sixteen families, with unique ids and names", () => {
+    expect(FONTS).toHaveLength(16);
+    expect(new Set(FONTS.map((f) => f.id)).size).toBe(16);
+    expect(new Set(FONTS.map((f) => f.name)).size).toBe(16);
   });
 
   /**
@@ -53,9 +53,33 @@ describe("the library", () => {
     }
   });
 
-  it("covers all three roles", () => {
+  it("covers all four roles", () => {
     const roles = new Set(FONTS.map((f) => f.role));
-    expect([...roles].sort()).toEqual(["mono", "sans", "serif"]);
+    expect([...roles].sort()).toEqual(["mono", "sans", "script", "serif"]);
+  });
+
+  /**
+   * The script role exists so a display face cannot be offered as body text
+   * without a tenant going out of their way. Brittany is the only member, it is
+   * the only family in the library that is not OFL/Apache-2.0, and it is
+   * deliberately last in every slot — if a second script family is ever added,
+   * this is where to confirm both facts still hold.
+   */
+  it("never offers the script role first, and buries it in the text slots", () => {
+    // Display is the one slot where a script face is a real answer, so it sits
+    // ahead of mono there. Body and mono bury it: a signature motto face set as
+    // body copy is a mistake the picker should not put within easy reach.
+    for (const slot of ["display", "body", "mono"] as const) {
+      const roles = fontGroups(slot).map((g) => g.role);
+      expect(roles[0]).not.toBe("script");
+    }
+    for (const slot of ["body", "mono"] as const) {
+      const roles = fontGroups(slot).map((g) => g.role);
+      expect(roles[roles.length - 1]).toBe("script");
+    }
+    expect(fontGroups("display").map((g) => g.role)).toEqual([
+      "sans", "serif", "script", "mono",
+    ]);
   });
 });
 
@@ -73,7 +97,7 @@ describe("fontGroups", () => {
    */
   it("offers the full library in every slot", () => {
     for (const slot of ["display", "body", "mono"] as const) {
-      expect(fontGroups(slot).flatMap((g) => g.fonts)).toHaveLength(15);
+      expect(fontGroups(slot).flatMap((g) => g.fonts)).toHaveLength(16);
     }
   });
 });

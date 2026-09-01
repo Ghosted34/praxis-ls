@@ -10,7 +10,7 @@ const settings = require("../../security/setting/setting.service");
 const registry = require("../../../services/documents/templates/registry");
 const kit = require("../../../services/documents/templates/kit");
 const pdf = require("../../../services/pdf.service");
-const storage = require("../../../services/storage.service");
+const brandLogo = require("../../../services/brand-logo.service");
 const emailSvc = require("../../../services/email.service");
 const verifyLink = require("../../../services/signatures/verify-link");
 const sealView = require("../../../services/signatures/seal-view");
@@ -37,42 +37,11 @@ async function safeGet(client, key) {
 
 const list = () => registry.list();
 
-const LOGO_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml", gif: "image/gif" };
-
-// Turn a stored logo reference into something that renders EVERYWHERE — the live
-// preview iframe, the Puppeteer-rendered PDF (which has no page origin, so a
-// relative /media URL never loads), and emailed HTML. We inline the bytes as a
-// base64 data URI. `ref` is either a storage key or a /media/<key> public URL.
-async function resolveLogo(ref) {
-  if (!ref) return null;
-  if (/^data:/i.test(ref)) return ref;
-  if (/^https?:/i.test(ref)) return ref; // remote/CDN URL — used as-is
-  const key = String(ref).replace(/^\/media\//, "").replace(/^\/+/, "");
-  try {
-    const buf = await storage.get(key);
-    if (buf && buf.length) {
-      const ext = (key.split(".").pop() || "png").toLowerCase();
-      return `data:${LOGO_MIME[ext] || "image/png"};base64,${buf.toString("base64")}`;
-    }
-  } catch { /* @silent:storage — a logo the storage backend cannot hand back must
-    not stop a document rendering. Falling through to the raw ref gives the
-    renderer a URL to try; a missing letterhead is a cosmetic loss, a failed
-    invoice render is not. */ }
-  return ref;
-}
-
-// Tenant-wide letterhead logo reference (Appearance → logo_url), used when a
-// corporate entity has no per-entity logo of its own. Most tenants set only the
-// branding logo, so without this the documents fall back to the brand *name*.
-async function brandingLogoRef(client) {
-  try {
-    const { rows } = await client.query(
-      "SELECT value FROM setting WHERE section = 'appearance' AND key = 'logo_url' LIMIT 1",
-    );
-    const v = rows[0] && rows[0].value;
-    return v ? (typeof v === "string" ? v : String(v)) : null;
-  } catch { return null; }
-}
+// Moved to services/brand-logo.service.js when the signature card needed the
+// same resolution — see that file's header for why it is shared rather than
+// copied. Re-exported through these local bindings so the call sites below read
+// unchanged.
+const { resolveLogo, brandingLogoRef } = brandLogo;
 
 /**
  * The tenant's active-currency catalogue (code → { symbol, decimals, name }),

@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./signature.service");
 const { asyncHandler } = require("../../../utils/errors");
+const { readPermissions } = require("../../../middleware/rbac");
 
 const actor = (req) => req.user || { user_id: null };
 
@@ -27,6 +28,42 @@ module.exports = {
     res.setHeader("Content-Type", "image/png");
     res.setHeader("Content-Disposition", `attachment; filename="signature-${scale}x.png"`);
     return res.send(png.buffer);
+  }),
+  card: asyncHandler(async (req, res) => {
+    // Which gaps get a LINK rather than an "ask an administrator" note. Read,
+    // never enforced — the destination screens do their own gating. See
+    // readPermissions in middleware/rbac.js.
+    const [hr, entity, brand, template] = await readPermissions(req, [
+      ["MOD-02", "edit"],   // staff records — name, title, email
+      ["MOD-01", "edit"],   // corporate entity — address, P.O. Box, website
+      ["MOD-70", "edit"],   // branding and signature templates
+      ["MOD-70", "edit"],
+    ]);
+    return res.json({
+      data: await req.identityDb((c) => service.cardPreview(c, {
+        userId: actor(req).user_id,
+        language: req.query.lang || req.query.language || "en",
+        can: { hr, entity, brand, template },
+      })),
+    });
+  }),
+  staff: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.listStaff(c, {
+      search: req.query.q || null,
+      limit: req.query.limit,
+    })),
+  })),
+  batch: asyncHandler(async (req, res) => {
+    const { user_ids: userIds, language = "en", scale = 2 } = req.body || {};
+    const out = await req.identityDb((c) => service.renderBatch(c, { userIds, language, scale }));
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="signatures-${stamp}.zip"`);
+    // The caller cannot see a JSON body on a binary download, so the count and
+    // any per-person failures ride in headers rather than being lost.
+    res.setHeader("X-Signature-Count", String(out.count));
+    if (out.skipped.length) res.setHeader("X-Signature-Skipped", String(out.skipped.length));
+    return res.send(out.buffer);
   }),
   templates: asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.listTemplates(c, { includeInactive: req.query.include_inactive === "true" })),

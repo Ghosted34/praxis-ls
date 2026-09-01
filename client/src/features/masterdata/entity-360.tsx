@@ -27,6 +27,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -1107,7 +1108,11 @@ export function EntityDossier({
     () => api.entityDossier(entityId),
     [entityId],
   );
-  const [tab, setTab] = React.useState<Tab>("Overview");
+  // `?tab=` / `?field=`. The route was always deep-linkable (see the comment on
+  // it in app.tsx); the TAB was not, so a link that meant "the P.O. Box is
+  // missing" landed on Overview with eleven tabs to guess from.
+  const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
+  useFieldHighlight([tab]);
   // The field list is no longer carried in this state: it depends on lookups
   // fetched when the modal opens, so only the collection, the title and the row
   // being edited live here.

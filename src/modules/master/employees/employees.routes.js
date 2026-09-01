@@ -11,6 +11,17 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
+// Self-service, declared BEFORE `/:id` — "mine" is a valid uuid-shaped path
+// segment as far as express is concerned, so the id route would otherwise
+// swallow it and answer with a 404 for an employee called "mine".
+//
+// These take NO grant, matching attendance's `/mine` pair: a person is entitled
+// to see and correct their own contact details, and requiring MOD-02 view would
+// mean handing every member of staff the whole roster, salaries included, to
+// let them fix their own phone number.
+router.get("/mine", controller.mine);
+router.patch("/mine", validator.updateMine, controller.updateMine);
+
 router.get("/roster", requirePermission(MODULE, "view"), controller.roster);
 router.get("/drivers", requirePermission(MODULE, "view"), controller.drivers);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);

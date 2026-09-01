@@ -8,6 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
@@ -404,7 +405,10 @@ function EmployeeDetail({
 }) {
   const [employee, setEmployee] = React.useState(initial);
   React.useEffect(() => setEmployee(initial), [initial]);
-  const [tab, setTab] = React.useState<Tab>("Contracts");
+  // `?tab=` / `?field=`, so a signature gap or an alert can link to the tab it
+  // means rather than to the top of the dossier. Same hook as entity-360.
+  const [tab, setTab] = useUrlTab<Tab>(TABS, "Contracts");
+  useFieldHighlight([tab]);
   const [busy, setBusy] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);

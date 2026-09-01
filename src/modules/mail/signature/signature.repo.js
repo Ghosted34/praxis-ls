@@ -106,9 +106,12 @@ async function upsertProfile(client, userId, fields) {
 
 async function loadPerson(client, userId) {
   const { rows } = await client.query(
-    `SELECT u.user_id, u.full_name AS user_full_name, u.email,
+    `SELECT u.user_id, u.full_name AS user_full_name, u.email AS user_email,
             e.employee_id, e.full_name AS employee_full_name, e.job_title, e.department,
-            e.entity_id, e.avatar_ref
+            e.entity_id, e.avatar_ref,
+            e.email        AS employee_email,
+            e.phone_desk   AS employee_phone_desk,
+            e.phone_mobile AS employee_phone_mobile
        FROM app_user u
        LEFT JOIN employee e ON e.employee_id = u.employee_id
       WHERE u.user_id = $1`,
@@ -117,15 +120,48 @@ async function loadPerson(client, userId) {
   return rows[0] || null;
 }
 
+/**
+ * The entity, WITH its address.
+ *
+ * `decorateEntity` used to read `row.po_box`, `row.city` and `row.postal_code`
+ * straight off `corporate_entity`. That table has none of those columns — they
+ * live on `entity_address` (migration 0515), which nothing here joined. So the
+ * three fields were `undefined || null` on every render since the engine
+ * shipped: every signature in the system has been missing its P.O. Box and city,
+ * silently, and `address_line` has been the legacy free-text `address` column
+ * alone. The letterhead already learned this and prefers the REGISTERED row
+ * (0513 §5); signatures now do the same.
+ *
+ * REGISTERED first, then the primary row, then any row — matching the
+ * letterhead's precedence so the two documents cannot disagree about where the
+ * company is.
+ */
+const ENTITY_SELECT = `
+  SELECT ce.*,
+         a.line1        AS addr_line1,
+         a.line2        AS addr_line2,
+         a.city         AS addr_city,
+         a.region       AS addr_region,
+         a.postal_code  AS addr_postal_code,
+         a.po_box       AS addr_po_box,
+         a.country_code AS addr_country_code
+    FROM corporate_entity ce
+    LEFT JOIN LATERAL (
+      SELECT * FROM entity_address ea
+       WHERE ea.entity_id = ce.entity_id AND ea.is_active
+       ORDER BY (ea.type = 'REGISTERED') DESC, ea.is_primary DESC, ea.created_at
+       LIMIT 1
+    ) a ON true`;
+
 async function loadEntity(client, entityId) {
   if (!entityId) {
     const { rows } = await client.query(
-      `SELECT * FROM corporate_entity WHERE is_active IS DISTINCT FROM false ORDER BY created_at LIMIT 1`,
+      `${ENTITY_SELECT} WHERE ce.is_active IS DISTINCT FROM false ORDER BY ce.created_at LIMIT 1`,
     );
     return decorateEntity(rows[0] || null);
   }
   const { rows } = await client.query(
-    `SELECT * FROM corporate_entity WHERE entity_id = $1`,
+    `${ENTITY_SELECT} WHERE ce.entity_id = $1`,
     [entityId],
   );
   return decorateEntity(rows[0] || null);
@@ -133,15 +169,87 @@ async function loadEntity(client, entityId) {
 
 function decorateEntity(row) {
   if (!row) return null;
+  // The structured address row wins; the legacy free-text `address` column is
+  // the fallback, so an entity nobody has migrated still renders a street line.
+  const street = [row.addr_line1, row.addr_line2].filter(Boolean).join(", ") || row.address || null;
   return {
     ...row,
-    address_line: row.address || null,
-    po_box: row.po_box || null,
-    postal_code: row.postal_code || null,
-    city: row.city || null,
-    country: row.country_code || row.country || null,
+    address_line: street,
+    street_line: street,
+    po_box: row.addr_po_box || null,
+    postal_code: row.addr_postal_code || null,
+    city: row.addr_city || null,
+    region: row.addr_region || null,
+    country: row.addr_country_code || row.country_code || row.country || null,
     logo_url: row.logo_url || null,
   };
+}
+
+/**
+ * The tenant's appearance settings — the card's parametric palette (see
+ * signature.palette.js). Read from the same `setting` rows the branding module
+ * writes rather than through that module's service, because this runs on the
+ * send path and wants one query, not a module boundary.
+ *
+ * Returns camelCase to match branding.service.getBranding()'s shape, which is
+ * what signature.palette.resolve expects.
+ */
+async function loadBranding(client) {
+  // FIELD → setting key, the same direction branding.service.js's own KEYS map
+  // runs. Written this way round for a second reason: the reverse (`font_body:
+  // "fontBody"`) reads to `check:fonts` as a font_body setting being assigned
+  // the family "fontBody", and it failed the build for it. The gate was right to
+  // look — that pattern is exactly how a stray family name gets persisted — so
+  // this avoids the shape rather than exempting the file.
+  const KEYS = {
+    primary: "primary_color",
+    secondary: "secondary_color",
+    accent: "accent",
+    accentDeep: "accent_deep",
+    accentGlow: "accent_glow",
+    logoUrl: "logo_url",
+  };
+  try {
+    const { rows } = await client.query(
+      `SELECT key, value FROM setting WHERE section = 'appearance' AND key = ANY($1)`,
+      [Object.values(KEYS)],
+    );
+    const byKey = new Map(rows.map((r) => [r.key, r.value]));
+    const out = {};
+    for (const [field, key] of Object.entries(KEYS)) {
+      const v = byKey.get(key);
+      out[field] = v === undefined || v === null ? null : (typeof v === "string" ? v : String(v));
+    }
+    return out;
+  } catch {
+    /* @silent:storage a tenant with no appearance rows renders the Praxis
+       fallback palette, which is exactly what signature.palette does with {}. */
+    return {};
+  }
+}
+
+/**
+ * Staff who can have a signature rendered: an active user linked to an
+ * employee, which is what supplies the name and job title. A user with no
+ * employee row would render a card with an empty title bar, so they are not
+ * offered rather than offered and broken.
+ */
+async function listSignatureStaff(client, { search = null, limit = 500 } = {}) {
+  const { rows } = await client.query(
+    `SELECT u.user_id,
+            COALESCE(e.full_name, u.full_name) AS full_name,
+            e.job_title, e.department, u.email,
+            (p.user_id IS NOT NULL) AS has_profile
+       FROM app_user u
+       JOIN employee e ON e.employee_id = u.employee_id
+       LEFT JOIN user_signature_profile p ON p.user_id = u.user_id
+      WHERE u.status = 'ACTIVE'
+        AND ($1::text IS NULL OR COALESCE(e.full_name, u.full_name) ILIKE '%' || $1 || '%')
+      ORDER BY COALESCE(e.full_name, u.full_name)
+      LIMIT $2`,
+    [search || null, Math.min(Number(limit) || 500, 2000)],
+  );
+  return rows;
 }
 
 const getCached = (client, { userId = null, identityKey = null, language, format, scale }) =>
@@ -204,7 +312,7 @@ const usersForEntity = (client, entityId) =>
 
 module.exports = {
   listTemplates, getTemplate, getTemplateByKey, defaultTemplate, updateTemplate,
-  getProfile, upsertProfile, loadPerson, loadEntity,
+  getProfile, upsertProfile, loadPerson, loadEntity, loadBranding, listSignatureStaff,
   getCached, putCached, deleteCachedForUser, deleteCachedForIdentity,
   deleteAllIdentityCached, deleteAllCached,
   usersForEntity,

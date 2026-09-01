@@ -1969,11 +1969,16 @@ describe.each(CASES)(
  * Found by the gate above, and worth pinning on its own because the two states
  * look almost identical on screen and lead the user to opposite remedies.
  *
- * `errMsg` renders every 403 as "You don't have permission to do this.", and the
- * old `isGated` regex matched `/permission/` in that sentence. So a user missing
- * the reports GRANT was shown "Reporting isn't enabled for this tenant" and sent
- * to a developer-dashboard feature flag that was already switched on. The actual
- * cause — their role — was never mentioned to them or to the admin they asked.
+ * `errMsg` USED TO render every 403 as "You don't have permission to do this."
+ * (F-GAP-09 has since made it keep the server's own message, falling back to that
+ * sentence only when there is none), and the old `isGated` regex matched
+ * `/permission/` in it. So a user missing the reports GRANT was shown "Reporting
+ * isn't enabled for this tenant" and sent to a developer-dashboard feature flag
+ * that was already switched on. The actual cause — their role — was never
+ * mentioned to them or to the admin they asked.
+ *
+ * The case below still passes that exact sentence as the SERVER's message, so it
+ * pins the same discrimination either way.
  *
  * Same family as the Control Tower defect in Addendum 6, where any 403 fell into
  * an empty state that told the user everything was fine.

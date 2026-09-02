@@ -56,6 +56,15 @@ module.exports = {
       write: req.query.write === "true",
     })),
   })),
+  // The motto/slogan on one template, per language. Read and write are a pair
+  // so the editor never has to merge the template's copy blob itself — see the
+  // note on `saveMotto`.
+  motto: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.getMotto(c, req.params.id)),
+  })),
+  saveMotto: asyncHandler(async (req, res) => res.json({
+    data: await req.identityDb((c) => service.saveMotto(c, req.params.id, req.body, actor(req))),
+  })),
   staff: asyncHandler(async (req, res) => res.json({
     data: await req.identityDb((c) => service.listStaff(c, {
       search: req.query.q || null,

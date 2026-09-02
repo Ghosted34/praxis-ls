@@ -147,7 +147,10 @@ describe("gaps — what is missing and where to fix it", () => {
   test("a personal gap is always actionable", () => {
     const g = gaps(model(), {}).find((x) => x.key === "phone_desk");
     expect(g.actionable).toBe(true);
-    expect(g.href).toBe("/comms/signatures");
+    // WITH the anchor: the designer holds both phone inputs, and landing on the
+    // tab without saying which one is the section-level miss this whole change
+    // exists to remove.
+    expect(g.href).toBe("/comms/signatures?field=phone_desk");
   });
 
   test("a SYSTEM block reports no missing person", () => {
@@ -157,15 +160,32 @@ describe("gaps — what is missing and where to fix it", () => {
   });
 
   /**
-   * A route with an unfilled `:param` is a 404, not a link. It degrades to the
-   * BARE list page — with no `?tab=`/`?field=`, because those name a tab and an
-   * input that exist on the dossier and not on the list, and a query string
-   * pointing at neither is noise in the address bar.
+   * THE RULE, AND IT REVERSES WHAT THIS TEST USED TO ASSERT.
+   *
+   * It used to degrade an unresolvable route to the bare list page, on the
+   * reasoning that some destination beats none. In use that is false: the
+   * reader clicks "Website", waits for a list of every entity, and has learned
+   * only that the link does not work. The list cannot even tell them which
+   * entity their own signature was printed from.
+   *
+   * So an id we do not have is not a shorter link, it is no link — and the
+   * panel renders `where` as text instead, which costs no page load and says
+   * strictly more.
    */
-  test("an entity route with no entity id degrades to the bare list page", () => {
-    const link = href(SOURCES.po_box, { entityId: null });
-    expect(link).not.toContain(":entityId");
-    expect(link).toBe("/master/corporate-entities");
+  test("a route whose id is missing yields NO link, not the list page", () => {
+    expect(href(SOURCES.po_box, { entityId: null })).toBeNull();
+    expect(href(SOURCES.website, { entityId: null })).toBeNull();
+    expect(href(SOURCES.full_name, { employeeId: null })).toBeNull();
+    // And the gap still tells the reader where to go.
+    expect(SOURCES.po_box.where).toContain("Corporate entities");
+  });
+
+  test("a resolvable id yields a link that names the row to open", () => {
+    expect(href(SOURCES.website, { entityId: "e-1" }))
+      .toBe("/master/corporate-entities?edit=entity&row=e-1&field=website");
+    // No address row yet is not a dead end: the modal opens blank to create one.
+    expect(href(SOURCES.po_box, { entityId: "e-1", addressId: null }))
+      .toContain("row=new");
   });
 
   test("every source declares a route, a label and an owner", () => {

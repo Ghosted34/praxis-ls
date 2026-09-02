@@ -34,6 +34,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useSearchParams } from "react-router-dom";
+import { useFieldHighlight } from "@/lib/use-url-tab";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -321,7 +322,8 @@ function EntityForm({
               disabled={!isNew}
             />
           </Field>
-          <Field label={tr("Legal name")} required>
+          {/* `data-field`: the anchor `?field=legal_name` focuses and rings. */}
+          <Field label={tr("Legal name")} required data-field="legal_name">
             <Input
               value={v.legal_name}
               onChange={(e) => set("legal_name", e.target.value)}
@@ -427,7 +429,7 @@ function EntityForm({
               placeholder="+237690000000"
             />
           </Field>
-          <Field label={tr("Website")}>
+          <Field label={tr("Website")} data-field="website">
             <Input
               value={v.website}
               onChange={(e) => set("website", e.target.value)}
@@ -753,20 +755,46 @@ export function CorporateEntitiesPage() {
     if (!selId && entities.length) setSelId(entities[0].entity_id);
   }, [entities, selId]);
 
-  // The dossier's "Edit details" links back here with ?edit=<id> — used by the
-  // deep-link page. One form, reachable from both places: open it and select
-  // that entity in the list.
-  const editId = params.get("edit");
+  /*
+   * OPEN THE EDIT FORM FROM THE URL. Two spellings, both live:
+   *
+   *   ?edit=<entityId>          the dossier's "Edit details" link (original)
+   *   ?edit=entity&row=<id>     the deep-link contract signature gaps emit
+   *
+   * The second exists because `edit` names WHAT to open on every other screen
+   * ("employee", "addresses", "motto") and an entity id there would be the one
+   * screen speaking a different dialect. The first is kept working rather than
+   * migrated: it is a link people have in their history, and honouring both
+   * costs one line.
+   *
+   * `legal_name` and `website` are entity SCALARS — the dossier only displays
+   * them, this form is where they are edited — which is why a "your website is
+   * missing" gap points at the list screen and not at the 360.
+   */
+  const editParam = params.get("edit");
+  const rowParam = params.get("row");
+  const editId = editParam === "entity" ? rowParam : editParam;
   React.useEffect(() => {
     if (!editId) return;
-    const found = entities.find((e) => e.entity_id === editId);
-    if (found) {
+    if (editId === "new") {
+      setEditing("new");
+    } else {
+      const found = entities.find((e) => e.entity_id === editId);
+      if (!found) return;
       setEditing(found);
       setSelId(found.entity_id);
-      params.delete("edit");
-      setParams(params, { replace: true });
     }
+    // Strip the arrival, keep the location: `?field=` stays so the highlight
+    // still runs, and closing the dialog does not put it back on refresh.
+    const next = new URLSearchParams(params);
+    next.delete("edit");
+    next.delete("row");
+    setParams(next, { replace: true });
   }, [editId, entities, params, setParams]);
+
+  // Runs again when the dialog opens, because the field it is looking for is
+  // inside it and does not exist until then.
+  useFieldHighlight([editing]);
 
   return (
     <section className={shell}>

@@ -98,6 +98,7 @@ export function Field({
   htmlFor,
   children,
   className,
+  "data-field": dataField,
 }: {
   /**
    * A node, not just a string, so a field can carry a small badge beside its
@@ -121,6 +122,17 @@ export function Field({
   htmlFor?: string;
   children: React.ReactNode;
   className?: string;
+  /**
+   * Deep-link anchor. `useFieldHighlight` looks for `[data-field="…"]`, scrolls
+   * it into view, focuses the control inside and rings it — so a link that says
+   * "your website is missing" lands on the website input rather than on the
+   * form that contains it.
+   *
+   * It sits on the Field, not on the Input, because the ring should outline the
+   * labelled row: an outline around a bare input, with its label outside the
+   * ring, reads as a validation error rather than as "here it is".
+   */
+  "data-field"?: string;
 }) {
   const uid = React.useId();
   const labelId = `${uid}-label`;
@@ -156,7 +168,7 @@ export function Field({
     : null;
 
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className={cn("space-y-1.5", className)} data-field={dataField}>
       <label
         id={labelId}
         htmlFor={controlId}

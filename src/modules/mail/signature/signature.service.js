@@ -37,6 +37,11 @@ const metrics = require("../../../shared/observability/metrics");
 function employeeOf(person) {
   if (!person) return null;
   return {
+    // Not rendered on any card — carried so `signature.gaps` can link a missing
+    // job title to THIS person's dossier instead of to a list of everyone. It
+    // joins the hash rather than being added to the model alone, because this
+    // shape is deliberately the single definition both sides read (above).
+    employee_id: person.employee_id || null,
     full_name: person.employee_full_name || person.user_full_name,
     job_title: person.job_title,
     department: person.department,
@@ -159,6 +164,31 @@ async function resolveFor(client, {
     return { html: "", text: "", model: null, language, cached: false, disabled: true };
   }
 
+  /*
+   * WHICH COMPANY IS THIS SIGNATURE FROM?
+   *
+   * In a group with several legal entities the answer is NOT "the primary one"
+   * — there is no such column on `corporate_entity`, and there should not be.
+   * A signature carries the address of the entity that EMPLOYS the sender: if
+   * you work for the Douala subsidiary, your mail must show Douala's
+   * registered address, not the group flagship's.
+   *
+   * So, in order:
+   *   employee — the entity on the sender's own staff record. The right answer.
+   *   mailbox  — the entity bound to the identity being sent from. Correct for
+   *              a shared box like ops@ that belongs to one entity.
+   *   fallback — `loadEntity(null)` takes the OLDEST ACTIVE entity. That is a
+   *              guess, and it is silent, and on a one-entity tenant it happens
+   *              to be right every time, which is exactly why it went unnoticed.
+   *
+   * The provenance is carried rather than discarded because the third case is a
+   * data gap worth telling someone about: the card prints a company the sender
+   * is not recorded as working for. `signature.gaps` turns it into a link to
+   * the staff record that would settle it.
+   */
+  const entitySource = (person && person.entity_id)
+    ? "employee"
+    : ((identity && identity.entity_id) ? "mailbox" : "fallback");
   const entity = await repo.loadEntity(client, (person && person.entity_id) || (identity && identity.entity_id) || null);
   const template = await pickTemplate(client, {
     profile,
@@ -197,6 +227,10 @@ async function resolveFor(client, {
   });
   if (cached && cached.source_hash === hash) {
     const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
+    model.entity_source = entitySource;
+    // The template that produced this render — the motto is authored on it, so
+    // a missing-motto gap needs its id to link anywhere at all.
+    model.template_id = template.signature_template_id || null;
     model.card_png_url = cached.storage_path ? mediaUrl(cached.storage_path) : null;
     return {
       html: format === "HTML" ? cached.content : htmlMod.render(model),
@@ -209,6 +243,10 @@ async function resolveFor(client, {
   }
 
   const model = modelFrom(person, entity, profile, template, mailbox, language, identity, system, extras);
+  model.entity_source = entitySource;
+  // The template that produced this render — the motto is authored on it, so
+  // a missing-motto gap needs its id to link anywhere at all.
+  model.template_id = template.signature_template_id || null;
   const text = resolveMod.textContent(model);
 
   if (format === "HTML") {
@@ -427,6 +465,55 @@ async function cardPreview(client, { userId, language = "en", can = {} } = {}) {
   };
 }
 
+/**
+ * THE MOTTO / SLOGAN — the line in the script face across the bottom of the card.
+ *
+ * WHY IT HAS ITS OWN PAIR OF ENDPOINTS rather than riding on the template PATCH
+ * that already accepts `copy_en` / `copy_fr`. Those two columns are opaque JSON
+ * blobs holding every piece of authored copy a template carries. Writing the
+ * motto through them means the caller must read the blob, merge one key and
+ * write the whole thing back — and a client that gets that read-modify-write
+ * wrong silently erases the confidentiality notice sitting in the same object.
+ * That is not a hypothetical: it is the ordinary outcome of a PATCH that sends
+ * `{copy_en: {motto: "..."}}`, which is exactly what the obvious client code
+ * does.
+ *
+ * So the merge lives here, once, on the server, and the wire format is a
+ * string per language.
+ *
+ * PER LANGUAGE, because the card is bilingual and a French motto is not a
+ * translation the product can invent.
+ */
+async function getMotto(client, templateId) {
+  const t = await repo.getTemplate(client, templateId);
+  if (!t) throw new AppError("NOT_FOUND", "template not found", 404);
+  return {
+    signature_template_id: t.signature_template_id,
+    name: t.name,
+    en: (t.copy_en && t.copy_en.motto) || "",
+    fr: (t.copy_fr && t.copy_fr.motto) || "",
+  };
+}
+
+/**
+ * Set the motto for one or both languages. Omitting a language leaves it alone;
+ * sending an empty string clears it, which is how a motto is removed — there is
+ * no separate delete, because "no motto" is a value, not a missing record.
+ */
+async function saveMotto(client, templateId, { en, fr } = {}, actor = {}) {
+  const t = await repo.getTemplate(client, templateId);
+  if (!t) throw new AppError("NOT_FOUND", "template not found", 404);
+
+  const fields = {};
+  // Spread the EXISTING blob first — the whole point of this endpoint.
+  if (en !== undefined) fields.copy_en = { ...(t.copy_en || {}), motto: String(en).trim() };
+  if (fr !== undefined) fields.copy_fr = { ...(t.copy_fr || {}), motto: String(fr).trim() };
+  if (!Object.keys(fields).length) return getMotto(client, templateId);
+
+  await updateTemplate(client, templateId, fields, actor);
+  return getMotto(client, templateId);
+}
+
 async function listStaff(client, query) {
   return repo.listSignatureStaff(client, query || {});
 }
@@ -528,5 +615,6 @@ module.exports = {
   RENDERER_VERSION,
   tenantNamespace,
   resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
-  listTemplates, updateTemplate, invalidateForUser, invalidateForEntity, bake,
+  listTemplates, updateTemplate, getMotto, saveMotto,
+  invalidateForUser, invalidateForEntity, bake,
 };

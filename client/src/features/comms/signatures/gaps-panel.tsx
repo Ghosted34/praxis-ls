@@ -52,6 +52,18 @@ export function GapsPanel({ gaps }: { gaps: SignatureGap[] }) {
                 ? tr(g.hint)
                 : tr("Ask {owner}.").replace("{owner}", tr(g.owner))}
             </span>
+            {/*
+              NO LINK, SO SAY WHERE IT LIVES.
+              A gap without an href is one of two things: not the reader's to
+              fix, or a field we cannot land them on. Either way the answer to
+              "so where IS it?" is a path, and printing it costs nothing and
+              beats a link that drops them on a list to search. This is the
+              other half of the rule that a link either reaches the control or
+              is not offered.
+            */}
+            {!g.href && g.where && (
+              <span className="micro block text-muted-foreground">{g.where}</span>
+            )}
           </li>
         ))}
       </ul>

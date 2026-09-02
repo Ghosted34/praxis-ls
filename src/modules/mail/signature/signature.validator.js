@@ -15,6 +15,15 @@ const schemas = {
     extra: z.record(z.unknown()).optional(),
     is_enabled: z.boolean().optional(),
   }).strict(),
+  // A motto is one line of display copy in a script face; it wraps badly and
+  // renders on a fixed-width card, so the cap is a rendering constraint rather
+  // than a storage one. Empty string is how a motto is cleared.
+  motto: z.object({
+    en: z.string().max(120).optional(),
+    fr: z.string().max(120).optional(),
+  }).refine((v) => v.en !== undefined || v.fr !== undefined, {
+    message: "Provide a motto for at least one language",
+  }),
   templatePatch: z.object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
@@ -48,6 +57,6 @@ const mw = (k) => (req, _res, next) => {
 };
 
 module.exports = {
-  profile: mw("profile"), templatePatch: mw("templatePatch"),
+  profile: mw("profile"), templatePatch: mw("templatePatch"), motto: mw("motto"),
   png: mw("png"), batch: mw("batch"), schemas,
 };

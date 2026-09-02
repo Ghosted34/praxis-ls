@@ -27,7 +27,7 @@
 import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
+import { useUrlTab, useFieldHighlight, useDeepLinkEdit } from "@/lib/use-url-tab";
 import { LetterheadStudio } from "./letterhead-studio";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -455,7 +455,7 @@ function ChildModal({
                       {heading}
                     </h4>
                   )}
-                  <div className={cls}>
+                  <div className={cls} data-field={f.key}>
                     {f.type === "checkbox" ? (
                       <Checkbox
                         checked={!!values[f.key]}
@@ -494,7 +494,11 @@ function ChildModal({
                     {heading}
                   </h4>
                 )}
-                <label className={cls}>
+                {/* `data-field`: every field in every collection modal is a
+                    deep-link target for free, keyed on the column name the
+                    server already uses — `?edit=addresses&row=…&field=po_box`
+                    focuses this input. */}
+                <label className={cls} data-field={f.key}>
                   <span className="font-medium text-foreground">{f.label}</span>
                   {f.type === "country" ? (
                     <SmartCountryPicker
@@ -1131,7 +1135,6 @@ export function EntityDossier({
   // it in app.tsx); the TAB was not, so a link that meant "the P.O. Box is
   // missing" landed on Overview with eleven tabs to guess from.
   const [tab, setTab] = useUrlTab<Tab>(TABS, "Overview");
-  useFieldHighlight([tab]);
   // The field list is no longer carried in this state: it depends on lookups
   // fetched when the modal opens, so only the collection, the title and the row
   // being edited live here.
@@ -1140,6 +1143,9 @@ export function EntityDossier({
     title: string;
     row?: Record<string, unknown> | null;
   }>(null);
+  // `editing` is a dependency, not just `tab`: half these anchors are on inputs
+  // inside the modal, which is not in the document until it opens.
+  useFieldHighlight([tab, editing]);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
   const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
@@ -1191,6 +1197,47 @@ export function EntityDossier({
     }
   }
 
+  /*
+   * OPEN A COLLECTION ROW'S MODAL FROM THE URL — `?edit=<seg>&row=<id|new>`.
+   *
+   * The Section anchors below land a `?field=` on the section that OWNS a fact,
+   * with its "Add…" button focused, and the comment there calls that "the
+   * honest best". It was, while the URL could not name a row. It is not the
+   * same as taking someone to the field: for a reader who does not know this
+   * screen, a focused button that reveals a dialog is still one they have to
+   * know to open.
+   *
+   * So the row is named now. `new` opens the create form — the correct
+   * destination for "there is no registered address", not a failure to find one
+   * — with REGISTERED prefilled, because that is the address a signature and a
+   * letterhead print and the reason the gap fired.
+   *
+   * ABOVE the loading and error returns, and reading `d.data` defensively
+   * rather than the destructured `addresses` below them: this runs before the
+   * dossier has loaded, and a hook after an early return is a hook that
+   * sometimes does not run. React counts them, and it is right to.
+   */
+  const deepEdit = useDeepLinkEdit("addresses");
+  const loadedAddresses = d.data ? d.data.addresses : null;
+  React.useEffect(() => {
+    // Not loaded yet — the arrival params stay in the URL and this runs again
+    // when they are, which is the whole reason `clear()` is called on success
+    // rather than on mount.
+    if (!deepEdit.open || !loadedAddresses) return;
+    const id = deepEdit.row;
+    const found = id && id !== "new"
+      ? loadedAddresses.find((a) => a.address_id === id)
+      : null;
+    setEditing({
+      seg: "addresses",
+      title: found ? "Edit address" : "Add address",
+      row: found
+        ? (found as unknown as Record<string, unknown>)
+        : { type: "REGISTERED" },
+    });
+    deepEdit.clear();
+  }, [deepEdit, loadedAddresses]);
+
   if (d.loading) return <LoadingRow label="Loading entity…" />;
   if (d.error || !d.data) {
     return (
@@ -1213,6 +1260,7 @@ export function EntityDossier({
     expiring_registrations: expiring,
     can_see_governance: gov,
   } = d.data;
+
   const status =
     e.registration_status || (e.is_active ? "ACTIVE" : "DEACTIVATED");
   const currency = e.default_currency || "XAF";

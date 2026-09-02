@@ -19,18 +19,140 @@ import { Callout } from "@/components/ui/callout";
 import { ErrorState, EmptyState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/use-confirm";
+import { Modal, Field } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { useDeepLinkEdit, useFieldHighlight } from "@/lib/use-url-tab";
 import { useToast } from "@/components/ui/toast";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { errMsg, useResource } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 
+/**
+ * THE MOTTO / SLOGAN EDITOR.
+ *
+ * WHY IT HAD TO EXIST BEFORE THE DEEP LINK COULD. The card renders a motto — the
+ * script-face line across the bottom — and the signature already reported a
+ * missing one as a gap pointing at this tab. There was nothing here to type it
+ * into: the field existed in the seed data, in the renderer and in the gap
+ * list, and in no screen. So the link was honest about the destination and the
+ * destination could not help, which is the failure this whole change is about.
+ *
+ * PER LANGUAGE, because the card is bilingual and a French motto is not a
+ * translation the product may invent. Blank clears it — "no motto" is a value.
+ */
+function MottoModal({
+  template,
+  onClose,
+  onSaved,
+}: {
+  template: api.SignatureTemplate;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [en, setEn] = React.useState("");
+  const [fr, setFr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let live = true;
+    api
+      .getSignatureMotto(template.signature_template_id)
+      .then((m) => {
+        if (!live) return;
+        setEn(m.en);
+        setFr(m.fr);
+        setLoaded(true);
+      })
+      .catch((e) => live && setError(errMsg(e)));
+    return () => {
+      live = false;
+    };
+  }, [template.signature_template_id]);
+
+  // Runs once the inputs are actually in the document, so `?field=motto`
+  // focuses the English box rather than finding nothing.
+  useFieldHighlight([loaded]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.saveSignatureMotto(template.signature_template_id, { en, fr });
+      toast.success(tr("Motto saved"));
+      onSaved();
+      onClose();
+    } catch (err) {
+      reportActionError(err);
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={tr("Motto")}
+      description={tr(
+        "The line in the script face across the bottom of the card. Leave a language blank to show no motto there.",
+      )}
+    >
+      <form className="space-y-4" onSubmit={save}>
+        {error && <Callout tone="bad" title={tr("Could not save")}>{error}</Callout>}
+        <Field label={tr("English")} data-field="motto">
+          <Input
+            value={en}
+            onChange={(e) => setEn(e.target.value)}
+            maxLength={120}
+            placeholder="Moving cargo. Moving Africa."
+          />
+        </Field>
+        <Field label={tr("French")} data-field="motto_fr">
+          <Input
+            value={fr}
+            onChange={(e) => setFr(e.target.value)}
+            maxLength={120}
+            placeholder="Faire bouger le fret. Faire bouger l'Afrique."
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {tr("Cancel")}
+          </Button>
+          <Button type="submit" loading={busy} disabled={busy}>
+            {tr("Save motto")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function TemplatesTab() {
   const toast = useToast();
   const [confirm, confirmDialog] = useConfirm();
   const [busy, setBusy] = React.useState(false);
   const { data, error, reload } = useResource(() => api.listSignatureTemplates(), []);
-  const templates = Array.isArray(data) ? data : [];
+  const templates = React.useMemo(() => (Array.isArray(data) ? data : []), [data]);
+
+  // `?edit=motto&row=<templateId>` — where a "no motto" signature gap lands.
+  const [motto, setMotto] = React.useState<api.SignatureTemplate | null>(null);
+  const deepEdit = useDeepLinkEdit("motto");
+  React.useEffect(() => {
+    if (!deepEdit.open || !templates.length) return;
+    const found = templates.find(
+      (t) => t.signature_template_id === deepEdit.row,
+    );
+    if (!found) return;
+    setMotto(found);
+    deepEdit.clear();
+  }, [deepEdit, templates]);
 
   async function makeDefault(tpl: api.SignatureTemplate) {
     const ok = await confirm({
@@ -88,6 +210,13 @@ export function TemplatesTab() {
                 {tpl.scope_kind}
                 {tpl.scope_value ? ` · ${tpl.scope_value}` : ""}
               </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setMotto(tpl)}
+              >
+                {tr("Motto")}
+              </Button>
               {!tpl.is_default && tpl.scope_kind === "TENANT" && (
                 <Button
                   size="sm"
@@ -101,6 +230,13 @@ export function TemplatesTab() {
             </li>
           ))}
         </ul>
+      )}
+      {motto && (
+        <MottoModal
+          template={motto}
+          onClose={() => setMotto(null)}
+          onSaved={reload}
+        />
       )}
       {confirmDialog}
     </div>

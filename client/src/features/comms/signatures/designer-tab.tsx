@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/toast";
 import { tr } from "@/lib/i18n";
 import * as api from "@/lib/mail-api";
 import { errMsg, useResource } from "@/lib/use-resource";
+import { useFieldHighlight } from "@/lib/use-url-tab";
 import { reportActionError } from "@/lib/action-error";
 import { CardPreview } from "./card-preview";
 import { GapsPanel } from "./gaps-panel";
@@ -58,6 +59,9 @@ const PROFILE_ONLY: { key: ProfileKey; label: string; hint: string }[] = [
 ];
 
 export function DesignerTab() {
+  // The two phone inputs already carry `data-field`; nothing ran the
+  // highlight, so `?field=phone_desk` landed on the tab and stopped there.
+  useFieldHighlight();
   const toast = useToast();
   const [lang, setLang] = React.useState<Lang>("en");
   const [busy, setBusy] = React.useState(false);

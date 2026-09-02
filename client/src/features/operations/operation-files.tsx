@@ -20,7 +20,7 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
@@ -32,16 +32,16 @@ import { AiActions } from "@/components/ai-actions";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { useList, useListPaged } from "@/lib/use-resource";
 import { useFocusRow } from "@/lib/use-focus-row";
-import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
+import { useTrailTitle } from "@/app/layout/nav-trail-context";
+import { useRecordOpener } from "@/lib/record-360";
 import { useDebounced } from "@/lib/use-debounced";
-import { useIsDesktop } from "@/lib/use-media-query";
 import { money0 } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { DossierForm } from "./dossier-form";
 import { DossierWizard } from "./dossier-wizard";
-import { OperationFile360Modal, filePath } from "./file-360";
+import { OperationFile360Modal } from "./file-360";
 import { routeLabel, serviceLabel, tone } from "./shared";
 import { MilestoneCell } from "./components";
 
@@ -107,45 +107,17 @@ export function OperationsFilesPage() {
   const { focusId } = useFocusRow(list.rows);
 
   /*
-   * OPENING A FILE IS TWO DIFFERENT GESTURES, and which one you get is decided
-   * here rather than in CSS.
-   *
-   * DESKTOP navigates to `/operations/files/:id` — the 360 as a real page, full
-   * width, with an address that can be pasted into an email. A dialog capped at
-   * 768px was the wrong container for the screen an operator lives in all
-   * morning, and it had no URL, so "look at SBX-2026-0001" was not a link.
-   *
-   * MOBILE keeps the modal, and keeps it in the URL (`?focus=<id>`), which is
-   * what makes it a place the back and forward arrows can reach
-   * (app/layout/nav-trail-context.tsx). A full-page drill-in on a 390px viewport
-   * is a navigation dead end; a sheet you dismiss is not.
-   *
-   * `useIsDesktop` answers TRUE before `matchMedia` resolves, so the first frame
-   * is the desktop branch — see lib/use-media-query.ts for why that default.
+   * OPENING A FILE IS TWO DIFFERENT GESTURES — desktop navigates to the file's
+   * own page, a phone opens the sheet over this list — and the branch, the
+   * `?focus=` exchange and the redirects are the same on all three operations
+   * 360s. They live in components/record-360.tsx so there is one copy.
    */
-  const isDesktop = useIsDesktop();
-  const navigate = useNavigate();
   const {
-    record: view,
-    open: openFile,
-    close: closeFile,
-  } = useRecordParam(list.rows, (d) => d.dossier_id);
-
-  /*
-   * `?focus=<id>` means "open this file" wherever it came from — the client
-   * 360's drill-in, a notification, the back arrow. On a phone that is the
-   * modal, which `useRecordParam` above has already opened. On a desktop it is
-   * the page, so the param is exchanged for the route.
-   *
-   * `replace`, because nobody navigated to the list-with-a-param as a
-   * destination: leaving it in the history would put a step between the file and
-   * the list that renders as a flicker on the way back.
-   */
-  const focusParam = searchParams.get("focus");
-  React.useEffect(() => {
-    if (isDesktop && focusParam)
-      navigate(filePath(focusParam), { replace: true });
-  }, [isDesktop, focusParam, navigate]);
+    openRecord: openFile,
+    sheetRecord: view,
+    closeSheet: closeFile,
+    isDesktop,
+  } = useRecordOpener("/operations/files", list.rows, (d) => d.dossier_id);
 
   // What the back tooltip and the hold-menu call this step. The route can only
   // ever say "Files"; this screen is the one thing that knows the reference.
@@ -340,9 +312,7 @@ export function OperationsFilesPage() {
       error={list.error}
       loading={list.loading}
       rowKey={(r) => r.dossier_id}
-      onRowClick={(r) =>
-        isDesktop ? navigate(filePath(r.dossier_id)) : openFile(r)
-      }
+      onRowClick={openFile}
       highlightRowKey={focusId}
       empty={{
         title: "No operations files yet",

@@ -168,6 +168,17 @@ const OperationFile360Page = lazyNamed(
   () => import("@/features/operations/file-360"),
   "OperationFile360Page",
 );
+// The transit order and delivery note 360s, for the same reason: an OT number
+// and a delivery-note reference are what a broker, a client and a driver refer
+// to those documents by, so each has to be something you can send.
+const TransitOrder360Page = lazyNamed(
+  () => import("@/features/operations/transit-order-360"),
+  "TransitOrder360Page",
+);
+const DeliveryNote360Page = lazyNamed(
+  () => import("@/features/operations/delivery-note-360"),
+  "DeliveryNote360Page",
+);
 const CostingHub = lazyNamed(
   () => import("@/features/costing/hub"),
   "CostingHub",
@@ -552,6 +563,14 @@ export function App() {
               <Route
                 path="operations/files/:fileId"
                 element={<OperationFile360Page />}
+              />
+              <Route
+                path="operations/transit-orders/:orderId"
+                element={<TransitOrder360Page />}
+              />
+              <Route
+                path="operations/delivery-notes/:noteId"
+                element={<DeliveryNote360Page />}
               />
               <Route path="operations/:section" element={<OperationsHub />} />
               {/* Procurement — hub */}

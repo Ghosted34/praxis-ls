@@ -551,9 +551,21 @@ takes an id, and give it two entry points:
 - a **`<Dialog>`** over the list for phones, opened from a URL parameter so the
   sheet is still a step rather than local state.
 
-`features/operations/file-360.tsx` is the worked example: `<OperationFile360>`
-is the body, `<OperationFile360Page>` and `<OperationFile360Modal>` are the two
-shells, and neither adds content the other lacks.
+**The chrome is a component, not a pattern you copy.** `components/record-360.tsx`
+holds `<Record360Page>` (the back link, the width, and the redirect that hands a
+shared desktop link to the phone's sheet), `<Record360Header>` (the `<h1>`, the
+pills, the meta line and the actions) and `<Record360Rail>` / `<Record360Card>`
+(what else the record touches). The list's half — `useRecordOpener()`, which
+decides what a row click does and exchanges a desktop `?focus=` for the route —
+is a hook, so it lives in `lib/record-360.ts`. Only the BODY is per-record:
+what a transit order shows has nothing in common with what a delivery note does.
+
+Three worked examples, all on the same chrome:
+`features/operations/file-360.tsx`, `transit-order-360.tsx` and
+`delivery-note-360.tsx`. Each exports a body plus a `…360Page` and a `…360Modal`
+around it — `<OperationFile360>`, `<OperationFile360Page>` and
+`<OperationFile360Modal>` are the naming — and neither shell adds content the
+other lacks.
 
 Three rules make it hold together:
 
@@ -575,6 +587,12 @@ Three rules make it hold together:
 Both entry points must land: whatever already deep-links to the list with
 `?focus=<id>` keeps working, so exchange that parameter for the route on desktop
 rather than leaving old links pointing at a list that has to find the row again.
+`useRecordOpener()` does this for you.
+
+**A record that grows a route usually wants its file split too.** Once the detail
+view is a 360, the list needs it and it needs the form — and one file importing
+another both ways is a cycle. The operations screens are `<list>.tsx`,
+`<record>-form.tsx` and `<record>-360.tsx`, one job each.
 
 ---
 

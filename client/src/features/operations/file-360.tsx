@@ -37,9 +37,8 @@
  * than a number in that case. Do not "fix" a blank margin here — it is a grant.
  */
 import * as React from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { tr } from "@/lib/i18n";
-import { pageShell } from "@/lib/layout";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -50,7 +49,12 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ui/pill";
 import { useUrlTab } from "@/lib/use-url-tab";
-import { useIsDesktop } from "@/lib/use-media-query";
+import {
+  Record360Card,
+  Record360Header,
+  Record360Page,
+  Record360Rail,
+} from "@/components/record-360";
 import { useTrailTitle } from "@/app/layout/nav-trail-context";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
@@ -154,51 +158,6 @@ function DetailsTab({
   );
 }
 
-/** One card in the related rail. A `to` makes it a real link (middle-clickable,
- *  copyable); everything else is an in-page jump to another tab. */
-function RelatedCard({
-  label,
-  value,
-  hint,
-  to,
-  onClick,
-}: {
-  label: string;
-  value: React.ReactNode;
-  hint?: string;
-  to?: string;
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <span className="micro uppercase tracking-wide">{label}</span>
-      <span className="mt-1 block truncate text-sm font-medium text-foreground">
-        {value}
-      </span>
-      {hint && <span className="mt-0.5 block truncate micro">{hint}</span>}
-    </>
-  );
-  const cls =
-    "block w-full rounded-lg border bg-card px-3.5 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  if (to)
-    return (
-      <Link to={to} className={cls}>
-        {body}
-      </Link>
-    );
-  if (onClick)
-    return (
-      <button type="button" onClick={onClick} className={cls}>
-        {body}
-      </button>
-    );
-  return (
-    <div className="block w-full rounded-lg border bg-card px-3.5 py-2.5">
-      {body}
-    </div>
-  );
-}
-
 /**
  * What else this file touches — the rail that turns a terminus into a hub.
  *
@@ -220,10 +179,8 @@ function RelatedRail({
   const done = header.milestone_done || 0;
   const total = header.milestone_total || 0;
   return (
-    <div>
-      <div className="micro mb-2">{tr("Related")}</div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <RelatedCard
+    <Record360Rail title={tr("Related")}>
+        <Record360Card
           label={tr("Client")}
           value={header.client_name || "—"}
           hint={header.client_id ? "Open the client 360" : "No client on file"}
@@ -233,18 +190,18 @@ function RelatedRail({
               : undefined
           }
         />
-        <RelatedCard
+        <Record360Card
           label={tr("Milestones")}
           value={total ? `${num(done)} of ${num(total)} done` : tr("None yet")}
           hint={header.current_milestone || undefined}
           onClick={() => onJump("milestones")}
         />
-        <RelatedCard
+        <Record360Card
           label={tr("Carrier")}
           value={header.rate_provider_name || tr("Not confirmed")}
           hint={header.incoterm ? `Incoterm ${header.incoterm}` : undefined}
         />
-        <RelatedCard
+        <Record360Card
           label={tr("Documents")}
           value={
             header.bl_mawb ? `BL / MAWB ${header.bl_mawb}` : "Open the documents"
@@ -252,8 +209,7 @@ function RelatedRail({
           hint={header.vessel_flight || undefined}
           onClick={() => onJump("documents")}
         />
-      </div>
-    </div>
+    </Record360Rail>
   );
 }
 
@@ -648,32 +604,28 @@ function FileHeaderCard({
   onChanged: () => void;
 }) {
   const svc = serviceLabel(header);
-  const meta = [
-    header.client_name,
-    routeLabel(header) !== "—" ? routeLabel(header) : null,
-    header.eta ? `ETA ${dateFmt(header.eta)}` : null,
-    header.bl_mawb ? `BL / MAWB ${header.bl_mawb}` : null,
-  ].filter(Boolean);
-
+  const route = routeLabel(header);
   return (
-    <div className="rounded-xl border bg-card p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="num truncate text-lg font-semibold text-foreground">
-              {header.ref}
-            </h1>
-            <Pill tone={tone(header.status)}>{header.status}</Pill>
-            {svc && svc !== "—" && <Pill tone="mute">{svc}</Pill>}
-          </div>
-          {header.title && (
-            <p className="mt-1 text-sm text-foreground">{header.title}</p>
-          )}
-          <p className="mt-1 micro">{meta.join(" · ") || "—"}</p>
-        </div>
+    <Record360Header
+      title={header.ref}
+      titleClassName="num"
+      subtitle={header.title}
+      pills={
+        <>
+          <Pill tone={tone(header.status)}>{header.status}</Pill>
+          {svc && svc !== "—" && <Pill tone="mute">{svc}</Pill>}
+        </>
+      }
+      meta={[
+        header.client_name,
+        route !== "—" && route,
+        header.eta && `ETA ${dateFmt(header.eta)}`,
+        header.bl_mawb && `BL / MAWB ${header.bl_mawb}`,
+      ]}
+      actions={
         <FileActions header={header} onEdit={onEdit} onChanged={onChanged} />
-      </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -867,7 +819,6 @@ export function OperationFile360Modal({
  */
 export function OperationFile360Page() {
   const { fileId = "" } = useParams();
-  const isDesktop = useIsDesktop();
   const [editing, setEditing] = React.useState(false);
   /*
    * THE FILE ROW ITSELF, alongside the 360 rollup — and it is not a duplicate
@@ -882,33 +833,14 @@ export function OperationFile360Page() {
   const file = useResource(() => api.getDossier(fileId), [fileId]);
   useTrailTitle(file.data?.ref ? `Operations file ${file.data.ref}` : null);
 
-  /*
-   * A LINK SHARED FROM A DESKTOP STILL OPENS ON A PHONE — as the sheet, which is
-   * what this product's detail views are below `lg`. The address survives the
-   * hand-off; only the container changes.
-   *
-   * `replace` so the back arrow returns to whatever sent the link, not to a page
-   * that would immediately redirect again. Rendered as a <Navigate>, not an
-   * effect, because there is no frame in which the page body should paint.
-   */
-  if (!isDesktop)
-    return (
-      <Navigate
-        to={`/operations/files?focus=${encodeURIComponent(fileId)}`}
-        replace
-      />
-    );
-
+  // The back link, the width and the hand-off to the phone's sheet are the same
+  // three things on every 360 — see components/record-360.tsx.
   return (
-    <section className={`${pageShell.wide} space-y-4`}>
-      <div className="micro">
-        <Link
-          to="/operations/files"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          ← Operations files
-        </Link>
-      </div>
+    <Record360Page
+      basePath="/operations/files"
+      backLabel="Operations files"
+      id={fileId}
+    >
       <OperationFile360
         fileId={fileId}
         variant="page"
@@ -922,6 +854,6 @@ export function OperationFile360Page() {
           onSaved={file.reload}
         />
       )}
-    </section>
+    </Record360Page>
   );
 }

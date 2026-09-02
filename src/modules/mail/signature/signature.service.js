@@ -22,6 +22,8 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const brandLogo = require("../../../services/brand-logo.service");
 const storage = require("../../../services/storage.service");
 const { config } = require("../../../config/env");
+const { logger } = require("../../../config/logger");
+const metrics = require("../../../shared/observability/metrics");
 
 /**
  * The employee fields the renderer reads, projected out of `loadPerson`'s row.
@@ -120,6 +122,7 @@ async function resolveFor(client, {
   system = false,
   format = "HTML",
   scale = 1,
+  tenantSlug = null,
 } = {}) {
   const language = resolveLanguage({
     explicit: langHint,
@@ -196,7 +199,7 @@ async function resolveFor(client, {
     // better outcome than one that does not go out.
     if (model.kind === "card") {
       model.card_png_url = await ensureCardPng(client, {
-        model, userId, identityKey, language, hash,
+        model, userId, identityKey, language, hash, tenantSlug,
       });
     }
     const html = htmlMod.render(model);
@@ -241,16 +244,72 @@ const storagePathOf = (url) => String(url || "").replace(/^https?:\/\/[^/]+\/med
  * person's name, title and work contact details — the same things the signature
  * itself publishes to that recipient — and nothing else.
  */
-async function ensureCardPng(client, { model, userId, identityKey, language, hash }) {
+/**
+ * The tenant namespace for a storage key.
+ *
+ * Every other storage caller takes the slug from `req.tenant.slug`, because
+ * every other one is reached from a request. This is not: it runs on the SEND
+ * path, three frames below `email.service.send`, and the two functions in
+ * between (`attachSystemSignature`, `outbox.attachSignature`) do not carry a
+ * slug. Threading one through both — and through every future send path — to
+ * name a file is a lot of surface for a small job, and a path that forgets it
+ * produces a key that does not serve, which is the bug this whole function
+ * exists to stop happening twice.
+ *
+ * So it is derived instead: the caller may pass a slug, and otherwise the
+ * database names itself. Tenants are separate databases, so that is stable,
+ * always available, and unique per tenant — which is all a namespace has to be.
+ * Memoised per connection-pool lifetime because it cannot change under us.
+ */
+let namespaceCache = null;
+async function tenantNamespace(client, tenantSlug) {
+  const clean = (v) => String(v || "").toLowerCase().replace(/[^\w-]/g, "");
+  if (tenantSlug) return clean(tenantSlug) || "unknown";
+  if (namespaceCache) return namespaceCache;
+  try {
+    const { rows } = await client.query("SELECT current_database() AS db");
+    namespaceCache = clean(rows[0] && rows[0].db) || "unknown";
+  } catch {
+    /* @silent:storage a namespace we cannot read is not a reason to skip the
+       render — "unknown" still produces a servable, correctly-shaped key. */
+    namespaceCache = "unknown";
+  }
+  return namespaceCache;
+}
+
+async function ensureCardPng(client, { model, userId, identityKey, language, hash, tenantSlug }) {
+  const who = String(userId || identityKey || "system").replace(/[^\w-]/g, "");
+  // `tenant_<slug>/signatures/...` — the shape every other storage caller uses,
+  // and the ONLY shape /media will serve. The first version of this wrote
+  // `public/signatures/...`, which reads as though it says "public" and does the
+  // opposite: media-guard takes the SECOND segment as the visibility class, so
+  // that key resolved to the segment "signatures" under a tenant called
+  // "public", failed `isPublicStorageKey`, and produced a URL the mount refuses.
+  // Every card rendered under it was a 403 in the recipient's mail client.
+  const slug = await tenantNamespace(client, tenantSlug);
+  const key = `tenant_${slug}/signatures/${who}-${language}-${hash.slice(0, 12)}.png`;
+
   try {
     const png = await pngMod.render(model, 2);
-    const who = userId || identityKey || "system";
-    const key = `public/signatures/${String(who).replace(/[^\w-]/g, "")}-${language}-${hash.slice(0, 12)}.png`;
     const stored = await storage.put(png.buffer, { key, contentType: "image/png" });
-    return mediaUrl(stored.key || key);
-  } catch {
-    /* @silent:render the text half of the signature is still correct, and a
-       send must not fail because a screenshot did. */
+    const url = mediaUrl(stored.key || key);
+    logger.debug({ user_id: userId, key: stored.key || key, bytes: png.buffer.length }, "signature card rendered");
+    return url;
+  } catch (err) {
+    // NOT a silent catch. The first version swallowed this entirely, and the
+    // failure mode it hid is the whole feature quietly not working: the send
+    // still succeeds, the text fallback still renders, and the recipient gets a
+    // plain block where the card should be — with nothing anywhere saying why.
+    // That is exactly the class doc/ERROR_HANDLING.md exists to stop being
+    // invisible. Degrading is still right; degrading in silence was not.
+    logger.error(
+      { err: err.message, user_id: userId, identity_key: identityKey, key },
+      "signature card render failed — the email will carry the text fallback only",
+    );
+    metrics.inc(
+      "praxis_signature_card_render_failures_total", {}, 1,
+      "Signature card PNG renders that failed and fell back to text-only.",
+    );
     return null;
   }
 }
@@ -445,6 +504,7 @@ function bake(html, text, resolved) {
 }
 
 module.exports = {
+  tenantNamespace,
   resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
   listTemplates, updateTemplate, invalidateForUser, invalidateForEntity, bake,
 };

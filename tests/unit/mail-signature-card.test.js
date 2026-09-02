@@ -193,18 +193,93 @@ describe("the card and the email fallback agree", () => {
    * all, so the two are rendered separately — and this is what stops them
    * saying different things.
    */
-  test("every value on the card appears in the email text fallback", () => {
+  /**
+   * The guard is about CONTACT FACTS, not about every mark on the card.
+   *
+   * The fallback exists for a recipient whose client blocks the image: they must
+   * still be able to tell who wrote to them and how to reply. The motto is
+   * deliberately NOT in it — it is decoration, it is set in a script face the
+   * fallback cannot use anyway, and restating it under the card duplicated the
+   * card's own strapline in plain grey text for every recipient who CAN see
+   * images. Losing a strapline when images are off costs nothing; losing a phone
+   * number costs the reply.
+   */
+  test("every contact fact on the card survives into the text fallback", () => {
     const m = model();
     m.card_png_url = "https://smartls.praxisls.com/media/x.png";
     const email = htmlMod.render(m);
     const f = card.fields(m);
 
-    for (const value of [f.name, f.title, f.email, f.website, f.motto]) {
-      expect(value).toBeTruthy();
-    }
+    // Name, title, company, both numbers, the address and the website — the
+    // things a recipient needs in order to know who wrote and how to reply.
+    //
+    // Compared field by field rather than string by string: the card splits the
+    // street and the P.O. Box into two icon rows, while the fallback joins them
+    // into one line, so the two carry the same FACTS in different shapes. An
+    // assertion on the shape would pin the wrong thing.
+    expect(f.name).toBeTruthy();
+    expect(email).toContain(f.name);
     expect(email).toContain(f.title);
-    expect(email).toContain(f.motto);
-    expect(email).toContain("smartls.cm");
+    expect(email).toContain(m.company.legal_name);
+    expect(email).toContain(m.contact.phone_desk);
+    expect(email).toContain(m.contact.phone_mobile);
+    expect(email).toContain(m.contact.email);
+    expect(email).toContain(f.website);
+    expect(email).toContain(m.company.address_line);
+  });
+
+  test("the motto stays on the card and is not restated as text under it", () => {
+    const m = model();
+    m.card_png_url = "https://smartls.praxisls.com/media/x.png";
+    expect(card.fields(m).motto).toBeTruthy();
+    expect(htmlMod.render(m)).not.toContain("Going Beyond");
+  });
+
+  /**
+   * The fallback carries the TENANT'S colours, not a literal.
+   *
+   * It read `model.brand_color || "#0f4c81"` and the card template sets no
+   * `brand_color` — its colours resolve from branding — so every fallback ever
+   * rendered used that hard-coded blue. On a white-label product that is the
+   * one colour on the page belonging to nobody.
+   */
+  test("the fallback is painted in the tenant's brand, not a literal", () => {
+    const m = model();
+    m.palette = palette.resolve(SMART_LS, SEEDED_LAYOUT);
+    m.card_png_url = "https://smartls.praxisls.com/media/x.png";
+    const email = htmlMod.render(m);
+    expect(email).toContain(m.palette.ink);   // rule, name, website
+    expect(email).toContain(m.palette.warm);  // the title dash
+    expect(email).not.toContain("#0f4c81");
+  });
+
+  test("a tenant with different branding gets a different fallback", () => {
+    const a = model();
+    const b = model();
+    a.palette = palette.resolve({ accentDeep: "#0D5C8A" }, {});
+    b.palette = palette.resolve({ accentDeep: "#14532D" }, {});
+    expect(htmlMod.render(a)).not.toBe(htmlMod.render(b));
+    expect(htmlMod.render(b)).toContain("#14532d");
+  });
+
+  /** A phone number nobody can tap is a phone number nobody rings. */
+  test("the fallback's contact details are clickable", () => {
+    const m = model();
+    m.palette = palette.resolve(SMART_LS, SEEDED_LAYOUT);
+    const email = htmlMod.render(m);
+    expect(email).toContain('href="tel:+237233420281"');
+    expect(email).toContain('href="mailto:line.happy@smartls.cm"');
+    // A bare domain is not a link until it has a scheme.
+    expect(email).toContain('href="https://www.smartls.cm"');
+  });
+
+  /** Outlook's Word engine drops a CSS border on a <td>; a filled cell survives. */
+  test("the brand rule is a filled cell, not a CSS border", () => {
+    const m = model();
+    m.palette = palette.resolve(SMART_LS, SEEDED_LAYOUT);
+    const email = htmlMod.render(m);
+    expect(email).toContain(`bgcolor="${m.palette.ink}"`);
+    expect(email).not.toMatch(/border-left:/);
   });
 
   test("the email half stays email-safe", () => {

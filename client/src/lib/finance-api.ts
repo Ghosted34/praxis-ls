@@ -540,7 +540,7 @@ export type TreasuryAccount = {
 export const listTreasuryAccounts = () =>
   tenant<TreasuryAccount[]>("/treasury-accounts");
 
-/* dossier option loader (ref + service key) — for tagging advances / invoices to an operation */
+/* operations-file option loader (ref + service key) — for tagging advances / invoices to a file */
 export async function loadDossiers(): Promise<Option[]> {
   const rows = await tenant<Record<string, unknown>[]>("/operations");
   return (rows || []).map((r) => ({

@@ -75,8 +75,8 @@ function summariseFilters(f: ControlTowerFilters): string {
     f.include_completed && "including completed",
   ].filter(Boolean) as string[];
   return parts.length
-    ? `Open operation files — ${parts.join(", ")}`
-    : "All open operation files";
+    ? `Open operations files — ${parts.join(", ")}`
+    : "All open operations files";
 }
 
 export function DashboardPage() {

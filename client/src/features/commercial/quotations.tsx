@@ -26,7 +26,7 @@ const QUOTATION_AI: AiAction[] = [
     label: "Draft quotation",
     kind: "assist",
     describe:
-      "Draft a quotation's lines from an opportunity, dossier or costing (human-reviewed before send).",
+      "Draft a quotation's lines from an opportunity, operations file or costing (human-reviewed before send).",
   },
   {
     label: "Send / accept",

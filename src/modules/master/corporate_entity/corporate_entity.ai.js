@@ -24,7 +24,7 @@ module.exports = {
     {
       key: "get_entity_360",
       service: (c, p) => dossierService.dossier(c, p.entity_id || p, { governance: true }), permission: { module: "MOD-01", action: "view" },
-      describe: "Full dossier for one entity: identity, group structure, people and shareholding, contacts, addresses, registrations, establishments, treasury accounts (read-only) and the readiness checklist.",
+      describe: "Full 360 for one entity: identity, group structure, people and shareholding, contacts, addresses, registrations, establishments, treasury accounts (read-only) and the readiness checklist.",
     },
     {
       key: "get_entity_cap_table",

@@ -161,6 +161,13 @@ const OperationsHub = lazyNamed(
   () => import("@/features/operations/hub"),
   "OperationsHub",
 );
+// The operations file 360. Its own route, and its own chunk: it is the screen a
+// file reference in an email has to be able to point at, and it is not on the
+// path of anyone who only opened the hub.
+const OperationFile360Page = lazyNamed(
+  () => import("@/features/operations/file-360"),
+  "OperationFile360Page",
+);
 const CostingHub = lazyNamed(
   () => import("@/features/costing/hub"),
   "CostingHub",
@@ -537,6 +544,15 @@ export function App() {
               <Route path="sales/:section" element={<SalesHub />} />
               {/* Operations — hub */}
               <Route path="operations" element={<OperationsHub />} />
+              {/* The file 360 is a full route for the same reason the entity and
+            treasury dossiers have theirs: a file reference gets pasted into an
+            email, and "open Operations, then Files, then find SBX-2026-0001" is
+            not a link. Declared before `operations/:section` — react-router
+            ranks by specificity, so the three-segment path wins either way. */}
+              <Route
+                path="operations/files/:fileId"
+                element={<OperationFile360Page />}
+              />
               <Route path="operations/:section" element={<OperationsHub />} />
               {/* Procurement — hub */}
               <Route path="procurement" element={<ProcurementHub />} />

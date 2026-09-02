@@ -478,7 +478,7 @@ function MarginSimForm({
       <div className="space-y-4">
         {/* Header: the file and its costing — cost the file, then price it. */}
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={tr("Dossier")} hint="The file being priced">
+          <Field label={tr("Operations file")} hint="The file being priced">
             <Select
               value={dossierId}
               onValueChange={(v) => {
@@ -492,7 +492,7 @@ function MarginSimForm({
                   label: d.ref,
                 })),
               ]}
-              aria-label={tr("Dossier")}
+              aria-label={tr("Operations file")}
             />
           </Field>
           <Field
@@ -503,7 +503,7 @@ function MarginSimForm({
               value={costingId}
               onValueChange={(v) => void linkCosting(v)}
               options={[
-                { value: "", label: dossierId ? "— none —" : "Pick a dossier first" },
+                { value: "", label: dossierId ? "— none —" : "Pick an operations file first" },
                 ...costingRows.map((c) => ({
                   value: String(c.costing_id),
                   label: `${cell(c.doc_number ?? String(c.costing_id).slice(0, 8))} · ${cell(c.status)}`,
@@ -876,7 +876,7 @@ function SimDetail({
       title={
         s?.dossier_id
           ? (dossierRef.get(String(s.dossier_id)) ??
-            `Dossier ${String(s.dossier_id).slice(0, 8)}`)
+            `File ${String(s.dossier_id).slice(0, 8)}`)
           : tr("Ad-hoc simulation")
       }
       description="The saved workings — per-line margin and KPI, VAT, and the approval trail."
@@ -1047,7 +1047,7 @@ export function MarginSimulationsPage() {
   const columns: Column<Row>[] = [
     {
       key: "dossier",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="font-medium text-foreground">
           {r.dossier_id

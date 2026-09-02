@@ -210,12 +210,12 @@ const AREA_STARTERS: Record<string, Suggestion[]> = {
     {
       label: "What's blocked?",
       prompt:
-        "Which operation files are blocked, and what is blocking each one?",
+        "Which operations files are blocked, and what is blocking each one?",
     },
     {
       label: "Files at risk",
       prompt:
-        "Which open operation files are at risk of missing their milestone dates?",
+        "Which open operations files are at risk of missing their milestone dates?",
     },
     {
       label: "Today's movements",
@@ -358,8 +358,8 @@ export const DESK_STARTERS: Suggestion[] = [
     prompt: "What's overdue in receivables, and who should I chase first?",
   },
   {
-    label: "Open operation files",
-    prompt: "Summarise my open operation files and flag the ones at risk.",
+    label: "Open operations files",
+    prompt: "Summarise my open operations files and flag the ones at risk.",
   },
   {
     label: "Waiting on my approval",

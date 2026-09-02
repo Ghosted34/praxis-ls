@@ -3574,7 +3574,7 @@ function OpsReferencePrefixModal({ entityId, current, onClose, onSaved }: {
       open
       onClose={onClose}
       title="Operation reference prefix"
-      description="The two characters every operation file of this entity starts with. Fixed once a file has used it."
+      description="The two characters every operations file of this entity starts with. Fixed once a file has used it."
     >
       <div className="space-y-3">
         <Field label="Prefix" hint="Two characters, A–Z or 0–9. Unique across this tenant's entities.">

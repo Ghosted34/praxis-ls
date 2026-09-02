@@ -102,7 +102,7 @@ async function assertPricedSource(client, { invoice, dossierId, lines, override 
     if (policy.mode === "QUOTATION_REQUIRED" && !overriding) {
       throw new AppError(
         "NO_ACCEPTED_QUOTATION",
-        "This dossier has no accepted quotation, and the tenant requires one before a charge can be billed. Quote and have it accepted first, or supply pricing_override.reason.",
+        "This operations file has no accepted quotation, and the tenant requires one before a charge can be billed. Quote and have it accepted first, or supply pricing_override.reason.",
         422,
       );
     }

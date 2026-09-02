@@ -31,7 +31,7 @@ const NOTIFIABLE = {
   "period.closed": { action: "view", title: "Accounting period closed" },
 
   // ── Operations & logistics ──
-  "dossier.created": { action: "view", title: "New dossier opened" },
+  "dossier.created": { action: "view", title: "New operations file opened" },
   "delivery_note.created": { action: "view", title: "Delivery note created" },
   "transit_order.created": { action: "view", title: "Transit order created" },
 

@@ -395,7 +395,7 @@ async function justify(client, { id, lines = [], entityId = null, entryDate = nu
         // than letting a raw RAISE surface from inside the transaction.
         throw new AppError(
           "DOSSIER_REQUIRED",
-          "This request draws on a régie advance, so it must be attached to a dossier before it can be justified",
+          "This request draws on a régie advance, so it must be attached to an operations file before it can be justified",
           422,
         );
       }

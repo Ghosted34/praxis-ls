@@ -1294,12 +1294,35 @@ export const instantiateMilestones = (body: {
 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {
+  /**
+   * The header the 360 renders itself from — ids AND the display fields they
+   * resolve to. The page variant is reachable from a pasted link with nothing
+   * but a uuid, so this response has to be able to NAME the file on its own.
+   */
   dossier: {
     dossier_id: string;
     ref: string;
     status: string;
     client_id?: string | null;
     service_type_id?: string | null;
+    title?: string | null;
+    incoterm?: string | null;
+    bl_mawb?: string | null;
+    vessel_flight?: string | null;
+    pol?: string | null;
+    pod?: string | null;
+    eta?: string | null;
+    ata?: string | null;
+    promised_delivery_date?: string | null;
+    created_at?: string | null;
+    client_name?: string | null;
+    service_key?: string | null;
+    service_name_en?: string | null;
+    service_name_fr?: string | null;
+    rate_provider_name?: string | null;
+    milestone_total?: number | null;
+    milestone_done?: number | null;
+    current_milestone?: string | null;
   };
   /** Lifecycle readiness — powers the "ready to complete / fully collected" prompt. */
   readiness?: {
@@ -1360,7 +1383,15 @@ export type DossierOverview = {
   } | null;
   milestones: Record<string, number>;
   procurement: { po_count: number; po_total?: number | null };
-  documents: { transit_orders: number; delivery_notes: number };
+  documents: {
+    transit_orders: number;
+    delivery_notes: number;
+    /** True counts — `document_rows` below is capped at 20 and cannot be counted. */
+    vault?: number;
+    invoices?: number;
+  };
+  /** Q-tickets on this file: how many, and how many still unresolved. */
+  queries?: { count: number; open: number } | null;
   document_rows?: {
     invoices?: {
       invoice_id: string;

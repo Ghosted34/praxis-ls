@@ -5,7 +5,7 @@ module.exports = {
   entity: "portal_access", module_key: "MOD-67", screens: [],
   reads: [
     { key: "list_portal_access", service: (c, p) => service.listAccess(c, p), permission: { module: "MOD-67", action: "view" }, describe: "List active portal access grants (client/investor/auditor)." },
-    { key: "client_portal_view", service: (c, p) => service.clientView(c, { clientId: p.client_id }), permission: { module: "MOD-29", action: "view" }, describe: "A client's scoped view: their dossiers, invoices, receivables ageing." },
+    { key: "client_portal_view", service: (c, p) => service.clientView(c, { clientId: p.client_id }), permission: { module: "MOD-29", action: "view" }, describe: "A client's scoped view: their operations files, invoices, receivables ageing." },
     { key: "investor_portal_view", service: (c, p) => service.investorView(c, { params: p }), permission: { module: "MOD-56", action: "view" }, describe: "Investor/board terminal: income statement + cash position." },
   ],
   writes: [

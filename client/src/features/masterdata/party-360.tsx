@@ -40,9 +40,10 @@ import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/comp
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
 // which reads it via `useSearchParams` and selects/opens/highlights the row.
-// Operations still honours the older `?ref=` query the Control Tower uses, so
-// deep-linking a dossier prefers the ref (a human number the search matches)
-// and falls back to `?focus=<id>` when only the id is on hand.
+// An operations file is the exception: it has its own 360 route now, so a row
+// here links straight AT the file rather than at a list that has to find it.
+// The `?ref=` search the Control Tower uses stays the fallback for the case
+// where a human reference is all that is on hand.
 const MODULE_ROUTE = {
   dossier: "/operations/files",
   invoice: "/finance/invoices",
@@ -53,9 +54,11 @@ const MODULE_ROUTE = {
 const focusHref = (route: string, id?: string | null) =>
   id ? `${route}?focus=${encodeURIComponent(id)}` : route;
 const dossierHref = (ref?: string | null, id?: string | null) =>
-  ref
-    ? `/operations/files?ref=${encodeURIComponent(ref)}`
-    : focusHref(MODULE_ROUTE.dossier, id);
+  id
+    ? `${MODULE_ROUTE.dossier}/${encodeURIComponent(id)}`
+    : ref
+      ? `${MODULE_ROUTE.dossier}?ref=${encodeURIComponent(ref)}`
+      : MODULE_ROUTE.dossier;
 
 const STATE_TONE: Record<string, Tone> = {
   OK: "ok",
@@ -1102,8 +1105,7 @@ function PendingChangesCard({
  * needs the full list the deep-link on any row jumps to that module's page.
  *
  * Each row is a plain button that navigates to the target module with a focus
- * hint (either `?focus=<id>` or, for dossiers, the friendlier `?ref=<ref>` the
- * operations list already honours). The modal closes on navigation so the user
+ * hint (`?focus=<id>`, or for an operations file its own 360 route). The modal closes on navigation so the user
  * lands on the destination page rather than the drill-in stacked over it. */
 type KpiDetailRow = { id: string; href: string; cells: React.ReactNode[] };
 type KpiDetailHeader = { label: string; right?: boolean };
@@ -1362,9 +1364,9 @@ function KpiDetails({
       rows = yearInv.map(toInvoiceRow);
       empty = "No invoices this year on the recent list.";
     } else if (key === "dossiers") {
-      title = `Dossiers in progress · ${partyLabel}`;
+      title = `Operations files in progress · ${partyLabel}`;
       description =
-        "Open operation files for this client — click a row to open the dossier.";
+        "Open operations files for this client — click a row to open the file.";
       headers = [
         { label: "Reference" },
         { label: "Title" },
@@ -1391,7 +1393,7 @@ function KpiDetails({
             dateFmt(ds.created_at),
           ],
         }));
-      empty = "No in-progress dossiers.";
+      empty = "No in-progress operations files.";
     }
   } else {
     const supInvoices = data.supplier_invoices || [];
@@ -1817,7 +1819,7 @@ export function PartyDossier({
             onClick={() => setKpiOpen("ytd_revenue")}
           />
           <KpiTile
-            label="Dossiers in progress"
+            label="Files in progress"
             value={num(d.kpis.dossiers_in_progress)}
             onClick={() => setKpiOpen("dossiers")}
           />
@@ -2315,8 +2317,8 @@ export function PartyDossier({
               Operations files
             </h4>
             <span className="micro">
-              Dossiers for this client — status, milestone progress and billed
-              value.
+              Operations files for this client — status, milestone progress and
+              billed value.
             </span>
           </div>
           <MiniTable

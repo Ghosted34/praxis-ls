@@ -251,7 +251,7 @@ async function saveRates(client, { rates: tariff, actor = {} }) {
  */
 async function prefill(client, dossierId) {
   const d = await repo.dossierPrefill(client, dossierId);
-  if (!d) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (!d) throw new AppError("NOT_FOUND", "Operations file not found", 404);
   const boxes = await repo.dossierContainers(client, dossierId);
   // "2x40HC, 1x20GP" — the same shape parseContainers reads, and still a
   // plain string the pricer can edit.

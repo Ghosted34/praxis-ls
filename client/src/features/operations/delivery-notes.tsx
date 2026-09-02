@@ -1535,7 +1535,7 @@ export function DeliveryNotesPage() {
     },
     {
       key: "dossier_id",
-      label: "Dossier",
+      label: "File",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
     { key: "consignee", label: "Consignee" },

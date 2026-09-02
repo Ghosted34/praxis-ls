@@ -79,7 +79,7 @@ async function assertCaptures(client, dossierId) {
     [dossierId],
   );
   const row = rows[0];
-  if (!row) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (!row) throw new AppError("NOT_FOUND", "Operations file not found", 404);
   if (row.captures_containers !== true) {
     throw new AppError(
       "CONTAINERS_DISABLED",
@@ -256,7 +256,7 @@ async function revertMarks(client, { dossierId, actor = {} }) {
       "UPDATE dossier SET marks_numbers_is_manual = false WHERE dossier_id = $1 RETURNING marks_numbers",
       [dossierId],
     );
-    if (!rows[0]) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+    if (!rows[0]) throw new AppError("NOT_FOUND", "Operations file not found", 404);
     const marksNow = await regenerateMarks(client, dossierId);
     await audit(client, {
       actorUserId: actor.user_id || null,

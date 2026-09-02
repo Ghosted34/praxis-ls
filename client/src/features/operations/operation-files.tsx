@@ -1,17 +1,17 @@
 /**
- * Operation files — the dossier list.
+ * Operations files — the list.
  *
  * PHASE 3, and this one is a CORRECTNESS fix, not a refactor (Addendum 3).
  *
  * The screen used to call `useList("/operations")` and filter the result in the
  * browser. The API's shared pagination helper clamps every list to 50 rows, so
- * on any tenant past its fiftieth dossier the search box was searching the fifty
- * most recent files and reporting "No operation files yet" for a dossier that
+ * on any tenant past its fiftieth file the search box was searching the fifty
+ * most recent files and reporting "No operations files yet" for a file that
  * existed. Same shape as the Finance hub's defect, same fix: the search, the
  * status filter, the service-type filter and the paging all happen in SQL, and
  * the counts on the chips come from `X-Total-Count` rather than `rows.length`.
  *
- * The service-FAMILY chips are gone, and deliberately. They bucketed dossiers by
+ * The service-FAMILY chips are gone, and deliberately. They bucketed files by
  * substring-matching `service_key` against four hardcoded families ("SEA",
  * "AIR", "HINTERLAND", "WAREHOUSING") — a guess that could only ever be made
  * over the rows already loaded, and that silently filed anything else under
@@ -20,7 +20,7 @@
  */
 import * as React from "react";
 import { tr } from "@/lib/i18n";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
@@ -34,26 +34,27 @@ import { useList, useListPaged } from "@/lib/use-resource";
 import { useFocusRow } from "@/lib/use-focus-row";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { useDebounced } from "@/lib/use-debounced";
+import { useIsDesktop } from "@/lib/use-media-query";
 import { money0 } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { DossierForm } from "./dossier-form";
 import { DossierWizard } from "./dossier-wizard";
-import { Dossier360Modal } from "./dossier-360";
+import { OperationFile360Modal, filePath } from "./file-360";
 import { routeLabel, serviceLabel, tone } from "./shared";
 import { MilestoneCell } from "./components";
 
 const OPS_FILES_AI: AiAction[] = [
   {
-    label: "List / get dossiers",
+    label: "List / get operations files",
     kind: "read",
-    describe: "List operation files (dossiers) or fetch one.",
+    describe: "List operations files or fetch one.",
   },
   {
-    label: "Open / advance dossier",
+    label: "Open / advance a file",
     kind: "write",
-    describe: "Open a dossier, update it, or advance its status.",
+    describe: "Open an operations file, update it, or advance its status.",
   },
 ];
 
@@ -67,9 +68,10 @@ const STATUS_CHIPS: { key: string; label: string; status?: string }[] = [
 ];
 
 export function OperationsFilesPage() {
-  // `?ref=` deep-links a single dossier — the Control Tower's live-shipment rows
-  // use it, since there's no dossier-detail route to send them to. It only seeds
-  // the initial search; the user can clear or change it like any other query.
+  // `?ref=` seeds the search box with a file reference — the Control Tower's
+  // live-shipment rows use it, and it stays the friendlier half of the pair now
+  // that `?focus=<id>` opens the 360 outright. The user can clear or change it
+  // like any other query.
   const [searchParams] = useSearchParams();
   const [q, setQ] = React.useState(() => searchParams.get("ref") || "");
   const [status, setStatus] = React.useState("ALL");
@@ -99,37 +101,61 @@ export function OperationsFilesPage() {
     pageSize: PAGE_SIZE,
   });
   // `?focus=<dossier_id>` scrolls the row into view and highlights it — from
-  // the client 360's dossiers drill-in, and now from the back arrow too.
+  // the client 360's files drill-in, and now from the back arrow too.
   // Operations also honours the friendlier `?ref=<ref>` (seeded into the search
   // box above); this is the path for links that only had the uuid at hand.
   const { focusId } = useFocusRow(list.rows);
 
   /*
-   * THE OPEN DOSSIER LIVES IN THE URL, which is what makes it a place the back
-   * and forward arrows can reach (app/layout/nav-trail-context.tsx).
+   * OPENING A FILE IS TWO DIFFERENT GESTURES, and which one you get is decided
+   * here rather than in CSS.
    *
-   * It used to be `useState`, so opening a file changed nothing the browser
-   * could see: back from an open dossier left Operations entirely, and forward
-   * could never bring it back. Writing the id the app ALREADY deep-links by
-   * turns "I opened SLS-2481" into a real step — and collapses the separate
-   * auto-open effect that used to mirror `?focus=` into local state, since the
-   * param is now the only thing that decides whether the 360 is showing.
+   * DESKTOP navigates to `/operations/files/:id` — the 360 as a real page, full
+   * width, with an address that can be pasted into an email. A dialog capped at
+   * 768px was the wrong container for the screen an operator lives in all
+   * morning, and it had no URL, so "look at SBX-2026-0001" was not a link.
+   *
+   * MOBILE keeps the modal, and keeps it in the URL (`?focus=<id>`), which is
+   * what makes it a place the back and forward arrows can reach
+   * (app/layout/nav-trail-context.tsx). A full-page drill-in on a 390px viewport
+   * is a navigation dead end; a sheet you dismiss is not.
+   *
+   * `useIsDesktop` answers TRUE before `matchMedia` resolves, so the first frame
+   * is the desktop branch — see lib/use-media-query.ts for why that default.
    */
+  const isDesktop = useIsDesktop();
+  const navigate = useNavigate();
   const {
     record: view,
-    open: openDossier,
-    close: closeDossier,
+    open: openFile,
+    close: closeFile,
   } = useRecordParam(list.rows, (d) => d.dossier_id);
+
+  /*
+   * `?focus=<id>` means "open this file" wherever it came from — the client
+   * 360's drill-in, a notification, the back arrow. On a phone that is the
+   * modal, which `useRecordParam` above has already opened. On a desktop it is
+   * the page, so the param is exchanged for the route.
+   *
+   * `replace`, because nobody navigated to the list-with-a-param as a
+   * destination: leaving it in the history would put a step between the file and
+   * the list that renders as a flicker on the way back.
+   */
+  const focusParam = searchParams.get("focus");
+  React.useEffect(() => {
+    if (isDesktop && focusParam)
+      navigate(filePath(focusParam), { replace: true });
+  }, [isDesktop, focusParam, navigate]);
 
   // What the back tooltip and the hold-menu call this step. The route can only
   // ever say "Files"; this screen is the one thing that knows the reference.
-  useTrailTitle(view ? `Dossier ${view.ref}` : null);
+  useTrailTitle(view ? `Operations file ${view.ref}` : null);
 
   /**
    * Chip counts, honestly.
    *
    * Each is a one-row request read purely for its `X-Total-Count`, so a chip
-   * says how many dossiers match ACROSS THE TENANT rather than how many happen
+   * says how many files match ACROSS THE TENANT rather than how many happen
    * to be on the loaded page. They share the search and service filters, so the
    * counts track what the user has narrowed to. Four ~200-byte responses,
    * deduplicated and cached by Query for 30s.
@@ -266,8 +292,8 @@ export function OperationsFilesPage() {
   return (
     <ListPage<api.Dossier>
       eyebrow={<HubCrumb area="Operations" to="/operations" />}
-      title="Operation files"
-      description="The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
+      title="Operations files"
+      description="The operations file is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
       action={<Button onClick={() => setEditing("new")}>New file</Button>}
       tabs={<HubTabs />}
       toolbar={
@@ -302,7 +328,7 @@ export function OperationsFilesPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              aria-label="Search operation files"
+              aria-label="Search operations files"
               placeholder="Search by ref, client, BL/MAWB, vessel…"
               className="w-full max-w-xs"
             />
@@ -314,16 +340,18 @@ export function OperationsFilesPage() {
       error={list.error}
       loading={list.loading}
       rowKey={(r) => r.dossier_id}
-      onRowClick={openDossier}
+      onRowClick={(r) =>
+        isDesktop ? navigate(filePath(r.dossier_id)) : openFile(r)
+      }
       highlightRowKey={focusId}
       empty={{
-        title: "No operation files yet",
-        hint: "Open a dossier to start moving a shipment — route, milestones, costing and invoicing all hang off it.",
+        title: "No operations files yet",
+        hint: "Open a file to start moving a shipment — route, milestones, costing and invoicing all hang off it.",
         action: <Button onClick={() => setEditing("new")}>New file</Button>,
       }}
       filtered={filtered}
       emptyFiltered={{
-        title: "No operation files match",
+        title: "No operations files match",
         hint: "The search covers reference, client, BL/MAWB and vessel across every file, not just this page.",
         action: (
           <Button
@@ -363,11 +391,14 @@ export function OperationsFilesPage() {
           onSaved={list.reload}
         />
       )}
-      {view && (
-        <Dossier360Modal
-          dossier={view}
+      {/* Phone only — a desktop `?focus=` was exchanged for the route above. */}
+      {view && !isDesktop && (
+        <OperationFile360Modal
+          file={view}
           clientLabel={clientOf(view)}
-          onClose={closeDossier}
+          onClose={closeFile}
+          onEdit={() => setEditing(view)}
+          onChanged={list.reload}
         />
       )}
       <AiActions actions={OPS_FILES_AI} />

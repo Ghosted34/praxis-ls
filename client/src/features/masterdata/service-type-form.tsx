@@ -80,7 +80,7 @@ export function ServiceTypeForm({
       open
       onClose={onClose}
       title={isNew ? "New service type" : "Edit service type"}
-      description="A service you sell. Dossiers are classified by it, and each one carries its own milestone chain."
+      description="A service you sell. Operations files are classified by it, and each one carries its own milestone chain."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -129,7 +129,7 @@ export function ServiceTypeForm({
             />
           </Field>
           {/*
-            The two characters that CLOSE an operation file's reference —
+            The two characters that CLOSE an operations file's reference —
             `SM` in `SL7Z3K9QW2M4XBSM`. Shown here rather than hidden because the
             business already reads these off legacy paperwork ("that's an SM
             file"), and because it is frozen the moment a file uses it: better to

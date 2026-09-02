@@ -226,7 +226,7 @@ async function createDraft(client, { data, actor = {} }) {
  */
 async function promote(client, { id, data = {}, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
   if (before.status !== "DRAFT") throw new AppError("NOT_A_DRAFT", "This file has already been opened", 422);
 
   // Enforced HERE, not at draft creation: the wizard's whole shape is that the
@@ -237,7 +237,7 @@ async function promote(client, { id, data = {}, actor = {} }) {
   let row;
   try {
     const entityId = write.entity_id || before.entity_id;
-    if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+    if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a file reference", 422);
     // The allocator owns generate → write → retry as one step, so the reference
     // and the promoted row commit together and the unique index on `dossier.ref`
     // stays the thing that decides a collision. See operation-reference.js.
@@ -306,7 +306,7 @@ async function insertForCreate(client, { data, actor = {} }) {
     if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
   }
   const write = await foldDetails(client, { data, enforceRequired: true });
-  if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+  if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a file reference", 422);
 
   const fields = { ...write };
   delete fields.ref;
@@ -410,7 +410,7 @@ function assertReferenceUnchanged(before, patch) {
   if (patch.ref === before.ref) return;
   throw new AppError(
     "REF_IMMUTABLE",
-    "An operation file's reference is permanent and cannot be changed",
+    "An operations file's reference is permanent and cannot be changed",
     422,
     { ref: ["already allocated as " + before.ref] },
   );
@@ -418,8 +418,8 @@ function assertReferenceUnchanged(before, patch) {
 
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " dossier cannot be edited", 422);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " operations file cannot be edited", 422);
   assertReferenceUnchanged(before, patch);
   const { status, ...rest } = patch;
   // An echo of the file's own reference got this far (see above); it is dropped
@@ -441,8 +441,8 @@ async function update(client, { id, patch, actor = {} }) {
 
 async function transition(client, { id, to, actor = {} }) {
   const before = await repo.get(client, id);
-  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  if (!canTransition(before.status, to)) throw new AppError("BAD_TRANSITION", "Cannot move dossier from " + before.status + " to " + to, 422);
+  if (!before) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  if (!canTransition(before.status, to)) throw new AppError("BAD_TRANSITION", "Cannot move an operations file from " + before.status + " to " + to, 422);
   const row = await repo.update(client, id, { status: to });
   await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(to), moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
@@ -465,8 +465,8 @@ const person = (id, name) => (id ? { user_id: id, name: name || null } : null);
  */
 async function overview(client, id) {
   const dossier = await repo.get(client, id);
-  if (!dossier) throw new AppError("NOT_FOUND", "Dossier not found", 404);
-  const agg = await repo.overview(client, id);
+  if (!dossier) throw new AppError("NOT_FOUND", "Operations file not found", 404);
+  const [agg, head] = await Promise.all([repo.overview(client, id), repo.headerJoins(client, id)]);
   const billed = Number(agg.invoices.billed_ttc || 0);
   const plannedCost = Number(agg.costing.planned_cost || 0);
   const actualCost = Number(agg.actual.actual_cost || 0);
@@ -518,7 +518,31 @@ async function overview(client, id) {
   };
 
   return {
-    dossier: { dossier_id: dossier.dossier_id, ref: dossier.ref, status: dossier.status, client_id: dossier.client_id, service_type_id: dossier.service_type_id },
+    // The header the 360 renders itself from. It carries the DISPLAY fields as
+    // well as the ids because the 360 is a page now: opened from a pasted link,
+    // this response is the only thing the screen has to name the file with.
+    dossier: {
+      dossier_id: dossier.dossier_id, ref: dossier.ref, status: dossier.status,
+      client_id: dossier.client_id, service_type_id: dossier.service_type_id,
+      title: dossier.title || null,
+      incoterm: dossier.incoterm || null,
+      bl_mawb: dossier.bl_mawb || null,
+      vessel_flight: dossier.vessel_flight || null,
+      pol: dossier.pol || null,
+      pod: dossier.pod || null,
+      eta: dossier.eta || null,
+      ata: dossier.ata || null,
+      promised_delivery_date: dossier.promised_delivery_date || null,
+      created_at: dossier.created_at || null,
+      client_name: head.client_name || null,
+      service_key: head.service_key || null,
+      service_name_en: head.service_name_en || null,
+      service_name_fr: head.service_name_fr || null,
+      rate_provider_name: head.rate_provider_name || null,
+      milestone_total: head.milestone_total || 0,
+      milestone_done: head.milestone_done || 0,
+      current_milestone: head.current_milestone || null,
+    },
     readiness,
     costing: { count: agg.costing.count, planned_cost: plannedCost },
     costs: { actual_cost: actualCost, gl_entries: agg.actual.entries },
@@ -528,7 +552,15 @@ async function overview(client, id) {
     people,
     milestones,
     procurement: { po_count: agg.procurement.po_count, po_total: Number(agg.procurement.po_total || 0) },
-    documents: { transit_orders: agg.transit.count, delivery_notes: agg.delivery.count },
+    documents: {
+      transit_orders: agg.transit.count,
+      delivery_notes: agg.delivery.count,
+      // True counts, so the 360's tab strip can publish them (the row lists
+      // below are capped at 20 and cannot be counted).
+      vault: agg.vault.count,
+      invoices: agg.invoices.count,
+    },
+    queries: { count: agg.queries.count, open: agg.queries.open },
     document_rows: agg.documentRows,
   };
 }

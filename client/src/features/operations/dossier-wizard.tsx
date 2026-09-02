@@ -212,8 +212,8 @@ export function DossierWizard({
       open
       onClose={onClose}
       size="lg"
-      title="New operation file"
-      description="A dossier is the anchor everything — costing, transit, invoicing — tags."
+      title="New operations file"
+      description="An operations file is the anchor everything — costing, transit, invoicing — tags."
     >
       {/* Progress, and where they are in it. `aria-current` is what makes this
           a step indicator rather than three decorative words. */}

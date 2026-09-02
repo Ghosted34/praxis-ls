@@ -61,9 +61,9 @@ async function assertCodeAssignable(client, id, code) {
   if (used.rowCount) {
     throw new AppError(
       "CODE_IN_USE",
-      `Operation files already carry the code "${current}". It cannot be changed without renaming references that have been issued.`,
+      `Operations files already carry the code "${current}". It cannot be changed without renaming references that have been issued.`,
       422,
-      { ops_reference_code: ["already used by existing operation files"] },
+      { ops_reference_code: ["already used by existing operations files"] },
     );
   }
 }

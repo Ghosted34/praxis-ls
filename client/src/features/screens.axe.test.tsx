@@ -392,7 +392,7 @@ const AREAS: Area[] = [
     area: "Operations",
     screens: [
       {
-        name: "Operation files",
+        name: "Operations files",
         render: () => <OperationsFilesPage />,
         routes: {
           "/operations": [

@@ -339,7 +339,7 @@ export function ShipmentMap({
         role="img"
         aria-label={
           laneCount
-            ? `Live shipment map — ${counts.sea} sea, ${counts.road} road and ${counts.air} air legs across ${fileCount} operation ${fileCount === 1 ? "file" : "files"}`
+            ? `Live shipment map — ${counts.sea} sea, ${counts.road} road and ${counts.air} air legs across ${fileCount} operations ${fileCount === 1 ? "file" : "files"}`
             : "Live shipment map — no plottable routes"
         }
       >

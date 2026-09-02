@@ -199,7 +199,7 @@ export function ReconciliationPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title={tr("Reconciliation")}
-        description="Quoted vs budget vs actual per file — the controlled document that closes a dossier financially. Débours are pass-through and stay out of the variance."
+        description="Quoted vs budget vs actual per file — the controlled document that closes an operations file financially. Débours are pass-through and stay out of the variance."
       />
       <HubTabs />
 

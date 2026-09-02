@@ -1,5 +1,5 @@
 /**
- * Create / edit an operation file.
+ * Create / edit an operations file.
  *
  * WHAT CHANGED, AND WHY (SSDC, migration 0660).
  *
@@ -187,8 +187,8 @@ export function DossierForm({
       open
       onClose={onClose}
       size="lg"
-      title={isNew ? "New operation file" : "Edit operation file"}
-      description="A dossier is the anchor everything (costing, transit, invoicing) tags."
+      title={isNew ? "New operations file" : "Edit operations file"}
+      description="An operations file is the anchor everything (costing, transit, invoicing) tags."
     >
       <form className="space-y-5" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -240,7 +240,7 @@ export function DossierForm({
             {!(serviceTypes || []).length && (
               <p className="micro mt-1">
                 No service types yet — add them under Operations → Service
-                types. Without one, a dossier gets no milestone chain and no
+                types. Without one, a file gets no milestone chain and no
                 detail form.
               </p>
             )}

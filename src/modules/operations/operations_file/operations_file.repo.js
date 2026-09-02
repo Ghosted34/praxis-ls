@@ -174,6 +174,17 @@ async function overview(client, dossierId) {
   );
   const [transit] = await q("SELECT COUNT(*)::int AS count FROM transit_order WHERE dossier_id = $1");
   const [delivery] = await q("SELECT COUNT(*)::int AS count FROM delivery_note WHERE dossier_id = $1");
+  // TRUE counts for the vault and the query tickets, not `documentRows.length`.
+  // The row lists below are capped at 20, so counting them is a number that is
+  // right until a busy file makes it silently wrong — and the 360's tab strip
+  // publishes these as "Documents 24 / Queries 3". A count that lies is worse
+  // than no count, so it is counted rather than measured. Archived scans are
+  // excluded on the same reasoning `vaultDocuments` excludes them: an archived
+  // document is no longer evidence.
+  const [vault] = await q("SELECT COUNT(*)::int AS count FROM document_vault WHERE dossier_id = $1 AND status <> 'ARCHIVED'");
+  const [queries] = await q(
+    "SELECT COUNT(*)::int AS count, COUNT(*) FILTER (WHERE status <> 'RESOLVED')::int AS open FROM q_ticket WHERE dossier_id = $1",
+  );
 
   // People (SoD): who issued/validated/approved on the money documents. Names are
   // joined in the SAME (env) schema — business rows FK app_user per schema, and the
@@ -220,10 +231,44 @@ async function overview(client, dossierId) {
   );
 
   return {
-    costing, actual, invoices, outstanding, milestones, procurement, transit, delivery,
+    costing, actual, invoices, outstanding, milestones, procurement, transit, delivery, vault, queries,
     people: { costing: costingPeople || null, invoice: invoicePeople || null },
     documentRows: { invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows },
   };
+}
+
+/**
+ * What the ids on a file MEAN — client name, service-type names and milestone
+ * progress, for one file.
+ *
+ * The 360's header used to carry ids only, which was fine while the only thing
+ * rendering it was a modal opened from the list: the row was already in hand,
+ * so the screen knew the client name and the service label without asking. The
+ * 360 is a PAGE now, reachable from a pasted link with nothing but a uuid, and
+ * a header reading "Operations file · SBX-2026-0001 · undefined" is what that
+ * costs. One extra query on a request that already makes a dozen.
+ *
+ * Deliberately NOT `get` with joins bolted on. `get` is what decides whether
+ * the caller may see this file at all; this only resolves what its ids mean,
+ * and keeping them apart means a change to either cannot quietly alter the
+ * other's semantics.
+ */
+async function headerJoins(client, dossierId) {
+  const { rows } = await client.query(
+    "SELECT cm.name AS client_name, " +
+      "st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr, " +
+      "rp.name AS rate_provider_name, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
+      "FROM dossier d " +
+      "LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
+      "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id " +
+      "WHERE d.dossier_id = $1",
+    [dossierId],
+  );
+  return rows[0] || {};
 }
 
 /**
@@ -245,4 +290,4 @@ async function vaultDocuments(client, dossierId) {
 // it against the columns the migrations actually declare. That test is the link
 // between this file and the schema — the link whose absence let `title` be
 // written for months against a column that did not exist.
-module.exports = { insert, get, update, list, listPaged, overview, vaultDocuments, WRITABLE };
+module.exports = { insert, get, update, list, listPaged, overview, headerJoins, vaultDocuments, WRITABLE };

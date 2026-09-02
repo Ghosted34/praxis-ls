@@ -420,11 +420,11 @@ function CostingForm({
       onClose={onClose}
       size="lg"
       title="New costing sheet"
-      description="Planned cost for a dossier — what the file will cost us, HT / VAT / TTC. Pricing (margin) lives in the margin simulator and the quotation."
+      description="Planned cost for an operations file — what the file will cost us, HT / VAT / TTC. Pricing (margin) lives in the margin simulator and the quotation."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Dossier")} required>
+          <Field label={tr("Operations file")} required>
             <Select
               value={dossierId}
               onChange={(e) => setDossierId(e.target.value)}
@@ -799,7 +799,7 @@ export function CostingPage() {
     },
     {
       key: "dossier_id",
-      label: "Dossier",
+      label: "File",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
     // §2.2: the Margin column is gone — costing carries no margin. Pricing
@@ -882,7 +882,7 @@ export function CostingPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title={tr("Costing")}
-        description="Planned cost sheets per dossier — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
+        description="Planned cost sheets per operations file — HT / VAT / TTC. Margin lives in the margin simulator and the quotation."
         action={<Button onClick={() => setOpen(true)}>New costing</Button>}
       />
       <HubTabs />
@@ -907,7 +907,7 @@ export function CostingPage() {
         onRowClick={(r) => setSelectedId(r.costing_id)}
         empty={{
           title: "No costings yet",
-          hint: "Build a costing sheet for a dossier.",
+          hint: "Build a costing sheet for an operations file.",
           action: (
             <Button onClick={() => setOpen(true)}>New costing</Button>
           ),
@@ -1031,12 +1031,12 @@ export function CostTrackingPage() {
         />
         {tab !== "summary" && (
           <Select
-            aria-label="Filter by dossier"
+            aria-label="Filter by operations file"
             value={dossierId}
             onChange={(e) => setDossierId(e.target.value)}
             className="max-w-xs"
           >
-            <option value="">Select a dossier…</option>
+            <option value="">Select an operations file…</option>
             {(dossiers || []).map((d) => (
               <option key={d.dossier_id} value={d.dossier_id}>
                 {d.ref}
@@ -1257,7 +1257,7 @@ function ActualCostsTab({ dossierId }: { dossierId: string }) {
         rowKey={(r, i) => r.cost_entry_id || String(i)}
         empty={{
           title: "No cost entries",
-          hint: "No actuals booked to this dossier yet.",
+          hint: "No actuals booked to this file yet.",
           action: (
             <Button onClick={() => setSheetOpen(true)}>
               {tr("Record costs (sheet)")}
@@ -1685,7 +1685,7 @@ function CostPortfolio() {
   const cols: Column<api.CostPortfolioRow>[] = [
     {
       key: "ref",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="num font-medium text-foreground">{r.ref || "—"}</span>
       ),
@@ -1762,7 +1762,7 @@ function CostPortfolio() {
         rowKey={(r) => r.dossier_id}
         empty={{
           title: "Nothing tracked yet",
-          hint: "Dossiers appear here once they have an approved costing or a booked actual.",
+          hint: "Files appear here once they have an approved costing or a booked actual.",
         }}
       />
     </>
@@ -1869,7 +1869,7 @@ function CashRequestForm({
       onClose={onClose}
       size="lg"
       title="New cash request"
-      description="Request an advance against a dossier budget."
+      description="Request an advance against an operations file budget."
     >
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -1891,7 +1891,7 @@ function CashRequestForm({
           </Field>
           {category === "OPS" ? (
             <>
-              <Field label={tr("Dossier")}>
+              <Field label={tr("Operations file")}>
                 <Select
                   value={dossierId}
                   onChange={(e) => setDossierId(e.target.value)}
@@ -2202,7 +2202,7 @@ export function CashRequestsPage() {
     },
     {
       key: "dossier_id",
-      label: "Dossier",
+      label: "File",
       render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—"),
     },
     {
@@ -2265,7 +2265,7 @@ export function CashRequestsPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Costing" to="/costing" />}
         title="Cash requests"
-        description="Advances requested against dossier budgets."
+        description="Advances requested against operations file budgets."
         action={<Button onClick={() => setOpen(true)}>{tr("New request")}</Button>}
       />
       <HubTabs />
@@ -2288,7 +2288,7 @@ export function CashRequestsPage() {
         rowKey={(r) => r.cash_request_id}
         empty={{
           title: "No cash requests",
-          hint: "Request an advance for a dossier.",
+          hint: "Request an advance for an operations file.",
         }}
       />
       {open && (

@@ -460,7 +460,7 @@ function summariseContainers(lines) {
  */
 async function forDossier(client, dossierId, { lang = "en", clientVisibleOnly = false } = {}) {
   const dossier = await repo.dossierFor(client, dossierId);
-  if (!dossier) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (!dossier) throw new AppError("NOT_FOUND", "Operations file not found", 404);
 
   // The version the file was created under, falling back to whatever is live
   // for its service type (files predating 0660 have no pinned version).

@@ -120,14 +120,14 @@ function AdvancePaymentForm({
             </Select>
           </Field>
           <Field
-            label={tr("Dossier")}
-            hint="Links this to an operation file — sets service type and matches advances."
+            label={tr("Operations file")}
+            hint="Links this to an operations file — sets service type and matches advances."
           >
             <Select
               value={dossierId}
               onChange={(e) => setDossierId(e.target.value)}
             >
-              <option value="">No dossier</option>
+              <option value="">No operations file</option>
               {dossiers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {optionLabel(o)}
@@ -266,7 +266,7 @@ export const ProformasPage = () => {
     },
     {
       key: "dossier",
-      label: "Dossier",
+      label: "File",
       render: (r) => (
         <span className="num text-muted-foreground">
           {dossierRef[str(r, "dossier_id")] ||

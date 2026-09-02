@@ -38,7 +38,7 @@ const retire = z
     source_doc_ref: z.string().min(1).optional(),
   })
   .refine((v) => v.kind !== "RECEIPT" || !!v.dossier_id, {
-    message: "A receipt must be tagged to a dossier",
+    message: "A receipt must be tagged to an operations file",
     path: ["dossier_id"],
   });
 
@@ -82,7 +82,7 @@ const aiRetire = z
     source_doc_ref: z.string().min(1).optional(),
   })
   .refine((v) => v.kind !== "RECEIPT" || !!v.dossier_id, {
-    message: "A receipt must be tagged to a dossier",
+    message: "A receipt must be tagged to an operations file",
     path: ["dossier_id"],
   });
 

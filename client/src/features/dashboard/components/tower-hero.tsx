@@ -37,7 +37,7 @@ export function TowerHero({
   );
 
   const subline =
-    `${activeFiles} operation file${activeFiles === 1 ? "" : "s"} in motion` +
+    `${activeFiles} operations file${activeFiles === 1 ? "" : "s"} in motion` +
     (approvals ? ` — ${approvals} awaiting your approval.` : ".");
 
   return (
@@ -69,7 +69,7 @@ export function TowerHero({
 
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => navigate("/operations/files")}>
-          New operation file
+          New operations file
         </Button>
         <Button variant="outline" onClick={() => navigate("/finance/invoices")}>
           New invoice

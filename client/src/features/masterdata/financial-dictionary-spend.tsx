@@ -482,7 +482,7 @@ export function SpendTab({ id }: { id: string }) {
                     Document
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    Dossier
+                    File
                   </th>
                   <th scope="col" className="px-3 py-2">
                     Status

@@ -57,7 +57,7 @@ const CATALOGUE = {
   },
   [RULE_KEYS.cost_entry]: {
     severity: "WARN",
-    describe: "A dossier cost entry uses a dictionary item that always requires a receipt (or a justification) and carries no supporting document (KB §Q4 — advisory).",
+    describe: "An operations file cost entry uses a dictionary item that always requires a receipt (or a justification) and carries no supporting document (KB §Q4 — advisory).",
   },
 };
 

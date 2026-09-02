@@ -80,7 +80,7 @@ export function ServiceTypesPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
         title="Service types"
-        description="The services you sell. Dossiers are classified by service type, and each one carries the milestone chain new files start with."
+        description="The services you sell. Operations files are classified by service type, and each one carries the milestone chain new files start with."
         action={
           <Button onClick={() => setEditing(null)}>New service type</Button>
         }
@@ -145,7 +145,7 @@ export function ServiceTypesPage() {
                     </div>
                     <span className="micro">
                       {r.key}
-                      {/* The code every operation file of this service ends
+                      {/* The code every operations file of this service ends
                           with. On the row because "which service is an …SM
                           file?" is a question the list should answer. */}
                       {r.ops_reference_code ? <span className="ml-1.5 font-mono opacity-70">·&nbsp;{r.ops_reference_code}</span> : null}
@@ -166,7 +166,7 @@ export function ServiceTypesPage() {
           ) : (
             <EmptyState
               title="No service type selected"
-              hint="Pick one from the list, or create a new one — dossiers can't carry a milestone chain until at least one exists."
+              hint="Pick one from the list, or create a new one — files can't carry a milestone chain until at least one exists."
             />
           )}
         </SplitPane>

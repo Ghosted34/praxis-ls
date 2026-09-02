@@ -170,7 +170,7 @@ async function dossierOverview(client, id) {
     [id],
   );
   const d = rows[0];
-  if (!d) throw new AppError("NOT_FOUND", "dossier not found", 404);
+  if (!d) throw new AppError("NOT_FOUND", "operations file not found", 404);
   return {
     kind: "DOSSIER",
     header: { name: d.ref, ref: d.ref, status: d.status },

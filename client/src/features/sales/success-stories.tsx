@@ -481,7 +481,7 @@ export function SuccessStoriesPage() {
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Success stories"
-        description="Build from completed operation files, sign off, then publish to the portfolio."
+        description="Build from completed operations files, sign off, then publish to the portfolio."
         action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New story</Button>}
       />
       <HubTabs />

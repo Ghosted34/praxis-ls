@@ -133,8 +133,82 @@ if [ "${PRAXIS_DEPLOY_REEXEC:-0}" != "1" ]; then
   # an arbitrary point, possibly after migrations had run.
   # -------------------------------------------------------------------------
   DEPLOY_REF="${DEPLOY_REF:-${1:-}}"
+
+  # -------------------------------------------------------------------------
+  # Fetch auth — added 2026-09-02 after this line took production down.
+  #
+  # The deploy died on `git fetch` with
+  #
+  #   fatal: could not read Username for 'https://github.com':
+  #   No such device or address
+  #
+  # The server's `origin` is an HTTPS URL and the box holds no GitHub
+  # credential for it, so git asked for a username. Over SSH from CI there is
+  # no terminal to ask on, opening /dev/tty failed with ENXIO, and `set -e`
+  # ended the run — before the backup, before migrations, so nothing was
+  # damaged, but nothing shipped either. It looks intermittent because it
+  # WORKS when you ssh in and run it by hand: an interactive login has a
+  # terminal, and any credential git cached there belongs to your user.
+  # Whatever made it stop — a PAT hitting its expiry, a re-cloned checkout, a
+  # revoked helper entry — the deploy should not have depended on a secret
+  # that lives on the server and can rot without anyone noticing.
+  #
+  # So CI now carries its own: DEPLOY_GIT_TOKEN (the workflow run's token,
+  # read-only, valid for the length of the run) arrives over the SSH session's
+  # stdin — never in an argv another user could read from `ps` — and is handed
+  # to git through a per-invocation credential helper. It is not written to
+  # .git/config and not written to disk at all. Unset, everything below is the
+  # old behaviour, so a hand-run deploy still uses whatever credential the
+  # operator has.
+  # -------------------------------------------------------------------------
+  if [ ! -t 0 ]; then
+    # Non-interactive (this is the CI path). Make a missing credential fail
+    # fast and say so, rather than reaching for a terminal that isn't there.
+    # Only when there is no tty: a human running this by hand may legitimately
+    # need to type a passphrase.
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+  fi
+
+  # $1 is the remote to fetch from — the configured `origin`, or the canonical
+  # URL as a fallback so a stale/unauthenticated remote on the box cannot block
+  # a deploy. The explicit refspec is what `origin` would use anyway, so
+  # refs/remotes/origin/* ends up identical either way and the checkout below
+  # is unchanged.
+  fetch_from() {
+    if [ -n "${DEPLOY_GIT_TOKEN:-}" ]; then
+      git -c credential.helper= \
+          -c credential.helper='!f() { printf "username=x-access-token\npassword=%s\n" "$DEPLOY_GIT_TOKEN"; }; f' \
+          fetch --prune "$1" '+refs/heads/*:refs/remotes/origin/*'
+    else
+      git fetch --prune "$1" '+refs/heads/*:refs/remotes/origin/*'
+    fi
+  }
+
   echo "── fetching"
-  git fetch --prune origin
+  FETCHED=0
+  for attempt in 1 2 3 4; do
+    if fetch_from origin || { [ -n "${DEPLOY_GIT_REMOTE:-}" ] && fetch_from "$DEPLOY_GIT_REMOTE"; }; then
+      FETCHED=1
+      break
+    fi
+    if [ "$attempt" -lt 4 ]; then
+      delay=$((1 << attempt))   # 2s, 4s, 8s — a blip, not an outage
+      echo "   fetch attempt $attempt/4 failed — retrying in ${delay}s"
+      sleep "$delay"
+    fi
+  done
+
+  if [ "$FETCHED" -ne 1 ]; then
+    echo "!! DEPLOY ABORTED — could not fetch from GitHub."
+    echo "   Nothing has been changed; $PREVIOUS_SHA is still running."
+    echo "   origin:   $(git remote get-url origin 2>/dev/null || echo '<none>')"
+    echo "   fallback: ${DEPLOY_GIT_REMOTE:-<not supplied>}"
+    echo "   Either the server cannot reach github.com, or it has no credential"
+    echo "   that can read this repository. See doc/DEPLOYMENT.md §6a."
+    exit 1
+  fi
+
   if [ -n "$DEPLOY_REF" ]; then
     echo "   pinned to: $DEPLOY_REF"
     if ! git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" >/dev/null; then

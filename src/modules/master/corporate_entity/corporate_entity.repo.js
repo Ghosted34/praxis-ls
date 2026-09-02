@@ -252,6 +252,10 @@ const LETTERHEAD_WRITABLE = [
   "legal_mentions_fr", "legal_mentions_en",
   "brand_color", "accent_color", "logo_position", "paper_size",
   "header_height_mm", "footer_height_mm",
+  // 12760. `layout` is the block arrangement the editor drags; `logo_height_mm`
+  // is the mark's printed height, which the fit model needs as a FIXED number
+  // because the mark does not scale with --k.
+  "layout", "logo_height_mm",
 ];
 
 const getLetterhead = (client, id) => getById(client, "entity_letterhead", "entity_id", id);
@@ -331,7 +335,66 @@ async function treasuryAccounts(client, id) {
   return rows;
 }
 
+/* ── letterhead custom lines (12760) ────────────────────────────────────────
+ * The lines derivation cannot reach — a strapline, a customs licence, a
+ * trade-body membership. Per language, ordered, and placed on the sheet by
+ * `entity_letterhead.layout` like any catalogued block.
+ */
+
+const LINE_WRITABLE = ["zone", "text_fr", "text_en", "sort_order", "is_active"];
+
+const letterheadLines = async (client, id) => (await client.query(
+  `SELECT * FROM entity_letterhead_line
+     WHERE entity_id = $1
+     ORDER BY zone, sort_order, created_at`,
+  [id],
+)).rows;
+
+/**
+ * Insert one line. The table's CHECK rejects a row with no text in either
+ * language, so a blank line cannot be stored and then puzzle somebody in the
+ * editor six months later.
+ */
+async function addLetterheadLine(client, id, fields, actorUserId = null) {
+  const { rows } = await client.query(
+    `INSERT INTO entity_letterhead_line (entity_id, zone, text_fr, text_en, sort_order, updated_by)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 0), $6) RETURNING *`,
+    [id, fields.zone || "footer", fields.text_fr ?? null, fields.text_en ?? null,
+      fields.sort_order ?? null, actorUserId],
+  );
+  return rows[0];
+}
+
+/**
+ * Update one line, scoped to its entity.
+ *
+ * `entity_id` is in the WHERE and not merely in the path: without it a line id
+ * from one tenant's entity would edit another's, and the id is the only thing
+ * the caller supplies.
+ */
+async function updateLetterheadLine(client, id, lineId, fields, actorUserId = null) {
+  const patch = {};
+  for (const k of LINE_WRITABLE) if (fields[k] !== undefined) patch[k] = fields[k];
+  if (!Object.keys(patch).length) return null;
+  if (actorUserId) patch.updated_by = actorUserId;
+  const owned = await client.query(
+    "SELECT 1 FROM entity_letterhead_line WHERE line_id = $1 AND entity_id = $2",
+    [lineId, id],
+  );
+  if (!owned.rowCount) return null;
+  return updateOne(
+    client, "entity_letterhead_line", "line_id", lineId, patch, "*",
+    [...LINE_WRITABLE, "updated_by"], { touch: "updated_at" },
+  );
+}
+
+const deleteLetterheadLine = async (client, id, lineId) => (await client.query(
+  "DELETE FROM entity_letterhead_line WHERE line_id = $1 AND entity_id = $2 RETURNING line_id",
+  [lineId, id],
+)).rowCount > 0;
+
 module.exports = {
+  letterheadLines, addLetterheadLine, updateLetterheadLine, deleteLetterheadLine,
   WRITABLE, LETTERHEAD_WRITABLE,
   insert, get, getByCode, first, update, updateInternal, list,
   parentMap, children, ancestors, collections, usage, treasuryAccounts,

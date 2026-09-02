@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (506)
+## All codes (507)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -248,6 +248,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
+| `LINE_REQUIRED` | 422 | 1× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 35× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
@@ -285,7 +286,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 585× | — |
+| `NOT_FOUND` | 404, 422 | 588× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |

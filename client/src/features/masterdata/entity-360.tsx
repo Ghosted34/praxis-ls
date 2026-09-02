@@ -28,6 +28,7 @@ import * as React from "react";
 import { tr } from "@/lib/i18n";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
+import { LetterheadStudio } from "./letterhead-studio";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -173,19 +174,37 @@ function Detail({
   );
 }
 
+/**
+ * `field` is the DEEP-LINK ANCHOR — the value `?field=` looks for.
+ *
+ * `useFieldHighlight` finds `[data-field="…"]`, scrolls it into view, focuses
+ * the first control inside it and rings it briefly. Until now the dossier
+ * carried none of these, so `?field=` was plumbing that landed the tab and then
+ * silently did nothing — someone sent to fix a missing P.O. Box still had the
+ * whole tab to search.
+ *
+ * The anchor sits on the SECTION rather than on the input because most of these
+ * facts are edited in a modal opened from a row, and a field inside a modal
+ * that has not been opened is not in the document to focus. Landing on the
+ * section that owns the fact, with its "Add…" button focused, is the honest
+ * best — and it is what the letterhead studio's block links point at, because
+ * the block catalogue names the section, not a control that may not exist yet.
+ */
 function Section({
   title,
   description,
   action,
+  field,
   children,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  field?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3 rounded-xl border bg-card p-4">
+    <section data-field={field} className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -1317,6 +1336,7 @@ export function EntityDossier({
         <div className="grid gap-4 lg:grid-cols-2">
           <Section
             title="About"
+            field="contact"
             description="Shown on the entity picker and internal directories."
           >
             <p className="text-sm text-muted-foreground">
@@ -1336,6 +1356,7 @@ export function EntityDossier({
 
           <Section
             title="Incorporation"
+            field="legal_form"
             description="The statutory facts printed on documents."
           >
             <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
@@ -1487,6 +1508,7 @@ export function EntityDossier({
       {tab === "Identity & registrations" && (
         <Section
           title={tr("Registrations")}
+          field="registrations"
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
           action={
             <Button
@@ -2163,6 +2185,7 @@ export function EntityDossier({
         <div className="space-y-4">
           <Section
             title="Addresses"
+            field="address_registered"
             description="REGISTERED is the statutory office the letterhead prints — often not where people actually work."
             action={
               <Button
@@ -2443,6 +2466,7 @@ export function EntityDossier({
 
           <Section
             title="Establishments"
+            field="establishments"
             description="Sites that are not separate legal persons — a warehouse or branch office with its own tax-office reference but no separate books."
             action={
               <Button
@@ -2538,6 +2562,7 @@ export function EntityDossier({
       {tab === "Banking & treasury" && (
         <Section
           title="Treasury accounts"
+          field="treasury_accounts"
           description="Read-only here. Bank, cash and mobile-money accounts are owned by Treasury so the GL mapping and the invoice payment block can never disagree."
           action={
             <Button
@@ -3112,91 +3137,41 @@ function LetterheadTab({
     remittance_account_id: remittance,
   } = lh.data;
   const p = preview[lang];
-  const toggles: {
-    key: keyof api.LetterheadConfig;
-    label: string;
-    hint: string;
-  }[] = [
-    {
-      key: "show_legal_form",
-      label: "Legal form",
-      hint: "SARL, SAS, Ltd — mandatory in most of the EU.",
-    },
-    {
-      key: "show_share_capital",
-      label: "Share capital",
-      hint: "Mandatory on French invoices.",
-    },
-    {
-      key: "show_registered_address",
-      label: "Registered address",
-      hint: "The statutory office, not the trading one.",
-    },
-    {
-      key: "show_registrations",
-      label: "Tax & trade identifiers",
-      hint: "NIU, RCCM, VAT, EORI.",
-    },
-    { key: "show_contact", label: "Phone, email, website", hint: "" },
-    {
-      key: "show_bank_block",
-      label: "Payment block",
-      hint: "Bank details on invoices.",
-    },
-    {
-      key: "show_establishment",
-      label: "Establishment",
-      hint: "The issuing site — a branch's own tax-office reference, where the law wants it.",
-    },
-  ];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="space-y-4">
-        <Section
-          title="What appears"
-          description="The content is taken from the entity's own record — you choose which blocks print. Mandatory mentions differ by country."
-        >
-          <div className="space-y-2">
-            {toggles.map((t) => (
-              <div
-                key={String(t.key)}
-                className="flex items-start justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-foreground">{t.label}</p>
-                  {t.hint && (
-                    <p className="micro text-muted-foreground">{t.hint}</p>
-                  )}
-                </div>
-                <Checkbox
-                  checked={c[t.key] === true}
-                  disabled={busy}
-                  onCheckedChange={(v) => patch({ [t.key]: v === true })}
-                  label={<span className="sr-only">{t.label}</span>}
-                />
-              </div>
-            ))}
-          </div>
-        </Section>
+    <div className="space-y-4">
+      {/*
+       * THE STUDIO — the page itself, arranged by dragging.
+       *
+       * This replaced a hand-drawn React header/footer whose docstring claimed
+       * it was "rendered by the same code the invoice generator uses". That was
+       * true of the DATA and false of the pixels, and it drifted: it showed a
+       * payment block on documents that never print one, and every toggle it
+       * saved reached a column the renderer never read.
+       *
+       * The canvas below draws the renderer's OWN composed blocks, and since
+       * 12760 those blocks are what every document prints.
+       */}
+      <LetterheadStudio
+        entityId={entityId}
+        bundle={lh.data}
+        lang={lang}
+        onLang={setLang}
+        onReload={lh.reload}
+        onSaved={onSaved}
+      />
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
         <Section
           title="Wording"
+          field="wording"
           description="What cannot be derived — a strapline, payment terms, a jurisdiction clause. Per language, so a French document never falls back to English small print."
         >
-          <div className="flex gap-1 border-b">
-            {(["fr", "en"] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => setLang(l)}
-                aria-current={lang === l ? "page" : undefined}
-                className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${lang === l ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-              >
-                {l === "fr" ? "Français" : "English"}
-              </button>
-            ))}
-          </div>
+          <p className="micro text-muted-foreground">
+            {tr("Editing")} {lang === "fr" ? tr("Français") : tr("English")} —{" "}
+            {tr("switch language on the page above.")}
+          </p>
           {(["header_note", "footer_note", "legal_mentions"] as const).map(
             (base) => {
               const key = `${base}_${lang}`;
@@ -3207,7 +3182,15 @@ function LetterheadTab({
                     ? "Footer note"
                     : "Legal mentions";
               return (
-                <label key={key} className="block space-y-1 text-sm">
+                // Anchored per FIELD, not per panel: "the late-payment clause
+                // is missing" should ring the late-payment box, not the three
+                // boxes it sits among. Keyed on the base name so a link works
+                // whichever language is being edited.
+                <label
+                  key={key}
+                  data-field={base}
+                  className="block space-y-1 text-sm"
+                >
                   <span className="font-medium text-foreground">{label}</span>
                   <textarea
                     className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
@@ -3238,6 +3221,7 @@ function LetterheadTab({
             and heights are typed, so they ride the same draft as the wording. */}
         <Section
           title="Page and brand"
+          field="brand_color"
           description="How the sheet is laid out and coloured. The preview is drawn from these, so a change here is visible immediately."
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -3372,134 +3356,6 @@ function LetterheadTab({
         </Section>
       </div>
 
-      <div className="space-y-4">
-        <Section
-          title={tr("Preview")}
-          description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}
-        >
-          <article
-            className="space-y-3 rounded-lg border bg-background p-4"
-            style={
-              p.brand_color
-                ? { borderTopColor: p.brand_color, borderTopWidth: 3 }
-                : undefined
-            }
-          >
-            <header
-              className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}
-            >
-              {p.header.logo ? (
-                <img
-                  src={p.header.logo}
-                  alt=""
-                  className="inline-block h-10 w-auto object-contain"
-                />
-              ) : (
-                <div className="inline-flex h-10 items-center micro text-muted-foreground">
-                  No logo
-                </div>
-              )}
-              {p.header.company_line && (
-                <p className="text-sm font-semibold text-foreground">
-                  {p.header.company_line}
-                </p>
-              )}
-              {p.header.address_line && (
-                <p className="micro text-muted-foreground">
-                  {p.header.address_line}
-                </p>
-              )}
-              {p.header.contact_line && (
-                <p className="micro text-muted-foreground">
-                  {p.header.contact_line}
-                </p>
-              )}
-              {p.header.note && (
-                <p className="micro text-muted-foreground">{p.header.note}</p>
-              )}
-            </header>
-
-            <div className="rounded border border-dashed py-8 text-center micro text-muted-foreground">
-              Document body
-            </div>
-
-            {p.payment_block.accounts.length > 0 && (
-              <div className="space-y-0.5 border-t pt-2">
-                <p className="micro font-medium text-foreground">
-                  {lang === "fr" ? "Coordonnées bancaires" : "Payment details"}
-                </p>
-                {p.payment_block.accounts.map((a, i) => (
-                  <p key={i} className="micro num text-muted-foreground">
-                    {[
-                      a.bank_name,
-                      a.branch,
-                      a.account_number,
-                      a.iban,
-                      a.swift_bic,
-                      a.currency,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* The accent colour is the footer rule — a colour you can set but
-                never see is a colour nobody sets on purpose. */}
-            <footer
-              className="space-y-0.5 border-t pt-2 text-center"
-              style={
-                p.accent_color ? { borderTopColor: p.accent_color } : undefined
-              }
-            >
-              {p.footer.company_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.company_line}
-                </p>
-              )}
-              {p.footer.address_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.address_line}
-                </p>
-              )}
-              {p.footer.identifier_line && (
-                <p className="micro num text-muted-foreground">
-                  {p.footer.identifier_line}
-                </p>
-              )}
-              {p.footer.establishment_line && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.establishment_line}
-                </p>
-              )}
-              {p.footer.note && (
-                <p className="micro text-muted-foreground">{p.footer.note}</p>
-              )}
-              {p.footer.legal_mentions && (
-                <p className="micro text-muted-foreground">
-                  {p.footer.legal_mentions}
-                </p>
-              )}
-            </footer>
-          </article>
-        </Section>
-
-        {p.empty_blocks.length > 0 && (
-          <Callout tone="warn" title="Switched on, but empty">
-            <p className="text-muted-foreground">
-              These blocks are enabled and would print nothing. Fill them in on
-              the entity&apos;s other tabs, or switch them off.
-            </p>
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {p.empty_blocks.map((b) => (
-                <li key={b}>
-                  <Pill tone="warn">{enumLabel(b)}</Pill>
-                </li>
-              ))}
-            </ul>
-          </Callout>
-        )}
       </div>
     </div>
   );

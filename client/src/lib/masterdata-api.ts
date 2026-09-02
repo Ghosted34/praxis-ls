@@ -499,6 +499,89 @@ export type LetterheadConfig = {
   paper_size: "A4" | "LETTER";
   header_height_mm?: number | null;
   footer_height_mm?: number | null;
+  /** The mark's printed height, 4-60mm. Feeds the one-page fit model (12760). */
+  logo_height_mm?: number | null;
+  layout?: LetterheadLayout | null;
+};
+
+/** One block's placement on the twelve-column letterhead grid (12760). */
+export type LetterheadPlacement = {
+  id: string;
+  row?: number;
+  col?: number;
+  span?: number;
+  align?: "left" | "center" | "right";
+  size?: number;
+  weight?: "normal" | "bold";
+  tone?: "ink" | "muted" | "accent";
+  transform?: "none" | "upper";
+  visible?: boolean;
+};
+
+export type LetterheadLayout = {
+  version?: number;
+  header?: LetterheadPlacement[];
+  footer?: LetterheadPlacement[];
+};
+
+/**
+ * One composed block, as the renderer resolved it.
+ *
+ * This is the SAME object the document renderer prints from — the editor draws
+ * these rather than re-deriving the content, so what the canvas shows is what
+ * the sheet says. `source` is the deep link: which dossier tab and field fixes
+ * this block, so the editor never hardcodes a route.
+ */
+export type LetterheadBlock = Required<
+  Pick<LetterheadPlacement, "id" | "row" | "col" | "span" | "align" | "size">
+> & {
+  zone: "header" | "footer";
+  kind: "text" | "image" | "rule" | "wordmark";
+  weight: "normal" | "bold";
+  tone: "ink" | "muted" | "accent";
+  transform: "none" | "upper";
+  visible: boolean;
+  custom: boolean;
+  authored: boolean;
+  fixed: boolean;
+  empty: boolean;
+  label: { fr: string; en: string };
+  hint: { fr: string; en: string };
+  source: { tab: string; field: string };
+  /** The `show_*` column(s) governing this block, so one control writes one truth. */
+  toggle: string[] | null;
+  lines: { type: string; text?: string; src?: string }[];
+  height_mm?: number;
+};
+
+export type LetterheadComposition = {
+  language: string;
+  header: LetterheadBlock[];
+  footer: LetterheadBlock[];
+  empty_blocks: string[];
+  height: { header_mm: number; footer_mm: number };
+};
+
+export type LetterheadLine = {
+  line_id: string;
+  entity_id: string;
+  zone: "header" | "footer";
+  text_fr?: string | null;
+  text_en?: string | null;
+  sort_order: number;
+  is_active: boolean;
+};
+
+/** What the editor may add, and where each block's content comes from. */
+export type LetterheadCatalogueItem = {
+  id: string;
+  zone: "header" | "footer";
+  label: string;
+  hint: string;
+  source: { tab: string; field: string };
+  toggle: string[] | null;
+  authored: boolean;
+  fixed: boolean;
 };
 
 export type PaymentAccount = {
@@ -550,6 +633,11 @@ export type LetterheadBundle = {
   remittance_account_id: string | null;
   treasury_accounts: Treasury[];
   preview: { fr: LetterheadPreview; en: LetterheadPreview };
+  /** The composed blocks the editor drags — the renderer's own composition. */
+  blocks: { fr: LetterheadComposition; en: LetterheadComposition };
+  custom_lines: LetterheadLine[];
+  catalogue: LetterheadCatalogueItem[];
+  tokens: { token: string; label: string }[];
   language: string;
 };
 
@@ -687,6 +775,25 @@ export const setEntityOpsReferencePrefix = (id: string, prefix: string) =>
 
 export const entityLetterhead = (id: string) =>
   tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
+/**
+ * Add, edit or remove one tenant-authored letterhead line (12760).
+ *
+ * Returns the whole bundle, not the row: a line that changed the composed
+ * height has just changed the page it sits on, and the canvas has to redraw
+ * against what was actually stored.
+ */
+export const saveEntityLetterheadLine = (
+  id: string,
+  lineId: string | null,
+  body: Record<string, unknown> | null,
+) =>
+  tenant<LetterheadBundle>(
+    `/entities/${id}/letterhead/lines${lineId ? `/${lineId}` : ""}`,
+    body === null
+      ? { method: "DELETE" }
+      : { method: lineId ? "PUT" : "POST", body },
+  );
+
 export const saveEntityLetterhead = (
   id: string,
   body: Record<string, unknown>,

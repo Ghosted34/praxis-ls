@@ -9,6 +9,7 @@
 "use strict";
 
 const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO } = require("../../pdf.fonts");
+const blocks = require("./letterhead-blocks");
 
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -577,6 +578,75 @@ function shell(title, bodyHtml, cfg = {}) {
     .vfy .code { font-family: ${c.monoFont}; font-size: 5.5pt; letter-spacing: 0.02em;
                  color: #4b5563; margin-top: 0.8mm; white-space: nowrap; }
     .vfy .hint { font-family: ${c.font}; color: #4b5563; }
+
+    /* ══ THE STANDARD SHELL ═════════════════════════════════════════════════
+       ONE header and ONE footer, on every document this product prints.
+
+       There used to be two. The instrument sheets (transit order, delivery
+       note) carried '.lh2' — a mark, a right-hand identity block and an accent
+       rule — and everything else carried '.head', whose identity was a single
+       comma-joined line and whose foot printed two hardcoded identifier labels.
+       A tenant therefore had two letterheads, only one of which their Letterhead
+       tab described, and neither of which it actually controlled.
+
+       This is the instrument sheet's anatomy, generalised: the same mark, the
+       same identity column, the same 0.7mm accent rule, the same type sizes,
+       now laid out from 'letterhead-blocks.compose()' so the arrangement is the
+       tenant's rather than ours.
+
+       IT IS A GRID, WHERE '.lh2' WAS A FLEX PAIR, so it carries its own class
+       names rather than borrowing them. '.lh2' and '.ifoot' below are still
+       defined because 'instrumentHead'/'instrumentFoot' still exist as
+       deprecated aliases; nothing in the registry calls them any more and new
+       code must not.
+
+       THE GRID. Twelve columns. '.lhrow' is one row of the zone; '.lhcell' is
+       one column stack within it. Blocks abreast cost the tallest cell, blocks
+       stacked cost their sum — which is exactly what 'blocks.measure()'
+       computes, and the two must agree or the one-page fit model is solving
+       against a page that does not exist. */
+    .lhz { display: block; }
+    .lhrow { display: grid; grid-template-columns: repeat(12, 1fr);
+             gap: 0 calc(3mm * var(--k)); align-items: end; }
+    .lhrow + .lhrow { margin-top: calc(1.2mm * var(--k)); }
+    .lhcell { min-width: 0; }
+    .lhcell.a-center { text-align: center; }
+    .lhcell.a-right { text-align: right; }
+    .lhb { min-width: 0; overflow-wrap: anywhere; }
+    .lhb .ln { line-height: 1.45; }
+    .lhb.t-muted { color: ${c.muted}; }
+    .lhb.t-accent { color: ${c.accent}; }
+    .lhb.w-bold { font-weight: 800; }
+    .lhb.x-upper { text-transform: uppercase; letter-spacing: 0.03em; }
+    /* The mark. An EXPLICIT height, never a max-height — an <img> sized only by
+       max-height contributes zero width to a grid item in Chrome, and the whole
+       letterhead rendered 0×0. Same failure '.lh2 .mark img' documents; same fix. */
+    .lhb img.mark { height: ${logoMm}mm; width: auto; max-width: 62mm;
+                    object-fit: contain; display: block; }
+    .lhcell.a-center .lhb img.mark { margin: 0 auto; }
+    .lhcell.a-right .lhb img.mark { margin-left: auto; }
+    .lhb .wordmark { font-weight: 800; letter-spacing: -0.01em; color: ${c.accent}; line-height: 1.1; }
+    .lhb .rule { border-bottom: 0.7mm solid ${c.accent}; }
+
+    /* The standard foot. '.lft' takes the composed blocks, '.rgt' the page and
+       provenance labels, '.vfy' the verification symbol — which keeps its
+       millimetres at every fit, because below ~0.5mm per module a phone camera
+       stops resolving it and an unscannable symbol is worse than none. */
+    .sfoot { display: flex; align-items: flex-end; justify-content: space-between;
+             gap: calc(4mm * var(--k)); margin-top: calc(2.2mm * var(--k));
+             padding-top: calc(1.4mm * var(--k)); border-top: 0.25mm solid ${c.rule};
+             font-size: calc(7pt * var(--k)); color: ${c.muted}; line-height: 1.45; }
+    .sfoot .lft { flex: 1; min-width: 0; }
+    .sfoot .rgt { flex: none; text-align: right; }
+    .sfoot .vfy { margin-left: calc(3mm * var(--k)); }
+    /* The meta pairs that used to sit in a right-hand column beside the title.
+       Under it instead, on one line, in the muted grade — a title fighting a
+       meta column for the same optical centre is what made the old header read
+       as two documents stapled together. */
+    .dmeta { text-align: center; margin-top: calc(0.8mm * var(--k));
+             font-size: calc(7.4pt * var(--k)); color: ${c.muted}; }
+    .dmeta .mi + .mi::before { content: " · "; }
+
     @media print { .wm span { opacity: 0.08; } }`;
   /*
    * `--k` is emitted as a NUMBER, clamped, never as the raw cfg value.
@@ -1192,6 +1262,200 @@ function footer(entity = {}, cfg = {}, verify) {
   return `<div class="foot">${wet}<div class="foot-legal">${legal}${custom}</div>${block}</div>`;
 }
 
+/* ══ THE STANDARD SHELL ═══════════════════════════════════════════════════ */
+
+/**
+ * The composed letterhead for a render.
+ *
+ * `cfg.letterhead` is normally pre-composed by `template.service.resolveCfg`,
+ * which has the entity's addresses, registrations, treasury accounts and saved
+ * layout to hand. When it is absent this composes from whatever the entity row
+ * carries, so a caller that has not been migrated still renders a true — if
+ * thinner — letterhead rather than nothing. `compose` is pure, so the kit
+ * calling it costs no I/O and breaks no layering.
+ */
+function composed(entity = {}, cfg = {}, doc = {}) {
+  if (cfg.letterhead && cfg.letterhead.header) return cfg.letterhead;
+  return blocks.compose({
+    entity,
+    config: cfg.letterhead_config || {},
+    layout: cfg.letterhead_layout || null,
+    customLines: cfg.letterhead_lines || [],
+    logo_url: (cfg.logo && cfg.logo.show !== false && cfg.logo.url) || null,
+    logo_height_mm: (cfg.logo && cfg.logo.height_mm) || null,
+    doc,
+  }, cfg.language === "fr" ? "fr" : "en");
+}
+
+/** One block's inner HTML. Every value here is escaped; nothing interpolates markup. */
+function blockHtml(b, cfg) {
+  if (!b.visible || !b.lines.length) return "";
+  const cls = [
+    "lhb",
+    b.tone === "muted" ? "t-muted" : b.tone === "accent" ? "t-accent" : "",
+    b.weight === "bold" ? "w-bold" : "",
+    b.transform === "upper" ? "x-upper" : "",
+  ].filter(Boolean).join(" ");
+
+  // The type size is a NUMBER, clamped by `compose`, interpolated into a
+  // stylesheet that themes every document — the same rule `--k` follows in
+  // `shell`. A string here would be an injection point on tenant-saved data.
+  const size = Math.min(2.5, Math.max(0.5, Number(b.size) || 1));
+  const basePt = b.zone === "header"
+    ? (b.kind === "wordmark" ? 15 : b.id === "company_name" ? 11.5 : 7.4)
+    : 7;
+  const style = b.kind === "rule" || b.kind === "image"
+    ? ""
+    : ` style="font-size:calc(${(basePt * size).toFixed(2)}pt * var(--k));"`;
+
+  const inner = b.lines.map((l) => {
+    if (l.type === "image") return `<img class="mark" src="${esc(l.src)}" alt="">`;
+    if (l.type === "wordmark") return `<div class="wordmark">${esc(l.text)}</div>`;
+    if (l.type === "rule") return `<div class="rule"></div>`;
+    return `<div class="ln">${esc(l.text)}</div>`;
+  }).join("");
+
+  return `<div class="${cls}"${style} data-block="${esc(b.id)}">${inner}</div>`;
+}
+
+/**
+ * One composed zone as grid HTML.
+ *
+ * Blocks are grouped by row, then by the column they start in — the same two
+ * axes `blocks.measure()` uses, because a header that measures one way and
+ * prints another is how a one-page sheet becomes two.
+ */
+function zoneHtml(list = [], cfg = {}) {
+  const live = list.filter((b) => b.visible && b.lines.length);
+  if (!live.length) return "";
+  const rows = new Map();
+  for (const b of live) {
+    if (!rows.has(b.row)) rows.set(b.row, new Map());
+    const cols = rows.get(b.row);
+    if (!cols.has(b.col)) cols.set(b.col, []);
+    cols.get(b.col).push(b);
+  }
+  const html = [...rows.keys()].sort((a, z) => a - z).map((r) => {
+    const cols = rows.get(r);
+    const cells = [...cols.keys()].sort((a, z) => a - z).map((col) => {
+      const cell = cols.get(col);
+      const span = Math.min(12 - col, Math.max(...cell.map((b) => b.span || 12)));
+      const align = cell[0].align || "left";
+      return `<div class="lhcell a-${esc(align)}" style="grid-column:${col + 1} / span ${span};">`
+        + cell.map((b) => blockHtml(b, cfg)).join("")
+        + `</div>`;
+    }).join("");
+    return `<div class="lhrow">${cells}</div>`;
+  }).join("");
+  return `<div class="lhz">${html}</div>`;
+}
+
+/**
+ * THE STANDARD HEADER — the one every document prints.
+ *
+ * Replaces both `letterhead()`/`head()` (the card-deck family) and
+ * `instrumentHead()` (the ruled sheets). Those remain as thin aliases so no
+ * template breaks mid-migration, but nothing should call them in new code.
+ *
+ * `opts.title` renders the document's own name under the letterhead, which is
+ * where the proforma this was modelled on puts it. Pass `opts.meta` for the
+ * label/value pairs the card-deck templates used to put in a right-hand column;
+ * they print under the title rather than beside it, because a title fighting a
+ * meta column for the same optical centre is what made the old header read as
+ * two documents stapled together.
+ */
+function standardHead(entity = {}, cfg = {}, opts = {}) {
+  const lh = composed(entity, cfg, opts.doc || {});
+  const head = zoneHtml(lh.header, cfg);
+  if (!opts.title) return head;
+  const meta = (opts.meta || []).filter((m) => m && m[1]).map((m) => `<span class="mi">${
+    t(typeof m[0] === "string" ? { fr: m[0], en: m[0] } : m[0], cfg.language)
+  }: ${esc(m[1])}</span>`).join("");
+  return head + docName(opts.title, opts.number || "", cfg, { ref: Boolean(opts.number) })
+    + (meta ? `<div class="dmeta">${meta}</div>` : "");
+}
+
+/**
+ * THE STANDARD FOOTER.
+ *
+ * `verify` is the {url, code, qrSvg} object from services/signatures/verify-link
+ * and renders only when the document carries a signature and no seal on the
+ * page is already carrying one (§3.12a: one QR per page). A non-object is
+ * ignored rather than printed — it was once a "praxis:" custom-scheme string no
+ * phone could resolve, printed under the words "Verify authenticity".
+ *
+ * `opts.bank` opts the payment block in. It is OFF by default and that is not
+ * an oversight: a transit order is an authorisation to declare cargo, and
+ * printing an account number on it hands the tenant's banking details to every
+ * warehouse and border post the sheet passes through, for nothing.
+ */
+function standardFoot(entity = {}, cfg = {}, verify, opts = {}) {
+  const lh = composed(entity, cfg, opts.doc || {});
+  const list = lh.footer.filter((b) => opts.bank || b.id !== "payment");
+  const left = zoneHtml(list, cfg);
+
+  const custom = cfg.footer_text ? `<div class="ln">${esc(cfg.footer_text)}</div>` : "";
+  const right = [opts.pageLabel, opts.provenance].filter(Boolean)
+    .map((x) => `<div>${esc(x)}</div>`).join("");
+
+  const v = verify && typeof verify === "object" && verify.code && cfg.show && cfg.show.qr ? verify : null;
+  const host = v ? String(v.url || "").replace(/^https?:\/\//i, "").split("/")[0] : "";
+  const vfy = v
+    ? `<div class="vfy">${v.qrSvg || ""}<div class="code">${esc(formatVerifyCode(v.code))}</div>`
+      + `<div class="hint">${t({ fr: "Vérifiez sur", en: "Verify at" }, cfg.language)} ${esc(host)}</div></div>`
+    : "";
+
+  return `<div class="sfoot"><div class="lft">${left}${custom}</div>`
+    + `<div class="rgt">${right}</div>${vfy}</div>`;
+}
+
+/**
+ * The millimetres the standard shell occupies, for the one-page fit model.
+ *
+ * Returns `{ head, foot, fixed, headScaling }`.
+ *
+ * ── Why `fixed` is the mark's MARGINAL height, not its height ──────────────
+ * Not everything on the page scales with `--k`. The mark carries an explicit
+ * height in millimetres (an <img> sized only by max-height contributes zero
+ * width to a grid item in Chrome — see the CSS), so it is the same height at
+ * k = 0.5 as at k = 1, and `fitScale` has to solve `budget = fixed + scaling·k`
+ * with it on the fixed side.
+ *
+ * But the mark sits BESIDE the identity column, and a row costs the taller of
+ * the two. On an entity with a long legal name and four identity lines the
+ * identity column is already taller than the mark, and the mark then adds
+ * nothing to the page — subtracting its full height would tell the solver it
+ * has millimetres of unshrinkable content it does not have, and set the sheet
+ * tighter than it needed to be for no reason.
+ *
+ * So the header is measured twice, with the mark and without it, and `fixed` is
+ * the DIFFERENCE — exactly what the mark costs this page, which is its height
+ * on a short letterhead and zero on a tall one. `headScaling` is the remainder,
+ * the part that genuinely follows `--k`.
+ *
+ * This replaces the per-template `HEIGHT_MM.head` constant. That constant was
+ * right on the day somebody measured it and became a lie the moment a tenant
+ * added a footer line — which is the feature this rebuild ships, so the lie was
+ * going to arrive on its own.
+ */
+function shellMm(entity = {}, cfg = {}, opts = {}) {
+  const lh = composed(entity, cfg, opts.doc || {});
+  const footList = lh.footer.filter((b) => opts.bank || b.id !== "payment");
+
+  const head = blocks.measure(lh.header, "header");
+  const headNoMark = blocks.measure(lh.header.filter((b) => b.id !== "logo"), "header");
+  // The accent rule and its margin are hairlines either way and already counted
+  // by `measure`; what is fixed here is only the mark's marginal contribution.
+  const fixed = Math.max(0, Math.round((head - headNoMark) * 10) / 10);
+
+  return {
+    head,
+    foot: blocks.measure(footList, "footer"),
+    fixed,
+    headScaling: Math.round((head - fixed) * 10) / 10,
+  };
+}
+
 module.exports = {
   esc, money, xaf, dateFmt, t, defaults, mergeCfg, words, wordsBlock,
   shell, letterhead, titleMeta, head, parties, lineTable, totals, section,
@@ -1199,4 +1463,5 @@ module.exports = {
   tick, clause, clauseText, factsGrid, ruledBlock, pairRow, cargoTable, instrumentHead,
   docName, signStrip, instrumentFoot, fitScale, headFixedMm, sheetHeightMm, fitBudgetMm, FIT_FLOOR,
   sealBlock, printBarcode, formatPrintCode, verifyBlock, formatVerifyCode, watermark, watermarkFor, footer,
+  standardHead, standardFoot, shellMm, composed, zoneHtml, blocks,
 };

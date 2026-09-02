@@ -156,10 +156,12 @@ if [ "${PRAXIS_DEPLOY_REEXEC:-0}" != "1" ]; then
   # So CI now carries its own: DEPLOY_GIT_TOKEN (the workflow run's token,
   # read-only, valid for the length of the run) arrives over the SSH session's
   # stdin — never in an argv another user could read from `ps` — and is handed
-  # to git through a per-invocation credential helper. It is not written to
-  # .git/config and not written to disk at all. Unset, everything below is the
-  # old behaviour, so a hand-run deploy still uses whatever credential the
-  # operator has.
+  # to git below through a per-invocation credential helper, so nothing lands
+  # in .git/config. (The workflow also exports a GIT_ASKPASS for the session,
+  # which is what gets the FIRST run with this change past the fetch: the copy
+  # of this script that runs is the one already on the server.) Unset,
+  # everything below is the old behaviour, so a hand-run deploy still uses
+  # whatever credential the operator has.
   # -------------------------------------------------------------------------
   if [ ! -t 0 ]; then
     # Non-interactive (this is the CI path). Make a missing credential fail

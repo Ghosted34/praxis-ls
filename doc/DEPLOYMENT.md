@@ -285,13 +285,18 @@ credential-helper entry) is the usual trigger.
 
 **How it works now.** The deploy does not rely on a credential living on the
 server. `.github/workflows/deploy.yaml` forwards the workflow run's own token
-as `DEPLOY_GIT_TOKEN` — read-only, scoped to this repo, dead when the run
-ends — over the SSH session's **stdin**, so it never appears in a command line
-that `ps` on the box could show. `scripts/deploy.sh` hands it to git through a
-per-invocation credential helper: nothing is written to `.git/config`, or to
-disk at all. Set the optional `DEPLOY_GIT_TOKEN` repo secret to override it
-with a PAT if the server ever needs to fetch something the run's token cannot
-reach.
+as `DEPLOY_GIT_TOKEN` — read-only, scoped to this repo, dead when the run ends
+— by **piping the remote script over the SSH session's stdin** rather than
+passing it as a command string, so it never appears in an argv that `ps` on the
+box could show. That script exports a `GIT_ASKPASS` helper for the session
+(mode 700 in `/tmp`, removed by a trap when the session ends), which every git
+in the deploy inherits — **including the copy of `scripts/deploy.sh` already
+checked out on the server**, which is the one that runs, so the fix does not
+have to be on the box before it can get onto the box. `scripts/deploy.sh` then
+does the same thing for itself with a per-invocation credential helper, which
+is what a hand-run uses; nothing is written to `.git/config` either way. Set
+the optional `DEPLOY_GIT_TOKEN` repo secret to override the run's token with a
+PAT if the server ever needs to fetch something it cannot reach.
 
 The fetch retries four times (2s/4s/8s) for a network blip and falls back from
 `origin` to the repo's canonical HTTPS URL, so a stale remote on the box does

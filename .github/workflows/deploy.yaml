@@ -147,18 +147,46 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          # The remote side is PIPED IN, not passed as a command string.
+          #
+          # Two reasons. A command string is argv to a shell on the server, so
+          # anything in it — the token — is readable with `ps` by anyone on the
+          # box for the length of the deploy. And the credential has to be in
+          # place BEFORE scripts/deploy.sh runs: the copy that runs is the one
+          # already checked out on the server, i.e. the version WITHOUT the fix,
+          # whose plain `git fetch` is what died on 2026-09-02. A GIT_ASKPASS
+          # exported here is inherited by every git in the session, so the fix
+          # does not need to already be on the server to get onto the server.
+          # scripts/deploy.sh keeps its own credential handling for hand-runs.
+          #
+          # %q quotes each value for the remote bash, so a DEPLOY_REF typed into
+          # the workflow_dispatch box cannot break out into a command.
+          {
+            printf 'export DEPLOY_GIT_TOKEN=%q\n' "$DEPLOY_GIT_TOKEN"
+            printf 'export DEPLOY_REF=%q\n' "$DEPLOY_REF"
+            printf 'export DEPLOY_GIT_REMOTE=%q\n' "$DEPLOY_GIT_REMOTE"
+            cat <<'REMOTE'
+          set -euo pipefail
+
+          ASKPASS="$(mktemp)"
+          trap 'rm -f "$ASKPASS"' EXIT
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'case "$1" in Username*) printf "x-access-token\n" ;; *) printf "%s\n" "$DEPLOY_GIT_TOKEN" ;; esac' \
+            > "$ASKPASS"
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+
+          cd ~/praxis-ls
+          # </dev/null: this script is itself arriving on stdin, and a child that
+          # read stdin would eat the rest of it. deploy.sh wants none of it anyway.
+          bash scripts/deploy.sh </dev/null
+          REMOTE
           # 30-minute cap (matches the old command_timeout). accept-new pins the
           # host key on first contact — the same trust level the action used by
           # default (its `fingerprint` input was blank).
-          # The token goes over the session's STDIN and is read remotely with
-          # $(cat) — deliberately not interpolated into the command string,
-          # which sshd hands to a shell as argv where any user on the box can
-          # read it out of `ps` for the length of the deploy. printf sends it
-          # with no trailing newline and closes the pipe, which is the EOF
-          # $(cat) waits for; deploy.sh reads no stdin of its own.
-          printf '%s' "$DEPLOY_GIT_TOKEN" \
-          | timeout 30m ssh -i ~/.ssh/deploy_key \
+          } | timeout 30m ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=accept-new \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_GIT_TOKEN=\$(cat) DEPLOY_REF='$DEPLOY_REF' DEPLOY_GIT_REMOTE='$DEPLOY_GIT_REMOTE' bash -lc 'cd ~/praxis-ls && bash scripts/deploy.sh'"
+            "$DEPLOY_USER@$DEPLOY_HOST" "bash -l -s"

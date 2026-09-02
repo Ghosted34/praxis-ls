@@ -10,7 +10,7 @@ const settings = require("../../security/setting/setting.service");
 const registry = require("../../../services/documents/templates/registry");
 const kit = require("../../../services/documents/templates/kit");
 const pdf = require("../../../services/pdf.service");
-const storage = require("../../../services/storage.service");
+const brandLogo = require("../../../services/brand-logo.service");
 const emailSvc = require("../../../services/email.service");
 const verifyLink = require("../../../services/signatures/verify-link");
 const sealView = require("../../../services/signatures/seal-view");
@@ -20,6 +20,7 @@ const { asLang } = require("../../mail/signature/language");
 // The one letterhead assembler (MOD-01). The entity dossier previews with the
 // same function, so the designer and the printer cannot disagree.
 const letterhead = require("../../master/entity-letterhead.service");
+const letterheadBlocks = require("../../../services/documents/templates/letterhead-blocks");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
@@ -37,42 +38,11 @@ async function safeGet(client, key) {
 
 const list = () => registry.list();
 
-const LOGO_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml", gif: "image/gif" };
-
-// Turn a stored logo reference into something that renders EVERYWHERE — the live
-// preview iframe, the Puppeteer-rendered PDF (which has no page origin, so a
-// relative /media URL never loads), and emailed HTML. We inline the bytes as a
-// base64 data URI. `ref` is either a storage key or a /media/<key> public URL.
-async function resolveLogo(ref) {
-  if (!ref) return null;
-  if (/^data:/i.test(ref)) return ref;
-  if (/^https?:/i.test(ref)) return ref; // remote/CDN URL — used as-is
-  const key = String(ref).replace(/^\/media\//, "").replace(/^\/+/, "");
-  try {
-    const buf = await storage.get(key);
-    if (buf && buf.length) {
-      const ext = (key.split(".").pop() || "png").toLowerCase();
-      return `data:${LOGO_MIME[ext] || "image/png"};base64,${buf.toString("base64")}`;
-    }
-  } catch { /* @silent:storage — a logo the storage backend cannot hand back must
-    not stop a document rendering. Falling through to the raw ref gives the
-    renderer a URL to try; a missing letterhead is a cosmetic loss, a failed
-    invoice render is not. */ }
-  return ref;
-}
-
-// Tenant-wide letterhead logo reference (Appearance → logo_url), used when a
-// corporate entity has no per-entity logo of its own. Most tenants set only the
-// branding logo, so without this the documents fall back to the brand *name*.
-async function brandingLogoRef(client) {
-  try {
-    const { rows } = await client.query(
-      "SELECT value FROM setting WHERE section = 'appearance' AND key = 'logo_url' LIMIT 1",
-    );
-    const v = rows[0] && rows[0].value;
-    return v ? (typeof v === "string" ? v : String(v)) : null;
-  } catch { return null; }
-}
+// Moved to services/brand-logo.service.js when the signature card needed the
+// same resolution — see that file's header for why it is shared rather than
+// copied. Re-exported through these local bindings so the call sites below read
+// unchanged.
+const { resolveLogo, brandingLogoRef } = brandLogo;
 
 /**
  * The tenant's active-currency catalogue (code → { symbol, decimals, name }),
@@ -158,12 +128,95 @@ async function resolveEntity(client, entityId, { language = "en" } = {}) {
     ]);
     entity.address_lines = letterhead.addressLines(entity, addresses, { countryName, language });
     entity.identifiers = letterhead.identifiers(entity, registrations, taxRegistrations);
+    /*
+     * THE LETTERHEAD ROW, AND WHY IT IS FETCHED HERE.
+     *
+     * `entity_letterhead` has existed since 0516 and until now this function
+     * never read it. The designer wrote it, the dossier drew its own preview
+     * from it, and the RENDERER took a different road entirely — the settings
+     * store — so every toggle on that tab was a dead end: a tenant could switch
+     * the share capital off, watch the preview obey, and keep printing it.
+     *
+     * The same best-effort rule as the derivations above: a document must still
+     * render for a tenant whose dossier tables are empty or unreadable, so each
+     * of these falls back on its own and a partial failure costs one block, not
+     * the header.
+     *
+     * WHAT THE `.catch` DOES AND DOES NOT COVER. `req.tenantDb` hands out a
+     * PINNED connection, not an open transaction (see middleware/tenant-context
+     * — there is no BEGIN), so a failing query here is an autocommit error and
+     * the ones beside it still succeed. It would NOT survive being called from
+     * inside someone else's transaction, where the first error aborts the whole
+     * thing regardless of who catches it. That is the same exposure every other
+     * read in this function already has, and the reason it is acceptable is the
+     * repo's migration discipline: 12760 ships with this code, so
+     * `entity_letterhead_line` exists by the time anything renders.
+     */
+    const [lhRow, lhLines, treasury, establishments] = await Promise.all([
+      client.query("SELECT * FROM entity_letterhead WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows[0] || null).catch(() => null),
+      client.query(
+        `SELECT * FROM entity_letterhead_line
+           WHERE entity_id = $1 AND is_active
+           ORDER BY zone, sort_order, created_at`, [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM treasury_account WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+      client.query("SELECT * FROM entity_establishment WHERE entity_id = $1", [entity.entity_id])
+        .then((r) => r.rows).catch(() => []),
+    ]);
+    entity.letterhead_row = lhRow;
+    entity.letterhead_lines = lhLines;
+    entity.letterhead_sources = { addresses, treasuryAccounts: treasury, establishments };
   } else {
     entity.address_lines = letterhead.addressLines(entity, [], { countryName, language });
     entity.identifiers = letterhead.identifiers(entity, [], []);
+    entity.letterhead_row = null;
+    entity.letterhead_lines = [];
+    entity.letterhead_sources = { addresses: [], treasuryAccounts: [], establishments: [] };
   }
 
   return { entity, brand: { logo_url: await resolveLogo(ref) } };
+}
+
+/*
+ * ── THE ENTITY OWNS ITS IDENTITY AND ITS BRAND ─────────────────────────────
+ *
+ * The knobs below existed in TWO places under two different names: the entity's
+ * Letterhead tab (`paper_size`, `logo_position`, `brand_color`, `accent_color`,
+ * `footer_note_*`) and the Document Studio's per-docType config (`paper`,
+ * `logo.align`, `accent`, `footer_text`). Only the Studio's reached the page.
+ *
+ * Precedence is now: brand default → ENTITY LETTERHEAD → Studio tenant default
+ * → Studio per-entity override → the caller's per-render override. The entity
+ * sits below the Studio deliberately: the Studio's remaining knobs are
+ * per-DOCUMENT (a watermark on a proforma, a terms block on a quotation), and a
+ * setting made for one document type should still win for that document type.
+ * What changed is that the entity's values are no longer ignored — they are the
+ * floor every document starts from, so setting the accent once on the dossier
+ * colours every sheet the tenant prints.
+ *
+ * A colour is validated, not trusted. These land in a stylesheet that themes
+ * every document, and the row is tenant-writable; anything that is not a plain
+ * hex triple is dropped rather than interpolated.
+ */
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+const hex = (v) => (typeof v === "string" && HEX.test(v.trim()) ? v.trim() : null);
+
+function entityLetterheadCfg(entity) {
+  const row = entity.letterhead_row;
+  if (!row) return {};
+  const out = {};
+  if (hex(row.brand_color)) out.accent = hex(row.brand_color);
+  if (hex(row.accent_color)) out.rule = hex(row.accent_color);
+  if (row.paper_size === "A4" || row.paper_size === "LETTER") {
+    out.paper = row.paper_size === "LETTER" ? "Letter" : "A4";
+  }
+  const align = { LEFT: "left", CENTER: "center", RIGHT: "right" }[row.logo_position];
+  if (align) out.logo = { align };
+  const mm = Number(row.logo_height_mm);
+  if (Number.isFinite(mm) && mm > 0) out.logo = { ...(out.logo || {}), height_mm: Math.min(60, Math.max(4, mm)) };
+  return out;
 }
 
 /** entity override merged over the tenant default (entity_id = null). */
@@ -202,8 +255,12 @@ async function resolveCfg(client, docType, entityId, override, { language = null
   // language-dependent — a French document says "Cameroun", an English one
   // "Cameroon", and both come from the same country_code.
   const { entity, brand } = await resolveEntity(client, entityId, { language: picked === "fr" ? "fr" : "en" });
+  const fromEntity = entityLetterheadCfg(entity);
   const cfg = kit.mergeCfg(brand, {
-    ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
+    ...fromEntity, ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
+    // `logo` is nested, so a spread would let the Studio's {show:true} erase the
+    // entity's height_mm and align. Merged key-wise instead, entity underneath.
+    logo: { ...(fromEntity.logo || {}), ...(saved.logo || {}), ...((override || {}).logo || {}) },
   });
   /*
    * The company cachet, inlined the same way the letterhead logo is.
@@ -226,6 +283,30 @@ async function resolveCfg(client, docType, entityId, override, { language = null
   cfg.base_currency = base;
   const b = currencies[base];
   entity.default_currency_decimals = b ? b.decimals : 2;
+
+  /*
+   * Compose the shell ONCE, here, and hand it to the kit on `cfg`.
+   *
+   * `kit.standardHead` can compose for itself and does when this is absent —
+   * that is what keeps an unmigrated caller rendering. But composing here is
+   * what lets it see the entity's ADDRESS ROWS, TREASURY ACCOUNTS and
+   * ESTABLISHMENTS, which the kit has no way to fetch and no business fetching.
+   * The alternative is a letterhead that silently drops the payment block on
+   * every real render and shows it in every preview.
+   */
+  const src = entity.letterhead_sources || {};
+  cfg.letterhead = letterheadBlocks.compose({
+    entity,
+    config: entity.letterhead_row || {},
+    layout: (entity.letterhead_row && entity.letterhead_row.layout) || null,
+    customLines: entity.letterhead_lines || [],
+    addresses: src.addresses || [],
+    treasuryAccounts: src.treasuryAccounts || [],
+    establishments: src.establishments || [],
+    logo_url: (cfg.logo && cfg.logo.show !== false && cfg.logo.url) || null,
+    logo_height_mm: (cfg.logo && cfg.logo.height_mm) || null,
+  }, cfg.language === "fr" ? "fr" : "en");
+
   return { cfg, entity };
 }
 

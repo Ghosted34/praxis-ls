@@ -8,6 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
+import { useUrlTab, useFieldHighlight } from "@/lib/use-url-tab";
 import { useRecordParam, useTrailTitle } from "@/app/layout/nav-trail-context";
 import { Button } from "@/components/ui/button";
 import { ComposeIconButton as MailIconButton } from "@/features/comms/inbox/composer/compose-icon-button";
@@ -17,6 +18,7 @@ import { AttendanceHistory } from "./attendance-history";
 import { groupContracts } from "@/features/hr/contracts-grouping";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { useConfirm } from "@/components/ui/use-confirm";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
@@ -26,11 +28,41 @@ import {
   DepartmentSelect,
   type DepartmentValue,
 } from "@/components/department-select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DateField } from "@/components/ui/date-field";
+import { CountrySelect } from "@/components/country-select";
+import { Callout } from "@/components/ui/callout";
+import { FileDrop } from "@/components/ui/file-drop";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
+import { EmployeeWizard } from "./employee-wizard";
+import {
+  CIVILITIES,
+  GENDERS,
+  MARITAL_STATUSES,
+  PAYMENT_METHODS,
+  ID_DOCUMENT_TYPES,
+  EMPLOYMENT_TYPES,
+  ALLOWANCE_KINDS,
+  WIZARD_DOC_SLOTS,
+  draftFrom,
+  draftToPayload,
+  fileToDataUrl,
+  fileTooLarge,
+  type EmployeeDraft,
+} from "./employee-form-model";
+import { useNavigate } from "react-router-dom";
 
 const shell = pageShell.wide;
+/** The lifecycle (12763). PENDING is `warn` rather than `mute` on purpose: a
+ *  record nobody has put into service is a queue item, not a neutral state. */
+const STATUS_TONE: Record<string, Tone> = {
+  PENDING: "warn",
+  ACTIVE: "ok",
+  SUSPENDED: "mute",
+  TERMINATED: "bad",
+};
 const CONTRACT_TONE: Record<string, Tone> = {
   DRAFT: "mute",
   ISSUED: "blue",
@@ -46,7 +78,14 @@ const LEAVE_TONE: Record<string, Tone> = {
 /** The full record: the spine (contracts) plus what it owes, what it was paid,
  *  how it behaved, how it performed, and what discipline is on file (10708 —
  *  payroll, advances and sanctions joined the original four tabs). */
+/** Profile leads, because a record that cannot produce a contract is the first
+ *  thing anybody opening this dossier needs to know. Documents and Pay follow —
+ *  the staff file (12764) and the standing lines a contract states (12765) —
+ *  then the history tabs that were already here. */
 const TABS = [
+  "Profile",
+  "Documents",
+  "Pay",
   "Contracts",
   "Payroll",
   "Advances",
@@ -92,151 +131,621 @@ const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => (
   <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>
 );
 
-function NewEmployeeForm({
-  onClose,
-  onSaved,
+/**
+ * Edit an employee — the wizard's fields, laid out as sections rather than steps.
+ *
+ * ── WHY NOT THE WIZARD AGAIN ───────────────────────────────────────────────
+ *
+ * A wizard is for work you are doing once, in order, when you do not yet know
+ * what is being asked. Editing is the opposite: somebody has come to change one
+ * thing, they know which thing, and making them click Continue twice to reach a
+ * phone number is a tax on the most common action on this screen. Same fields,
+ * same model (`employee-form-model`), different shape — which is exactly why
+ * the field list lives in that model and not in either form.
+ */
+/* ── Contract readiness ─────────────────────────────────────────────────────
+ *
+ * The panel this dossier opens with, and the reason most of this work exists.
+ * A work contract is generated FROM this record, so a blank place-of-birth is
+ * not a cosmetic gap — it is a hole in a legal document, discovered at the
+ * moment somebody is trying to print one.
+ *
+ * The gaps come from the server (`GET /employees/:id/readiness`), which reads
+ * the same list `employees.rules` will apply when the contract is generated. A
+ * record this panel calls ready is one the generator accepts.
+ */
+function ReadinessPanel({
+  readiness,
+  onFix,
 }: {
-  onClose: () => void;
-  onSaved: (e: api.Employee) => void;
+  readiness: api.EmployeeReadiness | null;
+  onFix: () => void;
 }) {
-  const { rows: entities } = useList<{
-    entity_id: string;
-    legal_name?: string;
-  }>("/entities");
-  const [f, setF] = React.useState({
-    full_name: "",
-    entity_id: "",
-    job_title: "",
-    email: "",
-    employment_type: "CDI",
-  });
-  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
-  // Department is a scope (0490) — this is what finally links an employee to a
-  // place in the organigramme instead of a typed string.
-  const [dept, setDept] = React.useState<DepartmentValue>({
-    scope_id: null,
-    department: null,
-  });
-  // Line manager (0493) — what `is_line_manager` ("approves for own team") needs.
-  const [reportsTo, setReportsTo] = React.useState("");
-  const { rows: staff } = useList<api.Employee>("/employees");
+  if (!readiness) return null;
+  const { ready, percent, missing } = readiness;
+  const required = missing.filter((m) => m.severity === "required");
+  const nice = missing.filter((m) => m.severity === "recommended");
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">
+            {ready ? tr("Ready for a contract") : tr("Not contract-ready yet")}
+          </h4>
+          <p className="mt-0.5 micro">
+            {ready
+              ? tr("Every fact a work contract states is on this record.")
+              : tr(
+                  "A contract generated now would have gaps where these facts belong.",
+                )}
+          </p>
+        </div>
+        {!ready && (
+          <Button size="sm" variant="outline" onClick={onFix}>
+            Fill them in
+          </Button>
+        )}
+      </div>
+      <div
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={tr("Contract readiness")}
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none ${ready ? "bg-[rgb(var(--ok))]" : "bg-primary"}`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <p className="mt-1.5 micro">
+        {readiness.complete}/{readiness.total} {tr("required facts recorded")}
+      </p>
+      {required.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {required.map((m) => (
+            <Pill key={`${m.kind}:${m.key}`} tone="warn">
+              {tr(m.label)}
+            </Pill>
+          ))}
+        </div>
+      )}
+      {nice.length > 0 && (
+        <p className="mt-2 micro">
+          {tr("Also worth having:")} {nice.map((m) => tr(m.label)).join(", ")}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A read-only fact. `—` for a blank, so the shape of the record is visible
+ *  and a gap is something you can see rather than something you infer. */
+function Fact({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode | null;
+}) {
+  const empty =
+    value === null || value === undefined || value === "" || value === false;
+  return (
+    <div>
+      <dt className="micro">{tr(label)}</dt>
+      <dd
+        className={`text-sm ${empty ? "text-muted-foreground" : "text-foreground"}`}
+      >
+        {empty ? "—" : value}
+      </dd>
+    </div>
+  );
+}
+
+/** Everything the record holds about the person, grouped the way the contract
+ *  reads it. This is the tab the Edit dialog writes to. */
+function ProfilePanel({ e }: { e: api.Employee }) {
+  const group = (title: string, children: React.ReactNode) => (
+    <div className="rounded-xl border bg-card p-4">
+      <h4 className="mb-3 text-sm font-semibold text-foreground">{tr(title)}</h4>
+      <dl className="grid gap-3 sm:grid-cols-3">{children}</dl>
+    </div>
+  );
+  return (
+    <div className="space-y-4">
+      {group(
+        "Identity",
+        <>
+          <Fact label="Matricule" value={e.staff_no} />
+          <Fact label="Civility" value={e.civility && enumLabel(e.civility)} />
+          <Fact label="Gender" value={e.gender && enumLabel(e.gender)} />
+          <Fact label="Maiden name" value={e.maiden_name} />
+          <Fact label="Date of birth" value={dateFmt(e.date_of_birth)} />
+          <Fact label="Place of birth" value={e.place_of_birth} />
+          <Fact label="Father's name" value={e.father_name} />
+          <Fact label="Mother's name" value={e.mother_name} />
+          <Fact label="Nationality" value={e.nationality} />
+          <Fact
+            label="Marital status"
+            value={e.marital_status && enumLabel(e.marital_status)}
+          />
+          <Fact label="Dependent children" value={e.dependent_children} />
+        </>,
+      )}
+      {group(
+        "Identity document",
+        <>
+          <Fact
+            label="Type"
+            value={e.id_document_type && enumLabel(e.id_document_type)}
+          />
+          <Fact label="Number" value={e.id_document_number} />
+          <Fact label="Issued on" value={dateFmt(e.id_document_issued_on)} />
+          <Fact label="Issued at" value={e.id_document_issued_at} />
+          <Fact label="Expires on" value={dateFmt(e.id_document_expires_on)} />
+        </>,
+      )}
+      {group(
+        "Contact",
+        <>
+          <Fact label="Residence" value={e.residence_address} />
+          <Fact label="City" value={e.residence_city} />
+          <Fact label="Mobile" value={e.phone_mobile} />
+          <Fact label="WhatsApp" value={e.phone_whatsapp} />
+          <Fact label="Desk" value={e.phone_desk} />
+          <Fact label="Work email" value={e.email} />
+          <Fact label="Personal email" value={e.personal_email} />
+          <Fact label="Emergency contact" value={e.emergency_contact_name} />
+          <Fact
+            label="Relationship"
+            value={e.emergency_contact_relationship}
+          />
+          <Fact label="Emergency phone" value={e.emergency_contact_phone} />
+        </>,
+      )}
+      {group(
+        "The engagement",
+        <>
+          <Fact label="Employer" value={e.entity_name} />
+          <Fact label="Department" value={e.department} />
+          <Fact label="Job title" value={e.job_title} />
+          <Fact
+            label="Contract type"
+            value={e.employment_type && enumLabel(e.employment_type)}
+          />
+          <Fact
+            label="Line manager"
+            value={
+              e.manager_name
+                ? `${e.manager_name}${e.manager_job_title ? ` — ${e.manager_job_title}` : ""}`
+                : null
+            }
+          />
+          <Fact label="Start date" value={dateFmt(e.hired_on)} />
+          <Fact label="Probation" value={e.probation_months && `${e.probation_months} months`} />
+          <Fact label="Place of work" value={e.place_of_work} />
+          <Fact label="Working hours" value={e.working_hours} />
+          <Fact label="CNPS number" value={e.cnps_number} />
+          <Fact
+            label="Paid by"
+            value={e.payment_method && enumLabel(e.payment_method)}
+          />
+          <Fact label="Drives" value={e.is_driver ? tr("Yes") : null} />
+        </>,
+      )}
+    </div>
+  );
+}
+
+/* ── The staff file (12764) ─────────────────────────────────────────────────
+ *
+ * A scan is a verification gate, not a creation gate, so this panel records a
+ * document whether or not a file came with it — the empty slots are shown as
+ * slots, because a missing ID card that is nowhere on the screen is a missing
+ * ID card nobody chases.
+ */
+function DocumentsPanel({
+  employeeId,
+  docs,
+  onChanged,
+}: {
+  employeeId: string;
+  docs: api.EmployeeDocument[];
+  onChanged: () => void;
+}) {
+  const [adding, setAdding] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  const [file, setFile] = React.useState<File | null>(null);
+  const [number, setNumber] = React.useState("");
+  const [issued, setIssued] = React.useState("");
+  const [expires, setExpires] = React.useState("");
+  const [confirm, confirmDialog] = useConfirm();
+  const types = useResource(() => api.employeeDocumentTypes(), []);
+
+  const held = new Set(docs.map((d) => d.document_type_code).filter(Boolean));
+  const gaps = WIZARD_DOC_SLOTS.filter((s) => !held.has(s.code));
+
+  function reset() {
+    setAdding(null);
+    setFile(null);
+    setNumber("");
+    setIssued("");
+    setExpires("");
+    setError(null);
+  }
+
+  async function save(code: string) {
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createEmployee({
-        full_name: f.full_name,
-        entity_id: f.entity_id || undefined,
-        scope_id: dept.scope_id || undefined,
-        department: dept.department || undefined,
-        reports_to: reportsTo || undefined,
-        job_title: f.job_title || undefined,
-        email: f.email || undefined,
-        employment_type: f.employment_type,
+      await api.addEmployeeDocument(employeeId, {
+        document_type_code: code,
+        document_number: number.trim() || null,
+        issued_on: issued || null,
+        expires_on: expires || null,
+        file_data_url: file ? await fileToDataUrl(file) : null,
+        file_name: file ? file.name : null,
       });
-      onSaved(created);
-      onClose();
+      reset();
+      onChanged();
     } catch (err) {
       setError(errMsg(err));
     } finally {
       setBusy(false);
     }
   }
+
+  async function remove(d: api.EmployeeDocument) {
+    // Soft-delete on the server — a staff file is evidence. The wording says so,
+    // rather than promising a destruction that does not happen.
+    const ok = await confirm({
+      title: tr("Remove this document from the file?"),
+      body: tr(
+        "It stops showing here. The record and any scan are retained for audit.",
+      ),
+      confirmLabel: tr("Remove document"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.removeEmployeeDocument(employeeId, d.document_id);
+      onChanged();
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  const expiring = (d: api.EmployeeDocument) => {
+    if (!d.expires_on) return null;
+    const days = Math.round(
+      (new Date(d.expires_on).getTime() - Date.now()) / 86_400_000,
+    );
+    if (days < 0) return <Pill tone="bad">{tr("Expired")}</Pill>;
+    if (days <= 60) return <Pill tone="warn">{days} {tr("days left")}</Pill>;
+    return null;
+  };
+
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="New employee"
-      description="Add a staff record — the spine payroll, HR and fleet build on."
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        <Field label={tr("Full name")} required>
-          <Input
-            value={f.full_name}
-            onChange={(e) => set("full_name", e.target.value)}
-          />
-        </Field>
-        <Field label={tr("Entity")}>
-          <Select
-            value={f.entity_id}
-            onChange={(e) => set("entity_id", e.target.value)}
-          >
-            <option value="">—</option>
-            {(entities || []).map((en) => (
-              <option key={en.entity_id} value={en.entity_id}>
-                {en.legal_name || en.entity_id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Department")} hint="From your organigramme.">
-            <DepartmentSelect value={dept} onChange={setDept} />
-          </Field>
-          <Field label={tr("Job title")}>
-            <Input
-              value={f.job_title}
-              onChange={(e) => set("job_title", e.target.value)}
+    <div className="space-y-4">
+      {error && <ErrorState message={error} />}
+      <MiniTable
+        empty={docs.length === 0}
+        head={
+          <>
+            <Th>{tr("Document")}</Th>
+            <Th>{tr("Number")}</Th>
+            <Th>{tr("Issued")}</Th>
+            <Th>{tr("Expires")}</Th>
+            <Th></Th>
+          </>
+        }
+      >
+        {docs.map((d) => (
+          <tr key={d.document_id}>
+            <Td>
+              <span className="flex items-center gap-2">
+                {d.document_type_name || d.title || tr("Document")}
+                {d.has_file ? (
+                  <Pill tone="ok">{tr("Scanned")}</Pill>
+                ) : (
+                  <Pill tone="mute">{tr("Paper only")}</Pill>
+                )}
+              </span>
+            </Td>
+            <Td>{d.document_number || "—"}</Td>
+            <Td>{dateFmt(d.issued_on)}</Td>
+            <Td>
+              <span className="flex items-center gap-2">
+                {dateFmt(d.expires_on)}
+                {expiring(d)}
+              </span>
+            </Td>
+            <Td r>
+              <Button size="sm" variant="ghost" onClick={() => remove(d)}>
+                Remove
+              </Button>
+            </Td>
+          </tr>
+        ))}
+      </MiniTable>
+
+      {gaps.length > 0 && (
+        <Callout tone="warn" title={tr("Not on file yet")}>
+          {gaps.map((g) => tr(g.label)).join(", ")}.
+        </Callout>
+      )}
+
+      <div className="rounded-xl border bg-card p-4">
+        <h4 className="mb-3 text-sm font-semibold text-foreground">
+          {tr("Add a document")}
+        </h4>
+        <div className="flex flex-wrap gap-2">
+          {(types.data || []).map((t) => (
+            <Button
+              key={t.document_type_id}
+              size="sm"
+              variant={adding === t.code ? "default" : "outline"}
+              onClick={() => (adding === t.code ? reset() : setAdding(t.code))}
+            >
+              {t.name}
+            </Button>
+          ))}
+        </div>
+        {adding && (
+          <div className="mt-4 space-y-3">
+            <FileDrop
+              file={file}
+              onPick={setFile}
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              hint={tr(
+                "PNG, JPG, WebP or PDF, up to 6 MB — or leave it and record the paper reference.",
+              )}
+              error={fileTooLarge(file)}
             />
-          </Field>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={tr("Number")}>
+                <Input
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                />
+              </Field>
+              <Field label={tr("Issued on")}>
+                <DateField value={issued} onChange={setIssued} />
+              </Field>
+              <Field label={tr("Expires on")}>
+                <DateField value={expires} onChange={setExpires} />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={reset} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                loading={busy}
+                disabled={busy || Boolean(fileTooLarge(file))}
+                onClick={() => save(adding)}
+              >
+                Add to file
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+      {confirmDialog}
+    </div>
+  );
+}
+
+/* ── Standing pay lines (12765) ─────────────────────────────────────────────
+ *
+ * Article 3 of a contract is a table that has to add up: base, plus each
+ * standing allowance, equals the gross the document prints. This is where that
+ * table is kept, and the total is computed by the server (`/employees/:id/pay`)
+ * so the payslip, the offer letter and the renewal all quote one figure.
+ */
+function PayPanel({
+  employeeId,
+  pay,
+  onChanged,
+}: {
+  employeeId: string;
+  pay: api.EmployeePay | null;
+  onChanged: () => void;
+}) {
+  const [adding, setAdding] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [label, setLabel] = React.useState("");
+  const [kind, setKind] = React.useState("ALLOWANCE");
+  const [amount, setAmount] = React.useState("");
+  const [inGross, setInGross] = React.useState(true);
+  const [taxable, setTaxable] = React.useState(true);
+  const [cnps, setCnps] = React.useState(true);
+  const [confirm, confirmDialog] = useConfirm();
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addEmployeeAllowance(employeeId, {
+        label: label.trim(),
+        kind,
+        amount: Number(amount),
+        periodicity: "MONTHLY",
+        is_taxable: taxable,
+        in_cnps_base: cnps,
+        in_gross: inGross,
+        currency: null,
+        effective_on: null,
+        ends_on: null,
+        notes: null,
+      });
+      setAdding(false);
+      setLabel("");
+      setAmount("");
+      onChanged();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(a: api.EmployeeAllowance) {
+    const ok = await confirm({
+      title: tr("Remove this allowance?"),
+      body: tr(
+        "It stops counting toward the gross from now on. Past payslips are unaffected.",
+      ),
+      confirmLabel: tr("Remove allowance"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.removeEmployeeAllowance(employeeId, a.employee_allowance_id);
+      onChanged();
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  const lines = pay?.lines || [];
+  return (
+    <div className="space-y-4">
+      {error && <ErrorState message={error} />}
+      <MiniTable
+        empty={lines.length === 0 && !pay}
+        head={
+          <>
+            <Th>{tr("Line")}</Th>
+            <Th>{tr("Kind")}</Th>
+            <Th r>{tr("Monthly")}</Th>
+            <Th></Th>
+          </>
+        }
+      >
+        <tr>
+          <Td>
+            <span className="font-medium text-foreground">
+              {tr("Base salary")}
+            </span>
+          </Td>
+          <Td>—</Td>
+          <Td r>{money(pay?.base_salary ?? null)}</Td>
+          <Td></Td>
+        </tr>
+        {lines.map((a) => (
+          <tr key={a.employee_allowance_id}>
+            <Td>
+              <span className="flex items-center gap-2">
+                {a.label}
+                {!a.in_gross && <Pill tone="mute">{tr("In kind")}</Pill>}
+                {!a.is_taxable && <Pill tone="mute">{tr("Untaxed")}</Pill>}
+              </span>
+            </Td>
+            <Td>{enumLabel(a.kind || "")}</Td>
+            <Td r>{money(a.amount)}</Td>
+            <Td r>
+              <Button size="sm" variant="ghost" onClick={() => remove(a)}>
+                Remove
+              </Button>
+            </Td>
+          </tr>
+        ))}
+        <tr className="bg-muted/50">
+          <Td>
+            <span className="font-semibold text-foreground">
+              {tr("Total monthly gross")}
+            </span>
+          </Td>
+          <Td></Td>
+          <Td r>
+            <span className="font-semibold">{money(pay?.monthly_gross ?? null)}</span>
+          </Td>
+          <Td></Td>
+        </tr>
+      </MiniTable>
+
+      {adding ? (
+        <div className="space-y-3 rounded-xl border bg-card p-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={tr("Label")}>
+              <Input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={tr("Prime de responsabilité")}
+              />
+            </Field>
+            <Field label={tr("Kind")}>
+              <Select
+                value={kind}
+                onChange={(e) => {
+                  setKind(e.target.value);
+                  // Same rule as the wizard: a benefit in kind is taxed but not
+                  // paid in cash, so it must not inflate the printed gross.
+                  setInGross(e.target.value !== "BENEFIT_IN_KIND");
+                }}
+              >
+                {ALLOWANCE_KINDS.map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {tr(k.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Monthly amount")}>
+              <Input
+                type="number"
+                min={0}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <Checkbox
+              checked={taxable}
+              onCheckedChange={setTaxable}
+              label={tr("Taxable")}
+            />
+            <Checkbox
+              checked={cnps}
+              onCheckedChange={setCnps}
+              label={tr("In CNPS base")}
+            />
+            <Checkbox
+              checked={inGross}
+              onCheckedChange={setInGross}
+              label={tr("Paid in cash")}
+              hint={tr("Clear this for a benefit in kind.")}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAdding(false)}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={busy}
+              disabled={!label.trim() || !amount || busy}
+              onClick={add}
+            >
+              Add allowance
+            </Button>
+          </div>
         </div>
-        <Field
-          label="Reports to"
-          hint="Their line manager. Leave blank for the top of the tree."
-        >
-          <Select
-            value={reportsTo}
-            onChange={(e) => setReportsTo(e.target.value)}
-          >
-            <option value="">{tr("— nobody —")}</option>
-            {(staff || []).map((p) => (
-              <option key={p.employee_id} value={p.employee_id}>
-                {p.full_name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={tr("Email")} hint="Used to send payslips & contracts">
-          <Input
-            type="email"
-            value={f.email}
-            onChange={(e) => set("email", e.target.value)}
-            placeholder="name@company.cm"
-          />
-        </Field>
-        <Field label={tr("Employment type")}>
-          <Select
-            value={f.employment_type}
-            onChange={(e) => set("employment_type", e.target.value)}
-          >
-            {["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPORARY"].map(
-              (t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ),
-            )}
-          </Select>
-        </Field>
-        {error && <ErrorState message={error} />}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={busy}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" loading={busy} disabled={!f.full_name || busy}>
-            Add employee
-          </Button>
-        </div>
-      </form>
-    </Modal>
+      ) : (
+        <Button variant="outline" onClick={() => setAdding(true)}>
+          Add an allowance
+        </Button>
+      )}
+      {confirmDialog}
+    </div>
   );
 }
 
@@ -253,14 +762,13 @@ function EditEmployeeForm({
     entity_id: string;
     legal_name?: string;
   }>("/entities");
-  const [f, setF] = React.useState({
-    full_name: employee.full_name || "",
-    entity_id: employee.entity_id || "",
-    job_title: employee.job_title || "",
-    email: employee.email || "",
-    employment_type: employee.employment_type || "CDI",
-  });
-  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const { rows: staff } = useList<api.Employee>("/employees");
+  const [f, setF] = React.useState<EmployeeDraft>(() => draftFrom(employee));
+  const set = React.useCallback(
+    <K extends keyof EmployeeDraft>(k: K, v: EmployeeDraft[K]) =>
+      setF((s) => ({ ...s, [k]: v })),
+    [],
+  );
   // Seeded from whatever the record already has: an employee migrated by 0490
   // has scope_id, one that couldn't be matched still has only the text, and the
   // picker handles both (see DepartmentSelect).
@@ -271,25 +779,21 @@ function EditEmployeeForm({
   // Line manager (0493). Excludes this employee from its own list; deeper loops
   // (A→B→A) are refused by the API with REPORTING_CYCLE, naming the person.
   const [reportsTo, setReportsTo] = React.useState(employee.reports_to || "");
-  const { rows: staff } = useList<api.Employee>("/employees");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const showsMaiden = api.employeeUsesMaidenName(f.gender, f.marital_status);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const updated = await api.updateEmployee(employee.employee_id, {
-        full_name: f.full_name,
-        entity_id: f.entity_id || undefined,
-        scope_id: dept.scope_id || undefined,
-        department: dept.department || undefined,
-        reports_to: reportsTo || undefined,
-        job_title: f.job_title || undefined,
-        email: f.email || undefined,
-        employment_type: f.employment_type || undefined,
-      });
-      onSaved(updated);
+      onSaved(
+        await api.updateEmployee(
+          employee.employee_id,
+          draftToPayload(f, dept, reportsTo),
+        ),
+      );
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -297,85 +801,412 @@ function EditEmployeeForm({
       setBusy(false);
     }
   }
+
+  const Section = ({
+    title,
+    children,
+  }: {
+    title: string;
+    children: React.ReactNode;
+  }) => (
+    <fieldset className="space-y-4 rounded-lg border p-4">
+      <legend className="px-1 text-sm font-medium text-foreground">
+        {tr(title)}
+      </legend>
+      {children}
+    </fieldset>
+  );
+
   return (
     <Modal
       open
       onClose={onClose}
-      title="Edit employee"
-      description="Update role, department and employment details."
+      size="wide"
+      title={tr("Edit employee")}
+      description={tr(
+        "Everything a contract, a payslip and a dispatch are written from.",
+      )}
     >
-      <form className="space-y-4" onSubmit={submit}>
-        <Field label={tr("Full name")} required>
-          <Input
-            value={f.full_name}
-            onChange={(e) => set("full_name", e.target.value)}
-          />
-        </Field>
-        <Field label={tr("Entity")}>
-          <Select
-            value={f.entity_id}
-            onChange={(e) => set("entity_id", e.target.value)}
-          >
-            <option value="">—</option>
-            {(entities || []).map((en) => (
-              <option key={en.entity_id} value={en.entity_id}>
-                {en.legal_name || en.entity_id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={tr("Department")} hint="From your organigramme.">
-            <DepartmentSelect value={dept} onChange={setDept} />
-          </Field>
-          <Field label={tr("Job title")}>
-            <Input
-              value={f.job_title}
-              onChange={(e) => set("job_title", e.target.value)}
-              placeholder={tr("Accountant")}
-            />
-          </Field>
-        </div>
-        <Field
-          label="Reports to"
-          hint="Their line manager. Leave blank for the top of the tree."
-        >
-          <Select
-            value={reportsTo}
-            onChange={(e) => setReportsTo(e.target.value)}
-          >
-            <option value="">{tr("— nobody —")}</option>
-            {(staff || [])
-              .filter((p) => p.employee_id !== employee.employee_id)
-              .map((p) => (
-                <option key={p.employee_id} value={p.employee_id}>
-                  {p.full_name}
-                </option>
-              ))}
-          </Select>
-        </Field>
-        <Field label={tr("Email")} hint="Used to send payslips & contracts">
-          <Input
-            type="email"
-            value={f.email}
-            onChange={(e) => set("email", e.target.value)}
-            placeholder="name@company.cm"
-          />
-        </Field>
-        <Field label={tr("Employment type")}>
-          <Select
-            value={f.employment_type}
-            onChange={(e) => set("employment_type", e.target.value)}
-          >
-            {["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPORARY"].map(
-              (t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ),
+      <form className="space-y-5" onSubmit={submit}>
+        <Section title="Identity">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field label={tr("Civility")}>
+              <Select
+                value={f.civility}
+                onChange={(e) => set("civility", e.target.value)}
+              >
+                <option value="">—</option>
+                {CIVILITIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {tr(c.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Full name")} required className="sm:col-span-3">
+              <Input
+                value={f.full_name}
+                onChange={(e) => set("full_name", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Gender")}>
+              <Select
+                value={f.gender}
+                onChange={(e) => set("gender", e.target.value)}
+              >
+                <option value="">—</option>
+                {GENDERS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {tr(g.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Marital status")}>
+              <Select
+                value={f.marital_status}
+                onChange={(e) => set("marital_status", e.target.value)}
+              >
+                <option value="">—</option>
+                {MARITAL_STATUSES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {tr(m.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Dependent children")}>
+              <Input
+                type="number"
+                min={0}
+                value={f.dependent_children}
+                onChange={(e) => set("dependent_children", e.target.value)}
+              />
+            </Field>
+            {showsMaiden && (
+              <Field
+                label={tr("Maiden name")}
+                hint={tr("« Née … Epse … » on the contract.")}
+              >
+                <Input
+                  value={f.maiden_name}
+                  onChange={(e) => set("maiden_name", e.target.value)}
+                />
+              </Field>
             )}
-          </Select>
-        </Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Date of birth")}>
+              <DateField
+                value={f.date_of_birth}
+                onChange={(v) => set("date_of_birth", v)}
+              />
+            </Field>
+            <Field label={tr("Place of birth")}>
+              <Input
+                value={f.place_of_birth}
+                onChange={(e) => set("place_of_birth", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Father's name")}>
+              <Input
+                value={f.father_name}
+                onChange={(e) => set("father_name", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Mother's name")}>
+              <Input
+                value={f.mother_name}
+                onChange={(e) => set("mother_name", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Nationality")} className="sm:col-span-2">
+              <CountrySelect
+                value={f.nationality}
+                onChange={(code) => set("nationality", code)}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="Identity document">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Type")}>
+              <Select
+                value={f.id_document_type}
+                onChange={(e) => set("id_document_type", e.target.value)}
+              >
+                {ID_DOCUMENT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {tr(t.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Number")}>
+              <Input
+                value={f.id_document_number}
+                onChange={(e) => set("id_document_number", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Issued on")}>
+              <DateField
+                value={f.id_document_issued_on}
+                onChange={(v) => set("id_document_issued_on", v)}
+              />
+            </Field>
+            <Field label={tr("Issued at")}>
+              <Input
+                value={f.id_document_issued_at}
+                onChange={(e) => set("id_document_issued_at", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Expires on")}>
+              <DateField
+                value={f.id_document_expires_on}
+                onChange={(v) => set("id_document_expires_on", v)}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="Contact">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Residence")} className="sm:col-span-2">
+              <Input
+                value={f.residence_address}
+                onChange={(e) => set("residence_address", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("City")}>
+              <Input
+                value={f.residence_city}
+                onChange={(e) => set("residence_city", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Mobile")}>
+              <Input
+                value={f.phone_mobile}
+                onChange={(e) => set("phone_mobile", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("WhatsApp")}>
+              <Input
+                value={f.phone_whatsapp}
+                onChange={(e) => set("phone_whatsapp", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Desk phone")}>
+              <Input
+                value={f.phone_desk}
+                onChange={(e) => set("phone_desk", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Personal email")}>
+              <Input
+                type="email"
+                value={f.personal_email}
+                onChange={(e) => set("personal_email", e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label={tr("Emergency contact")}>
+              <Input
+                value={f.emergency_contact_name}
+                onChange={(e) => set("emergency_contact_name", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Relationship")}>
+              <Input
+                value={f.emergency_contact_relationship}
+                onChange={(e) =>
+                  set("emergency_contact_relationship", e.target.value)
+                }
+              />
+            </Field>
+            <Field label={tr("Emergency phone")}>
+              <Input
+                value={f.emergency_contact_phone}
+                onChange={(e) => set("emergency_contact_phone", e.target.value)}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="The engagement">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Employer entity")}>
+              <Select
+                value={f.entity_id}
+                onChange={(e) => set("entity_id", e.target.value)}
+              >
+                <option value="">—</option>
+                {(entities || []).map((en) => (
+                  <option key={en.entity_id} value={en.entity_id}>
+                    {en.legal_name || en.entity_id.slice(0, 8)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={tr("Department")} hint="From your organigramme.">
+              <DepartmentSelect value={dept} onChange={setDept} />
+            </Field>
+            <Field label={tr("Job title")}>
+              <Input
+                value={f.job_title}
+                onChange={(e) => set("job_title", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Contract type")}>
+              <Select
+                value={f.employment_type}
+                onChange={(e) => set("employment_type", e.target.value)}
+              >
+                {EMPLOYMENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label={tr("Reports to")}
+              hint="Their line manager. Leave blank for the top of the tree."
+            >
+              <Select
+                value={reportsTo}
+                onChange={(e) => setReportsTo(e.target.value)}
+              >
+                <option value="">{tr("— nobody —")}</option>
+                {(staff || [])
+                  .filter((p) => p.employee_id !== employee.employee_id)
+                  .map((p) => (
+                    <option key={p.employee_id} value={p.employee_id}>
+                      {p.full_name}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            <Field label={tr("Work email")} hint="Used to send payslips & contracts">
+              <Input
+                type="email"
+                value={f.email}
+                onChange={(e) => set("email", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Start date")}>
+              <DateField
+                value={f.hired_on}
+                onChange={(v) => set("hired_on", v)}
+              />
+            </Field>
+            <Field label={tr("Probation (months)")}>
+              <Input
+                type="number"
+                min={0}
+                max={24}
+                value={f.probation_months}
+                onChange={(e) => set("probation_months", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Place of work")}>
+              <Input
+                value={f.place_of_work}
+                onChange={(e) => set("place_of_work", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Working hours")}>
+              <Input
+                value={f.working_hours}
+                onChange={(e) => set("working_hours", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("CNPS number")}>
+              <Input
+                value={f.cnps_number}
+                onChange={(e) => set("cnps_number", e.target.value)}
+              />
+            </Field>
+          </div>
+          <Checkbox
+            checked={f.is_driver}
+            onCheckedChange={(v) => set("is_driver", v)}
+            label={tr("This person drives")}
+            hint={tr("Puts them in the fleet dispatch pool.")}
+          />
+        </Section>
+
+        <Section title="Remuneration">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label={tr("Base salary (monthly)")}>
+              <Input
+                type="number"
+                min={0}
+                value={f.base_salary}
+                onChange={(e) => set("base_salary", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Currency")}>
+              <Input
+                value={f.salary_currency}
+                maxLength={3}
+                onChange={(e) =>
+                  set("salary_currency", e.target.value.toUpperCase())
+                }
+              />
+            </Field>
+            <Field label={tr("Paid by")}>
+              <Select
+                value={f.payment_method}
+                onChange={(e) => set("payment_method", e.target.value)}
+              >
+                {PAYMENT_METHODS.map((pm) => (
+                  <option key={pm.value} value={pm.value}>
+                    {tr(pm.label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          {/* Standing allowances are edited on the Pay tab, not here: they are
+              rows with their own lifecycle, and a modal that saves the whole
+              record would have to decide what "cancel" means for a line
+              somebody deleted three sections ago. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr("Bank")}>
+              <Input
+                value={f.bank_name}
+                onChange={(e) => set("bank_name", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Branch")}>
+              <Input
+                value={f.bank_branch}
+                onChange={(e) => set("bank_branch", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("Account number")}>
+              <Input
+                value={f.bank_account_number}
+                onChange={(e) => set("bank_account_number", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("IBAN")}>
+              <Input
+                value={f.bank_iban}
+                onChange={(e) => set("bank_iban", e.target.value)}
+              />
+            </Field>
+            <Field label={tr("SWIFT / BIC")}>
+              <Input
+                value={f.bank_swift}
+                onChange={(e) => set("bank_swift", e.target.value)}
+              />
+            </Field>
+          </div>
+        </Section>
+
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button
@@ -404,12 +1235,51 @@ function EmployeeDetail({
 }) {
   const [employee, setEmployee] = React.useState(initial);
   React.useEffect(() => setEmployee(initial), [initial]);
-  const [tab, setTab] = React.useState<Tab>("Contracts");
+  // `?tab=` / `?field=`, so a signature gap or an alert can link to the tab it
+  // means rather than to the top of the dossier. Same hook as entity-360.
+  // Profile is the fallback: an existing `?tab=Contracts` link still lands on
+  // contracts, but arriving at the dossier cold shows the record first.
+  const [tab, setTab] = useUrlTab<Tab>(TABS, "Profile");
+  useFieldHighlight([tab]);
+  // Latched off the ACTIVE tab rather than off the click, so a link that lands
+  // on `?tab=Documents` loads that panel too — a deep link that opens an empty
+  // tab is worse than no deep link.
+  React.useEffect(() => {
+    setOpened((o) => (o[tab] ? o : { ...o, [tab]: true }));
+  }, [tab]);
   const [busy, setBusy] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const eid = employee.employee_id;
   const active = employee.is_active !== false;
+
+  const navigate = useNavigate();
+  /*
+   * ── WHAT LOADS EAGERLY, AND WHAT WAITS ─────────────────────────────────
+   *
+   * Readiness and the account are read the moment somebody is selected: both
+   * are in the header, and both answer questions ("can this produce a
+   * contract?", "can this person sign in?") that are the reason for opening the
+   * dossier at all.
+   *
+   * The staff file and the pay decomposition wait for their tab. Picking a name
+   * out of the roster already costs seven requests; making it eleven — over a
+   * mobile connection, for two panels most visits never open — is a real cost
+   * paid for nothing. `opened` latches, so switching back to a tab does not
+   * re-fetch and the count survives moving away from it.
+   */
+  const readiness = useResource(() => api.employeeReadiness(eid), [eid]);
+  const account = useResource(() => api.employeeAccount(eid), [eid]);
+  const [opened, setOpened] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => setOpened({}), [eid]);
+  const documents = useResource(
+    () => (opened.Documents ? api.employeeDocuments(eid) : Promise.resolve(null)),
+    [eid, opened.Documents],
+  );
+  const pay = useResource(
+    () => (opened.Pay ? api.employeePay(eid) : Promise.resolve(null)),
+    [eid, opened.Pay],
+  );
 
   const contracts = useResource(
     () => api.listContracts({ employee_id: eid }),
@@ -488,7 +1358,16 @@ function EmployeeDetail({
     aRows = attendance.data || [],
     sRows = sanctions.data || [],
     apRows = appraisals.data || [];
-  const counts: Record<Tab, number> = {
+  /*
+   * `null` means "not known yet", and renders as no badge at all. A `0` on a tab
+   * that has simply not been fetched is a claim — "this person has no documents
+   * on file" — and it is the exact claim this screen must never make wrongly.
+   */
+  const counts: Record<Tab, number | null> = {
+    // Profile has no count — it is the record itself, not a collection.
+    Profile: null,
+    Documents: documents.data ? documents.data.length : null,
+    Pay: pay.data ? pay.data.lines.length : null,
     Contracts: cRows.length,
     Payroll: pRows.length,
     Advances: adRows.length,
@@ -503,13 +1382,27 @@ function EmployeeDetail({
       <div className="rounded-xl border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold text-foreground">
                 {employee.full_name || employee.employee_id.slice(0, 8)}
               </h3>
-              <Pill tone={active ? "ok" : "mute"}>
-                {active ? "Active" : "Suspended"}
+              {employee.staff_no && (
+                <span className="num rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
+                  {employee.staff_no}
+                </span>
+              )}
+              <Pill tone={STATUS_TONE[employee.status || ""] || (active ? "ok" : "mute")}>
+                {enumLabel(employee.status || (active ? "ACTIVE" : "SUSPENDED"))}
               </Pill>
+              {/* Whether this person can sign in, on the record itself. Before
+                  this the answer lived only on the Users screen, so "has anyone
+                  provisioned them?" was a trip to a different area. */}
+              {account.data &&
+                (account.data.provisioned ? (
+                  <Pill tone="ok">{tr("Has a login")}</Pill>
+                ) : (
+                  <Pill tone="warn">{tr("No login")}</Pill>
+                ))}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {[employee.job_title, employee.department, employee.entity_name]
@@ -547,6 +1440,30 @@ function EmployeeDetail({
             >
               {active ? "Suspend" : "Activate"}
             </Button>
+            {/* ── THE DEEP LINK ───────────────────────────────────────────
+                Straight to Users with this person's details filled in, or to
+                the login they already have. Only the employee id travels in
+                the URL; the target screen reads the record itself, so the form
+                cannot be pre-filled with whatever a hand-edited link says.  */}
+            {account.data &&
+              (account.data.provisioned ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate("/security/users")}
+                >
+                  Open their account
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    navigate(`/security/users?provision=${eid}`)
+                  }
+                >
+                  Provision account
+                </Button>
+              ))}
           </div>
         </div>
         {error && (
@@ -561,8 +1478,21 @@ function EmployeeDetail({
           onClose={() => setEditing(false)}
           onSaved={(e) => {
             setEmployee(e);
+            readiness.reload();
+            account.reload();
             onChanged();
           }}
+        />
+      )}
+
+      {/* Above the tabs, not inside one: whether this record can produce a
+          contract is context for everything below it, not another section to
+          go looking for. Hidden once it is ready — a green bar that never
+          changes is a bar people stop reading. */}
+      {readiness.data && !readiness.data.ready && (
+        <ReadinessPanel
+          readiness={readiness.data}
+          onFix={() => setEditing(true)}
         />
       )}
 
@@ -574,11 +1504,43 @@ function EmployeeDetail({
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
             {t}
-            <span className="ml-1.5 micro">{counts[t]}</span>
+            {counts[t] !== null && (
+              <span className="ml-1.5 micro">{counts[t]}</span>
+            )}
           </button>
         ))}
       </div>
 
+      {tab === "Profile" && (
+        <div className="space-y-4">
+          {readiness.data && readiness.data.ready && (
+            <ReadinessPanel
+              readiness={readiness.data}
+              onFix={() => setEditing(true)}
+            />
+          )}
+          <ProfilePanel e={employee} />
+        </div>
+      )}
+      {tab === "Documents" && (
+        <DocumentsPanel
+          employeeId={eid}
+          docs={documents.data || []}
+          onChanged={() => {
+            documents.reload();
+            // A new ID card can close the last gap, so the meter has to move
+            // with it rather than on the next full page load.
+            readiness.reload();
+          }}
+        />
+      )}
+      {tab === "Pay" && (
+        <PayPanel
+          employeeId={eid}
+          pay={pay.data || null}
+          onChanged={() => pay.reload()}
+        />
+      )}
       {tab === "Contracts" && (
         <MiniTable
           empty={cRows.length === 0}
@@ -852,6 +1814,7 @@ export function EmployeesPage() {
   const employees = useResource(() => api.listEmployees(), []);
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
+  const navigate = useNavigate();
 
   const rows = React.useMemo(() => employees.data || [], [employees.data]);
   /*
@@ -868,11 +1831,26 @@ export function EmployeesPage() {
     openId: selectId,
     preselect,
   } = useRecordParam(rows, (e) => e.employee_id);
-  const filtered = q
-    ? rows.filter((e) =>
-        (e.full_name || "").toLowerCase().includes(q.toLowerCase()),
-      )
-    : rows;
+  /*
+   * "Who is hired and still has no way to sign in" is the question that used to
+   * need a bespoke endpoint (legacy `pending_users.php`). It is a filter on the
+   * roster now, because as a filter it composes: this entity, this department,
+   * awaiting a login — rather than one hard-coded list somebody has to maintain.
+   */
+  const [lens, setLens] = React.useState<"ALL" | "NO_LOGIN" | "PENDING">("ALL");
+  const filtered = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows.filter((e) => {
+      if (lens === "NO_LOGIN" && e.account_user_id) return false;
+      if (lens === "PENDING" && e.status !== "PENDING") return false;
+      if (!needle) return true;
+      // The matricule is what people quote on the phone, so it searches too.
+      return `${e.full_name || ""} ${e.staff_no || ""} ${e.job_title || ""}`
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [rows, q, lens]);
+  const awaitingLogin = rows.filter((e) => !e.account_user_id).length;
   // The list opens on its first row. `preselect` writes the same param with
   // `replace`: the user did not navigate here, so it must not become a step
   // the back arrow can land on.
@@ -897,10 +1875,33 @@ export function EmployeesPage() {
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <div className="space-y-2">
             <Input
-              placeholder="Search name…"
+              placeholder="Search name or matricule…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["ALL", `All (${rows.length})`],
+                  ["NO_LOGIN", `Awaiting a login (${awaitingLogin})`],
+                  ["PENDING", "Not started"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={lens === key}
+                  onClick={() => setLens(key)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    lens === key
+                      ? "border-primary bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary-ink"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {tr(label)}
+                </button>
+              ))}
+            </div>
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
               {employees.loading ? (
                 <div className="px-3 py-4 micro">{tr("Loading…")}</div>
@@ -913,12 +1914,36 @@ export function EmployeesPage() {
                     onClick={() => select(e)}
                     className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${e.employee_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
                   >
-                    <span className="truncate font-medium">
-                      {e.full_name || e.employee_id.slice(0, 8)}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {e.full_name || e.employee_id.slice(0, 8)}
+                      </span>
+                      <span className="block truncate micro">
+                        {[e.staff_no, e.job_title].filter(Boolean).join(" · ") ||
+                          "—"}
+                      </span>
                     </span>
-                    <Pill tone={e.is_active !== false ? "ok" : "mute"}>
-                      {e.is_active !== false ? "Active" : "Susp."}
-                    </Pill>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {!e.account_user_id && (
+                        <span
+                          aria-label={tr("No login yet")}
+                          title={tr("No login yet")}
+                          className="h-1.5 w-1.5 rounded-full bg-[rgb(var(--warn))]"
+                        />
+                      )}
+                      <Pill
+                        tone={
+                          STATUS_TONE[e.status || ""] ||
+                          (e.is_active !== false ? "ok" : "mute")
+                        }
+                      >
+                        {e.status
+                          ? enumLabel(e.status).slice(0, 5)
+                          : e.is_active !== false
+                            ? "Active"
+                            : "Susp."}
+                      </Pill>
+                    </span>
                   </button>
                 ))
               )}
@@ -935,11 +1960,16 @@ export function EmployeesPage() {
         </div>
       )}
       {creating && (
-        <NewEmployeeForm
+        <EmployeeWizard
           onClose={() => setCreating(false)}
-          onSaved={(e) => {
+          onSaved={(e, provision) => {
             employees.reload();
             selectId(e.employee_id);
+            // "Save and provision" hands straight over to Users with this
+            // person's details filled in. The navigation belongs here, not in
+            // the wizard: it leaves the HR area, and the screen that owns the
+            // route is the one that should decide to leave it.
+            if (provision) navigate(`/security/users?provision=${e.employee_id}`);
           }}
         />
       )}

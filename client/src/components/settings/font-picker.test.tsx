@@ -64,8 +64,8 @@ describe("FontPicker", () => {
     await user.click(screen.getByRole("combobox", { name: "Body font" }));
 
     const listbox = await screen.findByRole("listbox");
-    expect(within(listbox).getAllByRole("option")).toHaveLength(15);
-    for (const heading of ["Sans-serif", "Serif", "Monospace"]) {
+    expect(within(listbox).getAllByRole("option")).toHaveLength(16);
+    for (const heading of ["Sans-serif", "Serif", "Monospace", "Script"]) {
       expect(within(listbox).getByText(heading)).toBeInTheDocument();
     }
   });

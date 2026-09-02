@@ -3,6 +3,8 @@ import {
   isFeatureDisabled,
   listServices,
   type ServiceCard,
+  type ServiceGroup,
+  type ServicesIndex,
 } from "./services-api";
 
 /**
@@ -21,6 +23,10 @@ import {
 let cache: Promise<ServiceCache> | null = null;
 
 type ServiceCache = {
+  /** The pillars, in render order, including the trailing unnamed bucket. */
+  groups: ServiceGroup[];
+  /** Every service across every pillar, flattened, for the callers that want a
+   *  simple list — the home page's four-up band and the quote form's picker. */
   services: ServiceCard[];
   /** The `website` feature is off for this tenant — no profiles exist to show,
    *  which is a configuration state, not an outage. */
@@ -28,16 +34,48 @@ type ServiceCache = {
   failed: boolean;
 };
 
-const EMPTY: ServiceCache = { services: [], disabled: false, failed: false };
+const EMPTY: ServiceCache = {
+  groups: [],
+  services: [],
+  disabled: false,
+  failed: false,
+};
+
+/**
+ * Normalise whatever `/public/services` answered.
+ *
+ * The endpoint returns `{groups: […]}` (migration 12755). It used to return a
+ * flat array, and a deployed staging can be running either build while a release
+ * rolls — so a flat array is still accepted and folded into a single unnamed
+ * pillar rather than discarded. That is three lines of insurance against the
+ * exact failure this function exists to fix: a shape the client did not expect,
+ * silently parsed as "no services", rendering an empty page over a database
+ * full of published ones.
+ */
+function toCache(payload: ServicesIndex | ServiceCard[] | null): ServiceCache {
+  if (Array.isArray(payload)) {
+    return {
+      groups: payload.length
+        ? [{ key: null, name_fr: null, name_en: null, icon: null, services: payload }]
+        : [],
+      services: payload,
+      disabled: false,
+      failed: false,
+    };
+  }
+  const groups = Array.isArray(payload?.groups) ? payload.groups : [];
+  return {
+    groups,
+    services: groups.flatMap((g) => (Array.isArray(g.services) ? g.services : [])),
+    disabled: false,
+    failed: false,
+  };
+}
 
 function load(): Promise<ServiceCache> {
   if (!cache) {
     cache = listServices()
-      .then((rows) => ({
-        services: Array.isArray(rows) ? rows : [],
-        disabled: false,
-        failed: false,
-      }))
+      .then(toCache)
       .catch((e) => {
         const disabled = isFeatureDisabled(e);
         // A FEATURE_DISABLED is a configuration answer, so it is cached like a
@@ -47,6 +85,7 @@ function load(): Promise<ServiceCache> {
         // transient failure and not what you want inside a redirect loop.
         if (!disabled) cache = null;
         return {
+          groups: [],
           services: [],
           disabled,
           failed: true,

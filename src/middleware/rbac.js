@@ -199,4 +199,58 @@ function requireCeo() {
   };
 }
 
-module.exports = { requirePermission, requireCapability, requireCeo };
+/**
+ * READ a caller's permissions without gating on them.
+ *
+ * `requirePermission` answers "may this request proceed?" by throwing. Some
+ * screens need the weaker question — "would it?" — so they can shape what they
+ * show: the signature designer lists the fields a signature is missing, and a
+ * gap the reader cannot fix should read "ask an administrator" rather than
+ * offering a link into a 403.
+ *
+ * ADDITIVE ON PURPOSE. `requirePermission` is untouched: this is a separate
+ * function reusing the same grant cache and the same ACTION_COLUMN map, not a
+ * refactor of the gate. A bug here shows the wrong hint; a bug in the gate is a
+ * security incident, and the two should not share a control flow for the sake
+ * of tidiness.
+ *
+ * NOT A SECURITY BOUNDARY. Nothing may be authorised on this answer. The
+ * destination routes enforce their own permissions, and this only decides
+ * whether a link is worth offering.
+ *
+ * @param {object} req    an authed request (needs req.user and req.identityDb)
+ * @param {Array<[string,string]>} specs  [[moduleKey, action], …]
+ * @returns {Promise<boolean[]>} one answer per spec, in order
+ */
+async function readPermissions(req, specs = []) {
+  if (!req || !req.user || !Array.isArray(specs) || !specs.length) {
+    return specs.map(() => false);
+  }
+  // Same bypass as the gate, and for the same reason — a CEO who saw "ask an
+  // administrator" against a field they can edit would be told to ask
+  // themselves.
+  if (req.user.is_ceo === true) return specs.map(() => true);
+  if (!req.identityDb) return specs.map(() => false);
+
+  try {
+    return await req.identityDb(async (client) => {
+      const out = [];
+      for (const [moduleKey, action] of specs) {
+        const column = ACTION_COLUMN[action];
+        if (!column) { out.push(false); continue; }
+        const grants = await identityCache.getGrants(client, {
+          role_ids: req.user.role_ids, module: moduleKey,
+        });
+        out.push(grants.some((g) => g[column] === true));
+      }
+      return out;
+    });
+  } catch {
+    /* @silent:storage — a hint that cannot be resolved is shown as "ask an
+       administrator", which is the safe direction: it under-offers links
+       rather than offering one into a refusal. */
+    return specs.map(() => false);
+  }
+}
+
+module.exports = { requirePermission, requireCapability, requireCeo, readPermissions };

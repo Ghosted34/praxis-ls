@@ -559,3 +559,10 @@ export async function downloadPost(
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/** `downloadPost` on the tenant API, mirroring `tenantDownload` over `download`. */
+export const tenantDownloadPost = (
+  p: string,
+  body: unknown,
+  filename: string,
+) => downloadPost(`/tenant${p}`, body, filename);

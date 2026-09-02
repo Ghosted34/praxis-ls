@@ -1509,6 +1509,15 @@
       "actions": []
     },
     {
+      "id": "comms_signatures",
+      "title": "Email signatures",
+      "route": "/comms/signatures",
+      "area": "comms",
+      "module_key": "MOD-70",
+      "purpose": "The signature card as it goes out: a person's own typed fields and PNG download, plus (MOD-70) batch generation for staff and which template each part of the company gets. Name, title, address and logo are derived; colours follow tenant branding.",
+      "actions": []
+    },
+    {
       "id": "settings_email_signatures",
       "title": "Email signatures",
       "route": "/settings/email-signatures",

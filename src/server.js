@@ -286,6 +286,27 @@ function buildApp() {
     express.json({ limit: "12mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }),
   );
 
+  /*
+   * The staff file (12764), for the same reason and by the same mechanism.
+   *
+   * Hiring somebody submits the person, their papers and their standing pay
+   * lines in ONE call, and "their papers" is a photographed ID card, a CV and a
+   * passport photograph — three files a phone camera produces at 2–4 MB each,
+   * plus a third again for base64. Against the 2 MB global limit that POST is a
+   * 413 before any of our code runs, which surfaces as a hire that silently
+   * refuses to save and no field to blame.
+   *
+   * Two paths only: creating an employee, and adding one document to an
+   * existing one. Same argument as the CV path above — a global raise would
+   * hand 12 MB bodies to ~600 routes to fix two. The per-file ceiling is in
+   * employees.validator, and document_vault re-checks the decoded bytes.
+   */
+  const EMPLOYEE_DOC_PATH = /^\/api\/(v\d+\/)?tenant\/employees(\/[^/]+\/documents)?\/?$/;
+  app.use(
+    EMPLOYEE_DOC_PATH,
+    express.json({ limit: "12mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }),
+  );
+
   app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); } }));
   app.use(express.urlencoded({ extended: true }));
 

@@ -1072,12 +1072,98 @@ export const previewSignature = (lang?: string) =>
   tenant<{ html: string; text: string }>(`/mail/signature/preview${lang ? `?lang=${lang}` : ""}`);
 export const listSignatureTemplates = () => tenant<SignatureTemplate[]>("/mail/signature/templates");
 
+/** MOD-70 `edit`. The server refuses to deactivate a seeded template. */
+export const updateSignatureTemplate = (
+  id: string,
+  patch: Partial<Pick<SignatureTemplate, "name" | "is_default" | "is_active">>,
+) =>
+  tenant<SignatureTemplate>(`/mail/signature/templates/${id}`, {
+    method: "PATCH",
+    body: patch,
+  });
+
 export async function downloadSignaturePng(opts: { language?: string; scale?: 1 | 2 | 3 } = {}) {
   const q = new URLSearchParams();
   if (opts.language) q.set("lang", opts.language);
   if (opts.scale) q.set("scale", String(opts.scale));
   const { tenantDownload } = await import("./api-client");
   await tenantDownload(`/mail/signature/png?${q.toString()}`, `signature-${opts.scale || 1}x.png`);
+}
+
+/** One blank field on the signature, and where to go and fill it. */
+export type SignatureGap = {
+  key: string;
+  label: string;
+  /** "you", "HR", "an administrator" — who can fill it. */
+  owner: string;
+  hint: string;
+  scope: "self" | "hr" | "entity" | "brand" | "template";
+  /** null when the caller has no grant on the surface that owns the field. */
+  href: string | null;
+  actionable: boolean;
+};
+
+export type SignatureCard = {
+  kind: string;
+  gaps?: SignatureGap[];
+  /** The full HTML document the PNG renderer screenshots. Null for the
+   *  non-card layouts, which have no separate card document. */
+  document: string | null;
+  html?: string;
+  width: number;
+  height: number;
+  language?: string;
+};
+
+/** The card exactly as it will be rendered to PNG. See signature.service.cardPreview. */
+export const getSignatureCard = (lang?: string) =>
+  tenant<SignatureCard>(`/mail/signature/card${lang ? `?lang=${lang}` : ""}`);
+
+/** The caller's own staff record. `/employees/mine` — no grant, no id. */
+export type MyEmployee = {
+  linked: boolean;
+  employee: null | {
+    employee_id: string;
+    full_name: string | null;
+    job_title: string | null;
+    department: string | null;
+    email: string | null;
+    phone_desk: string | null;
+    phone_mobile: string | null;
+    entity_id: string | null;
+    is_active: boolean | null;
+  };
+};
+
+export const getMyEmployee = () => tenant<MyEmployee>("/employees/mine");
+
+/** Only the caller's own phones are writable here; the server allow-lists. */
+export const updateMyEmployee = (patch: {
+  phone_desk?: string | null;
+  phone_mobile?: string | null;
+}) => tenant<MyEmployee>("/employees/mine", { method: "PATCH", body: patch });
+
+export type SignatureStaff = {
+  user_id: string;
+  full_name: string;
+  job_title: string | null;
+  department: string | null;
+  email: string | null;
+  has_profile: boolean;
+};
+
+export const listSignatureStaff = (q?: string) =>
+  tenant<SignatureStaff[]>(`/mail/signature/staff${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+/** One ZIP of PNGs for the selected staff. MOD-70 `edit`. */
+export async function downloadSignatureBatch(body: {
+  user_ids: string[];
+  language?: string;
+  scale?: 1 | 2 | 3;
+}) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const { tenantDownloadPost } = await import("./api-client");
+  await tenantDownloadPost("/mail/signature/batch", body, `signatures-${stamp}.zip`);
 }
 
 export type DomainHealthRow = {

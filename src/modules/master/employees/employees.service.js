@@ -9,8 +9,12 @@
 "use strict";
 const repo = require("./employees.repo");
 const events = require("./employees.events");
-const { suggestRiskClass, normaliseBankBlock } = require("./employees.rules");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const {
+  suggestRiskClass, normaliseBankBlock, blankToNull, contractReadiness, omit,
+  withAllowanceDefaults, CONTRACT_REQUIREMENTS, REQUIRED_DOCUMENT_CODES,
+} = require("./employees.rules");
+const vault = require("../../vault/document_vault/document_vault.service");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "employee:" + id;
@@ -26,6 +30,14 @@ const ref = (id) => "employee:" + id;
  */
 async function assertNoReportingCycle(client, employeeId, managerId) {
   if (!managerId) return;
+  // Creation passes a null employeeId: a row that does not exist yet cannot be
+  // anywhere in the chain above its own manager, so the only check worth making
+  // is that the manager exists at all.
+  if (!employeeId) {
+    const mgr = await repo.getBare(client, managerId);
+    if (!mgr) throw new AppError("NOT_FOUND", "That line manager no longer exists", 422);
+    return;
+  }
   if (managerId === employeeId) {
     throw new AppError("REPORTING_CYCLE", "Somebody can't report to themselves", 422);
   }
@@ -39,15 +51,49 @@ async function assertNoReportingCycle(client, employeeId, managerId) {
   }
 }
 
-async function create(client, { data, actor = {} }) {
+/**
+ * Hire somebody.
+ *
+ * ── ONE TRANSACTION, THREE TABLES ──────────────────────────────────────────
+ *
+ * The wizard collects the person, their papers and their standing pay lines and
+ * submits them together, and they are written together. Splitting it into three
+ * calls would mean a failure on the second leaves an employee with no documents
+ * and no way for the UI to know that is what happened — a half-hire that looks
+ * like a whole one. The `documents` and `allowances` arrays are optional: an
+ * employee created by the AI tool, or by a caller that predates the wizard,
+ * still writes exactly one row and behaves exactly as it did.
+ *
+ * ── THE MATRICULE IS ALLOCATED HERE, INSIDE THE TRANSACTION ────────────────
+ *
+ * So a rollback returns the number. Allocating before BEGIN would burn a
+ * matricule every time a validation error came back from Postgres, and a staff
+ * series with holes in it invites the question "who was SLAS-014?".
+ */
+async function create(client, { data, slug, actor = {} }) {
+  const { documents = [], allowances = [], ...fields } = data;
   await client.query("BEGIN");
   try {
-    const bank_block = normaliseBankBlock(data.bank_block);
+    const bank_block = normaliseBankBlock(fields.bank_block);
     const risk_class_rate =
-      data.risk_class_rate !== undefined && data.risk_class_rate !== null
-        ? data.risk_class_rate
-        : suggestRiskClass(data);
-    const row = await repo.insert(client, { ...data, bank_block, risk_class_rate });
+      fields.risk_class_rate !== undefined && fields.risk_class_rate !== null
+        ? fields.risk_class_rate
+        : suggestRiskClass(fields);
+    // Allocated, never typed. `staff_no` is not in the create schema, so an HTTP
+    // caller cannot supply one — Zod strips it before this runs. The fallback is
+    // for the service's own callers (a seed, a data-import script) that legitimately
+    // carry an existing number; going through the sequence is the only path a
+    // person has.
+    const staff_no = fields.staff_no || (await repo.allocateStaffNo(client, { entity_id: fields.entity_id || null }));
+    // The line manager is checked before the insert, not after: a cycle caught
+    // afterwards would mean rolling back a hire that was otherwise fine, and the
+    // clerk would see a failure whose cause was three fields further up.
+    if (fields.reports_to) await assertNoReportingCycle(client, null, fields.reports_to);
+    const row = await repo.insert(client, {
+      ...blankToNull(fields), bank_block, risk_class_rate, staff_no,
+    });
+    for (const d of documents) await addDocumentRow(client, { employeeId: row.employee_id, body: d, slug, actor });
+    for (const a of allowances) await addAllowanceRow(client, { employeeId: row.employee_id, body: a, actor });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.employee_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.employee_id), after: row });
     await client.query("COMMIT");
@@ -58,7 +104,11 @@ async function create(client, { data, actor = {} }) {
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.getBare(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Employee not found", 404);
-  const fields = { ...patch };
+  // `documents` / `allowances` are creation-time conveniences; editing them is
+  // done through their own endpoints, where one row can be changed without
+  // resubmitting the rest. Dropping them here rather than letting the update
+  // builder reject an unknown column keeps the error the caller sees honest.
+  const fields = blankToNull(omit(patch, ["documents", "allowances"]));
   if (fields.bank_block !== undefined) fields.bank_block = normaliseBankBlock(fields.bank_block);
   // Only when the line actually changes — a no-op save shouldn't pay for a walk.
   if (fields.reports_to !== undefined && fields.reports_to !== before.reports_to) {
@@ -129,7 +179,239 @@ const team = (client, id, opts) => repo.teamOf(client, id, opts);
 /** Nearest-first chain of managers above someone — the escalation path. */
 const managerChain = (client, id) => repo.managerChain(client, id);
 
+/* ── The staff file (12764) ──────────────────────────────────────────────────
+ *
+ * A scan is a verification gate, not a creation gate. Every path below records
+ * the row whether or not a file came with it, and says what is outstanding
+ * instead of refusing the row. See 12764 for why.
+ */
+
+/** Vault the scan if one was sent, then write the document row. Shared by the
+ *  wizard's bulk create and the single-document endpoint, so the two cannot
+ *  diverge on what a document means. */
+async function addDocumentRow(client, { employeeId, body, slug, actor = {} }) {
+  const {
+    file_data_url: dataUrl, file_name: fileName, document_type_code: code,
+    ...fields
+  } = body;
+  let document_type_id = fields.document_type_id || null;
+  if (!document_type_id && code) {
+    document_type_id = await repo.documentTypeByCode(client, code);
+    if (!document_type_id) {
+      throw new AppError("UNKNOWN_DOCUMENT_TYPE", `No staff document type called ${code}`, 422);
+    }
+  }
+  let vault_id = fields.vault_id || null;
+  if (!vault_id && dataUrl) {
+    // `entityRef` ties the vaulted bytes back to the person, so a vault audit
+    // can answer whose ID card this is without joining through employee_document.
+    const doc = await vault.createDocument(client, {
+      entityRef: ref(employeeId), docType: code || "EMPLOYEE_DOCUMENT",
+      dataUrl, originalName: fileName || null, slug, actor,
+    });
+    vault_id = doc.doc_id;
+  }
+  const row = await repo.insertDocument(client, {
+    ...blankToNull(fields),
+    employee_id: employeeId,
+    document_type_id,
+    vault_id,
+    // A row that arrived with its scan is SCANNED; one recorded from paper stays
+    // PENDING with whatever physical_ref the clerk gave. Verification is a
+    // separate, human decision either way.
+    scan_status: vault_id ? "SCANNED" : "PENDING",
+    // Through `resolveActorId`, not `actor.user_id` (DATA 2.4). `created_by`
+    // REFERENCES app_user, identity lives in the LIVE schema, and this write may
+    // land in SANDBOX — where that user does not exist and Postgres answers
+    // 23503, failing the whole hire. Losing an attribution is a far smaller harm
+    // than losing the document.
+    created_by: await resolveActorId(client, actor.user_id),
+  });
+  return row;
+}
+
+async function addDocument(client, { id, body, slug, actor = {} }) {
+  const employee = await repo.getBare(client, id);
+  if (!employee) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  const row = await addDocumentRow(client, { employeeId: id, body, slug, actor });
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), after: { document_id: row.document_id, document_type_id: row.document_type_id } });
+  return row;
+}
+
+const listDocuments = (client, id) => repo.listDocuments(client, id);
+const documentTypes = (client) => repo.documentTypes(client);
+
+async function updateDocument(client, { id, documentId, patch, actor = {} }) {
+  const before = await repo.getDocument(client, documentId);
+  if (!before || before.employee_id !== id) throw new AppError("NOT_FOUND", "Document not found", 404);
+  // Re-vaulting a scan is `POST /documents` with a new row, not an edit: a staff
+  // file records what was held and when, and silently swapping the bytes behind
+  // an existing row would erase that. The upload keys are dropped here.
+  const fields = omit(patch, ["file_data_url", "file_name", "document_type_code"]);
+  const row = await repo.updateDocument(client, documentId, blankToNull(fields));
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
+  return row;
+}
+
+/** Soft-delete: a staff file is evidence, so the row is deactivated, not erased. */
+async function removeDocument(client, { id, documentId, actor = {} }) {
+  const before = await repo.getDocument(client, documentId);
+  if (!before || before.employee_id !== id) throw new AppError("NOT_FOUND", "Document not found", 404);
+  const row = await repo.archiveDocument(client, documentId);
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
+  return row;
+}
+
+/* ── Standing pay lines (12765) ─────────────────────────────────────────────*/
+
+async function addAllowanceRow(client, { employeeId, body, actor = {} }) {
+  return repo.insertAllowance(client, {
+    ...blankToNull(withAllowanceDefaults(body)),
+    employee_id: employeeId,
+    // Resolved, not passed through — same reason as the document row above.
+    created_by: await resolveActorId(client, actor.user_id),
+  });
+}
+
+async function addAllowance(client, { id, body, actor = {} }) {
+  const employee = await repo.getBare(client, id);
+  if (!employee) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  const row = await addAllowanceRow(client, { employeeId: id, body, actor });
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), after: row });
+  return row;
+}
+
+const listAllowances = (client, id, opts) => repo.listAllowances(client, id, opts);
+
+async function updateAllowance(client, { id, allowanceId, patch, actor = {} }) {
+  const before = await repo.getAllowance(client, allowanceId);
+  if (!before || before.employee_id !== id) throw new AppError("NOT_FOUND", "Allowance not found", 404);
+  const row = await repo.updateAllowance(client, allowanceId, blankToNull(patch));
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
+  return row;
+}
+
+async function removeAllowance(client, { id, allowanceId, actor = {} }) {
+  const before = await repo.getAllowance(client, allowanceId);
+  if (!before || before.employee_id !== id) throw new AppError("NOT_FOUND", "Allowance not found", 404);
+  await repo.deleteAllowance(client, allowanceId);
+  await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before });
+  return { deleted: true };
+}
+
+/**
+ * What this person is paid, decomposed the way the contract states it.
+ *
+ * Article 3 of a contract is a table, not a number, and it has to add up: base
+ * + the live cash allowances = the gross the document prints. Computing it here
+ * rather than in the contract module means the payslip, the offer letter and
+ * the renewal all quote the same figure.
+ *
+ * Benefits in kind are returned but excluded from the total (`in_gross`): they
+ * are remuneration and they are taxed, but nobody is handed them in cash, and a
+ * gross that includes a company car is a gross that does not match the payslip.
+ */
+async function pay(client, id, { on = null } = {}) {
+  const employee = await repo.getBare(client, id);
+  if (!employee) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  const lines = await repo.listAllowances(client, id, { on });
+  const base = Number(employee.base_salary || 0);
+  const cash = lines.filter((l) => l.in_gross && l.kind !== "DEDUCTION" && l.periodicity === "MONTHLY");
+  const additions = cash.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+  return {
+    base_salary: base,
+    currency: employee.salary_currency || null,
+    lines,
+    monthly_gross: base + additions,
+  };
+}
+
+/* ── Readiness and the account (the two questions the 360 opens with) ────────*/
+
+/**
+ * Can a contract be generated from this record yet, and if not, what is missing?
+ *
+ * This is the number the wizard's meter shows and the panel the 360 leads with.
+ * It reads the SAME list the contract module will read (employees.rules), so a
+ * record that says it is ready is a record the generator will accept.
+ */
+async function readiness(client, id) {
+  const employee = await repo.get(client, id);
+  if (!employee) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  const documents = await repo.listDocuments(client, id);
+  return contractReadiness(employee, documents);
+}
+
+/**
+ * The requirement list itself, so the creation wizard can show a LIVE readiness
+ * count against a draft that has not been saved yet.
+ *
+ * Served rather than duplicated in the browser bundle: a second copy of this
+ * list is a second definition of "contract-ready", and the two would disagree
+ * the first time either is edited — with the UI cheerfully reporting 100% on a
+ * record the generator then rejects.
+ */
+const readinessRequirements = () => ({
+  fields: CONTRACT_REQUIREMENTS,
+  documents: REQUIRED_DOCUMENT_CODES,
+});
+
+/** The login(s) this employee can sign in with — the provisioning affordance's state. */
+async function account(client, id) {
+  const employee = await repo.getBare(client, id);
+  if (!employee) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  const accounts = await repo.accountsFor(client, id);
+  return {
+    employee_id: id,
+    provisioned: accounts.length > 0,
+    accounts,
+    // What the Users screen should be pre-filled with when nobody has been
+    // provisioned yet. Resolved here, not in the browser, so the deep link
+    // carries an id and the target screen reads the record itself — a prefill
+    // passed through a URL is a prefill anybody can rewrite.
+    suggested: accounts.length
+      ? null
+      : {
+        full_name: employee.full_name || "",
+        email: employee.email || employee.personal_email || "",
+        employee_id: id,
+      },
+  };
+}
+
+/**
+ * Move an employee through the lifecycle (12763).
+ *
+ * Separate from `update` because it is an event, not a field edit: it emits a
+ * distinct audit action and, for a termination, records why and when. `setActive`
+ * stays as it was — the boolean and the enum are reconciled by the DB trigger,
+ * so an older caller flipping `is_active` still lands in a coherent state.
+ */
+async function setStatus(client, { id, status, terminated_on = null, termination_reason = null, actor = {} }) {
+  const before = await repo.getBare(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Employee not found", 404);
+  if (before.status === status) return before;
+  const fields = { status };
+  if (status === "TERMINATED") {
+    fields.terminated_on = terminated_on || new Date().toISOString().slice(0, 10);
+    fields.termination_reason = termination_reason || null;
+  } else {
+    // Re-hiring somebody clears the leaving date rather than leaving a
+    // termination on the record of a person who is back at their desk.
+    fields.terminated_on = null;
+    fields.termination_reason = null;
+  }
+  const row = await repo.update(client, id, fields);
+  const evt = status === "ACTIVE" ? events.REACTIVATED : status === "TERMINATED" ? events.ARCHIVED : events.DEACTIVATED;
+  await emitEvent(client, { eventTypeKey: evt, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
+  await audit(client, { actorUserId: actor.user_id || null, action: evt, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
+  return row;
+}
+
 module.exports = {
-  create, update, setActive, remove, get, list, roster, drivers, references, assertActive,
+  create, update, setActive, setStatus, remove, get, list, roster, drivers, references, assertActive,
   directReports, team, managerChain, assertNoReportingCycle,
+  addDocument, listDocuments, documentTypes, updateDocument, removeDocument,
+  addAllowance, listAllowances, updateAllowance, removeAllowance, pay,
+  readiness, readinessRequirements, account,
 };

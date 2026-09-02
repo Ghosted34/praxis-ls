@@ -572,6 +572,33 @@ const hexColor = blankToUndefined(
       "Use a hex colour like #C2703D.",
     ),
 );
+/**
+ * One block's placement on the twelve-column letterhead grid.
+ *
+ * `id` is free-form because the block catalogue is open — a catalogued block
+ * ("identifiers") or a tenant's own line ("custom:<uuid>"). An id the renderer
+ * does not recognise is DROPPED at compose time rather than rejected here: a
+ * layout saved against a block that was later renamed should cost that block,
+ * not the whole letterhead.
+ */
+const letterheadPlacement = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    row: z.number().int().min(0).max(40).optional(),
+    col: z.number().int().min(0).max(11).optional(),
+    span: z.number().int().min(1).max(12).optional(),
+    align: z.enum(["left", "center", "right"]).optional(),
+    // The type scale. Hard-bounded: a letterhead set at 4x is not a design
+    // choice a tenant recovers from on their own, and the fit model has to be
+    // able to trust this number.
+    size: z.number().min(0.5).max(2.5).optional(),
+    weight: z.enum(["normal", "bold"]).optional(),
+    tone: z.enum(["ink", "muted", "accent"]).optional(),
+    transform: z.enum(["none", "upper"]).optional(),
+    visible: z.boolean().optional(),
+  })
+  .strict();
+
 exports.letterheadUpdate = z.object({
   show_legal_form: z.boolean().optional(),
   show_share_capital: z.boolean().optional(),
@@ -596,6 +623,35 @@ exports.letterheadUpdate = z.object({
   footer_height_mm: blankToUndefined(
     amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm."),
   ).nullable(),
+  /*
+   * The mark's printed height (12760). Bounded at 4-60mm: below 4 a logo is an
+   * unreadable smudge and above 60 it is most of an A4 header, and this number
+   * feeds the one-page fit model as FIXED height — an unbounded value there
+   * pushes an instrument sheet onto a second page without anything on screen
+   * saying why.
+   */
+  logo_height_mm: blankToUndefined(
+    amount.refine((n) => n >= 4 && n <= 60, "Enter 4-60 mm."),
+  ).nullable(),
+  /*
+   * The block arrangement the editor drags (12760).
+   *
+   * Validated STRUCTURALLY, not just "is an object": these values are
+   * interpolated into a stylesheet that themes every document the tenant
+   * prints, and the row is tenant-writable. `size` in particular reaches a
+   * `font-size: calc(Npt * var(--k))`. Unknown keys are stripped rather than
+   * stored, so a future block property cannot be smuggled in ahead of the
+   * renderer that understands it.
+   */
+  layout: z
+    .object({
+      version: z.number().int().min(1).max(9).optional(),
+      header: z.array(letterheadPlacement).max(60).optional(),
+      footer: z.array(letterheadPlacement).max(60).optional(),
+    })
+    .strict()
+    .nullable()
+    .optional(),
   remittance_account_id: blankToUndefined(
     z.string().uuid("Must be a valid treasury account id."),
   ).nullable(),
@@ -734,6 +790,41 @@ exports.nestedShapeKeys = {
   documents: Object.keys(documentShape),
   "tax-registrations": Object.keys(taxRegistrationShape),
 };
+
+/**
+ * One tenant-authored letterhead line (12760).
+ *
+ * The text may carry `{{entity.*}}` / `{{doc.*}}` tokens, resolved at render —
+ * which is what keeps the sentence the tenant's and the FACT ours. Tokens are
+ * NOT validated against the catalogue here: an unknown one resolves to empty at
+ * render (never to itself), and rejecting the save would mean a tenant cannot
+ * type a line and fix the token afterwards.
+ *
+ * `text_fr` and `text_en` are both optional and at least one must be present —
+ * a line with no text in either language prints nothing and is indistinguishable
+ * from a mistake. The table carries the same CHECK, so neither side can be the
+ * only one enforcing it.
+ */
+exports.letterheadLineSave = z
+  .object({
+    zone: z.enum(["header", "footer"]).optional(),
+    text_fr: optionalText.nullable(),
+    text_en: optionalText.nullable(),
+    sort_order: z.number().int().min(0).max(999).optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      // On an UPDATE the caller may send only `is_active` or `sort_order`, so
+      // "no text at all" is only an error when the patch is trying to set text.
+      (v.text_fr === undefined && v.text_en === undefined) ||
+      Boolean((v.text_fr || "").trim() || (v.text_en || "").trim()),
+    {
+      message: "A line needs text in at least one language.",
+      path: ["text_fr"],
+    },
+  );
 
 /** The letterhead designer's writable columns. `letterheadUpdate` carries no
  *  `.refine()`, so it is a plain ZodObject and its shape is readable directly. */

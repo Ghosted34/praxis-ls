@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (506)
+## All codes (510)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -164,7 +164,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `DUPLICATE_KEY` | 422 | 2× | — |
 | `DUPLICATE_ORDER` | — | 1× | — |
 | `DUPLICATE_STATEMENT` | — | 1× | — |
-| `EMAIL_REQUIRED` | 422 | 1× | — |
+| `EMAIL_REQUIRED` | 422 | 2× | — |
 | `EMAIL_SEND_FAILED` | 502 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
@@ -248,6 +248,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
+| `LINE_REQUIRED` | 422 | 1× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 35× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
@@ -285,7 +286,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 583× | — |
+| `NOT_FOUND` | 404, 422 | 600× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -325,7 +326,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_DOSSIER` | 422 | 1× | — |
 | `NO_EFFECTIVE_CODE` | 422 | 1× | — |
 | `NO_EFFECTIVE_TAX` | 422 | 1× | — |
-| `NO_EMPLOYEE` | 400, 422 | 4× | — |
+| `NO_EMPLOYEE` | 400, 422 | 5× | — |
 | `NO_ENTITY` | 422 | 1× | — |
 | `NO_ENTITY_REF` | 422 | 8× | — |
 | `NO_ENVELOPE` | 409 | 4× | — |
@@ -384,6 +385,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
 | `PARENT_POSTABLE` | 422 | 2× | — |
+| `PASSWORD_REQUIRED` | — | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 7× | — |
 | `PERSONAL_MAILBOX` | — | 1× | — |
@@ -504,6 +506,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_DECLINE_REASON` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 7× | — |
+| `UNKNOWN_DOCUMENT_TYPE` | 422 | 1× | — |
 | `UNKNOWN_DOC_TYPE` | 422 | 2× | — |
 | `UNKNOWN_EVENT_TYPE` | 400 | 1× | — |
 | `UNKNOWN_FIELD` | — | 1× | — |
@@ -522,9 +525,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNVERIFIED` | 401 | 2× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
+| `USER_NOT_ACTIVE` | 422 | 1× | — |
 | `USE_APPROVE` | 422 | 1× | — |
 | `VACANCY_CLOSED` | — | 1× | — |
-| `VALIDATION_ERROR` | 422 | 232× | — |
+| `VALIDATION_ERROR` | 422 | 235× | — |
 | `VARIANCE_UNEXPLAINED` | 422 | 1× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |

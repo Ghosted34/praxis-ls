@@ -5,9 +5,13 @@
  * ("Montserat") failed silently to the fallback, and even a correct name only
  * worked if the font happened to be installed on the viewer's machine — so a
  * tenant configured their brand type on a designer's Mac and every operator on
- * Windows saw something else. Every family below is self-hosted (@fontsource,
- * SIL OFL / Apache-2.0), so what the tenant picks is what every user renders,
- * on every device, offline included.
+ * Windows saw something else. Every family below is self-hosted, so what the
+ * tenant picks is what every user renders, on every device, offline included.
+ *
+ * All but one are @fontsource packages under SIL OFL / Apache-2.0. The
+ * exception is Brittany Signature, a commercial script vendored under
+ * client/src/fonts for the email signature card's motto; see the note on its
+ * entry below and in that directory's CSS.
  *
  * WHY NO SEGOE UI / SF PRO / HELVETICA NEUE. All three are proprietary —
  * Microsoft, Apple and Monotype respectively — and cannot legally be
@@ -28,11 +32,11 @@
  * fonts (see `loadFonts`). Each `load()` is a dynamic import of the family's
  * CSS, which Vite code-splits into its own chunk; the woff2 files it references
  * land in dist/assets, where the service worker's `**\/*.woff2` precache glob
- * picks them up. Eagerly bundling all fifteen would be ~3 MB on first paint for
+ * picks them up. Eagerly bundling all sixteen would be ~3 MB on first paint for
  * a set where a tenant uses at most three.
  */
 
-export type FontRole = "sans" | "serif" | "mono";
+export type FontRole = "sans" | "serif" | "mono" | "script";
 
 export type FontDef = {
   /** Stable identifier. Used by tests and as a React key — never persisted. */
@@ -71,6 +75,7 @@ const FALLBACK: Record<FontRole, string> = {
   sans: "sans-serif",
   serif: "serif",
   mono: "monospace",
+  script: "cursive",
 };
 
 /**
@@ -215,6 +220,22 @@ export const FONTS: FontDef[] = [
     note: "Microsoft's terminal mono. Rounder than JetBrains.",
     load: () => import("@fontsource-variable/cascadia-code"),
   },
+
+  // ── Script ──
+  // The only family here that is not an @fontsource package and not OFL. It is
+  // vendored under client/src/fonts on the tenant's licence, because the email
+  // signature card's motto pill is set in it and the whole point of that card
+  // is that it reproduces exactly. Listed LAST in every slot: it is a display
+  // accent, and a tenant who sets it as body text has made a mistake the picker
+  // should not have made easy.
+  {
+    id: "brittany-signature",
+    name: "Brittany Signature",
+    stack: `"Brittany Signature", ${FALLBACK.script}`,
+    role: "script",
+    note: "Handwritten script. For mottos and signature accents, not body text.",
+    load: () => import("../fonts/brittany-signature.css"),
+  },
 ];
 
 /** The app's own defaults — what an unset token resolves to in index.css. */
@@ -241,6 +262,7 @@ const ROLE_LABEL: Record<FontRole, string> = {
   sans: "Sans-serif",
   serif: "Serif",
   mono: "Monospace",
+  script: "Script",
 };
 
 /**
@@ -249,9 +271,9 @@ const ROLE_LABEL: Record<FontRole, string> = {
  * listed first so the sensible choice is the one in view.
  */
 const SLOT_ORDER: Record<FontSlot, FontRole[]> = {
-  display: ["sans", "serif", "mono"],
-  body: ["sans", "serif", "mono"],
-  mono: ["mono", "sans", "serif"],
+  display: ["sans", "serif", "script", "mono"],
+  body: ["sans", "serif", "mono", "script"],
+  mono: ["mono", "sans", "serif", "script"],
 };
 
 /** The library grouped and ordered for a given slot. */

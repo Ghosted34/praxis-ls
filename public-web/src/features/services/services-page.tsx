@@ -15,6 +15,7 @@ import { usePublishedServices } from "@/lib/use-services";
 import { PageContainer, PageShell } from "@/components/site/page-shell";
 import { MediaCard, MoreLink, Section } from "@/components/site/section";
 import { Card } from "@/components/ui/card";
+import { IconTile } from "@/components/ui/icon-tile";
 import { Panel } from "@/components/ui/panel";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState, ErrorState } from "@/components/state";
@@ -25,7 +26,11 @@ import {
   CheckIcon,
   ChevronDownIcon,
 } from "@/components/ui/icons";
-import { modeColor, serviceIdentity } from "@/lib/service-identity";
+import {
+  iconByName,
+  serviceColor,
+  serviceIdentity,
+} from "@/lib/service-identity";
 import { SectionHead } from "@/components/site/section-head";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Reveal } from "@/components/ui/reveal";
@@ -59,7 +64,7 @@ import { p } from "@/lib/base-path";
 export function ServicesIndexPage() {
   const { t } = useTranslation();
   const lang = getLang();
-  const { services, loading } = usePublishedServices();
+  const { groups, services, loading } = usePublishedServices();
 
   useDocumentMeta({
     title: `${t("site.servicesPage.title")} · ${t("site.hero.eyebrow")}`,
@@ -77,41 +82,114 @@ export function ServicesIndexPage() {
         titleAs="h1"
       >
         {services.length ? (
-          <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((s, i) => {
-              // The same table the home page reads, indexed the same way, so a
-              // line keeps its colour, glyph and code between the two grids.
-              // `BoxIcon` on every card was the version of this that made an
-              // eleven-service index look like one card repeated eleven times.
-              const identity = serviceIdentity(i);
+          /* Pillars, not a list (migration 12755). A services page in this
+             industry is a small number of named sections — Freight / Logistics /
+             Value-Added — with the services underneath them and an anchor per
+             section, and the flat grid this used to render could not express
+             that however many cards it drew.
+
+             `key` is the anchor and it is null for the trailing bucket the
+             server collects unassigned services into. That bucket renders
+             without a heading rather than under an invented one: every tenant
+             starts there on the day the column ships, and a service returns
+             there when its pillar is retired. */
+          <div className="space-y-14">
+            {groups.map((group, gi) => {
+              const label =
+                lang === "en"
+                  ? group.name_en || group.name_fr
+                  : group.name_fr || group.name_en;
+              // Identity is indexed across the WHOLE page, not per pillar, so
+              // the first card of the second pillar does not repeat the colour,
+              // glyph and code of the first card of the first.
+              const offset = groups
+                .slice(0, gi)
+                .reduce((n, g) => n + (g.services?.length || 0), 0);
               return (
-                <Reveal
-                  as="li"
-                  key={s.service_type_id}
-                  // Staggered by COLUMN, the way the insights grid is: a card in
-                  // the fourth row must not wait for the three above it.
-                  delay={(i % 3) as 0 | 1 | 2}
+                <section
+                  key={group.key || `ungrouped-${gi}`}
+                  id={group.key || undefined}
+                  className="scroll-mt-24"
                 >
-                  <MediaCard
-                    className="h-full"
-                    image={s.cover_url}
-                    imageAlt={pickText(s, "name", lang) || ""}
-                    // A tenant with one photograph and four services gets one
-                    // illustrated card and three text boxes without this.
-                    icon={identity.icon}
-                    mode={identity.mode}
-                    code={identity.code}
-                    eyebrow={s.published_month || undefined}
-                    title={pickText(s, "name", lang) || pickSlug(s, lang)}
-                    to={p(`/services/${encodeURIComponent(pickSlug(s, lang))}`)}
-                    linkLabel={t("site.services.more")}
-                  >
-                    {pickText(s, "short_description", lang)}
-                  </MediaCard>
-                </Reveal>
+                  {label ? (
+                    /* The pillar's own icon, by name (12755). Unrecognised
+                       names draw nothing rather than a fallback glyph: a
+                       heading with no icon is a smaller failure than a heading
+                       wearing the wrong one. */
+                    <div className="mb-6 flex items-center gap-3">
+                      {iconByName(group.icon) ? (
+                        <IconTile icon={iconByName(group.icon)!} size="md" />
+                      ) : null}
+                      <h2 className="section-title">{label}</h2>
+                    </div>
+                  ) : null}
+                  <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.services.map((s, i) => {
+                      // The same table the home page reads, indexed the same
+                      // way, so a line keeps its colour, glyph and code between
+                      // the two grids. `BoxIcon` on every card was the version
+                      // of this that made an eleven-service index look like one
+                      // card repeated eleven times.
+                      const identity = serviceIdentity(offset + i);
+                      return (
+                        <Reveal
+                          as="li"
+                          key={s.service_type_id}
+                          // Staggered by COLUMN, the way the insights grid is: a
+                          // card in the fourth row must not wait for the three
+                          // above it.
+                          delay={(i % 3) as 0 | 1 | 2}
+                        >
+                          <MediaCard
+                            className="h-full"
+                            image={s.cover_url}
+                            imageAlt={pickText(s, "name", lang) || ""}
+                            // A tenant with one photograph and four services
+                            // gets one illustrated card and three text boxes
+                            // without this.
+                            icon={identity.icon}
+                            mode={identity.mode}
+                            accent={s.accent}
+                            code={identity.code}
+                            /* The closing proof line (12755). It is deliberately
+                               NOT `highlights[0]` — the migration rejects that
+                               positional convention — so it renders as the
+                               card's footer, below the description and above
+                               the link, in the card's own colour. */
+                            footer={
+                              pickText(s, "claim", lang) ? (
+                                <p
+                                  className="mt-3 text-sm font-semibold"
+                                  style={{
+                                    color: serviceColor(
+                                      s.accent,
+                                      identity.mode,
+                                    ),
+                                  }}
+                                >
+                                  {pickText(s, "claim", lang)}
+                                </p>
+                              ) : undefined
+                            }
+                            eyebrow={s.published_month || undefined}
+                            title={
+                              pickText(s, "name", lang) || pickSlug(s, lang)
+                            }
+                            to={p(
+                              `/services/${encodeURIComponent(pickSlug(s, lang))}`,
+                            )}
+                            linkLabel={t("site.services.more")}
+                          >
+                            {pickText(s, "short_description", lang)}
+                          </MediaCard>
+                        </Reveal>
+                      );
+                    })}
+                  </ul>
+                </section>
               );
             })}
-          </ul>
+          </div>
         ) : loading ? (
           <PageSkeleton rows={3} cols={3} />
         ) : (
@@ -308,7 +386,9 @@ export function ServiceDetailPage() {
         className="band band-muted"
         style={
           identity
-            ? { borderTop: `6px solid ${modeColor(identity.mode)}` }
+            ? {
+                borderTop: `6px solid ${serviceColor(profile.accent, identity.mode)}`,
+              }
             : undefined
         }
       >
@@ -331,7 +411,9 @@ export function ServiceDetailPage() {
             {identity ? (
               <span
                 className="font-mono text-[11px] font-semibold tracking-tight"
-                style={{ color: modeColor(identity.mode) }}
+                style={{
+                  color: serviceColor(profile.accent, identity.mode),
+                }}
               >
                 {identity.code}
               </span>
@@ -370,6 +452,32 @@ export function ServiceDetailPage() {
               </button>
             ) : null}
           </div>
+          {/* The cover, which this page has been throwing away.
+
+              `GET /public/services/:slug` has always returned `cover_url` —
+              allowlisted, streamed by the route itself, null when the vault
+              would refuse it — and the detail page rendered the name, the lead
+              and the body without ever showing the photograph the tenant
+              uploaded for exactly this screen. The index grid used it; the page
+              the index links to did not.
+
+              It is an image in the band, not a background behind the heading. A
+              scrim over tenant-uploaded artwork is a contrast problem solved per
+              photograph (see `hero.tsx`, where the floor is set by the eyebrow at
+              α ≥ 0.87), and there is no floor that holds for every image a
+              stranger may upload. Beneath the type it needs no scrim at all. */}
+          {profile.cover_url ? (
+            <div className="mt-8 overflow-hidden rounded-[var(--radius)] border">
+              <img
+                src={profile.cover_url}
+                alt=""
+                aria-hidden
+                loading="lazy"
+                decoding="async"
+                className="aspect-[16/7] w-full object-cover"
+              />
+            </div>
+          ) : null}
         </PageContainer>
       </section>
 

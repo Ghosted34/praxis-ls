@@ -52,6 +52,13 @@ const entitlement = require("../../../services/platform/entitlement.service");
 const TWOFA_PENDING_TTL = "5m";
 /** Reset links live for 30 minutes and are single-use (doc plan §1.1). */
 const RESET_TTL_MIN = 30;
+/*
+ * An invitation is not a password reset, and giving it a reset's 30 minutes is
+ * how an invitation becomes a support ticket. A new hire is provisioned by HR on
+ * a Thursday afternoon and reads their mail on Monday; three days is the window
+ * that survives that without being an indefinite standing key to the account.
+ */
+const INVITE_TTL_MIN = 72 * 60;
 /** Feature flag that turns the whole AI surface on/off for a tenant. Drives the
  *  FE global AI gate — see client/src/components/ai-actions.tsx. */
 const AI_FEATURE_KEY = "ai.assistant.backend";
@@ -617,6 +624,78 @@ async function sendResetEmail(client, { to, name, token, origin }) {
 }
 
 /**
+ * The activation email a newly provisioned employee receives.
+ *
+ * Deliberately NOT the reset email with different words. A reset says "you asked
+ * for this"; an invitation says "somebody has given you an account", which is
+ * news, and it has to carry who the account is for and what it is for — a person
+ * who was not expecting it should be able to tell whether it is real.
+ */
+function inviteEmailHtml({ name, link, orgName, hours }) {
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Roboto,'Noto Sans',sans-serif;color:#101e34">
+  <div style="max-width:520px;margin:0 auto;padding:32px 24px">
+    <div style="background:#ffffff;border-radius:14px;padding:32px;box-shadow:0 4px 12px rgba(16,30,52,.06)">
+      <h1 style="margin:0 0 12px;font-size:20px;color:#101e34">Your ${orgName} account is ready</h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:#4e6280">Hi ${name}, an account has been created for you. Choose a password to activate it — this link expires in ${hours} hours and can be used once.</p>
+      <p style="margin:24px 0"><a href="${link}" style="display:inline-block;background:#F5821F;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:15px">Set my password</a></p>
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#84a0b0">If the button doesn't work, paste this link into your browser:<br><span style="word-break:break-all;color:#1c9bd7">${link}</span></p>
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#84a0b0">Not expecting this? Tell your administrator — the account cannot be used until a password is set.</p>
+    </div>
+  </div></body></html>`;
+}
+
+/**
+ * Issue (or re-issue) an activation link and mail it.
+ *
+ * Reuses the `password_reset` table rather than adding an `invitation` one: it
+ * is already single-use, already expiry-checked, already stored as a hash so a
+ * database read cannot mint a working link, and already consumed by a
+ * /reset-password screen that does exactly what an activation screen does. A
+ * second table would be the same mechanism with a second set of bugs.
+ *
+ * Unlike `requestPasswordReset`, this DOES report failure. That endpoint stays
+ * silent to avoid confirming which addresses exist; here the caller is an
+ * administrator who just typed the address and needs to know it bounced.
+ */
+async function issueInvite(client, { userId, origin, actor = {} }) {
+  const user = await repo.getUserSafe(client, userId);
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  if (user.status !== "ACTIVE") {
+    throw new AppError("USER_NOT_ACTIVE", "This account is suspended or locked — reactivate it before sending an invitation", 422);
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MIN * 60 * 1000);
+  await repo.invalidateUserResets(client, userId); // one live link at a time
+  await repo.createResetToken(client, { userId, tokenHash: sha256(token), expiresAt, ip: null });
+  await audit(client, { actorUserId: actor.user_id || null, action: events.PASSWORD_RESET_REQUESTED, moduleKey: events.MODULE, entityRef: `app_user:${userId}` });
+
+  const base = origin || `https://app.${config.APP_BASE_DOMAIN}`;
+  const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+  const firstName = user.full_name ? String(user.full_name).trim().split(/\s+/)[0] : "there";
+  let orgName = "Praxis LS";
+  try {
+    const { rows } = await client.query("SELECT legal_name FROM corporate_entity WHERE is_active = true ORDER BY created_at ASC LIMIT 1");
+    if (rows[0] && rows[0].legal_name) orgName = rows[0].legal_name;
+  } catch (err) {
+    // White-labelling the subject line is a nicety; failing the invitation over
+    // it is not. Fall back to the product name. (taxonomy: degraded-optional)
+    logger.warn({ err }, "[auth] could not resolve entity name for invitation");
+  }
+  const hours = Math.round(INVITE_TTL_MIN / 60);
+  const text = `Hi ${firstName},\n\nAn account has been created for you on ${orgName}. Open the link below within ${hours} hours to choose your password (single use):\n\n${link}\n\nNot expecting this? Tell your administrator — the account cannot be used until a password is set.`;
+  await emailService.send(client, {
+    to: user.email,
+    subject: `Activate your ${orgName} account`,
+    html: inviteEmailHtml({ name: firstName, link, orgName, hours }),
+    text,
+    purpose: "NOTIFICATIONS",
+    moduleKey: events.MODULE,
+    sendPoint: "auth.password_reset",
+  });
+  return { sent: true, email: user.email, expires_at: expiresAt.toISOString() };
+}
+
+/**
  * Begin recovery. ALWAYS resolves to { ok: true } regardless of whether the
  * email maps to an active account — we must not leak which addresses exist
  * (mirrors login()'s "same error for no-such-user vs wrong-password" stance).
@@ -790,8 +869,38 @@ async function getUser(client, id) {
 }
 /** Employees linkable to a user — always the live/identity schema (see repo). */
 const listLinkableEmployees = (client) => repo.listEmployeesLite(client);
-async function createUser(client, { data, actor = {}, tenantId = null }) {
-  await passwordPolicy.assertStrongPassword(data.password, { email: data.email });
+/**
+ * Create a login.
+ *
+ * ── TWO WAYS IN, AND WHY THE SECOND ONE EXISTS ────────────────────────────
+ *
+ * Until now this demanded a `password`, which means provisioning somebody's
+ * account requires an administrator to invent a credential and then transmit it
+ * — over WhatsApp, on a sticky note, in the mail they never delete. The
+ * credential is known to two people from the moment it exists, and the one who
+ * did not choose it usually never changes it.
+ *
+ * `invite: true` is the alternative: no password crosses anybody's hands. The
+ * row is created with a random hash nobody holds, and an activation link goes to
+ * the address on the record so the person chooses their own. This is what the
+ * legacy system did (`must_set_password = 1`, an emailed activation token) and
+ * it is what "Provision account" on an employee record calls.
+ *
+ * The random hash matters: `password_hash` is NOT NULL, and the tempting
+ * shortcut of storing an empty string would make the column's meaning
+ * "unusable" in one row and "a hash" in the rest — one day something compares
+ * against it. 48 random bytes hashed with Argon2id is a password that exists,
+ * is valid, and that nobody on earth knows.
+ */
+async function createUser(client, { data, actor = {}, tenantId = null, origin = null }) {
+  const invite = data.invite === true;
+  if (!invite && !data.password) {
+    throw new AppError("PASSWORD_REQUIRED", "Set a password, or send an invitation instead", 422);
+  }
+  if (invite && !data.email) {
+    throw new AppError("EMAIL_REQUIRED", "An invitation needs an email address to send to", 422);
+  }
+  if (!invite) await passwordPolicy.assertStrongPassword(data.password, { email: data.email });
 
   // WS-S3 — seat entitlement.
   //
@@ -839,10 +948,14 @@ async function createUser(client, { data, actor = {}, tenantId = null }) {
 
   await client.query("BEGIN");
   try {
-    const password_hash = await argon2.hash(String(data.password), ARGON);
+    const secret = invite ? crypto.randomBytes(48).toString("hex") : String(data.password);
+    const password_hash = await argon2.hash(secret, ARGON);
     const user = await repo.insertUser(client, {
       username: data.username || null, email: String(data.email).toLowerCase(), full_name: data.full_name,
-      password_hash, status: data.status || "ACTIVE", employee_id: data.employee_id || null,
+      // An invited user is ACTIVE: the activation link is what they cannot use
+      // the account without, and `resetPassword` refuses a non-ACTIVE user — so
+      // creating them SUSPENDED would send an invitation that cannot be redeemed.
+      password_hash, status: invite ? "ACTIVE" : (data.status || "ACTIVE"), employee_id: data.employee_id || null,
     });
     if (Array.isArray(data.role_ids)) await repo.setRoles(client, user.user_id, data.role_ids);
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, actorUserId: actor.user_id || null });
@@ -854,7 +967,19 @@ async function createUser(client, { data, actor = {}, tenantId = null }) {
     // AFTER the commit and best-effort on purpose: a sandbox problem must never
     // roll back or fail a live user create.
     await mirrorUserBestEffort(client, user.user_id);
-    return getUser(client, user.user_id);
+    const created = await getUser(client, user.user_id);
+    if (invite) {
+      // AFTER the commit, and non-fatal. The account exists and is correct; a
+      // mail outage must not undo it, and "Resend invitation" is one click on
+      // the screen the administrator is already looking at.
+      try {
+        created.invitation = await issueInvite(client, { userId: user.user_id, origin, actor });
+      } catch (err) {
+        logger.error({ err, user_id: user.user_id }, "[auth] invitation email failed to send");
+        created.invitation = { sent: false, error: "The account was created, but the invitation email could not be sent. Use Resend invitation." };
+      }
+    }
+    return created;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 /**
@@ -1112,5 +1237,6 @@ module.exports = {
   setAvatar,
   requestPasswordReset,
   resetPassword,
+  issueInvite,
   changeOwnPassword,
 };

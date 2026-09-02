@@ -932,15 +932,20 @@ export const myLeaveBalances = (year?: number) =>
   tenant<LeaveBalance[]>("/leave/mine/balances" + qs({ year: year ? String(year) : undefined }));
 
 /* ── Employees (profile 360) ── */
+export type EmployeeStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "TERMINATED";
+
 export type Employee = {
   employee_id: string;
   full_name?: string | null;
   entity_id?: string | null;
   entity_name?: string | null;
+  entity_code?: string | null;
   // scope_id is the department reference (0490); department is the snapshot.
   scope_id?: string | null;
   // Line manager (0493) — the reporting line `is_line_manager` always needed.
   reports_to?: string | null;
+  manager_name?: string | null;
+  manager_job_title?: string | null;
   department?: string | null;
   job_title?: string | null;
   email?: string | null;
@@ -949,39 +954,280 @@ export type Employee = {
   base_salary?: number | string | null;
   is_active?: boolean | null;
   is_driver?: boolean | null;
+
+  /* ── Civil identity (12763). Everything a work contract names somebody by.
+   * `maiden_name` is asked for only when gender is FEMALE and the marital
+   * status implies a name change — "Née FORMUM Epse FORGHAB" only exists in
+   * that case. See employeeUsesMaidenName. */
+  staff_no?: string | null; // the matricule; allocated, never typed
+  civility?: string | null;
+  gender?: string | null;
+  maiden_name?: string | null;
+  date_of_birth?: string | null;
+  place_of_birth?: string | null;
+  father_name?: string | null;
+  mother_name?: string | null;
+  nationality?: string | null;
+  marital_status?: string | null;
+  dependent_children?: number | null;
+  id_document_type?: string | null;
+  id_document_number?: string | null;
+  id_document_issued_on?: string | null;
+  id_document_issued_at?: string | null;
+  id_document_expires_on?: string | null;
+
+  /* ── Contact card (12763) ── */
+  phone_desk?: string | null;
+  phone_mobile?: string | null;
+  phone_whatsapp?: string | null;
+  personal_email?: string | null;
+  residence_address?: string | null;
+  residence_city?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_relationship?: string | null;
+  emergency_contact_phone?: string | null;
+
+  /* ── Standing terms a contract is drafted from (12763) ── */
+  hired_on?: string | null;
+  probation_months?: number | null;
+  place_of_work?: string | null;
+  working_hours?: string | null;
+  payment_method?: string | null;
+  salary_currency?: string | null;
+  bank_block?: Record<string, string | number | boolean> | null;
+  risk_class_rate?: number | string | null;
+  signatory_name?: string | null;
+
+  /* ── Lifecycle (12763). `is_active` stays, derived from `status` by a DB
+   * trigger, so every screen that reads the boolean keeps working. */
+  status?: EmployeeStatus | null;
+  terminated_on?: string | null;
+  termination_reason?: string | null;
+
+  /* ── The login, joined on the read (employees.repo.get). This is what lets
+   * an employee record answer "does this person have a way in?" without
+   * opening the Users screen to find out. */
+  account_user_id?: string | null;
+  account_email?: string | null;
+  account_username?: string | null;
+  account_status?: string | null;
+  account_last_login_at?: string | null;
+};
+
+/** The wizard asks for a maiden name only where one exists: a woman whose name
+ *  changed. The API accepts it unconditionally — an imported record must still
+ *  be storable — so this rule lives in the form, not the schema. */
+export const employeeUsesMaidenName = (
+  gender?: string | null,
+  maritalStatus?: string | null,
+) =>
+  gender === "FEMALE" &&
+  ["MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"].includes(maritalStatus || "");
+
+/** Every field the create/update endpoints accept. One type, so the wizard and
+ *  the sectioned edit form cannot drift apart on what an employee is. */
+export type EmployeeInput = Partial<
+  Omit<
+    Employee,
+    | "employee_id"
+    | "entity_name"
+    | "entity_code"
+    | "manager_name"
+    | "manager_job_title"
+    | "staff_no"
+    | "account_user_id"
+    | "account_email"
+    | "account_username"
+    | "account_status"
+    | "account_last_login_at"
+  >
+> & { full_name?: string };
+
+/* ── Staff file (12764) ──────────────────────────────────────────────────── */
+export type EmployeeDocumentType = {
+  document_type_id: string;
+  code: string;
+  name: string;
+  requires_expiry?: boolean | null;
+  requires_issuing_authority?: boolean | null;
+};
+export type EmployeeDocument = {
+  document_id: string;
+  employee_id: string;
+  document_type_id?: string | null;
+  document_type_code?: string | null;
+  document_type_name?: string | null;
+  title?: string | null;
+  document_number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  physical_ref?: string | null;
+  vault_id?: string | null;
+  has_file?: boolean | null;
+  original_name?: string | null;
+  scan_status?: string | null;
+  verification_status?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+};
+/** What the wizard and the documents tab post. `file_data_url` is optional on
+ *  purpose: a scan is a verification gate, not a creation gate (12764), so a
+ *  document held on paper is recorded with a `physical_ref` and no bytes. */
+export type EmployeeDocumentInput = {
+  document_type_id?: string | null;
+  document_type_code?: string | null;
+  title?: string | null;
+  document_number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  physical_ref?: string | null;
+  notes?: string | null;
+  file_data_url?: string | null;
+  file_name?: string | null;
+};
+
+/* ── Standing pay lines (12765) ──────────────────────────────────────────── */
+export type EmployeeAllowance = {
+  employee_allowance_id: string;
+  employee_id: string;
+  label: string;
+  kind?: string | null;
+  amount: number | string | null;
+  currency?: string | null;
+  periodicity?: string | null;
+  is_taxable?: boolean | null;
+  in_cnps_base?: boolean | null;
+  in_gross?: boolean | null;
+  effective_on?: string | null;
+  ends_on?: string | null;
+  notes?: string | null;
+};
+export type EmployeeAllowanceInput = Omit<
+  EmployeeAllowance,
+  "employee_allowance_id" | "employee_id" | "amount"
+> & { amount: number };
+
+/** Article 3 of a contract, computed: base + the live monthly cash lines. */
+export type EmployeePay = {
+  base_salary: number;
+  currency?: string | null;
+  lines: EmployeeAllowance[];
+  monthly_gross: number;
+};
+
+/* ── Contract readiness ──────────────────────────────────────────────────── */
+export type ReadinessGap = {
+  key: string;
+  label: string;
+  group: "identity" | "employment" | "documents";
+  severity: "required" | "recommended";
+  kind: "field" | "document";
+};
+export type EmployeeReadiness = {
+  ready: boolean;
+  complete: number;
+  total: number;
+  percent: number;
+  missing: ReadinessGap[];
+  missing_required: ReadinessGap[];
+};
+
+/* ── The login behind the Provision-account affordance ───────────────────── */
+export type EmployeeAccount = {
+  employee_id: string;
+  provisioned: boolean;
+  accounts: {
+    user_id: string;
+    email?: string | null;
+    username?: string | null;
+    full_name?: string | null;
+    status?: string | null;
+    last_login_at?: string | null;
+  }[];
+  suggested: { full_name: string; email: string; employee_id: string } | null;
 };
 export const listEmployees = () => tenant<Employee[]>("/employees");
 export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
 // `scope_id` is the department reference (0490); `department` is the display
 // snapshot the API keeps in step with it.
-export const createEmployee = (body: {
-  full_name: string;
-  entity_id?: string;
-  scope_id?: string;
-  reports_to?: string;
-  department?: string;
-  job_title?: string;
-  email?: string;
-  employment_type?: string;
-}) => tenant<Employee>("/employees", { method: "POST", body });
+/** The whole hire in one call — the person, their papers and their standing pay
+ *  lines. One transaction on the server, so a failure part-way cannot leave an
+ *  employee with no documents and nothing saying so. */
+export const createEmployee = (
+  body: EmployeeInput & {
+    full_name: string;
+    documents?: EmployeeDocumentInput[];
+    allowances?: EmployeeAllowanceInput[];
+  },
+) => tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, {
     method: "POST",
     body: { is_active },
   });
-export const updateEmployee = (
+export const updateEmployee = (id: string, body: EmployeeInput) =>
+  tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
+/** The lifecycle transition (12763) — an event, not a field edit, so it has its
+ *  own endpoint and its own audit action. */
+export const setEmployeeStatus = (
   id: string,
-  body: Partial<{
-    full_name: string;
-    entity_id: string;
-    scope_id: string;
-    reports_to: string;
-    department: string;
-    job_title: string;
-    email: string;
-    employment_type: string;
-  }>,
-) => tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
+  body: {
+    status: EmployeeStatus;
+    terminated_on?: string | null;
+    termination_reason?: string | null;
+  },
+) => tenant<Employee>(`/employees/${id}/status`, { method: "POST", body });
+
+/* Staff file (12764) */
+export const employeeDocumentTypes = () =>
+  tenant<EmployeeDocumentType[]>("/employees/document-types");
+export const employeeDocuments = (id: string) =>
+  tenant<EmployeeDocument[]>(`/employees/${id}/documents`);
+export const addEmployeeDocument = (id: string, body: EmployeeDocumentInput) =>
+  tenant<EmployeeDocument>(`/employees/${id}/documents`, {
+    method: "POST",
+    body,
+  });
+export const removeEmployeeDocument = (id: string, documentId: string) =>
+  tenant<EmployeeDocument>(`/employees/${id}/documents/${documentId}`, {
+    method: "DELETE",
+  });
+
+/* Standing pay lines (12765) */
+export const employeeAllowances = (id: string) =>
+  tenant<EmployeeAllowance[]>(`/employees/${id}/allowances`);
+export const addEmployeeAllowance = (
+  id: string,
+  body: EmployeeAllowanceInput,
+) =>
+  tenant<EmployeeAllowance>(`/employees/${id}/allowances`, {
+    method: "POST",
+    body,
+  });
+export const removeEmployeeAllowance = (id: string, allowanceId: string) =>
+  tenant<{ deleted: boolean }>(`/employees/${id}/allowances/${allowanceId}`, {
+    method: "DELETE",
+  });
+export const employeePay = (id: string) =>
+  tenant<EmployeePay>(`/employees/${id}/pay`);
+
+/** Is this record complete enough to generate a contract from — and if not,
+ *  exactly which fields and documents are missing. Same list the contract
+ *  module reads, so "ready" here means the generator will accept it. */
+export const employeeReadiness = (id: string) =>
+  tenant<EmployeeReadiness>(`/employees/${id}/readiness`);
+/** The requirement LIST — what the creation wizard scores an unsaved draft
+ *  against, so the browser never carries a second opinion of "complete". */
+export const employeeReadinessRequirements = () =>
+  tenant<{
+    fields: { key: string; label: string; group: string; severity: string }[];
+    documents: { code: string; label: string; severity: string }[];
+  }>("/employees/readiness-requirements");
+/** The login(s) this employee can sign in with. Drives Provision account. */
+export const employeeAccount = (id: string) =>
+  tenant<EmployeeAccount>(`/employees/${id}/account`);
 
 /* ── HR contracts (lifecycle) ── */
 export type Contract = {

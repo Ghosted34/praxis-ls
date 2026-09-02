@@ -45,6 +45,10 @@ usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 usersRouter.post("/:id/password", requirePermission(MODULE, "edit"), validator.password, controller.setPassword);
 usersRouter.post("/:id/status", requirePermission(MODULE, "edit"), validator.status, controller.setStatus);
+// Re-send an activation link. `edit`, like setting a password directly — it is
+// the same authority, exercised in the safer direction (the administrator never
+// learns the credential).
+usersRouter.post("/:id/invite", requirePermission(MODULE, "edit"), forgotLimiter, controller.resendInvite);
 // Per-user email signature (2.1)
 usersRouter.get("/:id/email-signature", requirePermission(MODULE, "view"), controller.getSignature);
 usersRouter.put("/:id/email-signature", requirePermission(MODULE, "edit"), validator.signature, controller.setSignature);

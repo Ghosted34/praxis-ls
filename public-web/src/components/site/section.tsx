@@ -4,7 +4,7 @@ import { ArrowRightIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { SectionHead } from "@/components/site/section-head";
 import { IconTile, type IconComponent } from "@/components/ui/icon-tile";
-import { modeColor, type FreightMode } from "@/lib/service-identity";
+import { serviceColor, type FreightMode } from "@/lib/service-identity";
 
 /**
  * One band of the homepage, and the only place that decides how a band is
@@ -120,6 +120,7 @@ export function MediaCard({
   imageAlt,
   icon: Icon,
   mode,
+  accent: accentToken,
   code,
   eyebrow,
   title,
@@ -140,6 +141,13 @@ export function MediaCard({
    * one colour on the page that means "you may press this".
    */
   mode?: FreightMode;
+  /**
+   * The tenant's own brand token for this card
+   * (`service_type_web_profile.accent`, migration 12755). When present it wins
+   * over `mode`: the positional palette is a guess made in the absence of an
+   * answer, and this is the answer.
+   */
+  accent?: string | null;
   /** The mono code drawn top-left of the panel. Needs `mode` and `icon`. */
   code?: string;
   eyebrow?: React.ReactNode;
@@ -150,7 +158,11 @@ export function MediaCard({
   footer?: React.ReactNode;
   className?: string;
 }) {
-  const accent = mode ? modeColor(mode) : null;
+  // `mode` still decides WHETHER a panel is composed — a card with no identity
+  // (an insight, a case note) keeps its centred tile. `accent` only decides what
+  // colour that panel is painted, so a tenant's choice cannot accidentally turn
+  // a tile into a panel on a grid that never asked for one.
+  const accent = mode ? serviceColor(accentToken, mode) : null;
   /**
    * The composed panel, and the reason it replaces the centred tile.
    *

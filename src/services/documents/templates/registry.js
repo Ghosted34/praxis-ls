@@ -47,7 +47,7 @@ function lineDoc(opts) {
     const signers = opts.signers ? opts.signers(data) : null;
     const sig = signers && signers.length ? k.signerBlock(signers, cfg) : k.signatureBlock(cfg);
     const body = [
-      k.head(entity, opts.title, data.number, opts.meta(data), cfg),
+      k.standardHead(entity, cfg, { title: opts.title, number: data.number, meta: opts.meta(data) }),
       k.parties([
         { label: { fr: "Émetteur", en: "From" }, name: entity.legal_name, lines: [entity.address, entity.niu && `NIU ${entity.niu}`] },
         { label: opts.partyLabel || { fr: "Client", en: "Bill to" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
@@ -59,7 +59,7 @@ function lineDoc(opts) {
       cfg.show && cfg.show.bank ? k.bankBlock(entity, cfg) : "",
       k.termsBlock(cfg),
       sig,
-      k.footer(entity, cfg, verify),
+      k.standardFoot(entity, cfg, verify),
     ].join("");
     return k.shell(k.t(opts.title, cfg.language) + " " + (data.number || ""), body, cfg);
   };
@@ -159,7 +159,7 @@ const TEMPLATES = {
       const ccy = data.currency || cfg.base_currency || "XAF";
       const c = { ...cfg, watermark: cfg.watermark || "PAID" };
       const body = [
-        k.head(entity, { fr: "Reçu de paiement", en: "Payment receipt" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Method" }, data.method]], c),
+        k.standardHead(entity, c, { title: { fr: "Reçu de paiement", en: "Payment receipt" }, number: data.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Method" }, data.method]] }),
         k.parties([{ label: { fr: "Reçu de", en: "Received from" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], c),
         k.section({ fr: "Montant reçu", en: "Amount received" }, `<div class="box" style="font-size:22px;font-weight:700">${k.money(data.amount, ccy, c)}</div>`, c),
         (data.allocations && data.allocations.length)
@@ -168,7 +168,7 @@ const TEMPLATES = {
             data.allocations.map((a) => ({ label: a.label, amount: k.money(a.amount, ccy, c) })), c), c)
           : data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
         k.signatureBlock(c),
-        k.footer(entity, c, verify),
+        k.standardFoot(entity, c, verify),
       ].join("");
       return k.shell("Receipt " + (data.number || ""), body, c);
     },
@@ -184,14 +184,14 @@ const TEMPLATES = {
       const ccy = data.currency || cfg.base_currency || "XAF";
       const secs = (data.sections || []).map((s) => k.section({ fr: s.title, en: s.title }, `<div class="box">${k.esc(s.body).replace(/\n/g, "<br>")}</div>`, cfg)).join("");
       const body = [
-        k.head(entity, { fr: "Proposition commerciale", en: "Proposal" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Client", en: "Client" }, data.party && data.party.name]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Proposition commerciale", en: "Proposal" }, number: data.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Client", en: "Client" }, data.party && data.party.name]] }),
         `<h1 style="margin-top:18px">${k.esc(data.headline || "")}</h1>`,
         secs,
         data.lines && data.lines.length ? k.section({ fr: "Tarification", en: "Pricing" }, k.lineTable(LINE_COLS, fmtLines(data.lines, ccy, cfg), cfg), cfg) : "",
         data.totals ? k.totals([[{ fr: "Total TTC", en: "Total" }, k.money(data.totals.total_ttc, ccy, cfg), { grand: true }]], cfg) : "",
         k.termsBlock(cfg),
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Proposal " + (data.number || ""), body, cfg);
     },
@@ -218,13 +218,13 @@ const TEMPLATES = {
         ? `${data.pay_days > 0 ? `${data.pay_days} ${cfg.language === "fr" ? "jours" : "days"}` : (cfg.language === "fr" ? "immédiat" : "immediate")} (${data.payment_means})`
         : "";
       const body = [
-        k.head(entity, { fr: "Bon de commande", en: "Purchase order" }, data.number, [
+        k.standardHead(entity, cfg, { title: { fr: "Bon de commande", en: "Purchase order" }, number: data.number, meta: [
           [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
           [{ fr: "Livraison", en: "Delivery" }, k.dateFmt(data.delivery_on)],
           [{ fr: "Échéance", en: "Due" }, k.dateFmt(data.due_on)],
           [{ fr: "Conditions de paiement", en: "Payment terms" }, terms || ""],
           [{ fr: "Lieu de livraison", en: "Place of delivery" }, data.delivery_location],
-        ].filter((m) => m[1]), cfg),
+        ].filter((m) => m[1]) }),
         k.parties([
           { label: { fr: "Fournisseur", en: "Supplier" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] },
           { label: { fr: "Destinataire", en: "Ship to" }, name: data.ship_to || entity.legal_name, lines: [data.delivery_location].filter(Boolean) },
@@ -245,7 +245,7 @@ const TEMPLATES = {
           { label: { fr: "Émis par", en: "Issued by" }, name: data.issuer_name, title: data.issuer_title },
           { label: { fr: "Approuvé par", en: "Approved by" }, name: data.approver_name, title: data.approver_title },
         ], cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("PO " + (data.number || ""), body, cfg);
     },
@@ -355,6 +355,9 @@ const TEMPLATES = {
     },
     /** Measured off the render — see scripts/dev/measure-instrument.js. */
     HEIGHT_MM: {
+      // head/foot are SUPERSEDED by k.shellMm (12760) — the shell measures
+      // itself now, because a tenant can change it. Kept as the record of what
+      // the default letterhead measured, and as the fallback nothing reads yet.
       head: 17,        // letterhead + accent rule
       name: 12,        // centred document name + the reference under it
       ident: 11,       // date / delivery date / status row
@@ -426,18 +429,24 @@ const TEMPLATES = {
       // was worth 6mm of a page that has none to spare.
       const blocks = 10 + (pos ? 1 : 0) - (showManifest ? 0 : 1);
       /*
-       * THE MARK'S HEIGHT DOES NOT SCALE, so it is not in the scaling total.
+       * THE SHELL MEASURES ITSELF (12760).
        *
-       * `instrumentHead` sizes the logo with an explicit `height: Nmm` taken
-       * from the tenant's Studio config — deliberately, because an <img>
-       * constrained only by max-height contributes zero width to a flex item in
-       * Chrome and the letterhead rendered invisible. The side effect is that a
-       * 17mm mark is 17mm at every fit, and counting it as shrinkable made the
-       * solver think it had ~6mm more to give than it did. Same class of error
-       * as folding the seal into the scaling total.
+       * `H.head` and `H.foot` were measured constants — right on the day
+       * somebody ran measure-instrument.js, and a lie the moment a tenant added
+       * a footer line or set a taller mark, which is exactly what the letterhead
+       * editor now lets them do. A wrong head budget does not degrade
+       * gracefully: `--k` is solved against a page that does not exist and the
+       * sheet silently becomes two, which is the one failure the one-page
+       * contract exists to prevent.
+       *
+       * `k.shellMm` composes the real letterhead and reports what it costs.
+       * `fixed` is the mark's MARGINAL height — what it adds beside the identity
+       * column, which is its full height on a short letterhead and zero when the
+       * identity column is already taller. `headScaling` and `foot` are the
+       * parts that genuinely follow --k.
        */
-      const markMm = k.headFixedMm(cfg);
-      const scalingMm = (markMm ? 0 : H.head)
+      const shell = k.shellMm(entity, cfg);
+      const scalingMm = shell.headScaling
         + H.name + H.ident + H.consignee
         /*
          * `.cargo` reserves a 26mm minimum whatever it holds — the ruled area
@@ -451,8 +460,8 @@ const TEMPLATES = {
         + (showManifest ? H.manifestHead + manifestRows * H.manifestRow : 0)
         + (pos ? H.position : 0)
         + H.reserves + H.strip + (hasStamp ? H.stampExtra : 0)
-        + H.foot + blocks * H.gap;
-      const fixedMm = markMm + seals.length * F.seal + (seals.length ? 0 : F.footVfy);
+        + shell.foot + blocks * H.gap;
+      const fixedMm = shell.fixed + seals.length * F.seal + (seals.length ? 0 : F.footVfy);
       const cfgFit = { ...cfg, fit: k.fitScale(scalingMm, k.fitBudgetMm(cfg), fixedMm) };
 
       const ident = k.factsGrid([
@@ -582,7 +591,7 @@ const TEMPLATES = {
       ], cfgFit);
 
       const body = `<div class="sheet">`
-        + k.instrumentHead(entity, cfgFit)
+        + k.standardHead(entity, cfgFit)
         + k.docName({ fr: "Bon de livraison", en: "Delivery note" }, data.number, cfgFit, { ref: true })
         + k.ruledBlock(null, ident, cfgFit, { bare: true })
         + consignee
@@ -594,7 +603,7 @@ const TEMPLATES = {
           : `<div class="grow">${cargo}</div>`)
         + reserves
         + strip
-        + k.instrumentFoot(entity, cfgFit, seals.length ? null : verify, {
+        + k.standardFoot(entity, cfgFit, seals.length ? null : verify, {
           pageLabel: `${k.t({ fr: "Page", en: "Page" }, lang)} 1 / 1`,
           provenance: k.t({ fr: "Bon de livraison", en: "Delivery note" }, lang),
         })
@@ -772,19 +781,30 @@ const TEMPLATES = {
       const blocks = 8 + (hasNote ? 1 : 0) + (hasLodged ? 1 : 0);
       const F = TEMPLATES.TRANSIT_ORDER.FIXED_MM;
       /*
-       * The mark's height is Studio config and does NOT follow the fit — see
-       * `kit.headFixedMm`. It belongs in the FIXED total, not the scaling one:
-       * counting it as shrinkable tells the solver it has millimetres to give
-       * that it does not have, and the page comes out over.
+       * THE SHELL MEASURES ITSELF (12760).
+       *
+       * `H.head` and `H.foot` were measured constants — right on the day
+       * somebody ran measure-instrument.js, and a lie the moment a tenant added
+       * a footer line or set a taller mark, which is exactly what the letterhead
+       * editor now lets them do. A wrong head budget does not degrade
+       * gracefully: `--k` is solved against a page that does not exist and the
+       * sheet silently becomes two, which is the one failure the one-page
+       * contract exists to prevent.
+       *
+       * `k.shellMm` composes the real letterhead and reports what it costs.
+       * `fixed` is the mark's MARGINAL height — what it adds beside the identity
+       * column, which is its full height on a short letterhead and zero when the
+       * identity column is already taller. `headScaling` and `foot` are the
+       * parts that genuinely follow --k.
        */
-      const markMm = k.headFixedMm(cfg);
-      const scalingMm = (markMm ? 0 : H.head) + H.name + H.ident + H.facts
+      const shell = k.shellMm(entity, cfg);
+      const scalingMm = shell.headScaling + H.name + H.ident + H.facts
         + H.cargoHead + lines.length * H.cargoRow + wraps * H.cargoWrap + (data.declared_value_text ? H.cargoFoot : 0)
         + H.regime + H.liability + H.docs
         + (hasNote ? H.note : 0) + (hasLodged ? H.lodged : 0)
         + H.strip + (hasStamp ? H.stampExtra : 0)
-        + H.foot + blocks * H.gap;
-      const fixedMm = markMm + seals.length * F.seal + (seals.length ? 0 : F.footVfy);
+        + shell.foot + blocks * H.gap;
+      const fixedMm = shell.fixed + seals.length * F.seal + (seals.length ? 0 : F.footVfy);
       const cfgFit = { ...cfg, fit: k.fitScale(scalingMm, k.fitBudgetMm(cfg), fixedMm) };
 
       /* ── Identity row ───────────────────────────────────────────────────
@@ -937,7 +957,7 @@ const TEMPLATES = {
        * did not give anybody.
        */
       const body = `<div class="sheet">`
-        + k.instrumentHead(entity, cfgFit)
+        + k.standardHead(entity, cfgFit)
         + k.docName({ fr: "Ordre de transit", en: "Transit order" }, data.number, cfgFit, { ref: true })
         + k.ruledBlock(null, ident, cfgFit, { bare: true })
         + k.ruledBlock({ fr: "Détails de l'expédition", en: "Shipment details" }, facts, cfgFit, { bare: true })
@@ -955,7 +975,7 @@ const TEMPLATES = {
          * find. So the foot gets the verification block only when the sheet
          * carries no seal to hold it.
          */
-        + k.instrumentFoot(entity, cfgFit, seals.length ? null : verify, {
+        + k.standardFoot(entity, cfgFit, seals.length ? null : verify, {
           pageLabel: `${k.t({ fr: "Page", en: "Page" }, lang)} 1 / 1`,
           // What this document IS, said once, where a reader needs it: at the
           // end. It was under the title, which is the position of greatest
@@ -1058,7 +1078,7 @@ const TEMPLATES = {
         `<div class="b"><div class="ln">${k.t({ fr: "REÇU PAR", en: "RECEIVED BY" }, cfg.language)}</div></div>` +
         `</div>`;
       const body = [
-        k.head(entity, { fr: "Demande de fonds", en: "Cash request" }, data.number, meta, cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Demande de fonds", en: "Cash request" }, number: data.number, meta: meta }),
         k.parties([{ label: { fr: "Demandeur", en: "Requested by" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
         methodLines ? k.section({ fr: "Détails du paiement", en: "Payment details" }, `<div class="box">${methodLines}</div>`, cfg) : "",
         lines,
@@ -1067,7 +1087,7 @@ const TEMPLATES = {
         context,
         data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
         threeSignatures,
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Cash request " + (data.number || ""), body, cfg);
     },
@@ -1091,7 +1111,7 @@ const TEMPLATES = {
         data.validator ? [{ fr: "Validateur", en: "Validator" }, data.validator] : null,
       ].filter((m) => m && m[1]);
       const body = [
-        k.head(entity, { fr: "Fiche de cotation", en: "Costing sheet" }, data.number, meta, cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Fiche de cotation", en: "Costing sheet" }, number: data.number, meta: meta }),
         k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
         k.totals([
           [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(data.totals.total_ht, ccy)],
@@ -1103,7 +1123,7 @@ const TEMPLATES = {
         ], cfg),
         data.remarks ? k.section({ fr: "Remarques", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Costing " + (data.number || ""), body, cfg);
     },
@@ -1114,12 +1134,12 @@ const TEMPLATES = {
     docType: "REGIE_ADVANCE", title: { fr: "Régie d'avances", en: "Cash advance (régie)" }, module: "costing/regie", fields: ["float ledger"],
     build: (data, cfg, entity, verify) => {
       const body = [
-        k.head(entity, { fr: "Régie d'avances", en: "Cash advance" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Régie d'avances", en: "Cash advance" }, number: data.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)]] }),
         k.parties([{ label: { fr: "Régisseur", en: "Float holder" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
         k.section({ fr: "Montant de l'avance", en: "Advance amount" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, data.currency || cfg.base_currency || "XAF", cfg)}</div>`, cfg),
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Régie " + (data.number || ""), body, cfg);
     },
@@ -1134,7 +1154,7 @@ const TEMPLATES = {
       const col = [{ key: "label", label: { fr: "Libellé", en: "Item" } }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }];
       const map = (arr) => (arr || []).map((e) => ({ label: e.label, amount: k.money(e.amount, ccy, cfg) }));
       const body = [
-        k.head(entity, { fr: "Bulletin de paie", en: "Payslip" }, d.number, [[{ fr: "Période", en: "Period" }, d.period], [{ fr: "Matricule", en: "Staff no." }, d.staff_no]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Bulletin de paie", en: "Payslip" }, number: d.number, meta: [[{ fr: "Période", en: "Period" }, d.period], [{ fr: "Matricule", en: "Staff no." }, d.staff_no]] }),
         k.parties([{ label: { fr: "Salarié", en: "Employee" }, name: d.employee_name, lines: [d.job_title, d.cnps_number && `CNPS ${d.cnps_number}`].filter(Boolean) }], cfg),
         k.section({ fr: "Gains", en: "Earnings" }, k.lineTable(col, map(d.earnings), cfg), cfg),
         k.section({ fr: "Retenues", en: "Deductions" }, k.lineTable(col, map(d.deductions), cfg), cfg),
@@ -1143,7 +1163,7 @@ const TEMPLATES = {
           [{ fr: "Total retenues", en: "Total deductions" }, k.money(d.total_deductions, ccy, cfg)],
           [{ fr: "Net à payer", en: "Net pay" }, k.money(d.net, ccy, cfg), { grand: true }],
         ], cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Payslip " + (d.number || ""), body, cfg);
     },
@@ -1155,14 +1175,14 @@ const TEMPLATES = {
     build: (d, cfg, entity, verify) => {
       const arts = (d.articles || []).map((a, i) => k.section({ fr: `Article ${i + 1} — ${a.title}`, en: `Article ${i + 1} — ${a.title}` }, `<div class="box">${k.esc(a.body).replace(/\n/g, "<br>")}</div>`, cfg)).join("");
       const body = [
-        k.head(entity, { fr: "Contrat de travail", en: "Employment contract" }, d.number, [[{ fr: "Type", en: "Type" }, d.kind], [{ fr: "Date d'effet", en: "Effective" }, k.dateFmt(d.effective_on)]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Contrat de travail", en: "Employment contract" }, number: d.number, meta: [[{ fr: "Type", en: "Type" }, d.kind], [{ fr: "Date d'effet", en: "Effective" }, k.dateFmt(d.effective_on)]] }),
         k.parties([
           { label: { fr: "Employeur", en: "Employer" }, name: entity.legal_name, lines: [entity.address, entity.rccm && `RCCM ${entity.rccm}`].filter(Boolean) },
           { label: { fr: "Salarié", en: "Employee" }, name: d.employee_name, lines: [d.job_title].filter(Boolean) },
         ], cfg),
         arts,
         k.signatureBlock({ ...cfg, show: { ...cfg.show, signature: true } }),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Contract " + (d.number || ""), body, cfg);
     },
@@ -1183,12 +1203,12 @@ const TEMPLATES = {
         [{ fr: "Révision", en: "Review" }, k.dateFmt(d.review_on)],
       ];
       const body = [
-        k.head(entity, { fr: d.title, en: d.title }, d.number, meta, cfg),
+        k.standardHead(entity, cfg, { title: { fr: d.title, en: d.title }, number: d.number, meta: meta }),
         secs,
         // A procedure is issued, not agreed between two parties — so it carries
         // an owner's sign-off rather than the two-party block a contract uses.
         k.signatureBlock({ ...cfg, show: { ...cfg.show, signature: true } }),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("SOP " + (d.number || ""), body, cfg);
     },
@@ -1200,11 +1220,11 @@ const TEMPLATES = {
     build: (d, cfg, entity, verify) => {
       const col = [{ key: "item", label: { fr: "Article", en: "Item" } }, { key: "ordered", label: { fr: "Commandé", en: "Ordered" }, num: true }, { key: "received", label: { fr: "Reçu", en: "Received" }, num: true }, { key: "condition", label: { fr: "État", en: "Condition" } }];
       const body = [
-        k.head(entity, { fr: "Bon de réception", en: "Goods-received note" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Réf. commande", en: "PO ref" }, d.po_ref], [{ fr: "Contrôle QA", en: "QA" }, d.qa_status]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Bon de réception", en: "Goods-received note" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Réf. commande", en: "PO ref" }, d.po_ref], [{ fr: "Contrôle QA", en: "QA" }, d.qa_status]] }),
         k.parties([{ label: { fr: "Fournisseur", en: "Supplier" }, name: d.supplier, lines: [] }], cfg),
         k.lineTable(col, d.lines || [], cfg),
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("GRN " + (d.number || ""), body, cfg);
     },
@@ -1228,18 +1248,18 @@ const TEMPLATES = {
         { key: "condition", label: { fr: "État", en: "Condition" } },
       ];
       const body = [
-        k.head(entity, { fr: "Bon de réception", en: "Goods-received note" }, d.number, [
+        k.standardHead(entity, cfg, { title: { fr: "Bon de réception", en: "Goods-received note" }, number: d.number, meta: [
           [{ fr: "Date", en: "Date" }, k.dateFmt(d.date)],
           [{ fr: "Commande", en: "PO" }, d.po_ref],
           [{ fr: "Facture fournisseur", en: "Supplier invoice" }, d.supplier_invoice_ref],
-        ].filter((m) => m[1]), cfg),
+        ].filter((m) => m[1]) }),
         k.parties([{ label: { fr: "Fournisseur", en: "Supplier" }, name: d.supplier, lines: (d.supplier_lines || []).filter(Boolean) }], cfg),
         k.lineTable(col, d.lines || [], cfg),
         d.note ? k.section({ fr: "Note", en: "Note" }, `<div class="box">${k.esc(d.note)}</div>`, cfg) : "",
         k.signerBlock([
           { label: { fr: "Reçu par", en: "Received by" }, name: d.received_by_name, title: d.received_by_title },
         ], cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("GRN " + (d.number || ""), body, cfg);
     },
@@ -1250,7 +1270,7 @@ const TEMPLATES = {
     docType: "TRIP_SHEET", title: { fr: "Feuille de route", en: "Trip sheet" }, module: "fleet/dispatch", fields: ["odometer out/in"],
     build: (d, cfg, entity, verify) => {
       const body = [
-        k.head(entity, { fr: "Feuille de route", en: "Trip sheet" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Feuille de route", en: "Trip sheet" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]] }),
         k.parties([{ label: { fr: "Véhicule", en: "Vehicle" }, name: d.vehicle, lines: [] }, { label: { fr: "Chauffeur", en: "Driver" }, name: d.driver, lines: [] }], cfg),
         k.section({ fr: "Itinéraire", en: "Route" }, `<div class="box">${k.esc(d.origin || "")} → ${k.esc(d.destination || "")}</div>`, cfg),
         k.totals([
@@ -1259,7 +1279,7 @@ const TEMPLATES = {
           [{ fr: "Distance", en: "Distance" }, d.distance === null || d.distance === undefined ? "" : `${d.distance} km`, { grand: true }],
         ], cfg),
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Trip sheet " + (d.number || ""), body, cfg);
     },
@@ -1273,11 +1293,11 @@ const TEMPLATES = {
       const col = [{ key: "label", label: { fr: "Pièce / Main d'œuvre", en: "Part / labour" } }, { key: "qty", label: { fr: "Qté", en: "Qty" }, num: true }, { key: "unit", label: { fr: "P.U.", en: "Unit" }, num: true }, { key: "total", label: { fr: "Total", en: "Total" }, num: true }];
       const rows = (d.parts || []).map((p) => ({ label: p.label, qty: String(p.qty), unit: k.money(p.unit_cost, ccy, cfg), total: k.money(Number(p.qty) * Number(p.unit_cost), ccy, cfg) }));
       const body = [
-        k.head(entity, { fr: "Ordre de réparation", en: "Work order" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Statut", en: "Status" }, d.status]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Ordre de réparation", en: "Work order" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Statut", en: "Status" }, d.status]] }),
         k.parties([{ label: { fr: "Véhicule", en: "Vehicle" }, name: d.vehicle, lines: [d.description].filter(Boolean) }], cfg),
         k.lineTable(col, rows, cfg),
         k.totals([[{ fr: "Coût total", en: "Total cost" }, k.money(d.cost, ccy, cfg), { grand: true }]], cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Work order " + (d.number || ""), body, cfg);
     },
@@ -1289,10 +1309,10 @@ const TEMPLATES = {
     build: (d, cfg, entity, verify) => {
       const col = [{ key: "item", label: { fr: "Article", en: "Item" } }, { key: "expected", label: { fr: "Théorique", en: "Expected" }, num: true }, { key: "counted", label: { fr: "Compté", en: "Counted" }, num: true }, { key: "variance", label: { fr: "Écart", en: "Variance" }, num: true }];
       const body = [
-        k.head(entity, { fr: "Feuille d'inventaire", en: "Cycle-count sheet" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Emplacement", en: "Location" }, d.location]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Feuille d'inventaire", en: "Cycle-count sheet" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Emplacement", en: "Location" }, d.location]] }),
         k.lineTable(col, (d.lines || []).map((l) => ({ item: l.item, expected: String(l.expected), counted: String(l.counted), variance: String(l.counted - l.expected) })), cfg),
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Count sheet " + (d.number || ""), body, cfg);
     },
@@ -1306,13 +1326,13 @@ const TEMPLATES = {
       const col = [{ key: "invoice", label: { fr: "Facture", en: "Invoice" } }, { key: "date", label: { fr: "Date", en: "Date" } }, { key: "days", label: { fr: "Retard (j)", en: "Days late" }, num: true }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }];
       const rows = (d.invoices || []).map((i) => ({ invoice: i.ref, date: k.dateFmt(i.date), days: String(i.days_late), amount: k.money(i.amount, ccy, cfg) }));
       const body = [
-        k.head(entity, { fr: "Lettre de relance", en: "Dunning letter" }, d.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Lettre de relance", en: "Dunning letter" }, number: d.number, meta: [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)]] }),
         k.parties([{ label: { fr: "À l'attention de", en: "To" }, name: d.client, lines: d.client_lines || [] }], cfg),
         `<p style="margin:14px 2px">${k.esc(d.body || "")}</p>`,
         k.lineTable(col, rows, cfg),
         k.totals([[{ fr: "Total dû", en: "Total due" }, k.money(d.total, ccy, cfg), { grand: true }]], cfg),
         k.signatureBlock(cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Dunning " + (d.number || ""), body, cfg);
     },
@@ -1324,10 +1344,10 @@ const TEMPLATES = {
     build: (d, cfg, entity, verify) => {
       const msgs = (d.messages || []).map((m) => `<div class="box" style="margin-bottom:6px"><div class="micro">${k.esc(m.at)} · ${k.esc(m.author)}</div><div>${k.esc(m.text)}</div></div>`).join("");
       const body = [
-        k.head(entity, { fr: "Export certifié de conversation", en: "Certified conversation export" }, d.number, [[{ fr: "Canal", en: "Channel" }, d.channel], [{ fr: "Période", en: "Period" }, d.period]], cfg),
+        k.standardHead(entity, cfg, { title: { fr: "Export certifié de conversation", en: "Certified conversation export" }, number: d.number, meta: [[{ fr: "Canal", en: "Channel" }, d.channel], [{ fr: "Période", en: "Period" }, d.period]] }),
         k.section({ fr: "Chaîne de possession", en: "Chain of custody" }, `<div class="box">${k.t({ fr: "Empreinte", en: "Hash" }, cfg.language)}: ${k.esc(d.hash || "—")}</div>`, cfg),
         k.section({ fr: "Messages", en: "Messages" }, msgs || `<div class="muted">—</div>`, cfg),
-        k.footer(entity, cfg, verify),
+        k.standardFoot(entity, cfg, verify),
       ].join("");
       return k.shell("Certified export " + (d.number || ""), body, cfg);
     },
@@ -1375,7 +1395,7 @@ function reportBuild(title) {
     const p = data && data.period;
     const periodStr = p ? (typeof p === "object" ? (p.period_code || p.from || p.as_of || "") : p) : "";
     const meta = [[{ fr: "Édité le", en: "Generated" }, k.dateFmt(new Date())], periodStr ? [{ fr: "Période", en: "Period" }, periodStr] : null].filter(Boolean);
-    const body = [k.head(entity, title, "", meta, cfg), autoBlocks(data, cfg), k.footer(entity, cfg, verify)].join("");
+    const body = [k.standardHead(entity, cfg, { title: title, meta: meta }), autoBlocks(data, cfg), k.standardFoot(entity, cfg, verify)].join("");
     return k.shell(k.t(title, cfg.language), body, cfg);
   };
 }
@@ -1432,7 +1452,7 @@ function vatReturnBuild(data, cfg, entity, verify) {
   const period = data.period && (data.period.period_code || data.period.from || "");
   const meta = [[{ fr: "Régime", en: "Regime" }, "Réel / Actual"], period ? [{ fr: "Période", en: "Period" }, period] : null, entity.niu ? [{ fr: "NIU", en: "Tax ID" }, entity.niu] : null].filter(Boolean);
   const body = [
-    k.head(entity, { fr: "Déclaration de TVA", en: "VAT return" }, "", meta, cfg),
+    k.standardHead(entity, cfg, { title: { fr: "Déclaration de TVA", en: "VAT return" }, meta: meta }),
     k.section({ fr: "Taux", en: "Rate" }, `<div class="box">TVA 19,25% — droit commun / standard rate</div>`, cfg),
     k.section({ fr: "Liquidation", en: "Computation" }, formTable([
       [k.t({ fr: "TVA collectée (aval)", en: "Output VAT (collected)" }, cfg.language), collected],
@@ -1441,7 +1461,7 @@ function vatReturnBuild(data, cfg, entity, verify) {
       [k.t({ fr: "TVA à payer", en: "VAT due" }, cfg.language), due, true],
       [k.t({ fr: "Crédit à reporter", en: "Credit carried forward" }, cfg.language), credit],
     ], cfg), cfg),
-    k.footer(entity, cfg, verify),
+    k.standardFoot(entity, cfg, verify),
   ].join("");
   return k.shell("VAT return", body, cfg);
 }
@@ -1463,7 +1483,7 @@ function cnpsBuild(data, cfg, entity, verify) {
   const period = data.period && (data.period.period_code || "");
   const meta = [entity.legal_name ? [{ fr: "Employeur", en: "Employer" }, entity.legal_name] : null, period ? [{ fr: "Période", en: "Period" }, period] : null].filter(Boolean);
   const body = [
-    k.head(entity, { fr: "Déclaration CNPS (DIPE)", en: "CNPS declaration" }, "", meta, cfg),
+    k.standardHead(entity, cfg, { title: { fr: "Déclaration CNPS (DIPE)", en: "CNPS declaration" }, meta: meta }),
     rows.length ? k.section({ fr: "Détail des cotisations", en: "Contributions detail" }, k.lineTable(cols, trows, cfg), cfg) : "",
     k.section({ fr: "Récapitulatif", en: "Summary" }, formTable([
       [k.t({ fr: "Pension — part salariale (4,2%)", en: "Pension — employee (4.2%)" }, cfg.language), firstNum(totals.employee_pension, data.part_salariale)],
@@ -1473,7 +1493,7 @@ function cnpsBuild(data, cfg, entity, verify) {
       [k.t({ fr: "TOTAL À VERSER", en: "TOTAL DUE" }, cfg.language), firstNum(totals.total, data.total_a_verser), true],
     ], cfg), cfg),
     `<p class="muted" style="margin-top:8px">${k.t({ fr: "Plafond mensuel", en: "Monthly ceiling" }, cfg.language)}: ${k.xaf(750000, cfg)}</p>`,
-    k.footer(entity, cfg, verify),
+    k.standardFoot(entity, cfg, verify),
   ].join("");
   return k.shell("CNPS declaration", body, cfg);
 }
@@ -1494,7 +1514,7 @@ function dsfBuild(data, cfg, entity, verify) {
   const mapStmt = (arr) => arr.map((r) => ({ poste: r.poste || r.compte || "", montant: k.xaf(firstNum(r.montant, r.amount), cfg) }));
   const produits = data.produits || [], charges = data.charges || [], actif = data.actif || [], passif = data.passif || [];
   const sections = [
-    k.head(entity, { fr: "Déclaration Statistique et Fiscale (DSF)", en: "Statistical & tax return (DSF)" }, "", meta, cfg),
+    k.standardHead(entity, cfg, { title: { fr: "Déclaration Statistique et Fiscale (DSF)", en: "Statistical & tax return (DSF)" }, meta: meta }),
     k.section({ fr: "Cadre A — Identification", en: "Section A — Identification" }, `<div class="box">${k.t({ fr: "Régime du réel — Système comptable OHADA (SYSCOHADA révisé)", en: "Actual regime — OHADA accounting (revised SYSCOHADA)" }, cfg.language)}</div>`, cfg),
   ];
   if (produits.length || charges.length) {
@@ -1516,7 +1536,7 @@ function dsfBuild(data, cfg, entity, verify) {
       [`${k.t({ fr: "Impôt sur les sociétés", en: "Corporate income tax" }, cfg.language)} (${isRate}%)`, is, true],
     ], cfg), cfg),
     `<p class="muted" style="margin-top:8px">${k.t({ fr: "Résumé structuré SYSCOHADA — à compléter sur la liasse officielle DGI.", en: "Structured SYSCOHADA summary — file on the official DGI liasse." }, cfg.language)}</p>`,
-    k.footer(entity, cfg, verify),
+    k.standardFoot(entity, cfg, verify),
   );
   return k.shell("DSF", sections.join(""), cfg);
 }
@@ -1550,10 +1570,8 @@ function certificateBuild(d, cfg, entity) {
   const when = (s) => (s && s.utc ? `${s.local || s.utc}${s.local ? ` (${s.utc})` : ""}` : "");
 
   const body = [
-    k.head(entity, { fr: "Certificat d'exécution", en: "Certificate of completion" },
-      String(d.request_id || "").slice(0, 8).toUpperCase(),
-      [[{ fr: "Terminé le", en: "Completed" }, when(d.completed_at)],
-        [{ fr: "Signatures", en: "Signatures" }, `${d.chain.signed} / ${d.chain.of}`]], cfg),
+    k.standardHead(entity, cfg, { title: { fr: "Certificat d'exécution", en: "Certificate of completion" }, number: String(d.request_id || "").slice(0, 8).toUpperCase(), meta: [[{ fr: "Terminé le", en: "Completed" }, when(d.completed_at)],
+        [{ fr: "Signatures", en: "Signatures" }, `${d.chain.signed} / ${d.chain.of}`]] }),
 
     // 1. Document identity.
     k.section({ fr: "1. Le document", en: "1. The document" }, rows([
@@ -1652,7 +1670,7 @@ function certificateBuild(d, cfg, entity) {
     ))}</p>`,
     // No verify block: see the header. `null` rather than an omitted argument
     // so a reader sees the decision rather than an oversight.
-    k.footer(entity, cfg, null),
+    k.standardFoot(entity, cfg, null),
   ].join("");
 
   return k.shell(`Certificate ${String(d.request_id || "").slice(0, 8)}`, body, { ...cfg, language: L });

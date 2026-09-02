@@ -29,10 +29,17 @@ const verifyTotp = zValidate(z.object({ pending_token: z.string().min(1), code: 
 const totpCode = zValidate(z.object({ code: z.string().min(6).max(8) }));
 
 const schemas = {
+  // `password` is optional ONLY because `invite` is the alternative — the
+  // service refuses a create that carries neither, with a message that names
+  // both. Keeping the either/or in the service rather than as a Zod refinement
+  // is deliberate: the password itself is then checked by the full policy
+  // (length, complexity, HIBP) in one place, instead of a min(8) here and the
+  // real rules somewhere else disagreeing about what is acceptable.
   create: z.object({
     email: z.string().trim().email(),
     full_name: z.string().min(1),
-    password: z.string().min(8),
+    password: z.string().min(8).optional(),
+    invite: z.boolean().optional(),
     username: z.string().optional().nullable(),
     employee_id: z.string().uuid().optional().nullable(),
     status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]).optional(),

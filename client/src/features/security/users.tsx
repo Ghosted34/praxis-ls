@@ -15,6 +15,9 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
+import { useSearchParams } from "react-router-dom";
+import { Callout } from "@/components/ui/callout";
+import { Checkbox } from "@/components/ui/checkbox";
 import { num, dateFmt } from "@/lib/format";
 import { tenant, ApiError } from "@/lib/api-client";
 import { RowActions } from "@/components/ui/row-actions";
@@ -26,29 +29,56 @@ import {
   shell,
 } from "./shared";
 
+/** What "Provision account" on an employee record hands over: the person to
+ *  create the login for, resolved server-side from their employee row. Passed as
+ *  props rather than read from the URL inside the form, so the form has one way
+ *  of being told who it is for. */
+export type ProvisionSeed = {
+  employee_id: string;
+  full_name: string;
+  email: string;
+};
+
 function UserForm({
   user,
   roles,
+  seed,
   onClose,
   onSaved,
 }: {
   user: User | null;
   roles: Role[];
+  /** Pre-fill for a login being provisioned from an employee record. */
+  seed?: ProvisionSeed | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const editing = !!user;
-  const [email, setEmail] = React.useState(user?.email || "");
-  const [fullName, setFullName] = React.useState(user?.full_name || "");
+  const [email, setEmail] = React.useState(user?.email || seed?.email || "");
+  const [fullName, setFullName] = React.useState(
+    user?.full_name || seed?.full_name || "",
+  );
   const [username, setUsername] = React.useState(user?.username || "");
   const [password, setPassword] = React.useState("");
+  /*
+   * INVITING IS THE DEFAULT, and it is the default for a security reason
+   * rather than a convenience one. Typing a password for somebody means the
+   * credential is known to two people from the moment it exists, travels over
+   * WhatsApp or a sticky note to reach them, and is usually never changed by
+   * the person it belongs to. An invitation mails a single-use activation link
+   * to the address on the record and the administrator never learns the
+   * password at all.
+   */
+  const [invite, setInvite] = React.useState(true);
   const [status, setStatus] = React.useState(user?.status || "ACTIVE");
   const [roleIds, setRoleIds] = React.useState<string[]>([]);
   // Authority overlay (ISSUER/VALIDATOR/APPROVER/LINE_MANAGER) — layered on top of
   // roles and read by requireCapability() on high-authority routes (e.g. disburse).
   const allCaps = useList<Capability>("/capabilities");
   const [capIds, setCapIds] = React.useState<string[]>([]);
-  const [employeeId, setEmployeeId] = React.useState(user?.employee_id || "");
+  const [employeeId, setEmployeeId] = React.useState(
+    user?.employee_id || seed?.employee_id || "",
+  );
   // Live-schema employees only — app_user + its employee FK live in the live
   // schema, so linking must never offer sandbox employees (would 409/EMPLOYEE_NOT_FOUND).
   const employees = useList<{ employee_id: string; full_name?: string }>(
@@ -123,18 +153,38 @@ function UserForm({
           body: { capability_ids: capIds },
         });
       } else {
-        const created = await tenant<User>("/users", {
-          method: "POST",
-          body: {
-            email,
-            full_name: fullName,
-            password,
-            username: username || null,
-            employee_id: employeeId || null,
-            status,
-            role_ids: roleIds,
+        const created = await tenant<User & { invitation?: { sent?: boolean; error?: string } }>(
+          "/users",
+          {
+            method: "POST",
+            body: {
+              email,
+              full_name: fullName,
+              // Exactly one of the two reaches the API. Sending both would let
+              // a typed password ride along with an invitation and quietly
+              // become a second, unknown way in.
+              ...(invite ? { invite: true } : { password }),
+              username: username || null,
+              employee_id: employeeId || null,
+              status,
+              role_ids: roleIds,
+            },
           },
-        });
+        );
+        // The account is created either way; only the email may have failed.
+        // Saying so here is the difference between "they never got it" being
+        // discovered now and being discovered on their first day.
+        if (invite && created?.invitation && created.invitation.sent === false) {
+          setError(
+            created.invitation.error ||
+              "The account was created, but the invitation email could not be sent. Use Resend invitation.",
+          );
+          // The account EXISTS, so the list has to refresh — but the dialog
+          // stays open, because closing it would take the only notice that the
+          // invitation never went out off the screen with it.
+          onSaved();
+          return;
+        }
         // Assign capabilities only after the login exists (needs its user_id).
         if (created?.user_id && capIds.length) {
           await tenant(`/capabilities/users/${created.user_id}`, {
@@ -229,19 +279,30 @@ function UserForm({
             </Select>
           </Field>
           {!editing && (
-            <Field
-              label={tr("Password")}
-              required
-              hint="Minimum 8 characters. The user should change it after first sign-in."
-              className="sm:col-span-2"
-            >
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+            <div className="space-y-3 sm:col-span-2">
+              <Checkbox
+                checked={invite}
+                onCheckedChange={setInvite}
+                label={tr("Email them an invitation to set their own password")}
+                hint={tr(
+                  "A single-use activation link, valid for 72 hours. Nobody but them ever knows the password.",
+                )}
               />
-            </Field>
+              {!invite && (
+                <Field
+                  label={tr("Password")}
+                  required
+                  hint="Minimum 8 characters. The user should change it after first sign-in."
+                >
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </Field>
+              )}
+            </div>
           )}
         </div>
 
@@ -403,8 +464,80 @@ export function UsersPage() {
   const rolesQ = useList<Role>("/roles");
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("ALL");
-  const [form, setForm] = React.useState<{ user: User | null } | null>(null);
+  const [form, setForm] = React.useState<{
+    user: User | null;
+    seed?: ProvisionSeed | null;
+  } | null>(null);
   const [pwTarget, setPwTarget] = React.useState<User | null>(null);
+  const [inviting, setInviting] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+
+  /*
+   * ── THE DEEP LINK FROM AN EMPLOYEE RECORD ────────────────────────────────
+   *
+   * "Provision account" on somebody's HR dossier arrives here as
+   * `/security/users?provision=<employee_id>`, and this resolves it: it asks
+   * the employees API who that is and opens the New-user dialog with their name,
+   * email and employee link already filled in.
+   *
+   * Only the ID travels in the URL. Carrying the name and address as query
+   * parameters would mean the form trusts whatever the link says a person is
+   * called — the record is the source, and reading it here is one request.
+   *
+   * The parameter is then cleared with `replace`, so Back returns to the
+   * employee rather than re-opening this dialog, and a refresh does not
+   * resurrect a form the operator has already dealt with.
+   */
+  const [params, setParams] = useSearchParams();
+  const provisionFor = params.get("provision");
+  React.useEffect(() => {
+    if (!provisionFor) return;
+    let live = true;
+    tenant<{
+      provisioned: boolean;
+      accounts: { user_id: string }[];
+      suggested: ProvisionSeed | null;
+    }>(`/employees/${provisionFor}/account`)
+      .then((acc) => {
+        if (!live) return;
+        if (acc.suggested) setForm({ user: null, seed: acc.suggested });
+        else
+          setNotice(
+            "That employee already has a login — it is in the list below.",
+          );
+      })
+      .catch((err) => {
+        if (live) setNotice(errMsg(err));
+      })
+      .finally(() => {
+        if (!live) return;
+        setParams(
+          (prev) => {
+            const p = new URLSearchParams(prev);
+            p.delete("provision");
+            return p;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      live = false;
+    };
+  }, [provisionFor, setParams]);
+
+  /** Re-send an activation link — the first one expired, or it bounced. */
+  async function resendInvite(u: User) {
+    setInviting(u.user_id);
+    setNotice(null);
+    try {
+      await tenant(`/users/${u.user_id}/invite`, { method: "POST", body: {} });
+      setNotice(`Invitation sent to ${u.email}.`);
+    } catch (err) {
+      setNotice(errMsg(err));
+    } finally {
+      setInviting(null);
+    }
+  }
 
   const all = React.useMemo(() => rows || [], [rows]);
   const list = all.filter((u) => {
@@ -454,6 +587,18 @@ export function UsersPage() {
       label: "",
       render: (r) => (
         <RowActions>
+          {/* Safer than handing out a password: they set their own, and the
+              administrator never sees it. Shown for everybody, because an
+              expired invitation and a forgotten password are the same errand. */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={inviting === r.user_id}
+            disabled={Boolean(inviting)}
+            onClick={() => resendInvite(r)}
+          >
+            Invite
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setPwTarget(r)}>
             Password
           </Button>
@@ -485,6 +630,18 @@ export function UsersPage() {
         }
       />
       <HubTabs />
+      {notice && (
+        <Callout
+          tone="info"
+          action={
+            <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>
+              Dismiss
+            </Button>
+          }
+        >
+          {notice}
+        </Callout>
+      )}
       <KpiRow>
         <KpiTile label={tr("Users")} value={num(all.length)} />
         <KpiTile label={tr("Active")} value={num(active)} />
@@ -535,6 +692,7 @@ export function UsersPage() {
       {form && (
         <UserForm
           user={form.user}
+          seed={form.seed}
           roles={rolesQ.rows || []}
           onClose={() => setForm(null)}
           onSaved={reload}

@@ -27,7 +27,11 @@ function fakeClient({ linkedEmployeeId = "emp-1", row = null } = {}) {
     queries,
     async query(sql, params) {
       queries.push({ sql, params });
-      if (/FROM app_user/i.test(sql)) {
+      // Matched on the WHOLE lookup, not just the table name. The employee read
+      // itself now joins `app_user` (employees.repo.get resolves whether the
+      // person has a login), so a bare /FROM app_user/ answered that query with
+      // the user lookup's row and the projection came back empty.
+      if (/FROM app_user WHERE user_id/i.test(sql)) {
         return { rows: linkedEmployeeId ? [{ employee_id: linkedEmployeeId }] : [] };
       }
       return { rows: row ? [row] : [] };

@@ -28,6 +28,7 @@ router.get("/signature/png", requireFeature("mail.signatures"), c.png);
 // Generating other people's identity assets is brand governance, not a personal
 // preference, so the batch surfaces sit behind the same MOD-70 gate the template
 // admin does — unlike /signature/png, which renders only the caller's own.
+router.get("/signature/diagnose", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.diagnose);
 router.get("/signature/staff", requireFeature("mail.signatures"), requirePermission("MOD-70", "view"), c.staff);
 router.post("/signature/batch", requireFeature("mail.signatures"), requirePermission("MOD-70", "edit"), v.batch, c.batch);
 

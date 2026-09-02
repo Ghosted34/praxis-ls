@@ -1166,6 +1166,30 @@ export async function downloadSignatureBatch(body: {
   await tenantDownloadPost("/mail/signature/batch", body, `signatures-${stamp}.zip`);
 }
 
+export type SignatureDiagnosticStep = {
+  step: string;
+  ok: boolean;
+  why?: string;
+  [detail: string]: unknown;
+};
+
+export type SignatureDiagnostics = {
+  ok: boolean;
+  /** The step to fix. The ones after it are usually consequences. */
+  first_failure: string | null;
+  renderer_version: number;
+  steps: SignatureDiagnosticStep[];
+};
+
+/**
+ * Run the card-delivery chain and report the first broken link. MOD-70 `view`.
+ *
+ * `write: true` also stores one throwaway object, which is the only way to
+ * prove the storage leg rather than infer it.
+ */
+export const diagnoseSignature = (write = false) =>
+  tenant<SignatureDiagnostics>(`/mail/signature/diagnose${write ? "?write=true" : ""}`);
+
 export type DomainHealthRow = {
   domain_health_check_id: string;
   domain: string;

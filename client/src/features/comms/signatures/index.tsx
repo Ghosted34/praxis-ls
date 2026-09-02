@@ -28,8 +28,9 @@ import { useResource } from "@/lib/use-resource";
 import { DesignerTab } from "./designer-tab";
 import { BatchTab } from "./batch-tab";
 import { TemplatesTab } from "./templates-tab";
+import { DeliveryTab } from "./delivery-tab";
 
-type TabKey = "designer" | "batch" | "templates";
+type TabKey = "designer" | "batch" | "templates" | "delivery";
 
 const TABS: { key: TabKey; label: string; adminOnly: boolean; hint: string }[] = [
   {
@@ -49,6 +50,12 @@ const TABS: { key: TabKey; label: string; adminOnly: boolean; hint: string }[] =
     label: "Templates",
     adminOnly: true,
     hint: "Which layout each part of the company gets",
+  },
+  {
+    key: "delivery",
+    label: "Delivery check",
+    adminOnly: true,
+    hint: "Why the card image is missing from sent mail",
   },
 ];
 
@@ -99,6 +106,7 @@ export function SignaturesPage() {
       {tab === "designer" && <DesignerTab />}
       {tab === "batch" && isAdmin && <BatchTab />}
       {tab === "templates" && isAdmin && <TemplatesTab />}
+      {tab === "delivery" && isAdmin && <DeliveryTab />}
     </section>
   );
 }

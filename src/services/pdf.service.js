@@ -6,7 +6,6 @@
  */
 "use strict";
 
-const fs = require("fs");
 const crypto = require("crypto");
 const { config } = require("../config/env");
 const storage = require("./storage.service");
@@ -15,44 +14,10 @@ const { getSetting } = require("../shared/config/settings");
 const { assertDocType } = require("../modules/vault/document_vault/document_vault.types");
 const { AppError } = require("../utils/errors");
 
-/** Standard system paths where Chromium/Chrome might exist. */
-const KNOWN_CHROMIUM_PATHS = [
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/snap/bin/chromium",
-  "/usr/local/bin/chromium",
-  "/usr/local/bin/chrome",
-];
-
-function resolveChromiumPath() {
-  if (config.PUPPETEER_EXECUTABLE_PATH && config.PUPPETEER_EXECUTABLE_PATH.trim()) {
-    try {
-      if (fs.existsSync(config.PUPPETEER_EXECUTABLE_PATH.trim())) return config.PUPPETEER_EXECUTABLE_PATH.trim();
-    } catch {
-       /* @silent:storage|parse|teardown */
-      /* ignore */
-}
-  }
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && process.env.PUPPETEER_EXECUTABLE_PATH.trim()) {
-    try {
-      if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH.trim())) return process.env.PUPPETEER_EXECUTABLE_PATH.trim();
-    } catch {
-       /* @silent:storage|parse|teardown */
-      /* ignore */
-}
-  }
-  for (const p of KNOWN_CHROMIUM_PATHS) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {
-         /* @silent:storage|parse|teardown */
-      /* ignore */
-}
-  }
-  return undefined;
-}
+// Moved to services/chromium.js when the signature card renderer turned out to
+// be launching WITHOUT it — see that file's header for the failure it caused.
+// One definition, two callers.
+const { resolveChromiumPath } = require("./chromium");
 
 /** SHA-256 hex of the rendered bytes — the doc DNA a QR resolves and re-checks. */
 function contentHash(buffer) {

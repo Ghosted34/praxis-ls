@@ -46,8 +46,29 @@ function employeeOf(person) {
   };
 }
 
+/**
+ * Bump this when the RENDERER changes what it produces from unchanged data.
+ *
+ * `source_hash` covers the inputs — employee, entity, template, branding — and
+ * nothing about the code. That is correct for data staleness and silently wrong
+ * for everything else: a signature rendered while the card PNG was failing was
+ * cached as HTML with no <img>, and because none of its inputs changed, every
+ * subsequent send returned that same broken HTML from the cache. Shipping a fix
+ * did nothing. Two rounds of "why is it still not working" were this.
+ *
+ * So the renderer's own version is an input. Changing it invalidates every
+ * cached render at once, which is exactly what a render-behaviour fix needs and
+ * costs one re-render per person on their next send.
+ *
+ *   1 — card + text fallback (#288)
+ *   2 — servable storage key, branded fallback (#289)
+ *   3 — chromium resolved by probe, screenshot coerced to Buffer
+ */
+const RENDERER_VERSION = 3;
+
 function inputsFor(person, entity, profile, template, mailbox, language, identity, system, branding) {
   return {
+    renderer: RENDERER_VERSION,
     employee_updated: person && (person.employee_id || person.job_title || person.department),
     employee: employeeOf(person),
     entity_id: entity && entity.entity_id,
@@ -504,6 +525,7 @@ function bake(html, text, resolved) {
 }
 
 module.exports = {
+  RENDERER_VERSION,
   tenantNamespace,
   resolveFor, renderPng, renderBatch, listStaff, cardPreview, getOwnProfile, saveOwnProfile,
   listTemplates, updateTemplate, invalidateForUser, invalidateForEntity, bake,

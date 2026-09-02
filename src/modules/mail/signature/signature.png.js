@@ -92,7 +92,7 @@ async function compress(buffer) {
     return await sharp(buffer).png({ palette: true, colours: 256, effort: 7 }).toBuffer();
   } catch {
     /* @silent:render the uncompressed screenshot is still the right image */
-    return buffer;
+    return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   }
 }
 
@@ -113,10 +113,21 @@ let browserPromise = null;
 async function getBrowser() {
   if (!browserPromise) {
     const puppeteer = require("puppeteer");
-    const { config } = require("../../../config/env");
+    // `resolveChromiumPath()`, NOT `config.PUPPETEER_EXECUTABLE_PATH || undefined`.
+    //
+    // That expression is what broke every signature card in production. The env
+    // schema defaults the key to `""`, so on any deployment that does not set it
+    // the value is `undefined`; Puppeteer then looks for the Chromium it
+    // downloads at install time, and the Dockerfile sets
+    // PUPPETEER_SKIP_DOWNLOAD=true because the image installs Alpine's package
+    // instead. Launch threw on every send, the catch in signature.service
+    // swallowed it, and recipients got the text fallback with no card — while
+    // PDFs rendered perfectly, because pdf.service had always probed for the
+    // binary. The browser was at /usr/bin/chromium the whole time.
+    const { resolveChromiumPath } = require("../../../services/chromium");
     browserPromise = puppeteer.launch({
       headless: true,
-      executablePath: config.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: resolveChromiumPath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     }).then((browser) => {
       browser.on("disconnected", () => { browserPromise = null; });
@@ -139,7 +150,18 @@ async function defaultShot(pageHtml, d) {
       deviceScaleFactor: d.scale,
     });
     await page.setContent(pageHtml, { waitUntil: "networkidle0" });
-    return await page.screenshot({ type: "png", omitBackground: false });
+    // Buffer.from, for the reason pdf.service.js records at length
+    // (BAD_STORAGE_BUFFER, live 22 Aug 2026): Puppeteer 23 resolves a
+    // Uint8Array where it used to resolve a Buffer, `storage.put` requires a
+    // real Buffer, and `Buffer.isBuffer(uint8Array)` is false — so the bytes
+    // reach the storage boundary and are rejected there with a 400. It has not
+    // bitten the card yet only because `compress()` runs sharp in between and
+    // sharp hands back a Buffer; the day sharp throws, its own catch returns
+    // the raw screenshot and this becomes the same outage one file over.
+    //
+    // Not `Buffer.from(u8.buffer)`: a typed array can be a VIEW into a larger
+    // ArrayBuffer, and `.buffer` would take the whole backing store.
+    return Buffer.from(await page.screenshot({ type: "png", omitBackground: false }));
   } finally {
     await page.close().catch(() => { /* @silent:teardown the next shot opens a new page */ });
   }

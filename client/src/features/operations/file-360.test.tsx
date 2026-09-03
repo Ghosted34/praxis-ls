@@ -65,6 +65,7 @@ const OVERVIEW = {
     pod: "Douala",
     eta: "2026-08-14",
     client_name: "Brasseries du Cameroun SA",
+    service_key: "SEA",
     service_name_en: "Sea Freight Import",
     rate_provider_name: "Maersk",
     milestone_total: 10,
@@ -157,10 +158,12 @@ describe("Operations file 360 · the page", () => {
     ).toBeInTheDocument();
     // Client, route, ETA and BL all come from the response, not from a row the
     // caller passed in — one meta line, asserted whole. This is what fails if
-    // the header ever goes back to carrying ids only.
+    // the header ever goes back to carrying ids only. The transport-document
+    // word is derived from `service_key` (sea → BL, air → MAWB, road → Waybill,
+    // rail → CIM); the legacy hard-coded "BL / MAWB" said "we did not care".
     expect(
       screen.getByText(
-        "Brasseries du Cameroun SA · Antwerp → Douala · ETA 14 Aug 2026 · BL / MAWB MAEU123456",
+        "Brasseries du Cameroun SA · Antwerp → Douala · ETA 14 Aug 2026 · BL MAEU123456",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Export of beer")).toBeInTheDocument();

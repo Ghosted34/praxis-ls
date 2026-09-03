@@ -65,7 +65,13 @@ import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
 import { MilestoneChain } from "./milestone-chain";
 import { QTickets } from "./q-tickets";
-import { humanizeKey, routeLabel, serviceLabel, tone } from "./shared";
+import {
+  humanizeKey,
+  routeLabel,
+  serviceLabel,
+  tone,
+  transportRefLabel,
+} from "./shared";
 import { DocGroup, DocRow, MoneyRow, PersonRow } from "./components";
 // The shared shipment/service details (0660) — the same component every
 // document, costing and quotation renders, so what ops sees on the file and
@@ -208,7 +214,9 @@ function RelatedRail({
         <Record360Card
           label={tr("Documents")}
           value={
-            header.bl_mawb ? `BL / MAWB ${header.bl_mawb}` : "Open the documents"
+            header.bl_mawb
+              ? `${transportRefLabel(header.service_key)} ${header.bl_mawb}`
+              : "Open the documents"
           }
           hint={header.vessel_flight || undefined}
           onClick={() => onJump("documents")}
@@ -645,7 +653,8 @@ function FileHeaderCard({
         header.client_name,
         route !== "—" && route,
         header.eta && `ETA ${dateFmt(header.eta)}`,
-        header.bl_mawb && `BL / MAWB ${header.bl_mawb}`,
+        header.bl_mawb &&
+          `${transportRefLabel(header.service_key)} ${header.bl_mawb}`,
       ]}
       actions={
         <FileActions header={header} onEdit={onEdit} onChanged={onChanged} />

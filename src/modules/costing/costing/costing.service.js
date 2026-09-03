@@ -261,7 +261,14 @@ async function assertNoLiveCosting(client, dossierId) {
       `This operations file already has a costing (${existing.doc_number || existing.costing_id.slice(0, 8)}, ${existing.status}). ` +
         "A file has one costing: open that one, and if it is approved request an unlock to amend it.",
       409,
-      { costing_id: existing.costing_id, status: existing.status },
+      // `doc_number` rides the details so the client can render "CST-2026-0043"
+      // in its "Open existing costing" affordance rather than an id slice — the
+      // sentence in `message` is fine for a log, not for a button people press.
+      {
+        costing_id: existing.costing_id,
+        status: existing.status,
+        doc_number: existing.doc_number ?? null,
+      },
     );
   }
 }

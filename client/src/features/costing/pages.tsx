@@ -12,7 +12,9 @@ import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { Callout } from "@/components/ui/callout";
 import { ErrorState, EmptyState } from "@/components/ui/states";
+import { ApiError } from "@/lib/api-client";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -83,6 +85,16 @@ const refOf = (rows: Dossier[] | null) => {
  * price against. This asks only what the sheet cannot derive: which file, in
  * which currency, and who validates it.
  */
+/** What the server sends back when the one-live-costing-per-file guard fires
+ *  (`assertNoLiveCosting`). Rides on `ApiError.fields` when `code` is
+ *  `COSTING_EXISTS`, so the dialog can offer a real escape hatch rather than a
+ *  wall of prose ending in a dead button. */
+type ExistingCosting = {
+  costing_id: string;
+  status?: string | null;
+  doc_number?: string | null;
+};
+
 function CostingForm({
   onClose,
   onCreated,
@@ -90,6 +102,7 @@ function CostingForm({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const { rows: dossiers } = useList<Dossier>("/operations");
   const { rows: users } = useList<{
     user_id: string;
@@ -102,8 +115,20 @@ function CostingForm({
   const [validatorId, setValidatorId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  /*
+   * The one-live-costing-per-file collision (12766 — `uq_costing_one_live_per_dossier`).
+   * The server refuses the create with `code: "COSTING_EXISTS"` and returns the
+   * offending sheet's id and status in `fields`; that becomes the "Open existing
+   * costing" primary action here. Without this the operator saw a wall of text
+   * naming a sheet they had no button to open and pressed "Open worksheet" a
+   * second time, which re-hit the same 409.
+   */
+  const [existing, setExisting] = React.useState<ExistingCosting | null>(null);
 
   const file = (dossiers || []).find((d) => d.dossier_id === dossierId);
+  const openExisting = existing
+    ? () => navigate(`${COSTING_BASE}/${existing.costing_id}`)
+    : null;
 
   return (
     <Modal
@@ -118,6 +143,12 @@ function CostingForm({
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
+          // A second submit while the "open existing" hand-off is already the
+          // primary action must go where it says, not re-hit the 409.
+          if (openExisting) {
+            openExisting();
+            return;
+          }
           setBusy(true);
           setError(null);
           try {
@@ -128,14 +159,32 @@ function CostingForm({
             });
             onCreated(made.costing_id);
           } catch (err) {
-            setError(errMsg(err));
+            if (
+              err instanceof ApiError &&
+              err.code === "COSTING_EXISTS" &&
+              err.fields &&
+              typeof (err.fields as ExistingCosting).costing_id === "string"
+            ) {
+              setExisting(err.fields as ExistingCosting);
+            } else {
+              setError(errMsg(err));
+            }
           } finally {
             setBusy(false);
           }
         }}
       >
         <Field label={tr("Operations file")} required>
-          <Select value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
+          <Select
+            value={dossierId}
+            onChange={(e) => {
+              setDossierId(e.target.value);
+              // A different file may or may not have its own live costing —
+              // don't strand yesterday's answer on today's question.
+              setExisting(null);
+              setError(null);
+            }}
+          >
             <option value="">—</option>
             {(dossiers || []).map((d) => (
               <option key={d.dossier_id} value={d.dossier_id}>
@@ -181,12 +230,39 @@ function CostingForm({
             </Select>
           </Field>
         </div>
-        {error && <ErrorState message={error} />}
+        {existing && openExisting ? (
+          <Callout
+            tone="warn"
+            title={tr("This file already has a costing")}
+            action={
+              <Button type="button" variant="outline" onClick={openExisting}>
+                {tr("Open existing costing")}
+              </Button>
+            }
+          >
+            <p>
+              <span className="num font-medium text-foreground">
+                {existing.doc_number ||
+                  `${existing.costing_id.slice(0, 8)}…`}
+              </span>
+              {existing.status ? ` · ${statusLabel(existing.status)}` : ""}
+            </p>
+            <p className="mt-1">
+              {tr(
+                "A file has one costing. Open that one; if it is approved, request an unlock to amend it.",
+              )}
+            </p>
+          </Callout>
+        ) : error ? (
+          <ErrorState message={error} />
+        ) : null}
         <FormButtons
           busy={busy}
           disabled={!dossierId || busy}
           onCancel={onClose}
-          saveLabel={tr("Open worksheet")}
+          saveLabel={
+            existing ? tr("Open existing costing") : tr("Open worksheet")
+          }
         />
       </form>
     </Modal>

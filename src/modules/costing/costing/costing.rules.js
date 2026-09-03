@@ -197,4 +197,28 @@ function diffLines(before = [], after = []) {
   };
 }
 
-module.exports = { computeCosting, reconcile, toXaf, snapshotLines, diffLines, lineKey };
+/**
+ * The lifecycle, in words a person reads.
+ *
+ * A PAIR, never a pre-joined bilingual string — the transit order's lesson
+ * (transit_order.rules.js): a projection that joins the two halves leaves
+ * `cfg.language` nothing to decide, so a document configured `fr` prints the
+ * English half too. Every label that reaches a template leaves here as
+ * {fr, en} and the template picks a side.
+ *
+ * It lives with the rules rather than with the document because the worksheet
+ * and the printed sheet must call the same state the same thing — the legacy
+ * costing printed `SUBMITTED_FOR_VALIDATION` on an A4 page.
+ */
+const STATUS_WORDS = {
+  DRAFT: { fr: "Brouillon", en: "Draft" },
+  SUBMITTED_FOR_VALIDATION: { fr: "À valider", en: "To validate" },
+  SUBMITTED_FOR_APPROVAL: { fr: "À approuver", en: "To approve" },
+  APPROVED_LOCKED: { fr: "Approuvée", en: "Approved" },
+  UNLOCK_REQUESTED: { fr: "Réouverture demandée", en: "Unlock requested" },
+  REJECTED: { fr: "Rejetée", en: "Rejected" },
+};
+const statusWords = (status) => STATUS_WORDS[String(status || "").toUpperCase()]
+  || { fr: String(status || ""), en: String(status || "") };
+
+module.exports = { computeCosting, reconcile, toXaf, snapshotLines, diffLines, lineKey, statusWords };

@@ -245,6 +245,75 @@ const BUILDER_SOURCE = Object.assign(Object.create(null), {
     trial_period_months: Number.isFinite(Number(d.trial_period_months)) ? Number(d.trial_period_months) : 0,
     clauses: (Array.isArray(d.clauses) ? d.clauses : []).map((c) => str(c && c.heading ? c.heading : c)),
   }),
+
+  /**
+   * The costing worksheet — the budget three people sign off in turn.
+   *
+   * WHAT IT ATTESTS TO, and what it deliberately does not.
+   *
+   * The FIGURES and the LINES that produce them, because that is what an
+   * approver approved: a line added or repriced after approval must invalidate
+   * the seal, which is the entire point of sealing a budget. `container_type`
+   * is part of a line's identity here for the same reason it is on screen — a
+   * charge priced per box is several lines that share a dictionary item and
+   * differ only by equipment, so without it two demurrage lines hash as one
+   * and swapping the 20' amount onto the 40' would go unnoticed.
+   *
+   * `is_disbursement` and `upstream_vat`, because a line's NATURE decides
+   * whether our VAT applies to it. Flipping a service line to pass-through
+   * after approval changes what the client owes without changing any amount on
+   * the page, and a payload that hashed only the amounts would call that
+   * document unchanged.
+   *
+   * The SHIPMENT, because a costing is a price FOR a shipment: the same
+   * charges against a different vessel, port or B/L are a different
+   * commitment, and 0661 snapshots those facts onto the sheet at approval
+   * precisely so they can be attested to.
+   *
+   * NOT the amendment summary. It describes the diff since the last approval,
+   * not the commitment, and it changes as the sheet is edited — hashing a
+   * derived view would make every seal read as amended the moment somebody
+   * touched a line, which is the opposite of what the status means.
+   *
+   * NOT the remarks. They are the pricer's note to the validator ("carrier
+   * rate valid 14 days"), not a term of the budget.
+   */
+  COSTING: (d) => ({
+    v: 1,
+    type: "COSTING",
+    number: str(d.number),
+    date: str(d.date),
+    status: str(d.status),
+    dossier_ref: str(d.dossier_ref),
+    currency: str(d.currency || "XAF"),
+    exchange_rate: num(d.exchange_rate, 8),
+    party: party(d.party),
+    shipment: {
+      bl_mawb: str(d.bl_mawb),
+      pol: str(d.pol),
+      pod: str(d.pod),
+      eta: str(d.eta),
+      incoterm: str(d.incoterm),
+      carrier: str(d.carrier),
+    },
+    lines: (Array.isArray(d.lines) ? d.lines : []).map((l) => ({
+      label: str(l.label),
+      container_type: str(l.container_type),
+      qty: qty(l.qty),
+      unit: money(l.unit),
+      tax: money(l.tax),
+      is_disbursement: l.is_disbursement === true,
+      upstream_vat: money(l.upstream_vat),
+      amount: money(l.amount !== undefined && l.amount !== null ? l.amount : Number(l.qty || 1) * Number(l.unit || 0)),
+    })),
+    totals: {
+      total_ht: money(d.totals && d.totals.total_ht),
+      vat_total: money(d.totals && d.totals.vat_total),
+      total_ttc: money(d.totals && d.totals.total_ttc),
+      disbursement_total: money(d.totals && d.totals.disbursement_total),
+      upstream_vat_total: money(d.totals && d.totals.upstream_vat_total),
+    },
+  }),
 });
 
 /** The only thing anything looks a builder up in. Insertion order preserved. */

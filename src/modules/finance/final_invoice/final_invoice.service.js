@@ -204,27 +204,6 @@ async function createDraft(client, opts) {
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-/**
- * Idempotently open a DRAFT invoice shell for a dossier's approved costing.
- * Shared by BOTH the synchronous costing-approval handoff (A7 #3) and the async
- * orchestration backstop handler — so they can never diverge or double-create.
- * TX-agnostic; skips if a FINAL invoice already exists for the dossier.
- */
-async function ensureDraftForCosting(client, costingId) {
-  if (!costingId) return { skipped: "no costing id" };
-  const { rows } = await client.query(
-    "SELECT c.dossier_id, d.entity_id, d.client_id " +
-      "FROM costing c JOIN dossier d ON d.dossier_id = c.dossier_id WHERE c.costing_id = $1",
-    [costingId],
-  );
-  const r = rows[0];
-  if (!r || !r.dossier_id) return { skipped: "costing has no dossier" };
-  if (!r.entity_id) return { skipped: "dossier has no entity" };
-  const exists = await client.query("SELECT 1 FROM invoice WHERE dossier_id = $1 AND type = 'FINAL' LIMIT 1", [r.dossier_id]);
-  if (exists.rows.length) return { skipped: "final invoice already exists for dossier" };
-  const inv = await createDraftCore(client, { entityId: r.entity_id, clientId: r.client_id, dossierId: r.dossier_id, actor: { user_id: null } });
-  return { created: true, invoice_id: inv.invoice_id };
-}
 
 async function updateDraft(client, { invoiceId, patch = {}, lines = null, actor = {}, pricingOverride = null }) {
   const inv = await repo.getInvoice(client, invoiceId);
@@ -377,4 +356,4 @@ async function previewTotals(client, { invoiceId, entryDate = null }) {
   return { totals: determined.totals, advance_open: advanceOpen, line_count: lineRows.length };
 }
 
-module.exports = { createDraft, createDraftCore, ensureDraftForCosting, updateDraft, submit, postApproved, previewTotals, list, listPaged, get };
+module.exports = { createDraft, createDraftCore, updateDraft, submit, postApproved, previewTotals, list, listPaged, get };

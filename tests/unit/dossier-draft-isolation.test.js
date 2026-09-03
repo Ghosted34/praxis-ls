@@ -68,8 +68,6 @@ const ALLOW_BASE_TABLE = {
     "dossierPrefill(dossierId) — §3.2: the simulator prefills containers/ATA/" +
     "shipping line from ONE file the pricer just picked from the (view-backed) " +
     "picker. By dossier_id, never an enumeration.",
-  "modules/finance/final_invoice/final_invoice.service.js":
-    "Resolves a costing's dossier by costing_id. A costing implies a promoted file.",
   "modules/documents/template/template.service.js":
     "Recipient lookup from a delivery note / transit order id. Neither exists on a draft.",
   "orchestration/handlers/fuel-log-created-dossier-cost.js":

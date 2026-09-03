@@ -11,7 +11,19 @@ const validator = require("./costing.validator");
 const MODULE = "MOD-46";
 const router = express.Router();
 router.use(authMiddleware);
-router.get("/", requirePermission(MODULE, "view"), controller.list);
+// Literal segments before "/:id", or "suggest" and "kpis" parse as costing ids.
+//
+// Both need only `view`. `suggest` in particular WRITES NOTHING — it reads the
+// service type's tiered charge set and prices it — so gating it on `create`
+// would stop a validator seeing what the author was offered.
+//
+// It also resolves expense rates server-side, deliberately: the client used to
+// call `GET /expense-rates/resolve` once per line, which is N round trips AND
+// requires the caller to hold MOD-10 (Expense Rates) just to have a costing
+// price itself. One call, gated on the module that owns the document.
+router.get("/suggest", requirePermission(MODULE, "view"), validator.suggestQuery, controller.suggest);
+router.get("/kpis", requirePermission(MODULE, "view"), validator.listQuery, controller.kpis);
+router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);

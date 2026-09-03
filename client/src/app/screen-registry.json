@@ -983,6 +983,8 @@
       "actions": [
         "list_costings",
         "get_costing",
+        "costing_kpis",
+        "suggest_costing_lines",
         "create_costing",
         "update_costing",
         "costing_status",

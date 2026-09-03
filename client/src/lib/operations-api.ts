@@ -1330,7 +1330,21 @@ export type DossierOverview = {
     fully_collected: boolean;
     ready_to_complete: boolean;
   } | null;
-  costing: { count: number; planned_cost?: number | null };
+  /** 12766 — the file's live costing, so the 360 can name it, price it and
+   *  LINK to it. It carried a count and a number before, which made the one
+   *  screen that tells you a file has a costing the one place you could not
+   *  open it. `planned_cost` is XAF-normalised at each sheet's own rate. */
+  costing: {
+    count: number;
+    planned_cost?: number | null;
+    costing_id?: string | null;
+    doc_number?: string | null;
+    status?: string | null;
+    currency?: string | null;
+    total_ht?: number | null;
+    total_vat?: number | null;
+    total_ttc?: number | null;
+  };
   costs: { actual_cost?: number | null; gl_entries: number };
   invoicing: {
     count: number;
@@ -1368,10 +1382,17 @@ export type DossierOverview = {
   /** SoD chain on the latest costing + latest locked final invoice. */
   people?: {
     costing?: {
+      costing_id?: string | null;
       doc_number?: string | null;
       status?: string | null;
       validator: OverviewPerson;
+      /** 12766 — who ACTUALLY validated, as distinct from `validator`, who the
+       *  sheet was addressed to. They differ whenever somebody stands in, and
+       *  showing only the latter credited the wrong person. */
+      validated_by?: OverviewPerson;
+      validated_at?: string | null;
       approver: OverviewPerson;
+      approved_at?: string | null;
     } | null;
     invoice?: {
       doc_number?: string | null;

@@ -183,6 +183,10 @@ const CostingHub = lazyNamed(
   () => import("@/features/costing/hub"),
   "CostingHub",
 );
+const CostingSheet360Page = lazyNamed(
+  () => import("@/features/costing/costing-sheet-360"),
+  "CostingSheet360Page",
+);
 const ProcurementHub = lazyNamed(
   () => import("@/features/procurement/hub"),
   "ProcurementHub",
@@ -578,6 +582,15 @@ export function App() {
               <Route path="procurement/:section" element={<ProcurementHub />} />
               {/* Costing — hub */}
               <Route path="costing" element={<CostingHub />} />
+              {/* The worksheet is a full route for the same reason the file 360
+            is: a costing under review gets sent to a validator, and "open
+            Costing, then find CST-2026-0043" is not a link. Declared before
+            `costing/:section` — react-router ranks by specificity, so the
+            three-segment path wins either way. */}
+              <Route
+                path="costing/costing/:costingId"
+                element={<CostingSheet360Page />}
+              />
               <Route path="costing/:section" element={<CostingHub />} />
               {/* Finance (new) */}
               {/* Master data — one hub, deep-linkable tabs (per-section routes still resolve) */}

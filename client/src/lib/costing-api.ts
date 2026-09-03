@@ -3,6 +3,7 @@
  * régie d'avance. Routes mirror src/modules/costing/*.
  */
 import { tenant } from "./api-client";
+import type { ShipmentDetails } from "./operations-api";
 
 /* ── Costing sheets(/costings) ── */
 /** `container_type_ref_id` (0663) records which box the charge was priced for.
@@ -99,6 +100,38 @@ export type Costing = {
    *  sheet approved before and since changed, which is exactly when somebody is
    *  about to be asked to approve it again. */
   amendment?: CostingAmendment | null;
+  /** The operations file this sheet is costing. The worksheet renders from the
+   *  RESPONSE (FRONTEND_GUIDE §3.11), because a sheet opened from a pasted link
+   *  has a uuid and nothing else. Present on GET /costings/:id. */
+  file?: CostingFile | null;
+  /** The file's equipment, one entry per container type with its count — the
+   *  same rows marks & numbers is generated from. */
+  containers?: {
+    container_type_ref_id: string;
+    qty: number;
+    container_type_code?: string | null;
+    container_type_en?: string | null;
+    container_type_fr?: string | null;
+  }[];
+  /** The shipment facts, frozen if the sheet was approved and live if it is
+   *  still being worked on — a pricer prices the SHIPMENT, not a list of codes. */
+  shipment_details?: ShipmentDetails | null;
+  /** Which of the two was used. A document that cannot tell you whether it is
+   *  current or historic is how the legacy reprint problem went unnoticed. */
+  shipment_details_source?: "SNAPSHOT" | "LIVE" | null;
+};
+
+/** The file a costing belongs to, as the sheet's header needs it. */
+export type CostingFile = {
+  dossier_id: string;
+  ref: string;
+  client_name?: string | null;
+  service_type_id?: string | null;
+  service_type_key?: string | null;
+  service_name_en?: string | null;
+  service_name_fr?: string | null;
+  rate_provider_id?: string | null;
+  rate_provider_name?: string | null;
 };
 
 /** One line in the amendment block, as the re-approver reads it. */

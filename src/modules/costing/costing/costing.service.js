@@ -430,13 +430,52 @@ async function snapshotApproval(client, { costing, actor = {} }) {
  * since moved — which is exactly when somebody is about to be asked to approve
  * it a second time and needs to know what changed.
  */
-async function get(client, id) {
+async function get(client, id, { lang = "en" } = {}) {
   const costing = await repo.get(client, id);
   if (!costing) return null;
   const lines = await repo.listLines(client, id);
   costing.lines = lines;
   costing.totals = computeCosting(lines);
   costing.totals.total_ttc_xaf = toXaf(costing.totals.total_ttc, costing.exchange_rate_to_xaf);
+
+  // The file this sheet is costing — its reference, its client, its service and
+  // its carrier. The worksheet needs all four to name what it is looking at,
+  // and a sheet opened from a pasted link has a uuid and nothing else
+  // (FRONTEND_GUIDE §3.11 rule 2: the body renders from the RESPONSE).
+  costing.file = costing.dossier_id
+    ? await repo.dossierForCosting(client, costing.dossier_id)
+    : null;
+  costing.containers = costing.dossier_id
+    ? await repo.containerTypesOnFile(client, costing.dossier_id)
+    : [];
+
+  /*
+   * The shipment facts — frozen if the sheet was approved, live if it is still
+   * being worked on. Same rule, and the same fallback direction, as the transit
+   * order (transit_order.service.js:142): a draft should reflect whatever ops
+   * last learned about the file, while an approved sheet must keep citing the
+   * vessel and route it was approved WITH, because the carrier will roll the
+   * booking and ops will update the file.
+   *
+   * `shipment_details_source` reports which was used rather than leaving the
+   * reader to infer it. 0661 has been writing that snapshot onto costings since
+   * it landed, and until now nothing read it back.
+   */
+  let details = costing.shipment_details_snapshot || null;
+  let source = details ? "SNAPSHOT" : null;
+  if (!details && costing.dossier_id) {
+    try {
+      details = await shipmentDetails.forDossier(client, costing.dossier_id, { lang });
+      source = "LIVE";
+    } catch (err) {
+      // A file whose service type lost its field set must not make the costing
+      // unreadable — the same forgiving-read rule shipment_details follows.
+      logger.warn({ err, costing_id: id }, "[costing] shipment details unavailable");
+      details = null;
+    }
+  }
+  costing.shipment_details = details;
+  costing.shipment_details_source = source;
 
   const snapshot = await repo.latestSnapshot(client, id);
   if (snapshot) {

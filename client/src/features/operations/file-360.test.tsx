@@ -225,6 +225,87 @@ describe("Operations file 360 · the page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Start$/ })).toBeNull();
   });
+
+  /**
+   * The costing card (12766). Before this, the one screen that told you a file
+   * HAD a costing was the one place you could not open it: the reference was
+   * plain text, and the status was the raw enum printed at the operator.
+   */
+  describe("the costing card", () => {
+    const withCosting = {
+      ...OVERVIEW,
+      costing: {
+        count: 1,
+        planned_cost: 1_000_000,
+        costing_id: "c-1",
+        doc_number: "CST-2026-0043",
+        status: "APPROVED_LOCKED",
+      },
+      people: {
+        costing: {
+          costing_id: "c-1",
+          doc_number: "CST-2026-0043",
+          status: "APPROVED_LOCKED",
+          validator: { user_id: "u-2", name: "Jean Mballa" },
+          // Somebody stood in. Crediting `validator` for their decision is a
+          // Separation-of-Duties record that lies.
+          validated_by: { user_id: "u-7", name: "Awa Njoya" },
+          approver: { user_id: "u-3", name: "Paul Etoa" },
+        },
+        invoice: null,
+      },
+    };
+
+    const renderPeople = () =>
+      renderScreen(<OperationFile360Page />, {
+        routes: { ...routes, [`/operations/${ID}/360`]: withCosting },
+        path: `/operations/files/${ID}?tab=people`,
+        pattern: "/operations/files/:fileId",
+      });
+
+    it("links the sheet, and says its status in words", async () => {
+      renderPeople();
+      const link = await screen.findByRole("link", { name: "CST-2026-0043" });
+      expect(link).toHaveAttribute("href", "/costing/costing/c-1");
+      // "Approved", never `APPROVED_LOCKED` — a machine status is not shown raw
+      // anywhere an operator can read it (FRONTEND_GUIDE §5).
+      expect(screen.getByText("Approved")).toBeInTheDocument();
+      expect(screen.queryByText("APPROVED_LOCKED")).toBeNull();
+    });
+
+    it("credits whoever actually validated, not only whoever was asked to", async () => {
+      renderPeople();
+      await screen.findByRole("link", { name: "CST-2026-0043" });
+      expect(screen.getByText("Validator")).toBeInTheDocument();
+      expect(screen.getByText("Jean Mballa")).toBeInTheDocument();
+      expect(screen.getByText("Validated by")).toBeInTheDocument();
+      expect(screen.getByText("Awa Njoya")).toBeInTheDocument();
+    });
+
+    it("stays silent about the stand-in when there was none", async () => {
+      renderScreen(<OperationFile360Page />, {
+        routes: {
+          ...routes,
+          [`/operations/${ID}/360`]: {
+            ...withCosting,
+            people: {
+              ...withCosting.people,
+              costing: {
+                ...withCosting.people.costing,
+                validated_by: { user_id: "u-2", name: "Jean Mballa" },
+              },
+            },
+          },
+        },
+        path: `/operations/files/${ID}?tab=people`,
+        pattern: "/operations/files/:fileId",
+      });
+      await screen.findByRole("link", { name: "CST-2026-0043" });
+      // The row is a DIFFERENCE, not a field. Rendering it when the validator
+      // validated their own sheet is a duplicate line that reads as two people.
+      expect(screen.queryByText("Validated by")).toBeNull();
+    });
+  });
 });
 
 describe("Operations file 360 · the phone", () => {

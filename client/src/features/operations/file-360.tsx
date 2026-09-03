@@ -37,7 +37,7 @@
  * than a number in that case. Do not "fix" a blank margin here — it is a grant.
  */
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { tr } from "@/lib/i18n";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,10 @@ import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ui/pill";
+// A status enum is never shown raw (FRONTEND_GUIDE §5). The costing module
+// owns how its own statuses are said out loud, so this reads its label map
+// rather than keeping a second copy that would drift on the next status.
+import { statusLabel } from "@/features/costing/costing-model";
 import { useUrlTab } from "@/lib/use-url-tab";
 import {
   Record360Card,
@@ -367,18 +371,39 @@ function PeopleTab({
       <div className="space-y-1.5">
         <div className="mb-2 flex items-center gap-2">
           <span className="micro">{tr("Costing")}</span>
-          {people?.costing?.doc_number && (
-            <span className="num micro">{people.costing.doc_number}</span>
-          )}
+          {/* 12766: the reference is a LINK now. The one screen that tells you
+              a file has a costing was the one place you could not open it. */}
+          {people?.costing?.doc_number &&
+            (people.costing.costing_id ? (
+              <Link
+                className="num micro underline-offset-2 hover:underline"
+                to={`/costing/costing/${people.costing.costing_id}`}
+              >
+                {people.costing.doc_number}
+              </Link>
+            ) : (
+              <span className="num micro">{people.costing.doc_number}</span>
+            ))}
           {people?.costing?.status && (
             <Pill tone={tone(people.costing.status)}>
-              {people.costing.status}
+              {statusLabel(people.costing.status)}
             </Pill>
           )}
         </div>
         {people?.costing ? (
           <>
             <PersonRow role="Validator" p={people.costing.validator} />
+            {/* Who actually did it, when that is not the person it was
+                addressed to — crediting the named validator for someone
+                else's decision is a Separation-of-Duties record that lies. */}
+            {people.costing.validated_by &&
+              people.costing.validated_by.user_id !==
+                people.costing.validator?.user_id && (
+                <PersonRow
+                  role="Validated by"
+                  p={people.costing.validated_by}
+                />
+              )}
             <PersonRow role="Approver" p={people.costing.approver} />
           </>
         ) : (
@@ -711,6 +736,11 @@ export function OperationFile360({
         <KpiTile
           label={tr("Planned cost")}
           value={money(d.costing.planned_cost)}
+          hint={
+            d.costing.doc_number
+              ? `${d.costing.doc_number}${d.costing.status ? ` · ${statusLabel(d.costing.status)}` : ""}`
+              : undefined
+          }
           onClick={() => setTab("money")}
           ariaLabel="Planned cost — open the Money tab"
         />

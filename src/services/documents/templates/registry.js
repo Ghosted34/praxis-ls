@@ -1207,46 +1207,37 @@ const TEMPLATES = {
           l.container_type ? ` — ${l.container_type}` : "",
         ].join("");
         return {
-          // The supplier's own VAT rides with the charge it is inside, because
-          // that is the only place it means anything: it is part of the gross
-          // we are re-billing, not a tax of ours sitting in the VAT column.
-          label: label + (l.is_disbursement && has(l.upstream_vat) && l.upstream_vat > 0
-            ? ` (${k.t({ fr: "dont TVA fournisseur", en: "incl. supplier VAT" }, lang)} ${k.money(l.upstream_vat, ccy, cfg)})`
-            : ""),
+          label,
           qty: has(l.qty) ? String(l.qty) : "",
           unit: has(l.unit) ? k.money(l.unit, ccy, cfg) : "",
-          // A pass-through line says WHY it is untaxed, in the column where the
-          // reader is looking for the tax. A blank there reads as "nobody
-          // filled this in" — which is how the legacy sheet's ticked-by-default
-          // VAT box came to charge 19.25% on a customs duty.
+          // 12768: the VAT column carries the amount and nothing else — the rate
+          // in brackets was noise on a document (the reader has the figure). A
+          // débours shows its supplier VAT with (PT) after it, marking a
+          // pass-through re-billed at cost; a débours with no VAT shows just (PT).
           vat: l.is_disbursement
-            ? k.t({ fr: "débours", en: "pass-through" }, lang)
-            : (vatAmount === null ? "" : `${k.money(vatAmount, ccy, cfg)} (${l.tax}%)`),
+            ? (has(l.upstream_vat) && l.upstream_vat > 0
+              ? `${k.money(l.upstream_vat, ccy, cfg)} (PT)`
+              : "(PT)")
+            : (vatAmount === null ? "" : k.money(vatAmount, ccy, cfg)),
           amount: k.money(amount, ccy, cfg),
         };
       });
 
       const totalsRows = [
         [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(t.total_ht, ccy, cfg)],
-        // Inside the block, immediately under the subtotal it qualifies.
+        // Inside the block, immediately under the subtotal it qualifies. Débours
+        // are re-billed at cost; their net is here, their VAT is in the VAT line.
         has(t.disbursement_total) && Number(t.disbursement_total) > 0
-          ? [{ fr: "dont débours (au coût, non taxés)", en: "of which débours (at cost, untaxed)" }, k.money(t.disbursement_total, ccy, cfg)]
+          ? [{ fr: "dont débours (au coût)", en: "of which débours (at cost)" }, k.money(t.disbursement_total, ccy, cfg)]
           : null,
         [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)],
+        // 12768: the supplier's VAT on débours is now IN the VAT above; this
+        // names how much of it, so the (PT) lines reconcile to the total.
+        has(t.upstream_vat_total) && Number(t.upstream_vat_total) > 0
+          ? [{ fr: "dont sur débours (PT)", en: "of which on débours (PT)" }, k.money(t.upstream_vat_total, ccy, cfg)]
+          : null,
         [{ fr: "Total estimé (TTC)", en: "Total estimate (TTC)" }, k.money(t.total_ttc, ccy, cfg), { grand: true }],
       ];
-
-      /*
-       * THE SUPPLIER'S OWN VAT. Below the grand total, deliberately outside
-       * it: we pay the carrier's gross and re-bill the same gross, and that
-       * tax was never ours to collect. Printing it into the VAT line would
-       * charge the client for it twice over.
-       */
-      const upstream = has(t.upstream_vat_total) && Number(t.upstream_vat_total) > 0
-        ? `<div class="muted" style="text-align:right;margin-top:2mm;font-size:9px">${k.esc(
-          `${k.t({ fr: "Dont TVA amont acquittée pour le compte du client", en: "Of which upstream VAT paid on the client's behalf" }, lang)}: ${k.money(t.upstream_vat_total, ccy, cfg)}`,
-        )}</div>`
-        : "";
 
       /*
        * WHAT MOVED SINCE THE LAST APPROVAL. On paper for the same reason it is
@@ -1315,6 +1306,38 @@ const TEMPLATES = {
         })), cfg)
         : k.signatureBlock(cfg);
 
+      /*
+       * REMARKS — a note per débours FIRST, then whatever the pricer wrote
+       * (12768). Every pass-through line gets one line saying what (PT) means:
+       * the charge is re-billed at cost and the VAT shown is the supplier's,
+       * budgeted into the total. So a reader who meets "(PT)" in the VAT column
+       * or the totals has, at the foot of the sheet, the sentence that explains
+       * it — and the user's own remarks sit below that, never above it.
+       */
+      const deboursNotes = (data.lines || [])
+        .filter((l) => l.is_disbursement)
+        .map((l) => {
+          const name = [
+            l.item_code ? `${l.item_code} · ` : "",
+            l.label,
+            l.container_type ? ` — ${l.container_type}` : "",
+          ].join("");
+          return k.t({
+            fr: `(PT) ${name} — débours refacturé au coût ; la TVA indiquée est celle du fournisseur, acquittée pour le compte du client.`,
+            en: `(PT) ${name} — disbursement re-billed at cost; the VAT shown is the supplier's, paid on the client's behalf.`,
+          }, lang);
+        });
+      const remarksHtml = deboursNotes.length || data.remarks
+        ? k.section({ fr: "Remarques", en: "Remarks" },
+          `<div class="box">${
+            deboursNotes.map((n) => `<div>${n}</div>`).join("")
+          }${
+            data.remarks
+              ? `<div style="margin-top:${deboursNotes.length ? "2.5mm" : "0"}">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`
+              : ""
+          }</div>`, cfg)
+        : "";
+
       const body = [
         k.standardHead(entity, cfg, { title, number: data.number, meta }),
         k.parties([{
@@ -1325,12 +1348,11 @@ const TEMPLATES = {
         factCells.length ? k.ruledBlock({ fr: "Expédition", en: "Shipment" }, k.factsGrid(factCells, cfg, { cols: 3 }), cfg, { bare: true }) : "",
         k.lineTable(cols, rows, cfg),
         k.totals(totalsRows, cfg),
-        upstream,
         cfg.show && cfg.show.words !== false && has(data.amount_in_words)
           ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals)
           : "",
         amendment,
-        data.remarks ? k.section({ fr: "Remarques", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
+        remarksHtml,
         sealHtml,
         // One QR per page (§3.12a): a seal already carries it.
         k.standardFoot(entity, cfg, seals.length ? null : verify, {
@@ -1352,10 +1374,12 @@ const TEMPLATES = {
       validator: "Jean Mballa",
       lines: [
         { label: "Fret maritime", item_code: "#E014", qty: 2, unit: 500000, tax: 19.25, is_disbursement: false, amount: 1000000 },
-        { label: "Surestaries", item_code: "#D077", container_type: "45'HC", qty: 1, unit: 119250, tax: null, is_disbursement: true, upstream_vat: 19250, amount: 119250 },
+        { label: "Surestaries", item_code: "#D077", container_type: "45'HC", qty: 1, unit: 100000, tax: null, is_disbursement: true, upstream_vat: 19250, amount: 100000 },
         { label: "Droits et taxes de douane", item_code: "#-1047", qty: 1, unit: 320000, tax: null, is_disbursement: true, upstream_vat: null, amount: 320000 },
       ],
-      totals: { total_ht: 1439250, vat_total: 192500, total_ttc: 1631750, disbursement_total: 439250, upstream_vat_total: 19250 },
+      // Débours VAT is in the total now (12768): HT 1,420,000; VAT 211,750
+      // (192,500 service + 19,250 on the débours); TTC 1,631,750.
+      totals: { total_ht: 1420000, vat_total: 211750, total_ttc: 1631750, disbursement_total: 420000, upstream_vat_total: 19250 },
       amount_in_words: 1631750,
       exchange_rate: 1,
       seals: [],

@@ -19,6 +19,9 @@ const line = z.object({
   tax_code_id: z.string().uuid().optional(),
   container_type_ref_id: z.string().uuid().nullish(),
   upstream_vat_amount: z.number().nonnegative().nullish(),
+  // 12768: the rate a débours was priced at (default TVA_STD 19.25). When set,
+  // the server derives the amount from it; the client sends both.
+  upstream_vat_rate_percent: z.number().min(0).max(100).nullish(),
 });
 // §2.2: margin_percent is gone from both schemas — costing has no margin
 // (an old client still sending it is silently stripped, not errored).

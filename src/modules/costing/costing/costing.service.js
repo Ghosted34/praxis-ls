@@ -333,6 +333,76 @@ async function ensureDocNumber(client, costing) {
   return allocated.number;
 }
 
+/**
+ * The seal each transition applies (Q22, Q27).
+ *
+ * ── WHY THE TRANSITION SIGNS, AND NOT A PERSON ─────────────────────────────
+ *
+ * The legacy costing PDF carries three stamped boxes — raised, validated,
+ * approved — and they are stamped because somebody walked the page round the
+ * office. Ours has the signature engine, so the question was only whether to
+ * ask the user for a second click after the one that already means "I approve
+ * this".
+ *
+ * It does not. The button IS the decision: a validator who has just pressed
+ * "Submit for approval" has validated, and asking them to then choose a
+ * signature card is asking the same question twice — which is how a control
+ * becomes a thing people click through. Sealing inside the transition also
+ * makes the two impossible to separate: there is no path that records an
+ * approval without a seal, and no seal that is not backed by a status change.
+ *
+ * SES, not AES (Q27). The evidence actually collected is an authenticated
+ * session, and `assurance_level` records what was collected rather than what
+ * was asked for (guide §1.3(b)). Step-up stays off for this doc type — the
+ * tenant policy seeded by 12767 leaves `stepup_enabled` false — because a
+ * costing is an internal budget and an emailed code per transition, three
+ * times per file, is the control that gets switched off.
+ *
+ * ── AND WHY A FAILURE HERE DOES NOT UNDO THE APPROVAL ──────────────────────
+ *
+ * Best-effort, deliberately. The decision is the business fact; the seal is
+ * its evidence. A tenant that has not seeded `signature_policy.COSTING`, or
+ * that has emptied it, would otherwise find every costing transition failing
+ * with EMPTY_SIGNATURE_MENU on a screen that says nothing about signatures —
+ * an approval blocked by a settings row nobody knew existed. It is logged at
+ * error level: an unsealed approval is a real gap in the evidence chain, just
+ * not one worth refusing the approval over.
+ */
+const SEAL_REASON = {
+  SUBMIT_VALIDATION: "ACKNOWLEDGED",
+  SUBMIT_APPROVAL: "REVIEWED_ACCEPTED",
+  APPROVE: "APPROVED_DISPATCH",
+};
+
+async function sealTransition(client, { id, to, doc, actor = {} }) {
+  const signReason = SEAL_REASON[to];
+  if (!signReason || !actor.user_id) return;
+  try {
+    // Required lazily: document_signature pulls the template service, which
+    // requires this module back for the costing projection.
+    const signatures = require("../../vault/document_signature/document_signature.service");
+    const presets = require("../../../services/signatures/presets");
+    const menu = await presets.resolveMenu(client, { docType: "COSTING" });
+    await signatures.signInternal(client, {
+      entityRef: "costing:" + id,
+      docType: "COSTING",
+      presetCode: menu.default,
+      signReason,
+      actor,
+      // The document as it stands INSIDE this transaction, passed in rather
+      // than left to `signInternal` to load: its own loader would run after
+      // the caller has decided WHEN to build it, and the whole point is that
+      // this payload is the post-transition sheet, not the pre-transition one.
+      doc,
+    });
+  } catch (err) {
+    logger.error(
+      { err, costing_id: id, transition: to },
+      "costing transition could not be sealed; the status change stands, the evidence does not",
+    );
+  }
+}
+
 async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Costing not found", 404);
@@ -397,8 +467,36 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
     // show the approver what moved instead of fourteen unchanged rows.
     await snapshotApproval(client, { costing: row, actor });
   }
+  /*
+   * The seal, LAST — after the row is updated and after the approval snapshot
+   * is frozen, so the payload it hashes is the sheet as the decision left it.
+   *
+   * Sealing before the update would attest to the status the sheet was moving
+   * OUT of: an approver's seal would read `SUBMITTED_FOR_APPROVAL`, and the
+   * verification portal would show a document whose own seal disagrees with
+   * it. `templateSvc.loadRecord` is not used to build that payload — inside
+   * this transaction it would read uncommitted rows — so the projection is
+   * built here from the row we just wrote.
+   */
+  await sealTransition(client, { id, to, doc: await sealDoc(client, row), actor });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });
   return row;
+}
+
+/**
+ * The costing as the canonical payload wants it, built inside the transaction.
+ *
+ * It is the SAME projection the document renders from — `loadRecord` — because
+ * canonical.js hashes the shape the registry produces, and hashing a second,
+ * hand-rolled shape would mean the seal attests to something the page does not
+ * show. The call is safe here for the one reason the comment at the call site
+ * gives: it reads the rows this transaction has already written, on this
+ * client, so it sees the post-transition state.
+ */
+async function sealDoc(client, row) {
+  const templateSvc = require("../../documents/template/template.service");
+  const rec = await templateSvc.loadRecord(client, "COSTING", row.costing_id);
+  return rec ? rec.data : null;
 }
 
 /** The frozen line set for one approval. Best-effort: the approval itself has

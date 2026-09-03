@@ -1095,39 +1095,273 @@ const TEMPLATES = {
   },
 
   /* ── §3.3 — the costing worksheet document ────────────────────────────────
-   * The legacy costing screen prints an estimate whose footer is exactly
-   * Subtotal (HT) / VAT / Total Estimate — no margin, no sell price (§2.2).
-   * This renders the sheet for the validator's signature and the file.
+   *
+   * WHAT THIS PAGE HAD TO STOP DOING.
+   *
+   * The legacy sheet prints an estimate whose footer is exactly Subtotal (HT) /
+   * VAT / Total Estimate — no margin, no sell price (§2.2). That part was
+   * right and is kept. Almost everything around it was not:
+   *
+   * · IT NAMED NOBODY. No client, no service, no vessel, no B/L. A pricer
+   *   prices the SHIPMENT, and the sheet showed a table of charges floating
+   *   free of the thing being shipped. Facts come from the SSDC now, and an
+   *   empty facet is omitted rather than printed as a dash — a page of dashes
+   *   reads as a broken render, not as a file with less on it.
+   *
+   * · IT PRINTED THE ENUM. `SUBMITTED_FOR_VALIDATION`, on an A4 document, at a
+   *   person. `status_words` is a {fr, en} pair and the template picks a side.
+   *
+   * · ITS VAT COLUMN WAS A PERCENTAGE. "19,25%" on a line, and one VAT figure
+   *   at the foot: the reader could see the rate and the total but never the
+   *   tax on the line in front of them, so a mispriced line could only be
+   *   found with a calculator. There is a VAT AMOUNT column now.
+   *
+   * · DÉBOURS WERE INVISIBLE UNTIL THE FOOTER. A pass-through charge is
+   *   re-billed at cost and carries no VAT of ours; the supplier's own VAT
+   *   inside it is disclosed and enters no total. Both are on the line now,
+   *   and the débours sub-total sits inside the totals block rather than
+   *   trailing it.
+   *
+   * · A PER-CONTAINER CHARGE HAD NO BOX. Demurrage is one line per container
+   *   type, so the sheet printed "Demurrage" twice with two different amounts
+   *   and no way to tell which was the 40' (D10). The equipment is part of the
+   *   description now.
+   *
+   * The LETTERHEAD is untouched: it comes from the entity's letterhead tab
+   * through `standardHead`, and this rebuilds only the body.
    */
   COSTING: {
-    docType: "COSTING", title: { fr: "Fiche de cotation", en: "Costing sheet" }, module: "costing/costing", fields: ["remarks", "validator", "HT/VAT/TTC footer"],
+    docType: "COSTING", title: { fr: "Fiche de cotation", en: "Costing sheet" },
+    module: "costing/costing",
+    fields: ["shipment facts", "VAT amount per line", "débours sub-total", "remarks", "seals"],
     build: (data, cfg, entity, verify) => {
-      const ccy = data.currency || "XAF";
+      const lang = cfg.language;
+      const ccy = data.currency || cfg.base_currency || "XAF";
+      const t = data.totals || {};
+      const seals = Array.isArray(data.seals) ? data.seals : [];
+      const title = { fr: "Fiche de cotation", en: "Costing sheet" };
+
       const meta = [
         [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
         [{ fr: "Dossier", en: "File" }, data.dossier_ref],
-        [{ fr: "Statut", en: "Status" }, data.status],
-        data.exchange_rate && Number(data.exchange_rate) !== 1 ? [{ fr: "Taux (XAF)", en: "Rate (XAF)" }, String(data.exchange_rate)] : null,
-        data.validator ? [{ fr: "Validateur", en: "Validator" }, data.validator] : null,
+        [{ fr: "Statut", en: "Status" }, data.status_words ? k.t(data.status_words, lang) : data.status],
+        // The rate is a fact about the money only when it is doing something.
+        // Printing "Rate (XAF): 1" on every sheet in the base currency is a
+        // line that teaches the reader to skip the meta strip.
+        has(data.exchange_rate) && Number(data.exchange_rate) !== 1
+          ? [{ fr: "Taux (XAF)", en: "Rate (XAF)" }, String(data.exchange_rate)]
+          : null,
       ].filter((m) => m && m[1]);
+
+      /*
+       * THE FACTS. Two sources, in this order: the file's own columns, then
+       * the SSDC facets for whatever the service type adds beyond them. Both
+       * are dropped when empty by `factsGrid`, so an air file does not print
+       * an empty "Vessel" and a warehousing file does not print a route.
+       */
+      const facets = (data.shipment && data.shipment.facets) || {};
+      const order = (data.shipment && data.shipment.facet_order) || [];
+      const seen = new Set();
+      const facetCells = order.map((role) => {
+        const f = facets[role];
+        if (!f || !f.value || seen.has(role)) return null;
+        seen.add(role);
+        return [f.label || role, f.value];
+      }).filter(Boolean);
+
+      const factCells = [
+        // The client is NOT here: `parties` above already names them, with
+        // their identifiers. Printing it twice on one page is how a reader
+        // learns the facts grid is padding.
+        [{ fr: "Prestation", en: "Service" }, data.service ? k.t(data.service, lang) : null],
+        [{ fr: "Transporteur", en: "Carrier" }, data.carrier],
+        [{ fr: "Incoterm", en: "Incoterm" }, data.incoterm],
+        [{ fr: "Connaissement / LTA", en: "B/L · MAWB" }, data.bl_mawb],
+        [{ fr: "Port de chargement", en: "Port of loading" }, data.pol],
+        [{ fr: "Port de déchargement", en: "Port of discharge" }, data.pod],
+        [{ fr: "ETA", en: "ETA" }, data.eta ? k.dateFmt(data.eta) : null],
+      ].filter((c) => c[1]).concat(facetCells);
+
+      /*
+       * THE LINES. One column set, built here rather than shared with the
+       * invoice family: this document has two columns none of them has (VAT
+       * amount, nature) and drops none of theirs, and a shared set that every
+       * caller passes flags into is a set that grows a flag per caller.
+       */
+      const cols = [
+        { key: "label", label: { fr: "Désignation", en: "Description" } },
+        { key: "qty", label: { fr: "Qté", en: "Qty" }, num: true },
+        { key: "unit", label: { fr: "P.U.", en: "Unit" }, num: true },
+        { key: "vat", label: { fr: "TVA", en: "VAT" }, num: true },
+        { key: "amount", label: { fr: "Montant HT", en: "Amount" }, num: true },
+      ];
+      const rows = (data.lines || []).map((l) => {
+        const amount = has(l.amount) ? Number(l.amount) : Number(l.qty || 1) * Number(l.unit || 0);
+        const vatAmount = l.is_disbursement || !has(l.tax) ? null : (amount * Number(l.tax)) / 100;
+        // D10 — the equipment a per-container charge was priced FOR, in the
+        // description, because that is the only place a reader looks to tell
+        // two "Demurrage" lines apart.
+        const label = [
+          l.item_code ? `${l.item_code} · ` : "",
+          l.label,
+          l.container_type ? ` — ${l.container_type}` : "",
+        ].join("");
+        return {
+          // The supplier's own VAT rides with the charge it is inside, because
+          // that is the only place it means anything: it is part of the gross
+          // we are re-billing, not a tax of ours sitting in the VAT column.
+          label: label + (l.is_disbursement && has(l.upstream_vat) && l.upstream_vat > 0
+            ? ` (${k.t({ fr: "dont TVA fournisseur", en: "incl. supplier VAT" }, lang)} ${k.money(l.upstream_vat, ccy, cfg)})`
+            : ""),
+          qty: has(l.qty) ? String(l.qty) : "",
+          unit: has(l.unit) ? k.money(l.unit, ccy, cfg) : "",
+          // A pass-through line says WHY it is untaxed, in the column where the
+          // reader is looking for the tax. A blank there reads as "nobody
+          // filled this in" — which is how the legacy sheet's ticked-by-default
+          // VAT box came to charge 19.25% on a customs duty.
+          vat: l.is_disbursement
+            ? k.t({ fr: "débours", en: "pass-through" }, lang)
+            : (vatAmount === null ? "" : `${k.money(vatAmount, ccy, cfg)} (${l.tax}%)`),
+          amount: k.money(amount, ccy, cfg),
+        };
+      });
+
+      const totalsRows = [
+        [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(t.total_ht, ccy, cfg)],
+        // Inside the block, immediately under the subtotal it qualifies.
+        has(t.disbursement_total) && Number(t.disbursement_total) > 0
+          ? [{ fr: "dont débours (au coût, non taxés)", en: "of which débours (at cost, untaxed)" }, k.money(t.disbursement_total, ccy, cfg)]
+          : null,
+        [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)],
+        [{ fr: "Total estimé (TTC)", en: "Total estimate (TTC)" }, k.money(t.total_ttc, ccy, cfg), { grand: true }],
+      ];
+
+      /*
+       * THE SUPPLIER'S OWN VAT. Below the grand total, deliberately outside
+       * it: we pay the carrier's gross and re-bill the same gross, and that
+       * tax was never ours to collect. Printing it into the VAT line would
+       * charge the client for it twice over.
+       */
+      const upstream = has(t.upstream_vat_total) && Number(t.upstream_vat_total) > 0
+        ? `<div class="muted" style="text-align:right;margin-top:2mm;font-size:9px">${k.esc(
+          `${k.t({ fr: "Dont TVA amont acquittée pour le compte du client", en: "Of which upstream VAT paid on the client's behalf" }, lang)}: ${k.money(t.upstream_vat_total, ccy, cfg)}`,
+        )}</div>`
+        : "";
+
+      /*
+       * WHAT MOVED SINCE THE LAST APPROVAL. On paper for the same reason it is
+       * on screen: after an unlock somebody is asked to approve the sheet a
+       * second time, and they should read the three lines that changed rather
+       * than the fourteen that did not.
+       */
+      const a = data.amendment;
+      const amendRow = (l, kind) => `<tr><td>${k.esc(k.t(
+        kind === "added" ? { fr: "Ajoutée", en: "Added" }
+          : kind === "removed" ? { fr: "Retirée", en: "Removed" }
+            : { fr: "Modifiée", en: "Changed" }, lang,
+      ))}</td><td>${k.esc(l.label)}</td><td class="num">${k.esc(
+        kind === "changed" && has(l.was_amount)
+          ? `${k.money(l.was_amount, ccy, cfg)} → ${k.money(l.amount, ccy, cfg)}`
+          : k.money(l.amount, ccy, cfg),
+      )}</td><td class="num">${k.esc((l.delta >= 0 ? "+" : "") + k.money(l.delta, ccy, cfg))}</td></tr>`;
+      // Wrapped so the heading and the rows it introduces stay together: the
+      // first render put "Changed since it was approved" at the foot of page 1
+      // and what changed on page 2.
+      const amendment = a && a.has_changes
+        ? `<div style="break-inside:avoid;page-break-inside:avoid">${k.section({ fr: "Modifications depuis l'approbation", en: "Changed since it was approved" },
+          `<table class="items"><tbody>${
+            (a.changed || []).map((l) => amendRow(l, "changed")).join("")
+          }${(a.added || []).map((l) => amendRow(l, "added")).join("")
+          }${(a.removed || []).map((l) => amendRow(l, "removed")).join("")
+          }</tbody></table><div class="muted" style="margin-top:2mm;font-size:9px">${k.esc(
+            `${a.unchanged_count} ${k.t({ fr: "ligne(s) inchangée(s)", en: "line(s) unchanged" }, lang)} · ${k.money(a.before_ht, ccy, cfg)} → ${k.money(a.after_ht, ccy, cfg)} (${a.delta_ht >= 0 ? "+" : ""}${k.money(a.delta_ht, ccy, cfg)})`,
+          )}</div>`, cfg)}</div>`
+        : "";
+
+      /*
+       * THE SEALS. Three, in the order the sheet passed through them: raised,
+       * validated, approved. `sealBlock` is titled so each one names the
+       * decision it records, because "signed by three people" is not the same
+       * document as "raised by A, validated by B, approved by C".
+       *
+       * The ruled signature block stays as the fallback for an unsealed sheet
+       * — a DRAFT printed for a desk review has nobody to seal it yet, and a
+       * page with neither seals nor signature lines has no way to be signed at
+       * all.
+       */
+      const sealHtml = seals.length
+        /*
+         * `signStrip`, not three loose seals. A bare `.seal` is 88mm wide and
+         * fixed, so on A4 they stack one per row and the sheet spends half a
+         * page on three signatures — which is what the first render did. The
+         * strip is the grammar built for exactly this (`.strip .seal` drops the
+         * seal's own width and border), so the three sit side by side, each in
+         * a titled box that names the decision it records.
+         *
+         * The title is the strip's, not the seal's: `titled: false` here, or
+         * every box would carry the reason twice.
+         */
+        ? k.signStrip(seals.map((sig) => ({
+          // The BOX declares the decision; the seal inside declares who made
+          // it. So the reason is not passed down (it would print 4mm under
+          // itself), and `titled` drops the "For {company}" row — three
+          // repetitions of our own name on our own letterhead, each wrapping
+          // to two lines in a 58mm box. §3.12's requirement that a seal say
+          // which side it speaks for is met by the box, not dropped: on a
+          // costing every seal is ours, and what distinguishes them is the
+          // decision, which is exactly what the header now carries.
+          title: sig.reason || { fr: "Signature", en: "Signature" },
+          html: k.sealBlock({ ...sig, reason: null }, cfg, { titled: true }),
+        })), cfg)
+        : k.signatureBlock(cfg);
+
       const body = [
-        k.standardHead(entity, cfg, { title: { fr: "Fiche de cotation", en: "Costing sheet" }, number: data.number, meta: meta }),
-        k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg),
-        k.totals([
-          [{ fr: "Sous-total (HT)", en: "Subtotal (HT)" }, k.money(data.totals.total_ht, ccy)],
-          [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
-          [{ fr: "Total estimé (TTC)", en: "Total estimate (TTC)" }, k.money(data.totals.total_ttc, ccy), { grand: true }],
-          has(data.totals.disbursement_total) && data.totals.disbursement_total > 0
-            ? [{ fr: "dont débours (au coût)", en: "of which débours (at cost)" }, k.money(data.totals.disbursement_total, ccy)]
-            : null,
-        ], cfg),
+        k.standardHead(entity, cfg, { title, number: data.number, meta }),
+        k.parties([{
+          label: { fr: "Client", en: "Client" },
+          name: data.party && data.party.name,
+          lines: (data.party && data.party.lines) || [],
+        }], cfg),
+        factCells.length ? k.ruledBlock({ fr: "Expédition", en: "Shipment" }, k.factsGrid(factCells, cfg, { cols: 3 }), cfg, { bare: true }) : "",
+        k.lineTable(cols, rows, cfg),
+        k.totals(totalsRows, cfg),
+        upstream,
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words)
+          ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals)
+          : "",
+        amendment,
         data.remarks ? k.section({ fr: "Remarques", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
-        k.signatureBlock(cfg),
-        k.standardFoot(entity, cfg, verify),
+        sealHtml,
+        // One QR per page (§3.12a): a seal already carries it.
+        k.standardFoot(entity, cfg, seals.length ? null : verify, {
+          provenance: k.t(title, lang),
+        }),
       ].join("");
       return k.shell("Costing " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "CST-2026-0012", date: "2026-07-27", dossier_ref: "SBX-2026-0001", status: "SUBMITTED_FOR_VALIDATION", validator: "Jean Mballa", lines: sampleLines, totals: { total_ht: 1400000, vat_total: 207900, total_ttc: 1607900, disbursement_total: 320000 }, currency: "XAF", remarks: "Taux carrier confirmé le 25/07 — valable 14 jours." },
+    sampleData: {
+      number: "CST-2026-0012", date: "2026-07-27", dossier_ref: "SBX-2026-0001",
+      status: "SUBMITTED_FOR_VALIDATION",
+      status_words: { fr: "À valider", en: "To validate" },
+      client: "CIMENCAM SA",
+      party: { name: "CIMENCAM SA", lines: ["NIU P012345678", "RCCM RC/DLA/2004/B/1234"] },
+      service: { fr: "Fret maritime import", en: "Sea freight import" },
+      carrier: "Maersk", incoterm: "CIF", bl_mawb: "MAEU123456",
+      pol: "Antwerp", pod: "Douala", eta: "2026-08-14",
+      shipment: null,
+      validator: "Jean Mballa",
+      lines: [
+        { label: "Fret maritime", item_code: "#E014", qty: 2, unit: 500000, tax: 19.25, is_disbursement: false, amount: 1000000 },
+        { label: "Surestaries", item_code: "#D077", container_type: "45'HC", qty: 1, unit: 119250, tax: null, is_disbursement: true, upstream_vat: 19250, amount: 119250 },
+        { label: "Droits et taxes de douane", item_code: "#-1047", qty: 1, unit: 320000, tax: null, is_disbursement: true, upstream_vat: null, amount: 320000 },
+      ],
+      totals: { total_ht: 1439250, vat_total: 192500, total_ttc: 1631750, disbursement_total: 439250, upstream_vat_total: 19250 },
+      amount_in_words: 1631750,
+      exchange_rate: 1,
+      seals: [],
+      currency: "XAF",
+      remarks: "Taux carrier confirmé le 25/07 — valable 14 jours.",
+    },
   },
 
   REGIE_ADVANCE: {

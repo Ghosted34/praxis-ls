@@ -978,43 +978,191 @@ async function loadRecord(client, docType, recordId) {
     };
   }
 
-  /* §3.3 — the costing worksheet, footer Subtotal (HT) / VAT / Total Estimate.
-   * Totals are computed the same way costing.service.get computes them
-   * (per-line VAT from the line's own tax code; no margin — §2.2). */
+  /*
+   * §3.3 — the costing worksheet.
+   *
+   * WHAT THIS PROJECTION USED TO GET WRONG, and why each mattered.
+   *
+   * `entity_id: null`. Every other document that belongs to a corporate entity
+   * passes one; this passed null, and `resolveEntity` answers null with
+   * `SELECT * FROM corporate_entity ORDER BY created_at LIMIT 1`. So on a
+   * multi-entity tenant — which is the shape this product is sold in — the
+   * costing printed the letterhead, the address and the tax identifiers of
+   * whichever company was created first. It comes from the FILE now, which is
+   * the entity whose paper this is.
+   *
+   * NO COUNTERPARTY. `party` is the shape `canonical.js` hashes and the
+   * verification portal reads. Without it a signed costing attested to
+   * `party: { name: "" }`, so the one field that says whose file this is was
+   * absent from the very payload meant to prove the sheet had not changed.
+   *
+   * NO SHIPMENT FACTS. A pricer prices the SHIPMENT — a vessel, a route, a
+   * B/L, a container count — and the sheet showed a table of charges with none
+   * of it. The snapshot comes first for the same reason the transit order's
+   * does: an approved sheet must keep citing what it was approved WITH.
+   *
+   * TOTALS WERE RECOMPUTED. `computeCosting` at print time answers with
+   * today's tax rates, so reprinting a sheet approved before a VAT change
+   * printed a different total than the copy in the file. 12766 persisted the
+   * totals as columns precisely so the stored figures are what prints; the
+   * recompute stays only as the fallback for a pre-12766 row that has none.
+   *
+   * UPSTREAM VAT WAS INVISIBLE. A débours re-billed gross carries the
+   * supplier's own VAT inside it (the Maersk case). It is disclosed per line
+   * and never enters a total — printing it into one would charge the client
+   * tax that was never ours to collect.
+   */
   if (docType === "COSTING") {
     const { rows } = await client.query(
-      `SELECT c.*, d.ref AS dossier_ref, v.full_name AS validator_name
+      `SELECT c.*,
+              d.ref AS dossier_ref, d.entity_id, d.bl_mawb, d.pol, d.pod, d.eta, d.incoterm,
+              cm.name AS client_name, cm.niu AS client_niu, cm.rccm AS client_rccm,
+              st.name_en AS service_name_en, st.name_fr AS service_name_fr,
+              rp.name AS rate_provider_name,
+              COALESCE(e_v.signatory_name, v.full_name) AS validator_name, e_v.job_title AS validator_title,
+              COALESCE(e_vb.signatory_name, vb.full_name) AS validated_by_name, e_vb.job_title AS validated_by_title,
+              COALESCE(e_a.signatory_name, ap.full_name) AS approver_name, e_a.job_title AS approver_title
          FROM costing c
          LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
-         LEFT JOIN app_user v ON v.user_id = c.validator_id
+         LEFT JOIN client_master cm ON cm.client_id = d.client_id
+         LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
+         LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id
+         LEFT JOIN app_user v  ON v.user_id  = c.validator_id
+         LEFT JOIN app_user vb ON vb.user_id = c.validated_by
+         LEFT JOIN app_user ap ON ap.user_id = c.approver_id
+         -- The title is on employee, not on app_user — the join every other
+         -- projection in this file makes (CASH_REQUEST, PURCHASE_REQUEST, the
+         -- invoice pair). signatory_name is the name a person wants ON PAPER,
+         -- which is not always the one they log in under.
+         LEFT JOIN employee e_v  ON e_v.employee_id  = v.employee_id
+         LEFT JOIN employee e_vb ON e_vb.employee_id = vb.employee_id
+         LEFT JOIN employee e_a  ON e_a.employee_id  = ap.employee_id
         WHERE c.costing_id = $1`,
       [recordId],
     );
     const c = rows[0];
     if (!c) return null;
-    const lr = await client.query(
-      `SELECT cl.label, cl.qty, cl.unit_cost, cl.is_disbursement, tc.rate_percent AS tax_rate_percent
-         FROM costing_line cl LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id
-        WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id`,
-      [recordId],
-    );
-    // Lazy require (pattern of the transit-order branch above): pulling the
-    // costing rules at module load would force every test that mocks this
-    // service's collaborators to know about them.
-    const { computeCosting } = require("../../costing/costing/costing.rules");
-    const totals = computeCosting(lr.rows);
+
+    // The line reader the worksheet itself uses — container type, item code,
+    // the line's own VAT rate and its pass-through nature, in `line_no` order.
+    // Reading `costing_line` directly here would be a second, poorer copy of a
+    // query that already exists, and it is the copy that would drift.
+    const costingRepo = require("../../costing/costing/costing.repo");
+    const lines = await costingRepo.listLines(client, recordId);
+
+    // Frozen for an approved sheet, live for one still being worked on — the
+    // rule the transit order follows above, for the same reason.
+    let details = c.shipment_details_snapshot || null;
+    if (!details && c.dossier_id) {
+      try {
+        const shipmentDetails = require("../../operations/shipment_details/shipment_details.service");
+        details = await shipmentDetails.forDossier(client, c.dossier_id);
+      } catch (err) {
+        // A file whose service type has lost its field set must still PRINT.
+        logger.warn({ err, costing_id: recordId }, "[documents] costing printed without shipment details");
+      }
+    }
+
+    // Lazy require (the transit-order branch's pattern): pulling the costing
+    // rules at module load would force every test that mocks this service's
+    // collaborators to know about them.
+    const rules = require("../../costing/costing/costing.rules");
+    // 12766 persisted these. The recompute is the fallback for a row written
+    // before it, never the preference — see the header.
+    const stored = c.total_ttc !== null && c.total_ttc !== undefined;
+    const computed = stored ? null : rules.computeCosting(lines);
+    const totals = stored
+      ? {
+        total_ht: Number(c.total_ht || 0),
+        vat_total: Number(c.total_vat || 0),
+        total_ttc: Number(c.total_ttc || 0),
+        disbursement_total: lines.reduce((a, l) => a + (l.is_disbursement ? Number(l.qty) * Number(l.unit_cost) : 0), 0),
+        upstream_vat_total: lines.reduce((a, l) => a + (l.is_disbursement ? Number(l.upstream_vat_amount || 0) : 0), 0),
+      }
+      : {
+        total_ht: computed.total_ht,
+        vat_total: computed.vat_total,
+        total_ttc: computed.total_ttc,
+        disbursement_total: computed.disbursement_total,
+        upstream_vat_total: computed.upstream_vat_total,
+      };
+
+    // Best-effort, like every other derivation on this path: a sheet whose
+    // snapshot cannot be read must still PRINT.
+    let amendment = null;
+    try {
+      const snapshot = await costingRepo.latestSnapshot(client, recordId);
+      if (snapshot) {
+        const diff = rules.diffLines(snapshot.lines || [], lines);
+        if (diff.has_changes) {
+          amendment = { ...diff, since_revision: snapshot.revision, approved_at: snapshot.approved_at };
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, costing_id: recordId }, "[documents] costing printed without its amendment summary");
+    }
+
     return {
-      entity_id: null,
+      entity_id: c.entity_id || null,
       data: {
-        number: c.doc_number || String(c.costing_id).slice(0, 8), date: c.created_at, status: c.status,
-        dossier_ref: c.dossier_ref, validator: c.validator_name, remarks: c.remarks,
+        number: c.doc_number || String(c.costing_id).slice(0, 8),
+        date: c.created_at,
+        status: c.status,
+        // A PAIR, never a pre-joined bilingual string — the transit order's
+        // lesson: a projection that joins the two halves leaves `cfg.language`
+        // nothing to decide.
+        status_words: rules.statusWords(c.status),
+        dossier_ref: c.dossier_ref,
+        service: { fr: c.service_name_fr || c.service_name_en || "", en: c.service_name_en || c.service_name_fr || "" },
+        carrier: c.rate_provider_name || null,
+        incoterm: c.incoterm || null,
+        bl_mawb: c.bl_mawb || null,
+        pol: c.pol || null,
+        pod: c.pod || null,
+        eta: c.eta || null,
+        // The counterparty, in the shape canonical.js hashes and the portal reads.
+        party: {
+          name: c.client_name || "—",
+          lines: clientLines(c),
+        },
+        client: c.client_name || "—",
+        shipment: details || null,
+        validator: c.validator_name,
+        validator_title: c.validator_title || null,
+        validated_by_name: c.validated_by_name || null,
+        validated_by_title: c.validated_by_title || null,
+        validated_at: c.validated_at || null,
+        approved_by_name: c.approver_name || null,
+        approved_by_title: c.approver_title || null,
+        approved_at: c.approved_at || null,
+        remarks: c.remarks,
+        // What moved since the last approval. On paper for the same reason it
+        // is on screen: after an unlock somebody is asked to approve the sheet
+        // a second time, and three changed lines are a shorter read than
+        // fourteen unchanged ones. Derived, never attested — it is deliberately
+        // NOT in the canonical payload, because it describes the diff rather
+        // than the commitment.
+        amendment,
         exchange_rate: Number(c.exchange_rate_to_xaf),
-        lines: lr.rows.map((l) => ({
-          label: l.label, qty: Number(l.qty), unit: Number(l.unit_cost),
+        lines: lines.map((l) => ({
+          label: l.label,
+          item_code: l.item_code || null,
+          // D10: the equipment a per-container charge was priced FOR. A sheet
+          // with "Demurrage" twice and no box named is unreadable — and
+          // demurrage IS one line per container type.
+          container_type: l.container_type_code || null,
+          qty: Number(l.qty),
+          unit: Number(l.unit_cost),
           tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
+          is_disbursement: l.is_disbursement === true,
+          // Disclosed beside the line, in no total. See the header.
+          upstream_vat: l.is_disbursement && l.upstream_vat_amount !== null && l.upstream_vat_amount !== undefined
+            ? Number(l.upstream_vat_amount)
+            : null,
           amount: Number(l.qty) * Number(l.unit_cost),
         })),
-        totals: { total_ht: totals.total_ht, vat_total: totals.vat_total, total_ttc: totals.total_ttc, disbursement_total: totals.disbursement_total },
+        totals,
+        amount_in_words: totals.total_ttc,
         currency: c.currency,
       },
     };

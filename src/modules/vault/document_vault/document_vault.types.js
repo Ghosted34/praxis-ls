@@ -53,6 +53,21 @@ const DOC_TYPES = {
   TRANSIT_ORDER:         { label: "Transit order",            module: "operations/transit_order",      moduleKey: "MOD-30" },
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },
   /*
+   * The costing worksheet (12766). It has had a TEMPLATE since documents
+   * shipped and a `loadRecord` branch to build its payload — but it was never
+   * registered HERE, and `assertDocType` throws 422 UNKNOWN_DOC_TYPE on
+   * anything unregistered. So `document_vault.capture()` refused the one
+   * document the module produces: the sheet could be previewed and printed
+   * from the browser and could never be FILED, which is why no approved
+   * costing in any tenant has a vault copy of what was approved.
+   *
+   * MOD-46 rather than the MOD-49 its two neighbours carry: a costing is the
+   * operations officer's budget, and cash requests and régie advances are the
+   * finance officer's disbursements. Reading follows the module that owns the
+   * record, and these are two different desks.
+   */
+  COSTING:               { label: "Costing sheet",             module: "costing/costing",               moduleKey: "MOD-46" },
+  /*
    * The etat de rapprochement bancaire (MOD-09) and the petty-cash count sheet
    * that stands in for it where no institution issues a statement. Both are
    * signed control documents an auditor asks for by name, so both are captured
@@ -192,6 +207,23 @@ const SIGNATURE_CEILING = Object.assign(Object.create(null), {
    * is worth its cost.
    */
   EMPLOYMENT_CONTRACT: { signable: true, allowsQes: true,  allowsWet: false },
+  /*
+   * The costing worksheet: signable, but neither certifiable nor wet-signable.
+   *
+   * NOT CERTIFIED. Certification is bought per envelope from a third party and
+   * is for documents a stranger relies on — an invoice, a contract, an offer.
+   * A costing is an INTERNAL budget: it is never sent to the client, and the
+   * legacy system's own sheet says "estimate" on it. Paying a certification fee
+   * three times per file (issue, validate, approve) for a document nobody
+   * outside the building reads is a cost with no counterparty.
+   *
+   * NOT WET. The three seals exist to record WHO decided, and the wet path
+   * prints the page, collects an ink signature and scans it back — at which
+   * point the record says a scan was uploaded, not that the named validator
+   * decided. It also cannot be automatic, and these seals are applied by the
+   * transition itself so that no approval can be recorded without one.
+   */
+  COSTING:             { signable: true, allowsQes: false, allowsWet: false },
 });
 
 const NOT_SIGNABLE = Object.freeze({ signable: false, allowsQes: false, allowsWet: false });

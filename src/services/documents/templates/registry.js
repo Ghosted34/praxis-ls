@@ -1131,7 +1131,7 @@ const TEMPLATES = {
    * through `standardHead`, and this rebuilds only the body.
    */
   COSTING: {
-    docType: "COSTING", title: { fr: "Fiche de cotation", en: "Costing sheet" },
+    docType: "COSTING", title: { fr: "Cotation", en: "Costing" },
     module: "costing/costing",
     fields: ["shipment facts", "VAT amount per line", "débours sub-total", "remarks", "seals"],
     build: (data, cfg, entity, verify) => {
@@ -1139,7 +1139,7 @@ const TEMPLATES = {
       const ccy = data.currency || cfg.base_currency || "XAF";
       const t = data.totals || {};
       const seals = Array.isArray(data.seals) ? data.seals : [];
-      const title = { fr: "Fiche de cotation", en: "Costing sheet" };
+      const title = { fr: "Cotation", en: "Costing" };
 
       const meta = [
         [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],

@@ -513,6 +513,7 @@ export function TotalsFooter({
     <div className="space-y-2">
       <KpiRow>
         <KpiTile
+          stack
           label={tr("Subtotal (HT)")}
           value={money(t.total_ht, currency)}
           hint={
@@ -522,6 +523,7 @@ export function TotalsFooter({
           }
         />
         <KpiTile
+          stack
           label={tr("VAT")}
           value={money(t.vat_total, currency)}
           hint={
@@ -531,6 +533,7 @@ export function TotalsFooter({
           }
         />
         <KpiTile
+          stack
           label={tr("Total estimate")}
           value={money(t.total_ttc, currency)}
         />

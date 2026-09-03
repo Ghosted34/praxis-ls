@@ -66,7 +66,7 @@ const DOC_TYPES = {
    * finance officer's disbursements. Reading follows the module that owns the
    * record, and these are two different desks.
    */
-  COSTING:               { label: "Costing sheet",             module: "costing/costing",               moduleKey: "MOD-46" },
+  COSTING:               { label: "Costing",                   module: "costing/costing",               moduleKey: "MOD-46" },
   /*
    * The etat de rapprochement bancaire (MOD-09) and the petty-cash count sheet
    * that stands in for it where no institution issues a statement. Both are

@@ -241,7 +241,11 @@ function defaults(brand = {}) {
     // (it survives a photocopy) and a band behind its labels.
     rule: brand.rule || "#B7C4D6",
     band: brand.band || "#F2F6FB",
-    language: "bilingual",
+    // A single language, always. See template.service.js resolveDocLanguage:
+    // the resolver picks fr/en from operator → saved → entity → 'en', and the
+    // final cfg is set from that. This default only reaches a caller that
+    // rendered the shell without going through the resolver.
+    language: "en",
     logo: { url: brand.logo_url || null, show: true, height_mm: 15, align: "left" },
     show: { tax_breakdown: true, notes: true, bank: true, signature: true, terms: true, qr: true, words: true },
     footer_text: "",

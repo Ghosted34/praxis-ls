@@ -227,37 +227,80 @@ async function savedConfig(client, docType, entityId) {
 }
 
 /**
- * The language ONE render comes out in.
+ * The language ONE render comes out in — always a single language, never both.
  *
  * Resolution order, and it is deliberately short:
  *   1. what the operator picked at print time (`language`, from the request)
  *   2. what the tenant configured for this doc type in the Document Studio
+ *   3. the entity's `default_language` (passed in by the caller)
+ *   4. 'en' as a last resort, so a render never emits nothing
  *
  * The operator's pick wins because they are the one looking at the client's
  * file while they press Download — a tenant-wide default cannot know that this
- * particular consignee reads English. `asLang` drops anything that is not a
- * supported code, so an unrecognised value falls through to the tenant setting
- * rather than rendering a document in nothing.
+ * particular consignee reads English.
  *
- * "bilingual" is a legitimate configured value and is passed through untouched;
- * it is only ever chosen deliberately.
+ * ── Why "bilingual" is not on the list ─────────────────────────────────────
+ * `asLang` from mail/signature/language.js accepts only 'fr'/'en'. That is the
+ * shape this product prints its documents in: one language per sheet, whichever
+ * language its reader is going to be reading. A bilingual A4 pairs every label
+ * with a slash and its translation — "Total estimé (TTC) / Total estimate
+ * (TTC)" — and the sheet stops looking like a document and starts looking like
+ * a form. Any saved 'bilingual' from a legacy Studio config falls through the
+ * `asLang` filter and lands on the entity's default_language, exactly the same
+ * as an unconfigured template.
  */
-function resolveDocLanguage(picked, saved) {
-  const explicit = asLang(picked);
-  if (explicit) return explicit;
-  return (saved && saved.language) || undefined;
+function resolveDocLanguage(picked, saved, entityDefault) {
+  return (
+    asLang(picked)
+    || asLang(saved && saved.language)
+    || asLang(entityDefault)
+    || "en"
+  );
+}
+
+/**
+ * `entity.default_language`, in isolation, before the full entity load.
+ *
+ * The full `resolveEntity` reads the corporate_entity row and every related
+ * dossier table (addresses, registrations, tax IDs, letterhead sources) and
+ * renders them into `address_lines` and `identifiers` USING the language it is
+ * given. So the language has to be decided before that call, and one of the
+ * inputs to that decision — after the operator's pick and the tenant's saved
+ * doc-type language — is the entity's own default_language. A one-column peek
+ * gives us that without loading the rest twice.
+ *
+ * Returns undefined for a missing entity or an unreadable row; the resolver
+ * treats that the same as no preference set and falls through to the final
+ * 'en' floor.
+ */
+async function peekEntityDefaultLanguage(client, entityId) {
+  try {
+    const q = entityId
+      ? await client.query("SELECT default_language FROM corporate_entity WHERE entity_id = $1", [entityId])
+      : await client.query("SELECT default_language FROM corporate_entity ORDER BY created_at LIMIT 1");
+    return q.rows[0] && q.rows[0].default_language;
+  } catch {
+    /* @silent:storage — an unreadable entity must not fail the render; the
+       caller falls back to 'en' rather than to bilingual. */
+    return undefined;
+  }
 }
 
 async function resolveCfg(client, docType, entityId, override, { language = null } = {}) {
   const saved = await savedConfig(client, docType, entityId);
-  const picked = resolveDocLanguage(language, saved);
-  // Resolved BEFORE the entity, because the entity's own derived lines are
-  // language-dependent — a French document says "Cameroun", an English one
-  // "Cameroon", and both come from the same country_code.
-  const { entity, brand } = await resolveEntity(client, entityId, { language: picked === "fr" ? "fr" : "en" });
+  // Language, decided BEFORE the entity, in one call rather than two: operator's
+  // pick, then the Studio's saved doc-type language, then the entity's own
+  // default_language, then 'en'. The entity is then resolved IN that language,
+  // so address_lines and identifiers come out matching the sheet they print on.
+  const entityDefault = await peekEntityDefaultLanguage(client, entityId);
+  const picked = resolveDocLanguage(language, saved, entityDefault);
+  const { entity, brand } = await resolveEntity(client, entityId, { language: picked });
   const fromEntity = entityLetterheadCfg(entity);
+  // `language` is forced onto the merged cfg (rather than spread conditionally
+  // as before) so the kit's own 'bilingual' default cannot re-emerge for a
+  // legacy Studio config carrying language:'bilingual' — see resolveDocLanguage.
   const cfg = kit.mergeCfg(brand, {
-    ...fromEntity, ...saved, ...(override || {}), ...(picked ? { language: picked } : {}),
+    ...fromEntity, ...saved, ...(override || {}), language: picked,
     // `logo` is nested, so a spread would let the Studio's {show:true} erase the
     // entity's height_mm and align. Merged key-wise instead, entity underneath.
     logo: { ...(fromEntity.logo || {}), ...(saved.logo || {}), ...((override || {}).logo || {}) },
@@ -1485,7 +1528,7 @@ async function wetPrintBlockFor(client, { entityRef }) {
  * Best-effort, like everything else on this path: no seals is the same page a
  * tenant with no signatures gets.
  */
-async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null }) {
+async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, signatures = null, env = "live" }) {
   if (!entityRef || !cfg || !cfg.show || !cfg.show.signature) return [];
   try {
     const rows = signatures || (await activeSignatures(client, entityRef));
@@ -1493,10 +1536,14 @@ async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, s
     return await sealView.build(client, rows, {
       entity,
       docRef: (data && data.number) || "",
-      // A bilingual document seals in French: the seal is a sentence, not a
-      // label pair, and `sealBlock` has no stacked form to render both in.
+      // The document prints in one language now (never bilingual): the seal
+      // takes the same language as the sheet it sits on.
       language: cfg.language === "en" ? "en" : "fr",
       origin,
+      // The env this render was minted in. Baked into the seal's QR URL so a
+      // sandbox-signed document verifies against sandbox rather than 404ing
+      // against live.
+      env,
     });
   } catch (err) {
     logger.warn({ err: err && err.message, entity_ref: entityRef }, "seals could not be resolved for render");
@@ -1504,11 +1551,11 @@ async function sealsFor(client, { entityRef, entity, data, cfg, origin = null, s
   }
 }
 
-async function verifyBlockFor(client, { entityRef, origin = null, signatures = null }) {
+async function verifyBlockFor(client, { entityRef, origin = null, signatures = null, env = "live" }) {
   const rows = signatures || (await activeSignatures(client, entityRef));
   if (!rows.length) return null;
   try {
-    return await verifyLink.verifyContext(client, { code: rows[0].verify_code, origin });
+    return await verifyLink.verifyContext(client, { code: rows[0].verify_code, origin, env });
   } catch (err) {
     logger.warn({ err: err && err.message, entity_ref: entityRef }, "verification block could not be rendered");
     return null;
@@ -1516,7 +1563,7 @@ async function verifyBlockFor(client, { entityRef, origin = null, signatures = n
 }
 
 /** Live preview → HTML (no PDF). Real record when recordId + a loader exist, else sample. */
-async function preview(client, { docType, entityId, recordId, config, origin = null, language = null }) {
+async function preview(client, { docType, entityId, recordId, config, origin = null, language = null, env = "live" }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   let data = tpl.sampleData;
@@ -1552,10 +1599,10 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
   }
   const { cfg, entity } = await resolveCfg(client, docType, ent, config, { language });
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef: signedRef });
-  const verify = await verifyBlockFor(client, { entityRef: signedRef, origin });
+  const verify = await verifyBlockFor(client, { entityRef: signedRef, origin, env });
   // The preview must show the seal the PDF will carry, or the operator checks
   // one document and sends another.
-  const seals = await sealsFor(client, { entityRef: signedRef, entity, data, cfg, origin });
+  const seals = await sealsFor(client, { entityRef: signedRef, entity, data, cfg, origin, env });
   const shown = seals.length ? { ...data, seals } : data;
   return {
     html: tpl.build(shown, cfg, entity, verify),
@@ -1588,7 +1635,7 @@ async function preview(client, { docType, entityId, recordId, config, origin = n
  * `origin` is the host the QR should resolve on. The HTTP path passes the
  * request's own host; the worker passes the tenant's. See verify-link.js.
  */
-async function generate(client, { docType, entityId, recordId, actor, origin = null, language = null }) {
+async function generate(client, { docType, entityId, recordId, actor, origin = null, language = null, env = "live" }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
   const rec = recordId ? await loadRecord(client, docType, recordId) : null;
@@ -1601,8 +1648,8 @@ async function generate(client, { docType, entityId, recordId, actor, origin = n
   cfg.watermark = kit.watermarkFor(client, cfg.watermark);
   const signatures = await activeSignatures(client, entityRef);
   cfg.wet_print = await wetPrintBlockFor(client, { entityRef });
-  const verify = await verifyBlockFor(client, { entityRef, origin, signatures });
-  const seals = await sealsFor(client, { entityRef, entity, data, cfg, origin, signatures });
+  const verify = await verifyBlockFor(client, { entityRef, origin, signatures, env });
+  const seals = await sealsFor(client, { entityRef, entity, data, cfg, origin, signatures, env });
   const html = tpl.build(seals.length ? { ...data, seals } : data, cfg, entity, verify);
   const out = await pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
   await recordArtifact(client, signatures, out);

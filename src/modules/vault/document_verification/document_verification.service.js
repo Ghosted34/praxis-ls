@@ -305,7 +305,7 @@ async function afterScan(client, sig, { isNewIp, via }) {
  * holding a PDF printed before the revocation must be told plainly that it was
  * withdrawn, not left to conclude the link is merely broken.
  */
-async function resolve(client, { code, via = "QR", ip = null, userAgent = null, referrer = null, lang = "fr" }) {
+async function resolve(client, { code, via = "QR", ip = null, userAgent = null, referrer = null, lang = "fr", env = "live" }) {
   const language = langOf(lang);
 
   // Shape first, so junk costs no database round-trip — and so a malformed code
@@ -380,6 +380,11 @@ async function resolve(client, { code, via = "QR", ip = null, userAgent = null, 
   return {
     status,
     language,
+    // The env this code was minted in, echoed back so the page can say so
+    // rather than silently confusing a reader who never scanned a test
+    // document before. Passed in from the controller — the URL's `?e=` is
+    // the only sanctioned way this reaches us.
+    test_environment: env === "sandbox",
     verdicts: [content, artifact],
     signature: {
       verify_code: tokens.formatCode(sig.verify_code),

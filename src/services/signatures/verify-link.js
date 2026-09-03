@@ -89,12 +89,17 @@ async function baseUrl(client, { origin = null, slug = null } = {}) {
  * pointing at `/v/` with nothing after it — a QR that resolves to a 404 is
  * worse than no QR, because it reads as a broken product rather than an
  * unsigned document.
+ *
+ * `env` is baked into the URL when it is 'sandbox', so a test-mode document's
+ * QR resolves against sandbox rather than 404ing against live. The env travels
+ * with the printed URL — not through a client header — because the verify page
+ * has no session and cannot be told otherwise (see tokens.verifyUrl).
  */
-async function verifyContext(client, { code, origin = null, slug = null, sizeMm = 22 } = {}) {
+async function verifyContext(client, { code, origin = null, slug = null, sizeMm = 22, env = "live" } = {}) {
   const normalised = tokens.normaliseCode(code);
   if (!normalised) return null;
   const base = await baseUrl(client, { origin, slug });
-  const url = tokens.verifyUrl(normalised, base);
+  const url = tokens.verifyUrl(normalised, base, env);
   return { url, code: normalised, qrSvg: await qr.svg(url, { sizeMm }) };
 }
 

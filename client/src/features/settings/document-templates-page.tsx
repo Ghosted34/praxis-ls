@@ -35,14 +35,19 @@ const label = (t: Tpl["title"]) => t.en || t.fr || "";
 
 const Field = ({
   label: l,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) => (
   <label className="block">
     <span className="micro mb-1 block">{l}</span>
     {children}
+    {hint ? (
+      <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>
+    ) : null}
   </label>
 );
 const Check = ({
@@ -318,12 +323,17 @@ export function TemplateStudioPage() {
                   className="h-9 w-full"
                 />
               </Field>
-              <Field label="Language">
+              <Field
+                label="Language"
+                hint={tr(
+                  "Documents print in one language per sheet. Leave unset to use the entity's default language.",
+                )}
+              >
                 <Select
-                  value={s(cfg.language, "bilingual")}
-                  onChange={(e) => set({ language: e.target.value })}
+                  value={s(cfg.language, "")}
+                  onChange={(e) => set({ language: e.target.value || null })}
                 >
-                  <option value="bilingual">Bilingual FR/EN</option>
+                  <option value="">{tr("Entity default")}</option>
                   <option value="fr">{tr("Français")}</option>
                   <option value="en">{tr("English")}</option>
                 </Select>

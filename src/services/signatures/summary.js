@@ -277,7 +277,7 @@ const RESOLVERS = new Map(Object.entries({
    * screen and the printed sheet use.
    */
   COSTING: (p, lang) => ({
-    title: { fr: "Fiche de cotation", en: "Costing sheet" },
+    title: { fr: "Cotation", en: "Costing" },
     fields: [
       f("number", "Référence", "Reference", dash(p.number)),
       f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),

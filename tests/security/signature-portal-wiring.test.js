@@ -60,18 +60,32 @@ function walk(dir, out = []) {
 }
 const ALL_SRC = walk(SRC);
 
-describe("§5.8 criterion 7 — the public route is pinned to LIVE", () => {
-  test("the controller reads through tenantDbIn(\"live\", …)", () => {
-    expect(controller).toMatch(/req\.tenantDbIn\(\s*"live"/);
+describe("§5.8 criterion 7 — the public route pins the env from the printed URL, never a header", () => {
+  test("the controller reads through tenantDbIn(env, …), pinning server-side", () => {
+    // Either literal "live" or the URL-derived `env` binding satisfies the pin.
+    // What matters is that `req.tenantDb` (the header-resolved variant) is not
+    // reached from this handler — see the negative assertion below.
+    expect(controller).toMatch(/req\.tenantDbIn\(\s*(?:"live"|env)\s*,/);
   });
 
   test("it never falls back to the header-resolved tenantDb", () => {
     // `req.tenantDb` resolves the environment from `X-Praxis-Env`, which on a
-    // route with no session means the anonymous visitor chooses it.
+    // route with no session means the anonymous visitor chooses it. The env
+    // this route reads must come from the printed URL, not a request header.
     expect(controller).not.toMatch(/req\.tenantDb\(/);
   });
 
-  test("the precedent it follows still carries the same pin", () => {
+  test("env is derived from the validated URL query, not from a header", () => {
+    // `?e=sandbox` is baked into the printed QR at render time and read here.
+    // A future refactor that reads env from `req.headers` or `req.query` (raw)
+    // would let an anonymous visitor flip the environment for themselves —
+    // exactly what the "no tenantDb" rule above exists to prevent.
+    const src = code(controller);
+    expect(src).toMatch(/req\.validatedQuery\.e/);
+    expect(src).not.toMatch(/req\.headers\[["']x-praxis-env["']\]/i);
+  });
+
+  test("the precedent it follows still carries a pin, not a header lookup", () => {
     // If proposal_public ever loses this, the reasoning that justifies it here
     // has moved and somebody should notice.
     const proposal = read(path.join(SRC, "modules/sales/proposal_public/proposal_public.routes.js"));

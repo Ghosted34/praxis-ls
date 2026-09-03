@@ -6,10 +6,11 @@
  * Three things are pinned here, all of which were reachable only through the
  * database before and therefore untested:
  *
- *   1. `computeCosting`'s new upstream-VAT disclosure — the Maersk case. A
- *      disbursement is re-billed at the supplier's gross and the supplier's own
- *      VAT inside it is DISCLOSED, never added to any total. Getting that wrong
- *      in either direction is a wrong figure on a client document.
+ *   1. `computeCosting`'s débours VAT — the Maersk case. 12768: a disbursement's
+ *      net is in HT and the supplier's VAT is BUDGETED into the VAT total and
+ *      TTC (a costing is a cash budget). `upstream_vat_total` names how much of
+ *      the VAT is the supplier's. Getting that wrong is a wrong figure on the
+ *      sheet.
  *   2. `diffLines` — what an approver reads after an unlock. Its whole value is
  *      that it is short and correct; a diff that reports fourteen changed lines
  *      when one moved is worse than no diff.
@@ -62,17 +63,19 @@ describe("computeCosting", () => {
     expect(t.total_ttc).toBe(1000);
   });
 
-  test("the Maersk case: gross is re-billed, upstream VAT is disclosed not charged", () => {
-    // Maersk invoices demurrage 100,000 + 19,250 VAT. We pay 119,250 and
-    // re-bill 119,250 — the client's own figure. The 19,250 was paid on their
-    // behalf and never retained by us, so it must appear NOWHERE in the ladder.
+  test("the Maersk case: net in HT, the supplier's VAT budgeted into the total (12768)", () => {
+    // Maersk invoices demurrage 100,000 + 19,250 VAT. The net is the débours
+    // cost (in HT); the 19,250 we hand the carrier is cash the budget must
+    // account for, so on this costing it counts toward the VAT and the TTC —
+    // marked (PT), and named by `upstream_vat_total` as the part that is the
+    // supplier's. (A costing is a budget, not a fiscal invoice.)
     const t = rules.computeCosting([
-      { qty: 1, unit_cost: 119250, is_disbursement: true, upstream_vat_amount: 19250 },
+      { qty: 1, unit_cost: 100000, is_disbursement: true, upstream_vat_amount: 19250 },
     ]);
-    expect(t.total_ht).toBe(119250);
+    expect(t.total_ht).toBe(100000);
+    expect(t.vat_total).toBe(19250);
     expect(t.total_ttc).toBe(119250);
-    expect(t.vat_total).toBe(0);
-    // Disclosed alongside, for the sentence the document has to carry.
+    // A memo now, inside vat_total: how much of the VAT is the supplier's on PT.
     expect(t.upstream_vat_total).toBe(19250);
   });
 

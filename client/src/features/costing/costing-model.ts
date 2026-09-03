@@ -48,6 +48,26 @@ export const suggestionKey = (l: api.SuggestedLine) =>
   `${l.dictionary_item_id}|${l.container_type_ref_id || "-"}`;
 
 
+/** The standard rate, as a last-resort default when the tax-code list has not
+ *  loaded yet. The real TVA_STD from the catalogue is preferred everywhere it
+ *  is available (see `defaultVatCode`). */
+export const STD_RATE = 19.25;
+
+/** A sales tax code as the worksheet holds it. */
+export type VatCode = { tax_code_id: string; code: string; rate_percent?: number | null };
+
+/** The default a new VAT control lands on: TVA_STD, by code then by rate, else
+ *  the first available (Q — "all VAT controls default to TVA_STD 19.25%"). */
+export const defaultVatCode = (codes: VatCode[]): VatCode | undefined =>
+  codes.find((c) => c.code === "TVA_STD")
+  || codes.find((c) => Number(c.rate_percent) === STD_RATE)
+  || codes[0];
+
+/** How a disbursement line's VAT is being entered: a rate the standard case
+ *  derives the amount from, or a free-text amount for the rare bill whose VAT
+ *  is not a clean rate. Client-only — the server reads the rate and amount. */
+export type VatMode = "RATE" | "AMOUNT";
+
 /** One line as the worksheet holds it while being edited. */
 export type LineDraft = {
   dictionary_item_id?: string;
@@ -59,9 +79,14 @@ export type LineDraft = {
   tax_rate_percent?: number | null;
   container_type_ref_id?: string | null;
   container_type_label?: string | null;
-  /** The supplier's own VAT inside a pass-through gross — disclosed, never
-   *  charged. Only ever set on a disbursement line. */
+  /** The supplier's own VAT on a débours. 12768: now BUDGETED into the sheet's
+   *  VAT and TTC, marked (PT). Only ever set on a disbursement line. */
   upstream_vat_amount?: number | null;
+  /** 12768 — the rate that derived the amount above (default TVA_STD). Null in
+   *  free-text mode. Only ever set on a disbursement line. */
+  upstream_vat_rate_percent?: number | null;
+  /** Which of the two boxes a débours line's VAT is entered through. */
+  vat_mode?: VatMode;
   /** True when the catalogue says this charge discloses its upstream VAT. */
   disbursement_vat_transparent?: boolean;
   /** Display only: where the price came from, so a number nobody can explain
@@ -75,6 +100,36 @@ export const BLANK_LINE: LineDraft = {
   qty: 1,
   unit_cost: 0,
   is_disbursement: false,
+};
+
+/** The VAT a débours line's rate implies, from its net. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+export const deboursVatFromRate = (l: LineDraft, rate: number): number =>
+  round2((Number(l.qty) || 0) * (Number(l.unit_cost) || 0) * (rate / 100));
+
+/**
+ * Give a freshly-created line its default VAT (12768). Applied only where a line
+ * is BORN — added by hand, picked from the catalogue, imported from Suggest —
+ * never on a saved line being re-loaded, so it cannot undo a choice already
+ * made. A débours defaults to rate mode at TVA_STD; a service line whose VAT was
+ * never decided (undefined/null) defaults to TVA_STD too. A rate the catalogue
+ * or the user has already set is left alone.
+ */
+export const withVatDefault = (l: LineDraft, def?: VatCode): LineDraft => {
+  const rate = def?.rate_percent ?? STD_RATE;
+  if (l.is_disbursement) {
+    if (l.upstream_vat_rate_percent != null) return { ...l, vat_mode: "RATE" };
+    if (l.upstream_vat_amount != null) return { ...l, vat_mode: "AMOUNT" };
+    return {
+      ...l,
+      vat_mode: "RATE",
+      upstream_vat_rate_percent: rate,
+      upstream_vat_amount: deboursVatFromRate(l, rate),
+    };
+  }
+  if (l.tax_code_id) return l; // already carries a real code
+  if (!def) return l; // codes not loaded yet — leave it for the next pass
+  return { ...l, tax_code_id: def.tax_code_id, tax_rate_percent: rate };
 };
 
 /** Identity across an edit — the same pair the server diffs on. */
@@ -114,6 +169,12 @@ export const fromSaved = (l: api.CostingLine): LineDraft => ({
   container_type_ref_id: l.container_type_ref_id,
   container_type_label: l.container_type_code,
   upstream_vat_amount: l.upstream_vat_amount,
+  upstream_vat_rate_percent: l.upstream_vat_rate_percent,
+  // Which box to show a saved débours in: rate if it was priced from one,
+  // otherwise the free-text amount it carries.
+  vat_mode: l.is_disbursement
+    ? (l.upstream_vat_rate_percent != null || l.upstream_vat_amount == null ? "RATE" : "AMOUNT")
+    : undefined,
   disbursement_vat_transparent: l.disbursement_vat_transparent ?? undefined,
   item_code: l.item_code,
 });
@@ -127,20 +188,26 @@ export const toPayload = (l: LineDraft) => ({
   is_disbursement: l.is_disbursement,
   tax_code_id: l.is_disbursement ? undefined : l.tax_code_id || undefined,
   container_type_ref_id: l.container_type_ref_id || null,
+  // The server derives the amount from the rate when a rate is present, so a
+  // rate mode line need not trust the amount it also sends; a free-text (AMOUNT)
+  // line sends no rate. Both null on a service line.
+  upstream_vat_rate_percent:
+    l.is_disbursement && l.vat_mode !== "AMOUNT" ? (l.upstream_vat_rate_percent ?? null) : null,
   upstream_vat_amount: l.is_disbursement ? (l.upstream_vat_amount ?? null) : null,
 });
 
 /**
- * The footer arithmetic, computed the same way the server computes it.
+ * The footer arithmetic, computed the same way the server computes it
+ * (costing.rules.computeCosting — keep the two in step).
  *
- * Disbursements are pass-through: billed at cost, never taxed. Their upstream
- * VAT is DISCLOSED alongside and is in no total — the client pays the
- * supplier's exact gross, and that money was never ours to collect.
+ * 12768: a disbursement's VAT is BUDGETED. Its net is in HT, its supplier VAT
+ * is in the VAT total and the TTC like any other line, and `upstream_vat_total`
+ * is a memo naming how much of that VAT came from débours (PT).
  */
 export function computeTotals(lines: LineDraft[]) {
   let service = 0;
   let disbursement = 0;
-  let vat = 0;
+  let serviceVat = 0;
   let upstream = 0;
   for (const l of lines) {
     const amt = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
@@ -149,17 +216,18 @@ export function computeTotals(lines: LineDraft[]) {
       upstream += Number(l.upstream_vat_amount) || 0;
     } else {
       service += amt;
-      vat += (amt * (Number(l.tax_rate_percent) || 0)) / 100;
+      serviceVat += (amt * (Number(l.tax_rate_percent) || 0)) / 100;
     }
   }
   const r = (n: number) => Math.round(n * 100) / 100;
   const ht = r(service + disbursement);
+  const vat = r(r(serviceVat) + r(upstream));
   return {
     service_cost: r(service),
     disbursement_total: r(disbursement),
     total_ht: ht,
-    vat_total: r(vat),
-    total_ttc: r(ht + r(vat)),
+    vat_total: vat,
+    total_ttc: r(ht + vat),
     upstream_vat_total: r(upstream),
   };
 }

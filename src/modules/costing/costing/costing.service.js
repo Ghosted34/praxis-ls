@@ -141,6 +141,35 @@ async function unlockTransition(client, { id, action, reason = null, actor = {} 
   return row;
 }
 
+/**
+ * A disbursement line's VAT columns, resolved server-side (12768).
+ *
+ * The rate is the source of truth when present: the amount is DERIVED from it
+ * here (net × rate), never trusted from the client, so a payload cannot ship a
+ * rate of 19.25% with an amount that says something else. A free-text amount
+ * (no rate) is stored as given — the exception for a supplier bill whose VAT is
+ * not a clean rate. Both are NULL on a service line, whose VAT lives in its tax
+ * code, and on a débours the user set to "No VAT".
+ */
+function debours(l) {
+  if (l.is_disbursement !== true) {
+    return { upstream_vat_rate_percent: null, upstream_vat_amount: null };
+  }
+  const rate = l.upstream_vat_rate_percent;
+  if (rate !== undefined && rate !== null && Number.isFinite(Number(rate))) {
+    const net = (Number(l.qty) || 0) * (Number(l.unit_cost) || 0);
+    return {
+      upstream_vat_rate_percent: Number(rate),
+      upstream_vat_amount: Math.round(net * (Number(rate) / 100) * 100) / 100,
+    };
+  }
+  const amt = l.upstream_vat_amount;
+  return {
+    upstream_vat_rate_percent: null,
+    upstream_vat_amount: amt !== undefined && amt !== null ? Number(amt) : null,
+  };
+}
+
 async function replaceLines(client, costingId, lines) {
   await repo.deleteLines(client, costingId);
   let n = 0;
@@ -153,18 +182,14 @@ async function replaceLines(client, costingId, lines) {
       // the order the person arranged the lines in on screen.
       line_no: n,
       qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_disbursement: l.is_disbursement === true,
-      // A pass-through line can never carry a tax code (DB rule, 0640:156), so
-      // one arriving on a disbursement is dropped here rather than being sent
-      // to the database to be rejected with a trigger exception.
+      // A disbursement carries its VAT as an amount (12766) and now a rate
+      // (12768), never a tax code — a tax code on a débours would post output
+      // tax we do not owe. A code arriving on one is dropped rather than stored.
       tax_code_id: l.is_disbursement === true ? null : (l.tax_code_id || null),
       // Which box this charge was priced for (0663). NULL for anything with no
       // equipment dimension, which is most of the catalogue.
       container_type_ref_id: l.container_type_ref_id || null,
-      // 12766: the supplier's own VAT inside a pass-through gross — disclosed,
-      // never charged. Meaningless on a service line, so it is not stored there.
-      upstream_vat_amount: l.is_disbursement === true && l.upstream_vat_amount !== undefined && l.upstream_vat_amount !== null
-        ? l.upstream_vat_amount
-        : null,
+      ...debours(l),
     });
   }
 }

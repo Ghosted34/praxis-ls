@@ -28,19 +28,29 @@ const num = (v) => Number(v || 0);
 function computeCosting(lines) {
   let serviceCost = 0;
   let disbursementTotal = 0;
-  let vatTotal = 0;
+  let serviceVat = 0;
+  let debVat = 0;
   for (const l of lines) {
     const amt = num(l.qty) * num(l.unit_cost);
     if (l.is_disbursement) {
       disbursementTotal += amt;
+      // 12768: the supplier's VAT on a débours is now BUDGETED — it counts
+      // toward the sheet's VAT and TTC. A costing is a cash budget, not a
+      // fiscal invoice, so the VAT we hand the carrier is money we will spend,
+      // and the budget says so. It is stored as an amount (derived from the
+      // line's own rate on save, or typed for the rare bill that is not a clean
+      // rate) and the (PT) tag plus a remarks line keep it legible as a
+      // pass-through rather than our own output tax.
+      debVat += num(l.upstream_vat_amount);
     } else {
       serviceCost += amt;
-      vatTotal += amt * (num(l.tax_rate_percent) / 100);
+      serviceVat += amt * (num(l.tax_rate_percent) / 100);
     }
   }
   serviceCost = round2(serviceCost);
   disbursementTotal = round2(disbursementTotal);
-  vatTotal = round2(vatTotal);
+  const upstream = round2(debVat);
+  const vatTotal = round2(round2(serviceVat) + upstream);
   const totalHt = round2(serviceCost + disbursementTotal);
   return {
     service_cost: serviceCost,
@@ -51,13 +61,10 @@ function computeCosting(lines) {
     total_ttc: round2(totalHt + vatTotal),
     // Kept for readers that summed the old shape; same value as total_ht.
     total_cost: totalHt,
-    // NOT part of any total, and that is the whole point (12766). This is the
-    // supplier's own VAT inside the disbursement gross — money we hand over and
-    // never retain. It is disclosed so the client can see the figure they are
-    // being re-billed is the supplier's real one, not a mark-up.
-    upstream_vat_total: round2(
-      lines.reduce((s, l) => s + (l.is_disbursement ? num(l.upstream_vat_amount) : 0), 0),
-    ),
+    // A MEMO now, not an exclusion (12768): how much of vat_total is the
+    // supplier's VAT on débours (PT). It IS inside vat_total — this only names
+    // the part, so the sheet and the PDF can show "of which on débours".
+    upstream_vat_total: upstream,
   };
 }
 

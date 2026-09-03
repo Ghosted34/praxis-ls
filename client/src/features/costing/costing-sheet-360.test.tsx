@@ -13,9 +13,9 @@
  *    charges 19.25% VAT on a customs duty. A pass-through line must offer no VAT
  *    control at all, and must say why.
  *
- * 3. UPSTREAM VAT IS DISCLOSED AND IN NO TOTAL. The Maersk case: we pay 119,250,
- *    we re-bill 119,250, and the 19,250 inside it was never ours. Getting this
- *    wrong in either direction is a wrong figure on a client document.
+ * 3. DÉBOURS VAT IS BUDGETED, AND MARKED (PT) (12768). The débours net is in HT
+ *    and the supplier's VAT is in the VAT total and TTC — a costing is a cash
+ *    budget. The (PT) tag and a rate control are what a reader sees on the line.
  *
  * 4. SUGGEST TOPS UP. A charge already on the sheet is offered as already
  *    present, never re-added — because re-adding it would silently duplicate a
@@ -55,16 +55,18 @@ const OCEAN = {
   line_no: 1,
 };
 
-/** The Maersk demurrage: gross re-billed, supplier VAT disclosed inside it. */
+/** The Maersk demurrage: net re-billed, supplier VAT budgeted on top (12768) —
+ *  priced from a rate, so it loads in rate mode. */
 const DEMURRAGE = {
   costing_line_id: "l-2",
   dictionary_item_id: "di-dem",
   label: "Demurrage",
   item_code: "#D077",
   qty: 1,
-  unit_cost: 119_250,
+  unit_cost: 100_000,
   is_disbursement: true,
   upstream_vat_amount: 19_250,
+  upstream_vat_rate_percent: 19.25,
   disbursement_vat_transparent: true,
   container_type_code: "45'HC",
   container_type_ref_id: "ct-45",
@@ -148,41 +150,44 @@ describe("the costing worksheet", () => {
     expect(screen.queryByText("SUBMITTED_FOR_VALIDATION")).not.toBeInTheDocument();
   });
 
-  it("offers NO VAT control on a pass-through line, and says why", async () => {
+  it("gives a pass-through line a VAT rate control (12768), not a dead label", async () => {
     renderSheet();
     await screen.findByText("CST-2026-0043");
-    // The service line gets a VAT picker…
+    // The service line gets a VAT-code picker…
     expect(
       screen.getByLabelText(/VAT code — Ocean Freight/i),
     ).toBeInTheDocument();
-    // …and the disbursement gets none, with the reason in its place. This is
-    // the legacy defect (VAT charged on a customs duty) made unreachable.
+    // …and the débours gets its own rate picker (default box), where the old
+    // "not taxed" label used to sit.
     expect(
-      screen.queryByLabelText(/VAT code — Demurrage/i),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/Pass-through — not taxed/i)).toBeInTheDocument();
+      screen.getByLabelText(/VAT rate — Demurrage/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Pass-through — not taxed/i)).not.toBeInTheDocument();
+    // …marked (PT) so it still reads as a pass-through.
+    expect(screen.getAllByText(/Pass-through \(PT\)/i).length).toBeGreaterThan(0);
   });
 
-  it("discloses the supplier's VAT and keeps it out of every total", async () => {
+  it("budgets the supplier's VAT into the total, marked (PT)", async () => {
     renderSheet();
     await screen.findByText("CST-2026-0043");
-    // 1,000,000 service + 119,250 gross débours = 1,119,250 HT; VAT is the
-    // service line's 192,500 alone. The 19,250 appears only as a disclosure.
-    expect(screen.getAllByText(/1,119,250/).length).toBeGreaterThan(0);
-    // 192,500 appears twice by design — the footer's VAT figure and the VAT
-    // panel's 19.25% band, which must agree.
-    expect(screen.getAllByText(/192,500/).length).toBeGreaterThan(0);
+    // 1,000,000 service + 100,000 débours net = 1,100,000 HT.
+    expect(screen.getAllByText(/1,100,000/).length).toBeGreaterThan(0);
+    // VAT = 192,500 service + 19,250 débours = 211,750, in the total now.
+    expect(screen.getAllByText(/211,750/).length).toBeGreaterThan(0);
+    // …and named as the supplier's own on débours (PT) — the VAT tile's hint
+    // and the memo line beneath the totals both say so.
     expect(
-      screen.getByText(/supplier's own VAT, paid on the client's behalf/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/on débours \(PT\)/i).length,
+    ).toBeGreaterThan(0);
   });
 
-  it("groups VAT by rate, with the untaxed buckets named", async () => {
+  it("groups VAT by rate, and the débours (PT) row shows its budgeted VAT", async () => {
     renderSheet();
     await screen.findByText("CST-2026-0043");
     expect(screen.getByText("19.25%")).toBeInTheDocument();
+    // The pass-through row now carries a real VAT figure, not a dash.
     expect(
-      screen.getByText(/Débours are re-billed at cost and never carry our VAT/i),
+      screen.getByText(/Re-billed at cost; the VAT is the supplier's, budgeted into the total/i),
     ).toBeInTheDocument();
   });
 

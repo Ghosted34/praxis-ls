@@ -53,11 +53,13 @@ import { LineGrid, VatPanel, TotalsFooter } from "./costing-lines";
 import {
   BLANK_LINE,
   COSTING_BASE,
+  defaultVatCode,
   lineKey,
   fromSaved,
   fromSuggestion,
   statusLabel,
   toPayload,
+  withVatDefault,
   type LineDraft,
 } from "./costing-model";
 import { SuggestDialog } from "./costing-suggest";
@@ -464,7 +466,8 @@ export function CostingSheet360({
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    setLines([...(lines || []), { ...BLANK_LINE }]);
+                    // A hand-added line is born with the TVA_STD default (12768).
+                    setLines([...(lines || []), withVatDefault({ ...BLANK_LINE }, defaultVatCode(vatCodes))]);
                     setDirty(true);
                   }}
                 >
@@ -615,8 +618,12 @@ export function CostingSheet360({
           onClose={() => setSuggesting(false)}
           onImport={(picked) => {
             // Tops up (Q2): only charges not already on the sheet arrive, and a
-            // line you have typed into is never touched.
-            setLines([...(lines || []), ...picked.map(fromSuggestion)]);
+            // line you have typed into is never touched. Each imported line is
+            // born with the TVA_STD default (12768) — rate mode for a débours.
+            setLines([
+              ...(lines || []),
+              ...picked.map((s) => withVatDefault(fromSuggestion(s), defaultVatCode(vatCodes))),
+            ]);
             setDirty(true);
             toast.success(
               `${picked.length} ${picked.length === 1 ? tr("charge added") : tr("charges added")}`,

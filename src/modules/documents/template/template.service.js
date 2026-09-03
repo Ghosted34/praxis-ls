@@ -1007,10 +1007,11 @@ async function loadRecord(client, docType, recordId) {
    * totals as columns precisely so the stored figures are what prints; the
    * recompute stays only as the fallback for a pre-12766 row that has none.
    *
-   * UPSTREAM VAT WAS INVISIBLE. A débours re-billed gross carries the
-   * supplier's own VAT inside it (the Maersk case). It is disclosed per line
-   * and never enters a total — printing it into one would charge the client
-   * tax that was never ours to collect.
+   * DÉBOURS VAT IS BUDGETED (12768). A débours is re-billed at the supplier's
+   * net plus their VAT; that VAT is the operations officer's cash to spend, so
+   * on this BUDGET (not a fiscal invoice) it counts toward the VAT total and the
+   * TTC, shown per line as "amount (PT)" and named in a remarks line. The stored
+   * total_vat already includes it.
    */
   if (docType === "COSTING") {
     const { rows } = await client.query(
@@ -1155,7 +1156,9 @@ async function loadRecord(client, docType, recordId) {
           unit: Number(l.unit_cost),
           tax: l.is_disbursement ? null : (l.tax_rate_percent !== null && l.tax_rate_percent !== undefined ? Number(l.tax_rate_percent) : null),
           is_disbursement: l.is_disbursement === true,
-          // Disclosed beside the line, in no total. See the header.
+          // 12768: the supplier's VAT on a débours, now budgeted into the sheet's
+          // VAT total (the stored total_vat already includes it). Shown on the
+          // line as "amount (PT)"; a remarks line explains it.
           upstream_vat: l.is_disbursement && l.upstream_vat_amount !== null && l.upstream_vat_amount !== undefined
             ? Number(l.upstream_vat_amount)
             : null,

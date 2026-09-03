@@ -130,46 +130,65 @@ describe("the status is said out loud", () => {
   });
 });
 
-/* ── 3. VAT, and the pass-through line ───────────────────────────────────── */
+/* ── 3. VAT is an amount; a débours shows it with (PT) ────────────────────── */
 
-describe("VAT is an amount, and a débours says why it has none", () => {
-  test("the taxed line carries its own VAT figure, not just a rate", () => {
-    // 2 × 500,000 at 19.25% = 192,500. The legacy column showed "19,25%" and
-    // left the reader to find a mispriced line with a calculator.
-    expect(render()).toContain("192 500 XAF (19.25%)");
+describe("the VAT column is an amount, and a débours is marked (PT)", () => {
+  test("a taxed line shows the VAT amount, not the rate", () => {
+    // 2 × 500,000 at 19.25% = 192,500. 12768: just the figure — the "(19.25%)"
+    // in brackets was noise on a document (the reader has the amount).
+    const html = render();
+    expect(html).toContain("192 500 XAF");
+    expect(html).not.toContain("192 500 XAF (19.25%)");
   });
 
-  test("the pass-through line says pass-through in the VAT column", () => {
+  test("a débours shows its supplier VAT with (PT) after it", () => {
+    // 45'HC surestaries: 100,000 net, 19,250 supplier VAT, re-billed at cost.
+    expect(render()).toContain("19 250 XAF (PT)");
+  });
+
+  test("a débours with no VAT shows just (PT), never a rate", () => {
     const html = render();
-    expect(html).toContain("pass-through");
-    // …and never a rate. A customs duty carrying 19.25% is the legacy defect
-    // this whole column exists to make unreachable.
+    // The customs-duty line carries no supplier VAT — (PT) alone, no 19.25%.
+    expect(html).toContain("(PT)");
     expect(html).not.toMatch(/Droits et taxes de douane[\s\S]{0,220}19\.25%/);
   });
 
-  test("the débours sub-total sits inside the totals, under what it qualifies", () => {
-    expect(render()).toContain("of which débours (at cost, untaxed)");
+  test("the débours sub-total sits inside the totals — at cost, not 'untaxed'", () => {
+    const html = render();
+    expect(html).toContain("of which débours (at cost)");
+    // The old label claimed débours were untaxed; they are budgeted now.
+    expect(html).not.toContain("untaxed");
   });
 });
 
-/* ── 4. The supplier's own VAT ───────────────────────────────────────────── */
+/* ── 4. The supplier's VAT is budgeted into the total ─────────────────────── */
 
-describe("upstream VAT is disclosed and in no total", () => {
-  test("it prints beside the charge it is inside", () => {
-    expect(render()).toContain("incl. supplier VAT 19 250 XAF");
+describe("débours VAT is in the total, and named", () => {
+  test("the VAT total includes the débours VAT (192,500 + 19,250 = 211,750)", () => {
+    // The sample's VAT is the service line's 192,500 PLUS the débours 19,250,
+    // which is the whole point of 12768: the budget accounts for the cash.
+    expect(render()).toContain("211 750 XAF");
   });
 
-  test("it is stated below the grand total, never added into VAT", () => {
-    const html = render();
-    expect(html).toContain("Of which upstream VAT paid on the client's behalf");
-    // The sample's VAT is the service line's 192,500 alone — the 19,250 is not
-    // in it, and the totals block must not have quietly summed them.
-    expect(html).not.toContain("211 750 XAF");
+  test("a memo names how much of the VAT is the supplier's on débours (PT)", () => {
+    expect(render()).toContain("of which on débours (PT)");
   });
 
-  test("a sheet with no upstream VAT says nothing about it", () => {
+  test("a sheet with no débours VAT prints no such memo", () => {
     const html = render({ totals: { ...TPL.sampleData.totals, upstream_vat_total: 0 } });
-    expect(html).not.toContain("Of which upstream VAT");
+    expect(html).not.toContain("of which on débours (PT)");
+  });
+
+  test("every débours gets a remarks line, above the pricer's own remarks", () => {
+    const html = render();
+    // A line per pass-through explaining what (PT) means…
+    expect(html).toMatch(/\(PT\)[^<]*Surestaries[^<]*disbursement re-billed at cost/);
+    // …and the user's remark still prints, after them.
+    expect(html).toContain("Taux carrier confirmé le 25/07");
+    const firstNote = html.indexOf("disbursement re-billed at cost");
+    const userRemark = html.indexOf("Taux carrier confirmé");
+    expect(firstNote).toBeGreaterThan(-1);
+    expect(userRemark).toBeGreaterThan(firstNote);
   });
 });
 

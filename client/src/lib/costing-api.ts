@@ -27,10 +27,15 @@ export type CostingLine = {
   /** 12766 — the sheet's order. Lines used to read by uuid and reshuffle on
    *  every save; the server assigns this from the order lines are sent in. */
   line_no?: number;
-  /** 12766 — the supplier's own VAT inside a pass-through gross (the 19,250 in
-   *  a 119,250 Maersk demurrage invoice). DISCLOSED on the document, never
-   *  added to any total, and only ever set on a disbursement line. */
+  /** 12766 — the supplier's own VAT inside a débours (the 19,250 in a 119,250
+   *  Maersk demurrage invoice). 12768: now BUDGETED into the sheet's VAT and
+   *  TTC (a costing is a cash budget, not a fiscal invoice), marked (PT). Only
+   *  ever set on a disbursement line. */
   upstream_vat_amount?: number | null;
+  /** 12768 — the rate a débours was priced at (default TVA_STD 19.25). The
+   *  amount above is derived from it; NULL means the amount was typed by hand
+   *  or the line carries no VAT. Only ever set on a disbursement line. */
+  upstream_vat_rate_percent?: number | null;
   /** Joined for display: what the catalogue says about this charge. */
   item_code?: string | null;
   unit_of_measure?: string | null;
@@ -57,7 +62,8 @@ export type Costing = {
     vat_total: number;
     total_ttc: number;
     total_cost: number;
-    /** Disclosed beside the ladder, never inside it — see CostingLine. */
+    /** A memo, now inside vat_total (12768): the part of the VAT that is the
+     *  supplier's own on débours (PT). See CostingLine. */
     upstream_vat_total: number;
     /** The sheet converted at its own stored rate; the only figure any
      *  cross-costing sum may use. */

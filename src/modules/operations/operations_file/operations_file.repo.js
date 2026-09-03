@@ -145,12 +145,29 @@ async function list(client, q = {}) {
 async function overview(client, dossierId) {
   const q = (sql) => client.query(sql, [dossierId]).then((r) => r.rows);
 
+  /*
+   * The file's BUDGET — and two defects fixed in 12766.
+   *
+   * IT SUMMED EVERY COSTING ON THE FILE, whatever its status. A rejected sheet
+   * beside its replacement, or a draft beside the approved one, double-counted
+   * the budget — so budget-vs-actual was wrong on exactly the files somebody
+   * had had to re-cost. `uq_costing_one_live_per_dossier` now makes at most one
+   * costing live, and `status <> 'REJECTED'` is what "live" means.
+   *
+   * AND IT IGNORED CURRENCY, adding a USD sheet's raw line amounts to an XAF
+   * one's. `service_type.repo.moneyRollup` grouped by currency and therefore
+   * reported a DIFFERENT figure for the same money. Converting at the costing's
+   * own stored rate — the rate its approver saw — is the answer both should
+   * have been giving; `exchange_rate_to_xaf` is NOT NULL DEFAULT 1, so an
+   * XAF sheet is unaffected.
+   */
   const [costing] = await q(
     "SELECT COUNT(DISTINCT c.costing_id)::int AS count, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost), 0) AS planned_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE NOT cl.is_disbursement), 0) AS planned_service_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE cl.is_disbursement), 0) AS planned_disbursement " +
-      "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id WHERE c.dossier_id = $1",
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf), 0) AS planned_cost, " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf) FILTER (WHERE NOT cl.is_disbursement), 0) AS planned_service_cost, " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost * c.exchange_rate_to_xaf) FILTER (WHERE cl.is_disbursement), 0) AS planned_disbursement " +
+      "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +
+      "WHERE c.dossier_id = $1 AND c.status <> 'REJECTED'",
   );
   const [actual] = await q("SELECT COUNT(*)::int AS entries, COALESCE(SUM(amount), 0) AS actual_cost FROM cost_entry WHERE dossier_id = $1");
   const [invoices] = await q(
@@ -189,14 +206,24 @@ async function overview(client, dossierId) {
   // People (SoD): who issued/validated/approved on the money documents. Names are
   // joined in the SAME (env) schema — business rows FK app_user per schema, and the
   // sandbox seed mirrors identity users, so a missing mirror just yields null names.
+  // 12766: `costing_id` rides along so the 360 can LINK to the sheet. It could
+  // not before — the block returned a count and a number, so the one screen
+  // that tells you a file has a costing was the one place you could not open
+  // it. The totals come too, so the card shows HT/VAT/TTC without a second
+  // fetch. `validated_by` is who actually validated; `validator_id` is who it
+  // was addressed to, and they are not always the same person.
   const [costingPeople] = await q(
-    "SELECT c.status, c.doc_number, " +
+    "SELECT c.costing_id, c.status, c.doc_number, c.currency, " +
+      "c.total_ht, c.total_vat, c.total_ttc, c.total_ttc_xaf, " +
+      "c.validated_at, c.approved_at, " +
       "uv.user_id AS validator_id, uv.full_name AS validator_name, " +
+      "ud.user_id AS validated_by_id, ud.full_name AS validated_by_name, " +
       "ua.user_id AS approver_id, ua.full_name AS approver_name " +
       "FROM costing c " +
       "LEFT JOIN app_user uv ON uv.user_id = c.validator_id " +
+      "LEFT JOIN app_user ud ON ud.user_id = c.validated_by " +
       "LEFT JOIN app_user ua ON ua.user_id = c.approver_id " +
-      "WHERE c.dossier_id = $1 " +
+      "WHERE c.dossier_id = $1 AND c.status <> 'REJECTED' " +
       "ORDER BY (c.status = 'APPROVED_LOCKED') DESC, c.updated_at DESC LIMIT 1",
   );
   const [invoicePeople] = await q(

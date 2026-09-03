@@ -501,7 +501,21 @@ async function overview(client, id) {
   const cp = agg.people.costing;
   const ip = agg.people.invoice;
   const people = {
-    costing: cp ? { doc_number: cp.doc_number, status: cp.status, validator: person(cp.validator_id, cp.validator_name), approver: person(cp.approver_id, cp.approver_name) } : null,
+    // 12766: `costing_id` is what makes the People block's costing clickable.
+    // `validated_by` is who actually validated, as distinct from `validator` —
+    // the person it was addressed to. Showing only the latter meant a sheet
+    // validated by someone standing in for the named validator read as though
+    // the named one had done it.
+    costing: cp ? {
+      costing_id: cp.costing_id,
+      doc_number: cp.doc_number,
+      status: cp.status,
+      validator: person(cp.validator_id, cp.validator_name),
+      validated_by: person(cp.validated_by_id, cp.validated_by_name),
+      validated_at: cp.validated_at || null,
+      approver: person(cp.approver_id, cp.approver_name),
+      approved_at: cp.approved_at || null,
+    } : null,
     invoice: ip ? { doc_number: ip.doc_number, status: ip.status, issuer: person(ip.issuer_id, ip.issuer_name), validator: person(ip.validator_id, ip.validator_name), approver: person(ip.approver_id, ip.approver_name) } : null,
   };
 
@@ -544,7 +558,20 @@ async function overview(client, id) {
       current_milestone: head.current_milestone || null,
     },
     readiness,
-    costing: { count: agg.costing.count, planned_cost: plannedCost },
+    // 12766: the live sheet's identity and money, so the 360 can render a real
+    // Costing card and link to it. `planned_cost` is XAF-normalised at each
+    // costing's own rate (see the repo) — it used to add currencies together.
+    costing: {
+      count: agg.costing.count,
+      planned_cost: plannedCost,
+      costing_id: cp ? cp.costing_id : null,
+      doc_number: cp ? cp.doc_number : null,
+      status: cp ? cp.status : null,
+      currency: cp ? cp.currency : null,
+      total_ht: cp ? Number(cp.total_ht || 0) : null,
+      total_vat: cp ? Number(cp.total_vat || 0) : null,
+      total_ttc: cp ? Number(cp.total_ttc || 0) : null,
+    },
     costs: { actual_cost: actualCost, gl_entries: agg.actual.entries },
     invoicing: { count: agg.invoices.count, invoiced_ttc: Number(agg.invoices.invoiced_ttc || 0), billed_ttc: billed, outstanding: Number(agg.outstanding.outstanding || 0) },
     economics: { billed_ttc: billed, actual_cost: actualCost, gross_margin: grossMargin, margin_percent: marginPercent },

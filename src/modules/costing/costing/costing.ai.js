@@ -4,8 +4,13 @@ const validator = require("./costing.validator");
 module.exports = {
   entity: "costing", module_key: "MOD-46", screens: [],
   reads: [
-    { key: "list_costings", service: service.list, permission: { module: "MOD-46", action: "view" }, describe: "List operations file costings." },
-    { key: "get_costing", service: service.get, permission: { module: "MOD-46", action: "view" }, describe: "Get a costing with lines + totals (HT / VAT / TTC)." },
+    { key: "list_costings", service: service.list, permission: { module: "MOD-46", action: "view" }, describe: "List operations file costings. Filters: dossier_id, status, currency, q (reference / file / client), from, to." },
+    { key: "get_costing", service: service.get, permission: { module: "MOD-46", action: "view" }, describe: "Get a costing with lines + totals (HT / VAT / TTC), and the amendment diff when it has been approved before and has since changed." },
+    { key: "costing_kpis", service: service.kpis, permission: { module: "MOD-46", action: "view" }, describe: "Counts by status and total TTC in XAF, over the same filter list_costings takes." },
+    // Read-only by design: it returns a PROPOSAL. The assistant may show it and
+    // may create a costing from what the person picks, but suggesting is not
+    // choosing — which is why this is a read and not a write.
+    { key: "suggest_costing_lines", service: service.suggestLines, permission: { module: "MOD-46", action: "view" }, describe: "The standard charge set for an operations file, from its service type's BASIC/ADVANCED/FULL tiers, priced against the file's carrier and expanded one line per container type. Nothing is saved." },
   ],
   writes: [
     { key: "create_costing", service: service.createDraft, schema: validator.schemas.create, permission: { module: "MOD-46", action: "create" }, confirm: true, describe: "Create a DRAFT operations file costing (budget HT/VAT/TTC; débours pass-through §6.7 — no margin, §2.2)." },

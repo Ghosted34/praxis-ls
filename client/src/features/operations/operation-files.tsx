@@ -301,7 +301,7 @@ export function OperationsFilesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               aria-label="Search operations files"
-              placeholder="Search by ref, client, BL/MAWB, vessel…"
+              placeholder="Search by ref, client, transport doc, vessel…"
               className="w-full max-w-xs"
             />
           </div>
@@ -322,7 +322,7 @@ export function OperationsFilesPage() {
       filtered={filtered}
       emptyFiltered={{
         title: "No operations files match",
-        hint: "The search covers reference, client, BL/MAWB and vessel across every file, not just this page.",
+        hint: "The search covers reference, client, transport document (BL, MAWB, waybill or CIM) and vessel across every file, not just this page.",
         action: (
           <Button
             variant="outline"

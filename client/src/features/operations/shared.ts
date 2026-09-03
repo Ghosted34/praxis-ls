@@ -87,6 +87,30 @@ export const milestonePct = (r: MilestoneCounted): number =>
     : 0;
 
 /**
+ * The short label for the transport document — what to say next to the number
+ * on a header meta line. A sea file's document is a Bill of Lading, an air
+ * file's is a MAWB, a road file's is a Waybill, a rail file's is a CIM. The
+ * legacy string "BL / MAWB" was correct for none of them, and read as "we did
+ * not care which".
+ *
+ * Kept short (2-4 characters where possible) because it rides on a comma-
+ * separated meta strip beside client / route / ETA and has to stay readable at
+ * that density. The full label ("Bill of Lading") lives on the shipment-details
+ * form, driven by the service-type field seed (9092).
+ */
+export const transportRefLabel = (serviceKey?: string | null): string => {
+  const k = String(serviceKey || "").toUpperCase();
+  if (k === "AIR") return "MAWB";
+  if (k === "INLAND" || k === "ROAD") return "Waybill";
+  if (k.startsWith("RAIL") || k === "END_TO_END_RAIL") return "CIM";
+  if (k === "SEA" || k === "HINTERLAND" || k === "PROJECT") return "BL";
+  // A service type without a transport document (WAREHOUSING, CUSTOMS-only,
+  // brokerage) never carries a `bl_mawb`, so this branch is only reached by a
+  // service we have not named — the neutral word is truer than a wrong one.
+  return "Transport ref";
+};
+
+/**
  * The TRANSIT ORDER lifecycle tones, and what each state means in words.
  *
  * Deliberately NOT `tone` above, which maps the generic operations vocabulary:

@@ -190,7 +190,14 @@ async function foldDetails(client, { data, existing = null, enforceRequired }) {
   // service types (break-bulk, whose marks are the shipper's own) keep the
   // manual override untouched. Files already overridden are left as they are —
   // this drops incoming writes, it does not clear a flag already set.
-  if (await capturesContainers(client, serviceTypeId)) {
+  // Only consult the service type when there is actually a marks value to drop.
+  // Most writes carry none, and querying on every one would both waste a round
+  // trip and reach for a `client.query` that some callers (the re-plan path,
+  // whose stub client has no query method) never provide.
+  const marksInWrite =
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers") ||
+    Object.prototype.hasOwnProperty.call(write, "marks_numbers_is_manual");
+  if (marksInWrite && (await capturesContainers(client, serviceTypeId))) {
     delete write.marks_numbers;
     delete write.marks_numbers_is_manual;
   }

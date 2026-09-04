@@ -75,6 +75,20 @@ describe("marks & numbers lock on containerised files", () => {
     expect(write.pod).toBe("Douala");
   });
 
+  it("does not touch the client when the write carries no marks", async () => {
+    // The re-plan path (operations-file-target-date) calls update with a stub
+    // client that has no `query`. A fold that carried no marks must not reach
+    // for the service type at all — checking would both waste a round trip and
+    // throw on that client.
+    detailsService.applyValues.mockResolvedValueOnce({ patch: { pol: "Lagos" } });
+    const noQueryClient = {}; // no `.query` — as the re-plan stub provides
+    const write = await svc.foldDetails(noQueryClient, {
+      data: { service_type_id: "st-1", details: { pol: "Lagos" } },
+      enforceRequired: true,
+    });
+    expect(write.pol).toBe("Lagos");
+  });
+
   it("reads captures_containers straight from the service_type row", async () => {
     expect(await svc.capturesContainers(client(true), "st-1")).toBe(true);
     expect(await svc.capturesContainers(client(false), "st-2")).toBe(false);

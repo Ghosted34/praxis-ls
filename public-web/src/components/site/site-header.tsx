@@ -71,8 +71,37 @@ export function SiteHeader() {
 
   const name = branding.name || "Praxis";
 
+  /**
+   * Publish the header's real height as `--site-header-h`.
+   *
+   * Everything that has to clear this bar — the sticky asides, the anchor
+   * scroll-margins — used to hardcode 6rem, which is shorter than the header
+   * actually is, so pinned headings were sliced in half and anchor jumps landed
+   * behind the nav. Measuring is the only version of this that stays right: the
+   * row grows when the nav wraps at a narrow width, when a tenant uploads a
+   * taller logo, and when the language switcher gains a third language.
+   *
+   * `ResizeObserver` rather than a resize listener, because none of those three
+   * changes is a window resize. Guarded for older browsers, where the CSS
+   * fallback stands.
+   */
+  const headerRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        "--site-header-h",
+        `${Math.round(el.getBoundingClientRect().height)}px`,
+      );
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <header className="sticky top-0 z-40">
+    <header ref={headerRef} className="sticky top-0 z-40">
       <div className="site-utility">
         <div className="wrap flex h-10 items-center justify-between gap-4 text-xs">
           <Link

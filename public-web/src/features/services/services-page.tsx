@@ -109,7 +109,7 @@ export function ServicesIndexPage() {
                 <section
                   key={group.key || `ungrouped-${gi}`}
                   id={group.key || undefined}
-                  className="scroll-mt-24"
+                  className="scroll-mt-[var(--sticky-top)]"
                 >
                   {label ? (
                     /* The pillar's own icon, by name (12755). Unrecognised

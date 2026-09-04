@@ -70,7 +70,7 @@ export function Section({
       id={id}
       // A hash target must not hide under the sticky header, or the anchor jumps
       // to the middle of the band it is meant to point at.
-      className={cn(band, "scroll-mt-24", divided && "rule-top", className)}
+      className={cn(band, "scroll-mt-[var(--sticky-top)]", divided && "rule-top", className)}
     >
       <div className="wrap py-band">
         {(eyebrow || title || aside) && (

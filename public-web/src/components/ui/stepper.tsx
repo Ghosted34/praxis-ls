@@ -45,7 +45,7 @@ export function Stepper({
 }) {
   const percent = Math.round(((current + 1) / steps.length) * 100);
   return (
-    <nav aria-label={label} className={cn("min-w-0", className)}>
+    <nav aria-label={label} className={cn("stepper min-w-0", className)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         {/* NOWRAP. Wrapping put step 4 on a line of its own inside the quote
             card, which turns a progress strip into two rows of unequal weight
@@ -83,12 +83,12 @@ export function Stepper({
                 >
                   {done ? <CheckIcon size={12} /> : <span className="num">{i + 1}</span>}
                 </span>
-                <span
-                  className={cn(
-                    "min-w-0 truncate",
-                    here ? "inline" : "hidden lg:inline",
-                  )}
-                >
+                {/* Shown or hidden by the strip's OWN width — see `.stepper`
+                    in index.css. No `truncate`: a label clipped to "Cargo
+                    deta…" has stopped being a label, and the viewport
+                    breakpoint this replaced could not see that the strip was
+                    inside an 800px card. */}
+                <span className={here ? "stepper-label-here" : "stepper-label"}>
                   {step.label}
                 </span>
               </Tag>

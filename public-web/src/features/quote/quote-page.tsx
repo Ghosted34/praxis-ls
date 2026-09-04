@@ -84,11 +84,13 @@ export function QuotePage() {
           {/* Sticky, and `self-start` is what makes that work: a grid item
               stretches to the row height by default, so a sticky child inside a
               full-height column has nothing to stick within and scrolls away
-              with the form. `top-24` clears the sticky site header.
+              with the form. The offset is `--sticky-top`, which is the header's MEASURED
+              height plus air — see the token's note in index.css on why 6rem was
+              wrong and why it is measured rather than declared.
 
               It stops being sticky below `lg`, where the two columns stack and
               a pinned block would sit on top of the form it is explaining. */}
-          <div className="lg:sticky lg:top-24 lg:self-start">
+          <div className="lg:sticky lg:top-[var(--sticky-top)] lg:self-start">
             <h2 className="text-title font-semibold tracking-tight">
               {t("site.quote.whatHappens")}
             </h2>

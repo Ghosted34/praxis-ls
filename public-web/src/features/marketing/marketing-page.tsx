@@ -479,7 +479,7 @@ function PortalBand() {
  *
  *  `id="quote"` is kept because links to `…/#quote` are already in circulation
  *  — the hero CTA and the header button pointed here until the form got its own
- *  route — and this is where they should land. `Section`'s `scroll-mt-24` keeps
+ *  route — and this is where they should land. `Section`'s `scroll-mt-[var(--sticky-top)]` keeps
  *  the sticky header off the heading when one of those old links is followed. */
 function QuoteBand({ block }: { block: CtaBandBlock | null }) {
   const { t } = useTranslation();

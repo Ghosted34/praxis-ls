@@ -137,6 +137,27 @@
 
     /* Slightly rounder than the ERP's 8px: a public page is not a data grid.
        A tenant's own `radius` from the branding endpoint overrides it. */
+    /*
+     * How tall the sticky header actually is.
+     *
+     * Five call sites used to guess it as `24` (6rem, 96px) — two sticky asides
+     * and three anchor scroll-margins. The header is the utility strip (40px)
+     * plus the nav row, which is taller than that, so a sticky aside slid under
+     * it and had its heading sliced in half, and an anchor jump landed with its
+     * first line behind the nav.
+     *
+     * The fallback below is the measured height at the default breakpoint;
+     * `site-header.tsx` overwrites it from the real element on mount and on
+     * resize, because the row grows when the nav wraps, when a tenant's logo is
+     * taller, or when the language switcher gains a third language. A guess is
+     * wrong on exactly the tenants nobody screenshots.
+     */
+    --site-header-h: 112px;
+    /* What anything pinned or scrolled-to should clear: the header, plus enough
+       air that the first line reads as the top of a block rather than as
+       something that stopped just short of a collision. */
+    --sticky-top: calc(var(--site-header-h) + 1.5rem);
+
     --radius: 10px;
     --shadow-s: 0 1px 2px rgb(10 10 10 / 0.05);
     --shadow-m: 0 6px 20px rgb(10 10 10 / 0.07);
@@ -507,6 +528,53 @@
      prose, generous vertical air. The rule is the design — no card needed. */
   .rule-top {
     border-top: 1px solid var(--border);
+  }
+
+  /* ── The step strip ────────────────────────────────────────────────────── */
+
+  /*
+   * WHY THIS IS A CONTAINER QUERY AND NOT A BREAKPOINT
+   *
+   * The labels were `hidden lg:inline` with `truncate`, and both halves of that
+   * were wrong. `lg` is the VIEWPORT's width, and this strip lives inside a card
+   * that is roughly 800px wide on a 1900px screen — so the viewport said "plenty
+   * of room, show all four labels" while the strip had room for about two, and
+   * `truncate` did what it was told: "Cargo deta…".
+   *
+   * A container query asks the only question that matters, which is how wide the
+   * STRIP is. Below the threshold the labels are gone entirely and the steps are
+   * numbers, which is honest; above it they are shown in full. Nothing is ever
+   * clipped mid-word, because a truncated label is a label that has stopped
+   * being one.
+   *
+   * The step you are ON keeps its label at every width — it is the answer to
+   * "where am I", and it is the one the heading below repeats.
+   */
+  .stepper {
+    container-type: inline-size;
+  }
+
+  .stepper-label {
+    display: none;
+  }
+
+  .stepper-label-here {
+    display: inline;
+  }
+
+  @container (min-width: 40rem) {
+    .stepper-label {
+      display: inline;
+    }
+  }
+
+  /* No container-query support: fall back to showing the labels rather than
+     hiding them. An over-full strip is recoverable by reading; a strip of bare
+     numbers with no fallback is a wizard that never says what its steps are. */
+  @supports not (container-type: inline-size) {
+    .stepper-label {
+      display: inline;
+    }
   }
 
   /* ── Depth, glass and motion ───────────────────────────────────────────── */

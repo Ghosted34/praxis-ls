@@ -394,7 +394,7 @@ export function VacancyPage() {
             ) : null}
           </Reveal>
 
-          <Card padded className="h-fit lg:sticky lg:top-24">
+          <Card padded className="h-fit lg:sticky lg:top-[var(--sticky-top)]">
             <h2 className="text-title font-semibold tracking-tight">
               {t("site.careers.applyTitle")}
             </h2>

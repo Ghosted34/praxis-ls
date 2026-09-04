@@ -1079,13 +1079,16 @@ async function startOAuth(client, provider, { slug, redirectUri, display_name = 
   // before anyone is redirected to Microsoft, rather than after they have
   // consented and come back.
   await assertProviderEnabled(client, provider);
-  if (!o.idp.isConfigured()) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
+  // Microsoft resolves these from the platform vault, so they are async now.
+  // `await` on the still-synchronous Google adapter is a no-op, so one call
+  // shape keeps serving both.
+  if (!(await o.idp.isConfigured())) throw new AppError("NOT_CONFIGURED", `${provider} OAuth is not configured`, 400);
   if (!slug || !redirectUri) throw new AppError("VALIDATION_ERROR", "slug and redirectUri are required", 422);
   const state = jwt.sign(
     { purpose: o.purpose, provider, slug, user_id: actor.user_id || null, display_name, redirectUri },
     config.JWT_ACCESS_SECRET, { expiresIn: OAUTH_STATE_TTL },
   );
-  return { url: o.idp.authorizeUrl({ state, redirectUri }) };
+  return { url: await o.idp.authorizeUrl({ state, redirectUri }) };
 }
 
 /** Step 2: exchange the code, resolve the mailbox, upsert the connection, store

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { ProofStrip } from "@/components/site/proof-strip";
+import { __resetSitePageCache } from "@/lib/use-site-page";
 import { en } from "@/lib/i18n-dict";
 
 /**
@@ -47,6 +48,14 @@ const mount = async () => {
 beforeEach(() => {
   status = 200;
   payload = null;
+  /* The home page is fetched ONCE per page load and shared — the hero, this
+     strip, the how-it-works list and the quote band all override from the same
+     row, and four private effects would be four requests for one page. The
+     promise therefore lives in module scope, which survives between tests: the
+     first case here 404s, and every case after it would read that cached null
+     and render nothing. Resetting is what makes each `payload` above the answer
+     to its own test rather than to whichever ran first. */
+  __resetSitePageCache();
   // Settled on first render, so `CountUp` shows the figure rather than a frame
   // loop's opening zero — the same path a reader with reduced motion takes.
   vi.stubGlobal("matchMedia", (q: string) => ({

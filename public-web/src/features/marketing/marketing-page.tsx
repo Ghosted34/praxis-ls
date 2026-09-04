@@ -77,19 +77,23 @@ export function MarketingPage() {
      the module cache in `use-site-page` is what keeps that one request rather
      than four. Null — no page, unpublished, package off — means every band
      keeps its dictionary copy, which is what most tenants see. */
-  const { page, loading } = useHomePage();
+  const { page } = useHomePage();
   const hero = heroBlock(page);
   const how = featureList(page);
   const cta = ctaBand(page);
 
-  /* Nothing paints until the answer is in.
+  /* The page paints from the dictionary and swaps when the override lands —
+     it does NOT wait for the answer.
 
-     Without this the hero renders our headline, the request lands, and the
-     tenant's own headline replaces it a beat later — a visible flicker on the
-     first screen of the site, on every load, for the tenants who did the work
-     of authoring one. The page is a lazily-loaded chunk already, so the wait is
-     one request against a route the visitor has just navigated to. */
-  if (loading) return null;
+     Holding the whole page back was tried and reverted. It removes a brief
+     swap on the hero for the tenants who authored one, and pays for it by
+     blanking the entire homepage — hero, services, everything — behind a
+     request that 404s for every tenant who has published nothing, which is
+     most of them. On the metered connection this app's payload budget exists
+     for, that is a white screen where there used to be content.
+
+     Swapping is also what `ServicesBand` below has always done with the
+     published service list, so the page settles once rather than twice. */
 
   return (
     <PageShell label={t("site.hero.title")}>

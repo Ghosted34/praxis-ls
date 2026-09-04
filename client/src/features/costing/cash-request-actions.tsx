@@ -52,7 +52,16 @@ export function DisburseForm({
   onSaved: () => void;
 }) {
   const { rows: entities } = useList<Entity>("/entities");
-  const requested = Number(request.total_budget ?? 0);
+  /*
+   * `amount`, not `total_budget` (12771).
+   *
+   * `total_budget` is Σ of the lines' NET; `amount` is the TOTAL PAYABLE the
+   * request was approved for — net plus each line's VAT. Reading the net here
+   * understated the outstanding balance on any request carrying VAT, so the
+   * dialog offered to pay less than the treasury actually owed. `total_budget`
+   * stays as the fallback for a list row that carries no `amount`.
+   */
+  const requested = Number(request.amount ?? request.total_budget ?? 0);
   const paid = Number(request.disbursed_amount ?? 0);
   const outstanding = Math.round((requested - paid) * 100) / 100;
   // Blank means "the whole outstanding balance" — the server applies that

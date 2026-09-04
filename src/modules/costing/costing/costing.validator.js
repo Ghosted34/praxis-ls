@@ -74,11 +74,22 @@ const suggestQuery = z.object({
   on_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+/**
+ * The budget ledger's one option (12771).
+ *
+ * `for_cash_request` leaves that request out of every total, which is the
+ * difference between "how much was available to me" and "how much is left
+ * now". A worksheet asks the first; the registry asks the second.
+ */
+const budgetQuery = z.object({
+  for_cash_request: z.string().uuid().optional(),
+});
+
 // AI-facing: costing_id in the payload → list_costings picker.
 const aiUpdate = update.extend({ costing_id: z.string().uuid() });
 const aiSetStatus = setStatus.extend({ costing_id: z.string().uuid() });
 const aiUnlock = unlock.extend({ costing_id: z.string().uuid() });
-const schemas = { create, update, setStatus, unlock, listQuery, suggestQuery, aiUpdate, aiSetStatus, aiUnlock };
+const schemas = { create, update, setStatus, unlock, listQuery, suggestQuery, budgetQuery, aiUpdate, aiSetStatus, aiUnlock };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 /** Query-string variant: parses `req.query`, which Express makes read-only on
  *  some versions, so the parsed result is stashed rather than reassigned. */
@@ -90,6 +101,6 @@ const qw = (k) => (req, _res, next) => {
 };
 module.exports = {
   create: mw("create"), update: mw("update"), setStatus: mw("setStatus"), unlock: mw("unlock"),
-  listQuery: qw("listQuery"), suggestQuery: qw("suggestQuery"),
+  listQuery: qw("listQuery"), suggestQuery: qw("suggestQuery"), budgetQuery: qw("budgetQuery"),
   schemas,
 };

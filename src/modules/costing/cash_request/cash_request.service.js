@@ -654,6 +654,21 @@ async function transition(client, { id, to, entityId = null, date = null, reason
       // onApproved handler below.
       await executor.start(client, { eventTypeKey: "disbursal.validated", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
     }
+    if (to === "APPROVED") {
+      /*
+       * The THIRD leg, and the only optional one (owner Q14). Handing the cash
+       * over had no bindable chain — it was a permission and a capability and
+       * nothing else — so "over 5 000 000 needs the finance director" could not
+       * be expressed as configuration.
+       *
+       * NOTHING IS BOUND BY DEFAULT (9101 seeds the event, not a workflow), so
+       * `start` reports autoApproved and the manual disburse path is unchanged.
+       * `onApproved` deliberately does NOT advance on completion: this chain
+       * authorises the treasury to act, and the act itself is `disburse`, which
+       * moves real money and must stay a deliberate human step.
+       */
+      await executor.start(client, { eventTypeKey: "disbursal.approved", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
+    }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });
     await client.query("COMMIT");
@@ -1005,8 +1020,16 @@ const kpis = (client, q) => repo.kpis(client, q);
  */
 onApproved.register("cash_request", async (client, { id, actor }) => {
   const cr = await repo.getCR(client, id);
-  const to = cr && cr.status === "SUBMITTED" ? "VALIDATED" : "APPROVED";
-  return transition(client, { id, to, actor: actor || {}, viaChain: true });
+  if (!cr) return null;
+  if (cr.status === "SUBMITTED") return transition(client, { id, to: "VALIDATED", actor: actor || {}, viaChain: true });
+  if (cr.status === "VALIDATED") return transition(client, { id, to: "APPROVED", actor: actor || {}, viaChain: true });
+  /*
+   * An APPROVED request whose `disbursal.approved` chain has just cleared
+   * (12771). There is nowhere to advance TO: the next act is `disburse`, which
+   * moves real money out of the treasury and stays a deliberate human step.
+   * The cleared chain is the authorisation, not the payment.
+   */
+  return cr;
 });
 
 module.exports = {

@@ -5,7 +5,7 @@
 import { pageShell } from "@/lib/layout";
 import { tr } from "@/lib/i18n";
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
@@ -35,6 +35,11 @@ import {
   JustifyForm,
   CashRequestActions,
 } from "./cash-request-actions";
+import {
+  CASH_REQUEST_BASE,
+  statusLabel as cashStatusLabel,
+  statusTone as cashStatusTone,
+} from "./cash-request-model";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -1587,11 +1592,14 @@ function CashRequestForm({
 export function CashRequestsPage() {
   const { rows, error, loading, reload } =
     useList<api.CashRequest>("/cash-requests");
+  // 12771 — the strip counted statuses in the browser, over whichever page it
+  // had loaded, so "Approved: 3" meant three ON THIS PAGE and was simply wrong
+  // past the first fifty rows. Its own endpoint now, over the same filter.
+  const kpis = useResource(() => api.cashRequestKpis(), []);
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const dref = refOf(dossiers);
-  const list = rows || [];
 
   // The two money actions open a dialog; the three status moves are one call.
   const [disbursing, setDisbursing] = React.useState<api.CashRequest | null>(null);
@@ -1630,10 +1638,16 @@ export function CashRequestsPage() {
     {
       key: "ref",
       label: "Ref",
+      // The reference is a LINK. A request awaiting a decision has to be
+      // openable from the row it is read on — the same fix 12766 made for the
+      // costing, whose reference was shown everywhere and clickable nowhere.
       render: (r) => (
-        <span className="num font-medium text-foreground">
+        <Link
+          className="num font-medium text-foreground underline-offset-2 hover:underline"
+          to={`${CASH_REQUEST_BASE}/${r.cash_request_id}`}
+        >
           {r.doc_number || r.ref || r.cash_request_id?.slice(0, 8) || "—"}
-        </span>
+        </Link>
       ),
     },
     {
@@ -1661,7 +1675,11 @@ export function CashRequestsPage() {
     {
       key: "status",
       label: "Status",
-      render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill>,
+      // Said out loud, never raw: nobody outside the schema should read
+      // PARTIALLY_DISBURSED on a screen (FRONTEND_GUIDE §5).
+      render: (r) => (
+        <Pill tone={cashStatusTone(r.status)}>{cashStatusLabel(r.status)}</Pill>
+      ),
     },
     {
       key: "_a",
@@ -1706,14 +1724,15 @@ export function CashRequestsPage() {
       />
       <HubTabs />
       <KpiRow>
-        <KpiTile label="Requests" value={num(list.length)} />
+        <KpiTile label={tr("Requests")} value={num(kpis.data?.total)} />
+        <KpiTile label={tr("To validate")} value={num(kpis.data?.to_validate)} />
+        <KpiTile label={tr("To approve")} value={num(kpis.data?.to_approve)} />
+        <KpiTile label={tr("To disburse")} value={num(kpis.data?.to_disburse)} />
+        {/* The one figure a count cannot give: approved money not yet paid. */}
         <KpiTile
-          label={tr("Approved")}
-          value={num(list.filter((c) => c.status === "APPROVED").length)}
-        />
-        <KpiTile
-          label="Submitted"
-          value={num(list.filter((c) => c.status === "SUBMITTED").length)}
+          label={tr("Outstanding")}
+          value={money(kpis.data?.outstanding_xaf)}
+          tone={Number(kpis.data?.outstanding_xaf) > 0 ? "warn" : undefined}
         />
       </KpiRow>
       <DataList

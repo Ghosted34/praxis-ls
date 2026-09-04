@@ -576,23 +576,109 @@ export const rejectReconSuggestion = (id: string, sid: string) =>
     method: "POST",
   });
 
+/* ── The budget a costing authorises (/costings/:id/budget) ── */
+
+/**
+ * One budget line and what is left of it (12771).
+ *
+ * `remaining` MAY BE NEGATIVE: a costing line amended below what is already
+ * committed reads over-consumed rather than clamping at zero, because the clamp
+ * would hide the one row somebody has to act on.
+ *
+ * `disbursed` is APPORTIONED — instalments are paid against the request, not
+ * its lines — so it is a display figure and nothing is gated on it.
+ */
+export type BudgetLine = {
+  costing_line_id: string;
+  line_no: number;
+  label: string;
+  item_code?: string | null;
+  dictionary_item_id?: string | null;
+  container_type_code?: string | null;
+  is_disbursement?: boolean;
+  qty: number;
+  unit_cost: number;
+  net: number;
+  vat: number;
+  budget: number;
+  committed: number;
+  pending: number;
+  disbursed: number;
+  remaining: number;
+  over_committed: boolean;
+};
+
+export type CostingBudget = {
+  costing_id: string;
+  doc_number?: string | null;
+  dossier_id?: string | null;
+  status: string;
+  revision: number;
+  currency: string;
+  exchange_rate_to_xaf: number;
+  /** APPROVED_LOCKED. The gate a cash request applies, answered here so the
+   *  screen can explain itself before the user meets a 403. */
+  can_fund: boolean;
+  lines: BudgetLine[];
+  totals: {
+    budget: number;
+    committed: number;
+    pending: number;
+    disbursed: number;
+    remaining: number;
+    over_committed_lines: number;
+  };
+};
+
+/**
+ * The budget ledger for one costing.
+ *
+ * `for_cash_request` leaves THAT request out of every total — the difference
+ * between "how much was available to me" and "how much is left now". Without
+ * it an approved request is measured against a balance it is itself inside.
+ */
+export const getCostingBudget = (costingId: string, forCashRequest?: string) =>
+  tenant<CostingBudget>(
+    `/costings/${costingId}/budget${forCashRequest ? `?for_cash_request=${forCashRequest}` : ""}`,
+  );
+
 /* ── Cash requests(/cash-requests) ── */
 export type CashLine = {
+  /** 12771 — round-tripped so an edit is unambiguous even when the label and
+   *  the amount both change. Absent means a new line. */
+  cash_request_line_id?: string;
+  /** 12771 — the BUDGET LINE this claim draws down. Required on every line of
+   *  an OPS request before it can be submitted: no money leaves without a
+   *  costing. NULL on an overhead request, which has no operations file. */
+  costing_line_id?: string | null;
   dictionary_item_id?: string | null;
   label?: string;
+  /** 12771 — the legacy line shape, back. `budget_amount` alone still works
+   *  and is read as 1 × that amount. */
+  qty?: number;
+  unit_cost?: number;
   budget_amount?: number;
   spent_amount?: number;
+  /** Set only by CLOSE_BALANCE: this line's share of what was actually paid. */
+  settled_amount?: number | null;
   is_disbursement?: boolean;
+  source?: "IMPORTED" | "MANUAL";
   /** §3.5 — legacy per-line VAT % and "Just. Req?" (10746). */
   vat_percent?: number | null;
   justification_required?: boolean;
 };
 export type DisbursementMethod = "CASH" | "BANK" | "CHEQUE" | "MOMO";
+export type CashRequestStatus =
+  | "DRAFT" | "SUBMITTED" | "VALIDATED" | "APPROVED"
+  | "PARTIALLY_DISBURSED" | "DISBURSED" | "CLOSED_SHORT"
+  | "JUSTIFIED" | "REJECTED";
+
 export type CashRequest = {
   cash_request_id: string;
   ref?: string | null;
   doc_number?: string | null;
   dossier_id?: string | null;
+  costing_id?: string | null;
   status: string;
   total_budget?: number | null;
   /** Σ of the payment rows (10719). Derived server-side, never set by hand. */
@@ -608,6 +694,63 @@ export type CashRequest = {
   disbursement_details?: Record<string, string> | null;
   /** §3.5 — the voucher footer, derived server-side on GET /:id. */
   totals?: { subtotal: number; vat_total: number; total_payable: number };
+  /** 12771 — the money unit. An OPS request inherits the costing's. */
+  currency?: string | null;
+  exchange_rate_to_xaf?: number | null;
+  amount_xaf?: number | null;
+  /** 12771 — attribution the row never carried. */
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
+  over_budget_reason?: string | null;
+  settled_at?: string | null;
+  settlement_reason?: string | null;
+  costing_revision?: number | null;
+  created_at?: string;
+};
+
+/**
+ * What a validator and an approver read before they act (12771, owner Q20).
+ *
+ * Finance validates against the budget, so "is this file budgeted for, and is
+ * this request inside it?" has to be answerable on the screen the decision is
+ * taken on. Null on an overhead request, which has no costing — and null if the
+ * ledger could not be read, because an unreadable budget must not make the
+ * request unreadable.
+ */
+export type BudgetControl = {
+  costing_id: string | null;
+  costing_doc_number: string | null;
+  costing_status: string | null;
+  can_fund?: boolean;
+  currency?: string;
+  budget_total: number;
+  committed_elsewhere: number;
+  remaining_before: number;
+  claimed_here: number;
+  remaining_after: number;
+  unbudgeted_line_count: number;
+  breaches: {
+    costing_line_id: string;
+    label: string | null;
+    claim: number;
+    remaining: number;
+    excess: number;
+  }[];
+  is_over_budget: boolean;
+};
+
+/** One instalment. The receipt is per tranche: each is handed over separately. */
+export type CashPayment = {
+  cash_request_payment_id: string;
+  amount: number;
+  paid_on: string;
+  memo?: string | null;
+  regie_advance_id?: string | null;
+  treasury_account_id?: string | null;
+  received_by?: string | null;
+  received_at?: string | null;
+  received_ack_kind?: "IN_APP" | "WET_SCAN" | null;
   created_at?: string;
 };
 export type CashRequestInput = {
@@ -621,6 +764,10 @@ export type CashRequestInput = {
   remarks?: string;
   disbursement_method?: DisbursementMethod;
   disbursement_details?: Record<string, string>;
+  /** 12771 — an OPS request INHERITS the costing's currency; these are for an
+   *  overhead request, which has no costing to inherit from. */
+  currency?: string;
+  exchange_rate_to_xaf?: number;
   lines?: CashLine[];
 };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");
@@ -632,10 +779,25 @@ export const importCostingLines = (id: string) =>
     method: "POST",
     body: {},
   });
+/**
+ * Advance the request one step. 12771 adds two arguments and one destination:
+ *
+ *   `reason`             REQUIRED to reject — a rejection with no explanation
+ *                        is the one thing the requester cannot act on.
+ *   `over_budget_reason` REQUIRED to submit a claim over what the budget has
+ *                        left. It may still not be APPROVED: the reason tells
+ *                        the approver to go and amend the costing.
+ *   `"DRAFT"`            reopens a rejected request, keeping its reference.
+ */
 export const transitionCashRequest = (
   id: string,
-  to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED",
-  extra: { entity_id?: string; date?: string } = {},
+  to: "SUBMITTED" | "VALIDATED" | "APPROVED" | "REJECTED" | "DRAFT",
+  extra: {
+    entity_id?: string;
+    date?: string;
+    reason?: string;
+    over_budget_reason?: string;
+  } = {},
 ) =>
   tenant<CashRequest>(`/cash-requests/${id}/transition`, {
     method: "POST",
@@ -647,12 +809,13 @@ export const getCashRequest = (id: string) =>
   tenant<CashRequestDetail>(`/cash-requests/${id}`);
 
 export type CashRequestDetail = CashRequest & {
-  costing_id?: string | null;
   requested_by?: string | null;
   regie_advance_id?: string | null;
   amount?: number | null;
   lines?: CashLine[];
-  payments?: unknown[];
+  payments?: CashPayment[];
+  /** 12771 — the budgetary control block. Null for an overhead request. */
+  budget_control?: BudgetControl | null;
 };
 
 /**
@@ -693,6 +856,54 @@ export const disburseCashRequest = (
  * remainder is still open the server refuses with ADVANCE_NOT_CLEARED — the
  * holder returns the unspent cash on the advance itself first.
  */
+/**
+ * Settle a part-paid request at what actually moved (12771, owner Q15).
+ *
+ * Releases the unpaid commitment back to the file's budget — without it a
+ * request holds budget for ever against cash that will never move. A decision,
+ * so the server demands a written reason.
+ */
+export const closeCashRequestBalance = (id: string, reason: string) =>
+  tenant<CashRequest & { paid: number; released_to_budget: number }>(
+    `/cash-requests/${id}/close-balance`,
+    { method: "POST", body: { reason } },
+  );
+
+/**
+ * The régie holder acknowledging that they took ONE instalment — the third
+ * signature on the voucher (owner Q13).
+ *
+ * Per payment, not per request: each tranche is handed over separately, and the
+ * legacy's single `disbursed_time` on the header is the shape that cannot say
+ * who took the second one.
+ */
+export const acknowledgeCashReceipt = (
+  id: string,
+  paymentId: string,
+  body: { ack_kind?: "IN_APP" | "WET_SCAN"; received_by?: string | null } = {},
+) =>
+  tenant<CashPayment>(`/cash-requests/${id}/payments/${paymentId}/receipt`, {
+    method: "POST",
+    body,
+  });
+
+/** Edit a DRAFT request. The route has existed since the module shipped and had
+ *  no caller at all until the worksheet (12771). */
+export const updateCashRequest = (
+  id: string,
+  body: Partial<CashRequestInput> & { lines?: CashLine[] },
+) => tenant<CashRequestDetail>(`/cash-requests/${id}`, { method: "PATCH", body });
+
+/** The KPI strip, over the same filter the page used — so "Approved: 3" means
+ *  three matching requests, not three on this page. */
+export const cashRequestKpis = () =>
+  tenant<{
+    total: number; draft: number; to_validate: number; to_approve: number;
+    to_disburse: number; partially_disbursed: number; disbursed: number;
+    justified: number; rejected: number;
+    disbursed_total_xaf: number; outstanding_xaf: number;
+  }>("/cash-requests/kpis");
+
 export const justifyCashRequest = (
   id: string,
   body: { lines: CashLine[]; entity_id?: string; entry_date?: string },

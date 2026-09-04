@@ -183,6 +183,10 @@ const CostingHub = lazyNamed(
   () => import("@/features/costing/hub"),
   "CostingHub",
 );
+const CashRequest360Page = lazyNamed(
+  () => import("@/features/costing/cash-request-360"),
+  "CashRequest360Page",
+);
 const CostingSheet360Page = lazyNamed(
   () => import("@/features/costing/costing-sheet-360"),
   "CostingSheet360Page",
@@ -590,6 +594,15 @@ export function App() {
               <Route
                 path="costing/costing/:costingId"
                 element={<CostingSheet360Page />}
+              />
+              {/* The cash-request worksheet is a full route for the same reason
+            the costing sheet is: a request awaiting approval gets SENT to a
+            validator, and "open Cash requests, then find DF-2026-0011" is not
+            a link. Declared before `costing/:section` — react-router ranks by
+            specificity, so the three-segment path wins either way. */}
+              <Route
+                path="costing/cash-requests/:cashRequestId"
+                element={<CashRequest360Page />}
               />
               <Route path="costing/:section" element={<CostingHub />} />
               {/* Finance (new) */}

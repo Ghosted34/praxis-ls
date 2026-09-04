@@ -43,6 +43,34 @@ const NOTIFIABLE = {
   "opportunity.lost": { action: "view", title: "Opportunity lost" },
   "proposal.accepted": { action: "view", title: "Proposal accepted" },
 
+  /*
+   * ── Approvals & disbursement (12771, owner Q20) ──
+   *
+   * The chain events already notify the people a task is waiting on
+   * (`notify-approvals`). These are the MONEY events, and until now not one
+   * `cash_request.*` or `costing.*` key was in this list — so a disbursement
+   * was emitted, audited, and reached nobody unless a tenant happened to have
+   * bound a workflow.
+   *
+   * Broadcast to the module audience rather than to the approval path: "who was
+   * paid what against my file" is wanted by operations and finance people who
+   * are not signatories. Safe to broadcast here for two reasons that do not
+   * hold elsewhere — the audience is RBAC-resolved, so it cannot reach anyone
+   * without MOD-49 view, and the whole category is one switch in Preferences.
+   *
+   * Category comes from `DOMAIN_TO_CATEGORY`, which already maps `cash_request`
+   * and `disbursal` to "approvals"; nothing here has to name it.
+   */
+  "costing.approved": { action: "view", title: "Costing approved" },
+  "cash_request.approved": { action: "view", title: "Cash request approved" },
+  "cash_request.partially_disbursed": { action: "view", title: "Cash request part paid" },
+  "cash_request.disbursed": { action: "view", title: "Cash disbursed" },
+  "cash_request.closed_short": { action: "view", title: "Cash request settled short" },
+  "cash_request.justified": { action: "view", title: "Cash request justified" },
+  // The one that is not routine: money the treasury approved and the requester
+  // now has to answer for.
+  "cash_request.rejected": { action: "view", title: "Cash request rejected", priority: "HIGH" },
+
   // ── Procurement ──
   "goods_received.created": { action: "view", title: "Goods received" },
   "supplier_invoice.posted": { action: "view", title: "Supplier invoice posted" },

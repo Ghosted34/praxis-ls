@@ -29,7 +29,7 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 // SHEET telling you what is left of it, and the cash-request worksheet reads it
 // to seed and to warn. Declared after "/:id" — a distinct sub-path, so no
 // ambiguity with a costing id.
-router.get("/:id/budget", requirePermission(MODULE, "view"), controller.budget);
+router.get("/:id/budget", requirePermission(MODULE, "view"), validator.budgetQuery, controller.budget);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 // Both sides of the merge are kept, applied per target state.

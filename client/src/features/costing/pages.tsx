@@ -43,7 +43,7 @@ import {
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, money0, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
-import type { Entity, DictItem } from "@/lib/masterdata-api";
+import type { Entity } from "@/lib/masterdata-api";
 import { listCurrencies } from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import type { Dossier } from "@/lib/operations-api";
@@ -1212,15 +1212,32 @@ function CostPortfolio() {
 
 /* ═══════════════════ Cash requests ═══════════════════ */
 
+/**
+ * START a cash request — the CONTEXT only, never its money.
+ *
+ * ── WHY THERE IS NO LINE EDITOR HERE ANY MORE ──────────────────────────────
+ *
+ * There was one, and it was the pre-revamp shape: a "Budget line" dropdown
+ * over the whole financial dictionary, a free Budget box, a VAT box and a
+ * justification tick. On an OPS request every one of those is a line the
+ * server will refuse — 12771's `assertFundable` demands that each line name a
+ * `costing_line_id` (owner decision Q4: no money leaves without a costing), so
+ * a hand-typed line can be saved as a draft and can never be submitted. The
+ * dialog was inviting people to fill in a form whose contents were unusable.
+ *
+ * The lines come from the BUDGET now, on the worksheet, where the Budget /
+ * Claimed / Remaining columns can show what each claim does to the file. This
+ * dialog names the file, the costing, the beneficiary and how the money leaves
+ * — and then gets out of the way.
+ */
 function CashRequestForm({
   onClose,
-  onSaved,
+  onCreated,
 }: {
   onClose: () => void;
-  onSaved: () => void;
+  onCreated: (id: string, loadFailed: string | null) => void;
 }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const { rows: dict } = useList<DictItem>("/financial-dictionary");
   const { rows: costings } = useList<api.Costing>("/costings");
   const [dossierId, setDossierId] = React.useState("");
   // 10720: the legacy cash request carried beneficiary + an OPS/OVH context —
@@ -1248,30 +1265,15 @@ function CashRequestForm({
   const [details, setDetails] = React.useState<Record<string, string>>({});
   const setDetail = (k: string, v: string) =>
     setDetails((d) => ({ ...d, [k]: v }));
-  const [lines, setLines] = React.useState<api.CashLine[]>([
-    { dictionary_item_id: null, label: "", budget_amount: 0 },
-  ]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const setLine = (i: number, p: Partial<api.CashLine>) =>
-    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
-
-  // Pick a budget line from the Financial Dictionary; the item's label is stored
-  // alongside its id so the request reads the same standardised category names.
-  const pickItem = (i: number, id: string) => {
-    const item = (dict || []).find((d) => d.dictionary_item_id === id);
-    setLine(i, {
-      dictionary_item_id: id || null,
-      label: item ? item.label_fr || item.code : "",
-    });
-  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.createCashRequest({
+      const created = await api.createCashRequest({
         dossier_id: category === "OPS" ? dossierId || undefined : undefined,
         costing_id: costingId || undefined,
         category,
@@ -1282,20 +1284,27 @@ function CashRequestForm({
         remarks: remarks || undefined,
         disbursement_method: method || undefined,
         disbursement_details: method ? details : undefined,
-        lines: lines
-          .filter((l) => l.dictionary_item_id || l.label)
-          .map((l) => ({
-            dictionary_item_id: l.dictionary_item_id || undefined,
-            label: l.label || "Line",
-            budget_amount: Number(l.budget_amount) || 0,
-            vat_percent:
-              l.vat_percent === null || l.vat_percent === undefined
-                ? undefined
-                : Number(l.vat_percent),
-            justification_required: l.justification_required === true,
-          })),
       });
-      onSaved();
+      /*
+       * The budget, pulled in immediately (owner decision Q10: "lines arrive on
+       * file pick"). So the worksheet opens POPULATED — the three costing lines
+       * already there, defaulted to what each has left — rather than empty with
+       * a button on it.
+       *
+       * A failure here is reported, never swallowed, but it does not undo the
+       * request: an unapproved or fully-claimed costing is a real answer the
+       * requester needs to read, and the worksheet is where they read it, next
+       * to the "Load from budget" button that retries.
+       */
+      let loadFailed: string | null = null;
+      if (created.cash_request_id && costingId && category === "OPS") {
+        try {
+          await api.importCostingLines(created.cash_request_id);
+        } catch (err) {
+          loadFailed = errMsg(err);
+        }
+      }
+      onCreated(created.cash_request_id, loadFailed);
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -1457,132 +1466,14 @@ function CashRequestForm({
           )}
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="micro">Budget lines</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                setLines((l) => [
-                  ...l,
-                  { dictionary_item_id: null, label: "", budget_amount: 0 },
-                ])
-              }
-            >
-              + Add line
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {lines.map((l, i) => (
-              <div
-                key={i}
-                className="grid items-end gap-2 sm:grid-cols-[1fr_120px_90px_auto_auto]"
-              >
-                <Field label="Budget line">
-                  <Select
-                    value={l.dictionary_item_id ?? ""}
-                    onChange={(e) => pickItem(i, e.target.value)}
-                  >
-                    <option value="">Select a category…</option>
-                    {(dict || [])
-                      .filter((d) => d.is_active !== false)
-                      .map((d) => (
-                        <option
-                          key={d.dictionary_item_id}
-                          value={d.dictionary_item_id}
-                        >
-                          {d.label_fr || d.code}
-                        </option>
-                      ))}
-                  </Select>
-                </Field>
-                <Field label={tr("Budget")}>
-                  <Input
-                    type="number"
-                    className="num text-right"
-                    value={String(l.budget_amount ?? "")}
-                    onChange={(e) =>
-                      setLine(i, { budget_amount: Number(e.target.value) })
-                    }
-                  />
-                </Field>
-                {/* §3.5 — legacy per-line VAT % and "Just. Req?". */}
-                <Field label={tr("VAT %")}>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    className="num text-right"
-                    value={
-                      l.vat_percent === null || l.vat_percent === undefined
-                        ? ""
-                        : String(l.vat_percent)
-                    }
-                    onChange={(e) =>
-                      setLine(i, {
-                        vat_percent:
-                          e.target.value === ""
-                            ? null
-                            : Number(e.target.value),
-                      })
-                    }
-                  />
-                </Field>
-                <label className="flex h-9 items-center gap-1 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={l.justification_required === true}
-                    onChange={(e) =>
-                      setLine(i, { justification_required: e.target.checked })
-                    }
-                    aria-label={tr("Justification required")}
-                  />
-                  {tr("Just. req?")}
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={lines.length === 1}
-                  onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* §3.5 — the voucher footer, live: Subtotal / VAT / TOTAL PAYABLE. */}
-        {(() => {
-          const subtotal = lines.reduce(
-            (a, l) => a + (Number(l.budget_amount) || 0),
-            0,
-          );
-          const vat = lines.reduce(
-            (a, l) =>
-              a +
-              ((Number(l.budget_amount) || 0) * (Number(l.vat_percent) || 0)) /
-                100,
-            0,
-          );
-          return (
-            <p className="num text-right text-sm">
-              {tr("Subtotal")} {money(subtotal)} · {tr("VAT")} {money(vat)} ·{" "}
-              <span className="font-semibold">
-                {tr("TOTAL PAYABLE")} {money(subtotal + vat)}
-              </span>
-            </p>
-          );
-        })()}
+        {/* Where the money comes from is decided on the WORKSHEET, against the
+            budget — see the note on this component. This dialog ends here. */}
         {error && <ErrorState message={error} />}
         <FormButtons
           busy={busy}
           disabled={busy}
           onCancel={onClose}
-          saveLabel="Create request"
+          saveLabel="Create & open worksheet"
         />
       </form>
     </Modal>
@@ -1590,6 +1481,7 @@ function CashRequestForm({
 }
 
 export function CashRequestsPage() {
+  const navigate = useNavigate();
   const { rows, error, loading, reload } =
     useList<api.CashRequest>("/cash-requests");
   // 12771 — the strip counted statuses in the browser, over whichever page it
@@ -1741,13 +1633,33 @@ export function CashRequestsPage() {
         error={error}
         loading={loading}
         rowKey={(r) => r.cash_request_id}
+        // The whole row opens the worksheet, exactly as the costing register
+        // above does. The reference cell has been a link since 12771, but a
+        // register whose rows are inert while its neighbour's are clickable
+        // teaches people the detail screen does not exist — which is precisely
+        // what happened.
+        onRowClick={(r) => navigate(`${CASH_REQUEST_BASE}/${r.cash_request_id}`)}
         empty={{
           title: "No cash requests",
           hint: "Request an advance for an operations file.",
         }}
       />
       {open && (
-        <CashRequestForm onClose={() => setOpen(false)} onSaved={reload} />
+        <CashRequestForm
+          onClose={() => setOpen(false)}
+          onCreated={(newId, loadFailed) => {
+            setOpen(false);
+            // Straight to the worksheet — the rule the costing already follows
+            // above: an empty request is not a destination. This is where the
+            // budget lines are, with what each claim leaves behind, and it is
+            // the screen the requester actually works on.
+            navigate(`${CASH_REQUEST_BASE}/${newId}`, {
+              // Carried rather than shown here: the worksheet is where the
+              // retry lives, so that is where the reason belongs.
+              state: loadFailed ? { loadFailed } : undefined,
+            });
+          }}
+        />
       )}
       {disbursing && (
         <DisburseForm

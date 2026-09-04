@@ -546,9 +546,33 @@ function VapidCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => voi
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12, gap: 8 }}>
         <Button variant="primary" onClick={generate} loading={busy}>{row?.secret_set ? "Regenerate keypair" : "Generate keypair"}</Button>
       </div>
-      <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-        Regenerating invalidates existing browser subscriptions. Note: push delivery (subscription table + client service worker) is not yet wired.
-      </p>
+      {/*
+        The old note said push delivery was "not yet wired". It has been wired
+        for a long time, and that sentence made this the safest-looking button
+        on the page: regenerating looked like configuring something inert.
+        It is the opposite. Every browser subscription in every tenant is
+        bound to the CURRENT public key, and the push services reject a
+        signature from a new one with 403 rather than 410 — so before 12770
+        nothing pruned those rows, nothing reported them, and every device on
+        the deploy went silently and permanently deaf.
+        Devices now re-register themselves on their next app boot, which is
+        what makes this recoverable rather than terminal, and what the copy
+        below promises. Say the recovery, and say what it costs.
+      */}
+      {row?.secret_set ? (
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          <strong>Regenerating replaces the identity every registered device subscribed with.</strong>{" "}
+          Push stops reaching every user on this deployment until each of their devices
+          re-registers, which happens automatically the next time they open the app —
+          so a phone nobody opens stays silent. Only regenerate if the private key
+          has been exposed.
+        </p>
+      ) : (
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          Generate once. Without a keypair, no notification can reach a closed app on
+          any tenant — the delivery path degrades quietly rather than erroring.
+        </p>
+      )}
     </Card>
   );
 }

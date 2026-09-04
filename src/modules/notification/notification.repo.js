@@ -116,15 +116,32 @@ async function requesterFor(client, entityRef) {
 }
 
 // ── Web-Push subscriptions (0473) — a user's opted-in browsers/devices. ──
-async function savePushSubscription(client, userId, { endpoint, p256dh, auth, userAgent }) {
+/**
+ * Register (or refresh) one device.
+ *
+ * `vapidKeyHash` (12770) is the fingerprint of the public key the browser
+ * subscribed with. It is what lets a later send recognise a subscription that
+ * belongs to a key this deployment has since rotated away from — the failure
+ * that produced a permanent, silent push outage, because push services answer
+ * that case with 403 and every safety net here was watching for 404/410.
+ *
+ * `last_used_at` is deliberately NOT set here any more. It was, by both this
+ * and the rotation below, and nothing else ever wrote it — so the one column
+ * that could say "has this device ever actually received anything" only ever
+ * said "when did it register". The send path writes it now; `created_at`
+ * already records the registration.
+ */
+async function savePushSubscription(client, userId, { endpoint, p256dh, auth, userAgent, vapidKeyHash = null }) {
   const { rows } = await client.query(
-    `INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, user_agent, last_used_at)
-     VALUES ($1,$2,$3,$4,$5, now())
+    `INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, user_agent, vapid_key_hash)
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (endpoint) DO UPDATE
        SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
-           user_agent = EXCLUDED.user_agent, last_used_at = now()
+           user_agent = EXCLUDED.user_agent,
+           vapid_key_hash = COALESCE(EXCLUDED.vapid_key_hash, push_subscription.vapid_key_hash),
+           last_error = NULL, last_failed_at = NULL
      RETURNING subscription_id`,
-    [userId, endpoint, p256dh, auth, userAgent || null],
+    [userId, endpoint, p256dh, auth, userAgent || null, vapidKeyHash],
   );
   return rows[0];
 }
@@ -157,14 +174,15 @@ async function setRotationToken(client, endpoint, tokenHash) {
  * Returns the owning user_id when a row moved, or null when the token was
  * unknown, already spent, or the subscription is gone.
  */
-async function rotatePushSubscription(client, { tokenHash, endpoint, p256dh, auth }) {
+async function rotatePushSubscription(client, { tokenHash, endpoint, p256dh, auth, vapidKeyHash = null }) {
   const { rows } = await client.query(
     `UPDATE push_subscription
         SET endpoint = $2, p256dh = $3, auth = $4,
-            rotation_token_hash = NULL, last_used_at = now()
+            vapid_key_hash = COALESCE($5, vapid_key_hash),
+            rotation_token_hash = NULL, last_error = NULL, last_failed_at = NULL
       WHERE rotation_token_hash = $1
       RETURNING user_id, subscription_id`,
-    [tokenHash, endpoint, p256dh, auth],
+    [tokenHash, endpoint, p256dh, auth, vapidKeyHash],
   );
   return rows[0] || null;
 }
@@ -176,6 +194,26 @@ async function countPushSubscriptions(client, userId) {
     [userId],
   );
   return rows[0].n;
+}
+
+/**
+ * One row per registered device, for the Settings panel and the self-test.
+ *
+ * The ENDPOINT never leaves the server. It is a capability URL: anyone holding
+ * it can push to that device, which is exactly why 12752 refused to use it as
+ * proof of identity. Its host is enough to tell an Android phone from a
+ * desktop Firefox, and the user agent names the rest.
+ */
+async function listPushSubscriptions(client, userId) {
+  const { rows } = await client.query(
+    `SELECT endpoint, user_agent, vapid_key_hash, created_at,
+            last_used_at, last_failed_at, last_error
+       FROM push_subscription
+      WHERE user_id = $1
+      ORDER BY created_at`,
+    [userId],
+  );
+  return rows;
 }
 
 /**
@@ -312,7 +350,7 @@ module.exports = {
   getPreferences, putPreferences, isChannelEnabled,
   preferencesFor, insertForUsers, activeEmailsFor, unreadCountsFor,
   savePushSubscription, deletePushSubscription,
-  setRotationToken, rotatePushSubscription, countPushSubscriptions,
+  setRotationToken, rotatePushSubscription, countPushSubscriptions, listPushSubscriptions,
   claimDeviceLapseNotice, clearDeviceLapse,
   roleRecipients, requesterFor, recipientsWithPermission,
 };

@@ -30,6 +30,14 @@ module.exports = {
   subscribePush: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.subscribePush(c, actor(req), { subscription: req.body.subscription, userAgent: req.headers["user-agent"] })) })),
   unsubscribePush: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.unsubscribePush(c, actor(req), { endpoint: req.body.endpoint })) })),
   devices: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.pushDevices(c, actor(req))) })),
+  /*
+   * identityDb for the same reason as the four above — a registered browser is
+   * a device, and devices live in LIVE regardless of X-Praxis-Env. It matters
+   * more here than anywhere: a test run from Test that read the sandbox table
+   * would report "no registered devices" to somebody whose device is registered
+   * perfectly well, which is the exact confusion this route exists to end.
+   */
+  testPush: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.sendPushTest(c, actor(req))) })),
   // No `actor` — this one has no caller identity to read. The rotation token is
   // the whole authorisation, and the tenant comes from the Host header like
   // every other tenant-scoped request. identityDb for the reason above, and it

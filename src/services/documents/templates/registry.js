@@ -1028,70 +1028,359 @@ const TEMPLATES = {
     },
   },
 
-  /**
-   * DEMANDE DE FONDS / PAYMENT REQUEST — the legacy printed this as an internal
-   * finance voucher with a requisitioner grid, a beneficiary, and
-   * VALIDATED/APPROVED/RECEIVED signature boxes (cash-request.php #print-area).
-   * The rebuild's version carries the same facts — requester, beneficiary,
-   * OPS/OVH context, remarks — as real data from the record, not stamps of one
-   * hard-coded signature image.
+  /* ── Owner Q16 — the cash-request voucher ─────────────────────────────────
+   *
+   * DEMANDE DE FONDS. The legacy printed this as an internal finance voucher
+   * with a requisitioner grid, a beneficiary and VALIDATED / APPROVED /
+   * RECEIVED signature boxes (cash-request.php #print-area). The first rebuild
+   * carried the same facts as real data rather than as one hard-coded MD
+   * signature image, which was the important half. What it still could not do:
+   *
+   * · IT SHOWED THE CLAIM WITH NO SIGHT OF THE BUDGET. A cash request is a
+   *   DRAW against an approved costing (12771) — the sheet IS the file's
+   *   budget — and the approving authority was asked to sign "2 650 000" with
+   *   no way to know whether the file had it. Every line now carries Budget /
+   *   Claimed / Remaining after, and the block is omitted entirely on an
+   *   overhead request, which has no costing and would otherwise print three
+   *   empty columns.
+   *
+   * · IT PRINTED THE ENUM. `PARTIALLY_DISBURSED`, on an A4 page, at a person.
+   *   `status_words` is a {fr, en} pair now and the template picks a side —
+   *   the costing's lesson, and the same words the register uses on screen.
+   *
+   * · ITS SIGNATURE BOXES WERE RULED LINES. Three decisions are recorded in
+   *   the database (raised, approved, disbursed) and none of them reached the
+   *   paper. They print as seals now, with the ruled boxes kept as the
+   *   fallback for a voucher nobody has signed yet — a DRAFT taken to a desk
+   *   review has nobody to seal it, and a page with neither seals nor lines
+   *   cannot be signed at all.
+   *
+   * · A PART-PAID REQUEST PRINTED AS THOUGH NOTHING HAD MOVED. The payments
+   *   table closes that: what was released, when, and what is still to run.
+   *
+   * · THE JUSTIFICATION TICK WAS INVISIBLE. Whoever takes cash against a
+   *   ticked line owes a receipt back (Q17), and that obligation belongs on
+   *   the paper they sign, not only on the screen they raised it from. It is a
+   *   dagger on the description and one sentence at the foot — the same
+   *   grammar the costing uses for (PT) débours, and it costs no column.
    */
   CASH_REQUEST: {
-    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request", fields: ["approval chain", "beneficiary", "requisitioner", "remarks", "disbursement method", "VAT totals", "RECEIVED BY"],
+    docType: "CASH_REQUEST", title: { fr: "Demande de fonds", en: "Cash request" }, module: "costing/cash_request",
+    fields: ["budget columns", "requisitioner grid", "payments", "seals", "justification marks", "VAT totals"],
     build: (data, cfg, entity, verify) => {
-      const ccy = data.currency || "XAF";
-      const METHOD_LABEL = { CASH: { fr: "Espèces", en: "Cash" }, BANK: { fr: "Virement bancaire", en: "Bank transfer" }, CHEQUE: { fr: "Chèque", en: "Cheque" }, MOMO: { fr: "Mobile money", en: "Mobile money" } };
+      const lang = cfg.language;
+      const ccy = data.currency || cfg.base_currency || "XAF";
+      const t = data.totals || {};
+      const seals = Array.isArray(data.seals) ? data.seals : [];
+      const title = { fr: "Demande de fonds", en: "Cash request" };
+      const METHOD_LABEL = {
+        CASH: { fr: "Espèces", en: "Cash" }, BANK: { fr: "Virement bancaire", en: "Bank transfer" },
+        CHEQUE: { fr: "Chèque", en: "Cheque" }, MOMO: { fr: "Mobile money", en: "Mobile money" },
+      };
+
       const meta = [
         [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+        [{ fr: "Statut", en: "Status" }, data.status_words ? k.t(data.status_words, lang) : data.status],
         [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        // The legacy's COSTING REF row, kept: this voucher draws on that sheet,
+        // and the reader who queries a figure needs to know which one.
+        data.costing_ref
+          ? [{ fr: "Cotation", en: "Costing" }, data.costing_revision > 1 ? `${data.costing_ref} · rév. ${data.costing_revision}` : data.costing_ref]
+          : null,
         [{ fr: "Catégorie", en: "Category" }, data.category],
         [{ fr: "Centre de coût", en: "Cost centre" }, data.cost_center],
         [{ fr: "Bénéficiaire", en: "Beneficiary" }, data.beneficiary],
-        data.method ? [{ fr: "Mode de paiement", en: "Payment method" }, k.t(METHOD_LABEL[data.method] || { fr: data.method, en: data.method }, cfg.language)] : null,
+        data.method ? [{ fr: "Mode de paiement", en: "Payment method" }, k.t(METHOD_LABEL[data.method] || { fr: data.method, en: data.method }, lang)] : null,
       ].filter((m) => m && m[1]);
+
+      /*
+       * THE REQUISITIONER. The legacy's grid — name, matricule, department,
+       * job title — and one of the few parts of that screen worth copying: a
+       * cashier at a window matches a face to a row, and a bare name does not
+       * do that. Empty facets are dropped by `factsGrid`, so a request raised
+       * by a user with no employee record prints the name alone rather than
+       * three dashes.
+       */
+      const r = data.requisitioner || {};
+      const reqCells = [
+        // The NAME is not here: `parties` above already carries it, in bold,
+        // with their contact. Printing it twice on one page is how a reader
+        // learns that this grid is padding — the costing's facts block makes
+        // the same omission for the same reason.
+        [{ fr: "Matricule", en: "Staff no." }, r.staff_no],
+        [{ fr: "Service", en: "Department" }, r.department],
+        [{ fr: "Fonction", en: "Job title" }, r.job_title],
+      ].filter((c) => c[1]);
+
       // §3.5 — the method's own fields print on the voucher (the cashier pays
       // against what is written here, not against a memory of the form).
       const md = data.method_details || {};
       const methodLines = Object.entries(md)
         .map(([key, v]) => `<div>${k.esc(key.replace(/_/g, " "))}: <strong>${k.esc(String(v))}</strong></div>`)
         .join("");
-      const context = data.overhead_justification
-        ? k.section({ fr: "Justification (frais généraux)", en: "Justification (overhead)" }, `<div class="box">${k.esc(data.overhead_justification)}</div>`, cfg)
+
+      /*
+       * THE LINES. The budget three appear only when there is a budget to show
+       * — an overhead request has no costing, and three columns of dashes on
+       * its voucher would teach the reader to skip the block on the ones that
+       * do have it.
+       */
+      const rows = Array.isArray(data.lines) ? data.lines : [];
+      const hasBudget = rows.some((l) => l.budget);
+      const cols = [
+        { key: "label", label: { fr: "Désignation", en: "Description" } },
+        { key: "qty", label: { fr: "Qté", en: "Qty" }, num: true },
+        { key: "unit", label: { fr: "P.U.", en: "Unit" }, num: true },
+        { key: "vat", label: { fr: "TVA", en: "VAT" }, num: true },
+        { key: "claim", label: { fr: "Demandé (TTC)", en: "Requested (TTC)" }, num: true },
+      ].concat(hasBudget ? [
+        { key: "budget", label: { fr: "Budget", en: "Budget" }, num: true },
+        { key: "committed", label: { fr: "Déjà engagé", en: "Claimed" }, num: true },
+        { key: "after", label: { fr: "Reste après", en: "Remaining after" }, num: true },
+      ] : []);
+
+      const lineRows = rows.map((l) => {
+        const amount = has(l.amount) ? Number(l.amount) : Number(l.qty || 1) * Number(l.unit || 0);
+        const vatAmount = has(l.tax) && Number(l.tax) > 0 ? (amount * Number(l.tax)) / 100 : null;
+        const b = l.budget || null;
+        return {
+          // A dagger marks the obligation, explained once at the foot. The
+          // (PT) mark works the same way on the costing.
+          label: (l.justification_required ? "‡ " : "") + String(l.label || ""),
+          qty: has(l.qty) ? String(l.qty) : "",
+          unit: has(l.unit) ? k.money(l.unit, ccy, cfg) : "",
+          vat: vatAmount === null ? "" : k.money(vatAmount, ccy, cfg),
+          claim: k.money(has(l.claim) ? l.claim : amount, ccy, cfg),
+          budget: b ? k.money(b.approved, ccy, cfg) : "—",
+          committed: b ? k.money(b.committed, ccy, cfg) : "—",
+          // A negative balance is the whole point of printing the column: it is
+          // the figure the approver must refuse (assertFundable enforces it).
+          after: b ? k.money(b.after, ccy, cfg) : "—",
+        };
+      });
+
+      const totalsRows = [
+        [{ fr: "Sous-total", en: "Subtotal" }, k.money(t.subtotal, ccy, cfg)],
+        [{ fr: "TVA", en: "VAT" }, k.money(t.vat_total, ccy, cfg)],
+        [{ fr: "TOTAL À PAYER", en: "TOTAL PAYABLE" }, k.money(t.total_payable, ccy, cfg), { grand: true }],
+        // Only once anything has moved: on an unpaid voucher these two rows
+        // would restate the total twice and say nothing.
+        Number(data.paid_total) > 0 ? [{ fr: "Déjà décaissé", en: "Already disbursed" }, k.money(data.paid_total, ccy, cfg)] : null,
+        Number(data.paid_total) > 0 ? [{ fr: "Reste à décaisser", en: "Balance to disburse" }, k.money(data.balance, ccy, cfg)] : null,
+      ];
+
+      /*
+       * THE PAYMENTS. A voucher paid in tranches is read to answer "how much is
+       * left", so the balance runs down the column rather than being left for
+       * the reader to subtract. Each row says whether the cash was acknowledged
+       * — the third signature (Q13) — because an unacknowledged tranche is the
+       * one the treasurer chases.
+       */
+      const paymentsHtml = Array.isArray(data.payments) && data.payments.length
+        ? k.section({ fr: "Décaissements", en: "Disbursements" }, k.lineTable([
+          { key: "no", label: { fr: "N°", en: "No." } },
+          { key: "paid_on", label: { fr: "Date", en: "Date" } },
+          { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true },
+          { key: "balance", label: { fr: "Solde", en: "Balance" }, num: true },
+          { key: "received", label: { fr: "Reçu par", en: "Acknowledged" } },
+        ], data.payments.map((p) => ({
+          no: String(p.no),
+          paid_on: k.dateFmt(p.paid_on),
+          amount: k.money(p.amount, ccy, cfg),
+          balance: k.money(p.balance, ccy, cfg),
+          received: p.received_at
+            ? `${k.dateFmt(p.received_at)}${p.received_ack_kind === "WET_SCAN" ? " " + k.t({ fr: "(papier)", en: "(paper)" }, lang) : ""}`
+            : k.t({ fr: "En attente", en: "Pending" }, lang),
+        })), cfg), cfg)
         : "";
-      const lines = Array.isArray(data.lines) && data.lines.length
-        ? k.lineTable(LINE_COLS, fmtLines(data.lines, ccy), cfg)
+
+      /*
+       * THE SEALS. Three, in the order the voucher passed through them, and
+       * titled so each names the decision it records rather than simply saying
+       * three people signed. `signStrip` because a bare `.seal` is 88mm wide,
+       * so three of them stack one per row and spend half a page.
+       *
+       * Validation is deliberately absent: the owner's rule is that validating
+       * is a visa, not a signature (Q20). Finance checks the funds; the three
+       * signatories are the requestor, the approver and the disburser.
+       */
+      const sealHtml = seals.length
+        ? k.signStrip(seals.map((sig) => ({
+          title: sig.reason || { fr: "Signature", en: "Signature" },
+          html: k.sealBlock({ ...sig, reason: null }, cfg, { titled: true }),
+        })), cfg)
+        : `<div class="sig">`
+          + `<div class="b"><div class="ln">${k.t({ fr: "DEMANDÉ PAR", en: "REQUESTED BY" }, lang)}</div></div>`
+          + `<div class="b"><div class="ln">${k.t({ fr: "APPROUVÉ PAR", en: "APPROVED BY" }, lang)}</div></div>`
+          + `<div class="b"><div class="ln">${k.t({ fr: "DÉCAISSÉ PAR", en: "DISBURSED BY" }, lang)}</div></div>`
+          + `</div>`;
+
+      /*
+       * REMARKS — the obligations first, then the requester's own note. A
+       * reader who meets "‡" in the description finds, at the foot of the page,
+       * the sentence that says what it costs them; an over-budget claim finds
+       * the account its author had to write to submit it at all.
+       */
+      const notes = [];
+      if (rows.some((l) => l.justification_required)) {
+        notes.push(k.t({
+          fr: "‡ Pièce justificative obligatoire : le porteur des fonds doit rapporter le reçu du tiers pour cette ligne avant clôture.",
+          en: "‡ Supporting document required: whoever takes the cash must bring back the third-party receipt for this line before the request can be closed.",
+        }, lang));
+      }
+      if (data.over_budget_reason) {
+        notes.push(`${k.t({ fr: "Dépassement de budget", en: "Over budget" }, lang)} — ${k.esc(data.over_budget_reason)}`);
+      }
+      if (data.settlement_reason) {
+        notes.push(`${k.t({ fr: "Soldée partiellement", en: "Settled short" }, lang)} — ${k.esc(data.settlement_reason)}`);
+      }
+      if (data.rejection_reason) {
+        notes.push(`${k.t({ fr: "Motif du rejet", en: "Rejected because" }, lang)} — ${k.esc(data.rejection_reason)}`);
+      }
+      const remarksHtml = notes.length || data.remarks
+        ? k.section({ fr: "Remarques", en: "Remarks" },
+          `<div class="box">${notes.map((n) => `<div>${n}</div>`).join("")}${
+            data.remarks
+              ? `<div style="margin-top:${notes.length ? "2.5mm" : "0"}">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`
+              : ""
+          }</div>`, cfg)
         : "";
-      const totals = data.totals
-        ? k.totals([
-            [{ fr: "Sous-total", en: "Subtotal" }, k.money(data.totals.subtotal, ccy)],
-            [{ fr: "TVA", en: "VAT" }, k.money(data.totals.vat_total, ccy)],
-            [{ fr: "TOTAL À PAYER", en: "TOTAL PAYABLE" }, k.money(data.totals.total_payable, ccy), { grand: true }],
-          ], cfg)
-        : k.section({ fr: "Montant demandé", en: "Amount requested" }, `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, ccy)}</div>`, cfg);
-      // §3.5 — the legacy voucher's THREE signature blocks (:1976-1990).
-      // RECEIVED BY is the physical acknowledgement of the cash — the owner's
-      // specific question ("how payment is received") is answered by this ink.
-      const threeSignatures =
-        `<div class="sig">` +
-        `<div class="b"><div class="ln">${k.t({ fr: "VALIDÉ PAR (FINANCE)", en: "VALIDATED BY (FINANCE)" }, cfg.language)}</div></div>` +
-        `<div class="b"><div class="ln">${k.t({ fr: "APPROUVÉ PAR (DIRECTION)", en: "APPROVED BY (MANAGEMENT)" }, cfg.language)}</div></div>` +
-        `<div class="b"><div class="ln">${k.t({ fr: "REÇU PAR", en: "RECEIVED BY" }, cfg.language)}</div></div>` +
-        `</div>`;
+
       const body = [
-        k.standardHead(entity, cfg, { title: { fr: "Demande de fonds", en: "Cash request" }, number: data.number, meta: meta }),
+        k.standardHead(entity, cfg, { title, number: data.number, meta }),
         k.parties([{ label: { fr: "Demandeur", en: "Requested by" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], cfg),
+        reqCells.length ? k.ruledBlock({ fr: "Demandeur", en: "Requisitioner" }, k.factsGrid(reqCells, cfg, { cols: 3 }), cfg, { bare: true }) : "",
         methodLines ? k.section({ fr: "Détails du paiement", en: "Payment details" }, `<div class="box">${methodLines}</div>`, cfg) : "",
-        lines,
-        totals,
+        k.lineTable(cols, lineRows, cfg),
+        k.totals(totalsRows, cfg),
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words)
+          ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals)
+          : "",
         data.purpose ? k.section({ fr: "Objet", en: "Purpose" }, `<div class="box">${k.esc(data.purpose)}</div>`, cfg) : "",
-        context,
-        data.remarks ? k.section({ fr: "Instructions", en: "Remarks" }, `<div class="box">${k.esc(data.remarks).replace(/\n/g, "<br>")}</div>`, cfg) : "",
-        threeSignatures,
-        k.standardFoot(entity, cfg, verify),
+        data.overhead_justification
+          ? k.section({ fr: "Justification (frais généraux)", en: "Justification (overhead)" }, `<div class="box">${k.esc(data.overhead_justification)}</div>`, cfg)
+          : "",
+        paymentsHtml,
+        remarksHtml,
+        sealHtml,
+        // One QR per page (§3.12a): a seal already carries it.
+        k.standardFoot(entity, cfg, seals.length ? null : verify, { provenance: k.t(title, lang) }),
       ].join("");
       return k.shell("Cash request " + (data.number || ""), body, cfg);
     },
-    sampleData: { number: "DF-2026-0007", date: "2026-07-27", dossier_ref: "SBX-2026-0001", category: "OPS", amount: 596250, method: "MOMO", method_details: { momo_number: "670000000", network: "MTN" }, lines: [{ label: "Frais de dédouanement", qty: 1, unit: 500000, tax: 19.25, amount: 500000 }], totals: { subtotal: 500000, vat_total: 96250, total_payable: 596250 }, purpose: "Frais de dédouanement et manutention", beneficiary: "DHL Global Forwarding", remarks: "Joindre les factures acquittées au dossier.", party: { name: "Jean Mballa", lines: ["Opérations"] }, currency: "XAF" },
+    sampleData: {
+      number: "DF-2026-0007", date: "2026-07-27", status: "APPROVED",
+      status_words: { fr: "À décaisser", en: "To disburse" },
+      dossier_ref: "SBX-2026-0001", costing_ref: "CST-2026-0012", costing_revision: 2,
+      category: "OPS", amount: 2848000, method: "BANK",
+      method_details: { bank: "Afriland First Bank", account: "10005-00012-98765432101-77" },
+      requisitioner: { name: "Jean Mballa", staff_no: "SLAS-137", department: "Opérations", job_title: "Chef de quai" },
+      lines: [
+        { label: "Port charges", qty: 1, unit: 150000, tax: null, justification_required: true, amount: 150000, claim: 150000, budget: { approved: 150000, committed: 0, remaining: 150000, after: 0 } },
+        { label: "Customs duties", qty: 1, unit: 2500000, tax: null, justification_required: true, amount: 2500000, claim: 2500000, budget: { approved: 2500000, committed: 0, remaining: 2500000, after: 0 } },
+        { label: "Terminal handling charges", qty: 1, unit: 198000, tax: null, justification_required: false, amount: 198000, claim: 198000, budget: { approved: 198000, committed: 0, remaining: 198000, after: 0 } },
+      ],
+      totals: { subtotal: 2848000, vat_total: 0, total_payable: 2848000 },
+      payments: [{ no: 1, paid_on: "2026-07-28", amount: 1000000, balance: 1848000, received_at: "2026-07-28", received_ack_kind: "IN_APP" }],
+      paid_total: 1000000, balance: 1848000,
+      amount_in_words: 2848000,
+      beneficiary: "DHL Global Forwarding",
+      remarks: "Joindre les factures acquittées au dossier.",
+      party: { name: "Jean Mballa", lines: ["jean.mballa@example.cm"] },
+      seals: [], currency: "XAF",
+    },
+  },
+
+  /* ── Owner Q16 C — the payment receipt ────────────────────────────────────
+   *
+   * One receipt per instalment, signed by TWO: the disbursing authority who
+   * released the cash and the person who took it. The voucher is signed by
+   * three and says what was APPROVED; this says what actually changed hands,
+   * on a date, and what is still to run.
+   *
+   * The balance is the figure the holder reads before signing, so it is the
+   * figure the page is built around — a small three-row ledger under the
+   * amount rather than a line buried in a totals block.
+   */
+  CASH_PAYMENT_RECEIPT: {
+    docType: "CASH_PAYMENT_RECEIPT", title: { fr: "Reçu de décaissement", en: "Payment receipt" }, module: "costing/cash_request",
+    fields: ["instalment", "balance to run", "two seals", "approval date"],
+    build: (data, cfg, entity, verify) => {
+      const lang = cfg.language;
+      const ccy = data.currency || cfg.base_currency || "XAF";
+      const seals = Array.isArray(data.seals) ? data.seals : [];
+      const title = { fr: "Reçu de décaissement", en: "Payment receipt" };
+      const METHOD_LABEL = {
+        CASH: { fr: "Espèces", en: "Cash" }, BANK: { fr: "Virement bancaire", en: "Bank transfer" },
+        CHEQUE: { fr: "Chèque", en: "Cheque" }, MOMO: { fr: "Mobile money", en: "Mobile money" },
+      };
+
+      const meta = [
+        [{ fr: "Date", en: "Date" }, k.dateFmt(data.date)],
+        [{ fr: "Demande de fonds", en: "Cash request" }, data.request_number],
+        // The authority this payment was made under. A receipt that cannot cite
+        // it is a receipt for cash nobody approved.
+        [{ fr: "Approuvée le", en: "Approved on" }, data.request_approved_at ? k.dateFmt(data.request_approved_at) : null],
+        [{ fr: "Dossier", en: "File" }, data.dossier_ref],
+        Number(data.instalment_count) > 1
+          ? [{ fr: "Tranche", en: "Instalment" }, `${data.instalment_no} / ${data.instalment_count}`]
+          : null,
+        data.method ? [{ fr: "Mode de paiement", en: "Payment method" }, k.t(METHOD_LABEL[data.method] || { fr: data.method, en: data.method }, lang)] : null,
+        [{ fr: "Compte", en: "Account" }, data.treasury_account],
+      ].filter((m) => m && m[1]);
+
+      const ledger = k.totals([
+        [{ fr: "Total de la demande", en: "Request total" }, k.money(data.request_total, ccy, cfg)],
+        [{ fr: "Décaissé à ce jour", en: "Disbursed to date" }, k.money(data.paid_to_date, ccy, cfg)],
+        [{ fr: "Reste à décaisser", en: "Balance to disburse" }, k.money(data.balance, ccy, cfg), { grand: true }],
+      ], cfg);
+
+      /*
+       * TWO seals, not three (owner Q16). The requestor's signature is already
+       * on the request itself; what this document adds is who released the cash
+       * and who took it. Ruled boxes stay as the fallback for the paper path —
+       * a cash window at 06:00 is a paper transaction and always will be, which
+       * is why this doc type allows a wet signature where the costing does not.
+       */
+      const sealHtml = seals.length
+        ? k.signStrip(seals.map((sig) => ({
+          title: sig.reason || { fr: "Signature", en: "Signature" },
+          html: k.sealBlock({ ...sig, reason: null }, cfg, { titled: true }),
+        })), cfg)
+        : `<div class="sig">`
+          + `<div class="b"><div class="ln">${k.t({ fr: "DÉCAISSÉ PAR", en: "DISBURSED BY" }, lang)}</div></div>`
+          + `<div class="b"><div class="ln">${k.t({ fr: "REÇU PAR", en: "RECEIVED BY" }, lang)}</div></div>`
+          + `</div>`;
+
+      const body = [
+        k.standardHead(entity, cfg, { title, number: data.number, meta }),
+        k.parties([{
+          label: { fr: "Reçu par", en: "Received by" },
+          name: data.party && data.party.name,
+          lines: (data.party && data.party.lines) || [],
+        }].concat(data.beneficiary ? [{ label: { fr: "Bénéficiaire", en: "Beneficiary" }, name: data.beneficiary, lines: [] }] : []), cfg),
+        k.section({ fr: "Montant décaissé", en: "Amount disbursed" },
+          `<div class="box" style="font-size:20px;font-weight:700">${k.money(data.amount, ccy, cfg)}</div>`, cfg),
+        cfg.show && cfg.show.words !== false && has(data.amount_in_words)
+          ? k.wordsBlock(data.amount_in_words, ccy, cfg, data.currency_decimals ?? entity.default_currency_decimals)
+          : "",
+        ledger,
+        data.memo ? k.section({ fr: "Objet", en: "Memo" }, `<div class="box">${k.esc(data.memo)}</div>`, cfg) : "",
+        sealHtml,
+        k.standardFoot(entity, cfg, seals.length ? null : verify, { provenance: k.t(title, lang) }),
+      ].join("");
+      return k.shell("Payment receipt " + (data.number || ""), body, cfg);
+    },
+    sampleData: {
+      number: "DF-2026-0007 / R1", instalment_no: 1, instalment_count: 2,
+      date: "2026-07-28", request_number: "DF-2026-0007", request_approved_at: "2026-07-27",
+      dossier_ref: "SBX-2026-0001", amount: 1000000, request_total: 2848000,
+      paid_to_date: 1000000, balance: 1848000, amount_in_words: 1000000,
+      method: "CASH", treasury_account: "Caisse principale", beneficiary: "DHL Global Forwarding",
+      memo: "Première tranche — droits de douane",
+      party: { name: "Jean Mballa", lines: ["SLAS-137", "Chef de quai"] },
+      seals: [], currency: "XAF",
+    },
   },
 
   /* ── §3.3 — the costing worksheet document ────────────────────────────────

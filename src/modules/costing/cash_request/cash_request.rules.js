@@ -254,7 +254,69 @@ function budgetControl({ lines = [], ledger = [], costing = null } = {}) {
   };
 }
 
+/**
+ * Which transitions leave a SIGNATURE on the voucher, and what it says (12773,
+ * owner decisions Q12 and Q20).
+ *
+ * Three signatories: the requestor, the approving authority and the disbursing
+ * authority. The disbursing seal is applied by `disburse`, not by a status
+ * change, so it is not in this map — a request can move to DISBURSED only by
+ * money actually leaving, and the seal belongs to that act.
+ *
+ * VALIDATED IS ABSENT ON PURPOSE. The owner's rule: *"validating is just a
+ * visa. No official signature."* Finance checks the funds and the budget
+ * against the control block; it does not commit the company to anything, and a
+ * fourth seal would misdescribe who decided.
+ *
+ * It lives with the lifecycle rather than in the service because adding a key
+ * here is a one-line change that puts another signature on every voucher this
+ * tenant ever prints, and that deserves to sit next to the states it names —
+ * and to be pinned by a test that does not need a database.
+ *
+ * The values are `signature_reason` codes (10772, 12773), so a tenant renames
+ * the wording on its Signatures settings screen without touching this file.
+ */
+const TRANSITION_SEAL = {
+  SUBMITTED: "REQUESTED",
+  APPROVED: "APPROVED_PAYMENT",
+};
+
+/** The reason the disbursing authority's seal carries, on the voucher's first
+ *  instalment and on every receipt. */
+const DISBURSE_SEAL = "DISBURSED";
+/** The reason the person taking the cash signs their receipt under (Q13). */
+const RECEIPT_SEAL = "CASH_RECEIVED";
+
+/**
+ * The lifecycle, in words a person reads (12773).
+ *
+ * A PAIR, never a pre-joined bilingual string — the transit order's lesson,
+ * which the costing sheet already follows: a projection that joins the two
+ * halves leaves `cfg.language` nothing to decide, so a document configured
+ * `fr` prints the English half too.
+ *
+ * It lives with the RULES rather than with the document because the voucher and
+ * the screen must call the same state the same thing. The English half is
+ * word-for-word `client/src/features/costing/cash-request-model.ts`'s
+ * STATUS_LABEL, deliberately: a request the register calls "Part paid" must not
+ * print "Partially disbursed" on the paper the same person signs.
+ */
+const STATUS_WORDS = {
+  DRAFT: { fr: "Brouillon", en: "Draft" },
+  SUBMITTED: { fr: "À valider", en: "To validate" },
+  VALIDATED: { fr: "À approuver", en: "To approve" },
+  APPROVED: { fr: "À décaisser", en: "To disburse" },
+  PARTIALLY_DISBURSED: { fr: "Partiellement payée", en: "Part paid" },
+  DISBURSED: { fr: "Décaissée", en: "Disbursed" },
+  CLOSED_SHORT: { fr: "Soldée partiellement", en: "Settled short" },
+  JUSTIFIED: { fr: "Justifiée", en: "Justified" },
+  REJECTED: { fr: "Rejetée", en: "Rejected" },
+};
+const statusWords = (status) => STATUS_WORDS[String(status || "").toUpperCase()]
+  || { fr: String(status || ""), en: String(status || "") };
+
 module.exports = {
   NEXT, assertTransition, sumField, computeTotals, assertMethod, disbursementState,
-  lineClaim, budgetBreaches, apportionSettlement, budgetControl,
+  lineClaim, budgetBreaches, apportionSettlement, budgetControl, statusWords,
+  TRANSITION_SEAL, DISBURSE_SEAL, RECEIPT_SEAL,
 };

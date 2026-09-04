@@ -414,7 +414,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRESET_NOT_ALLOWED` | 422 | 2× | — |
 | `PRINT_CODE_EXHAUSTED` | 500 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
-| `PROOF_REQUIRED` | 422 | 1× | — |
+| `PROOF_REQUIRED` | 422 | 2× | — |
 | `PROTECTED` | 422 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_NOT_ENABLED` | — | 1× | — |

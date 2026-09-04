@@ -73,11 +73,44 @@ const updatePayment = (client, paymentId, fields) =>
   updateOne(client, "cash_request_payment", "cash_request_payment_id", paymentId, fields);
 
 async function listLines(client, id) {
-  const { rows } = await client.query("SELECT * FROM cash_request_line WHERE cash_request_id = $1 ORDER BY cash_request_line_id", [id]);
+  /*
+   * `line_no` FIRST — the order the requester put the lines in.
+   *
+   * This read was `ORDER BY cash_request_line_id`, which is a uuid: stable, and
+   * meaningless. 12771 added `line_no` and taught `lineIdentities` to use it,
+   * and this reader was left behind — so the worksheet, the voucher and the
+   * justification screen all rendered the lines in an arbitrary order that
+   * matched neither the order they were typed nor the order the costing prints.
+   *
+   * It is not only cosmetic. `applySpend` falls back to matching BY POSITION
+   * when a caller sends no line ids (an AI action, an integration), and its own
+   * comment says the order is `line_no` — so under the old ordering spend could
+   * be recorded against the wrong line, silently, in the one workflow where the
+   * numbers are the point.
+   *
+   * The uuid stays as the tie-break, so pre-12771 rows with a NULL `line_no`
+   * (which Postgres sorts last) keep the stable order they have always had.
+   */
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request_line WHERE cash_request_id = $1 ORDER BY line_no, cash_request_line_id",
+    [id],
+  );
   return rows;
 }
 async function listPayments(client, id) {
-  const { rows } = await client.query("SELECT * FROM cash_request_payment WHERE cash_request_id = $1 ORDER BY paid_on", [id]);
+  /*
+   * The id as the tie-break, because this order is not only a display: the
+   * payment receipt is NUMBERED from it (DF-2026-0007 / R2), and its running
+   * balance is derived from everything ordered before it. `paid_on` is a DATE,
+   * so two instalments released on one day would order arbitrarily — and two
+   * receipts could each claim to be the second, with two different balances,
+   * both sealed. The receipt projection sorts by the same pair for the same
+   * reason; they must not drift.
+   */
+  const { rows } = await client.query(
+    "SELECT * FROM cash_request_payment WHERE cash_request_id = $1 ORDER BY paid_on, cash_request_payment_id",
+    [id],
+  );
   return rows;
 }
 async function update(client, id, fields) {
@@ -172,30 +205,9 @@ async function kpis(client, q = {}) {
   };
 }
 
-/**
- * The linked costing, only when it can feed a request: its status/ref plus the
- * line facts (label, qty, unit_cost, is_disbursement, dictionary item). Used by
- * `importCostingLines` — the legacy `costing_lines_get` gate lives in the
- * service (APPROVED_LOCKED only), this is just the read.
- */
-async function costingForImport(client, costingId) {
-  if (!costingId) return null;
-  const { rows } = await client.query(
-    "SELECT costing_id, status, doc_number FROM costing WHERE costing_id = $1 LIMIT 1",
-    [costingId],
-  );
-  const head = rows[0];
-  if (!head) return null;
-  const lr = await client.query(
-    "SELECT dictionary_item_id, label, qty, unit_cost, is_disbursement FROM costing_line WHERE costing_id = $1 ORDER BY costing_line_id",
-    [costingId],
-  );
-  return { ...head, lines: lr.rows };
-}
-
 module.exports = {
   insertCR, getCR, getCRForUpdate, paymentsTotal,
   insertLine, updateLine, deleteLinesExcept, lineIdentities, listLines,
   insertPayment, listPayments, getPayment, updatePayment,
-  update, list, kpis, costingForImport,
+  update, list, kpis,
 };

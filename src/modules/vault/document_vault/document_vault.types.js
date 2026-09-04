@@ -53,6 +53,22 @@ const DOC_TYPES = {
   TRANSIT_ORDER:         { label: "Transit order",            module: "operations/transit_order",      moduleKey: "MOD-30" },
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },
   /*
+   * The receipt for ONE instalment of a cash request (owner decision Q16 C).
+   *
+   * A separate doc type rather than a variant of CASH_REQUEST, because it is a
+   * different document about a different fact. The voucher says what was
+   * asked for and approved; the receipt says what was actually handed over, on
+   * a date, by one named person to another — and a request paid in three
+   * tranches produces three of them, each with its own balance still to run.
+   * One `entity_ref` per document is what the vault, the seals and the
+   * verification portal are all keyed on, so three receipts need three refs:
+   * `cash_request_payment:<id>`.
+   *
+   * MOD-49 with its parent: whoever may read the request may read the receipts
+   * raised against it.
+   */
+  CASH_PAYMENT_RECEIPT:  { label: "Cash payment receipt",     module: "costing/cash_request",          moduleKey: "MOD-49" },
+  /*
    * The costing worksheet (12766). It has had a TEMPLATE since documents
    * shipped and a `loadRecord` branch to build its payload — but it was never
    * registered HERE, and `assertDocType` throws 422 UNKNOWN_DOC_TYPE on
@@ -224,6 +240,22 @@ const SIGNATURE_CEILING = Object.assign(Object.create(null), {
    * transition itself so that no approval can be recorded without one.
    */
   COSTING:             { signable: true, allowsQes: false, allowsWet: false },
+  /*
+   * The cash request and its per-instalment receipt (owner decisions Q12, Q16).
+   *
+   * WET, where the costing is not. A costing never leaves the building — it is
+   * the operations officer's budget, read by two colleagues. These two do:
+   * money changes hands at a cash window, sometimes at 06:00 against a paper
+   * voucher, and the person taking it is not always at a screen. Refusing the
+   * paper path would not make the cash stay put; it would make the record of
+   * it live in a drawer.
+   *
+   * NOT CERTIFIED, for the costing's reason exactly: certification is bought
+   * per envelope from a third party and is for documents a stranger relies on.
+   * Both of these are internal treasury paper.
+   */
+  CASH_REQUEST:         { signable: true, allowsQes: false, allowsWet: true },
+  CASH_PAYMENT_RECEIPT: { signable: true, allowsQes: false, allowsWet: true },
 });
 
 const NOT_SIGNABLE = Object.freeze({ signable: false, allowsQes: false, allowsWet: false });

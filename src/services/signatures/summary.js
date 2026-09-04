@@ -121,6 +121,25 @@ const CHANGED_FIELD = new Map(Object.entries({
   start_date:          { fr: "Date de début",       en: "Start date",       show: true },
   end_date:            { fr: "Date de fin",         en: "End date",         show: true },
   trial_period_months: { fr: "Période d'essai",     en: "Trial period",     show: true },
+  // A raw enum in the payload — a hash cannot depend on a display string — so
+  // the panel names the field rather than printing two enums at a reader. Only
+  // the COSTING payload carries one; a cash request's status deliberately does
+  // not (see canonical.js).
+  status:              { fr: "Statut",              en: "Status",           show: false },
+  // The cash request's own keys (12773).
+  category:            { fr: "Catégorie",           en: "Category",         show: true },
+  method:              { fr: "Mode de paiement",    en: "Payment method",   show: true },
+  costing_ref:         { fr: "Cotation",            en: "Costing",          show: true },
+  costing_revision:    { fr: "Révision (cotation)", en: "Costing revision", show: true },
+  amount:              { fr: "Montant",             en: "Amount",           show: true },
+  balance:             { fr: "Solde",               en: "Balance",          show: true },
+  request_number:      { fr: "Demande de fonds",    en: "Cash request",     show: true },
+  // Named only. A beneficiary, a cost centre and a treasury account are all
+  // disclosures a stranger holding the paper is not entitled to; that the
+  // field MOVED is what they need to know.
+  beneficiary:         { fr: "Bénéficiaire",        en: "Beneficiary",      show: false },
+  cost_center:         { fr: "Centre de coût",      en: "Cost centre",      show: false },
+  treasury_account:    { fr: "Compte",              en: "Account",          show: false },
   // Named only. See the block comment above.
   party:               { fr: "Partie",              en: "Counterparty",     show: false },
   lines:               { fr: "Lignes",              en: "Line items",       show: false },
@@ -285,6 +304,58 @@ const RESOLVERS = new Map(Object.entries({
       f("total_ttc", "Total estimé (TTC)", "Total estimate (TTC)",
         money(p.totals && p.totals.total_ttc, p.currency)),
       f("line_count", "Lignes", "Lines", count(p.lines)),
+    ],
+  }),
+
+  /**
+   * The cash request. The holder is confirming that the voucher in their hand
+   * is the voucher that was approved, so: its reference, the file it is spent
+   * against, where it had got to, and the figure the treasury was asked for.
+   *
+   * THE LINES ARE COUNTED, NOT LISTED. `count`, like every other resolver
+   * here, because a public URL printed on a voucher must not become a lookup
+   * of what a company is paying whom — the line labels are the file's costing
+   * broken out charge by charge. The holder already has them on their paper;
+   * a stranger who found the paper does not need them served over the web.
+   *
+   * NO BENEFICIARY for the same reason: naming who was paid is a disclosure,
+   * and recognising your own document does not need it.
+   */
+  CASH_REQUEST: (p) => ({
+    title: { fr: "Demande de fonds", en: "Cash request" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      // The COSTING this claim draws on, where the costing's own summary shows
+      // a status. There is no status to show: the voucher's payload does not
+      // carry one, deliberately — see canonical.js. Where the money came FROM
+      // is the fact a holder can check against their paper anyway.
+      f("costing_ref", "Cotation", "Costing", dash(p.costing_ref)),
+      f("total_payable", "Total à payer", "Total payable",
+        money(p.totals && p.totals.total_payable, p.currency)),
+      f("line_count", "Lignes", "Lines", count(p.lines)),
+    ],
+  }),
+
+  /**
+   * One instalment's receipt. The person holding it took the cash, so the
+   * facts they verify are: which receipt, against which request, how much
+   * changed hands, and what was still to run afterwards.
+   *
+   * The BALANCE is published where the voucher's line labels are not, and the
+   * distinction is the disclosure rule rather than an inconsistency: the
+   * balance is the single figure this document exists to state, it is printed
+   * on the holder's own copy in bold, and a receipt whose balance could not be
+   * checked against the paper would verify nothing worth verifying.
+   */
+  CASH_PAYMENT_RECEIPT: (p) => ({
+    title: { fr: "Reçu de décaissement", en: "Payment receipt" },
+    fields: [
+      f("number", "Référence", "Reference", dash(p.number)),
+      f("request_number", "Demande de fonds", "Cash request", dash(p.request_number)),
+      f("dossier_ref", "Dossier", "File", dash(p.dossier_ref)),
+      f("amount", "Montant décaissé", "Amount disbursed", money(p.amount, p.currency)),
+      f("balance", "Reste à décaisser", "Balance to disburse", money(p.balance, p.currency)),
     ],
   }),
 }));

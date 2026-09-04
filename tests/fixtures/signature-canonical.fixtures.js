@@ -87,4 +87,45 @@ module.exports = {
       disbursement_total: 298125, upstream_vat_total: 28875,
     },
   },
+
+  /*
+   * The cash request (12773). The owner's own three lines, with the two facts
+   * that are invisible on the page and must still break the seal if they move:
+   * the BUDGET LINE each claim draws down (re-pointing it changes which budget
+   * is consumed and moves no figure) and the JUSTIFICATION TICK (clearing it
+   * erases a duty somebody signed for).
+   *
+   * A fractional `qty` and a fractional `unit` on the third line so the
+   * rounding in `qty()` (3 dp) and `money()` (2 dp) are both exercised — the
+   * COSTING fixture's reason, and the same one.
+   */
+  CASH_REQUEST: {
+    number: "DF-2026-0007", date: "2026-07-27",
+    dossier_ref: "SBX-2026-0001", currency: "XAF", category: "OPS",
+    beneficiary: "DHL Global Forwarding", cost_center: "", method: "BANK",
+    costing_id: "9f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+    costing_ref: "CST-2026-0012", costing_revision: 2,
+    party,
+    lines: [
+      { label: "Port Charges", costing_line_id: "11111111-1111-1111-1111-111111111111", qty: 1, unit: 150000, tax: null, justification_required: true, amount: 150000 },
+      { label: "Customs Duties", costing_line_id: "22222222-2222-2222-2222-222222222222", qty: 1, unit: 2500000, tax: null, justification_required: true, amount: 2500000 },
+      { label: "Terminal Handling Charges", costing_line_id: "33333333-3333-3333-3333-333333333333", qty: 2.005, unit: 99000.004, tax: 19.25, justification_required: false, amount: 198495.01 },
+    ],
+    totals: { subtotal: 2848495.01, vat_total: 38210.29, total_payable: 2886705.3 },
+  },
+
+  /*
+   * One instalment's receipt. `balance` is in the payload deliberately: a
+   * receipt whose balance could be restated afterwards proves nothing about
+   * what is still owed, and it is the figure the holder reads before signing.
+   */
+  CASH_PAYMENT_RECEIPT: {
+    number: "DF-2026-0007 / R2", date: "2026-08-04", currency: "XAF",
+    dossier_ref: "SBX-2026-0001", request_number: "DF-2026-0007",
+    request_approved_at: "2026-07-27",
+    party,
+    amount: 848495.01, request_total: 2886705.3,
+    paid_to_date: 1848495.01, balance: 1038210.29,
+    method: "CASH", treasury_account: "Caisse principale",
+  },
 };

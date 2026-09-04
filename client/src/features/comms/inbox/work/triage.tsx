@@ -168,7 +168,7 @@ export function TriageBar({
 
       {/* The SLA, in the terms an operator cares about: is it late. */}
       {thread.sla_due_at && (
-        <p className={overdue ? "text-xs font-medium text-[var(--bad)]" : "text-xs text-muted-foreground"}>
+        <p className={overdue ? "text-xs font-medium text-[rgb(var(--bad))]" : "text-xs text-muted-foreground"}>
           {overdue
             ? `${tr("A first reply was due")} ${dateTimeFmt(thread.sla_due_at)}.`
             : dueSoon

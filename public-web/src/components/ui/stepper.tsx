@@ -70,8 +70,8 @@ export function Stepper({
                   aria-hidden
                   className={cn(
                     "grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-semibold",
-                    done && "border-[var(--brand-orange)] bg-[var(--brand-orange)] text-[var(--primary-foreground)]",
-                    here && "border-[var(--brand-orange)] text-[var(--brand-orange)]",
+                    done && "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] text-[var(--primary-foreground)]",
+                    here && "border-[rgb(var(--brand-orange))] text-[rgb(var(--brand-orange))]",
                     !done && !here && "border-border",
                   )}
                 >
@@ -84,7 +84,7 @@ export function Stepper({
                   aria-hidden
                   className={cn(
                     "mx-1 h-px w-4 shrink-0 sm:w-6",
-                    done ? "bg-[var(--brand-orange)]" : "bg-border",
+                    done ? "bg-[rgb(var(--brand-orange))]" : "bg-border",
                   )}
                 />
               )}
@@ -100,7 +100,7 @@ export function Stepper({
             the line below says which step this is. */}
         {counter && (
           <p className="hidden shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium text-muted-foreground md:inline-flex">
-            <BoltIcon size={14} className="text-[var(--brand-orange)]" />
+            <BoltIcon size={14} className="text-[rgb(var(--brand-orange))]" />
             {counter}
           </p>
         )}
@@ -121,7 +121,7 @@ export function Stepper({
         className="mt-4 h-1 overflow-hidden rounded-full bg-[rgb(var(--ink)/0.08)]"
       >
         <div
-          className="h-full rounded-full bg-[var(--brand-orange)] transition-[width] duration-500 ease-[var(--ease)]"
+          className="h-full rounded-full bg-[rgb(var(--brand-orange))] transition-[width] duration-500 ease-[var(--ease)]"
           style={{ width: `${percent}%` }}
         />
       </div>

@@ -435,6 +435,7 @@ export const en = {
          rail corridor as its own line, gets a card for it — and OTHER is a real
          answer, not a miss: a service none of the six words describes belongs on
          the form rather than dropped from it. */
+      modeMore: "+{{count}} more",
       modeRAIL: "By rail",
       modeRAILHint: "Rail corridors and the road legs at either end of them.",
       modeCUSTOMS: "Customs only",
@@ -1209,6 +1210,7 @@ export const fr = {
       modeROADHint: "Transport transfrontalier et transit vers l’hinterland.",
       modeWAREHOUSE: "Stockage uniquement",
       modeWAREHOUSEHint: "Stockage et manutention sécurisés, sans transport.",
+      modeMore: "+{{count}} de plus",
       modeRAIL: "Par rail",
       modeRAILHint: "Corridors ferroviaires et les tronçons routiers à chaque extrémité.",
       modeCUSTOMS: "Douane uniquement",

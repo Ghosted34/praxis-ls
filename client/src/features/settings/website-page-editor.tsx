@@ -65,6 +65,37 @@ const BLOCK_LABEL: Record<string, string> = {
   stat_chips: "Credentials",
 };
 
+/**
+ * What a CLOSED block card says about itself.
+ *
+ * A collapsed row that shows only "Figures" makes the reader open all five to
+ * find the one they came for, which is the scroll this collapsing exists to
+ * remove. So each type reports the thing that identifies it: a hero and a
+ * closing band are their headline, the lists are their length.
+ *
+ * French, not the reader's language: `title_fr` is the required half everywhere
+ * in this schema, so it is the half that is always there to show.
+ */
+function blockSummary(block: api.SiteBlock): string {
+  const c = (block.content ?? {}) as Record<string, unknown>;
+  const items = Array.isArray(c.items) ? c.items.length : 0;
+  const headline = (c.title as { fr?: string } | undefined)?.fr;
+  switch (block.type) {
+    case "hero":
+      return headline || tr("No headline yet");
+    case "cta_band":
+      return headline || tr("No heading yet");
+    case "stat_counters":
+      return items === 1 ? tr("1 figure") : `${items} ${tr("figures")}`;
+    case "feature_list":
+      return items === 1 ? tr("1 step") : `${items} ${tr("steps")}`;
+    case "stat_chips":
+      return items === 1 ? tr("1 credential") : `${items} ${tr("credentials")}`;
+    default:
+      return tr("No editor here yet");
+  }
+}
+
 /** A block type this screen can draw a form for. */
 const isEditable = (t: string): t is api.EditableBlockType =>
   (api.EDITABLE_BLOCK_TYPES as string[]).includes(t);
@@ -266,6 +297,7 @@ function IdentityCard({
   const [msg, setMsg] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
+  const [seoOpen, setSeoOpen] = React.useState(false);
   const keyOk = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(form.key);
   const canSave = keyOk && !!form.title_fr.trim() && !busy;
 
@@ -351,6 +383,27 @@ function IdentityCard({
           placeholderEn="Home"
         />
 
+        {/* Behind a disclosure, because SEO is set once and the four fields it
+            needs were half the height of this card — pushing the Content below
+            it off the first screen every time somebody came to fix a title.
+            Open it and it stays open for the visit; it is not a separate save. */}
+        <button
+          type="button"
+          onClick={() => setSeoOpen((v) => !v)}
+          aria-expanded={seoOpen}
+          aria-controls="page-seo"
+          className="flex items-center gap-2 self-start rounded-[calc(var(--radius)-2px)] text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+        >
+          <span
+            aria-hidden
+            className={cn("transition-transform duration-200", seoOpen && "rotate-90")}
+          >
+            ›
+          </span>
+          {tr("Search engines and shared links")}
+        </button>
+
+        <div id="page-seo" hidden={!seoOpen} className="flex flex-col gap-4">
         <BiRow
           label={tr("Search title")}
           value={{ fr: form.meta_title_fr, en: form.meta_title_en }}
@@ -377,6 +430,7 @@ function IdentityCard({
             }))
           }
         />
+        </div>
 
         {err && <ErrorState message={err} />}
         <div className="flex items-center justify-end gap-3">
@@ -528,6 +582,21 @@ function BlockCard({
   const editable = isEditable(block.type);
   const [visible, setVisible] = React.useState(block.is_visible);
   const [err, setErr] = React.useState<string | null>(null);
+  /**
+   * Closed until asked for.
+   *
+   * Every block used to render its whole form at once, so a home page with five
+   * of them was one scroll of forty fields with no landmarks — the reader had to
+   * read the page to find out what was on it. Closed, the same page is five
+   * lines: what the block is, what it holds, whether it is live. Opening one is
+   * a click; finding one was a hunt.
+   *
+   * State per card rather than one "open block" for the screen: a writer moving
+   * a figure from the counters into the chips wants both open, and an accordion
+   * that closes the other one is a screen arguing with them.
+   */
+  const [open, setOpen] = React.useState(false);
+  const bodyId = `block-body-${block.block_id}`;
 
   async function setHidden(next: boolean) {
     // Optimistic, and reverted on failure: a switch that waits for a round trip
@@ -544,19 +613,40 @@ function BlockCard({
   }
 
   return (
-    <div className="rounded-lg border p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-foreground">
+    <div className="rounded-lg border">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        {/* The whole left half is the disclosure control, not a small chevron
+            beside a heading: a 16px target on a row this wide is a target
+            people miss, and the row already reads as the thing you press. */}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[calc(var(--radius)-2px)] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "text-muted-foreground transition-transform duration-200",
+              open && "rotate-90",
+            )}
+          >
+            ›
+          </span>
+          <h3 className="shrink-0 text-sm font-semibold text-foreground">
             {BLOCK_LABEL[block.type] ?? block.type}
           </h3>
+          <span className="truncate text-sm text-muted-foreground">
+            {blockSummary(block)}
+          </span>
           {!editable && (
             <Pill tone="mute">
               <span className="font-mono text-[11px]">{block.type}</span>
             </Pill>
           )}
           {!visible && <Pill tone="warn">{tr("Hidden")}</Pill>}
-        </div>
+        </button>
         <div className="flex items-center gap-1.5">
           <Button
             size="sm"
@@ -582,16 +672,23 @@ function BlockCard({
         </div>
       </div>
 
-      <div className="mb-4">
-        <Toggle
-          checked={visible}
-          onChange={(v) => void setHidden(v)}
-          label={tr("Shown on the page")}
-          hint={tr("Hidden keeps the content and takes it off the site.")}
-        />
-      </div>
+      {/* Errors stay outside the fold: a failed save on a card somebody has
+          since collapsed must not disappear with it. */}
+      {err && (
+        <div className="px-4 pb-4">
+          <ErrorState message={err} />
+        </div>
+      )}
 
-      {err && <ErrorState message={err} />}
+      <div id={bodyId} hidden={!open} className="border-t px-4 py-4">
+        <div className="mb-4">
+          <Toggle
+            checked={visible}
+            onChange={(v) => void setHidden(v)}
+            label={tr("Shown on the page")}
+            hint={tr("Hidden keeps the content and takes it off the site.")}
+          />
+        </div>
 
       {block.type === "stat_counters" ? (
         <CounterItems block={block} metrics={metrics} onSaved={onChanged} />
@@ -613,6 +710,7 @@ function BlockCard({
           )}
         </p>
       )}
+      </div>
     </div>
   );
 }

@@ -33,7 +33,7 @@ export function BadgePill({
       className={cn(
         "eyebrow inline-flex items-center gap-2 rounded-full border px-3 py-1",
         onDark
-          ? "border-[rgb(237_238_238/0.25)] text-[var(--brand-orange)]"
+          ? "border-[rgb(237_238_238/0.25)] text-[rgb(var(--brand-orange))]"
           : "border-[rgb(var(--ink)/0.15)] text-[var(--primary-ink)]",
         className,
       )}

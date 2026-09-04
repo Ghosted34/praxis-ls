@@ -38,8 +38,12 @@ function serviceMode(key) {
   if (k.includes("AIR") || k.includes("FLIGHT")) return "AIR";
   if (k.includes("SEA") || k.includes("OCEAN") || k.includes("SHIPPING")) return "SEA";
   if (k.includes("RAIL")) return "RAIL";
+  // INLAND is here because INLAND_TRANSPORTATION is a truck movement and was
+  // landing in OTHER — so a tenant's road haulage sat under "Something else" on
+  // the quote form while an empty-looking "By road or rail" card stood beside
+  // it. RAIL_TRANSPORTATION is unaffected: the RAIL test above runs first.
   if (k.includes("ROAD") || k.includes("TRUCK") || k.includes("HAULAGE")
-      || k.includes("HINTERLAND")) return "ROAD";
+      || k.includes("INLAND") || k.includes("HINTERLAND")) return "ROAD";
   if (k.includes("WAREHOUS") || k.includes("STORAGE")) return "WAREHOUSE";
   if (k.includes("CUSTOMS") || k.includes("CLEARANCE") || k.includes("DECLARATION")) return "CUSTOMS";
   return "OTHER";

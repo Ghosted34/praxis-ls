@@ -47,7 +47,9 @@
    base/components/utilities/variants as layer names — a custom one is a build
    error, and the alternative (`@layer tokens;` declared by hand) opts this block
    out of the utilities-win cascade Tailwind is relying on, which is exactly what
-   makes `text-[var(--brand-orange)]` able to override the `.eyebrow` recipe. */
+   makes `text-[rgb(var(--brand-orange))]` able to override the `.eyebrow`
+   recipe. The `rgb()` is not decoration: --brand-orange is a raw triplet, so
+   the bare token is not a colour and the declaration is dropped. */
 @layer base {
   :root {
     /* ── Tenant layer, light ───────────────────────────────────────────────
@@ -82,6 +84,15 @@
        why the split is into -light/-dark sources rather than one value. */
     --primary-ink-light: #c74600;
     --primary-ink-dark: #ff5a00;
+
+    /* Text ON the brand fill — referenced by `--primary-foreground` since that
+       token was written, and never defined, so `.btn-primary`'s colour and the
+       selected tile's glyph both resolved to nothing and inherited whatever the
+       surface gave them. White, because that is what a filled brand button in
+       this product has always looked like; it is a FILL foreground, judged
+       against the orange behind it, not body text on a page. A tenant whose
+       brand fill is pale needs to override this rather than inherit it. */
+    --brand-on-orange: #ffffff;
     --primary-ink: var(--primary-ink-light);
 
     /* The dark band a hero and the footer are painted on — brand carbon, and
@@ -153,15 +164,22 @@
        when the glyph alone does not. */
     --tile-bg: rgb(var(--ink) / 0.06);
     --tile-fg: var(--muted-foreground);
-    --tile-bg-active: var(--brand-orange);
+    /* rgb(), not the bare token. `--brand-orange` is a raw TRIPLET — theme.ts
+       calls it that in as many words ("Brand-mark gradient stops (raw triplets
+       in index.css)") and sets it with `setTriplet`. So `background:
+       var(--brand-orange)` computes `background: 255 90 0`, which is not a
+       colour: the declaration is dropped and the plate paints nothing. The
+       selected icon tile has therefore been transparent with a light glyph on
+       it — invisible — for as long as this token has existed. */
+    --tile-bg-active: rgb(var(--brand-orange));
     --tile-fg-active: var(--primary-foreground);
 
     /* Selection: a hairline ring plus a coloured lift. Paired with a border
        and a background tint at the call site, so a chosen card changes THREE
        things — a selected state carried by border colour alone is invisible on
        a phone in sunlight and invisible to anyone who does not see that hue. */
-    --pick-ring: 0 0 0 1px var(--brand-orange),
-      0 8px 24px -12px var(--brand-orange);
+    --pick-ring: 0 0 0 1px rgb(var(--brand-orange)),
+      0 8px 24px -12px rgb(var(--brand-orange) / 0.55);
 
     /* The alternating band. Two adjacent plain bands read as one long
        undifferentiated column, which is most of why a page feels flat. */

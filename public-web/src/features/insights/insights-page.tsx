@@ -263,7 +263,7 @@ function FilterButton({
       className={cn(
         "inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm transition-colors",
         active
-          ? "border-[var(--brand-orange)] bg-[var(--brand-orange)] font-semibold text-[var(--primary-foreground)]"
+          ? "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] font-semibold text-[var(--primary-foreground)]"
           // On the hero plate `--ink` is inverted, so a resting chip has to
           // borrow the band's own foreground rather than the page's.
           : "border-[rgb(237_238_238/0.25)] text-[var(--hero-muted)] hover:bg-[rgb(237_238_238/0.10)]",

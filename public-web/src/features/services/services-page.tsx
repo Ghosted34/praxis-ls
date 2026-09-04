@@ -527,7 +527,7 @@ export function ServiceDetailPage() {
                 <ul className="space-y-2.5">
                   {highlights.map((h) => (
                     <li key={h} className="flex items-start gap-2.5 text-sm">
-                      <CheckIcon size={15} className="mt-1 text-[var(--ok)]" />
+                      <CheckIcon size={15} className="mt-1 text-[rgb(var(--ok))]" />
                       <span>{h}</span>
                     </li>
                   ))}

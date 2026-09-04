@@ -69,7 +69,7 @@ export function SectionHead({
           className={cn(
             "eyebrow flex items-center gap-2",
             centred && "justify-center",
-            onDark && "text-[var(--brand-orange)]",
+            onDark && "text-[rgb(var(--brand-orange))]",
           )}
         >
           {eyebrowIcon && <IconTile icon={eyebrowIcon} size="sm" />}
@@ -88,7 +88,7 @@ export function SectionHead({
           {accent && (
             <>
               {" "}
-              <span className="text-[var(--brand-orange)]">{accent}</span>
+              <span className="text-[rgb(var(--brand-orange))]">{accent}</span>
             </>
           )}
         </Tag>

@@ -451,7 +451,7 @@ function PortalBand() {
             {t("site.portalBand.invited")}{" "}
             <Link
               to="/portal/set-password"
-              className="text-[var(--brand-orange)] underline underline-offset-4"
+              className="text-[rgb(var(--brand-orange))] underline underline-offset-4"
             >
               {t("portal.setPasswordTitle")}
             </Link>

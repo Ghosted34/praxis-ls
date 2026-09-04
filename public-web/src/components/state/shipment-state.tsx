@@ -127,9 +127,9 @@ export function MilestoneMarker({
       aria-hidden
       className={cn(
         "relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background transition-colors",
-        done && "border-[var(--brand-orange)] bg-[var(--brand-orange)] text-[var(--primary-foreground)]",
+        done && "border-[rgb(var(--brand-orange))] bg-[rgb(var(--brand-orange))] text-[var(--primary-foreground)]",
         current &&
-          "border-[var(--brand-orange)] text-[var(--brand-orange)] ring-4 ring-[rgb(var(--accent-rgb,0_0_0)/0.10)]",
+          "border-[rgb(var(--brand-orange))] text-[rgb(var(--brand-orange))] ring-4 ring-[rgb(var(--accent-rgb,0_0_0)/0.10)]",
         !done && !current && "border-border text-muted-foreground",
       )}
     >

@@ -199,7 +199,7 @@ function GrantModal({
 
         {error && <ErrorState message={error} />}
         {notice && (
-          <div className="rounded-lg border border-[hsl(var(--warn))]/40 bg-[hsl(var(--warn))]/10 p-3 text-sm text-foreground">
+          <div className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 p-3 text-sm text-foreground">
             {notice}
           </div>
         )}
@@ -449,7 +449,7 @@ export function PortalAccessPage() {
                       {portal.toLowerCase()}
                     </span>
                     {!login ? (
-                      <span className="rounded-full bg-[hsl(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--warn))]">
+                      <span className="rounded-full bg-[rgb(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--warn))]">
                         no sign-in
                       </span>
                     ) : !signedInBefore ? (

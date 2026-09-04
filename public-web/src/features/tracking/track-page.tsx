@@ -330,7 +330,7 @@ function TrackingView({
             aria-label={t("site.trackPage.progress")}
           >
             <div
-              className="h-full rounded-full bg-[var(--brand-orange)] transition-[width] duration-500 ease-[var(--ease)]"
+              className="h-full rounded-full bg-[rgb(var(--brand-orange))] transition-[width] duration-500 ease-[var(--ease)]"
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -370,7 +370,7 @@ function TrackingView({
                       className={cn(
                         "absolute left-3 top-7 -ml-px h-[calc(100%-1.75rem)] w-px",
                         state === "COMPLETED"
-                          ? "bg-[var(--brand-orange)]"
+                          ? "bg-[rgb(var(--brand-orange))]"
                           : "bg-border",
                       )}
                     />

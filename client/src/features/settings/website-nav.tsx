@@ -28,7 +28,15 @@ const ITEMS = [
 
 export function WebsiteNav() {
   return (
-    <nav aria-label={tr("Website sections")} className="border-b">
+    /* `ListPage` renders this slot immediately after `PageHeader` with no gap of
+       its own, so the strip has to carry its own breathing room — without it the
+       tabs sit flush under the description and read as part of it. Margin below
+       as well: the rule under the strip belongs to the strip, not to the table
+       that follows. */
+    <nav
+      aria-label={tr("Website sections")}
+      className="mb-5 mt-6 border-b border-[var(--border)]"
+    >
       <ul className="flex flex-wrap items-center gap-1">
         {ITEMS.map((i) => (
           <li key={i.to}>

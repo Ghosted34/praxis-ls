@@ -244,15 +244,36 @@ export function QuoteWizard({
    * price anything. On the fallback path there is no row to validate against,
    * so the free text the visitor typed is left alone.
    */
-  /** The first few service names under a mode, for the card's description. Cut
-   *  at NAMES_ON_CARD with an ellipsis rather than wrapping a radio card into a
-   *  paragraph. */
-  function namesUnder(m: ServiceMode): string {
+  /**
+   * The services under a mode, as the card's description.
+   *
+   * ONE PER LINE, not joined by "·". The joined version wrapped mid-list on
+   * every card wide enough to hold two names, which left a separator dangling
+   * at the end of a line looking like a typo — and made three services read as
+   * one long run-on the eye has to parse before it can count them. A short
+   * stacked list is countable at a glance, which is the only thing this text
+   * has to do.
+   *
+   * Cut at three with a remainder line rather than an ellipsis: "+2 more" says
+   * how much is behind the card, and "…" says only that something is.
+   */
+  function namesUnder(m: ServiceMode): React.ReactNode {
     const rows = servicesIn(services, m);
-    const names = rows
-      .slice(0, NAMES_ON_CARD)
-      .map((sv) => pickText(sv, "name", lang) || pickSlug(sv, lang));
-    return names.join(" · ") + (rows.length > NAMES_ON_CARD ? " …" : "");
+    const rest = rows.length - NAMES_ON_CARD;
+    return (
+      <span className="block space-y-0.5">
+        {rows.slice(0, NAMES_ON_CARD).map((sv) => (
+          <span key={sv.service_type_id} className="block truncate">
+            {pickText(sv, "name", lang) || pickSlug(sv, lang)}
+          </span>
+        ))}
+        {rest > 0 && (
+          <span className="block opacity-70">
+            {t("site.quote.modeMore", { count: rest })}
+          </span>
+        )}
+      </span>
+    );
   }
 
   function pickMode(m: ServiceMode) {
@@ -459,7 +480,13 @@ export function QuoteWizard({
                 were written here, and `--pick-ring` — the token §5 added for
                 exactly this — sat unused while the same two shadow values were
                 spelled out inline. One implementation, one token. */}
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Three across, not four. The mode list is read off the tenant's
+                published services now, so its length is theirs — seven on a
+                full freight taxonomy — and a four-column grid turns that into a
+                filled row and a ragged one. At three the last row is short by
+                the same amount but the cards are wider, which is what the
+                service names underneath them needed anyway. */}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {modes.map((m) => (
                 <SelectCard
                   key={m}
@@ -639,7 +666,7 @@ export function QuoteWizard({
                   type="checkbox"
                   checked={f.project_cargo_flag}
                   onChange={(e) => set("project_cargo_flag", e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-orange)]"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--brand-orange))]"
                 />
                 <span className="min-w-0">
                   <span className="block font-medium">{t("site.quote.projectCargo")}</span>

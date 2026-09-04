@@ -15,7 +15,7 @@
 "use strict";
 const repo = require("./costing.repo");
 const events = require("./costing.events");
-const { computeCosting, toXaf, snapshotLines, diffLines } = require("./costing.rules");
+const { computeCosting, toXaf, snapshotLines, diffLines, planLineWrites, summariseBudget } = require("./costing.rules");
 const suggest = require("./costing.suggest");
 const numbering = require("../../../services/documents/numbering.service");
 const currency = require("../../master/currency/currency.service");
@@ -170,27 +170,95 @@ function debours(l) {
   };
 }
 
-async function replaceLines(client, costingId, lines) {
-  await repo.deleteLines(client, costingId);
-  let n = 0;
-  for (const l of lines) {
-    n += 1;
+/** The columns one payload line writes, whether it is new or being amended. */
+function lineFields(l, lineNo) {
+  return {
+    dictionary_item_id: l.dictionary_item_id || null,
+    label: l.label || "Line",
+    // 12766: the sheet's order. Assigned from the payload's order, which is
+    // the order the person arranged the lines in on screen.
+    line_no: lineNo,
+    qty: l.qty || 1,
+    unit_cost: l.unit_cost || 0,
+    is_disbursement: l.is_disbursement === true,
+    // A disbursement carries its VAT as an amount (12766) and now a rate
+    // (12768), never a tax code — a tax code on a débours would post output
+    // tax we do not owe. A code arriving on one is dropped rather than stored.
+    tax_code_id: l.is_disbursement === true ? null : (l.tax_code_id || null),
+    // Which box this charge was priced for (0663). NULL for anything with no
+    // equipment dimension, which is most of the catalogue.
+    container_type_ref_id: l.container_type_ref_id || null,
+    ...debours(l),
+  };
+}
 
-    await repo.insertLine(client, {
-      costing_id: costingId, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line",
-      // 12766: the sheet's order. Assigned from the payload's order, which is
-      // the order the person arranged the lines in on screen.
-      line_no: n,
-      qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_disbursement: l.is_disbursement === true,
-      // A disbursement carries its VAT as an amount (12766) and now a rate
-      // (12768), never a tax code — a tax code on a débours would post output
-      // tax we do not owe. A code arriving on one is dropped rather than stored.
-      tax_code_id: l.is_disbursement === true ? null : (l.tax_code_id || null),
-      // Which box this charge was priced for (0663). NULL for anything with no
-      // equipment dimension, which is most of the catalogue.
-      container_type_ref_id: l.container_type_ref_id || null,
-      ...debours(l),
-    });
+/**
+ * A budget line that cash has already been requested against cannot be removed
+ * by an amendment (12771).
+ *
+ * `cash_request_line.costing_line_id` is RESTRICT, so the delete would fail
+ * anyway — with a raw 23503 and a constraint name, from inside a transaction.
+ * This is the same refusal said in a sentence, naming the requests, so the
+ * author knows the answer is "reduce it to zero", not "try again".
+ *
+ * Reducing a line BELOW what is committed stays legal and is the whole point of
+ * Q6: the ledger then shows the line over-consumed, and the balance is settled
+ * in reconciliation. It is only the disappearance of the line that is refused,
+ * because a claim pointing at nothing is a claim nobody can reconcile.
+ */
+async function assertNoClaims(client, dropping) {
+  if (!dropping.length) return;
+  const claimed = await repo.claimsOnLines(client, dropping.map((l) => l.costing_line_id));
+  if (!claimed.length) return;
+  const byId = new Map(dropping.map((l) => [l.costing_line_id, l]));
+  const named = claimed.map((c) => {
+    const line = byId.get(c.costing_line_id);
+    return `${(line && line.label) || "line"} (${(c.doc_numbers || []).join(", ")})`;
+  });
+  throw new AppError(
+    "LINE_HAS_CLAIMS",
+    `Cash has already been requested against ${named.join("; ")}. Set the line to zero instead of removing it, so the claim keeps the budget line it was drawn against.`,
+    409,
+    { lines: claimed },
+  );
+}
+
+/**
+ * Write the payload's lines onto the sheet, KEEPING the id of every line that
+ * survives (12771).
+ *
+ * ── WHY THIS IS NO LONGER A DELETE-AND-REINSERT ────────────────────────────
+ *
+ * It was, and every `costing_line_id` therefore changed on every DRAFT save. A
+ * cash request claims a budget line BY ID, so that link would have broken at
+ * exactly the moment it matters — the amendment, which is the case Q6 is
+ * entirely about. Identity is matched on the logical key `diffLines` has always
+ * used (dictionary item + container type, normalised label as the fallback),
+ * so the amendment diff and the budget link agree on what "the same line" means.
+ *
+ * Two lines can legitimately share that key — the same charge priced for a 20'
+ * and a 40' box is one item and two container types, but a hand-typed sheet can
+ * repeat a label — so the pool is a QUEUE per key and matching pops in order.
+ * A repeat therefore keeps its position rather than being matched arbitrarily.
+ *
+ * The claims guard runs BEFORE any write, so a refused amendment leaves the
+ * sheet exactly as it was rather than half-applied and rolled back.
+ */
+async function replaceLines(client, costingId, lines) {
+  const prior = await repo.lineIdentities(client, costingId);
+  const { writes, keptIds, dropped } = planLineWrites(prior, lines);
+
+  // Before ANY write, so a refused amendment leaves the sheet exactly as it
+  // was rather than half-applied and rolled back.
+  await assertNoClaims(client, dropped);
+
+  await repo.deleteLinesExcept(client, costingId, keptIds);
+  for (const w of writes) {
+    const fields = lineFields(lines[w.index], w.index + 1);
+     
+    await (w.id
+      ? repo.updateLine(client, w.id, fields)
+      : repo.insertLine(client, { costing_id: costingId, ...fields }));
   }
 }
 
@@ -619,6 +687,61 @@ async function get(client, id, { lang = "en" } = {}) {
   return costing;
 }
 
+/**
+ * THE BUDGET — what this sheet has authorised, and what is left of it (12771).
+ *
+ * A costing is the operations file's fulfilment budget, and this is the read
+ * that makes that true rather than merely said: per line, what was approved,
+ * what cash requests have committed against it, what has actually been paid,
+ * and what a new request may still claim.
+ *
+ * Read from the LIVE costing line, never from an approval snapshot. Amending
+ * the budget is precisely how the remaining balance is meant to move — raise
+ * Port Charges from 150 000 to 200 000 and the next request can claim 50 000
+ * more, the same evening. `cash_request.costing_revision` records which
+ * revision each request was raised against for the audit trail; it is not an
+ * input to this arithmetic.
+ *
+ * Callable on ANY status, deliberately. The gate that says a cash request needs
+ * an APPROVED_LOCKED costing lives on the request's submission, where it can
+ * name the costing and offer a way forward. Refusing the read as well would
+ * mean an operations officer could not see the budget they are waiting on.
+ *
+ * `excludeCashRequestId` answers the question a WORKSHEET asks — "how much of
+ * this budget was available to me" — rather than the registry's "how much is
+ * left now". They differ by exactly this request's own claim, which is why a
+ * request must never be measured against a balance it is itself inside.
+ */
+async function budget(client, costingId, { excludeCashRequestId = null } = {}) {
+  const costing = await repo.get(client, costingId);
+  if (!costing) throw new AppError("NOT_FOUND", "Costing not found", 404);
+  const [rows, revision] = await Promise.all([
+    // Asked on behalf of a request, the ledger leaves that request out — see
+    // `budgetForCosting`. Otherwise an approved request reads as a breach of
+    // the budget it was approved against.
+    repo.budgetForCosting(client, costingId, { excludeCashRequestId }),
+    // How many times this sheet has been approved. A cash request stamps it so
+    // an auditor can ask "against which version of the budget?" — the ledger
+    // itself never reads it.
+    repo.snapshotCount(client, costingId),
+  ]);
+  const { lines, totals } = summariseBudget(rows);
+  return {
+    costing_id: costing.costing_id,
+    doc_number: costing.doc_number || null,
+    dossier_id: costing.dossier_id,
+    status: costing.status,
+    revision,
+    currency: costing.currency,
+    exchange_rate_to_xaf: Number(costing.exchange_rate_to_xaf),
+    // The gate the cash request applies, answered here so a screen can explain
+    // itself before the user gets a 403 from somewhere else.
+    can_fund: costing.status === "APPROVED_LOCKED",
+    lines,
+    totals,
+  };
+}
+
 /** The registry page: rows plus the true match count (X-Total-Count). */
 const listPaged = (client, q) => repo.list(client, q);
 
@@ -647,6 +770,6 @@ const suggestLines = (client, q = {}) =>
 onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
 
 module.exports = {
-  createDraft, updateDraft, setStatus, unlockTransition, get,
+  createDraft, updateDraft, setStatus, unlockTransition, get, budget,
   list, listPaged, kpis, suggestLines,
 };

@@ -69,6 +69,33 @@ function computeCosting(lines) {
 }
 
 /**
+ * ONE line's TTC — the cash that line commits us to, and therefore the BUDGET a
+ * cash request draws down against it (12771).
+ *
+ * TTC, not HT, and the reason is `computeCosting`'s own: a costing is a cash
+ * budget, so the VAT we hand the carrier is money we will spend. A service
+ * line's VAT comes from its tax code; a débours carries the supplier's own VAT
+ * as a stored amount and can never carry a tax code (the DB refuses one).
+ *
+ * ROUNDED PER LINE, on purpose. `computeCosting` rounds the VAT of every
+ * service line ONCE, at the foot; this rounds each line on its own, because a
+ * budget line has to be a stable number that a claim can be compared against
+ * and a person can read. On a sheet with many taxed service lines the two can
+ * therefore differ by a sub-unit — never more — and the ledger says so rather
+ * than pretending the footer and the line set are the same arithmetic.
+ *
+ * The SQL in `costing.repo.budgetForCosting` computes exactly this expression;
+ * the two must not drift.
+ */
+function lineTtc(l = {}) {
+  const net = num(l.qty) * num(l.unit_cost);
+  const vat = l.is_disbursement
+    ? num(l.upstream_vat_amount)
+    : net * (num(l.tax_rate_percent) / 100);
+  return round2(net + vat);
+}
+
+/**
  * total_ttc expressed in XAF at THIS sheet's own rate.
  *
  * The only figure any cross-costing sum may use. Summing `total_ttc` across
@@ -149,6 +176,48 @@ function lineKey(l = {}) {
  * @param {Array} after  the sheet's current lines
  * @returns {{added, changed, removed, unchanged_count, delta_ht, before_ht, after_ht, has_changes}}
  */
+/**
+ * Which prior line each payload line IS — the plan an in-place save follows
+ * (12771).
+ *
+ * ── WHY LINE IDENTITY SUDDENLY MATTERS ─────────────────────────────────────
+ *
+ * `replaceLines` used to delete every line and re-insert, so every
+ * `costing_line_id` changed on every DRAFT save. A cash request claims a budget
+ * line BY ID, so that link would break at exactly the moment it matters — the
+ * amendment. Matching on the logical key `diffLines` already uses means the
+ * amendment diff and the budget link agree on what "the same line" is.
+ *
+ * A QUEUE PER KEY, not a lookup. Two lines can legitimately share one — the
+ * same charge priced for a 20' and a 40' box is one item and two container
+ * types, but a hand-typed sheet can repeat a label outright — so matches pop in
+ * order and a repeat keeps its position instead of being paired arbitrarily.
+ *
+ * Pure, and it returns a PLAN rather than performing it: the caller decides
+ * what columns to write, and the refusal to delete a claimed budget line
+ * happens before anything is written.
+ *
+ * @returns {{writes: Array<{index:number,id:string|null}>, keptIds: string[], dropped: object[]}}
+ */
+function planLineWrites(prior = [], lines = []) {
+  const pool = new Map();
+  for (const p of prior) {
+    const k = lineKey(p);
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k).push(p);
+  }
+  const writes = [];
+  const keptIds = [];
+  lines.forEach((l, index) => {
+    const queue = pool.get(lineKey(l));
+    const match = queue && queue.length ? queue.shift() : null;
+    if (match) keptIds.push(match.costing_line_id);
+    writes.push({ index, id: match ? match.costing_line_id : null });
+  });
+  // Whatever the pool still holds is what this save removes.
+  return { writes, keptIds, dropped: [...pool.values()].flat() };
+}
+
 function diffLines(before = [], after = []) {
   const prior = new Map((before || []).map((l) => [l.key || lineKey(l), l]));
   const now = snapshotLines(after || []);
@@ -228,4 +297,59 @@ const STATUS_WORDS = {
 const statusWords = (status) => STATUS_WORDS[String(status || "").toUpperCase()]
   || { fr: String(status || ""), en: String(status || "") };
 
-module.exports = { computeCosting, reconcile, toXaf, snapshotLines, diffLines, lineKey, statusWords };
+/**
+ * The budget ledger, derived from the raw rows `costing.repo.budgetForCosting`
+ * returns (12771).
+ *
+ * The SQL does the aggregation — one query rather than fetching every cash
+ * request to add them up — and this does the arithmetic a person reads:
+ * Remaining, whether a line is over-consumed, and the same four totals for the
+ * sheet. Pure, so the identical numbers can be rendered on the worksheet,
+ * printed on the voucher and asserted in a test.
+ *
+ * REMAINING MAY BE NEGATIVE, and that is the point (owner decision Q6). An
+ * approved costing line amended DOWN below what has already been committed is
+ * legal: the ledger shows the line over-consumed, the reason names the
+ * amendment, and the balance is settled in reconciliation. Clamping it at zero
+ * would hide exactly the case somebody has to act on.
+ */
+function summariseBudget(rows = []) {
+  const lines = rows.map((r) => {
+    const budget = round2(num(r.budget));
+    const committed = round2(num(r.committed));
+    const remaining = round2(budget - committed);
+    return {
+      ...r,
+      qty: num(r.qty),
+      unit_cost: num(r.unit_cost),
+      net: round2(num(r.net)),
+      vat: round2(num(r.vat)),
+      budget,
+      committed,
+      // Awaiting a decision, so it consumes nothing — it is here so a validator
+      // can see that headroom is already spoken for before adding to the queue.
+      pending: round2(num(r.pending)),
+      // Apportioned: instalments are paid against the request, not its lines.
+      disbursed: round2(num(r.disbursed)),
+      remaining,
+      over_committed: remaining < 0,
+    };
+  });
+  const sum = (k) => round2(lines.reduce((s, l) => s + l[k], 0));
+  return {
+    lines,
+    totals: {
+      budget: sum("budget"),
+      committed: sum("committed"),
+      pending: sum("pending"),
+      disbursed: sum("disbursed"),
+      remaining: sum("remaining"),
+      over_committed_lines: lines.filter((l) => l.over_committed).length,
+    },
+  };
+}
+
+module.exports = {
+  computeCosting, lineTtc, summariseBudget, reconcile, toXaf,
+  snapshotLines, diffLines, lineKey, planLineWrites, statusWords,
+};

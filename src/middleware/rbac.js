@@ -11,7 +11,7 @@
  *
  * Real permission table layout (migrations/tenant/0110_rbac.sql):
  *   permission(role_id, module_key, can_create, can_read, can_update,
- *              can_delete, can_approve)
+ *              can_delete, can_approve, can_export, can_validate, can_disburse)
  *     where module_key matches platform.module_catalogue, e.g. 'MOD-67'.
  *
  * Fixed vs. the original: this previously assumed a `shared.permissions`
@@ -34,9 +34,9 @@
  * existing module tables; that's a per-module call outside this pass.
  *
  * NOT YET HANDLED (flagged, not silently dropped):
- *   - 'export' and 'publish' have no dedicated DB column yet — mapped to
- *     can_read / can_update respectively as a placeholder; revisit if the
- *     product needs to grant them independently of read/update.
+ *   - 'publish' has no dedicated DB column yet — mapped to can_update as a
+ *     placeholder; revisit if the product needs to grant it independently.
+ *     ('export' got one in 12771, alongside 'validate' and 'disburse'.)
  *
  * CEO bypasses checks (role.code = 'CEO', PRD §3).
  */
@@ -48,6 +48,24 @@ const identityCache = require("../shared/cache/identity-cache");
 const { logger } = require("../config/logger");
 const metrics = require("../shared/observability/metrics");
 
+/**
+ * Friendly action → the `permission` column that grants it.
+ *
+ * 12771 closed two of the three standing TODOs here by giving `export`,
+ * `validate` and `disburse` real columns, backfilled from whatever gated them
+ * before, so no role lost access on deploy:
+ *
+ *   export    was can_read.    A right over DATA — taking a module's contents
+ *                              out of the building — which does not follow from
+ *                              being allowed to read it on screen.
+ *   validate  was can_approve.  The finance visa. A visa, not a signature.
+ *   disburse  was can_approve.  Handing over the cash. Separated because the
+ *                              manager who approves a spend should not be the
+ *                              cashier who releases it.
+ *
+ * `publish` still has no column of its own; it is one caller and no product
+ * decision has been taken on it.
+ */
 const ACTION_COLUMN = {
   view: "can_read",
   read: "can_read",
@@ -56,7 +74,9 @@ const ACTION_COLUMN = {
   update: "can_update",
   delete: "can_delete",
   approve: "can_approve",
-  export: "can_read", // TODO: add permission.can_export if this needs to be independent
+  export: "can_export",
+  validate: "can_validate",
+  disburse: "can_disburse",
   publish: "can_update", // TODO: add permission.can_publish if this needs to be independent
 };
 

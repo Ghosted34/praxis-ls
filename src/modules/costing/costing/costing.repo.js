@@ -11,8 +11,140 @@ async function update(client, id, fields) {
   if (!Object.keys(fields).length) return get(client, id);
   return updateOne(client, "costing", "costing_id", id, fields, "*", null, { touch: "updated_at" });
 }
-async function deleteLines(client, costingId) { await client.query("DELETE FROM costing_line WHERE costing_id = $1", [costingId]); }
 function insertLine(client, data) { return insertOne(client, "costing_line", data); }
+
+/* ── Line identity, and why it now has to survive an amendment (12771) ────────
+ *
+ * `replaceLines` used to delete every line and re-insert, so every
+ * `costing_line_id` changed on every DRAFT save. Once a cash request claims a
+ * budget line by its id, that is a link which breaks at exactly the moment it
+ * matters — the amendment. The service therefore upserts in place, and these
+ * three are what it needs.
+ */
+
+/** One line's columns, by id. Used by the in-place upsert. */
+function updateLine(client, lineId, fields) {
+  return updateOne(client, "costing_line", "costing_line_id", lineId, fields);
+}
+
+/** Drop the lines an amendment did not keep. `keepIds` may be empty (all go). */
+async function deleteLinesExcept(client, costingId, keepIds = []) {
+  await client.query(
+    "DELETE FROM costing_line WHERE costing_id = $1 AND NOT (costing_line_id = ANY($2::uuid[]))",
+    [costingId, keepIds],
+  );
+}
+
+/**
+ * Which of these budget lines are already claimed by a cash request, and by
+ * which requests.
+ *
+ * The FK is RESTRICT, so deleting a claimed line raises a raw 23503 from inside
+ * a transaction. This turns that into a sentence naming the requests, so the
+ * author is told to reduce the line to zero rather than reading a constraint
+ * name. Only LIVE claims count — a rejected request holds nothing.
+ */
+async function claimsOnLines(client, lineIds = []) {
+  if (!lineIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT crl.costing_line_id,
+            COUNT(*)::int                                   AS claim_count,
+            ARRAY_AGG(DISTINCT COALESCE(cr.doc_number, LEFT(cr.cash_request_id::text, 8))) AS doc_numbers
+       FROM cash_request_line crl
+       JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+      WHERE crl.costing_line_id = ANY($1::uuid[])
+        AND cr.status <> 'REJECTED'
+      GROUP BY crl.costing_line_id`,
+    [lineIds],
+  );
+  return rows;
+}
+
+/* ── The budget ledger (12771) ───────────────────────────────────────────────
+ *
+ * The four numbers a costing line is worth, in one query, with the claim
+ * arithmetic done in SQL so the page does not fetch every cash request to add
+ * them up.
+ *
+ * BUDGET is the line's TTC, and the expression below is `costing.rules.lineTtc`
+ * transcribed — the two must not drift.
+ *
+ * COMMITTED counts a claim from the moment its request is APPROVED, not from
+ * the moment cash moves (owner decision Q2). Between approval and payment the
+ * budget must NOT read as free, or a second request is approved against
+ * headroom the first was already promised. A request settled short
+ * (CLOSED_SHORT) commits only `settled_amount`, which CLOSE_BALANCE writes.
+ *
+ * PENDING is the same sum over requests still awaiting a decision. It consumes
+ * nothing — it is there so a validator can see that headroom is spoken for
+ * before they add to the queue.
+ *
+ * DISBURSED is APPORTIONED. Instalments are paid against the request, not
+ * against its lines (owner decision Q15), so a line's share is its claim scaled
+ * by how much of the request has been paid. It is a display figure and the
+ * response names it as such; nothing is gated on it.
+ *
+ * `excludeCashRequestId` leaves ONE request out of every total — the answer to
+ * "what was available to this request", as distinct from "what is left now".
+ * Without it a request counts against itself the moment it is approved: its own
+ * claim lands in `committed`, `remaining` drops by it, and the same claim then
+ * reads as a breach of the budget it was approved against. Every caller that
+ * asks on behalf of a particular request passes its id.
+ */
+const COMMITTING_STATUSES = ["APPROVED", "PARTIALLY_DISBURSED", "DISBURSED", "CLOSED_SHORT", "JUSTIFIED"];
+const PENDING_STATUSES = ["SUBMITTED", "VALIDATED"];
+
+// The line's own VAT: a débours carries the supplier's as an amount, a service
+// line derives it from its tax code. Written once and used three times below.
+const LINE_VAT_SQL =
+  "CASE WHEN cl.is_disbursement THEN COALESCE(cl.upstream_vat_amount, 0) " +
+  "ELSE cl.qty * cl.unit_cost * COALESCE(tc.rate_percent, 0) / 100 END";
+
+async function budgetForCosting(client, costingId, { excludeCashRequestId = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT cl.costing_line_id, cl.line_no, cl.label, cl.dictionary_item_id,
+            cl.is_disbursement, cl.container_type_ref_id, cl.qty, cl.unit_cost,
+            di.code  AS item_code,
+            dr.code  AS container_type_code,
+            ROUND(cl.qty * cl.unit_cost, 2)                       AS net,
+            ROUND(${LINE_VAT_SQL}, 2)                             AS vat,
+            ROUND(cl.qty * cl.unit_cost + ${LINE_VAT_SQL}, 2)     AS budget,
+            claims.committed, claims.pending, claims.disbursed
+       FROM costing_line cl
+       LEFT JOIN tax_code       tc ON tc.tax_code_id = cl.tax_code_id
+       LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id
+       LEFT JOIN dictionary_ref  dr ON dr.ref_id = cl.container_type_ref_id
+       LEFT JOIN LATERAL (
+         SELECT
+           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY($2::text[])), 0) AS committed,
+           COALESCE(SUM(k.claim) FILTER (WHERE k.status = ANY($3::text[])), 0) AS pending,
+           COALESCE(SUM(ROUND(k.claim * k.paid_ratio, 2))
+                    FILTER (WHERE k.status = ANY($2::text[])), 0)              AS disbursed
+           FROM (
+             SELECT cr.status,
+                    COALESCE(crl.settled_amount,
+                             ROUND(crl.budget_amount * (1 + COALESCE(crl.vat_percent, 0) / 100), 2)) AS claim,
+                    CASE
+                      -- A SETTLED line's claim IS its share of the cash that
+                      -- moved (CLOSE_BALANCE wrote it that way), so scaling it
+                      -- by the request's paid ratio would discount it twice and
+                      -- report less cash than the treasury actually issued.
+                      WHEN crl.settled_amount IS NOT NULL THEN 1
+                      WHEN cr.amount > 0 THEN cr.disbursed_amount / cr.amount
+                      ELSE 0
+                    END AS paid_ratio
+               FROM cash_request_line crl
+               JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+              WHERE crl.costing_line_id = cl.costing_line_id
+                AND ($4::uuid IS NULL OR crl.cash_request_id <> $4::uuid)
+           ) k
+       ) claims ON TRUE
+      WHERE cl.costing_id = $1
+      ORDER BY cl.line_no, cl.costing_line_id`,
+    [costingId, COMMITTING_STATUSES, PENDING_STATUSES, excludeCashRequestId],
+  );
+  return rows;
+}
 // The reader needs the container name to display without a second round-trip,
 // and (§2.2) the line's own VAT rate so totals are HT / VAT / TTC — the rate
 // comes from the line's tax code, never a hardcoded number. LEFT JOINs because
@@ -32,6 +164,22 @@ const LINE_SELECT =
   "FROM costing_line cl LEFT JOIN dictionary_ref dr ON dr.ref_id = cl.container_type_ref_id " +
   "LEFT JOIN tax_code tc ON tc.tax_code_id = cl.tax_code_id " +
   "LEFT JOIN dictionary_item di ON di.dictionary_item_id = cl.dictionary_item_id ";
+/**
+ * Just enough of each line to compute its logical identity (`rules.lineKey`)
+ * and address it — the in-place upsert's read.
+ *
+ * Not `listLines`: that carries four LEFT JOINs so a reader can render the
+ * sheet, and the upsert needs none of them. It runs on every DRAFT save.
+ */
+async function lineIdentities(client, costingId) {
+  const { rows } = await client.query(
+    "SELECT costing_line_id, dictionary_item_id, container_type_ref_id, label, line_no " +
+      "FROM costing_line WHERE costing_id = $1 ORDER BY line_no, costing_line_id",
+    [costingId],
+  );
+  return rows;
+}
+
 async function listLines(client, costingId) {
   // 12766: `line_no` is the sheet's order. This used to read by
   // `costing_line_id` — a uuid — so the order was arbitrary AND changed on every
@@ -328,7 +476,8 @@ async function defaultSalesTaxCode(client, { entityId, onDate }) {
 }
 
 module.exports = {
-  insert, get, update, deleteLines, insertLine, listLines, list, kpis,
+  insert, get, update, deleteLinesExcept, insertLine, updateLine, listLines, list, kpis,
+  claimsOnLines, budgetForCosting, lineIdentities, COMMITTING_STATUSES, PENDING_STATUSES,
   liveForDossier, insertSnapshot, latestSnapshot, snapshotCount,
   dossierForCosting, tieredItems, containerTypesOnFile, ratesForItems, defaultSalesTaxCode,
 };

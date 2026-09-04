@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (511)
+## All codes (519)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -34,6 +34,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ADVANCE_NOT_CLEARED` | 422 | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
 | `AI_UNAVAILABLE` | 403, 503 | 6× | — |
+| `ALREADY_ACKNOWLEDGED` | 409 | 1× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_ANSWERED` | 409 | 1× | — |
 | `ALREADY_APPROVED` | 422 | 2× | — |
@@ -125,6 +126,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_WINDOW` | 422 | 2× | — |
 | `BASE_CURRENCY` | 409, 422 | 2× | — |
 | `BREACHED_PASSWORD` | 422 | 1× | — |
+| `BUDGET_EXHAUSTED` | 422 | 1× | — |
 | `CAMPAIGN_ENDED` | 422 | 1× | — |
 | `CAPABILITY_REQUIRED` | 403 | 1× | — |
 | `CATALOGUE_TAKEN` | 409 | 1× | — |
@@ -143,7 +145,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
 | `CONTRACT_TEXT_FROZEN` | 422 | 1× | — |
 | `COSTING_EXISTS` | — | 1× | — |
-| `COSTING_NOT_APPROVED` | 403 | 1× | — |
+| `COSTING_NOT_APPROVED` | 403 | 2× | — |
 | `COST_CENTER_REQUIRED` | 422 | 1× | — |
 | `COUNT_NOT_ATTESTED` | 409 | 1× | — |
 | `COUNT_SHEET_DISAGREES` | 422 | 1× | — |
@@ -188,6 +190,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 12× | — |
 | `ENVELOPE_IN_FLIGHT` | 409 | 1× | — |
+| `EVERY_LINE_NEEDS_BUDGET` | — | 1× | — |
 | `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 3× | — |
 | `FIELD_NOT_WRITABLE` | — | 2× | — |
@@ -248,6 +251,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LEAVE_OVERLAP` | 409 | 2× | — |
 | `LEDGER_LINE_ALREADY_MATCHED` | 409 | 2× | — |
+| `LINE_COUNT_MISMATCH` | 422 | 1× | — |
+| `LINE_HAS_CLAIMS` | — | 1× | — |
 | `LINE_REQUIRED` | 422 | 1× | — |
 | `LOCATION_REQUIRED` | — | 1× | — |
 | `LOCKED` | 422 | 35× | — |
@@ -286,7 +291,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 3× | — |
-| `NOT_FOUND` | 404, 422 | 603× | — |
+| `NOT_FOUND` | 404, 422 | 605× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPEN` | 409, 422 | 3× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
@@ -316,7 +321,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_COA` | 422 | 1× | — |
 | `NO_CONTENT_HASH` | 422 | 1× | — |
 | `NO_CONTROL_ACCOUNT` | 500 | 2× | — |
-| `NO_COSTING` | 422 | 1× | — |
+| `NO_COSTING` | 422 | 2× | — |
 | `NO_COUNTERPART` | 422 | 1× | — |
 | `NO_CUSTODIAN` | 422 | 2× | — |
 | `NO_DISBURSEMENT_ACCOUNT` | 422 | 1× | — |
@@ -335,7 +340,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_FINGERPRINT` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 2× | — |
-| `NO_LINES` | 422 | 9× | — |
+| `NO_LINES` | 422 | 10× | — |
 | `NO_MODULE` | 422 | 2× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
@@ -382,6 +387,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `OVERRIDE_REASON_REQUIRED` | 422 | 2× | — |
 | `OVERRIDE_REQUIRED` | 422 | 1× | — |
 | `OVER_ALLOCATED` | 422 | 1× | — |
+| `OVER_BUDGET` | — | 1× | — |
+| `OVER_BUDGET_REASON_REQUIRED` | — | 1× | — |
 | `OVER_DISBURSED` | 422 | 1× | — |
 | `OVER_PAID` | 422 | 2× | — |
 | `OVER_RETIRED` | 422 | 2× | — |
@@ -419,7 +426,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `QES_NOT_CONFIGURED` | 409 | 4× | — |
 | `QES_PROVIDER_ERROR` | 502 | 2× | — |
 | `QES_PROVIDER_UNSUPPORTED` | 422 | 1× | — |
-| `REASON_REQUIRED` | 422 | 7× | — |
+| `REASON_REQUIRED` | 422 | 8× | — |
 | `RECIPIENT_REJECTED` | 422 | 2× | — |
 | `RECONCILIATION_DOES_NOT_BALANCE` | — | 1× | — |
 | `RECONCILIATION_LOCKED` | 409 | 1× | — |
@@ -430,6 +437,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
 | `REF_WRITE_REQUIRED` | 500 | 1× | — |
+| `REJECTION_REASON_REQUIRED` | 422 | 1× | — |
 | `RELATED_IS_SELF` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUEST_CLOSED` | 409 | 1× | — |

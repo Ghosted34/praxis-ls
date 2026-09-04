@@ -25,6 +25,11 @@ router.get("/suggest", requirePermission(MODULE, "view"), validator.suggestQuery
 router.get("/kpis", requirePermission(MODULE, "view"), validator.listQuery, controller.kpis);
 router.get("/", requirePermission(MODULE, "view"), validator.listQuery, controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
+// The budget ledger (12771). `view` on the costing, not on MOD-49: this is the
+// SHEET telling you what is left of it, and the cash-request worksheet reads it
+// to seed and to warn. Declared after "/:id" — a distinct sub-path, so no
+// ambiguity with a costing id.
+router.get("/:id/budget", requirePermission(MODULE, "view"), controller.budget);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 // Both sides of the merge are kept, applied per target state.

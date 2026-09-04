@@ -62,7 +62,12 @@ const COLUMN = {
   update: "can_update",
   delete: "can_delete",
   approve: "can_approve",
-  export: "can_read",
+  // 12771 gave these three real columns. Kept in step with rbac.js on purpose:
+  // an assistant gated more loosely than a person at a screen is the AI-only
+  // capability failure this file exists to prevent.
+  export: "can_export",
+  validate: "can_validate",
+  disburse: "can_disburse",
   publish: "can_update",
 };
 
@@ -91,6 +96,28 @@ function deny(actionKey, reason, required) {
     403,
   );
 }
+
+/*
+ * ── KNOWN GAP: THE AUTHORITY OVERLAY IS NOT CHECKED HERE ───────────────────
+ *
+ * `requirePermission` has a sibling — `requireCapability` — and four HTTP
+ * routes demand both: a module grant AND an authority code (ISSUER / VALIDATOR
+ * / APPROVER / LINE_MANAGER, optionally banded by document type and amount).
+ * This path checks only the grant, so an assistant can run an action a person
+ * at a screen would be refused for want of the capability.
+ *
+ * It is PRE-EXISTING and is not widened by 12771: `disburse_cash_request` moved
+ * from `can_approve` to `can_disburse`, and the migration backfills the second
+ * from the first, so exactly the same callers can run it today and an
+ * administrator narrowing `can_disburse` narrows this path too.
+ *
+ * Closing it properly means carrying a required capability through
+ * `action-registrar.buildCatalogue` and the `ai_action_catalogue` table it
+ * persists to — a migration and a schema change, which does not belong in a
+ * change about budgets. Recorded here, in the file that would host the fix,
+ * rather than left for someone to rediscover from a manifest key that quietly
+ * does nothing.
+ */
 
 /**
  * May `user` run `def`?
@@ -151,8 +178,19 @@ async function filterAllowed(client, user, defs) {
        
       await assertAllowed(client, user, def);
       out.push(def);
-    } catch {
-      /* not offered */
+    } catch (err) {
+      /*
+       * A DENIAL IS THE ANSWER HERE, not a fault: this loop filters a catalogue
+       * down to what the caller may run, and `assertAllowed` has already logged
+       * and counted the refusal (see `deny` above).
+       *
+       * Anything else is re-raised. The bare catch-all this replaces swallowed
+       * EVERY error — so a database outage inside the grant lookup produced an
+       * empty catalogue, which is indistinguishable from a correct answer of
+       * "you may run nothing" and is exactly the kind of failure that gets
+       * diagnosed as a permissions problem for a day.
+       */
+      if (!(err instanceof AppError) || err.code !== "AI_ACTION_FORBIDDEN") throw err;
     }
   }
   return out;

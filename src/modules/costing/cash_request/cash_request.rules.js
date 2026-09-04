@@ -15,11 +15,22 @@ const NEXT = {
   // straight to DISBURSED. Both are reachable from APPROVED because which one
   // happens depends on the amount paid, not on a separate decision.
   APPROVED: ["PARTIALLY_DISBURSED", "DISBURSED", "REJECTED"],
-  // Further instalments keep it here until the total closes the request.
-  PARTIALLY_DISBURSED: ["PARTIALLY_DISBURSED", "DISBURSED"],
+  // Further instalments keep it here until the total closes the request — or
+  // CLOSE_BALANCE settles it short (12771). Without that last exit a part-paid
+  // request holds committed budget for ever against cash that will never move,
+  // which is a slow leak under commitment accounting.
+  PARTIALLY_DISBURSED: ["PARTIALLY_DISBURSED", "DISBURSED", "CLOSED_SHORT"],
   DISBURSED: ["JUSTIFIED"],
+  // Money left the treasury, so it still has to be accounted for: a settled
+  // request is justified exactly like a fully disbursed one.
+  CLOSED_SHORT: ["JUSTIFIED"],
   JUSTIFIED: [],
-  REJECTED: [],
+  // 12771: REJECTED is no longer terminal. The legacy let a rejected request be
+  // edited and re-submitted (pr_save accepts DRAFT and REJECTED; pr_transition
+  // SUBMIT accepts from ∈ {DRAFT, REJECTED}), and ours did not — so a mistyped
+  // MoMo number cost a whole document and its reference. Reopening keeps both,
+  // and the rejection stamp stays on the row as the reason it came back.
+  REJECTED: ["DRAFT"],
 };
 
 /**
@@ -115,4 +126,135 @@ function assertMethod(method, details = {}) {
   return { method: m, details: clean };
 }
 
-module.exports = { NEXT, assertTransition, sumField, computeTotals, assertMethod, disbursementState };
+/**
+ * What ONE line claims against its budget line — TTC (12771).
+ *
+ * TTC because the budget is TTC: `costing.rules.lineTtc` counts the supplier's
+ * VAT on a débours as budgeted cash, so a claim that ignored its own VAT would
+ * draw down a smaller number than the money it actually takes out of the
+ * treasury.
+ *
+ * ROUNDED PER LINE. `computeTotals` below rounds the VAT of the whole sheet
+ * once, at the foot, because that is what prints on the voucher; a budget claim
+ * has to be a stable per-line number that a per-line balance can be compared
+ * against. On a sheet with several fractionally-taxed lines the two can differ
+ * by a sub-unit — never more. The SQL twin of this expression lives in
+ * `costing.repo.budgetForCosting`; the two must not drift.
+ */
+function lineClaim(l = {}) {
+  const net = Number(l.budget_amount || 0);
+  return round2(net * (1 + Number(l.vat_percent || 0) / 100));
+}
+
+/**
+ * Which budget lines this request would overdraw, and by how much (12771).
+ *
+ * `ledger` is `costing.repo.budgetForCosting` for the linked costing, whose
+ * `remaining` already excludes this request: a DRAFT, SUBMITTED or VALIDATED
+ * request commits nothing (only APPROVED and beyond do), so the balance it
+ * reports is exactly what is left for this request to claim.
+ *
+ * Claims are TOTALLED PER BUDGET LINE FIRST. One request can legitimately carry
+ * two lines against the same budget line — a partial claim plus a top-up typed
+ * later — and checking them one at a time would pass each while the pair
+ * overdraws.
+ *
+ * Pure: the caller decides what a breach means. At submission it demands a
+ * written reason; at approval it is a refusal (owner decision Q3).
+ */
+function budgetBreaches(lines = [], ledger = []) {
+  const byLine = new Map(ledger.map((r) => [r.costing_line_id, r]));
+  const claimed = new Map();
+  for (const l of lines) {
+    if (!l.costing_line_id) continue;
+    claimed.set(l.costing_line_id, round2((claimed.get(l.costing_line_id) || 0) + lineClaim(l)));
+  }
+  const breaches = [];
+  for (const [costingLineId, claim] of claimed) {
+    const row = byLine.get(costingLineId);
+    // A claim against a budget line that is no longer on the sheet is the
+    // hardest breach there is: nothing is left, because there is nothing.
+    const remaining = row ? round2(Number(row.remaining || 0)) : 0;
+    if (claim > remaining) {
+      breaches.push({
+        costing_line_id: costingLineId,
+        label: row ? row.label : null,
+        claim,
+        remaining,
+        excess: round2(claim - remaining),
+      });
+    }
+  }
+  return breaches;
+}
+
+/**
+ * Split what was ACTUALLY paid across the lines of a request being settled
+ * short (12771) — CLOSE_BALANCE's arithmetic.
+ *
+ * Instalments are paid against the request, not against its lines (owner
+ * decision Q15), so there is no recorded per-line truth to use; pro-rata by
+ * claim is the only honest derivation, and `settled_amount` records it so the
+ * budget ledger stops counting money that will never move.
+ *
+ * THE LAST LINE ABSORBS THE REMAINDER, so the parts sum to the whole exactly.
+ * Distributing rounding evenly would leave the ledger a sub-unit away from the
+ * cash actually issued, and a budget that disagrees with the treasury by any
+ * amount is a budget people stop trusting.
+ */
+function apportionSettlement(lines = [], paidTotal = 0) {
+  const claims = lines.map(lineClaim);
+  const total = round2(claims.reduce((a, b) => a + b, 0));
+  const paid = round2(Number(paidTotal || 0));
+  if (!(total > 0)) return lines.map(() => 0);
+  if (paid >= total) return claims;
+
+  const shares = claims.map((c) => round2((c * paid) / total));
+  const assigned = round2(shares.reduce((a, b) => a + b, 0));
+  const drift = round2(paid - assigned);
+  if (drift !== 0) {
+    // The last line with a non-zero share, so the remainder never lands on a
+    // line that claimed nothing.
+    for (let i = shares.length - 1; i >= 0; i -= 1) {
+      if (shares[i] > 0) { shares[i] = round2(shares[i] + drift); break; }
+    }
+  }
+  return shares;
+}
+
+/**
+ * The ledger as a request-shaped summary — what a validator and an approver
+ * need to see before they act (owner decision Q20).
+ *
+ * Finance validates against the budget, so the question "is this file budgeted
+ * for, and is this request inside it?" has to be answerable without leaving the
+ * screen. Pure, so the same numbers can be rendered on the worksheet, printed
+ * on the voucher and asserted in a test.
+ */
+function budgetControl({ lines = [], ledger = [], costing = null } = {}) {
+  const breaches = budgetBreaches(lines, ledger);
+  const claimed = round2(lines.reduce((s, l) => s + lineClaim(l), 0));
+  const budgetTotal = round2(ledger.reduce((s, r) => s + Number(r.budget || 0), 0));
+  const committed = round2(ledger.reduce((s, r) => s + Number(r.committed || 0), 0));
+  const remaining = round2(budgetTotal - committed);
+  return {
+    costing_id: costing ? costing.costing_id : null,
+    costing_doc_number: costing ? costing.doc_number || null : null,
+    costing_status: costing ? costing.status : null,
+    budget_total: budgetTotal,
+    committed_elsewhere: committed,
+    remaining_before: remaining,
+    claimed_here: claimed,
+    remaining_after: round2(remaining - claimed),
+    // The two refusals a request can carry, named so a screen can render them
+    // without re-deriving the rules.
+    unbudgeted_line_count: lines.filter((l) => !l.costing_line_id).length,
+    breaches,
+    is_over_budget: breaches.length > 0,
+  };
+}
+
+module.exports = {
+  NEXT, assertTransition, sumField, computeTotals, assertMethod, disbursementState,
+  lineClaim, budgetBreaches, apportionSettlement, budgetControl,
+};

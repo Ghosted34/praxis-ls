@@ -21,8 +21,8 @@
  * payload is the check that would have caught the defect, and it fails loudly at
  * the call site rather than in a build script that has to infer the pairing.
  *
- * `permission_id` is not merely unwanted, it is unusable: the repo binds seven
- * parameters and resolves the row by ON CONFLICT (role_id, module_key), the
+ * `permission_id` is not merely unwanted, it is unusable: the repo binds the
+ * flags by name and resolves the row by ON CONFLICT (role_id, module_key), the
  * natural key. The id is database-generated and never in the DO UPDATE SET list.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -32,7 +32,16 @@ import { upsertGrant, emptyGrant, PERMS, type Grant } from "./rbac";
 
 afterEach(() => vi.restoreAllMocks());
 
-/** The seven fields the server's `.strict()` schema accepts — the wire contract. */
+/**
+ * The fields the server's `.strict()` schema accepts — the wire contract.
+ *
+ * Derived from `PERMS` on purpose: adding a permission is a two-sided change,
+ * and this test is what says so out loud. 12771 added `can_validate`,
+ * `can_disburse` and `can_export` to `PERMS`, to `Grant` and to the server
+ * schema but not to the body `upsertGrant` builds, and no status code
+ * complained — the repo COALESCEs an absent flag to "unchanged", so those three
+ * columns simply could not be edited from the matrix.
+ */
 const CONTRACT_KEYS = ["role_id", "module_key", ...PERMS].sort();
 
 /** What `/permissions/matrix` actually returns: the contract plus the row id. */
@@ -42,11 +51,12 @@ const rowFromServer = {
     "MOD-04",
   ),
   can_approve: true,
+  can_disburse: true,
   permission_id: "d2e70c2c-6cb2-4221-9f32-71aebc6d9d19",
 } as Grant;
 
 describe("upsertGrant — the PUT /permissions/grant wire contract", () => {
-  it("sends exactly the seven contract fields", async () => {
+  it("sends exactly the contract fields — every PERM, no more", async () => {
     const spy = vi
       .spyOn(apiClient, "tenant")
       .mockResolvedValue({} as never);
@@ -86,6 +96,12 @@ describe("upsertGrant — the PUT /permissions/grant wire contract", () => {
       { body: Record<string, unknown> },
     ];
     expect(init.body.can_approve).toBe(true);
+    // 12771's flags carry their VALUE, not just their key. Sending `undefined`
+    // for one reads to the repo as "leave it as it is", which is the same
+    // silent no-op as omitting it.
+    expect(init.body.can_disburse).toBe(true);
+    expect(init.body.can_validate).toBe(false);
+    expect(init.body.can_export).toBe(false);
     expect(init.body.role_id).toBe("a83d176b-0934-45b8-ba42-f32999079720");
     expect(init.body.module_key).toBe("MOD-04");
   });

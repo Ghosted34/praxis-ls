@@ -213,15 +213,19 @@ describe("Financial dictionary — Spend tab", () => {
   it("error state renders an error, not an all-clear empty state", async () => {
     const { container } = renderScreen(<SpendTab id="di1" />, {
       routes: {
-        "/financial-dictionary/di1/spend": apiError(403, "Not permitted"),
+        "/financial-dictionary/di1/spend": apiError(
+          403,
+          "No permission for MOD-12.read",
+        ),
       },
     });
     // A 403 must reach the user as an error, NOT be swallowed into an empty
     // state that reads as "no spend" — the Control Tower shipped exactly that
-    // (Addendum 6, defect 4). `errMsg` rewrites a 403 to the friendly sentence,
-    // so assert on the ROLE and the fact that the empty state is absent.
+    // (Addendum 6, defect 4). Since F-GAP-09 `errMsg` passes the server's
+    // sentence through rather than rewriting it, so assert on that sentence and
+    // on the fact that the empty state is absent.
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/permission/i);
+    expect(alert.textContent).toContain("No permission for MOD-12.read");
     expect(screen.queryByText(/No spend in this period/)).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
   });

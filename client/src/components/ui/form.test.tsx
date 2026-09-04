@@ -279,11 +279,17 @@ describe("Form", () => {
     );
   });
 
-  it("keeps a 403 readable rather than replacing it with 'Something went wrong'", async () => {
+  it("keeps a 403 readable — the server's own sentence, not a generic one", async () => {
     const user = userEvent.setup();
     const onSubmit = vi
       .fn()
-      .mockRejectedValue(new ApiError("FORBIDDEN", "nope", 403));
+      .mockRejectedValue(
+        new ApiError(
+          "ROLE_ESCALATION",
+          "You cannot grant Finance because you do not hold it.",
+          403,
+        ),
+      );
     render(<InvoiceForm onSubmit={onSubmit} />);
 
     await user.type(
@@ -296,9 +302,12 @@ describe("Form", () => {
     );
     await user.click(screen.getByRole("button", { name: "Submit invoice" }));
 
+    // F-GAP-09: a 403 is no longer flattened to "You don't have permission to
+    // do this." The authorization layer writes messages that name the remedy,
+    // and this form is one of the places they have to survive.
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "You don't have permission to do this.",
+        "You cannot grant Finance because you do not hold it.",
       ),
     );
   });

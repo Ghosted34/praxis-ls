@@ -1319,6 +1319,11 @@ export type DossierOverview = {
     service_key?: string | null;
     service_name_en?: string | null;
     service_name_fr?: string | null;
+    /** Does this file's service type carry containers? Gates the Containers tab. */
+    captures_containers?: boolean;
+    container_detail_mode?: "GROUPED" | "PER_BOX" | null;
+    /** Boxes on the file (sum of container-line quantities) — the tab's badge. */
+    container_boxes?: number | null;
     rate_provider_name?: string | null;
     milestone_total?: number | null;
     milestone_done?: number | null;

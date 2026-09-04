@@ -552,6 +552,12 @@ async function overview(client, id) {
       service_key: head.service_key || null,
       service_name_en: head.service_name_en || null,
       service_name_fr: head.service_name_fr || null,
+      // Equipment capture rides the header so the 360 can gate its Containers
+      // tab without a second fetch: the tab exists only for service types that
+      // carry boxes, and the box count feeds its badge.
+      captures_containers: head.captures_containers === true,
+      container_detail_mode: head.container_detail_mode || null,
+      container_boxes: head.container_boxes || 0,
       rate_provider_name: head.rate_provider_name || null,
       milestone_total: head.milestone_total || 0,
       milestone_done: head.milestone_done || 0,
